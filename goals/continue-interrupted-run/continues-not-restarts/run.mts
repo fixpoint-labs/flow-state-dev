@@ -61,8 +61,7 @@ function continuationItems(items: readonly { type: string }[] | undefined): Cont
   return ((items ?? []) as ContinuationItem[]).filter((i) => i.type === "continuation");
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   let earlyRuns = 0;
   let bgRuns = 0;
 

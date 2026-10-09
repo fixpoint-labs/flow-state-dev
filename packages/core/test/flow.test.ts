@@ -596,7 +596,51 @@ describe("defineFlow", () => {
       });
     });
 
-    it("flow-level resources take priority over block-declared resources at the same accessor", () => {
+    // A flow-level entry that names a block's accessor but holds a different
+    // definition used to win the merge silently: the block's reads and writes
+    // went to the flow's resource and only wrong data showed it. Refused the
+    // same way two blocks disagreeing on an accessor already are.
+    it("rejects a flow-level resource that shadows a block's under the same accessor", () => {
+      const block = handler({
+        name: "block-obs",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+
+      expect(() =>
+        defineFlow({
+          kind: "flow-shadows",
+          actions: {
+            run: { inputSchema: z.any(), block }
+          },
+          resources: { observations: flowLevelResource }
+        })
+      ).toThrow(/Resource conflict in flow "flow-shadows": "observations"/);
+    });
+
+    // The refusal is about a DIFFERENT definition under one name. Re-stating the
+    // block's own reference at flow level (spreading a pattern's resources into
+    // the flow map is the common case) is the same resource and must still build.
+    // The lookup reads own keys only. A block accessor that names an
+    // Object.prototype member must not collide with a flow map that never
+    // declared it.
+    it("does not refuse a block accessor named like an Object.prototype member", () => {
+      const block = handler({
+        name: "block-proto",
+        resources: { constructor: observationsResource } as never,
+        execute: (v) => v
+      });
+
+      expect(() =>
+        defineFlow({
+          kind: "flow-proto",
+          actions: { run: { inputSchema: z.any(), block } },
+          resources: { counter: flowLevelResource }
+        })
+      ).not.toThrow();
+    });
+
+    it("accepts a flow-level entry that repeats the block's own reference", () => {
       const block = handler({
         name: "block-obs",
         resources: { observations: observationsResource },
@@ -604,15 +648,14 @@ describe("defineFlow", () => {
       });
 
       const flow = defineFlow({
-        kind: "flow-wins",
+        kind: "flow-restates",
         actions: {
           run: { inputSchema: z.any(), block }
         },
-        resources: { observations: flowLevelResource }
+        resources: { observations: observationsResource, counter: flowLevelResource }
       });
 
-      // Flow-level wins — should be the flowLevelResource, not observationsResource
-      expect(flow.resources?.observations).toBe(flowLevelResource);
+      expect(flow.resources?.observations).toBe(observationsResource);
     });
 
     it("merges disjoint flow-level and block-declared resources into the flat map", () => {
@@ -961,10 +1004,11 @@ describe("defineFlow", () => {
       ).not.toThrow();
     });
 
-    // FIX-1068: a flow-level declaration overrides a block's under the same
-    // accessor. Silently moving a resource between the running session and the
-    // lineage that way breaks the block that declared it — a detached board
-    // claims rows in one place while its child session reads an empty ledger.
+    // FIX-1068: a flow-level declaration under a block's accessor that flips
+    // sharedToLineage is refused with its own message, not the generic conflict.
+    // Moving a resource between the running session and the lineage breaks the
+    // block that declared it — a detached board claims rows in one place while
+    // its child session reads an empty ledger.
     it("rejects a flow-level override that changes sharedToLineage", () => {
       const blockLedger = defineResourceCollection({
         pattern: "tasks/**",

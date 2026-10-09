@@ -18,7 +18,11 @@ import {
 } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
-import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
+import {
+  createFlowApiRouter,
+  disposeFlowApiRouter,
+  type FlowApiRouter
+} from "../routes/createFlowApiRouter";
 import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -415,14 +419,25 @@ class InternalFlowState<TSettings extends object>
     // still get a clean dispose. Either surface (getRuntime / getRouter) can
     // be the one that opened the pools. A failed init is swallowed here —
     // disposal must proceed regardless.
-    for (const pending of [this.#runtimePromise, this.#initPromise]) {
-      if (pending === null) continue;
-      try {
-        await pending;
-      } catch {
-        // init failed; adapters may still hold partially-opened resources.
-      }
+    try {
+      await this.#runtimePromise;
+    } catch {
+      // init failed; adapters may still hold partially-opened resources.
     }
+    let router: FlowApiRouter | undefined;
+    try {
+      router = (await this.#initPromise) ?? undefined;
+    } catch {
+      // init failed before a router (and its sweepers) existed.
+    }
+
+    // The router this handle built (`ready()` / `getRouter()`) runs a periodic
+    // stale-request sweep, and a durability sweep when retention is configured,
+    // against these same stores. Stop them before anything below closes the
+    // stores, or the next tick reads a closed connection and logs a failure on
+    // an ordinary shutdown. Idempotent, so a host that already disposed the
+    // router (`createServerApp`) is unaffected.
+    if (router !== undefined) await disposeFlowApiRouter(router);
 
     // Detached children first, for the same reason the worker is stopped before
     // the stores: they are still writing. See `#drainDetachedChildren`.

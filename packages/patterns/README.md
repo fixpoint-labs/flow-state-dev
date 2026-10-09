@@ -37,8 +37,8 @@ const myFlow = defineFlow({
   }
   // No `resources` entry needed: the pipeline's blocks declare
   // `resources: { context: contextResource }`, and `defineFlow` collects
-  // them into the flow's flat `resources` map. Declare `context` yourself
-  // only to override the definition — flow-level wins over block-level.
+  // them into the flow's flat `resources` map. A flow-level `context` entry
+  // must be that same `contextResource`; a different definition throws.
 });
 ```
 

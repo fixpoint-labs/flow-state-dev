@@ -81,6 +81,7 @@ why; your app reads it the way it reads any failed request.
 | A hire under an id already on the user's roster | `"scribe" is already on your roster. Pick another id. Nothing was written.` |
 | An edit of a standard worker (a hire, fork onto or fire of one is refused the same way) | `"researcher" is a standard worker, which nobody can edit. Fork it to get a worker of your own.` |
 | A hire whose settings its flow refuses | `Worker "scribe" …the flow's own reason…. Nothing was written.` |
+| A hire naming a skill your installation doesn't register (with none registered, the list reads `It registers no skills.`) | `Worker "scribe" names skill "license auditing", which this installation doesn't register. Remove it, or register it. Skills it registers: "cite", "summarize". Nothing was written.` |
 | A turn on a session whose worker moved to another flow | `Worker "scribe" now runs on flow "research", and this session runs on "agent". A session stays on the flow it was created on: start a new session to talk to it on "research".` |
 | A turn on a session whose worker was fired | `Worker "scribe" was fired. This session stays readable; a new turn can't run as it.` |
 

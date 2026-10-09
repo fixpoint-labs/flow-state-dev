@@ -215,9 +215,7 @@ async function route(blankPurposes: boolean): Promise<{
   };
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
-
+await runGoal(async (failures) => {
   // Honesty guards, before a model is spent.
 
   // 1. The whole claim is that the coordinator learned the roster from the

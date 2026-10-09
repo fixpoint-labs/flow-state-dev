@@ -604,13 +604,14 @@ export function createSessionStreamConformanceTests(
       expect(reads).toBe(atClose);
     });
 
-    // One read can be long: the first read of runs checks every run under the
-    // session, two store reads each. A connection that ends midway through it
-    // makes no further store read for nobody.
+    // One read can be several: the first read of runs takes three store reads
+    // when a run's history holds an interrupted record, the last to tell
+    // whether that record is the most recent. A connection that ends midway
+    // through it makes no further store read for nobody.
     it("stops reading the store when the connection ends midway through a read (BR-14)", async () => {
       const stores = await createStores();
       const runs = 20;
-      const readMs = 20;
+      const readMs = 50;
       let reads = 0;
       const slowed: StoreRegistry = {
         ...stores,
@@ -632,18 +633,29 @@ export function createSessionStreamConformanceTests(
       await seedSession(stores, "s1");
       for (let i = 0; i < runs; i += 1) {
         await seedSession(stores, `run_${i}`, { parentSessionId: "s1" });
-        await seedRequest(stores, { id: `req_${i}`, sessionId: `run_${i}`, status: "completed" });
+        // Interrupted, then retried to completion: finished, but only a read of
+        // this run's most recent record can tell.
+        const at = Date.now() - 60_000;
+        await seedRequest(stores, {
+          id: `req_${i}_a`,
+          sessionId: `run_${i}`,
+          status: "interrupted",
+          startedAtMs: at,
+          createdAt: at,
+          updatedAt: at
+        });
+        await seedRequest(stores, { id: `req_${i}_b`, sessionId: `run_${i}`, status: "completed" });
       }
 
       const live = await stream(r, "s1");
-      // Midway through the first read of runs: a few checked, most not.
+      // Midway through the first read of runs: its second store read in flight.
       const deadline = Date.now() + 5_000;
-      while (reads < 4 && Date.now() < deadline) await delay(5);
+      while (reads < 2 && Date.now() < deadline) await delay(5);
       expect(live.events).toEqual([]);
       const atClose = reads;
       await live.close();
-      // Long enough for every remaining run to have been checked.
-      await delay(runs * 2 * readMs);
+      // Long enough for the rest of the read to have run.
+      await delay(4 * readMs);
       expect(reads).toBe(atClose);
     });
 
@@ -984,13 +996,55 @@ export function createSessionStreamConformanceTests(
       }
 
       const live = await stream(r, "s1");
-      // This case asserts which run is listed, not how fast. The filesystem
-      // adapter's first read over 100+ runs takes ~5s on its own, so a 10s
-      // wait failed whenever the machine was busy.
-      const opening = await live.waitFor((e) => e.type === "session.runs", 25_000);
+      const opening = await live.waitFor((e) => e.type === "session.runs", 10_000);
       expect(runsOf(opening)).toEqual(["run_old"]);
       await delay(FAST_TIMINGS.intervalMs * 4);
       expect(latestRuns(live)).toEqual(["run_old"]);
     }, 30_000);
+
+    // A read per run is a read of every request record per run on an adapter
+    // with no index, so the open grew with the square of the runs: seconds at
+    // a hundred. However many runs, the open costs the same reads.
+    it("opens on a session's runs in the same number of reads however many it has (BR-23)", async () => {
+      const openingReads = async (runs: number): Promise<number> => {
+        const stores = await createStores();
+        let reads = 0;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const counted: StoreRegistry = {
+          ...stores,
+          request: new Proxy(stores.request, {
+            get(target, key) {
+              const value = Reflect.get(target, key, target) as unknown;
+              if (key === "list") {
+                return async (...args: Parameters<typeof target.list>) => {
+                  // The session's own requests are the loop's first read, after
+                  // the open: hold it, so only the open's reads are counted.
+                  if (args[0]?.sessionId === "s1") await held;
+                  else reads += 1;
+                  return target.list(...args);
+                };
+              }
+              return typeof value === "function" ? value.bind(target) : value;
+            }
+          })
+        };
+        await seedSession(stores, "s1");
+        for (let i = 0; i < runs; i += 1) {
+          await seedSession(stores, `run_${i}`, { parentSessionId: "s1" });
+          await seedRequest(stores, { id: `req_${i}`, sessionId: `run_${i}`, status: "completed" });
+        }
+        const live = await stream(router(counted), "s1");
+        await live.waitFor((e) => e.type === "session.runs");
+        const atOpen = reads;
+        release();
+        await live.close();
+        return atOpen;
+      };
+
+      expect(await openingReads(40)).toBe(await openingReads(4));
+    });
   });
 }

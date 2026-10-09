@@ -32,6 +32,11 @@ export type TaskInit<TInput = unknown> = {
   input?: TInput;
   labels?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * Marks the row as an ask (see `Task.ask`). Set only by the ask path, which
+   * writes it in the same write that files the row; never from model input.
+   */
+  ask?: { gateId: string; deadline: number };
 };
 
 /**
@@ -44,6 +49,8 @@ export type TaskFilter = {
   hasLabel?: string;
   /** Match tasks that carry every label in this list. */
   hasAllLabels?: string[];
+  /** Match only tasks whose asking turn is owed its answer (`Task.resumeOwed`). */
+  resumeOwed?: true;
 };
 
 /** Returns true when `task` matches every set field on `filter`. */
@@ -70,6 +77,8 @@ export function matchesFilter(task: Task, filter?: TaskFilter): boolean {
       if (!labels.includes(label)) return false;
     }
   }
+
+  if (filter.resumeOwed === true && task.resumeOwed !== true) return false;
 
   return true;
 }

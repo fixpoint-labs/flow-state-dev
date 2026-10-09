@@ -336,8 +336,7 @@ function gradeNeutral(read: PageRead, tag: string): string[] {
 
 // ---- the goal ----------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const control: Patch[] =
     CONTROL === "hardcoded-accent"

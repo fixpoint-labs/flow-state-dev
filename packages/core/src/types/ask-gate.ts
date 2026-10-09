@@ -16,10 +16,10 @@
  *
  * **Never resumed from outside the asking conversation.** The public resume
  * route answers not-found for an ask gate, whatever source the asking turn
- * arrived on. Only the asker's own conversation resolves one: a running
- * request in the same session, through `RequestHost.resumeAsk`. (The host's
- * durability sweep resuming an overdue ask with `wait_timed_out` is FIX-1816
- * P2's; no ask carries a deadline yet.)
+ * arrived on. Only the asker's own conversation resolves one (a running
+ * request in the same session, through `RequestHost.resumeAsk`), or the host's
+ * durability sweep, which resumes a gate still pending past its `deadline`
+ * with `wait_timed_out`.
  *
  * `core` cannot name `orchestration`'s board types, so the binding crosses as
  * two strings, and the answer as `unknown`.
@@ -47,8 +47,8 @@ export type AskGateBinding = {
  * Why an ask ended without an answer. A model reads these, so they are
  * stable names.
  *
- * - `wait_timed_out` — the ask was still open at its deadline. Reserved: the
- *   deadline and the sweep that enforces it arrive in FIX-1816 P2.
+ * - `wait_timed_out` — the ask was still open at its deadline; the host's
+ *   durability sweep resumes it with this error.
  * - `wait_task_failed` — the asked task failed for good.
  * - `wait_task_cancelled` — the asked task was cancelled.
  */
@@ -71,7 +71,8 @@ export class AskEndedError extends Error {
   readonly code: AskEndingErrorCode;
 
   constructor(code: AskEndingErrorCode, message: string) {
-    super(message);
+    // The code leads the message, because the message is what the model reads.
+    super(`${code}: ${message}`);
     this.name = "AskEndedError";
     this.code = code;
   }
@@ -125,6 +126,12 @@ export type ParkOnAskInput = {
   readonly binding: AskGateBinding;
   /** Shown wherever the suspension is listed. */
   readonly message?: string;
+  /**
+   * When the ask times out (epoch ms), the same instant the asked row records.
+   * The host's durability sweep resumes a gate still pending past it with
+   * `wait_timed_out`. Omit for no deadline.
+   */
+  readonly deadline?: number;
 };
 
 /**
@@ -147,7 +154,12 @@ export async function parkOnAsk(
     suspensionId: input.gateId,
     message: input.message ?? `Waiting for the answer to task "${input.binding.taskId}"`,
     data: { board: input.binding.board, taskId: input.binding.taskId },
-    allow: ["submit"]
+    allow: ["submit"],
+    // The gate stores an absolute `expiresAt` from this; at least 1ms, since a
+    // zero timeout means "no deadline" to the suspension record.
+    ...(input.deadline !== undefined
+      ? { timeoutMs: Math.max(1, input.deadline - Date.now()) }
+      : {})
   });
   const outcome = parseAskOutcome(resumed);
   if (outcome === undefined) {

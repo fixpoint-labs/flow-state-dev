@@ -111,9 +111,8 @@ function filesHolding(dir: string, needle: string): string[] {
   return hits;
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const fixture = loadFixture<Fixture>(import.meta.url);
-  const failures: string[] = [];
 
   /** The held-out fact, generated per run so "it knew this" means "it remembered this". */
   const fact = `FSD-${randomBytes(8).toString("hex")}`;

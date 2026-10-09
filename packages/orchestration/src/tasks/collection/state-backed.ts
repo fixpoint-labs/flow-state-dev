@@ -835,6 +835,12 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       });
     },
 
+    async clearResumeOwed(id) {
+      return patchOne(id, "resume_settled", (task) =>
+        task.resumeOwed === true ? { resumeOwed: undefined } : undefined
+      );
+    },
+
     get(id) {
       const task = ownTask(readTasks(), id);
       return task === undefined ? undefined : wrap(task);

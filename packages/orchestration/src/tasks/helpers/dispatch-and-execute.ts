@@ -24,7 +24,8 @@
  * helper compatible with both the uniform-worker and registry shapes
  * without forcing patterns to pre-declare every worker.
  */
-import { composeSideChainSignal, handler } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core/blocks/handler";
+import { composeSideChainSignal } from "@flow-state-dev/core/blocks/sequencer";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { ticketForClaim } from "../claim-ticket";

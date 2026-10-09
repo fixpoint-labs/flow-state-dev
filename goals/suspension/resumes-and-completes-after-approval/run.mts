@@ -39,7 +39,7 @@ interface Observation {
   error?: unknown;
 }
 
-await runGoal(() => {
+await runGoal((failures) => {
   const result = runHarness<Observation>({
     app: KITCHEN_SINK,
     harness: new URL("./harness.mts", import.meta.url),
@@ -61,7 +61,6 @@ await runGoal(() => {
   // regardless of whether output is an object or a string.
   const output = result.output;
   const outputStr = typeof output === "string" ? output : JSON.stringify(output ?? "");
-  const failures: string[] = [];
 
   if (!outputStr.toLowerCase().includes(fixture.request.toLowerCase())) {
     failures.push(`output missing the original request "${fixture.request}" — input did not survive the suspend`);

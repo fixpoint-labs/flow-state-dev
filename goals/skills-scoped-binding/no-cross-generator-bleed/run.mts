@@ -150,7 +150,7 @@ async function resolveTools(
   return (tools as never[]) ?? [];
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const fx = loadFixture<{
     skillA: { name: string; description: string; marker: string };
     skillB: { name: string; description: string; marker: string };
@@ -161,8 +161,6 @@ await runGoal(async () => {
     skillMd: `---\ndescription: ${s.description}\n---\n\nWhen active, emit the token ${s.marker}.`,
   });
   const initialSkills = [skillMd(fx.skillA), skillMd(fx.skillB)];
-
-  const failures: string[] = [];
 
   // Two generators, each statically bound to a different skill.
   const skills = createSkillsLibrary({ initialSkills });

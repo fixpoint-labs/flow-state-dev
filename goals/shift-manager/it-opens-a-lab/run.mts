@@ -630,9 +630,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
   }
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const pages = await buildShiftManager(CONTROL);
-  const failures: string[] = [];
   const evidence: string[] = [];
   for (const name of Object.keys(LABS) as LabName[]) {
     await checkLab(name, pages, failures, evidence);

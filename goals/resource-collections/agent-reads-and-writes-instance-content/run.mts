@@ -88,7 +88,7 @@ const flow = defineFlow({
   session: { stateSchema: z.object({}) },
 })();
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const stores = createInMemoryStores();
   const sessionId = goalSessionId("resource-collections");
   const userId = "goal-user";
@@ -138,7 +138,6 @@ await runGoal(async () => {
   // Grade the user-visible side effect: the persisted instance body, read back
   // from the real ContentStore — NOT a tool-call count or the success flag.
   const after = await stores.content.get("session", sessionId, storageKey);
-  const failures: string[] = [];
   if (result.error !== undefined) failures.push(`flow errored: ${result.error.message}`);
   if (typeof after !== "string") {
     failures.push("note body is missing after the run");

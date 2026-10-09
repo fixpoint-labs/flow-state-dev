@@ -204,8 +204,7 @@ async function waitForKind(page: Page, seatId: string, kind: string, ms: number)
 
 // ---- the check ------------------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const failed = (assertion: string, detail: string) => failures.push(`${assertion}: ${detail}`);
 

@@ -1,6 +1,6 @@
 /**
  * A host running the coordinator on the real engine, for the coordinator
- * tests: the coordinator flow and two fixture worker flows registered once
+ * tests: the coordinator flow and four fixture worker flows registered once
  * each on one worker installation, the roster flow with the hire and fire
  * blocks, and an HTTP router whose caller is the verified user in an
  * `x-user` header.
@@ -13,6 +13,8 @@
  *   until its run is cancelled (`cancelDelegate`). Its request `onFinished`
  *   reports a cancelled run unless the host turns that off (`reportCancel`).
  * - `quiet` takes nothing: its workers can't be delegates.
+ * - `tasker` takes tasks and no posts; `allround` takes both. Their doors
+ *   answer `<kind> heard it`, and neither runs a task here.
  *
  * Models are scripted: the best-fit evaluator by block name
  * (`coordinator-route`), answering from the post's first `[route:<worker>]`
@@ -42,7 +44,10 @@ import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
 
 export const ORG = "acme";
 
-/** The standard workers: two coordinators, four helpers, one worker that takes nothing. */
+/**
+ * The standard workers: two coordinators, four helpers, one worker that takes
+ * nothing, one that takes only tasks and one that takes posts and tasks.
+ */
 export function standardWorkers(overrides: Partial<Record<string, Record<string, unknown>>> = {}): WorkerManifest[] {
   const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({
     id,
@@ -63,7 +68,9 @@ export function standardWorkers(overrides: Partial<Record<string, Record<string,
     worker("eng.coder", { flow: "helper", description: "Writes code." }),
     worker("support.general", { flow: "helper", description: "Anything that fits no one else." }),
     worker("silent", { flow: "helper" }),
-    worker("notes", { flow: "quiet", description: "Takes notes." })
+    worker("notes", { flow: "quiet", description: "Takes notes." }),
+    worker("eng.builder", { flow: "tasker", description: "Builds what a task names." }),
+    worker("eng.lead", { flow: "allround", description: "Leads engineering work." })
   ];
 }
 
@@ -127,6 +134,21 @@ function quietFlow(installation: WorkerInstallation) {
   });
 }
 
+/** A flow that takes tasks: `tasker` and nothing else, `allround` posts too. */
+function taskingFlow(installation: WorkerInstallation, kind: "tasker" | "allround") {
+  const door = handler({ name: `${kind}-run`, inputSchema: doorInput, execute: () => `${kind} heard it` });
+  const work = handler({ name: `${kind}-work`, execute: () => ({}) });
+  return defineFlow({
+    kind,
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    ...(kind === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
+    task: { actions: { work: { block: work, from: { boardId: "board", gate: (entry) => entry } } } }
+  });
+}
+
 /**
  * The scripted best-fit evaluation: the first `[route:<worker>]` mark naming a
  * delegate it is offered picks that one, else the first mark picks its worker,
@@ -173,14 +195,16 @@ export function bootHost(options: HostOptions = {}) {
   });
   const helper = helperFlow(installation, heard, options.reportCancel ?? true);
   const quiet = quietFlow(installation);
+  const tasker = taskingFlow(installation, "tasker");
+  const allround = taskingFlow(installation, "allround");
   const coordinator = defineCoordinatorFlow({
     installation,
-    delegateFlows: [helper],
+    delegateFlows: [helper, allround],
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent }),
     ...(options.roundDeadlineMs === undefined ? {} : { roundDeadlineMs: options.roundDeadlineMs })
   });
-  flows = { helper, quiet, coordinator };
+  flows = { helper, quiet, tasker, allround, coordinator };
 
   const blocks = createWorkerHireBlocks(installation);
   const rosterFlow = defineWorkerRosterFlow(installation, {
@@ -192,6 +216,8 @@ export function bootHost(options: HostOptions = {}) {
     coordinator: coordinator() as unknown as FlowInstance,
     helper: helper() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
+    tasker: tasker() as unknown as FlowInstance,
+    allround: allround() as unknown as FlowInstance,
     roster: rosterFlow() as unknown as FlowInstance
   };
   const route = scriptedRoute();

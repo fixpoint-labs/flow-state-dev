@@ -454,9 +454,7 @@ function localize(captures: Capture[]): Attribution {
 const PASSES = 8;
 const [ISSUE_A, ISSUE_B] = WORLD.issues.map((i) => i.id) as [string, string];
 
-await runGoal(async () => {
-  const failures: string[] = [];
-
+await runGoal(async (failures) => {
   // S0 — setup honesty guard. The two issues must be distinguishable, or the
   // leak check could pass (or fail) on an overlap rather than on a real leak.
   const overlaps = identifyingFacts(ISSUE_A).flatMap((x) =>

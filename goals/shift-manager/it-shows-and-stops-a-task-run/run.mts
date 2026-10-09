@@ -474,12 +474,11 @@ async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
 
 // ---- the goal ----------------------------------------------------------------
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const tree = await readTree();
   // GOAL_PAGES serves pages built elsewhere, e.g. from the commit before this
   // screen existed, to record the before-state.
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL, tree.drainerFlow));
-  const failures: string[] = [];
   const evidence: string[] = [];
   const served = await startLab(pages);
   const browser = await launchChromium();

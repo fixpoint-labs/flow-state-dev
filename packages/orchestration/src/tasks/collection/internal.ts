@@ -97,6 +97,7 @@ export function buildInitialTask<TInput, TOutput>(
     input: init.input,
     labels: init.labels,
     metadata: init.metadata,
+    ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
     updatedAt: now,
@@ -991,7 +992,7 @@ export function applyAbandonmentSettlement<TInput, TOutput>(
   now: number,
   maxAbandonments: number
 ): Task<TInput, TOutput> {
-  return {
+  return withResumeOwed(task, {
     ...task,
     status: "errored",
     error: abandonmentExhaustedError(task.id, maxAbandonments),
@@ -999,7 +1000,27 @@ export function applyAbandonmentSettlement<TInput, TOutput>(
     leaseUntil: undefined,
     claimedBy: undefined,
     updatedAt: now,
-  };
+  });
+}
+
+/**
+ * Stamp the resume-owed marker when this write ends an asked row (FIX-1816).
+ *
+ * Every write that changes a row goes through {@link applyTransition} or
+ * {@link applyAbandonmentSettlement}, so every way an asked row can end (its
+ * worker's result, a failure past its retries, a cancel, a timeout, the
+ * board's abandonment settle) writes the marker in the same write as the
+ * ending. A retried failure re-pends the row, which is not an ending, and
+ * writes nothing.
+ */
+function withResumeOwed<TInput, TOutput>(
+  prev: Task<TInput, TOutput>,
+  next: Task<TInput, TOutput>
+): Task<TInput, TOutput> {
+  if (prev.ask == null || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
+    return next;
+  }
+  return { ...next, resumeOwed: true };
 }
 
 /**
@@ -1012,11 +1033,11 @@ export function applyTransition<TInput, TOutput>(
   patch: Partial<Task<TInput, TOutput>>,
   now: number
 ): Task<TInput, TOutput> {
-  return {
+  return withResumeOwed(task, {
     ...task,
     ...patch,
     updatedAt: now,
-  };
+  });
 }
 
 /** Filter and clone tasks for query results — keeps consumers from mutating internal state. */

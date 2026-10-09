@@ -3,8 +3,7 @@
  */
 import { Validator } from "@cfworker/json-schema";
 import type { Schema } from "@cfworker/json-schema";
-import type { ResumeAction, ResumeContext } from "@flow-state-dev/core/types";
-import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
@@ -12,7 +11,7 @@ import type { InboundTransportHost, ResolvedPrincipal } from "../transports/type
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
 import { isAskGate } from "@flow-state-dev/core/types";
-import { generateId } from "../utils/generate-id";
+import { resumeUnderLease } from "../durability/resume-under-lease";
 import {
   callerReachesRequest,
   jsonResponse,
@@ -216,78 +215,48 @@ export async function handleResumeSuspension(
     }
   }
 
-  const lease = await provider.acquireLease(route.requestId, {
-    holder: generateId("resume"),
-    durationMs: 60_000
-  });
-
-  if (lease === null) {
-    return jsonResponse(409, {
-      error: "Concurrent resume in progress. Try again later."
-    });
-  }
-
-  const resumeContext: ResumeContext = {
-    suspensionId,
-    action,
-    data: resumeData,
-    resumedBy
-  };
-
-  try {
-    const now = Date.now();
-    await provider.suspend({
-      ...suspension,
-      status: RESUME_ACTION_STATUS[action],
-      resolvedAt: now,
-      resolvedBy: resumedBy,
-      resumeData
-    });
-
-    // Same-request continuation (FIX-811): re-enter the ORIGINAL request id. No
-    // second request is created. `continueRequest` rejects synchronously (well,
-    // its returned promise) for a missing record / unknown flow — but those are
-    // already guarded above (404 paths), so a rejection here is a genuine
-    // setup failure handled by the catch below.
-    const handle = await ctx.host.continueRequest({
+  // Lease, resolve, continue the SAME request (FIX-811), and revert if setup
+  // fails before the run starts: the path every resume shares. Reverting is
+  // only safe because nothing that runs after the run starts can reach the
+  // revert; see `resumeUnderLease` and FIX-1095.
+  const resumed = await resumeUnderLease(
+    { provider, continueRequest: (options) => ctx.host.continueRequest(options) },
+    {
       requestId: route.requestId,
-      resumeContext
-    });
+      holder: "resume",
+      admit: async () => ({ suspension }),
+      action,
+      data: resumeData,
+      resumedBy
+    }
+  );
 
-    const accept = request.headers.get("accept") ?? "";
-    if (accept.includes("text/event-stream") && handle.liveStream !== null) {
-      return new Response(handle.liveStream.readable, {
-        status: 200,
-        headers: {
-          ...SSE_HEADERS,
-          "cache-control": "no-cache, no-transform",
-          "x-accel-buffering": "no",
-          "x-request-id": handle.requestId
-        }
+  if (!resumed.ok) {
+    if ("busy" in resumed) {
+      return jsonResponse(409, {
+        error: "Concurrent resume in progress. Try again later."
       });
     }
-
-    return jsonResponse(202, {
-      requestId: route.requestId
-    });
-  } catch (error) {
-    // Setup failed before the point-of-no-return (continueRequest threw, or the
-    // status transition never happened). Revert the suspension to pending so the
-    // operator can retry, and release the lease.
-    //
-    // Reverting is only safe because nothing that runs AFTER the run starts can
-    // reach this catch, and that is enforced, not assumed. `runAction`'s failure
-    // once it crosses into `in_progress` is a durable terminal `failed` carried
-    // by `continueRequest`'s `finished`, which is not awaited above. The one
-    // remaining post-start step — the host handing `finished` to the
-    // `onBackgroundWork` keep-alive hook, which is adapter-supplied and throws
-    // synchronously on Next outside a request scope — is contained inside
-    // `createInboundTransportHost` (see `registerBackgroundWork`) so it cannot
-    // escape as a rejection here. Were it to escape, this catch would revert a
-    // suspension whose run is still going and invite a second, conflicting
-    // resume against the same request (FIX-1095).
-    await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
-    await provider.releaseLease(route.requestId, lease.leaseId);
-    throw error;
+    // `admit` above never refuses, so a refusal here is a broken invariant,
+    // not a caller's mistake.
+    return jsonResponse(500, { error: "Resume refused unexpectedly." });
   }
+
+  const handle = resumed.handle;
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/event-stream") && handle.liveStream !== null) {
+    return new Response(handle.liveStream.readable, {
+      status: 200,
+      headers: {
+        ...SSE_HEADERS,
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+        "x-request-id": handle.requestId
+      }
+    });
+  }
+
+  return jsonResponse(202, {
+    requestId: route.requestId
+  });
 }

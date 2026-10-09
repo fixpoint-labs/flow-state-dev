@@ -62,7 +62,7 @@ What separates a goal check from a dressed-up unit test:
    - **Take the latest snapshot of each item, not the first.** Streamed assistant text lands in later snapshots (`content.delta` is checkpointed into item snapshots, not the persisted event log), so the first `item_added` is often empty. `readCapture` reduces by `item.id` keeping the last — use it rather than filtering `item_added` yourself, which is the bug it exists to prevent.
    - **Assert on terminal/public output**, not trace internals. The action's final output and success flag are on `result`; worker/block execution items are `type: "block_trace"` with an internal `BlockValueInternal` value — don't unwrap those, prefer `result.output` or the public item that carries the value.
    - For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
-5. **Print an explicit verdict.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0) or `FAIL —` with a bulleted list (exit 1), so a later reader (or agent) knows the result without re-deriving the criteria.
+5. **Print an explicit verdict.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0) or `FAIL —` with a bulleted list (exit 1), so a later reader (or agent) knows the result without re-deriving the criteria. Push each leg's failures into the list `runGoal` hands your body (`runGoal(async (failures) => { ... })`), not a local one: if a later leg throws, the verdict then lists the legs that already failed before the throw, instead of only the throw.
 
 ## Proving a check can fail
 

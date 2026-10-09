@@ -399,17 +399,25 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
   };
 
-  /** A user's row as the record a hire mints from, or the skills it names that nothing registers. */
+  /**
+   * A user's row as the record a hire mints from, or the skills it names that
+   * nothing registers. The last refusal names the skills that are registered,
+   * so a hire can be made again with one of them, or with none.
+   */
   const manifestOfRow = (
     id: string,
     row: WorkerRow
   ): { ok: true; manifest: WorkerManifest } | { ok: false; problems: string[] } => {
     const missing = row.skills.filter((name) => !skillCatalog.has(name));
     if (missing.length > 0) {
+      const registered = [...skillCatalog.keys()].sort().map((name) => `"${name}"`);
+      const known = registered.length === 0 ? "It registers no skills" : `Skills it registers: ${registered.join(", ")}`;
       return {
         ok: false,
         problems: missing.map(
-          (name) => `names skill "${name}", which this installation doesn't register. Remove it, or register it`
+          (name, index) =>
+            `names skill "${name}", which this installation doesn't register. Remove it, or register it` +
+            (index === missing.length - 1 ? `. ${known}` : "")
         )
       };
     }

@@ -234,6 +234,22 @@ describe("Postgres list-option widenings", () => {
     expect((await s.request.list({})).length).toBe(4);
   });
 
+  it("a session id array matches set membership; a single id still matches by equality", async () => {
+    const s = await freshStores();
+    for (const sessionId of ["sa", "sb", "sc"]) {
+      await s.request.set(`r_${sessionId}`, request(`r_${sessionId}`, { sessionId }), "any");
+    }
+
+    expect(
+      (await s.request.list({ sessionId: ["sa", "sc"] }))
+        .map((r) => r.id)
+        .sort()
+    ).toEqual(["r_sa", "r_sc"]);
+    expect((await s.request.list({ sessionId: "sb" })).map((r) => r.id)).toEqual(["r_sb"]);
+    expect(await s.request.list({ sessionId: [] })).toEqual([]);
+    expect((await s.request.list({})).length).toBe(3);
+  });
+
   it("orderBy: none returns matching rows, and limit 1 still returns one", async () => {
     const s = await freshStores();
     for (const status of ["in_progress", "suspended"] as const) {

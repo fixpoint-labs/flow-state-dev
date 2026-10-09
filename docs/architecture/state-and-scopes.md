@@ -67,7 +67,8 @@ separates them is whether the hint carries a *delta* or an *absolute* value.
   position only. A field holding the wrong kind of value is refused, not coerced: `incField` throws
   unless the field is a number, absent or `null` (the last two start from `0`), `pushToArray`
   unless it is an array or absent, and the record is left untouched. The container's own mutator
-  applies the same `incState` refusal, so a multi-field call or a scope with no store refuses too.
+  applies the same `incState` and `pushState` refusals, so a multi-field call or a scope with no
+  store refuses too.
 - **Unchecked but *not* commutative** (same adapter condition): `setStateRecord` and
   `deleteStateRecord` always, and `patchState` given exactly one **literal** field. The hint carries
   no delta — `createScopePersist` reads an *absolute* value out of the mutator's `nextState` to send
@@ -476,7 +477,7 @@ Block-level state declarations bubble upward for compatibility checking. This en
 
 ## Resource Declaration Bubbling
 
-Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. Flow-level declarations take priority on dedup; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
+Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. A flow-level entry under a block's accessor must be the same reference, or the build errors; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
 
 ## Tenant Identity
 
