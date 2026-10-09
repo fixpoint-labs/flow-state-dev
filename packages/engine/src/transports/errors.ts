@@ -73,6 +73,26 @@ export class ConcurrencyRejectedError extends Error {
 }
 
 /**
+ * Thrown when a `defer` request arrives while its key already has the most
+ * deferred requests one process lets wait on it. A refusal like `reject`'s
+ * (it extends `ConcurrencyRejectedError`, so every adapter maps it the same
+ * way: HTTP 409, a skipped 200, server-busy), with nothing created for the
+ * refused request. Carries the cap as `limit`. Retry once the key drains.
+ */
+export class ConcurrencyDeferLimitError extends ConcurrencyRejectedError {
+  readonly limit: number;
+
+  constructor(key: string, limit: number) {
+    super(key);
+    this.message =
+      `Concurrency key "${key}" already has ${limit} deferred requests waiting; ` +
+      `this action's policy is "defer" so the request was refused.`;
+    this.name = "ConcurrencyDeferLimitError";
+    this.limit = limit;
+  }
+}
+
+/**
  * Thrown when a `queue` request waits past its budget for the key to free up,
  * instead of hanging indefinitely. Carries an HTTP-shaped `status` (503) and
  * the contended `key`. Retryable with backoff.

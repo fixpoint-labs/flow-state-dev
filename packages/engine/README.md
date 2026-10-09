@@ -270,6 +270,14 @@ webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
 error. A `queue` policy that waits past its budget rejects the request's
 `finished` with `ConcurrencyQueueTimeoutError` (it surfaces through the request
 stream, not a synchronous status). Both errors are exported from this package.
+A `hold` run starts at once and marks its key busy; a `defer` run waits,
+with no time budget, until nothing on its key is running or waiting. At most
+32 defers wait on a key per process; the next is refused
+with `ConcurrencyDeferLimitError`, a `ConcurrencyRejectedError`. A defer
+yields to newer `hold` runs for 30 seconds, then waits only
+for the runs it found. Both apply to
+in-process runs only: a run handed to an external dispatcher under either
+policy runs as `allow`.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
 

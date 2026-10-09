@@ -13,8 +13,8 @@
  * and its definition-time validation. The runtime that enforces a resolved
  * policy lives in `@flow-state-dev/engine` (the arbiter + keyed async gate).
  *
- * v1 ships `allow` (default), `queue`, and `reject`. `debounce` and `restart`
- * are reserved in the enum so the fast-follow is purely additive, but they are
+ * Shipped: `allow` (default), `queue`, `reject`, `hold`, and `defer`.
+ * `debounce` and `restart` are reserved in the enum so the fast-follow is purely additive, but they are
  * rejected at definition time today (see `validateConcurrencyConfig`).
  */
 
@@ -29,8 +29,23 @@
  *   to completion before the next starts.
  * - `reject`: while one request holds the key, drop a competing one (the
  *   caller gets a 409-shaped error naming the in-flight request).
+ * - `hold`: run at once, as `allow` does, and occupy the key while running.
+ *   Never waits and is never refused, but a `defer`, `queue`, or `reject`
+ *   request on the key sees it. For a turn that follow-up work must not
+ *   overlap, such as a reply in a conversation.
+ * - `defer`: wait until no request holds or waits on the key, then run and
+ *   occupy it. Several deferred requests run one at a time. The wait has no
+ *   budget: it ends when the requests ahead settle, or, on a shared lease
+ *   backend, when a crashed process's place expires.
  */
-export type ConcurrencyPolicyName = "allow" | "queue" | "reject" | "debounce" | "restart";
+export type ConcurrencyPolicyName =
+  | "allow"
+  | "queue"
+  | "reject"
+  | "hold"
+  | "defer"
+  | "debounce"
+  | "restart";
 
 /**
  * What the policy keys on. Preset names resolve from the dispatch envelope; a
@@ -75,16 +90,20 @@ export interface ConcurrencyKeyContext {
  * is reserved for the fast-follow and is rejected by validation in v1.
  */
 export type ConcurrencyConfig =
-  | "allow"
-  | "queue"
-  | "reject"
-  | { policy: "allow" | "queue" | "reject"; key?: ConcurrencyKey };
+  | ImplementedConcurrencyPolicy
+  | { policy: ImplementedConcurrencyPolicy; key?: ConcurrencyKey };
+
+/** The policy names an author may declare today. */
+type ImplementedConcurrencyPolicy = "allow" | "queue" | "reject" | "hold" | "defer";
 
 /**
- * The v1-implemented policy names. `validateConcurrencyConfig` rejects
+ * The implemented policy names. `validateConcurrencyConfig` rejects
  * anything outside this set; the arbiter switches over exactly these.
  */
-const V1_POLICIES = new Set<string>(["allow", "queue", "reject"]);
+const V1_POLICIES = new Set<string>(["allow", "queue", "reject", "hold", "defer"]);
+
+/** How the error messages list the policies an author may use. */
+const POLICY_LIST = `"allow" (default), "queue", "reject", "hold", or "defer"`;
 
 /** Reserved policy names that parse but are not implemented in v1. */
 const RESERVED_POLICIES = new Set<string>(["debounce", "restart"]);
@@ -110,7 +129,7 @@ export function validateConcurrencyConfig(
   if (RESERVED_POLICIES.has(policy)) {
     throw new Error(
       `${where} sets concurrency policy "${policy}", which is reserved but not ` +
-        `implemented in v1. Use "allow" (default), "queue", or "reject". ` +
+        `implemented in v1. Use ${POLICY_LIST}. ` +
         `"${policy}" lands in a follow-up.`
     );
   }
@@ -118,7 +137,7 @@ export function validateConcurrencyConfig(
   if (!V1_POLICIES.has(policy)) {
     throw new Error(
       `${where} has an unsupported concurrency policy ${JSON.stringify(policy)}. ` +
-        `Use "allow" (default), "queue", or "reject".`
+        `Use ${POLICY_LIST}.`
     );
   }
 

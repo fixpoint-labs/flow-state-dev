@@ -22,11 +22,11 @@ describe("validateConcurrencyConfig", () => {
     expect(() => validateConcurrencyConfig("flow x action y", undefined)).not.toThrow();
   });
 
-  it.each(["allow", "queue", "reject"] as const)("accepts the v1 policy %s (string form)", (policy) => {
+  it.each(["allow", "queue", "reject", "hold", "defer"] as const)("accepts the v1 policy %s (string form)", (policy) => {
     expect(() => validateConcurrencyConfig("flow x action y", policy)).not.toThrow();
   });
 
-  it.each(["allow", "queue", "reject"] as const)("accepts the v1 policy %s (object form)", (policy) => {
+  it.each(["allow", "queue", "reject", "hold", "defer"] as const)("accepts the v1 policy %s (object form)", (policy) => {
     expect(() => validateConcurrencyConfig("flow x action y", { policy })).not.toThrow();
   });
 
