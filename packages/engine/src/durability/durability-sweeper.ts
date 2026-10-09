@@ -15,7 +15,9 @@
  *      would strand its turn: nothing else may resume it.
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
  *      is already resolved (an ask's answer, failure, timeout or stop, or any
- *      gate stopped), under the request's lease, with the recorded outcome.
+ *      gate stopped), under the request's lease, with the recorded outcome;
+ *      and stop a `suspended` request whose stop was recorded while it was
+ *      still running (`abortRequested`), as a stop of a parked turn does.
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -50,7 +52,7 @@
  * a no-op handle when the interval is disabled.
  */
 
-import type { StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { RequestStatus, SuspensionRecord } from "@flow-state-dev/core/types";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -61,7 +63,7 @@ import type { DurabilityProvider } from "./types";
 import { isAskGate } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
-import { latestGateIdOf, PARKED, redriveResolvedGate } from "./stop-suspended";
+import { latestGateIdOf, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -434,6 +436,10 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   };
   try {
     const parked: { requestId: string; suspensionId: string }[] = [];
+    // Parked with a stop recorded while the turn still ran (it was accepted
+    // as the turn was being written parked, and the parking run did not carry
+    // it onto the gate). Owed the stop.
+    const stopOwed: RequestRecord[] = [];
     for (let page = 0; page < MAX_SCAN_PAGES; page++) {
       const batch = await stores.request.list({
         status: PARKED,
@@ -443,10 +449,32 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
         withItems: true
       });
       for (const record of batch) {
+        if (record.status === "suspended" && record.abortRequested === true) {
+          stopOwed.push(record);
+          continue;
+        }
         const suspensionId = latestGateIdOf(record);
         if (suspensionId !== undefined) parked.push({ requestId: record.id, suspensionId });
       }
       if (batch.length < batchLimit) break;
+    }
+    for (const record of stopOwed) {
+      try {
+        // Through the gate's single pending state: if the parking run's own
+        // carry, or an answer, got there first, this finds no pending gate and
+        // does nothing.
+        if ((await stopSuspendedRequest({ provider, stores, continueRequest }, record)) === "stopped") continue;
+      } catch (err) {
+        logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: carrying a recorded stop failed", {
+          requestId: record.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        continue;
+      }
+      // Its gate was already resolved: a stop the carry recorded but did not
+      // finish is re-driven like any other.
+      const suspensionId = latestGateIdOf(record);
+      if (suspensionId !== undefined) parked.push({ requestId: record.id, suspensionId });
     }
     for (const { requestId, suspensionId } of parked) await redriveOne(requestId, suspensionId);
   } catch (err) {

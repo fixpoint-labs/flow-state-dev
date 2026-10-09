@@ -254,6 +254,10 @@ describe("stop a parked turn", () => {
     await h.finished[0];
     expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
     expect((await h.stores.request.get(result.requestId!))?.status).not.toBe("suspended");
+    // The sweep sees the same recorded stop and finds it already carried.
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(1);
+    expect(seen).toHaveLength(1);
   });
 
   it("a stopped ask's continuation records the stop, not a submission, on its audit item", async () => {
@@ -433,6 +437,55 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await h.finished[0];
     expect((await h.stores.request.get(requestId))?.status).toBe("completed");
     expect(seen).toEqual(["answer:renewed"]);
+  });
+
+  it("a stop recorded while parking that the parking run failed to carry is carried by the sweep", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const set = h.stores.request.set.bind(h.stores.request);
+    const get = h.stores.request.get.bind(h.stores.request);
+    let stopped = false;
+    let failNextGet = false;
+    vi.spyOn(h.stores.request, "set").mockImplementation(async (id, value, version) => {
+      if (!stopped && value.status === "suspended") {
+        stopped = true;
+        await h.stores.request.setFieldsIfStatus(id, { abortRequested: true }, ["in_progress"], Date.now());
+        const written = await set(id, value, version);
+        failNextGet = true; // the parking run's read for the stop fails once
+        return written;
+      }
+      return set(id, value, version);
+    });
+    vi.spyOn(h.stores.request, "get").mockImplementation(async (id) => {
+      if (failNextGet) {
+        failNextGet = false;
+        throw new Error("store unavailable");
+      }
+      return get(id);
+    });
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "approve",
+      input: {},
+      userId: USER,
+      sessionId: SESSION,
+      stores: h.stores,
+      runtimeConfig: h.runtimeConfig
+    });
+    const requestId = result.requestId!;
+    expect(stopped).toBe(true);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+
+    await runTick(tickArgs(h));
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    const [gate] = await h.provider.listSuspended({});
+    expect(gate?.status).toBe("stopped");
+    // A second sweep, or the parking run's own carry racing it, changes nothing.
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(0);
   });
 
   it("a pending gate is not re-driven", async () => {

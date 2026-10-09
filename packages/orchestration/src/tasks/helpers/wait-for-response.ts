@@ -44,6 +44,14 @@ import { generateId } from "../generate-id";
 /** How long an ask may stay open before it times out: ten minutes, fixed. */
 export const ASK_DEADLINE_MS = 10 * 60_000;
 
+/**
+ * How long past its deadline an asked row may stay open before a touch of the
+ * board ends it. By then its turn has stopped waiting (timed out, stopped, or
+ * answered) and the call's own cancel failed; the grace leaves the deadline's
+ * own timeout to report itself first.
+ */
+export const ASK_OVERDUE_GRACE_MS = 60_000;
+
 /** The gate an asked row's turn parks on, derived from the row. */
 export function askGateId(collectionId: string, taskId: string): string {
   return `ask:${collectionId}:${taskId}`;
@@ -182,12 +190,17 @@ export async function addTaskAndWait(
    * The person stopped the turn while it waited (BR-16): end the asked row,
    * clear what it owes, and end this turn `aborted`, with no further model
    * call. Safe to run again on a re-drive after a crash (BR-16c): a row that
-   * already ended is left as it is.
+   * already ended is left as it is. The turn ends even when that cleanup
+   * fails: a marker left set is cleared by the next touch, and a row left open
+   * is ended by the first touch after its deadline ({@link resumeOwedAsks}).
    */
   const endStopped = async (): Promise<WaitForResponseResult> => {
-    await cancelIfOpen(collection, filed.taskId, "The asking turn was stopped.");
-    await clearMarker();
-    await ctx.session?.stopRequest?.(ctx.request.identity.id);
+    try {
+      await cancelIfOpen(collection, filed.taskId, "The asking turn was stopped.");
+      await clearMarker();
+    } finally {
+      await ctx.session?.stopRequest?.(ctx.request.identity.id);
+    }
     return {
       ok: false,
       error: "wait_stopped",
@@ -267,6 +280,15 @@ export async function resumeOwedAsks(
   ctx: BlockContext,
   collection: TaskCollectionRef
 ): Promise<ResumeOwedReport> {
+  // A row its asking call failed to end (the cancel on a stop or a timeout
+  // threw) is still open once nobody waits for it: end it here. Its ending
+  // owes the turn nothing it can still take, and is cleared below.
+  const now = Date.now();
+  for (const row of collection.list()) {
+    if (row.ask == null || isTerminalStatus(row.status)) continue;
+    if (row.ask.deadline + ASK_OVERDUE_GRACE_MS >= now) continue;
+    await cancelIfOpen(collection, row.id, "The ask ended before the task did.");
+  }
   const owed = collection.list({ resumeOwed: true });
   if (owed.length === 0) return { resumed: [], stillOwed: [] };
   const host = requireRequestHost(ctx);

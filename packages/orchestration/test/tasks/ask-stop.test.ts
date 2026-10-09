@@ -9,7 +9,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -27,6 +27,7 @@ import {
   until,
   USER
 } from "./ask-fixture";
+import { ASK_OVERDUE_GRACE_MS } from "../../src/tasks/helpers/wait-for-response";
 
 type State = ReturnType<typeof runtimeFor>;
 
@@ -34,6 +35,7 @@ let dir: string | undefined;
 const live: State[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   for (const state of live.splice(0)) await state.dispose();
   if (dir !== undefined) await rm(dir, { recursive: true, force: true });
   dir = undefined;
@@ -103,6 +105,26 @@ describe("stop a turn parked on an ask", () => {
     ]);
     // The answer's resume finds the gate already resolved, and owes nothing.
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
+  });
+
+  it("a stop whose row cancel fails still ends the turn aborted, and a later touch cancels the row", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model, { failCancelOnce: true });
+    const state = track(runtimeFor(flow));
+    const parked = await act(state, flow, "run");
+
+    expect((await stop(state, parked.requestId!)).status).toBe(204);
+    await untilStatus(state, parked.requestId!, "aborted");
+    expect(seen).toHaveLength(1);
+    // The cancel failed, so the row is still open: nobody waits for it now.
+    const [row] = await rows(state, flow);
+    expect(row).toMatchObject({ status: "pending" });
+
+    // Once the ask is over, the next touch of the board ends the row.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(row!.ask.deadline + ASK_OVERDUE_GRACE_MS + 1);
+    expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
+    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
   });
 
   it("an answer that wins leaves the stop to a finished turn (BR-16b, the answer first)", async () => {
