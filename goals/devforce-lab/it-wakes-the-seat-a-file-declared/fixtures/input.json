@@ -38,7 +38,7 @@
   },
   "orgSeats": {
     "chief-of-staff": {
-      "kind": "agent"
+      "kind": "coordinator"
     }
   },
   "documents": [

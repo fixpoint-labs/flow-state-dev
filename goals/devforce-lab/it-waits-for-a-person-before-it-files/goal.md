@@ -54,8 +54,6 @@ row's status alone.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `no-gate`: legs 1, 3, 4c and 10 (a row before any approval). |
-| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The ask raised in `s_eng_em`, a session on `em` naming the EM; answered through `em`'s resume route; approve filed one row handed to `eng.coder` by worker id; deny filed nothing. |
 | `no-gate` | the asking door files before it suspends | leg 1, "a row existed before any approval" (and legs 3 and 4c, a row after Deny) |
 
 **Model:** n/a (model-free by design; no key is read).
@@ -79,3 +77,6 @@ run as before.
 | 2026-09-30 | merge of main 2ce1bf7f9 | n/a | PASS | After FIX-1667 moved the board onto the feature mailbox. The row is now `eng.feature.work/night-mode-toggle--implement`, in org storage. Legs 8 to 10 were added for review. Two raises racing over one store raise one ask, a store that refuses a read fails the open naming `raiseAsk`, and an interrupted or aborted ask doesn't stop a reopen from asking again. Before the merge, each of the three failed on the previous `ask.mts`. `no-gate` FAILs on leg 1 "a row existed before any approval". On the same head the four other devforce-lab checks PASS: `it-wakes…`, `it-keeps…`, `it-commits…` and `it-ships…`, the last now that the reread fix is on main. |
 | 2026-09-30 | cf92e03e7 | n/a | PASS | All eight legs green, keyless. `GOAL_CONTROL=no-gate` FAILs on leg 1 "a row existed before any approval: devforce-tasks--t0--feature/night-mode-toggle--implement", and on legs 3 and 4c (a row after Deny). Same commit: `it-wakes-the-seat-a-file-declared` PASS, `it-commits-from-the-seats-own-file` PASS; `it-ships-an-artifact-a-person-can-open` FAILs on "a fresh process read 0 transcript line(s)", which fails identically on `origin/main` (1590fb9f1) without this change. |
 | 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | n/a | PASS | All legs green, keyless. Same head: `it-keeps-its-rows-on-the-mailboxes-board` PASS. |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `no-gate`: legs 1, 3, 4c and 10 (a row before any approval). |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The ask raised in `s_eng_em`, a session on `em` naming the EM; answered through `em`'s resume route; approve filed one row handed to `eng.coder` by worker id; deny filed nothing. |
+| 2026-10-09 | fix/closure-children-one-copy (main 57d2c10e9) | n/a | PASS | Leg 6's tree without the EM also drops it from the chief of staff's `delegates:`: an installation refuses a standard worker that delegates to one it doesn't have (FIX-1791 P1). Before, leg 6 failed "the open failed without naming the step: createWorkerInstallation: …". `no-gate` FAILs on leg 1 (and 3, 4c and 10). |

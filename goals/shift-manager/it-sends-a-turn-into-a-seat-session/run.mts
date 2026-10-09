@@ -470,7 +470,11 @@ await runGoal(async () => {
       const config = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { userId?: string } | null;
       const askerApi = labApi(served.asker.origin, undefined);
       const askSession = `s_turn_goal_${randomBytes(3).toString("hex")}`;
-      const posted = await askerApi.call("POST", `/${encodeURIComponent(asker.id)}/${encodeURIComponent(askSession)}/actions/ask`, {
+      // A worker has no flow address of its own: the ask runs in a session of the flow its file names, created naming it.
+      const askerFlow = String(asker.declared.flow);
+      const opened = await askerApi.call("POST", `/${encodeURIComponent(askerFlow)}/sessions`, { userId: config?.userId, sessionId: askSession, state: { workerId: asker.id } });
+      if (opened.status !== 201) throw new Error(`a session with ${asker.id} on "${askerFlow}": ${opened.status} ${JSON.stringify(opened.body)}`);
+      const posted = await askerApi.call("POST", `/${encodeURIComponent(askerFlow)}/${encodeURIComponent(askSession)}/actions/ask`, {
         userId: config?.userId,
         input: { what: "ship the farewell module" },
       });

@@ -43,7 +43,6 @@ wrote anything. Rows are filed through the EM worker and run by its drain, as in
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | On one copy per worker flow: the storefront run committed on its project's repository branch, the sandbox run worked on the project's files. |
 | `fixed-source` | the manager on the lab's one fixed scratch repository, as before | `a:marker` (and every leg that needs a project's source) |
 | `no-sync-back` | the host saves nothing back | `b:second-run-sees-file` (and `a:note-saved`, `b:file-saved`) |
 
@@ -66,3 +65,4 @@ network clones: every remote here is a `file://` bare repository.
 |------|--------|-------|---------|-------|
 | 2026-10-04 | 8edde510c+wip (#2744 head merged with #2738 head) | n/a | PASS | All three legs green, about 4 s. `fixed-source` FAILs on `a:marker` "does not hold MARKER-A.txt with marker A: it was not cut from storefront's repository", and on the legs that need a project's source. `no-sync-back` FAILs on exactly `a:note-saved`, `b:file-saved` and `b:second-run-sees-file` "the second run started with [], not the first run's app/index.html". Same tree: `it-keeps…`, `it-waits…` and `it-wakes…` PASS. |
 | 2026-10-04 | dfc3b2a4f+wip | n/a | PASS | Held-out run with a second fixture: nested paths and an ssh `git@` remote as the disallowed one. PASS once `c:refused-by-name` matched the remote's host and path, since the host leaves the login out of what it shows. The fixture was restored after. |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | On one copy per worker flow: the storefront run committed on its project's repository branch, the sandbox run worked on the project's files. |

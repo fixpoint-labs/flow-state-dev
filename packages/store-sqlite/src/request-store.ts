@@ -148,7 +148,17 @@ export function createSQLiteRequestStore(
         parts.push("flow_id = ?");
         params.push(options.flowId);
       }
-      if (options?.sessionId !== undefined) {
+      // Session filter: a single id by equality, an array by set membership.
+      // An empty array matches nothing, like the status filter below.
+      if (Array.isArray(options?.sessionId)) {
+        const sessionIds = options.sessionId;
+        if (sessionIds.length === 0) {
+          parts.push("1 = 0");
+        } else {
+          parts.push(`session_id IN (${sessionIds.map(() => "?").join(", ")})`);
+          params.push(...sessionIds);
+        }
+      } else if (options?.sessionId !== undefined) {
         parts.push("session_id = ?");
         params.push(options.sessionId);
       }

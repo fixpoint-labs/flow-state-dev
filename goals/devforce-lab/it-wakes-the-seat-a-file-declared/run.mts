@@ -76,7 +76,7 @@ interface Fixture {
   /**
    * The org seats the tree declares under `org/workers/`, by id, with their
    * kind. Hired with the team seats, and outside this check's per-seat legs:
-   * the chief of staff runs the built-in kind, which has no inspect entry.
+   * the chief of staff runs the `coordinator` kind, which has no inspect entry.
    */
   orgSeats: Record<string, { kind: string }>;
   documents: string[];

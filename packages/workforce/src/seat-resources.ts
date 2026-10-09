@@ -137,11 +137,10 @@ const duplicateSeatResourceMessage = (ref: string, modes: readonly string[]): st
  * The wording for a grant whose ref is already an accessor the kind's own
  * blocks declare.
  *
- * The substrate points the other way from the intuition: a flow-level
- * declaration OVERRIDES a block's for the same accessor name, and the grant is
- * passed as the seat's flow-level map. So honouring this would replace the
- * kind's own machinery with a document — a seat file editing its kind's
- * wiring, silently.
+ * The grant is passed as the seat's flow-level map, and a flow-level entry
+ * under a block's accessor that holds a different definition is refused by
+ * `defineFlow`. Refused here first, by name, so the author reads that a seat
+ * file cannot repoint its kind's wiring rather than a bare resource conflict.
  */
 const seatResourceCollidesWithKindMessage = (ref: string, kind: string): string =>
   `grants "${ref}", and the \`${kind}\` kind's own blocks already declare a resource under that ` +
@@ -504,10 +503,10 @@ export function verifySeatNarrowing(input: VerifySeatNarrowingInput): string[] {
   for (const key of Object.keys(minted)) {
     if (!definitions.has(minted[key])) continue;
     // Only the DENIAL can be undone this way. A granted `ro` document is
-    // installed at flow level as the read-only copy, and a flow-level entry
-    // wins the merge over a block's, so the pen cannot come back with it —
-    // pinned by V9's read-only case rather than guarded by a branch here that
-    // nothing could make fire.
+    // installed at flow level as the read-only copy, a different definition
+    // from the block's, so `defineFlow` refuses the mint before the pen could
+    // come back with it — pinned by V9's read-only case rather than guarded by
+    // a branch here that nothing could make fire.
     if (!granted.has(key)) problems.push(seatResourceSurvivedNarrowingMessage(key, kind));
   }
 

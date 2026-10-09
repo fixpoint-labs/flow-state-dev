@@ -1044,11 +1044,11 @@ function validateFlowResources(
 /**
  * Merge block-declared resources with the flow's own `resources` map.
  *
- * Flow-level declarations always win on accessor-key dedup — the consumer
- * explicitly picked a definition for that name, so a block's declaration
- * for the same name is overridden silently. Across the *block* layer
- * itself, a same-accessor conflict between two different definitions still
- * errors via `mergeDeclaredResources`.
+ * A flow-level entry may repeat a block's accessor only with the block's own
+ * `defineResource()` reference — the same rule `mergeDeclaredResources`
+ * applies between two blocks. A different definition under that name would
+ * otherwise win the merge silently, sending the block's reads and writes to a
+ * resource it never declared, with wrong data as the only symptom.
  */
 function mergeFlowResourceMap(
   flowResources: AnyResources,
@@ -1059,8 +1059,9 @@ function mergeFlowResourceMap(
   if (flowResources === undefined) return { ...blockResources };
   if (blockResources === undefined) return { ...flowResources };
 
-  // An override that silently changes WHERE a resource stores is never what an
-  // author meant (FIX-1068). `sharedToLineage` decides whether a
+  // Any different reference under a block's accessor is refused. A
+  // `sharedToLineage` mismatch gets its own message (FIX-1068), because it
+  // silently changes WHERE a resource stores. `sharedToLineage` decides whether a
   // session-scoped resource resolves against the running session or against the
   // lineage, and a block that declared it — a task board binding its ledger, for
   // instance — built its durability on that answer. Overriding the flag through
@@ -1070,23 +1071,34 @@ function mergeFlowResourceMap(
   // loop rather than an error. Refused by name, so the author can see which two
   // declarations disagree.
   for (const [accessor, blockEntry] of Object.entries(blockResources)) {
+    // Own keys only: `constructor` or `toString` would otherwise read off the
+    // prototype and refuse two disjoint maps.
+    if (!Object.hasOwn(flowResources, accessor)) continue;
     const flowEntry = (flowResources as DeclaredResources)[accessor];
     if (flowEntry === undefined || flowEntry === blockEntry) continue;
     const blockShared = (blockEntry as { sharedToLineage?: boolean }).sharedToLineage === true;
     const flowShared = (flowEntry as { sharedToLineage?: boolean }).sharedToLineage === true;
-    if (blockShared === flowShared) continue;
+    // A lineage mismatch gets the sharper message below; any other difference
+    // is the generic reference conflict.
+    if (blockShared === flowShared) {
+      throw new Error(
+        `Resource conflict in flow "${flowKind}": "${accessor}" is declared at flow level ` +
+          `with a different defineResource() reference than a block declares. Use the ` +
+          `block's reference, or pick a distinct accessor key.`
+      );
+    }
     throw new Error(
       `Resource "${accessor}" in flow "${flowKind}": the flow-level declaration sets ` +
         `sharedToLineage: ${flowShared}, but a block declared the same accessor with ` +
-        `sharedToLineage: ${blockShared}. A flow-level declaration overrides a block's, so ` +
-        `this would move the resource between the running session and the lineage without the ` +
+        `sharedToLineage: ${blockShared}. Letting the flow's declaration win would ` +
+        `move the resource between the running session and the lineage without the ` +
         `block knowing — a task board that hands off would claim rows in one place while its ` +
         `child session reads an empty ledger and loops. Make the two agree, or give one a ` +
         `distinct accessor name.`
     );
   }
 
-  // Block resources first, flow overrides on top.
+  // Block resources first, then the flow's own entries (shared keys hold the same reference).
   return { ...blockResources, ...flowResources };
 }
 

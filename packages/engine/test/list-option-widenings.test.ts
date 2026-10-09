@@ -303,6 +303,25 @@ describe.each(adapters)("list-option widenings — $name adapter", ({ create }) 
   });
 
   // -------------------------------------------------------------------------
+  // A set-valued request session filter
+  // -------------------------------------------------------------------------
+
+  it("a session id array matches set membership; a single id still matches by equality", async () => {
+    const { request: store } = await create();
+    for (const sessionId of ["sa", "sb", "sc"]) {
+      await store.set(`r_${sessionId}`, request(`r_${sessionId}`, { sessionId }), "any");
+    }
+
+    expect((await store.list({ sessionId: ["sa", "sc"] })).map((r) => r.id).sort()).toEqual([
+      "r_sa",
+      "r_sc"
+    ]);
+    expect((await store.list({ sessionId: "sb" })).map((r) => r.id)).toEqual(["r_sb"]);
+    expect(await store.list({ sessionId: [] })).toEqual([]);
+    expect((await store.list({})).length).toBe(3);
+  });
+
+  // -------------------------------------------------------------------------
   // The unordered mode
   // -------------------------------------------------------------------------
 
