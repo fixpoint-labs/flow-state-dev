@@ -25,10 +25,12 @@
  *            with its talk links, is as it was, and each room reads back
  *            through the same talk session with every line once.
  *   cos      HTTP, as the member, on a real model. Asked for two projects, the
- *            chief of staff creates two rows, each owned by the person who
- *            asked, with them (and whoever they named) as members and their
- *            talk session bound. Runs last, after the restart: its rows are the
- *            member's, and the other legs grade every row as the owner's.
+ *            chief of staff creates them, each owned by the person who asked:
+ *            the first a shared row with them and whoever they named as
+ *            members and their talk session bound; the second, "just for me",
+ *            either their private project or a shared row only they are on.
+ *            Runs last, after the restart: its rows are the member's, and the
+ *            other legs grade every row as the owner's.
  *
  * Every run, the plain one and each control, serves the Lab with its checked
  * store writes held up to WRITE_LATENCY_MS (`packages/shift-manager/teams/devteam/write-latency.mts`)
@@ -54,6 +56,9 @@
  *             rooms".
  *   no-tool   the chief of staff without its project tools, as before it had
  *             them (Node swap of the lab's host.mts). Must fail at "cos".
+ *   drop-solo a create of a project the asker holds alone answers as if it
+ *             wrote it and writes nothing (Node swap of project-writes.ts).
+ *             Must fail at "cos" on the second project.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
  * Control:  GOAL_CONTROL=no-gate <the same>
@@ -71,7 +76,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory", "no-tool"] as const;
+const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory", "no-tool", "drop-solo"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -87,8 +92,8 @@ if (!["", "model-free", "cos"].includes(LEG)) {
 }
 const MODEL_FREE = LEG !== "cos";
 const COS_LEG = LEG !== "model-free";
-if (CONTROL === "no-tool" && !COS_LEG) {
-  console.error("control no-tool grades the cos leg, which GOAL_LEG=model-free leaves out");
+if ((CONTROL === "no-tool" || CONTROL === "drop-solo") && !COS_LEG) {
+  console.error(`control ${CONTROL} grades the cos leg, which GOAL_LEG=model-free leaves out`);
   process.exit(2);
 }
 
@@ -145,6 +150,7 @@ function serverSwapFor(control: string): { target: string; with: string } | unde
   if (control === "no-gate") return { target: join(PROJECTS_SRC, "membership-gate.ts"), with: join(HERE, "controls", "no-gate.ts") };
   if (control === "no-retry") return { target: join(PROJECTS_SRC, "cas-retry.ts"), with: join(HERE, "controls", "no-retry.ts") };
   if (control === "no-tool") return { target: LAB_HOST, with: join(HERE, "controls", "no-tool.mts") };
+  if (control === "drop-solo") return { target: join(PROJECTS_SRC, "project-writes.ts"), with: join(HERE, "controls", "drop-solo.ts") };
   if (control === "in-memory") return { target: SQLITE_SRC, with: join(HERE, "controls", "in-memory.ts") };
   return undefined;
 }
@@ -362,6 +368,19 @@ async function readStore(api: LabApi, host: string): Promise<{ mailboxes: string
     mailboxes: mailboxesRef === undefined ? [] : (await api.collection(host, mailboxesRef)).map((r) => String(r.id)),
     rows: projectsRef === undefined ? [] : ((await api.collection(host, projectsRef)) as Row[]),
   };
+}
+
+/**
+ * The person's private projects: the user-scope `projects/*` collection a
+ * session they own publishes, read through it as them. `undefined` when the
+ * session publishes none.
+ */
+async function privateRows(api: LabApi, sessionId: string): Promise<Row[] | undefined> {
+  const manifest = await api.get(`/sessions/${encodeURIComponent(sessionId)}/manifest`);
+  const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string; scope: string }>).find(
+    (r) => r.kind === "collection" && r.pattern === "projects/*" && r.scope === "user",
+  )?.ref;
+  return ref === undefined ? undefined : ((await api.collection(sessionId, ref)) as Row[]);
 }
 
 // ---- the page ----------------------------------------------------------------
@@ -680,6 +699,7 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
     return;
   }
   const session = String(opened.body.session.id);
+  const beforePrivate = new Set((await privateRows(person, session))?.map((r) => r.id) ?? []);
   const ask = fixture.cos.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
   const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/run`, {
     userId: person.user.userId,
@@ -706,32 +726,49 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
   if (status !== "completed") fail(leg, `the chief of staff's turn ended ${status}`);
 
   const created = (await readStore(owner, host)).rows.filter((r) => !before.has(r.id));
-  if (created.length !== 2) {
-    fail(leg, `asked for two projects, the store holds ${created.length} new row(s) [${created.map((r) => r.title).join(", ")}]; the chief of staff said ${await said()}`);
+  const createdPrivate = (await privateRows(person, session))?.filter((r) => !beforePrivate.has(r.id));
+  if (createdPrivate === undefined) {
+    fail(leg, `the person's conversation with the chief of staff publishes no user-scope projects/* collection, so no private project of theirs can be read`);
     return;
   }
-  for (const [i, title] of titles.entries()) {
-    const row = created.find((r) => r.title.toLowerCase() === title.toLowerCase());
-    if (row === undefined) {
-      fail(leg, `no new row is titled "${title}": ${created.map((r) => r.title).join(", ")}`);
-      continue;
-    }
+  const shown = `shared [${created.map((r) => r.title).join(", ")}], private [${createdPrivate.map((r) => r.title).join(", ")}]`;
+  const titled = (rows: Row[], title: string) => rows.find((r) => r.title.toLowerCase() === title.toLowerCase());
+  /** A shared row as asked: owned by the person, with `wantMembers`, and the person's talk session bound. */
+  const gradeShared = async (row: Row, wantMembers: string[]) => {
     if (row.ownerUserId !== person.user.userId) fail(leg, `${row.id} is owned by ${row.ownerUserId}, not ${person.user.userId}, who asked`);
-    const wantMembers = i === 0 ? [person.user.userId, named] : [person.user.userId];
     if (!same(row.members, wantMembers)) fail(leg, `${row.id}'s members: ${diff(wantMembers, row.members)}`);
     // Bound: the row lists the person's talk session, and a read through it is
     // let in, which needs the session to name the row and its owner to be a member.
     const own = row.sessions.find((s) => s.userId === person.user.userId)?.sessionId;
     if (own === undefined) {
       fail(leg, `${row.id}'s row lists no talk session for ${person.user.userId}`);
-      continue;
+      return;
     }
     const kind = String((await person.get(`/sessions/${encodeURIComponent(own)}`)).session?.flowKind ?? "");
     const read = await person.act(kind, own, "read", { after: 0 });
     if (read.status !== "completed") fail(leg, `${row.id}: a read through the person's talk session ended ${read.status}: ${read.error ?? ""}`);
+  };
+  // The first: a shared row with the person and whoever they named.
+  const first = titled(created, titles[0]!);
+  if (first === undefined) fail(leg, `no new row is titled "${titles[0]}": ${shown}; the chief of staff said ${await said()}`);
+  else await gradeShared(first, [person.user.userId, named]);
+  // The second, "just for me": the person's private project, or a shared row only they are on.
+  const secondPrivate = titled(createdPrivate, titles[1]!);
+  const secondShared = titled(created, titles[1]!);
+  if (secondPrivate !== undefined) {
+    if (secondPrivate.ownerUserId !== person.user.userId) fail(leg, `the second project, private ${secondPrivate.id}, is owned by ${secondPrivate.ownerUserId}, not ${person.user.userId}, who asked`);
+    if (!same(secondPrivate.members, [person.user.userId])) fail(leg, `the second project, private ${secondPrivate.id}: members ${diff([person.user.userId], secondPrivate.members)}`);
+  } else if (secondShared !== undefined) {
+    await gradeShared(secondShared, [person.user.userId]);
+  } else {
+    fail(leg, `the second project, "${titles[1]}", is neither the person's private project nor a new shared row only they are on: ${shown}; the chief of staff said ${await said()}`);
   }
+  if (created.length + createdPrivate.length > 2) fail(leg, `asked for two projects, the store holds ${created.length + createdPrivate.length} new ones: ${shown}`);
   evidence.push(
-    `cos: asked by ${person.user.userId}, the chief of staff created ${created.map((r) => `${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}], ${r.sessions.length} talk session(s)}`).join(" and ")}`,
+    `cos: asked by ${person.user.userId}, the chief of staff created ${[
+      ...created.map((r) => `shared ${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}], ${r.sessions.length} talk session(s)}`),
+      ...createdPrivate.map((r) => `private ${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}]}`),
+    ].join(" and ")}`,
   );
 }
 
