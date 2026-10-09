@@ -19,6 +19,11 @@ import {
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
 import { abortRequest } from "../../src/execution/abort-registry";
+import {
+  createConcurrencyArbiter,
+  type ConcurrencyArbiter
+} from "../../src/transports/concurrency/arbiter";
+import { ConcurrencyDeferLimitError } from "../../src/transports/errors";
 
 type Gate = { id: string; release: () => void; fail: (error: Error) => void };
 
@@ -26,7 +31,10 @@ type Gate = { id: string; release: () => void; fail: (error: Error) => void };
  * One flow, two actions that block until the test releases them, so timing
  * is deterministic. `live` is what is running now; `started` is start order.
  */
-function buildHost(policies: { reply: ConcurrencyConfig; notify: ConcurrencyConfig }) {
+function buildHost(
+  policies: { reply: ConcurrencyConfig; notify: ConcurrencyConfig },
+  arbiter?: ConcurrencyArbiter
+) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   const gates: Gate[] = [];
@@ -76,7 +84,8 @@ function buildHost(policies: { reply: ConcurrencyConfig; notify: ConcurrencyConf
     registry,
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
-    runtimeConfig: {}
+    runtimeConfig: {},
+    ...(arbiter !== undefined ? { arbiter } : {})
   });
 
   const gate = (id: string): Gate => {
@@ -271,5 +280,82 @@ describe("a hold that ends badly still lets waiting defer requests run", () => {
     expect(h.live).toEqual(["notice-1"]);
     h.release("notice-1");
     await notice.finished;
+  });
+});
+
+describe("who chooses hold and defer", () => {
+  /** Dispatch with caller-controlled body and metadata naming another policy. */
+  const forged = (h: ReturnType<typeof buildHost>, action: "reply" | "notify", value: string, claim: string) =>
+    h.host.dispatch({
+      source: "http" as const,
+      flowKind: "conversation",
+      action,
+      input: { value, concurrency: claim },
+      metadata: { concurrency: claim, policy: claim },
+      sessionId: "s_1",
+      principal: { userId: "u_1", orgId: DEFAULT_ORG_ID }
+    });
+
+  it("ignores a caller that claims defer for an action the flow declares hold", async () => {
+    const h = buildHost(HOLD_DEFER);
+    const r1 = h.dispatch("reply", "reply-1");
+    await tick();
+    const r2 = forged(h, "reply", "reply-2", "defer");
+    await tick();
+    // Declared `hold`, so it starts at once despite the claim.
+    expect(h.live).toEqual(["reply-1", "reply-2"]);
+    h.release("reply-1");
+    h.release("reply-2");
+    await Promise.all([r1.finished, r2.finished]);
+  });
+
+  it("ignores a caller that claims allow or hold for an action the flow declares defer", async () => {
+    const h = buildHost(HOLD_DEFER);
+    const r1 = h.dispatch("reply", "reply-1");
+    await tick();
+    const n1 = forged(h, "notify", "notice-1", "allow");
+    const n2 = forged(h, "notify", "notice-2", "hold");
+    await tick();
+    // Declared `defer`, so both still wait for the reply.
+    expect(h.live).toEqual(["reply-1"]);
+    h.release("reply-1");
+    await r1.finished;
+    await tick();
+    h.release(h.live[0]!);
+    await tick();
+    h.release(h.live[0]!);
+    await Promise.all([n1.finished, n2.finished]);
+  });
+
+  it("ignores a caller that claims hold or defer for an action the flow leaves as allow", async () => {
+    const h = buildHost({ reply: "allow", notify: "allow" });
+    const r1 = forged(h, "reply", "reply-1", "hold");
+    await tick();
+    const n1 = forged(h, "notify", "notice-1", "defer");
+    await tick();
+    expect(h.live).toEqual(["reply-1", "notice-1"]);
+    h.release("reply-1");
+    h.release("notice-1");
+    await Promise.all([r1.finished, n1.finished]);
+  });
+});
+
+describe("too many notices behind one reply", () => {
+  it("refuses the request past the cap at dispatch, with nothing created for it, and the waiting ones still run", async () => {
+    const h = buildHost(HOLD_DEFER, createConcurrencyArbiter({ maxDeferredPerKey: 2 }));
+    const reply = h.dispatch("reply", "reply-1");
+    await tick();
+    const n1 = h.dispatch("notify", "notice-1");
+    const n2 = h.dispatch("notify", "notice-2");
+    expect(() => h.dispatch("notify", "notice-3")).toThrow(ConcurrencyDeferLimitError);
+
+    h.release("reply-1");
+    await reply.finished;
+    await tick();
+    h.release(h.live[0]!);
+    await tick();
+    h.release(h.live[0]!);
+    await Promise.all([n1.finished, n2.finished]);
+    expect(h.started).not.toContain("notice-3");
   });
 });

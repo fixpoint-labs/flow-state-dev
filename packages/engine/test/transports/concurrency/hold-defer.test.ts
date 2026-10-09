@@ -18,7 +18,10 @@ import {
   type ConcurrencyLeaseBackend,
   type LeasePlace
 } from "../../../src/transports/concurrency/lease-backend";
-import { ConcurrencyRejectedError } from "../../../src/transports/errors";
+import {
+  ConcurrencyDeferLimitError,
+  ConcurrencyRejectedError
+} from "../../../src/transports/errors";
 import type { DispatchEnvelope } from "../../../src/transports/dispatcher";
 import { admitAndRun } from "./admit-and-run";
 
@@ -217,5 +220,82 @@ describe("a deferred run when the process holding the key crashes", () => {
     held.resolve();
     await Promise.all([reply, notice]);
     expect(ran).toBe(true);
+  });
+});
+
+describe("the bound on waiting defer requests", () => {
+  it("refuses a defer past the per-key cap while the key is held, and admits again once the line drains", async () => {
+    const arbiter = createConcurrencyArbiter({ maxDeferredPerKey: 2 });
+    const held = deferred();
+    const reply = admitAndRun(arbiter, arbiter.resolve(conversation, "reply", envelope("r1", "reply")), "r1")(
+      () => held.promise
+    );
+    const notify = (id: string) =>
+      admitAndRun(arbiter, arbiter.resolve(conversation, "notify", envelope(id, "notify")), id)(
+        async () => undefined
+      );
+    const waiting = [notify("n1"), notify("n2")];
+
+    let refusal: unknown;
+    try {
+      notify("n3");
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ConcurrencyDeferLimitError);
+    // Every adapter already maps a concurrency refusal: 409, skipped, busy.
+    expect(refusal).toBeInstanceOf(ConcurrencyRejectedError);
+    expect((refusal as ConcurrencyDeferLimitError).status).toBe(409);
+    expect((refusal as ConcurrencyDeferLimitError).limit).toBe(2);
+
+    held.resolve();
+    await Promise.all([reply, ...waiting]);
+    await notify("n4");
+  });
+
+  it("counts a defer that left the line by withdrawal, so cancelled waits never use up the cap", async () => {
+    const arbiter = createConcurrencyArbiter({ maxDeferredPerKey: 1 });
+    const held = deferred();
+    const reply = admitAndRun(arbiter, arbiter.resolve(conversation, "reply", envelope("r1", "reply")), "r1")(
+      () => held.promise
+    );
+    const withdraw = new AbortController();
+    const first = arbiter.admit(arbiter.resolve(conversation, "notify", envelope("n1", "notify")), "n1");
+    const firstRun = (first as Awaited<typeof first>).run(async () => undefined, withdraw.signal);
+    withdraw.abort();
+    await expect(firstRun).rejects.toThrow(/withdrawn/);
+
+    const second = admitAndRun(arbiter, arbiter.resolve(conversation, "notify", envelope("n2", "notify")), "n2")(
+      async () => undefined
+    );
+    held.resolve();
+    await Promise.all([reply, second]);
+  });
+});
+
+describe("a defer request a caller keeps holding off", () => {
+  it("stops yielding to newer holds after its patience, and runs once the holds it found have ended", async () => {
+    const arbiter = createConcurrencyArbiter({ deferPatienceMs: 100 });
+    const hold = (id: string, ms: number) =>
+      admitAndRun(arbiter, arbiter.resolve(conversation, "reply", envelope(id, "reply")), id)(() => tick(ms));
+
+    // A chain of overlapping replies, so the key is never free for 1.2 seconds.
+    const chain: Promise<void>[] = [hold("r0", 150)];
+    let ranAt: number | undefined;
+    const startedAt = Date.now();
+    const notice = admitAndRun(arbiter, arbiter.resolve(conversation, "notify", envelope("n1", "notify")), "n1")(
+      async () => {
+        ranAt = Date.now() - startedAt;
+      }
+    );
+    for (let i = 1; i <= 10; i += 1) {
+      await tick(100);
+      chain.push(hold(`r${i}`, 150));
+    }
+    await Promise.all([...chain, notice]);
+
+    // Without the patience bound it runs only after the whole chain (~1.15s).
+    expect(ranAt).toBeDefined();
+    expect(ranAt!).toBeLessThan(600);
   });
 });

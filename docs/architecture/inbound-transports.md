@@ -273,7 +273,18 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   backend, a crashed process stops renewing it and it expires. That expiry is
   the crash path; nothing needs to give a dead holder's place back. A claimed
   `defer` holds the key, so `defer` runs are serialized among themselves, and
-  a `hold` still starts beside one.
+  a `hold` still starts beside one. Two bounds make "no budget" safe. At most
+  `maxDeferredPerKey` (32) defers wait on a key per process; the next is
+  refused at admission with `ConcurrencyDeferLimitError`, a subclass of
+  `ConcurrencyRejectedError`, so every adapter maps it as a `reject` refusal
+  and nothing is materialized. And a defer yields to newer `hold` runs for
+  `deferPatienceMs` (30 s) only: then it takes an ordinary place at the back
+  of the line, behind the runs present at that moment, and waits for its turn
+  with no budget. A caller sending `hold` requests back to back delays it by
+  at most the patience plus the runs it found.
+- The policy is read only from the flow's declaration (the entry's
+  `concurrency`, else `request.concurrency`), found through the trusted
+  `source`. Nothing in the body, `metadata` or headers selects it (BP-031).
 - `hold` and `defer` are arbitrated in process only. A BullMQ worker waits
   for a place's turn, which is `queue`; it has no form for a place that must
   not wait or a claim that waits for a free key. An external dispatch under

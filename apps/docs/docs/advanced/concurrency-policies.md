@@ -115,9 +115,13 @@ The wait has no time limit. It ends when the request ahead of it ends, however t
 
 `queue` and `reject` requests on the same key see a running `hold` too: a `queue` request waits for it, and a `reject` request is refused while it runs.
 
+Two bounds keep a busy session from piling up deferred work:
+
+- **At most 32 `defer` requests wait on one key** in each server process. The next one is refused the way `reject` refuses: `409` over HTTP, a skipped `200` for webhooks and schedules. Nothing is created for it, so retry it once the session quiets down.
+- **A `defer` request waits for newer replies for 30 seconds at most.** After that it waits only for the replies already running, then runs, even if the person keeps sending messages.
+
 What `defer` won't do:
 
-- A person who keeps sending messages keeps the follow-up waiting. It runs in the first gap between replies.
 - Once a deferred request starts, it doesn't wait for anything else. A message sent while it runs starts at once, beside it.
 
 ## Webhooks: dropping the double-fire
