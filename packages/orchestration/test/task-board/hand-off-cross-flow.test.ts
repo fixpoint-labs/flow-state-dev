@@ -244,9 +244,11 @@ const shortLease: TaskDispatcher = {
 /**
  * The coordinator flow. `sameFlow` hands rows to its own `work` entry instead
  * of the agent flow's: the child is then on the board's own flow, where its
- * context still names its own partition, not the board's.
+ * context still names its own partition, not the board's. `isolated` keeps
+ * the flow's own user state to itself (`isolateUserState`), as a flow with a
+ * private memory does.
  */
-function partitionCoordinator(sameFlow = false) {
+function partitionCoordinator(sameFlow = false, isolated = false) {
   const board = taskBoard({
     name: "conv_board",
     boardId: PARTITION_BOARD,
@@ -290,6 +292,7 @@ function partitionCoordinator(sameFlow = false) {
 
   return defineFlow({
     kind: COORD,
+    ...(isolated ? { isolateUserState: true } : {}),
     actions: {
       file: { inputSchema: file.inputSchema, block: file },
       drain: { block: board.drain },
@@ -359,12 +362,12 @@ function partitionAgent() {
   })({ id: AGENT });
 }
 
-async function bootPartitioned(sameFlow = false) {
+async function bootPartitioned(sameFlow = false, isolated = false) {
   agentRuns.length = 0;
   scripts.clear();
   parkIn.clear();
   births.clear();
-  const coordinator = partitionCoordinator(sameFlow);
+  const coordinator = partitionCoordinator(sameFlow, isolated);
   const agent = partitionAgent();
   const state = createFlowState({
     flows: { [COORD]: coordinator, [AGENT]: agent },
@@ -459,6 +462,22 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await until(async () => (await h.row(ALICE, "conv_b#0", "b1"))?.status === "completed", "b1");
       const b1 = agentRuns.find((run) => run.taskId === "b1")!;
       expect((await h.stores.session.get(b1.sessionId))?.parentSessionId).toBe("conv_b");
+    } finally {
+      await h.state.dispose();
+    }
+  });
+
+  it("hands its rows across a flow when the sending flow keeps its own user state to itself", async () => {
+    // A flow with a private memory isolates its user state. Its partitioned
+    // ledger still sits in the user's own cell, the one every flow of theirs
+    // reads, or the task session on the other flow would find no row.
+    const h = await bootPartitioned(false, true);
+    try {
+      expect((await h.act(ALICE, "conv_a", "file", { id: "a1" })).error).toBeUndefined();
+      expect((await h.drained(ALICE, "conv_a"))?.shouldContinue).toBe(false);
+      await until(async () => (await h.row(ALICE, "conv_a#0", "a1"))?.status === "completed", "a1");
+      expect(agentRuns.map((run) => run.taskId)).toEqual(["a1"]);
+      expect(await h.ids(ALICE, "conv_a")).toEqual(["a1"]);
     } finally {
       await h.state.dispose();
     }

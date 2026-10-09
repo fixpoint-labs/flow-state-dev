@@ -88,7 +88,9 @@ export interface DefineTaskCollectionOptions<
    * a task entry on another flow works: the user scope crosses the flow, and
    * the partition keeps each conversation's board its own. A board's hand-off
    * carries the partition it claimed in, so the receiving entry reads the row
-   * there and never calls this function itself.
+   * there and never calls this function itself. The rows sit in the user's
+   * own cell, shared with every flow of theirs, even on a flow that isolates
+   * its user state (`isolateUserState`).
    *
    * Return a non-empty string from data only the server writes. The function
    * gets the running session's server-set identity (`sessionId`, `userId`,
@@ -162,8 +164,11 @@ export function defineTaskCollection<
       ? { maxInstances: options.maxInstances }
       : {}),
     // A partitioned ledger is never read whole, so it isn't loaded whole when
-    // a request starts: each partition's rows load on its first read.
-    ...(options.partitionBy !== undefined ? { prefetchMode: "lazy" as const } : {}),
+    // a request starts: each partition's rows load on its first read. Its rows
+    // sit in the user's own cell even on a flow that isolates its user state
+    // (`isolateUserState`): the task entry that works them runs on another
+    // flow, and reads that cell.
+    ...(options.partitionBy !== undefined ? { prefetchMode: "lazy" as const, flowIsolation: false } : {}),
   });
 
   return Object.assign(collection, {
