@@ -21,7 +21,7 @@
 
 **Attempts:** a real model routes differently run to run. The goal runs until it first passes, up to three attempts (`GOAL_ATTEMPTS`), each on a fresh app and fresh stores, every attempt printed. Under a control there is one attempt.
 
-**Model:** real. Best fit's evaluation on `vercel/typesafe-ai/jev` (the app's model string, through its resolver), the specialists' answers on `vercel/openai/gpt-5.4-mini`. Needs `AI_GATEWAY_API_KEY`; without it the goal fails and says so.
+**Model:** real. Best fit's evaluation on `vercel/typesafe-ai/jev` (the app's model string, through its resolver), the specialists' answers on `vercel/openai/gpt-5.4-mini`. Each model needs a key that serves it here (`keysServing`), and only the gateway serves the route model, so the run needs `AI_GATEWAY_API_KEY`. Without it (an OpenAI-only box, say) the goal reports **blocked**, naming the model and the keys that would serve it.
 
 **Run:** `pnpm tsx goals/coordinators/routes-a-follow-up-by-its-conversation/run.mts`
 

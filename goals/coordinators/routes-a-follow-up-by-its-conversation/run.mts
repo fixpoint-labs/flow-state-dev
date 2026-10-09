@@ -29,7 +29,16 @@ import {
   hireWorkforce
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { gatewayModel, goalAttempts, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import {
+  DEFAULT_MODEL,
+  gatewayModel,
+  goalAttempts,
+  keysServing,
+  loadFixture,
+  runGoal,
+  silentLogger,
+  stripIntentOverrides
+} from "../../lib/index.mts";
 
 // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the answers' model under the resolver.
 stripIntentOverrides();
@@ -237,10 +246,15 @@ async function runThread(app: App, thread: Thread, fail: (line: string) => void)
 }
 
 await runGoal(async (failures) => {
-  const apiKey = process.env.AI_GATEWAY_API_KEY;
-  if (!apiKey) return { failures: ["AI_GATEWAY_API_KEY is not set; this goal runs on real models"], evidence: "" };
+  // Each model the run calls needs a key that serves it here; the route model only the gateway serves.
+  for (const model of [ROUTE_MODEL.replace(/^vercel\//, ""), DEFAULT_MODEL]) {
+    const keys = keysServing(model);
+    if (!keys.some((key) => (process.env[key] ?? "") !== "")) {
+      return { failures: [`blocked: no key here serves ${model}; none of ${keys.join(", ")} is set`], evidence: "" };
+    }
+  }
   const threads = loadFixture<Thread[]>(import.meta.url, "threads.json");
-  const resolver = await gatewayResolver(apiKey);
+  const resolver = await gatewayResolver(process.env.AI_GATEWAY_API_KEY ?? "");
   // Retry until the first pass: a real model routes differently run to run. One attempt under a control.
   const attempts = CONTROL === "" ? goalAttempts() : 1;
   const evidence: string[] = [];
