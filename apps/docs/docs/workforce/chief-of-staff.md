@@ -28,6 +28,8 @@ Shift Manager's [`devteam` profile](../shift-manager/overview.md#the-devteam-pro
 
 Add a `WORKER.md` for the worker, and build the `coordinator` flow with the hire and fire tools in its catalog.
 
+There's no switch for it: a chief of staff is a worker your files declare, like any other.
+
 The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, so `org/workers/chief-of-staff/` is the worker `chief-of-staff`. It runs on the `coordinator` flow, routes by judgment, and names the delegates each conversation starts with and the tools it holds:
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
@@ -100,7 +102,12 @@ const askFire = handler({
 
 const installation = createWorkerInstallation({
   standardWorkers: roster.workers,
-  workerFlows: () => ({ em: emFlow, coder: coderFlow, agent, coordinator }),
+  workerFlows: () => ({
+    em: { flow: emFlow, standardOnly: true },
+    coder: coderFlow,
+    agent,
+    coordinator: { flow: coordinator, standardOnly: true },
+  }),
 });
 
 const { hire, fire } = createWorkerHireBlocks(installation);
@@ -165,9 +172,11 @@ Build in this order:
 
 `createWorkforceCapability` keeps the mailbox records it is given, so a record changed after step 2 never reaches `discover`. Pass `createWorkforceCapability` the same mailbox records you pass `mailboxInstances`, so `discover` answers from the mailboxes the app actually opens.
 
-`hire` asks the model for an id, a flow and `settings`, but doesn't say which flows require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
+`hire` asks the model for an id, a flow and `settings`, but doesn't say which flows it can hire onto or which settings each one requires. The chief of staff learns both from its `WORKER.md` body, so name the flows it hires onto there, and each required setting and its value, as the example file does for `agent` and `coder`. Without them, the model may ask the person which flow to use instead of calling `hire`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
 
 In the snippet above, `coderFlow` requires a `document` setting through its `configSchema`: `workerConfigSchema().extend({ document: z.string().min(1) })`.
+
+Every flow in `workerFlows` can take a hire, and so can the built-in `agent`, unless its entry is marked `standardOnly: true`. Leave a flow open to hires only when a person should be able to get a worker on it by asking. Mark the rest, such as a flow only your declared workers run or one that exists for tests. The example marks `em` and `coordinator`, so the chief of staff hires onto `agent` and `coder` only. [Which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers) shows the mark. A hire onto a marked flow is refused, and the refusal names the flow.
 
 Putting the tools in the catalog doesn't hand them to every worker on either flow. A worker holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other.
 
