@@ -545,6 +545,11 @@ export function Sidebar({
               {loaded === undefined || loaded.inventory.ok ? null : (
                 <SectionFailure what="Teams" failure={loaded.inventory.failure} onRetry={retry} testId="teams-failure" />
               )}
+              {roster !== undefined && "failure" in roster ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground" data-testid="teams-own-failure">
+                  Your own workers didn't load: {roster.failure.message}
+                </p>
+              ) : null}
             </div>
           </div>
           <footer

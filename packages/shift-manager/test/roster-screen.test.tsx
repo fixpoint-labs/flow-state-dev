@@ -371,6 +371,15 @@ describe("the sidebar (V4)", () => {
     expect(teams.getByTestId("teams-failure").textContent).toContain("inventory offline");
   });
 
+  it("says so under TEAMS when the person's own workers didn't load, and still lists the inventory's teams", async () => {
+    rosterRead = async () => {
+      throw new Error("roster offline");
+    };
+    await open("/inbox");
+    expect((await screen.findByTestId("teams-own-failure")).textContent).toContain("roster offline");
+    expect(attrs(screen.getAllByTestId("team"), "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+  });
+
   it("BR-20: the counts and the footer carry the partial mark when asks did not load", async () => {
     await open("/inbox", lab({ asks: "failed" }));
     expect(within(screen.getByTestId("nav-roster")).getByTestId("partial-mark")).toBeTruthy();
