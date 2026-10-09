@@ -91,6 +91,7 @@ Providers retry, and retries can arrive while the first delivery is still runnin
 defineFlow({
   kind: "billing",
   request: { concurrency: "reject" },
+  actions: {}, // no caller-facing actions: webhooks are the only way in
   webhooks: { /* ... */ },
 });
 ```
