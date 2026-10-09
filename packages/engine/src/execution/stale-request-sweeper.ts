@@ -56,8 +56,12 @@ export type CreateStaleRequestSweeperOptions = {
 };
 
 export type StaleRequestSweeper = {
-  /** Stop the periodic sweep. Idempotent. */
-  dispose(): void;
+  /**
+   * Stop the periodic sweep. Idempotent. Resolves once a pass that was
+   * already running has settled, so a caller that awaits it can close the
+   * stores without that pass reading a closed connection.
+   */
+  dispose(): Promise<void>;
 };
 
 const DEFAULT_INTERVAL_MS = 30_000;
@@ -82,7 +86,7 @@ export function createStaleRequestSweeper(
   } = options;
 
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
-    return { dispose: () => {} };
+    return { dispose: () => Promise.resolve() };
   }
 
   // Sanity check: thresholds shorter than 2× the executor's registry
@@ -107,11 +111,10 @@ export function createStaleRequestSweeper(
 
   let disposed = false;
 
-  let inFlight = false;
+  let inFlight: Promise<unknown> | undefined;
   const tick = (): void => {
-    if (disposed || inFlight) return;
-    inFlight = true;
-    detectInterruptedRequests({ stores, staleThresholdMs, queuedGraceMs, logger })
+    if (disposed || inFlight !== undefined) return;
+    inFlight = detectInterruptedRequests({ stores, staleThresholdMs, queuedGraceMs, logger })
       .catch((err) => {
         logRuntimeEvent(
           logger,
@@ -121,7 +124,7 @@ export function createStaleRequestSweeper(
         );
       })
       .finally(() => {
-        inFlight = false;
+        inFlight = undefined;
       });
   };
 
@@ -132,10 +135,10 @@ export function createStaleRequestSweeper(
   }
 
   return {
-    dispose(): void {
-      if (disposed) return;
+    async dispose(): Promise<void> {
       disposed = true;
       clearInterval(timer);
+      await inFlight;
     }
   };
 }
