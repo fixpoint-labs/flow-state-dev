@@ -363,7 +363,7 @@ const researcher = generator({
 });
 ```
 
-`selectForContext` returns raw `SessionItem[]` with no conversation-history filtering. It respects `includeTransient`, `itemTypes`, and the `itemVisibility`/`agentName` query fields.
+`selectForContext` returns raw `SessionItem[]` with no conversation-history filtering. It respects `includeTransient`, `itemTypes`, and the `itemVisibility`/`agentName` query fields. A message item's `role` says who wrote it: `user` for the caller's message, `assistant` for one the flow emitted.
 
 ### React renderer behavior
 

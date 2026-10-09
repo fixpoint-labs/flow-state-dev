@@ -112,7 +112,7 @@ A delegate's answer arrives in a request of its own once the delegate's turn end
 | `routing:` | Who gets a post |
 | --- | --- |
 | `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on with its `handOff` tool, to as many delegates as it likes, or answers itself. |
-| `best-fit` | One evaluator call picks the delegate whose note or, failing that, description fits the post best. A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
+| `best-fit` | One evaluator call picks the delegate whose note or, failing that, description fits the post best, reading the post with the conversation's [recent lines](#follow-ups-and-recent-lines). A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
 | `round-robin` | The next delegate in the list after the one your last post went to. |
 | `everyone` | Every delegate. |
 
@@ -125,6 +125,20 @@ Nobody took this post: best fit couldn't place it, and the coordinator's own tur
 ```
 
 `round-robin` and `everyone` say the same when they find no delegate to reach: `Nobody took this post: no delegate in this conversation can be reached.`
+
+### Follow-ups and recent lines
+
+A follow-up often makes sense only after what came before it. Say you ask about your laptop's wifi, `support.devices` answers, and you write back "It sees it. It fails right after the password." On its own words, that post reads like a password question for `support.accounts`.
+
+So every post travels with the conversation's **recent lines**: your posts, the coordinator's own replies, and the delegates' answers that have landed, oldest first, each under who wrote it. Best fit's evaluator call reads the post with them, and a post that follows up on a delegate's answer goes to that delegate. Whatever the `routing:`, the delegate that takes a post is shown the same lines beside it.
+
+What a delegate gets:
+
+- **The last 10 lines, at most 4,000 characters in all.** They're counted back from the newest. The line that crosses 4,000 characters is cut short and ends with `…`, and anything older is left out.
+- **This conversation's lines only.** They're read from this conversation's own messages, as far back as the session's history window reaches (its last 50 requests, by default). A delegate never sees another conversation's lines.
+- **Shown for one turn.** The lines reach the delegate's model as context for the turn that answers the post. The delegate's own session keeps the post and its answer, never the lines.
+
+The first post in a conversation has no lines, so it's routed and delivered as it is. A delegate on the built-in `agent` flow is shown the lines as it is; a flow of your own shows them [once you add a capability](#making-your-own-flow-a-delegate).
 
 ## Changing the delegates
 
@@ -293,13 +307,33 @@ Then add it to `delegateFlows`. The door is handed `{ message }`, where the mess
 
 `delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
+To show your flow's model the conversation's [recent lines](#follow-ups-and-recent-lines), put `delegatedPostCapability` on the `uses` of the generator your door runs:
+
+```ts
+import { generator } from "@flow-state-dev/core";
+import { delegatedPostCapability } from "@flow-state-dev/workforce";
+import { z } from "zod";
+
+const door = generator({
+  name: "research-answer",
+  inputSchema: z.object({ message: z.string() }),
+  model: "openai/gpt-5.4-mini",
+  uses: [delegatedPostCapability],
+  prompt: "You answer research questions in two or three sentences.",
+  user: (input) => input.message,
+});
+```
+
+On a delegated post that came with lines, the model gets a context section headed `Recent lines in the conversation with <coordinator> before this post, oldest first:`, then one `- <from>: <text>` per line. On any other turn, and on a post with no lines, the capability adds nothing.
+
 ## What it won't do
 
 - **Hand a post to another user's worker.** Their workers aren't on your roster, and naming one gets the same answer as a worker that doesn't exist.
 - **Write a change back to the file.** A conversation's delegates are its own.
 - **Stop a delegate at the deadline.** The round closes without it; the delegate's turn runs on.
 - **Recall a post.** Removing a delegate doesn't take back what it was handed.
-- **Pick by a delegate's instructions.** Best fit reads the delegate's note, or else its description, and nothing else.
+- **Pick by a delegate's instructions.** Best fit knows each delegate by its note, or else its description, and nothing else.
+- **Show a delegate another conversation.** A post's recent lines are its own conversation's, and the delegate's model sees them for that one turn.
 
 ## Related pages
 

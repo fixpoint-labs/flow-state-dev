@@ -83,7 +83,7 @@ import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
-import { delegatedPostEntry, delegatedPostOnFinished } from "./coordinator/delegated-post";
+import { delegatedPostCapability, delegatedPostEntry, delegatedPostOnFinished } from "./coordinator/delegated-post";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
@@ -986,7 +986,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
-      uses: [binding, ...usesEntries],
+      // On a coordinator's delivery, the delegated-post capability shows the
+      // conversation's recent lines for this turn only; on any other turn it
+      // adds nothing.
+      uses: [binding, delegatedPostCapability, ...usesEntries],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
       // Three layers, in this order every time: the seat's TEAM speaks first,

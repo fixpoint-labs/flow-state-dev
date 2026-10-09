@@ -2193,11 +2193,22 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 
 - **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
   `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
-  person's last post, else makes one evaluator call over each delegate's note or description, else
-  sends it to the fallback, else runs the judgment turn. If that turn fails too, nobody takes the
-  post, and the conversation says so. `round-robin` sends each post to the next delegate in list
-  order, skipping one that can't be reached. `everyone` sends it to each delegate that can be
-  reached. When no delegate can be reached, nobody takes the post, and the conversation says so.
+  person's last post, else makes one evaluator call over each delegate's note or description,
+  reading the post with the conversation's recent lines, else sends it to the fallback, else runs
+  the judgment turn. If that turn fails too, nobody takes the post, and the conversation says so.
+  `round-robin` sends each post to the next delegate in list order, skipping one that can't be
+  reached. `everyone` sends it to each delegate that can be reached. When no delegate can be
+  reached, nobody takes the post, and the conversation says so.
+- **Recent lines.** Every post is routed and delivered with the conversation's recent lines: the
+  person's posts, the coordinator's own replies and the delegates' answers that landed, oldest
+  first, each as `{ from, text }`. They are the last 10, at most 4,000 characters of text in all,
+  counted back from the newest; the line that crosses the cap is cut short with `…`, and older ones
+  are left out. They come from this conversation's own messages, as far back as the session's
+  history window reaches, never another conversation's. Best fit's evaluation reads
+  `{ recent, post }`, so a post that follows up on a delegate's answer goes to that delegate. The
+  delegate that takes a post, by any policy, gets them as the post's `recent`, and
+  `delegatedPostCapability` on its generator's `uses` shows them to its model for that turn only;
+  the built-in `agent` flow's turn has it. The delegate's own session never keeps them.
 - **Rounds.** With `rounds:` above 0, a delegate's answer goes back out, at most that many times.
   `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers
@@ -2301,6 +2312,7 @@ the root exports, and reaches no Node built-in.
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
+| `delegatedPostCapability` | On the `uses` of a delegate flow's generator: on a delegated post that came with the conversation's recent lines, its model is shown them as a context section (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only. Adds nothing on any other turn. The built-in `agent` flow's turn has it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |
 | `inventorySeats(installation)` | The standard workers as `openInventory` takes seats: each worker's id, its flow and that flow's actions. |
