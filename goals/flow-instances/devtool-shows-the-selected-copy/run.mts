@@ -357,6 +357,10 @@ async function main() {
     const callsBeforeB = apiCalls.length;
     const sessionB = await openWithNewSession(page, copyB.id);
     check(sessionB !== sessionA, "the two copies were handed the same session");
+    // The badge renders before the stream connects: that runs in a passive
+    // effect after the commit, and a retired read can land later still. Let the
+    // network settle before grading it, as `switchTo` does.
+    await page.waitForTimeout(2500);
     const leakedIntoB = misaddressedSince(callsBeforeB, copyB.id, copyA.id);
     check(
       leakedIntoB.length === 0,
