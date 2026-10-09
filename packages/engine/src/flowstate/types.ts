@@ -99,7 +99,7 @@ export interface WorkerAdapter {
    * the engine's concurrency arbiter to keep its lines in.
    *
    * Supplied by an adapter whose runs land in several processes, so a
-   * session's `queue` / `reject` policy holds across all of them. The
+   * session's `queue` / `reject` / `hold` / `defer` policy holds across all of them. The
    * arbiter keeps the policy; the backend only orders places on a key. With
    * one, a delivery into an existing session is accepted and carries its
    * place on the job (`DispatchEnvelope.leasePlace`), which the adapter's

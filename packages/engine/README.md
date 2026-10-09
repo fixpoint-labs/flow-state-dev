@@ -275,9 +275,9 @@ with no time budget, until nothing on its key is running or waiting. At most
 32 defers wait on a key per process; the next is refused
 with `ConcurrencyDeferLimitError`, a `ConcurrencyRejectedError`. A defer
 yields to newer `hold` runs for 30 seconds, then waits only
-for the runs it found. Both apply to
-in-process runs only: a run handed to an external dispatcher under either
-policy runs as `allow`.
+for the runs it found. Both cross a queue whose adapter supplies a shared
+`leaseBackend` (see below); over any other external dispatcher a run under
+either policy runs as `allow`.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
 
@@ -323,6 +323,17 @@ place while the job runs and reports it lost the way the arbiter does, and
 `settleUnstartedRequest(stores, requestId, ending)` ends a request whose run
 never started (a wait that timed out) with the same record the engine writes.
 A job whose `leasePlace` is `null` or absent runs as it always did.
+
+`hold` and `defer` reach the worker as `DispatchEnvelope.leaseTurn`. A `hold`
+job carries `{ kind: "now" }` with its place: it runs at once and gives the
+place back at the end, so the key reads busy until then. A `defer` job carries
+`{ kind: "when-free", key }` and no place: the worker claims the key with
+`take({ ifEmpty: true })` and runs under the place it gets.
+`planDeferWait({ waitedMs, attempt })` says when to try again, and when the
+30-second patience is spent and the job should take a place at the back and
+wait for its turn with `planQueueWait({ ..., budgetMs: Infinity })`. The
+dispatching process counts a handed-off `defer` against its 32-per-key cap
+until the job's `finished` settles.
 
 ## Authentication
 

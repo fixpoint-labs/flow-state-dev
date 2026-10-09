@@ -155,12 +155,13 @@ Where the policy holds depends on how your server runs requests.
 - **One server, no queue.** The policy is enforced in memory, in the process that runs the request.
 - **A queue-backed deployment**, such as [`bullmqWorker`](/guides/background-jobs-bullmq). The policy holds across every process: the web process and each worker. Details below.
 - **Several web servers, each running requests in process, with no queue between them.** Each server keeps its own keys, so two requests on one session can run at once if they land on different servers. Run that shape as a single instance, or put a queue in front of it.
-- **`hold` and `defer` on a queue.** They apply only to requests that run in the process that accepted them. A request handed to a queue worker under either policy runs as `allow`.
 - **A dispatcher you pass to `createFlowState` directly**, rather than through a `worker` adapter. It applies no policy to the work it hands off, and a [delivery into an existing session](../server/background-work.md#starting-a-job-from-a-flow) is refused with `external-dispatcher`.
 
 ### On a queue
 
 A run takes its place on the key when it's accepted, then waits for its turn in whichever worker picks it up. Runs start in the order they were accepted. A worker never spends one of its slots waiting: a run whose turn hasn't come goes back on the queue and is checked again shortly. The 30-second wait limit is the same as on one server, and it counts only time spent waiting for the key, not time queued behind unrelated work.
+
+`hold` and `defer` work the same way on a queue as on one server. A `hold` request runs as soon as a worker takes it, and the key reads busy from the moment it is accepted until it ends. A `defer` request takes no place when it's accepted. Its worker checks whether the key is free, and if it isn't, puts the request back on the queue to check again. The 32-request cap counts in the server that accepted the request, from acceptance until its job ends.
 
 A place on the key has a lease, which the worker running the job keeps renewing.
 

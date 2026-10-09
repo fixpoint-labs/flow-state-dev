@@ -300,3 +300,98 @@ describeWithRedis("the job processor's wait for its turn", () => {
     expect(await backend.isMyTurn(holder)).toBe(true);
   });
 });
+
+describeWithRedis("the job processor's wait for a free key (defer, FIX-1836)", () => {
+  const registry = { get: () => ({ kind: "chat" }) } as never;
+  const KEY = "tenant_a:s_1";
+  const deferJob = (leaseWait?: FlowJobData["leaseWait"]) =>
+    fakeJob(
+      {
+        flowKind: "chat",
+        actionName: "notify",
+        input: {},
+        userId: "u_1",
+        requestId: "r_notice",
+        leaseTurn: { kind: "when-free", key: KEY },
+        ...(leaseWait !== undefined ? { leaseWait } : {}),
+      },
+      "job_notice"
+    );
+
+  it("takes no place while the key is held, and requeues to try again", async () => {
+    const { backend } = setup();
+    const reply = await place(backend, "r_reply", KEY);
+    const processor = createFlowJobProcessor({
+      registry,
+      stores: createInMemoryStores(),
+      runtimeConfig: {},
+      leaseBackend: backend,
+    });
+    const { job, calls } = deferJob();
+    await expect(processor(job, "token")).rejects.toBeInstanceOf(DelayedError);
+    expect(calls.moveToDelayed).toHaveLength(1);
+    expect(job.data.leasePlace ?? undefined).toBeUndefined();
+    // Nothing of the notice's is on the key: the reply alone holds it.
+    await backend.giveBack(reply);
+    expect(await backend.take({ key: KEY, requestId: "r_probe", ifEmpty: true })).toHaveProperty("place");
+  });
+
+  it("out of patience, lines up behind the runs on the key, ahead of newer replies, and then waits with no budget", async () => {
+    const { backend } = setup();
+    const reply = await place(backend, "r_reply", KEY);
+    const processor = createFlowJobProcessor({
+      registry,
+      stores: createInMemoryStores(),
+      runtimeConfig: {},
+      leaseBackend: backend,
+      deferPatienceMs: 1_000,
+    });
+    const { job } = deferJob({ firstCheckAt: Date.now() - 1_500, attempt: 7 });
+    await expect(processor(job, "token")).rejects.toBeInstanceOf(DelayedError);
+    const lined = job.data.leasePlace!;
+    expect(lined).toMatchObject({ key: KEY });
+
+    // A reply that starts now joins behind the notice, so it no longer delays it.
+    const newer = await place(backend, "r_newer", KEY);
+
+    // Waiting behind a long reply is not a timeout, however long it takes.
+    const { job: later } = fakeJob(
+      { ...job.data, leaseWait: { firstCheckAt: Date.now() - 120_000, attempt: 40 } },
+      "job_notice"
+    );
+    await expect(processor(later, "token")).rejects.toBeInstanceOf(DelayedError);
+
+    await backend.giveBack(reply);
+    expect(await backend.isMyTurn(lined)).toBe(true);
+    expect(await backend.isMyTurn(newer)).toBe(false);
+  });
+
+  it("never starts a notice cancelled while it waited for the key, and ends it aborted", async () => {
+    const { backend } = setup();
+    const reply = await place(backend, "r_reply", KEY);
+    const stores = createInMemoryStores();
+    const ts = Date.now();
+    await stores.request.set(
+      "r_notice",
+      {
+        id: "r_notice",
+        status: "in_progress",
+        actionName: "notify",
+        sessionId: "s_1",
+        userId: "u_1",
+        items: [],
+        startedAt: ts,
+        updatedAt: ts,
+      } as never,
+      "any"
+    );
+    await stores.request.setFieldsIfStatus("r_notice", { abortRequested: true }, ["in_progress"], ts);
+    const processor = createFlowJobProcessor({ registry, stores, runtimeConfig: {}, leaseBackend: backend });
+    const { job, calls } = deferJob();
+    await expect(processor(job, "token")).resolves.toBeUndefined();
+    expect(calls.moveToDelayed).toEqual([]);
+    expect((await stores.request.get("r_notice"))?.status).toBe("aborted");
+    await backend.giveBack(reply);
+    expect(await backend.take({ key: KEY, requestId: "r_probe", ifEmpty: true })).toHaveProperty("place");
+  });
+});

@@ -4,7 +4,7 @@
  * the scheduler modules.
  */
 import type { RedisOptions } from "ioredis";
-import type { LeasePlace } from "@flow-state-dev/engine";
+import type { LeasePlace, LeaseTurn } from "@flow-state-dev/engine";
 
 export interface BullmqConnectionOptions {
   /** ioredis connection (URL string or options object). */
@@ -38,6 +38,21 @@ export interface FlowJobData {
    * and how many checks it has made (the backoff grows with them).
    */
   leaseWait?: { firstCheckAt: number; attempt: number } | null;
+  /**
+   * How the job reaches its turn when not by waiting in line for
+   * `leasePlace` (`queue`, `reject`), as the dispatching host set it
+   * (`DispatchEnvelope.leaseTurn`) or as the worker moved it on since:
+   *
+   *   - `{ kind: "now" }` — runs at once under `leasePlace`: a `hold` run, or a
+   *     `defer` run that claimed its key.
+   *   - `{ kind: "when-free", key }` — a `defer` run that has not claimed `key`
+   *     yet. It claims it once nothing holds or waits on it.
+   *   - `{ kind: "behind" }` — a `defer` run that ran out of patience and lined
+   *     up at the back: it waits for `leasePlace`'s turn with no time budget.
+   *
+   * `== null` → `leasePlace` waits its turn with the `queue` budget.
+   */
+  leaseTurn?: LeaseTurn | { kind: "behind" } | null;
 }
 
 export interface EnqueueOptions {

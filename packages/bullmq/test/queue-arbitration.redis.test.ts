@@ -86,6 +86,50 @@ function sessionFlow(kind: string, spans: Span[]) {
   })({ id: kind });
 }
 
+/**
+ * A conversation (FIX-1836): `reply` is a person's turn (`hold`), `notice` is
+ * a follow-up the app wants after it (`defer`). Both record their run window
+ * like `sessionFlow`'s `work`. `ignoreAbort` models a run on a worker that
+ * crashed: nothing stops it, and nothing gives its place back.
+ */
+function conversationFlow(kind: string, spans: Span[]) {
+  const input = z.object({
+    tag: z.string(),
+    holdMs: z.number().optional(),
+    ignoreAbort: z.boolean().optional()
+  });
+  const turn = handler({
+    name: "turn",
+    inputSchema: input,
+    outputSchema: z.object({}),
+    execute: async (input, ctx) => {
+      const start = Date.now();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, input.holdMs ?? 250);
+        if (input.ignoreAbort === true) return;
+        ctx.signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            spans.push({ tag: `${input.tag}:stopped`, start, end: Date.now() });
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true }
+        );
+      });
+      spans.push({ tag: input.tag, start, end: Date.now() });
+      return {};
+    }
+  });
+  return defineFlow({
+    kind,
+    actions: {
+      reply: { block: turn, inputSchema: input, concurrency: "hold" },
+      notice: { block: turn, inputSchema: input, concurrency: "defer" }
+    }
+  })({ id: kind });
+}
+
 // Real Redis, real queues and timers: allow for a slow CI host.
 vi.setConfig({ testTimeout: 45_000, hookTimeout: 20_000 });
 
@@ -121,7 +165,7 @@ function deployment(): Deployment {
 /** One process of the deployment. */
 async function processOf(
   d: Deployment,
-  flow: ReturnType<typeof sessionFlow>,
+  flow: ReturnType<typeof sessionFlow> | ReturnType<typeof conversationFlow>,
   mode: WorkerMode,
   options: Partial<BullmqWorkerOptions> = {},
   replaceLeaseBackend?: (adapter: ReturnType<typeof bullmqWorker>) => RedisLeaseBackend
@@ -183,19 +227,22 @@ async function seedSession(store: Store, id: string, kind: string, lineageId: st
 
 type Router = Awaited<ReturnType<typeof processOf>>["router"];
 
+type WorkInput = { tag: string; holdMs?: number; ignoreAbort?: boolean };
+
 async function post(
   router: Router,
   kind: string,
   sessionId: string,
-  input: { tag: string; holdMs?: number }
+  input: WorkInput,
+  action = "work"
 ): Promise<Response> {
   return router.POST(
-    new Request(`http://localhost/api/flows/${kind}/actions/work`, {
+    new Request(`http://localhost/api/flows/${kind}/actions/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: USER_ID, sessionId, input })
     }),
-    { params: { path: [kind, "actions", "work"] } }
+    { params: { path: [kind, "actions", action] } }
   );
 }
 
@@ -203,9 +250,10 @@ async function postWork(
   router: Router,
   kind: string,
   sessionId: string,
-  input: { tag: string; holdMs?: number }
+  input: WorkInput,
+  action = "work"
 ): Promise<string> {
-  const res = await post(router, kind, sessionId, input);
+  const res = await post(router, kind, sessionId, input, action);
   const body = (await res.json()) as { request?: { id?: string } };
   const requestId = body.request?.id;
   if (requestId === undefined) throw new Error(`no request id (status ${res.status})`);
@@ -399,5 +447,69 @@ describeWithRedis("waiting for a turn on a BullMQ worker", () => {
     const counts = await web.adapter.queue.getJobCounts();
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(0);
     expect(d.spans).toEqual([]);
+  });
+});
+
+describeWithRedis("a reply and its notice on BullMQ workers (FIX-1836)", () => {
+  it("runs the notice after the reply, waits for a reply that starts while it waits, and runs notices one at a time", async () => {
+    const d = deployment();
+    const flow = conversationFlow(d.kind, d.spans);
+    const web = await processOf(d, flow, "dispatch-only");
+    await processOf(d, flow, "worker-only", { concurrency: 2 });
+    await processOf(d, flow, "worker-only", { concurrency: 2 });
+    await seedSession(d.store, "s_c", d.kind, "lin_1");
+
+    const reply1 = await postWork(web.router, d.kind, "s_c", { tag: "reply-1", holdMs: 1_000 }, "reply");
+    const n1 = await postWork(web.router, d.kind, "s_c", { tag: "notice-1", holdMs: 300 }, "notice");
+    const n2 = await postWork(web.router, d.kind, "s_c", { tag: "notice-2", holdMs: 300 }, "notice");
+    await new Promise((r) => setTimeout(r, 400));
+    // A person's next message starts at once, mid-reply.
+    const reply2 = await postWork(web.router, d.kind, "s_c", { tag: "reply-2", holdMs: 1_000 }, "reply");
+    const ids = [reply1, n1, n2, reply2];
+    await untilSettled(d.store, ids, 30_000);
+
+    expect(await statusesOf(d.store, ids)).toEqual(["completed", "completed", "completed", "completed"]);
+    const span = (tag: string) => d.spans.find((s) => s.tag === tag)!;
+    // The replies overlap: `hold` never waits.
+    expect(overlapping(d.spans).map((pair) => [...pair].sort())).toContainEqual(["reply-1", "reply-2"]);
+    // Every notice starts after every reply has ended, and notices never
+    // overlap each other.
+    const lastReplyEnd = Math.max(span("reply-1").end, span("reply-2").end);
+    expect(span("notice-1").start).toBeGreaterThanOrEqual(lastReplyEnd);
+    expect(span("notice-2").start).toBeGreaterThanOrEqual(lastReplyEnd);
+    expect(overlapping(d.spans.filter((s) => s.tag.startsWith("notice")))).toEqual([]);
+  });
+
+  it("runs the notice once the lease of a crashed reply's worker runs out", async () => {
+    // Worker A takes the reply, then is cut off from Redis: it never renews
+    // the reply's place or gives it back, and its run goes on regardless, as
+    // a crashed container's would from the rest of the deployment's view.
+    const d = deployment();
+    const flow = conversationFlow(d.kind, d.spans);
+    const leaseMs = 1_000;
+    const web = await processOf(d, flow, "dispatch-only", { leaseMs });
+    const workerA = await processOf(d, flow, "worker-only", { leaseMs, concurrency: 1 });
+    await seedSession(d.store, "s_c", d.kind, "lin_1");
+
+    await postWork(web.router, d.kind, "s_c", { tag: "reply", holdMs: 8_000, ignoreAbort: true }, "reply");
+    await until(async () => (await web.adapter.queue.getActiveCount()) === 1, "the reply to start on worker A");
+
+    await processOf(d, flow, "worker-only", { leaseMs });
+    const notice = await postWork(web.router, d.kind, "s_c", { tag: "notice", holdMs: 100 }, "notice");
+    await new Promise((r) => setTimeout(r, 500));
+    expect(d.spans).toEqual([]);
+
+    const crashedAt = Date.now();
+    await (workerA.adapter.leaseBackend as RedisLeaseBackend).close();
+
+    await untilSettled(d.store, [notice], 15_000);
+    expect(await statusesOf(d.store, [notice])).toEqual(["completed"]);
+    const ran = d.spans.find((s) => s.tag === "notice")!;
+    // It waited out the lease, and not much longer.
+    expect(ran.start - crashedAt).toBeGreaterThanOrEqual(leaseMs);
+    expect(ran.start - crashedAt).toBeLessThan(leaseMs + 3_000);
+    // The reply is still running on the crashed worker: nothing it did let
+    // the notice go.
+    expect(d.spans.map((s) => s.tag)).not.toContain("reply");
   });
 });

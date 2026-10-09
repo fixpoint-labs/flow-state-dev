@@ -13,11 +13,18 @@
  * engine's `planQueueWait` sets. While it runs, the worker renews the place on
  * its own timer and stops the run if the place is lost. The place goes back
  * when the job is done for good, and stays across retries.
+ *
+ * `hold` and `defer` (FIX-1836): a `hold` job's place has its turn at once, so
+ * it runs without waiting. A `defer` job carries no place, only its key: it
+ * claims the key once nothing holds or waits on it, requeueing until then on
+ * the schedule the engine's `planDeferWait` sets, and past its patience lines
+ * up behind the places on the key and waits for its turn with no budget.
  */
 import { isValidOrgId } from "@flow-state-dev/core";
 import {
   OrgRequiredError,
   holdLeasePlace,
+  planDeferWait,
   planQueueWait,
   settleUnstartedRequest,
 } from "@flow-state-dev/engine";
@@ -52,6 +59,13 @@ export interface FlowWorkerDeps {
    * soon as a worker takes it, place or not.
    */
   leaseBackend?: JobLeaseBackend;
+  /**
+   * How long a `defer` job yields to `hold` runs that start after it began
+   * waiting, before it lines up behind the runs on its key. Default: the
+   * engine's `DEFER_PATIENCE_MS` (30 seconds), which its arbiter also waits
+   * with, so a deferred run waits the same on a worker as in process.
+   */
+  deferPatienceMs?: number;
 }
 
 export interface CreateFlowWorkerOptions extends BullmqConnectionOptions {
@@ -74,7 +88,7 @@ const CANCELLED = Symbol("cancelled");
  * connection (constructing a BullMQ `Worker` connects eagerly).
  */
 export function createFlowJobProcessor(deps: FlowWorkerDeps) {
-  const { registry, stores, runtimeConfig, bridge, onItem, leaseBackend } = deps;
+  const { registry, stores, runtimeConfig, bridge, onItem, leaseBackend, deferPatienceMs } = deps;
 
   /**
    * Give a place back, best effort: a place that cannot be given back lapses
@@ -94,9 +108,56 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
   };
 
   /**
+   * A `defer` job that holds no place yet: claim its key if nothing holds or
+   * waits on it, or requeue it to try again, on the schedule the engine's
+   * `planDeferWait` sets. Out of patience, it lines up behind the places on
+   * the key instead and waits for its turn there.
+   */
+  const claimWhenFree = async (
+    job: Job<FlowJobData>,
+    token: string | undefined,
+    backend: JobLeaseBackend,
+    key: string,
+    requestId: string
+  ): Promise<LeasePlace | typeof CANCELLED | undefined> => {
+    const data = job.data;
+    const now = Date.now();
+    const wait = data.leaseWait ?? { firstCheckAt: now, attempt: 0 };
+    const step = planDeferWait({
+      waitedMs: now - wait.firstCheckAt,
+      attempt: wait.attempt,
+      ...(deferPatienceMs !== undefined ? { patienceMs: deferPatienceMs } : {}),
+    });
+    if (step.kind === "line-up") {
+      // Newer `hold` runs join behind this place, so they no longer delay it.
+      const behind = await backend.take({ key, requestId, jobId: job.id });
+      if ("heldBy" in behind) throw new Error(`Could not line up on "${key}"`);
+      await job.updateData({ ...data, leasePlace: behind.place, leaseTurn: { kind: "behind" }, leaseWait: null });
+      return takeTurn(job, token);
+    }
+    const claimed = await backend.take({ key, requestId, ifEmpty: true, jobId: job.id });
+    if ("place" in claimed) {
+      // Claimed because the key was free: it is this run's turn already, and
+      // stays so across a retry.
+      await job.updateData({ ...data, leasePlace: claimed.place, leaseTurn: { kind: "now" }, leaseWait: null });
+      return claimed.place;
+    }
+    await job.updateData({
+      ...data,
+      leaseWait: { firstCheckAt: wait.firstCheckAt, attempt: wait.attempt + 1 },
+    });
+    await job.moveToDelayed(Date.now() + step.retryInMs, token);
+    throw new DelayedError();
+  };
+
+  /**
    * Take the job's turn on its concurrency key, or requeue it to check again.
    * Returns the place the run holds, `undefined` when there is nothing to
    * hold, or throws BullMQ's `DelayedError` once the job is requeued.
+   *
+   * How the turn comes is the job's `leaseTurn`: at once (`hold`), once the
+   * key is free (`defer`), or in line (`queue`, `reject`, and a `defer` out of
+   * patience, which waits with no budget).
    */
   const takeTurn = async (
     job: Job<FlowJobData>,
@@ -104,8 +165,14 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
   ): Promise<LeasePlace | typeof CANCELLED | undefined> => {
     const data = job.data;
     const backend = leaseBackend;
+    const rule = data.leaseTurn ?? undefined;
     let place = data.leasePlace ?? undefined;
-    if (place === undefined || backend === undefined || data.requestId === undefined) {
+    const claimsKey = place === undefined && rule?.kind === "when-free" ? rule.key : undefined;
+    if (
+      (place === undefined && claimsKey === undefined) ||
+      backend === undefined ||
+      data.requestId === undefined
+    ) {
       return undefined;
     }
     const requestId = data.requestId;
@@ -123,24 +190,51 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       return CANCELLED;
     }
 
+    if (claimsKey !== undefined) return claimWhenFree(job, token, backend, claimsKey, requestId);
+    let held = place!;
+
+    /**
+     * The place was dropped while the job could not renew it. The request is
+     * still coming, so it lines up again, at the back.
+     */
+    const retake = async (): Promise<void> => {
+      const retaken = await backend.take({ key: held.key, requestId, jobId: job.id });
+      if ("heldBy" in retaken) throw new Error(`Could not line up again on "${held.key}"`);
+      held = retaken.place;
+    };
+
     // Renew before asking: a place whose lease ran out while its job sat in
     // the queue is still this job's, and the turn check reconciles expired
     // places by their job's state, which for this job is `active`.
-    let turn: boolean | "missing" =
-      (await backend.renew(place)) === false ? "missing" : await backend.isMyTurn(place);
-    if (turn === "missing") {
-      // The place was dropped while the job could not renew it. The request
-      // is still coming, so it lines up again, at the back.
-      const retaken = await backend.take({ key: place.key, requestId, jobId: job.id });
-      if ("heldBy" in retaken) throw new Error(`Could not line up again on "${place.key}"`);
-      place = retaken.place;
-      turn = await backend.isMyTurn(place);
+    const kept = (await backend.renew(held)) !== false;
+    if (!kept) await retake();
+
+    // A place with its turn already runs at once, wherever it is in line.
+    if (rule?.kind === "now") {
+      if (held !== data.leasePlace || data.leaseWait != null) {
+        await job.updateData({ ...data, leasePlace: held, leaseWait: null });
+      }
+      return held;
     }
+
+    let turn = await backend.isMyTurn(held);
+    if (turn === "missing") {
+      await retake();
+      turn = await backend.isMyTurn(held);
+    }
+    place = held;
 
     const now = Date.now();
     const wait = data.leaseWait ?? { firstCheckAt: now, attempt: 0 };
     const waitedMs = now - wait.firstCheckAt;
-    const step = planQueueWait({ key: place.key, waitedMs, attempt: wait.attempt });
+    const step = planQueueWait({
+      key: place.key,
+      waitedMs,
+      attempt: wait.attempt,
+      // A `defer` that lined up after its patience waits for the runs ahead
+      // of it however long they take.
+      ...(rule?.kind === "behind" ? { budgetMs: Infinity } : {}),
+    });
     // The first check is always honoured; a later one past the budget times
     // out, as the engine's own wait does.
     if (turn === true && (wait.attempt === 0 || step.kind === "wait")) {

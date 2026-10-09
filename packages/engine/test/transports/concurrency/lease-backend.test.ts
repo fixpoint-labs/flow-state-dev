@@ -329,7 +329,7 @@ describe("a place this process holds on a shared backend, before it runs", () =>
       await vi.advanceTimersByTimeAsync(10_000);
       expect(renewed.length).toBeGreaterThanOrEqual(3);
 
-      admission.handOff();
+      admission.handOff(new Promise(() => {}));
       const atHandOff = renewed.length;
       await vi.advanceTimersByTimeAsync(10_000);
       expect(renewed.length).toBe(atHandOff);
