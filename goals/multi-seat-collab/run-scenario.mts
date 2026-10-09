@@ -260,8 +260,9 @@ export class Scenario {
       },
     };
     await openMailboxes([this.tree.mailbox], { client, userId: LAB_USER_ID });
+    // A seat has no flow of its own: its session is on the one copy of the flow it runs on, naming it.
     for (const seat of [this.tree.plannerId, ...this.tree.workerIds]) {
-      await client.createSession({ flowKind: seat, userId: LAB_USER_ID, sessionId: this.seatSession(seat) });
+      await client.createSession({ flowKind: this.tree.seatFlows[seat]!, userId: LAB_USER_ID, sessionId: this.seatSession(seat), state: { workerId: seat } });
     }
   }
 
@@ -300,7 +301,7 @@ export class Scenario {
 
   /** The planner files one piece of work through its own action. */
   file(input: FileInput): Promise<ActResult> {
-    return this.act(this.tree.plannerId, this.seatSession(this.tree.plannerId), FILE_ENTRY, input);
+    return this.act(this.tree.seatFlows[this.tree.plannerId]!, this.seatSession(this.tree.plannerId), FILE_ENTRY, input);
   }
 
   /**
@@ -311,7 +312,7 @@ export class Scenario {
   async drainAll(): Promise<Array<{ seat: string; result: ActResult; terminationReason?: string }>> {
     return Promise.all(
       this.tree.workerIds.map(async (seat) => {
-        const result = await this.act(seat, this.seatSession(seat), DRAIN_ENTRY, {});
+        const result = await this.act(this.tree.seatFlows[seat]!, this.seatSession(seat), DRAIN_ENTRY, {});
         return { seat, result, terminationReason: terminationReasonOf(result.items) };
       }),
     );
@@ -331,7 +332,7 @@ export class Scenario {
     userId: string = LAB_USER_ID,
     settleWithinMs = 30_000,
   ): Promise<ActResult> {
-    return this.act(seat, this.seatSession(seat), ANSWER_ENTRY, { taskId, feedback }, userId, settleWithinMs);
+    return this.act(this.tree.seatFlows[seat]!, this.seatSession(seat), ANSWER_ENTRY, { taskId, feedback }, userId, settleWithinMs);
   }
 
   /**

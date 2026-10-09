@@ -12,7 +12,7 @@
  * No model. A test fixture, not a Lab: Shift Manager names nothing in it.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The kind the fixture's `WORKER.md` names. */
@@ -49,10 +49,17 @@ const gate = handler({
   },
 });
 
-/** The kind `hireWorkforce` mints one copy of per `asker` record. */
-export function defineAskerFlow() {
+/**
+ * The kind `hireWorkforce` registers one copy of, which every `asker` worker
+ * runs on: each session names its worker.
+ *
+ * @param installation The installation whose workers run on it.
+ */
+export function defineAskerFlow(installation: WorkerInstallation) {
   return defineFlow({
     kind: ASKER_KIND,
+    session: installation.session(),
+    resources: installation.resources,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {

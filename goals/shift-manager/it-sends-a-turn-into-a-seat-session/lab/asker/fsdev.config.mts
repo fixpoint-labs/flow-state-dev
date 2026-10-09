@@ -12,7 +12,7 @@ import {
   mailboxBoardIds,
   mailboxInstances,
   defineMailboxFlow,
-  hireWorkforce,
+  inventorySeats,
   openMailboxes,
   openInventory,
   type InventoryActionRequest,
@@ -21,6 +21,7 @@ import {
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { fileURLToPath } from "node:url";
+import { installWorkers } from "../../../../lib/workers.mts";
 import { ASKER_KIND, defineAskerFlow } from "./asker.mts";
 
 /** The one person this Lab runs as. */
@@ -29,14 +30,13 @@ const USER_ID = "u_turn_goal";
 const tree = await readDeclaredRoster(fileURLToPath(new URL("./workforce", import.meta.url)));
 if (tree.problems.length > 0) throw new Error(`the asker tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
 
-const seats = hireWorkforce(tree.workers, {
-  workerFlows: { [ASKER_KIND]: defineAskerFlow() as never },
+const { installation, copies } = installWorkers(tree.workers, (installation) => ({ [ASKER_KIND]: defineAskerFlow(installation) }), {
   mailboxBoards: mailboxBoardIds(tree.mailboxes),
 });
 const mailboxKind = defineMailboxFlow({ inventory: true });
 const flows: Record<string, FlowInstance> = {
   ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
-  ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+  ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
 };
 const flowState = createFlowState({
   flows,
@@ -77,7 +77,7 @@ await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
 
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats, mailboxes: tree.mailboxes },
+  { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({
