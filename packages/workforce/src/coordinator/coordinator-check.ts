@@ -51,17 +51,23 @@ export function createDelegateCheck(installation: WorkerInstallation, postFlows:
    * Check `workerId` for `use`.
    *
    * @param ctx A block context that declares the installation's resources.
-   * @param use `add` for a change to the list; `post` for a delivery.
+   * @param use `add` for a change to the list; `post` for a delivery; `task`
+   *   for a filing or a task's hand-over (FIX-1794).
    */
-  return async (ctx: WorkerTurnContext, workerId: string, use: "add" | "post"): Promise<DelegateCheck> => {
+  return async (ctx: WorkerTurnContext, workerId: string, use: "add" | "post" | "task"): Promise<DelegateCheck> => {
     const worker = await installation.rosterWorker(ctx, workerId);
     if (worker === undefined) return { ok: false, message: `No worker "${workerId}" on your roster.` };
     if (worker.problem !== undefined) {
       return { ok: false, message: `Worker "${workerId}" can't be a delegate: ${worker.problem}.` };
     }
     const takesPost = postFlows.has(worker.flow);
-    if (takesPost) return { ok: true, worker, takesPost };
     const flow = (installation.workerFlows()[worker.flow]?.flow ?? undefined) as FlowType<any, any> | undefined;
+    if (use === "task") {
+      return takesTask(flow)
+        ? { ok: true, worker, takesPost }
+        : { ok: false, message: `Worker "${workerId}" runs on flow "${worker.flow}", which takes no task.` };
+    }
+    if (takesPost) return { ok: true, worker, takesPost };
     if (use === "add" && takesTask(flow)) return { ok: true, worker, takesPost };
     return {
       ok: false,

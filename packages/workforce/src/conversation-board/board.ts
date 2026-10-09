@@ -1,0 +1,359 @@
+/**
+ * A conversation's task board (FIX-1794 S3 to S5): where a session files
+ * tasks for its delegates, who takes each one, and how a filing starts it.
+ *
+ * - **The board.** One `taskBoard` over the conversation ledger
+ *   (`./ledger`), run only in its own conversation, as its owner. Its one
+ *   assignee, the default one, hands every row to the `work` entry on the flow
+ *   its delegate runs on, in a task session: a new child of the conversation,
+ *   keyed by the task and the worker, named for both and for the conversation
+ *   (`filingSessionId`). A second attempt re-enters it; a reassign opens
+ *   another. The hand-over re-runs the delegate check, so a delegate fired
+ *   since the filing doesn't run.
+ * - **The tools and the actions.** Orchestration's eight task tools, on the
+ *   model's turn and as public actions, over one resolver and one roster. The
+ *   resolver is the running session's own board, and none for a task session
+ *   (a task session can't file yet: FIX-1802 swaps in its rule). The roster is
+ *   the session's delegates that take a task, read on every call.
+ * - **The start.** A filing marks the row's start owed in the add's own write,
+ *   then dispatches a run of the board into the conversation as a request of
+ *   its own, and returns without waiting for it. A refused or lost wake leaves
+ *   the marker, and any later action on the board starts it. So does a
+ *   reassign.
+ * - **The outbox.** Any action on the board, and every run of it, replays the
+ *   notices its rows still owe into the conversation (`./task-notice`).
+ */
+import {
+  createTaskToolsCapability,
+  taskToolActions,
+  type TaskCollectionResolver,
+  type WorkerRoster,
+  type WorkerRosterSource
+} from "@flow-state-dev/orchestration";
+import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
+import {
+  isClaimable,
+  type Task,
+  type TaskCollectionRef,
+  type TaskDispatcher,
+  type TaskWorkerInput
+} from "@flow-state-dev/orchestration/tasks";
+import { handler, sequencer } from "@flow-state-dev/core";
+import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
+import { z } from "zod";
+import { WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { filingSessionIdOf } from "./filing-session";
+import {
+  CONVERSATION_LEDGER_ID,
+  callerMetadata,
+  conversationLedger,
+  conversationLedgerResources,
+  isStartOwed,
+  ownConversationLedger,
+  startOwed,
+  startTaken
+} from "./ledger";
+import { owedNotices, type TaskNotice } from "./task-notice";
+
+/** The internal entry a filing dispatches to run its conversation's board. */
+export const RUN_BOARD_ENTRY = "runTaskBoard";
+
+/**
+ * The internal entry a task's notice arrives on in the conversation that
+ * filed it. **Pinned** (FIX-1780): a goal check reads notices by it.
+ */
+export const TASK_SETTLED_ENTRY = "onTaskSettled";
+
+/**
+ * How many attempts a filed task gets: a failure with one left runs the task
+ * again in the same session, with no coordinator turn, and the second failure
+ * is the one the conversation hears.
+ */
+export const TASK_ATTEMPTS = 2;
+
+/** The running session's delegates as a task sees them: who takes one now, and why the rest can't. */
+export interface TaskDelegates {
+  /** Each delegate that takes a task now, by worker id, with the flow it runs on. */
+  readonly available: ReadonlyMap<string, string>;
+  /** Each delegate on the list that can't take a task now, by worker id, with why. */
+  readonly unavailable: ReadonlyMap<string, string>;
+}
+
+/** What a conversation's board is built from. */
+export interface ConversationBoardOptions {
+  /**
+   * The running session's delegates, read now: the one check FIX-1791's
+   * delegates pass, for a task. Read at filing and again at hand-over.
+   */
+  delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
+}
+
+/** Whether the running session is a task session: one a conversation's board opened to work a task. */
+export function isTaskSession(ctx: { readonly session: { readonly state: unknown } }): boolean {
+  return typeof (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] === "string";
+}
+
+/** A roster over the session's task-taking delegates, naming why each other one can't take a task. */
+function rosterOf(delegates: TaskDelegates): WorkerRoster {
+  return {
+    has: (name) => delegates.available.has(name),
+    describe: () => {
+      const available = [...delegates.available.keys()];
+      const listed = available.length > 0 ? available.join(", ") : "(no delegate in this conversation takes a task)";
+      if (delegates.unavailable.size === 0) return listed;
+      const why = [...delegates.unavailable].map(([worker, reason]) => `${worker}: ${reason}`).join("; ");
+      return `${listed}. Not taking tasks now: ${why}`;
+    }
+  };
+}
+
+/**
+ * The task session's key: one per task and worker, so a retry re-enters the
+ * session it ran in and a reassign opens a new one, beside the old one's
+ * history. A child of the conversation, so two conversations filing one task
+ * id for one worker get two sessions.
+ */
+function taskSessionKey(taskId: string, worker: string): string {
+  return `task:${JSON.stringify([taskId, worker])}`;
+}
+
+/** Claims only rows that name a delegate: an unassigned row waits on the board until it is assigned. */
+const assignedOnly: TaskDispatcher = {
+  claim: (collection, workerId) => collection.claim(workerId, { eligibility: (task) => task.assignee !== undefined })
+};
+
+/** Whether a row this board can start is waiting: assigned, and claimable now (a dead run's row included). */
+function hasStartable(collection: TaskCollectionRef): boolean {
+  const now = collection.now();
+  const lookup = (id: string): Task | undefined => collection.get(id);
+  return collection
+    .list({ status: ["pending", "in_progress"] })
+    .some((task) => task.assignee !== undefined && isClaimable(task, lookup, now));
+}
+
+/**
+ * Dispatch a run of the running conversation's board into the conversation,
+ * as a request of its own. Never waits for it, and never fails the caller: a
+ * refused or thrown dispatch leaves the start owed for the next touch.
+ */
+async function wake(ctx: BlockContext): Promise<void> {
+  try {
+    await dispatchThroughSeam(ctx, {
+      type: "internal",
+      action: RUN_BOARD_ENTRY,
+      session: { id: ctx.session.identity.id },
+      payload: {},
+      from: "conversation-board-wake"
+    });
+  } catch {
+    // The marker stays on the row; the next filing or action retries it.
+  }
+}
+
+/**
+ * Send each notice the conversation's rows still owe into the conversation
+ * itself, as requests of their own. The receiving entry dedupes, so a notice
+ * replayed while its first send is in flight is acted on once.
+ */
+async function replayNotices(ctx: BlockContext, rows: readonly Task[]): Promise<number> {
+  let sent = 0;
+  for (const row of rows) {
+    for (const notice of owedNotices(row, CONVERSATION_LEDGER_ID)) {
+      try {
+        const outcome = await dispatchThroughSeam(ctx, {
+          type: "internal",
+          action: TASK_SETTLED_ENTRY,
+          session: { id: ctx.session.identity.id },
+          payload: notice satisfies TaskNotice,
+          from: "conversation-board-replay"
+        });
+        if (outcome.ok) sent += 1;
+      } catch {
+        // Still owed on the row: the next touch sends it.
+      }
+    }
+  }
+  return sent;
+}
+
+/**
+ * Build a conversation's task board and everything a flow carrying it
+ * declares: the drain behind the run entry, the tools for the model's turn,
+ * the actions, and the ledger.
+ */
+export function defineConversationBoard(options: ConversationBoardOptions) {
+  const roster: WorkerRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
+
+  // The hand-over: every row to `work` on its delegate's flow, in a task
+  // session keyed by the task and the worker. Built as an address rather than
+  // through `dispatcher()`, whose per-task target is held to a "per-task"
+  // session, keyed by the task alone: a reassign would then re-enter a session
+  // named for the first worker, and run as it. Keying by the worker too keeps
+  // one session to one task and one worker, which is the rule's own reason.
+  const address: DispatchAddress = {
+    type: "task",
+    action: WORKER_TASK_ENTRY,
+    session: {
+      // The board's hand-off computes the key while the claim it took is
+      // still on its worker body's state: the assignee is the one the row was
+      // claimed with, which the board freezes while an attempt holds it.
+      key: (payload: TaskWorkerInput, ctx: BlockContext) => {
+        const claim = (ctx.sequencer?.state as { currentClaim?: { assignee?: string } } | undefined)?.currentClaim;
+        const worker = claim?.assignee ?? currentWorkerClaim()?.assignee;
+        if (worker === undefined) {
+          throw new Error(`Task "${payload.taskId}" names no delegate, so it has no session to run in.`);
+        }
+        return taskSessionKey(payload.taskId, worker);
+      }
+    },
+    // Re-run the delegate check at hand-over: a delegate fired, removed or
+    // moved to a flow that takes no tasks since the filing is refused here,
+    // with the claim held, so the task fails and the conversation hears it.
+    flowKind: async (task, ctx) => {
+      const delegates = await options.delegates(ctx);
+      const flow = delegates.available.get(task.assignee);
+      if (flow !== undefined) return flow;
+      const why = delegates.unavailable.get(task.assignee) ?? "it isn't one of this conversation's delegates";
+      throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
+    },
+    // The task session is born naming its worker, the task and the
+    // conversation that filed it, each a readonly field the worker flow's
+    // create check confirms; all from server-written data.
+    state: async (task, ctx) => ({
+      [WORKER_ID_STATE_KEY]: task.assignee,
+      [FILING_SESSION_STATE_KEY]: await filingSessionIdOf(ctx.session),
+      [TASK_ID_STATE_KEY]: task.taskId
+    })
+  };
+  const handOffToDelegate = markDispatcher(
+    handler({
+      name: "conversation-board-hand-off",
+      inputSchema: z.unknown(),
+      outputSchema: z.unknown(),
+      execute: () => {
+        throw new Error("The conversation board's hand-off runs through the board, never on its own.");
+      }
+    }),
+    address
+  );
+
+  const board = taskBoard({
+    name: "conversation-tasks",
+    boardId: CONVERSATION_LEDGER_ID,
+    collection: conversationLedger,
+    workers: {},
+    defaultWorker: handOffToDelegate as never,
+    dispatcher: assignedOnly,
+    // Exit once nothing this run can start is waiting. An unassigned row
+    // waits on the board for `assignTask`, so a run must not wait on it.
+    onIdle: "wait",
+    shouldExit: (collection) => !hasStartable(collection)
+  });
+
+  /**
+   * The ledger the tools and actions write through: the running session's
+   * own board, guarded. A filing marks its start owed in the add's write and
+   * wakes the board; a reassign does too. No caller write reaches a marker.
+   */
+  const guarded = (ctx: BlockContext, ref: TaskCollectionRef): TaskCollectionRef => {
+    const addTask: TaskCollectionRef["addTask"] = async (init) => {
+      let assignee = init.assignee;
+      if (assignee === undefined) {
+        // An unassigned task goes to the conversation's only delegate; with
+        // none or several it waits on the board until it is assigned.
+        const delegates = await options.delegates(ctx);
+        if (delegates.available.size === 1) assignee = [...delegates.available.keys()][0]!;
+      }
+      const metadata = callerMetadata(init.metadata);
+      const added = await ref.addTask({
+        ...init,
+        maxAttempts: init.maxAttempts ?? TASK_ATTEMPTS,
+        ...(assignee !== undefined ? { assignee } : {}),
+        ...(assignee !== undefined
+          ? { metadata: startOwed(metadata) }
+          : metadata !== undefined
+            ? { metadata }
+            : {})
+      });
+      if (assignee !== undefined) await wake(ctx);
+      return added;
+    };
+    return {
+      ...ref,
+      addTask,
+      async addTasks(inits) {
+        const added: Task[] = [];
+        for (const init of inits) added.push(await addTask(init));
+        return added;
+      },
+      async setAssignee(id, assignee) {
+        const outcome = await ref.setAssignee(id, assignee);
+        if (outcome.outcome === "recorded" && ref.get(id)?.status === "pending") {
+          // A second write: the ref sets an assignee and nothing else. A crash
+          // between the two leaves the row waiting for the board's next run.
+          await ref.patchMetadata(id, startOwed(undefined));
+          await wake(ctx);
+        }
+        return outcome;
+      },
+      async patchMetadata(id, patch) {
+        return ref.patchMetadata(id, callerMetadata(patch) ?? {});
+      }
+    };
+  };
+
+  /** Every action on the board, and the model's every tool call, reach it here. */
+  const resolver: TaskCollectionResolver = async (ctx) => {
+    // A task session keeps no board until FIX-1802's rule lets it file.
+    if (isTaskSession(ctx)) return undefined;
+    const ref = await ownConversationLedger(ctx);
+    if (ref === undefined) return undefined;
+    // The outbox: an owed start or notice is sent on any touch.
+    const rows = ref.list();
+    if (rows.some((row) => row.status === "pending" && row.assignee !== undefined && isStartOwed(row))) await wake(ctx);
+    await replayNotices(ctx, rows);
+    return guarded(ctx, ref);
+  };
+
+  /**
+   * After a run: clear the start marker on every row the run took, and send
+   * what the rows owe, including what this run's own refusals and settled
+   * dead runs owe.
+   */
+  const afterRun = handler({
+    name: "conversation-board-after-run",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({ replayed: z.number() }),
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, ctx) => {
+      const ref = await ownConversationLedger(ctx as never);
+      if (ref === undefined) return { replayed: 0 };
+      for (const row of ref.list()) {
+        if (isStartOwed(row) && row.status !== "pending") await ref.patchMetadata(row.id, startTaken());
+      }
+      return { replayed: await replayNotices(ctx as never, ref.list()) };
+    }
+  });
+
+  /** One run of the board, in its own conversation, as its owner: claim, hand over, settle up. */
+  const runBoard: BlockDefinition<any, any> = sequencer({ name: "conversation-run-board", inputSchema: z.unknown() })
+    .step(board.drain)
+    .tap(afterRun);
+
+  return {
+    board,
+    roster,
+    resolver,
+    runBoard,
+    /** The eight task tools for the model's turn: one capability instance. */
+    tools: createTaskToolsCapability(resolver, roster),
+    /** The eight task tools as public actions, `<tool>_tasks`. */
+    actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster),
+    /** The ledger, for the flow's `resources`. */
+    resources: conversationLedgerResources
+  };
+}
+
+export type ConversationBoard = ReturnType<typeof defineConversationBoard>;
