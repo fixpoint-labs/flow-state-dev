@@ -438,7 +438,8 @@ export function createScopeStateOps<TState extends object>(
           ...state
         } as Record<string, unknown>;
 
-        const current = next[field];
+        // Own fields only: `toString` and friends are inherited, not stored.
+        const current = Object.hasOwn(next, field) ? next[field] : undefined;
         // Only an absent field starts a new array. Anything else that is not
         // an array, null included, is refused rather than replaced, matching
         // the store adapters' `pushToArray`.

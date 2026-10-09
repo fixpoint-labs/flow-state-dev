@@ -30,6 +30,18 @@ describe("pushState on a non-array target (scope with no store)", () => {
     await expect(ops.pushState("log", "x")).rejects.toThrow(/got null/);
 
     expect(container.read()).toEqual({ log: null });
+    expect(container.getVersion()).toBe(0);
+  });
+
+  it("starts a field named like an Object.prototype member as a new array", async () => {
+    // `toString` resolves to an inherited function on a plain object. It is
+    // not stored state, so it must not be refused as a non-array.
+    const container = createStateContainer<State>({}, 0);
+    const ops = createScopeStateOps<State>(container);
+
+    await ops.pushState("toString", "x");
+
+    expect(container.read()).toEqual({ toString: ["x"] });
   });
 
   it("starts a missing field as a new array", async () => {
