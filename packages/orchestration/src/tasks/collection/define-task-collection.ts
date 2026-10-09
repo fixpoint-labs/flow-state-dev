@@ -94,7 +94,9 @@ export interface DefineTaskCollectionOptions<
    * gets the running session's server-set identity (`sessionId`, `userId`,
    * `orgId`, `tenantId`) and nothing a caller supplies. `user` scope
    * only, and not with `maxInstances`, whose cap would count every partition's
-   * rows. A partitioned ledger's task ids are one path segment (no `/`).
+   * rows. A partitioned ledger's task ids are one path segment (no `/`). Its
+   * rows load a partition at a time, on that partition's first read in a
+   * request, never the whole ledger when the request starts.
    */
   partitionBy?: TaskPartitionFn;
   /**
@@ -159,6 +161,9 @@ export function defineTaskCollection<
     ...(options.maxInstances !== undefined
       ? { maxInstances: options.maxInstances }
       : {}),
+    // A partitioned ledger is never read whole, so it isn't loaded whole when
+    // a request starts: each partition's rows load on its first read.
+    ...(options.partitionBy !== undefined ? { prefetchMode: "lazy" as const } : {}),
   });
 
   return Object.assign(collection, {
