@@ -132,6 +132,9 @@ export {
 } from "./collection/define-task-collection";
 // A ledger kept per partition (`defineTaskCollection({ partitionBy })`).
 export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partition";
+// A ledger's ending recorder (`defineTaskCollection({ recordEnding })`): what
+// each ending write hands it, inside that same write.
+export type { TaskEnding, TaskEndingRecorder } from "./collection/ending";
 export { resolveResourceCollection } from "./collection/resolve-resource-collection";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
