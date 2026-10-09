@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
-import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
   const result = await host.act(userId, conv, "addTask_tasks", input);
@@ -30,6 +30,15 @@ const linesAbout = async (host: BoardHost, conv: string, goal: string) =>
 const touch = async (host: BoardHost, userId: string, conv: string) => {
   expect((await host.act(userId, conv, "listTasks_tasks", {})).error).toBeUndefined();
   await host.settled();
+};
+
+/** Poll `check` until it holds, for at most `ms`. Whether it held. */
+const until = async (check: () => Promise<boolean> | boolean, ms = 3000) => {
+  for (const deadline = Date.now() + ms; Date.now() < deadline; ) {
+    if (await check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return check();
 };
 
 /** The `onTaskSettled` requests a conversation ran. */
@@ -161,49 +170,242 @@ describe("a task parked on a question (BR-25)", () => {
   });
 });
 
-describe("a notice that arrives mid-turn (BR-27)", () => {
-  it("is never dropped: its line lands and its turn runs once, while the filing turn is still open", async () => {
+describe("a notice that arrives mid-reply (BR-27)", () => {
+  /** The filing reply files "Count licenses" and says so; the notice's turn answers it. */
+  const script = (...more: Array<{ when: (input: unknown) => boolean; then: { text: string } }>) =>
+    mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { text: "Filed." },
+        { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
+        ...more
+      ]
+    });
+
+  type Held = { host: BoardHost; conv: string; replyId: string };
+
+  /**
+   * A person's message, sent through the host as an app sends it, whose reply
+   * files the task and is then held open (after its model call, so `addTask`
+   * has run) until the task's notice has been dispatched to the conversation,
+   * for a further half second in which the notice could land, and then for as
+   * long as `during` takes. `seen` says what happened while it was held.
+   */
+  const replyHeldOpen = async (judgment: ReturnType<typeof script>, during: (held: Held) => Promise<void>) => {
+    let calls = 0;
+    const held: Held = { host: undefined as never, conv: "", replyId: "" };
+    const seen = { noticeArrivedMidReply: false, landedMidReply: true };
+    held.host = bootBoardHost({
+      judgment,
+      afterModelCall: async (blockName) => {
+        if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
+        seen.noticeArrivedMidReply = await until(async () => (await settledRequests(held.host, held.conv)).length > 0);
+        seen.landedMidReply = await until(
+          async () => (await linesAbout(held.host, held.conv, "Count licenses")).length > 0,
+          500
+        );
+        await during(held);
+      }
+    });
+    try {
+      held.conv = await held.host.conversation("alice", "lead");
+      held.replyId = await held.host.post("alice", held.conv, "run", { message: "count our licenses" });
+    } catch (error) {
+      await held.host.dispose();
+      throw error;
+    }
+    return { ...held, seen };
+  };
+
+  /** The text of each message in a conversation. */
+  const texts = async (host: BoardHost, conv: string) => (await host.messages(conv)).map((message) => message.text);
+
+  it("waits for the reply to end, then runs once", async () => {
+    const judgment = script();
+    const { host, conv, seen } = await replyHeldOpen(judgment, async () => {});
+    try {
+      await host.settled();
+      // The notice reached the conversation while the reply was running, and
+      // nothing of it landed until the reply ended: one reply at a time.
+      expect(seen.noticeArrivedMidReply).toBe(true);
+      expect(seen.landedMidReply).toBe(false);
+      // Then it ran, once: its line, and one turn for it after the filing's.
+      expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
+      expect(judgment.calls).toHaveLength(2);
+      const replies = await texts(host, conv);
+      expect(replies.filter((text) => text === "Filed.")).toHaveLength(1);
+      expect(replies.filter((text) => text === "Twelve licenses.")).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("never makes the person's own next message wait: it starts mid-reply, and the notice waits for both", async () => {
+    const judgment = script({
+      when: (input) => JSON.stringify(input).includes("and our seats"),
+      then: { text: "Forty seats." }
+    });
+    let nextStartedMidReply = false;
+    let landedMidReply = true;
+    const { host, conv, seen } = await replyHeldOpen(judgment, async ({ host, conv }) => {
+      await host.post("alice", conv, "run", { message: "and our seats?" });
+      nextStartedMidReply = await until(() =>
+        judgment.calls.some((call) => JSON.stringify(call.input).includes("and our seats"))
+      );
+      landedMidReply = (await linesAbout(host, conv, "Count licenses")).length > 0;
+    });
+    try {
+      await host.settled();
+      expect(seen.noticeArrivedMidReply).toBe(true);
+      expect(seen.landedMidReply).toBe(false);
+      expect(nextStartedMidReply).toBe(true);
+      expect(landedMidReply).toBe(false);
+      const replies = await texts(host, conv);
+      expect(replies.filter((text) => text === "Forty seats.")).toHaveLength(1);
+      expect(replies.filter((text) => text === "Twelve licenses.")).toHaveLength(1);
+      expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("waits the same way when the board replays it, after the task session's send was lost", async () => {
+    const judgment = script();
+    let calls = 0;
+    let conv = "";
+    const seen = { replayedMidReply: false, landedMidReply: true };
+    const host: BoardHost = bootBoardHost({
+      judgment,
+      afterModelCall: async (blockName) => {
+        if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
+        // The task ends and its own send is lost; then the board, touched
+        // mid-reply, sends what the row still owes.
+        await until(async () => (await host.rows("alice")).some((row) => row.status === "completed"));
+        await until(() => lost.lost() > 0);
+        lost.restore();
+        expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
+        seen.replayedMidReply = await until(async () => (await settledRequests(host, conv)).length > 0);
+        seen.landedMidReply = await until(async () => (await linesAbout(host, conv, "Count licenses")).length > 0, 500);
+      }
+    });
+    const lost = await host.loseDispatches("onTaskSettled");
+    try {
+      conv = await host.conversation("alice", "lead");
+      await host.post("alice", conv, "run", { message: "count our licenses" });
+      await host.settled();
+      expect(seen.replayedMidReply).toBe(true);
+      expect(seen.landedMidReply).toBe(false);
+      expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
+      expect((await texts(host, conv)).filter((text) => text === "Twelve licenses.")).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("waits the same way for a round's reply, the coordinator's turn over its delegates' answers", async () => {
+    // The person's reply hands the post on; the round's reply, over the
+    // answer, files the task, and is held open until its notice arrives.
     const judgment = mockGenerator({
       script: [
+        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] },
+        { text: "Handed." },
         { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]
     });
-    let host!: BoardHost;
-    let conv = "";
     let calls = 0;
-    let landedWhileHeld = false;
-    host = bootBoardHost({
+    let conv = "";
+    const seen = { noticeArrivedMidReply: false, landedMidReply: true };
+    const host: BoardHost = bootBoardHost({
+      standard: boardWorkers({ mixed: { rounds: 1 } }),
       judgment,
-      // Hold the filing turn open past its addTask (its first model call runs
-      // the tool) until the task's notice has landed, or give up after a while.
       afterModelCall: async (blockName) => {
-        if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
-        for (let i = 0; i < 300; i += 1) {
-          if ((await linesAbout(host, conv, "Count licenses")).length > 0) {
-            landedWhileHeld = true;
-            return;
-          }
-          await new Promise((r) => setTimeout(r, 10));
-        }
+        if (blockName !== "coordinator-judgment" || ++calls !== 2) return;
+        seen.noticeArrivedMidReply = await until(async () => (await settledRequests(host, conv)).length > 0);
+        seen.landedMidReply = await until(async () => (await linesAbout(host, conv, "Count licenses")).length > 0, 500);
       }
     });
     try {
-      conv = await host.conversation("alice", "lead");
-      expect((await host.act("alice", conv, "run", { message: "count our licenses" })).error).toBeUndefined();
+      conv = await host.conversation("alice", "mixed");
+      await host.post("alice", conv, "run", { message: "who's on call?" });
       await host.settled();
-      await touch(host, "alice", conv);
-      // Never dropped: one line, and one turn for it beside the filing's.
+      expect((await host.requestsOf(conv)).some((request) => request.actionName === "routeOn")).toBe(true);
+      expect(seen.noticeArrivedMidReply).toBe(true);
+      expect(seen.landedMidReply).toBe(false);
       expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
-      expect(judgment.calls).toHaveLength(2);
-      const replies = (await host.messages(conv)).map((message) => message.text);
-      expect(replies.filter((text) => text === "Twelve licenses.")).toHaveLength(1);
-      expect(replies.filter((text) => text === "Filed.")).toHaveLength(1);
-      // BR-27 asks for the notice to run after the turn. It runs beside it:
-      // the conversation's turn holds no concurrency key a notice could wait
-      // on (put to the product owner in this change's PR).
-      expect(landedWhileHeld).toBe(true);
+      expect((await texts(host, conv)).filter((text) => text === "Twelve licenses.")).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("still runs when the reply fails", async () => {
+    const { host, conv, replyId, seen } = await replyHeldOpen(script(), async () => {
+      throw new Error("the model connection dropped");
+    });
+    try {
+      await host.settled();
+      // Queued behind the reply when it failed, and run after it.
+      expect(seen.noticeArrivedMidReply).toBe(true);
+      expect(seen.landedMidReply).toBe(false);
+      const reply = (await host.requestsOf(conv)).find((request) => request.id === replyId);
+      expect(reply?.status).toBe("failed");
+      expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
+      expect((await texts(host, conv)).filter((text) => text === "Twelve licenses.")).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("still runs when the reply is cancelled", async () => {
+    const { host, conv, replyId, seen } = await replyHeldOpen(script(), async ({ host, replyId }) => {
+      await host.abort("alice", replyId);
+    });
+    try {
+      await host.settled();
+      // Queued behind the reply when it was cancelled, and run after it.
+      expect(seen.noticeArrivedMidReply).toBe(true);
+      expect(seen.landedMidReply).toBe(false);
+      const reply = (await host.requestsOf(conv)).find((request) => request.id === replyId);
+      expect(reply?.status).toBe("aborted");
+      expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
+      expect((await texts(host, conv)).filter((text) => text === "Twelve licenses.")).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
+describe("a delegate's answer that arrives mid-reply", () => {
+  it("lands as it always has, without waiting for the reply: only a task's notice waits", async () => {
+    // An answer's entry is serialized with the conversation's other answers,
+    // and a request lined up that way gives up after 30 seconds. Made to wait
+    // for a long reply, an answer would be lost; so a reply holds no line an
+    // answer stands in.
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] }, { text: "Handed." }]
+    });
+    let calls = 0;
+    let conv = "";
+    let landedMidReply = false;
+    const host: BoardHost = bootBoardHost({
+      judgment,
+      afterModelCall: async (blockName) => {
+        if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
+        landedMidReply = await until(async () =>
+          (await host.messages(conv)).some((message) => message.text.startsWith("eng.helper heard:"))
+        );
+      }
+    });
+    try {
+      conv = await host.conversation("alice", "mixed");
+      await host.post("alice", conv, "run", { message: "who's on call?" });
+      await host.settled();
+      expect(landedMidReply).toBe(true);
+      const texts = (await host.messages(conv)).map((message) => message.text);
+      expect(texts.filter((text) => text.startsWith("eng.helper heard:"))).toHaveLength(1);
+      expect(texts.filter((text) => text === "Handed.")).toHaveLength(1);
     } finally {
       await host.dispose();
     }

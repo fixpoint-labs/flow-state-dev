@@ -9,13 +9,17 @@
  * the delegate's name and, when the conversation routes by judgment, wakes
  * its coordinator's turn to read it and decide what to do.
  *
+ * A notice that arrives while the conversation is replying waits for the
+ * reply to end, then runs (BR-27), on the engine's `hold` and
+ * `defer` concurrency policies.
+ *
  * Refused when the conversation's worker was fired: the flow loads the
  * session's worker before any entry runs. The task's ending stands, and the
  * notice stays owed on its row.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { isTaskSession } from "./board";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
@@ -72,14 +76,42 @@ export interface TaskSettledOptions {
 }
 
 /**
+ * The line a conversation's replies and its task notices share (BR-27): the
+ * conversation's session, under a name of its own. Not the session's own key,
+ * so an entry the flow lines up on the session (a delegate's answer, `queue`)
+ * never stands behind a reply: a queued request gives up after 30 seconds,
+ * and an answer that waited out a long reply would be lost. The NUL bytes keep
+ * it apart from any session's key, whatever its id.
+ */
+const replyLine: ConcurrencyKey = (ctx) =>
+  ctx.sessionId === undefined ? undefined : `${ctx.tenantId ?? ""}\u0000reply\u0000${ctx.sessionId}`;
+
+/**
+ * The concurrency of each entry that runs the conversation's turn: a person's
+ * message, and a round's next routing. It starts at once, never waits and is
+ * never refused, and while it runs a task's notice waits for it.
+ */
+export const REPLY_CONCURRENCY = { policy: "hold", key: replyLine } as const satisfies ConcurrencyConfig;
+
+/**
+ * The concurrency of the notice entry: it waits until no reply runs in the
+ * conversation, then runs, so its line and its turn come after the reply
+ * rather than beside it. A reply that fails or is cancelled ends the wait the
+ * same way. Notices run one at a time; a person's message still starts at
+ * once beside one.
+ */
+export const NOTICE_CONCURRENCY = { policy: "defer", key: replyLine } as const satisfies ConcurrencyConfig;
+
+/**
  * Build the `onTaskSettled` internal entry: spread it as
  * `internal: { actions: { [TASK_SETTLED_ENTRY]: taskSettledEntry({ ... }) } }`.
+ * Its concurrency is {@link NOTICE_CONCURRENCY}: a flow that keeps a
+ * conversation's board sets {@link REPLY_CONCURRENCY} on its turns' entries.
  *
- * Default concurrency: the conversation's turn (`run`) takes no concurrency
- * key, so no policy here could make a notice wait for it. A notice that
- * arrives while the conversation is mid-turn runs then, beside the turn, and
- * is never dropped. Two copies of one notice racing are acted on once by the
- * dedupe, a versioned write.
+ * Whoever sends a notice (the task session, or the board replaying what a row
+ * still owes), it waits for the reply the same way: the policy is the
+ * entry's. Two copies of one notice racing are acted on once by the dedupe, a
+ * versioned write.
  */
 export function taskSettledEntry(options: TaskSettledOptions) {
   /** Is the notice still owed, and the first time it is acted on? Then what does it do. */
@@ -137,5 +169,5 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     )
     .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard);
 
-  return { inputSchema: taskNoticeSchema, block };
+  return { inputSchema: taskNoticeSchema, block, concurrency: NOTICE_CONCURRENCY };
 }

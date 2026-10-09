@@ -267,6 +267,36 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     return created.body.session!.id;
   };
 
+  /**
+   * POST an action to the host's router as `userId`, the way an app's caller
+   * sends one: through the host's dispatch, so the action's concurrency
+   * policy applies. Returns the accepted request's id.
+   */
+  const post = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+    const path = [flow, sessionId, "actions", actionName];
+    const request = new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user": userId },
+      body: JSON.stringify({ userId, input })
+    });
+    const res: Response = await (await router()).POST(request, { params: { path } });
+    const body = (await res.json()) as { request?: { id: string }; error?: unknown };
+    if (res.status !== 202) throw new Error(`POST ${actionName} was refused (${res.status}): ${JSON.stringify(body)}`);
+    return body.request!.id;
+  };
+
+  /** Cancel a request as `userId`, through the host's abort route. */
+  const abort = async (userId: string, requestId: string, flow = "coordinator") => {
+    const path = [flow, "requests", requestId, "abort"];
+    const request = new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user": userId },
+      body: JSON.stringify({ userId })
+    });
+    const res: Response = await (await router()).POST(request, { params: { path } });
+    if (res.status >= 300) throw new Error(`aborting ${requestId} was refused (${res.status}): ${await res.text()}`);
+  };
+
   /** Run an action on `flow` as `userId`, in process. */
   const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
     const runtime = await state.getRuntime();
@@ -396,6 +426,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     agentAnswer,
     create,
     conversation,
+    post,
+    abort,
     act,
     settled,
     rows,
