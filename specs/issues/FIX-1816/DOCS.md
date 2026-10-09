@@ -23,9 +23,11 @@ reconcile the wording to that test as shipped.
 > restart while the turn waits loses nothing: the turn resumes after the restart, and the task
 > was filed once.
 >
-> Every ask has a ten-minute limit. If the task hasn't ended by then, the turn gets a timeout
-> error at the next background sweep, so within twenty minutes, and the task is cancelled.
-> Cancelling the turn that asked cancels the task it is waiting on. A worker that is itself
+> Every ask has a time limit: five minutes unless the worker sets its own, anywhere from 30
+> seconds to an hour. If the task hasn't ended by then, the turn gets a timeout error at the next
+> background sweep, and the task is cancelled. The sweep runs every ten minutes by default, so
+> the error can arrive up to one sweep late; a host that needs tighter limits sweeps more often.
+> Stopping the conversation while it waits cancels the task and ends the turn. A worker that is itself
 > working a task can't wait; it files without waiting, so asks never nest.
 >
 > Each answer replays the asking turn once, so an ask costs one extra replay. Use one when the
@@ -44,14 +46,19 @@ reconcile the wording to that test as shipped.
 > | Input | |
 > |---|---|
 > | `waitForResponse` | `true` to wait for the answer. Everything else is as for `addTask`, and an assignee it would refuse is refused the same way, with nothing parked |
+> | `timeoutMs` | How long to wait, from 30 000 (30 seconds) to 3 600 000 (an hour). Defaults to five minutes. Only with `waitForResponse` |
 >
 > | Error | When |
 > |---|---|
-> | `wait_timed_out` | The task did not end within ten minutes. It is cancelled |
+> | `wait_timed_out` | The task did not end within its time limit. It is cancelled |
+> | `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed |
 > | `wait_task_failed` | The task failed for good |
-> | `wait_task_cancelled` | The task was cancelled, or the turn that asked was |
+> | `wait_task_cancelled` | The task was cancelled by someone else |
 > | `wait_already_pending` | This step is already waiting on a task. Nothing is filed |
 > | `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
+>
+> Stopping the conversation while its turn waits ends the turn and cancels the task; the turn
+> doesn't see an error, because it doesn't run again.
 >
 > An asked task is an ordinary row: `listTasks` shows it, marked `asked`, and the board's limits
 > and the chain's depth limit apply to it. The `addTask_<board>` action has no wait option.
@@ -60,6 +67,27 @@ reconcile the wording to that test as shipped.
 
 > `addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
 > then returns the task's output. It needs a durability provider and a running durability sweeper. See the task board page for limits and errors.
+
+## UPDATE · `apps/docs/docs/advanced/durable-execution.md` · new subsection after "Resuming a suspended request" (P2c)
+
+> ### Stopping a suspended request
+>
+> The abort endpoint stops a suspended request as well as a running one. The request ends
+> `aborted` and its pending suspension is closed, so a resume that arrives later gets a `409`,
+> as it would for any suspension already resolved.
+>
+> A stop and a resume can race. Whichever reaches the suspension first wins. If the resume
+> won, the request is running again and the stop answers `409`; stop it again to stop the
+> running request.
+>
+> A request parked on an ask (see [the task board](/docs/orchestration/task-board)) also
+> cancels the task it was waiting on. A run that has already started on that task is not
+> interrupted; its result is discarded.
+
+## UPDATE · `packages/engine/README.md` · request abort (P2c)
+
+> `POST …/requests/:requestId/abort` stops a running or a suspended request. A suspended one
+> ends `aborted` at once; its pending suspension is closed.
 
 ## Not changed
 
