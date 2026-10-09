@@ -97,36 +97,135 @@ function preinstalledChromium(): string | undefined {
 }
 
 /**
- * The navigator row for one instance, reached by its accessible name.
+ * The navigator row for one leaf (a collection instance, or a singleton kind),
+ * reached by its accessible name, matched exactly.
  *
  * Deliberately the ACCESSIBLE name rather than a test id or the visible text:
- * the visible label runs the id and the kind together with only styling between
- * them, so "can this copy be told from its peer without looking" is a real
- * property of this screen and is graded here rather than assumed.
+ * the visible label is truncated to fit the rail, so "can this copy be told
+ * from its peer without looking" is a real property of this screen and is
+ * graded here rather than assumed. The row hangs under its kind's row, which
+ * carries the kind; the row's own name is the exact id.
  */
 function instanceRow(page: Page, id: string) {
-  return page.getByRole("button", { name: new RegExp(`^Flow instance ${id}(,|$)`) });
+  return page.getByRole("button", { name: id, exact: true });
 }
 
-/** Expand an instance's row if it is not already open. */
+/** The row's frame: its button plus the controls the tool draws after it. */
+function rowFrame(page: Page, id: string) {
+  return instanceRow(page, id).locator("xpath=..");
+}
+
+/**
+ * Open a collection kind's row so its copies are listed. Opening a kind
+ * selects nothing; the copies are one level below it.
+ */
+async function openKind(page: Page, kind: string): Promise<void> {
+  const row = page.locator(`nav button[data-kind="${kind}"]`);
+  if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
+}
+
+/**
+ * Open a leaf's row if it is not already open. Opening is not selecting:
+ * several leaves can be open at once, and the workspace moves when a session
+ * is picked, or, on an empty workspace, when a saved one is restored.
+ */
 async function expand(page: Page, id: string): Promise<void> {
   const row = instanceRow(page, id);
   if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
 }
 
-/** Open an instance and create a session under it, returning that session's id. */
+/**
+ * A session row as listed under one leaf. Scoped to that leaf's own list, so a
+ * pick is made from the copy the session is offered under.
+ */
+function sessionRow(page: Page, leaf: string, sessionId: string) {
+  return page.locator(`nav ul[data-leaf="${leaf}"] button[data-session-id="${sessionId}"]`);
+}
+
+/** The open session's id, read off the workspace badge, or null if none is open. */
+async function openSessionId(page: Page): Promise<string | null> {
+  const badge = page.getByTitle(/^Session ID: /);
+  if ((await badge.count()) === 0) return null;
+  return /^Session ID: (\S+)/.exec((await badge.getAttribute("title")) ?? "")?.[1] ?? null;
+}
+
+/** Open a leaf and create a session under it, returning that session's id. */
 async function openWithNewSession(page: Page, id: string): Promise<string> {
   await expand(page, id);
-  await page.getByTitle("New session").click();
+  const before = await openSessionId(page);
+  // The leaf's own "New session", not the first on the page: two leaves can be
+  // open at once, and the control must act on the copy whose row it is on.
+  await rowFrame(page, id).getByRole("button", { name: "New session", exact: true }).click();
   await page.waitForFunction(
-    () => !document.body.innerText.includes("no session"),
-    undefined,
+    (previous) => {
+      const badge = document.querySelector('[title^="Session ID: "]')?.getAttribute("title");
+      const current = /^Session ID: (\S+)/.exec(badge ?? "")?.[1] ?? null;
+      return current !== null && current !== previous;
+    },
+    before,
     { timeout: 15_000 },
   );
-  const badge = await page.getByTitle(/^Session ID: /).getAttribute("title");
-  const match = /^Session ID: (\S+)/.exec(badge ?? "");
-  if (match === null) throw new Error(`could not read the open session id (badge: ${badge})`);
-  return match[1]!;
+  const opened = await openSessionId(page);
+  if (opened === null) throw new Error("could not read the open session id");
+  return opened;
+}
+
+/**
+ * Calls made since `from` that address copy `to` with a request id of copy
+ * `other`'s: one copy's request re-addressed to its peer. Invisible on screen
+ * (the server refuses it) but the same mismatch as a flash.
+ */
+function misaddressedSince(from: number, to: string, other: string): string[] {
+  const foreign = addressedTo(other)
+    .map((url) => /\/requests\/([^/?]+)/.exec(url)?.[1])
+    .filter((rid): rid is string => rid !== undefined);
+  return apiCalls
+    .slice(from)
+    .filter((url) => url.includes(`/api/flows/${to}/`))
+    .filter((url) => foreign.some((rid) => url.includes(rid)));
+}
+
+/**
+ * Switch the workspace to a copy's session by picking its row, which is the
+ * switch an operator makes, and grade the FRAME the click produces.
+ *
+ * The screen is read on that frame with nothing awaited in between. The defect
+ * is a frame (a commit where the new copy is selected and the old copy's
+ * request is still installed), so a check that waits for the new reads to land
+ * cannot see it. The network is graded over everything the switch issued, up
+ * to the settled state, so a retired read landing late is caught too.
+ */
+async function switchTo(
+  page: Page,
+  to: Copy,
+  toSession: string,
+  from: Copy,
+  shotName: string,
+): Promise<void> {
+  const callsBeforeSwitch = apiCalls.length;
+  await sessionRow(page, to.id, toSession).click();
+  const midSwitch = await page.locator("main").innerText();
+  check(
+    !midSwitch.includes(from.marker),
+    `${from.id}'s result was still on screen under ${to.id} during the switch (read: ${midSwitch.slice(0, 400)})`,
+  );
+  await shot(page, shotName);
+  await page.waitForTimeout(2500);
+  const misaddressed = misaddressedSince(callsBeforeSwitch, to.id, from.id);
+  check(
+    misaddressed.length === 0,
+    `the switch addressed ${from.id}'s request to ${to.id}: ${misaddressed.join(", ")}`,
+  );
+  const opened = await openSessionId(page);
+  check(
+    opened === toSession,
+    `picking ${to.id}'s session did not open it (badge: ${opened}, expected ${toSession})`,
+  );
+  const settled = await page.locator("main").innerText();
+  check(
+    settled.includes(to.marker) && !settled.includes(from.marker),
+    `switching to ${to.id} did not show its work alone (read: ${settled.slice(0, 400)})`,
+  );
 }
 
 /** Dispatch the copy's action and wait for its result to render in the stream. */
@@ -204,6 +303,10 @@ async function main() {
     await page.goto(ORIGIN, { waitUntil: "networkidle" });
 
     // ---- 1. Both copies are distinguishable, and the singleton is unchanged.
+    // The copies are listed under their kind's row, read off the catalog so a
+    // swapped fixture still names the right row.
+    const kind = catalog.flows.find((f) => f.id === copyA.id)?.kind ?? copyA.id;
+    await openKind(page, kind);
     const navText = await page.locator("aside").first().innerText();
     check(
       navText.includes(copyA.id) && navText.includes(copyB.id),
@@ -213,7 +316,17 @@ async function main() {
       navText.includes(fixture.singleton.id),
       "the navigator did not show the singleton alongside the two copies",
     );
-    const rowTitle = await instanceRow(page, copyB.id).getAttribute("title");
+    // One row per copy, each NAMED by its exact id: a row whose accessible name
+    // matched both, or neither, would read as zero or two here.
+    for (const copy of [copyA, copyB]) {
+      const rows = await instanceRow(page, copy.id).count();
+      check(rows === 1, `copy ${copy.id} was not exactly one row by accessible name (found ${rows})`);
+    }
+    // The visible label is truncated to fit the rail, so the full id has to be
+    // recoverable from the row itself: its copy control carries it.
+    const rowTitle = await rowFrame(page, copyB.id)
+      .getByRole("button", { name: `Copy instance ID ${copyB.id}`, exact: true })
+      .getAttribute("title");
     check(
       (rowTitle ?? "").includes(copyB.id),
       `the full instance id was not discoverable from the row (title: ${rowTitle})`,
@@ -238,38 +351,18 @@ async function main() {
     );
     await shot(page, "02-copy-a");
 
-    // ---- 3. Switch straight to B. Not via a collapse: clicking the peer's row
-    // while A is open IS the switch an operator makes, and collapsing first
-    // would empty the workspace before the interesting moment.
-    //
-    // Both observations below are taken on the FRAME the click produces, with
-    // nothing awaited in between. The defect is a frame — a commit where the
-    // new copy is selected and the old copy's request is still installed — so a
-    // check that waits for the new reads to land cannot see it.
-    const callsBeforeSwitch = apiCalls.length;
-    await instanceRow(page, copyB.id).click();
-    const midSwitch = await page.locator("main").innerText();
-    check(
-      !midSwitch.includes(copyA.marker),
-      `copy A's result was still on screen under copy B during the switch (read: ${midSwitch.slice(0, 400)})`,
-    );
-    // The network is the sharper witness: a request of A's re-addressed to B is
-    // invisible on screen (the server refuses it) but is the same mismatch.
-    const requestIdsOfA = addressedTo(copyA.id)
-      .map((url) => /\/requests\/([^/?]+)/.exec(url)?.[1])
-      .filter((id): id is string => id !== undefined);
-    const misaddressed = apiCalls
-      .slice(callsBeforeSwitch)
-      .filter((url) => url.includes(`/api/flows/${copyB.id}/`))
-      .filter((url) => requestIdsOfA.some((id) => url.includes(id)));
-    check(
-      misaddressed.length === 0,
-      `the switch addressed copy A's request to copy B: ${misaddressed.join(", ")}`,
-    );
-    await shot(page, "03-switch-no-flash");
-
+    // ---- 3. B, opened while A's work is on screen, gets its own session.
+    // Opening B's row selects nothing; starting a session under it is what
+    // moves the workspace, so that is graded for A's requests leaking across.
+    const callsBeforeB = apiCalls.length;
     const sessionB = await openWithNewSession(page, copyB.id);
     check(sessionB !== sessionA, "the two copies were handed the same session");
+    const leakedIntoB = misaddressedSince(callsBeforeB, copyB.id, copyA.id);
+    check(
+      leakedIntoB.length === 0,
+      `opening B addressed copy A's request to copy B: ${leakedIntoB.join(", ")}`,
+    );
+    await shot(page, "03-copy-b-session");
     await dispatch(page, "inspect");
     const streamB = await page.locator("main").innerText();
     check(
@@ -286,20 +379,13 @@ async function main() {
     );
     await shot(page, "04-copy-b");
 
-    // ---- 4. Back to A. The saved session is offered again, and it is A's.
-    await instanceRow(page, copyA.id).click();
-    await page.waitForTimeout(2500);
-    const backBadge = await page.getByTitle(/^Session ID: /).getAttribute("title");
-    check(
-      (backBadge ?? "").includes(sessionA),
-      `returning to copy A did not restore A's own session (badge: ${backBadge}, expected ${sessionA})`,
-    );
-    const streamBack = await page.locator("main").innerText();
-    check(
-      streamBack.includes(copyA.marker) && !streamBack.includes(copyB.marker),
-      `returning to copy A did not show A's work alone (read: ${streamBack.slice(0, 400)})`,
-    );
-    await shot(page, "05-back-to-a");
+    // ---- 4. Switch straight between the two, in both directions. Picking the
+    // peer's session row while the other copy's work is on screen IS the switch
+    // an operator makes; both copies have a request installed by now, so each
+    // direction can leak. Back to A first: A's session is offered under A, and
+    // it restores A's work alone.
+    await switchTo(page, copyA, sessionA, copyB, "05-switch-to-a-no-flash");
+    await switchTo(page, copyB, sessionB, copyA, "05b-switch-to-b-no-flash");
 
     // ---- 5. Per-instance session state, read through the panel's own surface.
     const stateA = (await (
@@ -345,9 +431,10 @@ async function main() {
 
     // ---- 7. A reload must not hand one copy's saved session to its peer.
     await page.reload({ waitUntil: "networkidle" });
+    await openKind(page, kind);
     await expand(page, copyB.id);
     await page.waitForTimeout(2500);
-    const reloadBadge = await page.getByTitle(/^Session ID: /).getAttribute("title");
+    const reloadBadge = await openSessionId(page);
     check(
       !(reloadBadge ?? "").includes(sessionA),
       `after a reload, copy B was handed copy A's session (badge: ${reloadBadge})`,
@@ -365,8 +452,8 @@ async function main() {
       evidence:
         `the shipped DevTool bundle under \`fsdev dev\` on ${ORIGIN}, driven in Chromium: ` +
         `both copies of \`${copyA.id.split("-")[0]}\` listed by exact id beside the \`${fixture.singleton.id}\` singleton; ` +
-        `A → B → A each showed its own session and request with no marker from the other, ` +
-        `including during the switching frame; dispatches were addressed to \`${copyA.id}\`, \`${copyB.id}\` ` +
+        `A → B → A → B each showed its own session and request with no marker from the other, ` +
+        `including during the frame each session pick produced; dispatches were addressed to \`${copyA.id}\`, \`${copyB.id}\` ` +
         `and \`${fixture.singleton.id}\` on their own URLs; per-session state held each copy's marker; ` +
         `the singleton listed by kind while the collection members listed by \`flowId\`; ` +
         `a reload restored each copy's own saved session and never the peer's. ` +
