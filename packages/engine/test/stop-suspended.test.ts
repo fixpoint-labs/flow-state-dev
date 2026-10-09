@@ -408,6 +408,23 @@ describe("stop a parked turn", () => {
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });
 
+  it("a turn left parked behind an approval that expired is stopped, through its own lifecycle", async () => {
+    const seen: string[] = [];
+    const finishedWith: string[] = [];
+    const flow = parkingFlow(seen, { onFinished: (info) => finishedWith.push(info.status) });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // The sweep expired the approval; nothing continues the turn after that.
+    await h.provider.suspend({ ...gate, status: "expired", resolvedAt: Date.now() });
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(finishedWith).toEqual(["aborted"]);
+    expect(seen).toEqual([]);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
+  });
+
   it("OFF STATE: without durable execution a parked turn answers as finished, as before", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -702,6 +719,21 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+  });
+
+  it("an overdue ask gate left pending on a finished turn is expired, not retried every tick", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() - 1_000 });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    // The turn ended without its gate resolving (a stop that ended it before
+    // its replay reached the ask).
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "aborted" }, ["suspended"], Date.now());
+
+    const pending = await runTick(tickArgs(h));
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
+    expect(pending).toEqual([]);
+    expect(h.finished).toHaveLength(0);
   });
 
   it("a pending gate is not re-driven", async () => {

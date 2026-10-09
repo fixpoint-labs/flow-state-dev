@@ -3924,17 +3924,20 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
   it("reaches a request running in another process through its heartbeat", async () => {
     const stores = createInMemoryStores();
     const flow = makeStoppableFlow("stop-hook-xproc");
-    const target = await startTarget(runAction, stores, flow, "req_stop_xproc", {
-      sessionId: "sess_stop_xproc"
-    });
 
     // A fresh copy of the engine is a second process: its abort registry has
     // never seen the target's controller, so only the stored intent and the
-    // target's own heartbeat can stop it.
+    // target's own heartbeat can stop it. Loaded before the target starts: on
+    // a loaded machine the load alone can outlast the target's self-complete
+    // window, and the stop would then find it finished.
     vi.resetModules();
     const other = (await import("../src")) as { runAction: Run };
     const otherRegistry = await import("../src/execution/abort-registry");
     expect(other.runAction).not.toBe(runAction);
+
+    const target = await startTarget(runAction, stores, flow, "req_stop_xproc", {
+      sessionId: "sess_stop_xproc"
+    });
     // Precondition: the target's controller is visible here and not there.
     expect(hasActiveAbortController("req_stop_xproc")).toBe(true);
     expect(otherRegistry.hasActiveAbortController("req_stop_xproc")).toBe(false);

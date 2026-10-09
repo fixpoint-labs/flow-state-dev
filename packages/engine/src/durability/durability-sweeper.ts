@@ -141,6 +141,9 @@ function defaultHolder(): string {
   return `durability-sweeper-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Request statuses a turn has ended in: nothing it parked on is waited on. */
+const ENDED_STATUSES: RequestStatus[] = ["completed", "failed", "incomplete", "aborted"];
+
 /** Terminal request statuses whose checkpoints are backstop-prunable by age. */
 const PRUNABLE_TERMINAL_STATUSES: RequestStatus[] = ["completed", "failed", "aborted"];
 
@@ -547,6 +550,17 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
     );
     if (result.ok) return;
     if (result.refused === "already-resolved") {
+      // Its turn has ended (a stop that ended it before its replay reached
+      // the ask): nothing waits on the gate, so it is expired rather than
+      // retried every tick.
+      const request = await stores.request.get(record.requestId);
+      if (request !== undefined && ENDED_STATUSES.includes(request.status)) {
+        const current = await provider.loadSuspension(record.requestId, record.suspensionId);
+        if (current?.status === "pending") {
+          await provider.suspend({ ...current, status: "expired", resolvedAt: Date.now() });
+        }
+        return;
+      }
       // The gate was listed pending this tick, yet the resume found it (or its
       // turn) already past waiting: the answer won the race, or the record and
       // its request disagree. Nothing to change; worth seeing if it recurs.

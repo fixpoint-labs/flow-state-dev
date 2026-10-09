@@ -84,8 +84,17 @@ export async function stopSuspendedRequest(
   record: RequestRecord
 ): Promise<SuspendedStopResult> {
   const [gate] = await pendingGatesOf(deps, record);
-  // No pending gate: an answer resolved it first, and the turn runs again.
-  if (gate === undefined) return "already-resolved";
+  if (gate === undefined) {
+    // Parked behind a gate that expired: nothing will ever continue the turn
+    // on its own, so the stop does, and it ends through its own lifecycle.
+    const expired = await expiredLatestGate(deps, record);
+    if (expired !== undefined) {
+      const resumeContext: ResumeContext = { suspensionId: expired.suspensionId, action: "reject", resumedBy: "stop" };
+      return (await continueWithStop(deps, record, resumeContext)) ? "stopped" : "already-resolved";
+    }
+    // No pending gate: an answer resolved it first, and the turn runs again.
+    return "already-resolved";
+  }
 
   // A turn interrupted before its log held the gate can't be replayed onto it:
   // it is continued as crash recovery continues it, with the stop recorded, so
@@ -104,6 +113,17 @@ export async function stopSuspendedRequest(
 
   const ended = await stopAtNonAskGate(deps, record, gate);
   return ended ? "stopped" : "already-resolved";
+}
+
+/** The turn's last logged gate, when it expired: the turn waits on nothing now. */
+async function expiredLatestGate(
+  deps: SuspendedStopDeps,
+  record: RequestRecord
+): Promise<SuspensionRecord | undefined> {
+  const suspensionId = latestGateIdOf(record);
+  if (suspensionId === undefined) return undefined;
+  const gate = await deps.provider.loadSuspension(record.id, suspensionId);
+  return gate?.status === "expired" ? gate : undefined;
 }
 
 /**
