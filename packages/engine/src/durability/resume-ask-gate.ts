@@ -73,22 +73,12 @@ export async function resumeAskGate(
       }
       return { suspension };
     },
-    resolve: (suspension) => ({
-      status: "submitted",
-      resolvedBy: resumedBy,
-      resumeData: parsed,
-      resumeContext: {
-        suspensionId: suspension.suspensionId,
-        action: "submit",
-        data: parsed,
-        resumedBy
-      }
-    })
+    action: "submit",
+    data: parsed,
+    resumedBy
   });
 
   if (resumed.ok) return { ok: true };
-  if (resumed.busy) {
-    return { ok: false, refused: "busy", detail: "another resume of this turn is in progress" };
-  }
-  return resumed.refusal;
+  if ("refusal" in resumed) return resumed.refusal;
+  return { ok: false, refused: "busy", detail: "another resume of this turn is in progress" };
 }

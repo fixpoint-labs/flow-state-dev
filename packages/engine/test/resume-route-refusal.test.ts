@@ -88,7 +88,7 @@ describe("resume route: refusals from the shared resume path", () => {
   });
 
   it("any other refusal answers 500, not a concurrency conflict", async () => {
-    refusal.value = { ok: false, busy: false, refusal: "unexpected" };
+    refusal.value = { ok: false, refusal: "unexpected" };
     expect((await resume()).status).toBe(500);
   });
 });

@@ -1,31 +1,25 @@
 /**
  * Resolve a suspension and continue its request, under the request's lease.
  *
- * The one path every resume takes, whoever asks for it: the public resume route
- * (`routes/resume-routes.ts`), a conversation resuming its own ask
- * (`context/ask-resume-operation.ts`), and the durability sweep resuming an
- * overdue ask (`durability/durability-sweeper.ts`). Each caller decides
- * whether it may resume; this does the part that must be identical for all of
- * them:
- *
- * 1. Take the request's lease. Held by someone else → `busy`, nothing written.
- * 2. Under the lease, let the caller re-read and admit the suspension, or
- *    refuse. A refusal releases the lease and writes nothing.
- * 3. Record the resolution on the suspension, then continue the SAME request.
- *    `runAction` releases the lease when the run ends or parks again.
- * 4. If setup fails before the run starts, put the suspension back exactly as
- *    it was admitted, release the lease, and rethrow, so the resume can be
- *    tried again. Nothing after the run starts can reach this: see the
- *    containment note on `createInboundTransportHost`'s `continueRequest`.
+ * Shared by the public resume route, an ask resume, and (through that) the
+ * durability sweep. The caller admits the suspension under the lease. This
+ * records the resolution, continues the same request, and, if setup fails
+ * before the run starts, puts the suspension back and releases the lease.
+ * Nothing after the run starts can reach that revert: see the containment
+ * note on `createInboundTransportHost`'s `continueRequest`.
  */
-import type { ResumeContext, SuspensionRecord, SuspensionStatus } from "@flow-state-dev/core/types";
+import {
+  RESUME_ACTION_STATUS,
+  type ResumeAction,
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
 import type { ContinueRequestResult } from "../execution/request-continuation";
 import type { HostContinueRequestOptions } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import type { DurabilityProvider } from "./types";
 
 /** How long a resume holds the request's lease before the run takes over. */
-export const RESUME_LEASE_MS = 60_000;
+const RESUME_LEASE_MS = 60_000;
 
 /** What a resume needs from the host. */
 export type ResumeDeps = {
@@ -33,19 +27,11 @@ export type ResumeDeps = {
   continueRequest: (options: HostContinueRequestOptions) => Promise<ContinueRequestResult>;
 };
 
-/** How the admitted suspension is resolved. */
-export type Resolution = {
-  status: SuspensionStatus;
-  resumeContext: ResumeContext;
-  resumeData?: unknown;
-  resolvedBy?: string;
-};
-
 /** The outcome of {@link resumeUnderLease}. */
 export type LeasedResume<TRefusal> =
   | { readonly ok: true; readonly handle: ContinueRequestResult }
   | { readonly ok: false; readonly busy: true }
-  | { readonly ok: false; readonly busy: false; readonly refusal: TRefusal };
+  | { readonly ok: false; readonly refusal: TRefusal };
 
 export async function resumeUnderLease<TRefusal>(
   deps: ResumeDeps,
@@ -55,7 +41,9 @@ export async function resumeUnderLease<TRefusal>(
     holder: string;
     /** Runs under the lease: the suspension to resolve, or why not. */
     admit: () => Promise<{ suspension: SuspensionRecord } | { refusal: TRefusal }>;
-    resolve: (suspension: SuspensionRecord) => Resolution;
+    action: ResumeAction;
+    data?: unknown;
+    resumedBy?: string;
   }
 ): Promise<LeasedResume<TRefusal>> {
   const { provider } = deps;
@@ -70,7 +58,7 @@ export async function resumeUnderLease<TRefusal>(
     const admitted = await args.admit();
     if ("refusal" in admitted) {
       await provider.releaseLease(args.requestId, lease.leaseId);
-      return { ok: false, busy: false, refusal: admitted.refusal };
+      return { ok: false, refusal: admitted.refusal };
     }
     suspension = admitted.suspension;
   } catch (error) {
@@ -78,18 +66,22 @@ export async function resumeUnderLease<TRefusal>(
     throw error;
   }
 
-  const resolution = args.resolve(suspension);
   try {
     await provider.suspend({
       ...suspension,
-      status: resolution.status,
+      status: RESUME_ACTION_STATUS[args.action],
       resolvedAt: Date.now(),
-      resolvedBy: resolution.resolvedBy,
-      resumeData: resolution.resumeData
+      resolvedBy: args.resumedBy,
+      resumeData: args.data
     });
     const handle = await deps.continueRequest({
       requestId: args.requestId,
-      resumeContext: resolution.resumeContext
+      resumeContext: {
+        suspensionId: suspension.suspensionId,
+        action: args.action,
+        data: args.data,
+        resumedBy: args.resumedBy
+      }
     });
     return { ok: true, handle };
   } catch (error) {
