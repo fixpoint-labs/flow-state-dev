@@ -234,4 +234,29 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       await host.dispose();
     }
   });
+
+  it("is started by the next filing of another task, once", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const filing = await host.filingOf("alice", conv);
+      const lost = await host.loseDispatches("runTaskBoard");
+      const stranded = await file(host, "alice", conv, { goal: "stranded", assignee: "eng.tasker" });
+      expect(lost.lost()).toBe(1);
+      await host.settled();
+      expect(host.runs).toEqual([]);
+
+      lost.restore();
+      const next = await file(host, "alice", conv, { goal: "next", assignee: "eng.tasker" });
+      await host.settled();
+      expect(host.runs.map((run) => run.taskId).sort()).toEqual([stranded.taskId, next.taskId].sort());
+      for (const id of [stranded.taskId!, next.taskId!]) {
+        const row = await host.row("alice", filing, id);
+        expect(row?.status).toBe("completed");
+        expect(row?.metadata?.startOwed ?? null).toBeNull();
+      }
+    } finally {
+      await host.dispose();
+    }
+  });
 });
