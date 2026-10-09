@@ -38,7 +38,8 @@ export type SessionItem = {
   agentName?: string;
   /**
    * A message item's `role`: `user` for the caller's message, `assistant` for
-   * one the flow emitted. Absent on every other item type.
+   * one the flow emitted. The framework writes no other role on a message
+   * item. Absent on every other item type.
    */
   role?: MessageItem["role"];
 };

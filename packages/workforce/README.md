@@ -2201,14 +2201,17 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   reached, nobody takes the post, and the conversation says so.
 - **Recent lines.** Every post is routed and delivered with the conversation's recent lines: the
   person's posts, the coordinator's own replies and the delegates' answers that landed, oldest
-  first, each as `{ from, text }`. They are the last 10, at most 4,000 characters of text in all,
+  first, each under who wrote it (the person's user id, the coordinator's worker id, or the
+  answering delegate's worker id). They are the last 10, at most 4,000 characters of text in all,
   counted back from the newest; the line that crosses the cap is cut short with `…`, and older ones
   are left out. They come from this conversation's own messages, as far back as the session's
-  history window reaches, never another conversation's. Best fit's evaluation reads
-  `{ recent, post }`, so a post that follows up on a delegate's answer goes to that delegate. The
-  delegate that takes a post, by any policy, gets them as the post's `recent`, and
-  `delegatedPostCapability` on its generator's `uses` shows them to its model for that turn only;
-  the built-in `agent` flow's turn has it. The delegate's own session never keeps them.
+  history window reaches (its last 50 completed turns), never another conversation's. Best fit
+  reads the post with them, so a follow-up to a delegate's answer can go back to that delegate;
+  the other policies don't route by them. An evaluation model passed as
+  `routeModel` (a scripted one in a test, say) is handed `{ recent, post }`, each line and the post
+  as `{ from, text }`. Whatever the policy, the delegate that takes a post is shown them when its
+  generator has `delegatedPostCapability` on `uses`, for that turn only; the built-in `agent` flow's
+  turn has it. The delegate's own session never keeps them.
 - **Rounds.** With `rounds:` above 0, a delegate's answer goes back out, at most that many times.
   `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers

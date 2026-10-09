@@ -103,7 +103,7 @@ const help = createClient({ flowKind: session.flowKind, userId, baseUrl });
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
-Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies the coordinator writes itself carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`.
+Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
 A delegate's answer arrives in a request of its own once the delegate's turn ends. To see it, follow the session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), not the `run` request's stream.
 
@@ -128,17 +128,32 @@ Nobody took this post: best fit couldn't place it, and the coordinator's own tur
 
 ### Follow-ups and recent lines
 
-A follow-up often makes sense only after what came before it. Say you ask about your laptop's wifi, `support.devices` answers, and you write back "It sees it. It fails right after the password." On its own words, that post reads like a password question for `support.accounts`.
+A follow-up often makes sense only after what came before it. Say you ask about your laptop's wifi, `support.devices` answers, and you write back "It sees it. It fails right after the password." Read alone, that looks like a password question for `support.accounts`. Read with the lines before it, best fit can tell it's about the wifi and send it back to `support.devices`.
 
-So every post travels with the conversation's **recent lines**: your posts, the coordinator's own replies, and the delegates' answers that have landed, oldest first, each under who wrote it. Best fit's evaluator call reads the post with them, and a post that follows up on a delegate's answer goes to that delegate. Whatever the `routing:`, the delegate that takes a post is shown the same lines beside it.
+So every post travels with the conversation's **recent lines**: your posts, the coordinator's own replies, and the delegates' answers that have landed, oldest first, each under who wrote it. Under `best-fit`, the evaluator call reads the post with them, so a follow-up to a delegate's answer can go back to that delegate. The other policies don't route by the lines. Whatever the `routing:`, the delegate that takes a post is shown the same lines beside it, as a context section like this:
+
+```text
+Recent lines in the conversation with support.help before this post, oldest first:
+- user_42: Hi, my laptop won't join the office wifi since this morning.
+- support.help: I've handed this to support.devices.
+- support.devices: Does the laptop see the office network when you pick it?
+```
+
+Each line starts with who wrote it:
+
+| Line by | Named as | Example |
+| --- | --- | --- |
+| You | Your user id | `user_42` |
+| The coordinator, in its own replies and in `Nobody took this post` | The coordinator's worker id | `support.help` |
+| A delegate, in an answer that landed | The delegate's worker id | `support.devices` |
 
 What a delegate gets:
 
 - **The last 10 lines, at most 4,000 characters in all.** They're counted back from the newest. The line that crosses 4,000 characters is cut short and ends with `…`, and anything older is left out.
-- **This conversation's lines only.** They're read from this conversation's own messages, as far back as the session's history window reaches (its last 50 requests, by default). A delegate never sees another conversation's lines.
+- **This conversation's lines only.** They're read from this conversation's own messages, as far back as the session's history window reaches: its last 50 completed turns, where each post, each answer that lands and each other action on the conversation counts as one. A delegate never sees another conversation's lines.
 - **Shown for one turn.** The lines reach the delegate's model as context for the turn that answers the post. The delegate's own session keeps the post and its answer, never the lines.
 
-The first post in a conversation has no lines, so it's routed and delivered as it is. A delegate on the built-in `agent` flow is shown the lines as it is; a flow of your own shows them [once you add a capability](#making-your-own-flow-a-delegate).
+The first post in a conversation has no lines, so it's routed and delivered alone. A delegate on the built-in `agent` flow shows its model the lines with no changes; a flow of your own shows them [once you add a capability](#making-your-own-flow-a-delegate).
 
 ## Changing the delegates
 
@@ -324,7 +339,7 @@ const door = generator({
 });
 ```
 
-On a delegated post that came with lines, the model gets a context section headed `Recent lines in the conversation with <coordinator> before this post, oldest first:`, then one `- <from>: <text>` per line. On any other turn, and on a post with no lines, the capability adds nothing.
+On a delegated post that came with lines, the model gets the context section shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines): a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, the capability adds nothing.
 
 ## What it won't do
 

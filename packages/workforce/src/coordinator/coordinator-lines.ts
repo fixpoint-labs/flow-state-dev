@@ -6,7 +6,8 @@
  * A line is one message a person sees in the conversation: their post, the
  * coordinator's own reply, or a delegate's answer that landed. Lines are read
  * from the conversation's own items, as far back as its request loads them
- * (the session's history window, 50 requests by default), and the only
+ * (the session's history window: its last 50 completed turns by default, each
+ * request one turn), and the only
  * caller input among them is the person's own posts. Routing records, tool
  * calls and anything kept out of the conversation are not lines.
  *

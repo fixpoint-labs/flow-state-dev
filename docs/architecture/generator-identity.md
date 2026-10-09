@@ -104,7 +104,7 @@ const researcher = generator({
 });
 ```
 
-`selectForContext` returns raw `SessionItem[]` — no visibility filtering, no conversation-history filter, no formatting. You get exactly the slice you asked for, so you can build whatever prompt context you need. It respects `includeTransient` and honors `itemVisibility` / `agentName` / `itemTypes` filters. A message item carries its `role` (`user` for the caller's message, `assistant` for one the flow emitted), so a reader can tell who wrote each line alongside its `agentName`.
+`selectForContext` returns raw `SessionItem[]` — no visibility filtering, no conversation-history filter, no formatting. You get exactly the slice you asked for, so you can build whatever prompt context you need. It respects `includeTransient` and honors `itemVisibility` / `agentName` / `itemTypes` filters. A message item carries its `role` (`user` for the caller's message, `assistant` for one the flow emitted; the type also allows `system`, `developer` and `tool`, which the framework never writes on a message item), so a reader can tell who wrote each line alongside its `agentName`.
 
 ## Pattern factories take explicit visibility knobs
 
