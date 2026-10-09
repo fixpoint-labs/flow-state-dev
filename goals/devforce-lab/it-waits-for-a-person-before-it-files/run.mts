@@ -428,6 +428,13 @@ await runGoal(async () => {
       charter,
       readFileSync(charter, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
     );
+    // The chief of staff delegates to the EM, and an installation refuses a
+    // delegate that isn't a standard worker, so the tree drops it there too.
+    const chiefOfStaff = join(root, "org/workers/chief-of-staff/WORKER.md");
+    writeFileSync(
+      chiefOfStaff,
+      readFileSync(chiefOfStaff, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
+    );
     let refused: string | undefined;
     try {
       const { lab } = await open("ask-no-em", inMemoryStores(), { root });

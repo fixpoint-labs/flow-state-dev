@@ -51,8 +51,8 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "footer initials", audit: "F22", v2: { line: 110, has: "width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink)" }, select: "[data-testid=footer-user]", min: 1, want: { family: "mono", size: 10, width: 22, border: { width: 1, colour: "foreground" } } },
 
   // Shift Coordinator's centre.
-  { id: "Shift Coordinator feed", audit: "C10", v2: { line: 123, has: "padding:36px 32px 12px" }, select: "[data-look=cos-feed]", on: ["cos"], min: 1, want: { padding: [36, 32, 12, 32] } },
-  { id: "Shift Coordinator column", audit: "C10", v2: { line: 124, has: "max-width:720px" }, select: "[data-look=cos-column]", on: ["cos"], min: 1, want: { width: 720 } },
+  { id: "Shift Coordinator feed", audit: "C10", v2: { line: 123, has: "padding:36px 32px 12px" }, select: "[data-look=conversation-feed]", on: ["cos"], min: 1, want: { padding: [36, 32, 12, 32] } },
+  { id: "Shift Coordinator column", audit: "C10", v2: { line: 124, has: "max-width:720px" }, select: "[data-look=conversation-column]", on: ["cos"], min: 1, want: { width: 720 } },
   { id: "Shift Coordinator square", audit: "C1", v2: { line: 126, has: "width:40px;height:40px;background:var(--ink);color:var(--paper);font:600 13px 'IBM Plex Mono'" }, select: "[data-testid=cos-header] > [data-look=avatar]", on: ["cos"], min: 1, want: { width: 40, surface: "foreground", family: "mono", size: 13, weight: 600 } },
   { id: "Shift Coordinator sub line", audit: "C1", v2: { line: 127, has: "font:500 11.5px 'IBM Plex Mono'" }, select: "[data-testid=cos-sub], [data-testid=cos-watching]", on: ["cos"], min: 1, want: { family: "mono", size: 11.5 } },
   { id: "message label", audit: "C2", v2: { line: 135, has: "font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em" }, select: "[data-testid=cos] [data-look=message-label]", on: ["cos"], min: 1, want: { family: "mono", size: 10.5, tracking: 0.12 } },

@@ -62,6 +62,13 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     "gap-tabs": { legs: [/^\[control gap-tabs\] a project's four tabs:/] },
     "no-gate": { legs: [/^\[control no-gate\] the outsider is refused:/] },
     "no-retry": { legs: [/^\[control no-retry\] a burst of joins leaves one session per member:/, /^\[control no-retry\] a burst of posts lands whole:/] },
+    "in-memory": { legs: [/^\[control in-memory\] a restart keeps the projects and their rooms:/] },
+  },
+  "goals/devforce-lab/it-codes-in-the-projects-repository": {
+    // `a:marker` (and every leg that needs a project's source)
+    "fixed-source": { legs: [/^\[control fixed-source\] a:marker — /] },
+    // `b:second-run-sees-file` (and `a:note-saved`, `b:file-saved`)
+    "no-sync-back": { legs: [/^\[control no-sync-back\] b:second-run-sees-file — /] },
   },
   // "must FAIL on leg 2, *the mailbox's board returned no rows* (legs 3, 4 and 5 go red with it)"
   "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": {
@@ -142,7 +149,7 @@ export function manifest(): Entry[] {
     {
       id: "P3.3",
       path: "goals/shift-manager/it-groups-workstreams-under-their-projects",
-      controls: ["unread", "gap-tabs", "no-gate", "no-retry"],
+      controls: ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory"],
       covered: "no-tool (a1)",
       controlEnv: { GOAL_LEG: "model-free" },
     },
