@@ -81,7 +81,7 @@ import {
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { COORDINATOR_KIND, DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
-import { delegatedPostEntry, delegatedPostOnFinished } from "./coordinator/delegated-post";
+import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import {
@@ -801,8 +801,9 @@ const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer
  * The built-in agent's turn, built once per flow that runs it: its settings
  * schema, the `run` sequence (skill matching, the worker's default skills,
  * and the answer), the request `onStarted` that loads the turn's worker, the
- * session and resources a flow on an installation declares, and the
- * cross-key checks a mint runs.
+ * session and resources a flow on an installation declares, the cross-key
+ * checks a mint runs, and the names the answer's messages carry as
+ * `agentName` (`answerNames`).
  *
  * The `agent` flow is this turn behind a door. The `coordinator` flow runs the
  * same turn for its judgment, with {@link AgentTurnShare.extraTools}, so a
@@ -983,7 +984,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // hears and one per direct conversation, so nothing said in one reaches
       // another. Bounded by the session's history window (the framework's
       // default, 50 turns); older turns fall out rather than being summarized.
-      history: true,
+      // On a coordinator's delivery, the delivering conversation's recent
+      // lines join it as one user-role message before the post, for this
+      // call only; on any other turn it is `history: true` unchanged.
+      history: delegatedPostHistory,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a kind built without one
@@ -1076,11 +1080,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       user: (input) => input.message
     });
 
-  const answer = answerWith(skillsBinding, share.answerName);
-  const answerWithActivateTool = answerWith(
-    skillsBindingWithActivateTool,
-    `${share.answerName}-with-activate-tool`
-  );
+  // The answer's two generator names, which its messages carry as `agentName`.
+  const answerNames = [share.answerName, `${share.answerName}-with-activate-tool`] as const;
+  const answer = answerWith(skillsBinding, answerNames[0]);
+  const answerWithActivateTool = answerWith(skillsBindingWithActivateTool, answerNames[1]);
 
   // `createSkillActivator` takes `enableLlmClassifier` at construction, so
   // one instance can't honour a per-seat switch on tier 3 alone. Two full
@@ -1266,7 +1269,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     return problems.length > 0 ? problems.join(" ") : undefined;
   };
 
-  return { options, settings, inputSchema, run, bound, mintProblems };
+  return { options, settings, inputSchema, run, bound, mintProblems, answerNames };
 }
 
 /** What a flow on an installation declares to run the agent's turn. */

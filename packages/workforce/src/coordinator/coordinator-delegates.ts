@@ -15,9 +15,10 @@
  * arriving together both land, and neither is lost.
  *
  * The same server-written state holds what routing keeps per conversation:
- * best fit's hold, round robin's turn, the delivery ledger and the rounds still
- * open. Only this module, the delivery code and the rounds write these fields.
- * The flow declares them `serverOwned`, so a session create can't seed them.
+ * best fit's hold, round robin's turn, the delivery ledger, the rounds still
+ * open and the answers that landed last. Only this module, the delivery code,
+ * the rounds and the answer's claim write these fields. The flow declares them
+ * `serverOwned`, so a session create can't seed them.
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -28,10 +29,12 @@ import {
   DELIVERIES_STATE,
   FALLBACK_STATE,
   HOLD_STATE,
+  LANDED_STATE,
   MAX_DELEGATES,
   ROUND_ROBIN_STATE,
   ROUNDS_STATE
 } from "./coordinator-keys";
+import { landedAnswersSchema } from "./coordinator-lines";
 
 /** One delegate record. */
 export const delegateRecordSchema = deliveryDelegateSchema.extend({
@@ -82,7 +85,8 @@ export const coordinatorStateShape = {
   [HOLD_STATE]: bestFitHoldSchema.nullable().default(null),
   [DELIVERIES_STATE]: deliveryLedgerSchema.default([]),
   [ROUND_ROBIN_STATE]: roundRobinCursorSchema.nullable().default(null),
-  [ROUNDS_STATE]: z.array(openRoundSchema).default([])
+  [ROUNDS_STATE]: z.array(openRoundSchema).default([]),
+  [LANDED_STATE]: landedAnswersSchema.default([])
 } as const;
 
 /** The fields only the flow's own code writes. */
@@ -92,7 +96,8 @@ export const COORDINATOR_SERVER_OWNED: readonly string[] = [
   HOLD_STATE,
   DELIVERIES_STATE,
   ROUND_ROBIN_STATE,
-  ROUNDS_STATE
+  ROUNDS_STATE,
+  LANDED_STATE
 ];
 
 export const coordinatorSessionStateSchema = z.object(coordinatorStateShape);

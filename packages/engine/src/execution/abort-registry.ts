@@ -1,8 +1,9 @@
 /**
  * In-process registry of AbortControllers for active requests.
  *
- * Each runAction call registers a controller here. The controller is
- * deregistered when the request reaches any terminal state.
+ * Each runAction call (each run attempt of a request) registers its own
+ * controller here, and deregisters that controller when the attempt reaches
+ * any terminal state.
  *
  * This map is per-process, and deliberately so: it is the single point a run
  * is torn down at, not the channel a cancellation travels on. Both delivery
@@ -10,6 +11,12 @@
  * process, and `runAction`'s heartbeat poll when the intent was recorded
  * somewhere else — so a cross-process abort is indistinguishable downstream
  * from a local one.
+ *
+ * One request id can have several live run attempts at once (the stale-request
+ * sweep marks a slow but live run `interrupted`, and `/continue` starts another
+ * under the same id). So the registry holds one controller per live attempt: an
+ * abort reaches every one of them, and an attempt that ends removes only its
+ * own, never another attempt's.
  *
  * A request id names one request only while its record exists, so the id alone
  * cannot tell a checked request from a later one that reused it. A controller
@@ -25,7 +32,12 @@ interface Registered {
   incarnation?: string;
 }
 
-const controllers = new Map<string, Registered>();
+/** Controllers of the live attempts of each request id, in registration order. */
+const controllers = new Map<string, Registered[]>();
+
+function entryOf(requestId: string, controller: AbortController): Registered | undefined {
+  return controllers.get(requestId)?.find((entry) => entry.controller === controller);
+}
 
 /**
  * How each controller was fired, kept on the controller rather than on its
@@ -42,8 +54,12 @@ function matches(entry: Registered, expected: string | undefined): boolean {
 }
 
 /**
- * Register an AbortController for a request. Returns the controller
- * so the caller can use its signal.
+ * Register an AbortController for a run attempt of a request. Returns the
+ * controller so the caller can use its signal.
+ *
+ * Other attempts' controllers under the same id stay registered beside it.
+ * Registering a controller that is already registered under the id only
+ * updates its incarnation.
  *
  * Pass the request's incarnation when it is known, so a fenced
  * `abortRequest` can tell this request from a later one under the same id.
@@ -59,45 +75,53 @@ export function registerAbortController(
   incarnation?: string,
   controller: AbortController = new AbortController()
 ): AbortController {
-  controllers.set(requestId, incarnation === undefined ? { controller } : { controller, incarnation });
+  const existing = entryOf(requestId, controller);
+  if (existing !== undefined) {
+    if (incarnation === undefined) delete existing.incarnation;
+    else existing.incarnation = incarnation;
+    return controller;
+  }
+  const entry: Registered = incarnation === undefined ? { controller } : { controller, incarnation };
+  const entries = controllers.get(requestId);
+  if (entries === undefined) controllers.set(requestId, [entry]);
+  else entries.push(entry);
   return controller;
 }
 
 /**
  * Record the incarnation of an already-registered controller. Has no effect
- * when `controller` is no longer the one registered under `requestId`, so a
- * late tag cannot label a later request's controller.
+ * when `controller` is no longer registered under `requestId`, so a late tag
+ * cannot label a controller that has left the registry.
  */
 export function tagAbortController(
   requestId: string,
   controller: AbortController,
   incarnation: string
 ): void {
-  const entry = controllers.get(requestId);
-  if (entry !== undefined && entry.controller === controller) {
-    entry.incarnation = incarnation;
-  }
+  const entry = entryOf(requestId, controller);
+  if (entry !== undefined) entry.incarnation = incarnation;
 }
 
 /**
- * Signal abort for a request. Returns true if the request was found
- * and aborted, false if the request was not in the registry.
+ * Signal abort for a request: every live attempt's controller under the id.
+ * Returns true if at least one was found and aborted, false if none was.
  *
- * With `expectedIncarnation`, fires only when the registered controller
- * belongs to that incarnation; a controller of another request under the same
- * id, or one not yet tagged, is left alone and the call returns false.
+ * With `expectedIncarnation`, fires only the controllers that belong to that
+ * incarnation; a controller of another request under the same id, or one not
+ * yet tagged, is left alone.
  */
 export function abortRequest(requestId: string, expectedIncarnation?: string): boolean {
-  const entry = controllers.get(requestId);
-  if (entry === undefined || !matches(entry, expectedIncarnation)) {
-    return false;
+  const targets = (controllers.get(requestId) ?? []).filter((entry) =>
+    matches(entry, expectedIncarnation)
+  );
+  for (const entry of targets) {
+    const fired = firedBy.get(entry.controller) ?? {};
+    if (expectedIncarnation === undefined) fired.unfenced = true;
+    else fired.fenced = true;
+    firedBy.set(entry.controller, fired);
+    entry.controller.abort();
   }
-  const fired = firedBy.get(entry.controller) ?? {};
-  if (expectedIncarnation === undefined) fired.unfenced = true;
-  else fired.fenced = true;
-  firedBy.set(entry.controller, fired);
-  entry.controller.abort();
-  return true;
+  return targets.length > 0;
 }
 
 /**
@@ -113,25 +137,42 @@ export function wasFiredOnlyFenced(controller: AbortController): boolean {
 
 /**
  * Give up `previous` for a fresh, unfired controller tagged `incarnation`.
- * The fresh one takes the registry slot only if `previous` still holds it;
- * a controller another run displaced does not take the slot back.
+ * The fresh one takes `previous`'s place only if `previous` is still
+ * registered; one that has already left the registry is not brought back.
  */
 export function replaceAbortController(
   requestId: string,
   previous: AbortController,
   incarnation: string
 ): AbortController {
-  if (controllers.get(requestId)?.controller === previous) {
-    return registerAbortController(requestId, incarnation);
+  const entry = entryOf(requestId, previous);
+  const fresh = new AbortController();
+  if (entry !== undefined) {
+    entry.controller = fresh;
+    entry.incarnation = incarnation;
   }
-  return new AbortController();
+  return fresh;
 }
 
 /**
- * Remove the controller from the registry. Called on any terminal state.
+ * Remove a controller from the registry. Called by a run attempt on any
+ * terminal state, with its own `controller`, so the controllers of other
+ * attempts still live under the id stay registered.
+ *
+ * @remarks Called with `requestId` alone, it bulk-clears every live attempt's
+ * controller under the id. Use that form only in tests and for a bulk clear;
+ * a run attempt always passes its own `controller`.
  */
-export function deregisterAbortController(requestId: string): void {
-  controllers.delete(requestId);
+export function deregisterAbortController(requestId: string, controller?: AbortController): void {
+  if (controller === undefined) {
+    controllers.delete(requestId);
+    return;
+  }
+  const entries = controllers.get(requestId);
+  if (entries === undefined) return;
+  const remaining = entries.filter((entry) => entry.controller !== controller);
+  if (remaining.length === 0) controllers.delete(requestId);
+  else controllers.set(requestId, remaining);
 }
 
 /**
@@ -139,6 +180,5 @@ export function deregisterAbortController(requestId: string): void {
  * `expectedIncarnation`, only a controller of that incarnation counts.
  */
 export function hasActiveAbortController(requestId: string, expectedIncarnation?: string): boolean {
-  const entry = controllers.get(requestId);
-  return entry !== undefined && matches(entry, expectedIncarnation);
+  return (controllers.get(requestId) ?? []).some((entry) => matches(entry, expectedIncarnation));
 }
