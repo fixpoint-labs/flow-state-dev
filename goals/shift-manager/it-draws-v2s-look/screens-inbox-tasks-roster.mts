@@ -128,7 +128,8 @@ export async function readScreensStore(
       asks.push({
         suspensionId: String(ask.suspensionId),
         sessionId: String(session.id),
-        seatId: typeof session.flowId === "string" ? session.flowId : null,
+        // The worker the session runs, as its state names it.
+        seatId: typeof session.state?.workerId === "string" ? session.state.workerId : null,
         kind: kindOf(ask),
         message: String(ask.message ?? ""),
         since: Number(ask.ts),

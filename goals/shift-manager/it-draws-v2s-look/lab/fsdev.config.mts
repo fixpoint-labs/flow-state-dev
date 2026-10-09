@@ -21,13 +21,14 @@ import {
   mailboxBoardIds,
   mailboxInstances,
   defineMailboxFlow,
-  hireWorkforce,
+  inventorySeats,
   openMailboxes,
   openInventory,
   type InventoryActionRequest,
   type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { installWorkers } from "../../../lib/workers.mts";
 
 /** The one person this Lab runs as. */
 export const USER_ID = "u_look_goal";
@@ -42,11 +43,11 @@ if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tre
 const modelId = tree.workers.map((w) => w.declared.model).find((m): m is string => typeof m === "string");
 if (modelId === undefined) throw new Error("the desk tree's chief of staff names no model");
 
-const seats = hireWorkforce(tree.workers, { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
+const { installation, copies } = installWorkers(tree.workers, () => ({}), { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
 const mailboxKind = defineMailboxFlow({ inventory: true });
 const flows: Record<string, FlowInstance> = {
   ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
-  ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+  ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
 };
 const flowState = createFlowState({
   flows,
@@ -90,7 +91,7 @@ await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
 
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats, mailboxes: tree.mailboxes },
+  { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({
