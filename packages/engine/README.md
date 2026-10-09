@@ -1043,7 +1043,7 @@ A generator tool can also suspend mid-loop (`ctx.suspend()` for tool-call approv
 
 Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (a re-armed, `unref`ed timer, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
 
-Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The sweeper is built only when both a `durabilityProvider` and a `durabilityRetention` policy are present.
+Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The router builds the sweeper whenever a `durabilityProvider` is present: it always enforces suspension expiry, times out overdue asks, re-drives a request left behind a resolved gate, and carries a stop recorded on a parked request. The pruning steps run only when a `durabilityRetention` policy is present.
 
 ```ts
 createFlowState({

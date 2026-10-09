@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, parkOnAsk, sequencer } from "@flow-state-dev/core";
 import type { AskOutcome, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createDurabilitySweeper, runTick } from "../src/durability/durability-sweeper";
 import { resumeAskGate } from "../src/durability/resume-ask-gate";
@@ -802,6 +802,80 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       expect(listSpy.mock.calls.length).toBe(calls);
     } finally {
       sweeper.dispose();
+    }
+  });
+});
+
+describe("a durable host with no retention policy still keeps its gates (BR-11a, BR-14)", () => {
+  function durableHost(flow: FlowInstance) {
+    return createFlowState({
+      flows: { parking: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      durable: true
+    });
+  }
+
+  async function parkOn(state: ReturnType<typeof durableHost>, flow: FlowInstance) {
+    const runtime = await state.getRuntime();
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: USER,
+      sessionId: SESSION,
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig
+    });
+    return { runtime, requestId: result.requestId! };
+  }
+
+  async function settled(runtime: { stores: ReturnType<typeof createInMemoryStores> }, requestId: string) {
+    for (let i = 0; i < 50; i += 1) {
+      const status = (await runtime.stores.request.get(requestId))?.status;
+      if (status !== "suspended" && status !== "in_progress") return status;
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    return (await runtime.stores.request.get(requestId))?.status;
+  }
+
+  it("an overdue ask times out", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const state = durableHost(flow);
+    try {
+      await state.getRouter();
+      const { runtime, requestId } = await parkOn(state, flow);
+      await vi.advanceTimersByTimeAsync(32_000);
+      expect(await settled(runtime as never, requestId)).toBe("completed");
+      expect(seen[0]).toContain("wait_timed_out");
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("a resolved gate is re-driven", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const state = durableHost(flow);
+    try {
+      await state.getRouter();
+      const { runtime, requestId } = await parkOn(state, flow);
+      const provider = runtime.runtimeConfig.durabilityProvider!;
+      const [gate] = (await provider.listSuspended({ status: "pending" })).filter((g) => g.requestId === requestId);
+      await provider.suspend({
+        ...gate!,
+        status: "submitted",
+        resolvedAt: Date.now(),
+        resumeData: { answered: true, answer: "renewed" }
+      });
+      await vi.advanceTimersByTimeAsync(601_000);
+      expect(await settled(runtime as never, requestId)).toBe("completed");
+      expect(seen).toEqual(["answer:renewed"]);
+    } finally {
+      await state.dispose();
     }
   });
 });

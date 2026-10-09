@@ -109,6 +109,13 @@ export type CreateDurabilitySweeperOptions = {
    * marked expired, which would strand the turn).
    */
   continueRequest?: ResumeDeps["continueRequest"];
+  /**
+   * Whether the retention steps (3 to 5: pruning) run. Default true. A host
+   * with durable execution but no retention policy sweeps with this off: its
+   * gates are still kept (expiry, ask timeouts, re-drive, stop carry), and
+   * nothing is pruned.
+   */
+  prune?: boolean;
 };
 
 /** Handle returned by {@link createDurabilitySweeper}. */
@@ -159,7 +166,8 @@ export function createDurabilitySweeper(
     retention = {},
     holder = defaultHolder(),
     logger = DEFAULT_RUNTIME_LOGGER,
-    continueRequest
+    continueRequest,
+    prune = true
   } = options;
 
   const sweepIntervalMs = retention.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
@@ -240,7 +248,8 @@ export function createDurabilitySweeper(
       suspensionTerminalMaxAgeMs,
       orphanCheckpointThresholdMs,
       batchLimit,
-      continueRequest
+      continueRequest,
+      prune
     })
       .catch((err): undefined => {
         // A failure that escapes the per-step guards is still never thrown
@@ -296,6 +305,8 @@ type RunTickArgs = {
   batchLimit: number;
   /** See {@link CreateDurabilitySweeperOptions.continueRequest}. */
   continueRequest?: ResumeDeps["continueRequest"];
+  /** See {@link CreateDurabilitySweeperOptions.prune}. Default true. */
+  prune?: boolean;
 };
 
 /** {@link RunTickArgs} with the logger resolved to a concrete sink. */
@@ -328,9 +339,11 @@ export async function runTick(rawArgs: RunTickArgs): Promise<SuspensionRecord[] 
   try {
     const pending = await enforceSuspensionExpiry(args, now);
     await redriveResolvedGates(args);
-    await pruneTerminalSuspensions(args, now);
-    await pruneExpiredLeases(args);
-    await pruneOrphanCheckpoints(args, now);
+    if (args.prune !== false) {
+      await pruneTerminalSuspensions(args, now);
+      await pruneExpiredLeases(args);
+      await pruneOrphanCheckpoints(args, now);
+    }
     return pending;
   } finally {
     await provider

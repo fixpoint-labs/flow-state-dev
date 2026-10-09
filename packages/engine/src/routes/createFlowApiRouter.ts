@@ -476,19 +476,22 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     queuedGraceMs
   });
 
-  // Server-internal durability sweeper (FIX-141): enforces suspension expiry
-  // and prunes aged-out durability artifacts. Built only when both a durability
-  // provider and a retention policy are configured; otherwise a no-op handle.
-  // Both travel on `runtimeConfig` so the durability config stays grouped
-  // (the provider is read by runAction too).
+  // Server-internal durability sweeper (FIX-141): enforces suspension expiry,
+  // times out overdue asks, re-drives requests left behind a resolved gate and
+  // carries recorded stops (FIX-1816), and prunes aged-out durability
+  // artifacts. Built whenever a durability provider is configured: keeping
+  // gates is correctness, not retention. Pruning runs only with a retention
+  // policy. Both travel on `runtimeConfig` so the durability config stays
+  // grouped (the provider is read by runAction too).
   const durabilityProvider = runtimeConfig.durabilityProvider;
   const durabilityRetention = runtimeConfig.durabilityRetention;
   const durabilitySweeper =
-    durabilityProvider !== undefined && durabilityRetention !== undefined
+    durabilityProvider !== undefined
       ? createDurabilitySweeper({
           provider: durabilityProvider,
           stores: handlers.host.stores,
-          retention: durabilityRetention,
+          retention: durabilityRetention ?? {},
+          prune: durabilityRetention !== undefined,
           logger: runtimeConfig.logger,
           // Lets the sweep resume an overdue ask with `wait_timed_out`
           // through this router's host (FIX-1816).
