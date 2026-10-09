@@ -219,12 +219,12 @@ describe("the chief of staff as a coordinator (S10)", () => {
     let holding = false;
     const lab = await open({
       ...memory,
-      async resolve() {
-        const registry = await memory.resolve();
-        if (!holding) {
+      async resolve(...slots: Parameters<typeof memory.resolve>) {
+        const registry = await memory.resolve(...slots);
+        const store = registry.resourceState;
+        if (!holding && store !== undefined) {
           holding = true;
           // The board's write of the issue's row waits, inside the EM's turn.
-          const store = registry.resourceState;
           registry.resourceState = new Proxy(store, {
             get(target, key, receiver) {
               const value = Reflect.get(target, key, receiver);
