@@ -323,6 +323,7 @@ function writeBackGuard(
   taskId: string
 ): { claim?: TaskClaimTicket } {
   if (state.currentClaim != null) return { claim: state.currentClaim };
+  // TODO(FIX-1025): legacy pre-FIX-981 branch; remove with currentAttempt (see the schema field).
   if (state.currentAttempt == null) return {};
   const task = collection.get(taskId);
   // A missing row has nothing to fence; the write itself reports it.

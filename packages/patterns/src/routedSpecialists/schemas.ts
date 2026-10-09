@@ -70,6 +70,7 @@ export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
   currentSpecialist: z.string().optional(),
   currentTaskId: z.string().optional(),
   currentClaim: taskClaimTicketSchema.optional(),
+  // TODO(FIX-1025): remove currentAttempt, the writeBackGuard legacy branch, its reset and the two legacy tests once no checkpoints written before FIX-981 can still be resumed.
   currentAttempt: z.number().nullish(),
   done: z.boolean().default(false),
   tasks: tasksRecordSchema,
