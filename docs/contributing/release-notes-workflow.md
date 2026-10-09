@@ -51,7 +51,7 @@ Fragment format:
 One user-facing sentence (FIX-123).
 ```
 
-**Every fragment names its Linear issue.** That issue links to retained design history where a spec exists ([BP-037](best-practices/process.md)); release notes stay concise while preserving the route to the reasoning. `scripts/validate-changeset-refs.mjs` enforces the issue reference in CI on fragments a PR adds or edits.
+**Every fragment names its Linear issue.** That issue links to retained design history where a spec exists ([BP-037](best-practices/process.md)); release notes stay concise while preserving the route to the reasoning. `scripts/validate-changeset-refs.mjs` checks this in CI. On a fragment a PR adds, at least one cited id must be the PR's own issue, read from its branch name and title (not its description). A fragment for a sub-issue fixed under a parent names both, as in `(FIX-1621, part of FIX-1719)`. A lettered sub-PR id such as `LAB-138a` is not an issue id: cite the bare parent, `LAB-138`. A fragment a PR only edits needs an issue id, not the PR's.
 
 The body is what shows up under that package's heading in the next `CHANGELOG.md` release section, so write it for the next reader, not for the PR reviewer. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and Linear ticket internals belong in the PR description, not in the fragment.
 
