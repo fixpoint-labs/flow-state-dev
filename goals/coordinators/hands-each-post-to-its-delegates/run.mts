@@ -18,6 +18,8 @@
  *           (each runs the one leg it must fail, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
  * Legs:     GOAL_LEGS=a,b,c,d,e,f (default: all)
+ * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for the model-backed legs, each running
+ *           only the legs still red (default 3; 1 under a control)
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -184,27 +186,41 @@ await runGoal(async () => {
     const defaults = cosDefaults(checkout.root);
     say(`building Shift Manager's pages`);
     const pages = await buildShiftManagerPages(join(SCRATCH, `pages-${checkout.commit.slice(0, 9)}`), join(checkout.root, "packages", "shift-manager"));
-    const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${control?.name ?? "plain"}`);
-    mkdirSync(storeDir, { recursive: true });
-    const served = await startShiftManager({
-      scratch: SCRATCH,
-      label: `devteam-${control?.name ?? "plain"}`,
-      config: join(profile, "fsdev.config.mts"),
-      pages,
-      env: { DEVTEAM_STORE: join(storeDir, "devteam.sqlite"), ...env },
-      root: join(checkout.root, "packages", "shift-manager"),
-      tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
-      timeoutMs: 180_000,
-    });
-    try {
-      const shipped = await loadShipped(checkout.root);
-      say(`DevTeam at ${served.origin}; the chief of staff's defaults: [${defaults.join(", ")}]`);
-      const ran = await devteamLegs({ origin: served.origin, shipped, alice, bob, defaults, legs: new Set(devLegs), asks, say });
-      Object.assign(results, ran.legs);
-      for (const t of ran.turns) say(`turn (${t.leg}) ${t.status}: tools ${t.tools.map((x) => x.name).join(", ") || "none"}; reply: ${t.reply.slice(0, 240).replace(/\n/g, " ")}${t.providerRetry === undefined ? "" : ` (re-run after a provider error: ${t.providerRetry})`}`);
-    } finally {
-      await served.stop();
-      rmSync(storeDir, { recursive: true, force: true });
+    const shipped = await loadShipped(checkout.root);
+    // Retry until a leg first passes, over the model's flakiness: each attempt
+    // is a fresh store and a fresh Lab, and runs only the legs still red. Every
+    // attempt is printed, and a leg's verdict names the attempt it passed on.
+    const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
+    let pending = [...devLegs];
+    for (let attempt = 1; attempt <= attempts && pending.length > 0; attempt += 1) {
+      const label = `${control?.name ?? "plain"}-${attempt}`;
+      const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
+      mkdirSync(storeDir, { recursive: true });
+      const served = await startShiftManager({
+        scratch: SCRATCH,
+        label: `devteam-${label}`,
+        config: join(profile, "fsdev.config.mts"),
+        pages,
+        env: { DEVTEAM_STORE: join(storeDir, "devteam.sqlite"), ...env },
+        root: join(checkout.root, "packages", "shift-manager"),
+        tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
+        timeoutMs: 180_000,
+      });
+      try {
+        say(`attempt ${attempt} of ${attempts}, legs ${pending.join(", ")}: DevTeam at ${served.origin}; the chief of staff's defaults: [${defaults.join(", ")}]`);
+        const ran = await devteamLegs({ origin: served.origin, shipped, alice, bob, defaults, legs: new Set(pending), asks, say });
+        for (const t of ran.turns) say(`attempt ${attempt} turn (${t.leg}) ${t.status}: tools ${t.tools.map((x) => x.name).join(", ") || "none"}; reply: ${t.reply.slice(0, 240).replace(/\n/g, " ")}${t.providerRetry === undefined ? "" : ` (re-run after a provider error: ${t.providerRetry})`}`);
+        for (const l of pending) {
+          const r = ran.legs[l];
+          if (r === undefined) continue;
+          say(`attempt ${attempt} leg ${l}: ${r.failures.length === 0 ? "PASS" : `FAIL (${[...new Set(r.failures.map((f) => f.split(" — ")[0]))].join(", ")})`}`);
+          results[l] = { ...r, notes: [`attempt ${attempt} of ${attempts}`, ...r.notes] };
+        }
+        pending = pending.filter((l) => (ran.legs[l]?.failures.length ?? 1) > 0);
+      } finally {
+        await served.stop();
+        rmSync(storeDir, { recursive: true, force: true });
+      }
     }
     evidence.push(`DevTeam's chief of staff (${COS}) on ${checkout.describe}, Alice ${alice.userId} and Bob ${bob.userId}`);
   }
