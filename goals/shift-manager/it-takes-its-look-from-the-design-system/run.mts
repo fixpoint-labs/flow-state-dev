@@ -41,8 +41,8 @@
  *              theme the page is on each time, and each pick survives a reload
  *
  * Control:
- *   GOAL_CONTROL=hardcoded-accent  Shift Manager's copy of the tool card paints its
- *                                  completed icon with Shift Manager's accent as a
+ *   GOAL_CONTROL=hardcoded-accent  Shift Manager's quiet tool line paints its
+ *                                  label with Shift Manager's accent as a
  *                                  literal, in both builds. `neutral` must FAIL
  *                                  naming `tool`, and nothing else may fail.
  *   GOAL_CONTROL=switch-ignored    the theme mark does nothing when clicked.
@@ -342,10 +342,10 @@ await runGoal(async (failures) => {
     CONTROL === "hardcoded-accent"
       ? [
           {
-            file: "src/components/flow-state/tool.tsx",
-            from: /CheckCircleIcon className="size-4 text-success"/g,
-            to: `CheckCircleIcon className="size-4 text-[${THEME.attentionLight}]"`,
-            why: `the tool card's completed icon painted Shift Manager's accent ${THEME.attentionLight} as a literal`,
+            file: "src/components/ToolLine.tsx",
+            from: "text-sm text-muted-foreground hover:text-foreground",
+            to: `text-sm text-[${THEME.attentionLight}]`, // no hover colour: the sweep clicks the line open, so the pointer rests on it
+            why: `the quiet tool line's label painted Shift Manager's accent ${THEME.attentionLight} as a literal`,
           },
         ]
       : CONTROL === "switch-ignored"
