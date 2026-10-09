@@ -1600,7 +1600,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // `addTask_tasks` and the rest, checked against its delegates.
       ...conversationBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
-      // A reply: it starts at once, and a task's notice waits for it to end.
       run: {
         inputSchema: doorInputSchema.strict(),
         block: door,

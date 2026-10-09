@@ -225,11 +225,8 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     const { host, conv, seen } = await replyHeldOpen(judgment, async () => {});
     try {
       await host.settled();
-      // The notice reached the conversation while the reply was running, and
-      // nothing of it landed until the reply ended: one reply at a time.
       expect(seen.noticeArrivedMidReply).toBe(true);
       expect(seen.landedMidReply).toBe(false);
-      // Then it ran, once: its line, and one turn for it after the filing's.
       expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
       expect(judgment.calls).toHaveLength(2);
       const replies = await texts(host, conv);
@@ -278,8 +275,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
       judgment,
       afterModelCall: async (blockName) => {
         if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
-        // The task ends and its own send is lost; then the board, touched
-        // mid-reply, sends what the row still owes.
+        // The task's own send is lost; touching the board mid-reply sends what the row still owes.
         await until(async () => (await host.rows("alice")).some((row) => row.status === "completed"));
         await until(() => lost.lost() > 0);
         lost.restore();
@@ -303,8 +299,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
   });
 
   it("waits the same way for a round's reply, the coordinator's turn over its delegates' answers", async () => {
-    // The person's reply hands the post on; the round's reply, over the
-    // answer, files the task, and is held open until its notice arrives.
+    // Call 2 is the round's reply: it files the task, and is held open until the notice arrives.
     const judgment = mockGenerator({
       script: [
         { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] },
@@ -346,7 +341,6 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     });
     try {
       await host.settled();
-      // Queued behind the reply when it failed, and run after it.
       expect(seen.noticeArrivedMidReply).toBe(true);
       expect(seen.landedMidReply).toBe(false);
       const reply = (await host.requestsOf(conv)).find((request) => request.id === replyId);
@@ -364,7 +358,6 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     });
     try {
       await host.settled();
-      // Queued behind the reply when it was cancelled, and run after it.
       expect(seen.noticeArrivedMidReply).toBe(true);
       expect(seen.landedMidReply).toBe(false);
       const reply = (await host.requestsOf(conv)).find((request) => request.id === replyId);
@@ -379,10 +372,6 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
 
 describe("a delegate's answer that arrives mid-reply", () => {
   it("lands as it always has, without waiting for the reply: only a task's notice waits", async () => {
-    // An answer's entry is serialized with the conversation's other answers,
-    // and a request lined up that way gives up after 30 seconds. Made to wait
-    // for a long reply, an answer would be lost; so a reply holds no line an
-    // answer stands in.
     const judgment = mockGenerator({
       script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] }, { text: "Handed." }]
     });
