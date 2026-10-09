@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 426" role="img" aria-label="D1, what a resumed run gets for a step whose output was too big to save. Chosen: the real value, by running the step again. Instead of: the placeholder from the log. It comes down to the first row: the later steps get the real data, where the placeholder would reach them as input and give wrong results with no error. The price: the step's side effects happen a second time unless it guards them, and resume has to tell a placeholder from a value. Locks in: a resumed run re-runs any step whose output was too big to save. Flips if: a too-big output stops the run instead, so nothing too big is ever saved."
+     xmlns="http://www.w3.org/2000/svg">
+    <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="426"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">A run resumes after a step whose output was too big to save. What do the later steps get?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The real value: run the step again</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The placeholder from the log</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE STEPS AFTER IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Get the real data</text>
+    <text class="t-s" x="248" y="179">the same as a run that never stopped</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Get the placeholder as input</text>
+    <text class="t-s" x="612" y="179">wrong results, and no error</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="228">THE STEP'S SIDE EFFECTS</text>
+    <text class="mark minus" x="228" y="234">−</text>
+    <text class="t-b" x="248" y="233">Can happen twice</text>
+    <text class="t-s" x="248" y="251">unless the step guards them with run-once</text>
+    <text class="mark plus" x="592" y="234">+</text>
+    <text class="t-b" x="612" y="233">Happen once</text>
+    <text class="t-s" x="612" y="251">nothing runs again</text>
+    <line class="row" x1="16" y1="262" x2="924" y2="262"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="286">WORK</text>
+    <text class="mark minus" x="228" y="292">−</text>
+    <text class="t-b" x="248" y="291">Resume tells a placeholder apart</text>
+    <text class="t-s" x="248" y="309">two resume paths change</text>
+    <text class="mark plus" x="592" y="292">+</text>
+    <text class="t-b" x="612" y="291">Nothing beyond the limit</text>
+    <text class="t-s" x="612" y="309">resume is untouched</text>
+    <line class="row" x1="16" y1="320" x2="924" y2="320"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">A resumed run re-runs any step too big to save</text>
+    <text class="t-s" x="32" y="395">the cost lands on resume, never on an ordinary run</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">A too-big output stops the run instead (D2)</text>
+    <text class="t-s" x="494" y="395">then nothing too big is saved, and D1 has no work</text>
+  </g>
+</svg>

@@ -84,3 +84,15 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Use `.stepIf(condition, block)` — not a wrapper sequencer with a `.map` + `.step`.
   - All conditional variants accept an inline connector as a second argument for input adaptation; don't create an intermediate sequencer just to `.map()` before a block.
 - Why: Conditional variants keep control flow legible; a wrapper sequencer just to gate one step is indirection that obscures it.
+
+### BP-042: A block's return is recorded — never return an unbounded payload
+
+- Status: Active
+- Date: 2026-10-09 (FIX-1772)
+- Scope: Blocks — handler and tool return values.
+- Rule:
+  - Treat a block's return value as something the log and the model both read. It is recorded on the block's `block_trace`, on the `tool_output` item when the block runs as a tool, streamed to every client watching the request, and replayed into the model's history on later turns.
+  - Never return a payload whose size grows with the data: file bodies, a whole collection or table, a document set, raw API pages. Return what the next step needs to find it (paths and sizes, ids, a count, a resource reference) and let the step that needs the content read it.
+  - Never return a secret (a token, a key, a credential, a signed URL). Return a handle, and resolve it in the step that uses it.
+  - `mapModelOutput` is not the fix. It changes what the model is told in the turn that called the tool, not what is recorded.
+- Why: A return is persisted whole, streamed, and replayed into prompts. One handler that returned every project file body put the whole project into the request log and the context window. Size the return to what the next step needs, not to what the handler happened to read.

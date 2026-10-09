@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 290" role="img" aria-label="Two rows, today and after, split by a dashed fence. Left of the fence is the run: a step returns 1.2 MB and the next step receives 1.2 MB, in both rows. Right of the fence is the record: the log and stream, the next turn's prompt, and resume. Today all three hold the full 1.2 MB, and resume hands it back from the log. After, the log and the next turn hold a placeholder with the size and a short preview, and resume runs the step again to get the real 1.2 MB."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .big   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .fence { stroke:var(--accent); stroke-width:1.6; stroke-dasharray:6 5; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="290"/>
+
+  <g id="zone-labels">
+    <text class="t-lbl" x="132" y="26">THE RUN · IN MEMORY</text>
+    <text class="t-acc" x="482" y="26">THE RECORD · WHAT IS SAVED AND SENT</text>
+    <line class="fence" x1="462" y1="12" x2="462" y2="280"/>
+  </g>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="88">TODAY</text>
+    <rect class="n-box" x="130" y="54" width="150" height="66" rx="5"/>
+    <text class="t-b" x="142" y="80">A step returns</text>
+    <text class="t-s" x="142" y="99">every file body · 1.2 MB</text>
+    <path class="arrow" d="M280 87 H300"/>
+    <path class="head" d="M300 83 L307 87 L300 91 Z"/>
+    <rect class="n-box" x="308" y="54" width="140" height="66" rx="5"/>
+    <text class="t-b" x="320" y="80">The next step</text>
+    <text class="t-s" x="320" y="99">gets 1.2 MB</text>
+    <rect class="big" x="480" y="54" width="140" height="66" rx="5"/>
+    <text class="t-b" x="492" y="80">Log and stream</text>
+    <text class="t-s" x="492" y="99">1.2 MB, whole</text>
+    <rect class="big" x="628" y="54" width="140" height="66" rx="5"/>
+    <text class="t-b" x="640" y="80">Next turn</text>
+    <text class="t-s" x="640" y="99">tool result · 1.2 MB</text>
+    <rect class="big" x="776" y="54" width="148" height="66" rx="5"/>
+    <text class="t-b" x="788" y="80">Resume</text>
+    <text class="t-s" x="788" y="99">hands back 1.2 MB</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="200">AFTER</text>
+    <rect class="n-box" x="130" y="166" width="150" height="66" rx="5"/>
+    <text class="t-b" x="142" y="192">A step returns</text>
+    <text class="t-s" x="142" y="211">every file body · 1.2 MB</text>
+    <path class="arrow" d="M280 199 H300"/>
+    <path class="head" d="M300 195 L307 199 L300 203 Z"/>
+    <rect class="n-box" x="308" y="166" width="140" height="66" rx="5"/>
+    <text class="t-b" x="320" y="192">The next step</text>
+    <text class="t-s" x="320" y="211">still gets 1.2 MB</text>
+    <rect class="ok" x="480" y="166" width="140" height="66" rx="5"/>
+    <text class="t-b" x="492" y="192">Log and stream</text>
+    <text class="t-s" x="492" y="211">placeholder: size,</text>
+    <text class="t-s" x="492" y="225">short preview</text>
+    <rect class="ok" x="628" y="166" width="140" height="66" rx="5"/>
+    <text class="t-b" x="640" y="192">Next turn</text>
+    <text class="t-s" x="640" y="211">a placeholder</text>
+    <rect class="ok" x="776" y="166" width="148" height="66" rx="5"/>
+    <text class="t-b" x="788" y="192">Resume</text>
+    <text class="t-s" x="788" y="211">runs the step again,</text>
+    <text class="t-s" x="788" y="225">gets the real 1.2 MB</text>
+  </g>
+
+  <g id="foot">
+    <text class="t-s" x="130" y="268">Under the limit, nothing changes.</text>
+    <text class="t-s" x="480" y="268">The limit is 256 KiB per recorded value (D2).</text>
+  </g>
+</svg>
