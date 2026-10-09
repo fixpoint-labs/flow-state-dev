@@ -61,8 +61,9 @@ export const WORKSTREAM_STATE_KEY = "workstreamId";
  * for: set when a conversation's board hands the task over, beside the
  * worker and the filing conversation's `filingSessionId`, so the task's
  * session is found within the conversation that filed it. Readonly, and set
- * only by the hand-over. **Pinned**: the criteria key `findWorkerSession`
- * takes (FIX-1794).
+ * only by the hand-over: the installation's create check refuses a create on
+ * any other path that names it. **Pinned**: the criteria key
+ * `findWorkerSession` takes (FIX-1794).
  */
 export const TASK_ID_STATE_KEY = "taskId";
 

@@ -493,6 +493,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         message: `A session of flow "${input.flow.kind}" runs one worker: name it as "${WORKER_ID_STATE_KEY}" when the session is created.`
       };
     }
+    // A task's session is opened only by its board's hand-over, a dispatch
+    // into a child of the conversation. A caller naming a task would make a
+    // decoy that lookups and `isTaskSession` take for the real one (BP-031).
+    if (input.state[TASK_ID_STATE_KEY] !== undefined && input.via !== "dispatch") {
+      return {
+        ok: false,
+        status: 400,
+        message: `"${TASK_ID_STATE_KEY}" is set only when a conversation's board hands a task over; a caller cannot set it.`
+      };
+    }
 
     // A derived id names its owner. Recomputed for this caller, so a create at
     // another user's derived id is refused before that user's first ensure.

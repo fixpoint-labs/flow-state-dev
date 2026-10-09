@@ -101,6 +101,29 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
     }
   });
 
+  it("can't be seeded by a caller: a create naming a taskId is refused with a 400, on every worker flow", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const filing = await host.filingOf("alice", conv);
+      const decoys = [
+        { flow: "tasker", workerId: "eng.tasker" },
+        { flow: "agent", workerId: "otto" },
+        { flow: "coordinator", workerId: "lead" }
+      ];
+      for (const { flow, workerId } of decoys) {
+        const created = await host.create("alice", flow, { state: { workerId, taskId: "t-decoy", filingSessionId: filing } });
+        expect(created.status, `${flow}: ${JSON.stringify(created.body)}`).toBe(400);
+        expect(JSON.stringify(created.body)).toContain("taskId");
+      }
+      // Nothing was written, so no lookup finds a decoy.
+      const app = host.client("alice");
+      expect(await app.findWorkerSession({ worker: "eng.tasker", taskId: "t-decoy", filingSessionId: filing })).toBeUndefined();
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("is never opened by ensureWorkerSession: a task's session comes from its hand-over (BR-20)", async () => {
     const host = bootBoardHost();
     try {
