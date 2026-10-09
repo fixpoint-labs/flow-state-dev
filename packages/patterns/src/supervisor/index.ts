@@ -47,14 +47,12 @@ export {
   reviewerVerdictSchema,
   reviewerInputSchema,
   plannerOutputSchema,
-  executableTaskSchema,
 } from "./schemas";
 
 export type {
   SupervisorInput,
   SupervisorState,
   PlannerOutput,
-  ExecutableTask,
   ReviewerVerdict,
   ReviewerInput,
   SubTaskErrorStrategy,
@@ -64,7 +62,6 @@ export { createCaptureAndPlan } from "./blocks/capture-and-plan";
 export { buildReviewedWorker } from "./blocks/reviewer-check";
 export { createSynthesize } from "./blocks/synthesize";
 export { createLabelFailedReviews } from "./blocks/label-failed-reviews";
-export { legacyWorkerAdapter } from "./blocks/legacy-worker-adapter";
 
 export interface SupervisorConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,

@@ -3,7 +3,7 @@
  *
  * Validates CRUD operations, batch operations, scope isolation, JSON
  * round-tripping, and key encoding for both InMemoryResourceStateStore and
- * FilesystemResourceStateStore. The filesystem-specific legacy-guard,
+ * FilesystemResourceStateStore. The filesystem-specific scope-id,
  * symlink-safety, and on-disk-layout cases live in the shared
  * `createFilesystemStoreGuardConformanceTests` suite (run against both stores).
  */
@@ -312,14 +312,14 @@ afterEach(async () => {
   );
 });
 
-// Shared filesystem guard + symlink-safety + on-disk-layout suite — same suite
+// Shared filesystem scope-id + symlink-safety + on-disk-layout suite — same suite
 // the content store runs, so both `.md` and `.json` stores get identical
 // coverage of the factory's guards.
 createFilesystemStoreGuardConformanceTests<JsonObject>({
   name: "FilesystemResourceStateStore",
   subdir: "state",
   ext: ".json",
-  // The guard suite exercises the layout marker, symlink safety and the
+  // The guard suite exercises scope ids, symlink safety and the
   // on-disk tree — none of which is concurrency — so the state store is
   // adapted to the suite's last-write-wins shape rather than the suite being
   // split. `"any"` is the opt-out posture, and unwrapping the versioned read
@@ -357,7 +357,7 @@ function unwrapStates(
 
 /**
  * Filesystem-specific behaviour that the cross-adapter conformance suite
- * cannot express: the on-disk record layout, the legacy test, and the
+ * cannot express: the on-disk record layout, the envelope check, and the
  * crash-atomicity guarantee that layout exists to provide.
  */
 describe("FilesystemResourceStateStore on-disk record", () => {
@@ -410,38 +410,18 @@ describe("FilesystemResourceStateStore on-disk record", () => {
     expect(Object.keys(await store.getAll("session", "s1"))).toEqual(["notes"]);
   });
 
-  it("reads a pre-versioning leaf as live at version 1 and updates it without a wipe", async () => {
+  it("keeps a live state whose OWN keys look like store metadata", async () => {
     const store = await freshStore();
-    // seed a legacy leaf: the user's object written verbatim, as the
-    // pre-versioning adapter wrote it
-    await store.set("session", "s1", "seed", { ignored: true }, "any");
-    await writeFile(leafPath("legacy"), JSON.stringify({ hello: "world" }), "utf8");
-
-    expect(await store.get("session", "s1", "legacy")).toEqual({
-      state: { hello: "world" },
-      version: 1
-    });
-    // an existing row must never read as absence, so create-if-absent conflicts
-    const created = await store.set("session", "s1", "legacy", { x: 1 }, 0);
-    expect(created.ok).toBe(false);
-    // and a version-1 write lands on top of it
-    const updated = await store.set("session", "s1", "legacy", { hello: "again" }, 1);
-    expect(updated).toEqual({ ok: true, version: 2 });
-  });
-
-  it("round-trips a legacy leaf whose OWN state contains state/version/lifecycle keys", async () => {
-    const store = await freshStore();
-    await store.set("session", "s1", "seed", { ignored: true }, "any");
-    // The exact shape an in-`.json` envelope would misread: `lifecycle` would
+    // The exact shape an in-object envelope would misread: `lifecycle` would
     // hide this live row as a tombstone, and `state` would make the adapter
-    // return the nested value instead of the object. The legacy test reads the
-    // root JSON type, which a user object can never forge, so this is safe.
+    // return the nested value instead of the object. The envelope is an array,
+    // which a user object can never forge, so this round-trips as written.
     const hostile: JsonObject = {
       state: { nested: "value" },
       version: 99,
       lifecycle: "deleted"
     };
-    await writeFile(leafPath("hostile"), JSON.stringify(hostile), "utf8");
+    await store.set("session", "s1", "hostile", hostile, 0);
 
     expect(await store.get("session", "s1", "hostile")).toEqual({
       state: hostile,
@@ -451,6 +431,16 @@ describe("FilesystemResourceStateStore on-disk record", () => {
       state: hostile,
       version: 1
     });
+  });
+
+  it("refuses a leaf that is not the store's envelope rather than inventing a version for it", async () => {
+    const store = await freshStore();
+    await store.set("session", "s1", "seed", { ignored: true }, "any");
+    // A bare object on disk was not written by this store. Reading it as some
+    // version would let a CAS write match a version nobody committed.
+    await writeFile(leafPath("bare"), JSON.stringify({ hello: "world" }), "utf8");
+
+    await expect(store.get("session", "s1", "bare")).rejects.toThrow(/fsdev\.resource-state\/1/);
   });
 
   it("a key that looks like store metadata cannot collide with a real record", async () => {

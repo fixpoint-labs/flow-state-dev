@@ -3126,28 +3126,5 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(parsed.cost).toEqual({ usd: 0.02, basis: "reported" });
       expect(parsed).not.toHaveProperty("costUsd");
     });
-
-    it("still parses a handle persisted under the old source spelling", async () => {
-      // A run recorded before the convention existed is still in session state
-      // (BP-030). It reads through to the new value rather than failing.
-      const parsed = sdkAgentHandleSchema.parse({
-        source: "sdk",
-        status: "completed",
-        sessionId: "sess_old",
-        url: null,
-        dispatchedAt: 1,
-        resultSubtype: "success",
-        finalMessage: "hi",
-        toolsObserved: [],
-        usage: null,
-        costUsd: null,
-      });
-
-      expect(parsed.source).toBe(CLAUDE_SDK_SOURCE);
-      // Written before `outcome` and `cost` existed, so both read as absent
-      // rather than as a value nobody recorded.
-      expect(parsed.outcome).toBeNull();
-      expect(parsed.cost).toBeNull();
-    });
   });
 });

@@ -42,8 +42,6 @@ export {
   reviewerVerdictSchema,
   reviewerInputSchema,
   plannerOutputSchema,
-  executableTaskSchema,
-  legacyWorkerAdapter,
   buildReviewedWorker,
   createCaptureAndPlan as createSupervisorCaptureAndPlan,
   createSynthesize as createSupervisorSynthesize,
@@ -55,7 +53,6 @@ export type {
   ReviewerVerdict,
   ReviewerInput,
   PlannerOutput,
-  ExecutableTask,
 } from "./supervisor";
 export {
   routedSpecialists,

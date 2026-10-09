@@ -101,8 +101,7 @@ failures return 400 `invalid_schedule`.
 8. Overlap. If `onOverlap !== "allow"`,
    `findScheduledRequest` scans in-flight scheduled requests for
    `(flowKind, source, metadata.schedule.scheduleId)`. Match → 200
-   `{ status: "skipped", reason: "in_flight" }`. The helper still
-   dual-reads legacy top-level `metadata.scheduleId` (FIX-850).
+   `{ status: "skipped", reason: "in_flight" }`.
 9. Effective principal: `schedule.principal ?? gatewayPrincipal`.
 10. Resolve input (static value or `schedule.input(ctx)`).
     Function throw → 500 `dispatch_failed`.

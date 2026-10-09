@@ -23,13 +23,7 @@
   },
   "author": "Fixpoint Labs",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./src/index.ts"
-    },
     "./cli": {
       "types": "./dist/cli/index.d.ts",
       "default": "./src/cli/index.ts"
@@ -46,13 +40,7 @@
   ],
   "publishConfig": {
     "access": "public",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
     "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
       "./cli": {
         "types": "./dist/cli/index.d.ts",
         "default": "./dist/cli/index.js"

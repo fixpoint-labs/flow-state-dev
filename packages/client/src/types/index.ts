@@ -182,6 +182,11 @@ export type SessionDetail = SessionSummary & {
    * principal, and a client never sends one.
    */
   orgId: string;
+  /**
+   * The session state fields the flow exposes (`session.client.expose`) or
+   * declares readonly, and no others: empty when there are none. Derived values are on
+   * `getSessionState`'s `clientData`.
+   */
   state?: Record<string, unknown>;
   version?: number;
   latestRequestId?: string;

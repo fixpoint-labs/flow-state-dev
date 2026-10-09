@@ -11,7 +11,7 @@
  * Pipeline (per registered worker):
  *
  *   .tap(stashTaskId)         — capture taskId/goal/attempts on inner state
- *   .step(adaptedWorker)       — runs the user's worker (legacy adapter applied)
+ *   .step(workerBlock)         — runs the user's worker
  *   .tap(stashWorkerOutput)    — capture worker output for applyVerdict
  *                                AND stamp reviewMetadata[taskId].entered=true
  *                                on the supervisor sequencer state
@@ -26,7 +26,7 @@
  * claim/complete/fail traffic from `taskBoard`.
  *
  * When `reviewerGenerator` is undefined the wrapper short-circuits and
- * returns `legacyWorkerAdapter(workerBlock)` directly.
+ * returns `workerBlock` directly.
  */
 import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
@@ -36,7 +36,6 @@ import {
   type TaskWorkerInput,
 } from "@flow-state-dev/orchestration";
 import { reviewerVerdictSchema, type ReviewerInput } from "../schemas";
-import { legacyWorkerAdapter } from "./legacy-worker-adapter";
 
 type SupervisorReviewState = {
   reviewMetadata: Record<
@@ -88,9 +87,7 @@ export function buildReviewedWorker(
   const { name, workerKey, workerBlock, reviewerGenerator, reviewCriteria } =
     options;
   const collectionId = name;
-  const adaptedWorker = legacyWorkerAdapter(workerBlock);
-
-  if (reviewerGenerator === undefined) return adaptedWorker;
+  if (reviewerGenerator === undefined) return workerBlock;
 
   const stashTaskId = handler({
     name: `${name}-${workerKey}-stash-task`,
@@ -203,7 +200,7 @@ export function buildReviewedWorker(
     stateSchema: reviewedWorkerStateSchema,
   })
     .tap(stashTaskId)
-    .step(adaptedWorker)
+    .step(workerBlock)
     .tap(stashWorkerOutput)
     .tap(emitReviewingStatus)
     .map(buildReviewerInput)

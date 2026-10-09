@@ -3,8 +3,7 @@
  *
  * Exercises the append-only NDJSON event log through the public store
  * surface: incremental persistence, read-back order, malformed-line
- * tolerance, lazy migration of the legacy JSON-array format, the
- * `fromSequence` cursor on both formats, and the FIX-399 flush durability
+ * tolerance, the `fromSequence` cursor, and the FIX-399 flush durability
  * barrier. Tests encode the durability intent (no silent loss, no sequence
  * gaps on replay), not just the file shape.
  */
@@ -70,47 +69,11 @@ describe("FilesystemRequestStore — NDJSON event log", () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("auto-migrates a legacy JSON-array file to NDJSON on first persistEvents then appends", async () => {
-    // Pre-seed a legacy JSON-array events file (the old format).
-    const legacy = JSON.stringify([ev("r1", 1), ev("r1", 2)]);
-    await writeFile(eventsPath("r1"), legacy, "utf8");
-
-    const store = createFilesystemRequestStore({ rootDir });
-    store.persistEvents("r1", [ev("r1", 3)]);
-    await store.flushEvents("r1");
-
-    const raw = await readFile(eventsPath("r1"), "utf8");
-    // Migrated to NDJSON: no leading `[`, three newline-terminated lines.
-    expect(raw.trimStart().startsWith("[")).toBe(false);
-    expect(raw.split("\n").filter((l) => l.length > 0)).toHaveLength(3);
-
-    const events = await store.getEvents("r1");
-    expect(events.map((e) => e.sequence_number)).toEqual([1, 2, 3]);
-  });
-
-  it("reads a legacy JSON-array file directly via getEvents without a prior persist", async () => {
-    const legacy = JSON.stringify([ev("r1", 1), ev("r1", 2), ev("r1", 3)]);
-    await writeFile(eventsPath("r1"), legacy, "utf8");
-
-    const store = createFilesystemRequestStore({ rootDir });
-    const events = await store.getEvents("r1");
-    expect(events.map((e) => e.sequence_number)).toEqual([1, 2, 3]);
-  });
-
   it("applies fromSequence on the NDJSON path", async () => {
     const store = createFilesystemRequestStore({ rootDir });
     for (let i = 1; i <= 5; i += 1) store.persistEvents("r1", [ev("r1", i)]);
     await store.flushEvents("r1");
 
-    const events = await store.getEvents("r1", 3);
-    expect(events.map((e) => e.sequence_number)).toEqual([4, 5]);
-  });
-
-  it("applies fromSequence on the legacy JSON-array path", async () => {
-    const legacy = JSON.stringify([1, 2, 3, 4, 5].map((i) => ev("r1", i)));
-    await writeFile(eventsPath("r1"), legacy, "utf8");
-
-    const store = createFilesystemRequestStore({ rootDir });
     const events = await store.getEvents("r1", 3);
     expect(events.map((e) => e.sequence_number)).toEqual([4, 5]);
   });
@@ -141,14 +104,4 @@ describe("FilesystemRequestStore — NDJSON event log", () => {
     await expect(store.flushEvents("r1")).rejects.toBeTruthy();
   });
 
-  it("flushEvents re-throws a migration error and does not swallow it (FIX-399)", async () => {
-    // A legacy file (leading `[`) whose body is not valid JSON forces
-    // migrateLegacyEventsIfNeeded's JSON.parse to throw. That error must
-    // propagate through the queue's onError → lastEventError → flushEvents,
-    // never silently dropping the pending events.
-    await writeFile(eventsPath("r2"), "[not valid json", "utf8");
-    const store = createFilesystemRequestStore({ rootDir });
-    store.persistEvents("r2", [ev("r2", 2)]);
-    await expect(store.flushEvents("r2")).rejects.toBeTruthy();
-  });
 });

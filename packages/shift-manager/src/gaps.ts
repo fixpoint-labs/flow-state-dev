@@ -71,7 +71,7 @@ export const GAPS = {
     /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
     none: {
       title: "This Lab declares no shift coordinator",
-      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind at org/workers/chief-of-staff/.",
+      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the coordinator flow at org/workers/chief-of-staff/.",
     },
     /** BR-12: drawn before the seats' ids. */
     several: "More than one seat is named chief-of-staff, so Shift Manager talks to neither:",

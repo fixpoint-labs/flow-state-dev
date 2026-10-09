@@ -41,10 +41,8 @@ export function createClientEventFilter(): (event: RequestStreamEvent) => boolea
     }
 
     if (event.type === "item.updated") {
-      // Canonical updates name the item in `itemId`; legacy producers wrote
-      // `id`. Either way, forward only an item seen as client-visible.
-      const raw = event as Record<string, unknown>;
-      const itemId = typeof raw.itemId === "string" ? raw.itemId : raw.id;
+      // Forward only an update to an item seen as client-visible.
+      const itemId = (event as Record<string, unknown>).itemId;
       return typeof itemId === "string" && clientItemIds.has(itemId);
     }
 
