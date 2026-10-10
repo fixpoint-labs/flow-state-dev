@@ -226,6 +226,104 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
   });
 
+  it("a timed-out ask killed after its row's cancel is driven on as wait_timed_out, not wait_task_cancelled", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+    // The sweep timed the ask out and the resumed call cancelled its row; the
+    // process died before the turn moved on.
+    await provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resolvedBy: "sweep",
+      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+    });
+    // The timeout's cancel lands after the deadline, as the sweep fires it.
+    const real = Date.now.bind(Date);
+    vi.spyOn(Date, "now").mockImplementation(() => real() + 6 * 60_000);
+    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "The ask timed out before the task finished." } });
+    vi.restoreAllMocks();
+    await before.dispose();
+
+    const { flow, after } = await restart(filename, seen);
+    await until(after, requestId, "completed");
+    expect(seen).toHaveLength(2);
+    expect(toolResults(seen[1]!.messages)).toContain("wait_timed_out");
+    expect(toolResults(seen[1]!.messages)).not.toContain("wait_task_cancelled");
+    expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+  });
+
+  it("a task someone else cancelled, whatever its reason says, is driven on as the cancel the gate recorded", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+    // A colleague cancelled the task with the timeout's own words; the touch
+    // resolved the gate with that cancel; the process died before the turn moved on.
+    await act(before, flowBefore, "settle", {
+      outcome: { kind: "cancel", reason: "The ask timed out before the task finished." }
+    });
+    await provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resolvedBy: `ask:${SESSION}`,
+      resumeData: { answered: false, error: { code: "wait_task_cancelled", message: "The asked task was cancelled." } }
+    });
+    await before.dispose();
+
+    const { after } = await restart(filename, seen);
+    await until(after, requestId, "completed");
+    expect(toolResults(seen[1]!.messages)).toContain("wait_task_cancelled");
+    expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
+  });
+
+  for (const [label, offset, expected] of [
+    ["after the deadline: the recorded timeout stands", 6 * 60_000, "wait_timed_out"],
+    ["before the deadline: its answer comes back late", 0, "the late answer"]
+  ] as const) {
+    it(`a timed-out ask whose row then completed ${label}, after a re-drive`, async () => {
+      const seen: GeneratorModelCallOptions[] = [];
+      const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+      // The sweep timed the ask out; the colleague's row completed (when, varies); the process died.
+      await provider.suspend({
+        ...gate,
+        status: "submitted",
+        resolvedAt: Date.now(),
+        resolvedBy: "sweep",
+        resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+      });
+      const real = Date.now.bind(Date);
+      vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
+      await act(before, flowBefore, "settle", { outcome: { kind: "complete", output: "the late answer" } });
+      vi.restoreAllMocks();
+      await before.dispose();
+
+      const { after } = await restart(filename, seen);
+      await until(after, requestId, "completed");
+      expect(toolResults(seen[1]!.messages)).toContain(expected);
+    });
+  }
+
+  it("a task cancelled by someone else before the deadline keeps its cancel, though the sweep then timed the ask out", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+    // A colleague cancels the task in time; its resume is lost to a crash; the
+    // sweep later times the gate out; the process dies before the turn moves on.
+    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "no longer needed" } });
+    await provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resolvedBy: "sweep",
+      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+    });
+    await before.dispose();
+
+    const { after } = await restart(filename, seen);
+    await until(after, requestId, "completed");
+    expect(toolResults(seen[1]!.messages)).toContain("wait_task_cancelled");
+    expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
+  });
+
   it("an answered ask killed before its turn continued is driven on to completion, once (V9)", async () => {
     const seen: GeneratorModelCallOptions[] = [];
     const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);

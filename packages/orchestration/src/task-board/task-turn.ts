@@ -17,8 +17,12 @@
  *   caller but the hand-over. It outlives the claim's async scope, so a turn
  *   replayed after a park is still known for what it is.
  *
- * A flow that lets a caller write that field can only make its own turns
- * refuse to wait: the test never grants anything.
+ * The field is only as trustworthy as the flow that holds it: Workforce's
+ * worker flows declare it readonly and refuse it at create unless the session
+ * is opened by a dispatch (the hand-over). A flow that lets a caller write it
+ * only makes that caller's own turns refuse to wait. A rule that grants
+ * something on a task turn must hold the claim it acts on, not this test
+ * alone.
  */
 import { currentWorkerClaim } from "./flow-policy-wiring";
 

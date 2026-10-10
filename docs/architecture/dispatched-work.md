@@ -295,7 +295,9 @@ the one row this request was dispatched for, `settleParentTask()` settles it,
 running, and `resumeAsk?()` resumes a turn in this session parked on an ask
 gate (present only with durable execution). Beside them, one fact:
 `hasAskSweeper`, true when this process runs a durability sweeper that times
-asks out, which decides whether `addTask` offers `waitForResponse`. Identity is
+asks out. `addTask` offers `waitForResponse` only when both hold: the board
+opts in with `resumesAsks: true` (whatever runs it calls `resumeOwedAsks`), and
+the host reports `hasAskSweeper`. Identity is
 never a parameter to any of them.
 
 ## The rule that decides everything

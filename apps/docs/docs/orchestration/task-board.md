@@ -558,9 +558,11 @@ Nothing a caller or a model sets can write `run`. Naming a session doesn't grant
 
 ### Asking, and waiting for the answer
 
-When the server has durable execution and runs the
+When the board can wake a waiting turn, and the server has durable execution and runs the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup), `addTask` takes a
-`waitForResponse` option. Set it and the task is filed as usual, on the same board a plain
+`waitForResponse` option. A conversation's board in Workforce can wake one. For a board of your
+own, pass `{ resumesAsks: true }` to `createTaskToolsCapability` only when whatever runs it calls
+`resumeOwedAsks` each time it touches the board outside a turn. Set it and the task is filed as usual, on the same board a plain
 `addTask` writes to, then the worker's turn parks until the task ends, and the tool returns the
 task's output as its result, `{ ok: true, taskId, answer }`. One wait per step, where a step is
 one model call and the tool calls it makes: a second waiting `addTask` in the same step is
@@ -585,7 +587,8 @@ refused. Where the server can't hold an ask, the option isn't in `addTask`'s sch
 Stopping the conversation while its turn waits ends the turn and cancels the task. The turn
 doesn't see an error, because it doesn't run again.
 
-An asked task is an ordinary row: `listTasks` shows it, and the board's limits apply to it.
+An asked task is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's
+limits apply to it.
 When an asked task ends, the waiting turn continues with the answer. The conversation gets no
 separate completion message for it. The `addTask_<board>` action has no wait option.
 

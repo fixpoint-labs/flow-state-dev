@@ -35,8 +35,9 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 const roster = { has: (name: string) => name === "researcher", describe: () => "researcher" };
 
 /** The asking flow: `run` is a turn holding the task tools; `settle`, `touch` and `list` as in the ask fixture. */
-function toolFlow(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
-  const tools = createTaskToolsCapability(boardOf, roster);
+function toolFlow(model: ReturnType<typeof stepModel>["model"], resumesAsks = true): FlowInstance {
+  // This flow's `touch` action is its waker, so the board resumes asks.
+  const tools = createTaskToolsCapability(boardOf, roster, { resumesAsks });
   const settle = handler({
     name: "settle",
     inputSchema: z.object({ output: z.any() }),
@@ -146,6 +147,18 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
     });
   }
 
+  it("does not offer it on a board with no waker, even on a host that could hold the ask", async () => {
+    const { model, seen } = stepModel([finalAnswer]);
+    const flow = toolFlow(model, false);
+    const state = await host(flow, { durable: true, router: true });
+    try {
+      await act(state as never, flow, "run");
+      expect(addTaskFields(seen)).toEqual(["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority"]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("leaves a plain addTask as it was: it files and returns at once (BR-6)", async () => {
     const { model, seen } = stepModel([addTaskCall("c1", { assignee: "researcher" }), finalAnswer]);
     const flow = toolFlow(model);
@@ -181,6 +194,35 @@ describe("addTask waits for its answer (BR-1, BR-2)", () => {
       await until(state as never, parked.requestId!, "completed");
       expect(toolResults(seen[1]!.messages)).toContain(`"ok":true,"taskId":"${row!.id}","answer":"Yes, renewed 2026-08"`);
       expect(await listRows(state, flow)).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
+describe("listTasks marks an asked task", () => {
+  it("shows the asked row with asked: true, and a filed row without it", async () => {
+    const listCall: StepFn = () => ({ toolCalls: [{ toolCallId: "l1", toolName: "listTasks", args: {} }], finishReason: "tool-calls" });
+    // The first turn asks and waits; the second files a task without waiting, then lists the board.
+    const { model, seen } = stepModel([
+      addTaskCall("c1", { assignee: "researcher", waitForResponse: true }),
+      finalAnswer,
+      addTaskCall("c0", { assignee: "researcher" }),
+      listCall,
+      finalAnswer
+    ]);
+    const flow = toolFlow(model);
+    const state = await host(flow, { durable: true, router: true });
+    try {
+      const parked = await act(state as never, flow, "run");
+      await act(state as never, flow, "settle", { output: "done" });
+      await act(state as never, flow, "touch");
+      await until(state as never, parked.requestId!, "completed");
+      await act(state as never, flow, "run");
+      const listed = JSON.parse(toolResults(seen[4]!.messages).split(" | ").pop()!).value.tasks as Array<Record<string, unknown>>;
+      expect(listed).toHaveLength(2);
+      expect(listed.filter((t) => t.asked === true)).toHaveLength(1);
+      expect(listed.filter((t) => !("asked" in t))).toHaveLength(1);
     } finally {
       await state.dispose();
     }

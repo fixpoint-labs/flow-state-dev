@@ -29,7 +29,8 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 
 /** A turn holding the task tools over a durable board, and a `seed` that files the finished root task. */
 function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
-  const tools = createTaskToolsCapability(boardOf);
+  // The asks this flow files are its board's to resume, so it opts in.
+  const tools = createTaskToolsCapability(boardOf, undefined, { resumesAsks: true });
   const seed = handler({
     name: "seed",
     inputSchema: z.object({}).passthrough(),
