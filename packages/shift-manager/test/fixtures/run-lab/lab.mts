@@ -1,30 +1,33 @@
 /**
- * The run-lab: a Lab whose mailbox-attached board hands rows to scripted
- * coding runs that hold until they are stopped. The input tree for
- * `goals/shift-manager/it-shows-and-stops-a-task-run`, and the Lab Shift Manager's task
- * screen tests open in CI.
+ * The run-lab: a Lab whose lead files tasks on its own conversation's board
+ * for workers whose scripted coding runs hold until they are stopped. The
+ * input tree for `goals/shift-manager/it-shows-and-stops-a-task-run`, and the
+ * Lab Shift Manager's task screen tests open in CI.
  *
- * The tree is FIX-1668's goal tree: one mailbox with one board, a member that
- * drains it (a flow of its own, no hand-off policy), and three seats it hands
- * rows to, read off each `WORKER.md`: a per-task seat on the drainer's flow,
- * a per-worker seat on the drainer's flow, and a per-task seat on a flow of
- * its own. No seat, mailbox or board is named in this file.
+ * The tree is one team: a coordinator (`desk`), a lead whose `delegates:`
+ * names the three workers it files for (which is what gives its conversation
+ * the task tools and actions), and those three, read off each `WORKER.md`:
+ * two on one shared flow, and one on a flow of its own. No worker, flow or
+ * board is named in this file.
  *
  * Every flow is registered once and runs the installation's workers: a run's
- * session names the worker whose flow it runs on. A row handed to a seat on
- * the drainer's flow runs there, as the drainer.
+ * session names the worker whose flow it runs on. Each task the lead files
+ * runs in a task session of its own, on its worker's flow, through
+ * Workforce's task entry (`workerTaskEntry`).
  *
- * At boot, after the inventory, the Lab files its rows through the mailbox's
- * own `fileTask` and drains the board once from a conversation of its own:
+ * At boot, after the inventory, the Lab opens one conversation with the lead
+ * and files its tasks there through the conversation's own `addTask_tasks`:
  *
- * - one **held** row per per-task seat: its run narrates a step about every
- *   second and holds until it is aborted (or `holdMs` passes);
- * - two **short** rows for the per-worker seat, which run two steps each in
- *   the one session that seat keeps, so that session is shared;
- * - one **waiting** row, filed after the drain, so nothing ever claims it;
- * - with `asking`, one **asking** row for the seat on a flow of its own, whose
- *   run opens and then waits on a person's approval. With `holdAsk`, it
- *   asks only once `releaseAsk()` is called, so a screen can be open first.
+ * - one **held** task for each worker named first on its flow: its run
+ *   narrates a step about every second and holds until it is aborted (or
+ *   `holdMs` passes);
+ * - two **short** tasks for the other worker on the shared flow, which run
+ *   two steps each and finish;
+ * - with `asking`, one **asking** task for the worker on a flow of its own,
+ *   whose run opens and then waits on a person's approval. With `holdAsk`, it
+ *   asks only once `releaseAsk()` is called, so a screen can be open first;
+ * - one **waiting** task, filed last, which depends on the first held task,
+ *   so nothing claims it while that task holds.
  *
  * Every run opens as a coding harness does: a message, a reasoning item, and
  * one tool call with its result, each stamped with the task the way the
@@ -35,14 +38,14 @@
  * finishes, so a finished run's session stores two versions of one snapshot
  * and a screen must draw only the latest.
  *
- * The seat on a flow of its own records a plan and one file operation under
+ * The worker on a flow of its own records a plan and one file operation under
  * its own request id, in the collections a recording harness declares. The
- * drainer's flow declares none, so its runs record none.
+ * shared flow declares none, so its runs record none.
  *
- * No model. The "harness" is the scripted run below, in the worker slot the
- * board hands rows to.
+ * No model. The "harness" is the scripted run below, the turn each task
+ * entry runs.
  */
-import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
@@ -51,22 +54,19 @@ import {
   observedPlanCollection,
 } from "@flow-state-dev/claude-code/sdk";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  MAILBOX_KIND,
-  mailboxBoard,
-  mailboxBoardIds,
-  mailboxInstances,
+  COORDINATOR_KIND,
   createWorkerInstallation,
-  defineMailboxFlow,
+  defineCoordinatorFlow,
+  defineSessionBoard,
   hireWorkforce,
   inventorySeats,
-  openMailboxes,
+  inventoryWriterActions,
   openInventory,
   workerConfigSchema,
+  workerTaskEntry,
   type InventoryActionRequest,
-  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
@@ -79,13 +79,16 @@ import { hearingDoor } from "../hearing-door.mts";
 const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 /** The one person this Lab runs as. */
 export const RUN_LAB_USER_ID = "u_run_lab";
-/** The conversation the board is drained from. */
-const RUN_LAB_DRAIN_SESSION = "s_run_lab_drain";
+/** The conversation with the lead the tasks are filed on. */
+const RUN_LAB_LEAD_SESSION = "s_run_lab_lead";
+/** The flow the inventory's worker rows are written from: the Lab's own, carrying the writer. */
+const INVENTORY_WRITER_KIND = "inventory-writer";
+/**
+ * The model the coordinator's best-fit call would run on. `desk` routes to
+ * everyone and never makes that call, but the flow names no default.
+ */
+const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
 
-/** The task entry every seat's hand-off addresses. */
-const ENTRY = "work";
-/** A seat whose file names this kind runs on the drainer's flow. */
-const PASSIVE_KIND = "seat";
 /** How often a held run narrates a step. */
 const STEP_MS = 1_000;
 /** The keyed progress snapshot every run emits as it starts and again as it finishes. */
@@ -96,8 +99,9 @@ const PROGRESS_KEY = "progress";
 export const RUN_LAB_ASK = "Write the audit note?";
 
 /**
- * What a row asks its scripted run to do; `ask`: suspend on a person's approval
- * of this, after the opening; `holdAsk`: only once the Lab's `releaseAsk()` is called.
+ * What a task asks its scripted run to do, filed as the task's `input`; `ask`:
+ * suspend on a person's approval of this, after the opening; `holdAsk`: only
+ * once the Lab's `releaseAsk()` is called.
  */
 export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean };
 
@@ -127,6 +131,16 @@ const sleep = (ms: number, signal: AbortSignal) =>
 type Upsertable = { upsert(key: string, state: Record<string, unknown>): Promise<unknown> };
 
 /**
+ * The script a task carries, read off the turn's message: Workforce's task
+ * entry hands the turn the task as filed, its `input` last, as JSON under an
+ * `Input:` line. A task filed with no input runs the default script.
+ */
+function scriptOf(message: string): RunScript {
+  const at = message.lastIndexOf("Input:\n");
+  return at < 0 ? {} : (JSON.parse(message.slice(at + "Input:\n".length)) as RunScript);
+}
+
+/**
  * What a coding harness stores as it starts: its reasoning, then one tool call
  * and its result. Written as whole items through `ctx.response.emit`, the way a
  * harness adapter writes them, and stamped with the run's task and provenance
@@ -153,17 +167,18 @@ async function emitHarnessOpening(ctx: BlockContext): Promise<void> {
 }
 
 /**
- * The scripted run: narrate, record what a recording harness records when the
- * flow declares it, then one step per {@link STEP_MS} until the script's steps
- * run out, the hold passes, or the request is aborted.
+ * The scripted run, a worker's turn for one task: narrate, record what a
+ * recording harness records when the flow declares it, then one step per
+ * {@link STEP_MS} until the script's steps run out, the hold passes, or the
+ * request is aborted.
  */
 const scriptedRun = handler({
   name: "run-lab-scripted-run",
-  inputSchema: taskWorkerInputSchema,
+  inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ steps: z.number() }),
-  execute: async (input: TaskWorkerInput, ctx) => {
-    const script = (input.input ?? {}) as RunScript;
-    ctx.emit.message(`Reading the task: ${input.goal ?? input.taskId}`);
+  execute: async (input, ctx) => {
+    const script = scriptOf(input.message);
+    ctx.emit.message(`Reading the task: ${input.message.split("\n")[0]}`);
     await emitHarnessOpening(ctx);
     if (script.holdAsk === true) {
       await Promise.race([
@@ -211,114 +226,80 @@ async function readTree() {
   return roster;
 }
 
-/** Build, open and hand back the Lab, with its rows filed and drained. */
+/** Build, open and hand back the Lab, with its tasks filed on the lead's conversation. */
 export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean } = {}) {
   const asks = (askGate = gate());
   const orgId = DEFAULT_ORG_ID;
   const tree = await readTree();
-  const mailbox = tree.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (mailbox === undefined) throw new Error("the run-lab tree declares no mailbox holding a board");
-  const boardName = (mailbox.declared.boards as string[])[0]!;
-  const ledger = mailboxBoard(mailbox.id, boardName);
 
-  // Members, off the mailbox file: the one that drains, and the seats it hands rows to.
+  // The lead: the worker whose file names delegates other than a coordinator's.
+  // Its delegates are the workers it files for, each on the flow its own file names.
   const byId = new Map(tree.workers.map((w) => [w.id, w]));
-  const members = ((mailbox.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
-  const drainer = members.find((w) => w.declared.flow !== undefined && w.declared.handoff === undefined);
-  const seats = members
-    .filter((w) => typeof w.declared.handoff === "string")
-    .map((w) => ({
-      id: w.id,
-      name: w.id.split(".").at(-1)!,
-      policy: w.declared.handoff as "per-task" | "per-worker",
-      flow: w.declared.flow === PASSIVE_KIND ? undefined : (w.declared.flow as string | undefined),
-    }));
-  if (drainer === undefined || seats.length === 0) throw new Error("the run-lab tree declares no drainer or no seats");
+  const lead = tree.workers.find(
+    (w) => w.declared.flow !== COORDINATOR_KIND && ((w.declared.delegates as string[] | undefined) ?? []).length > 0,
+  );
+  if (lead === undefined) throw new Error("the run-lab tree declares no worker that files for delegates");
+  const leadFlow = String(lead.declared.flow);
+  const workers = (lead.declared.delegates as string[]).map((id) => {
+    const worker = byId.get(id);
+    if (worker === undefined) throw new Error(`the lead names a delegate no file declares: ${id}`);
+    return { id, name: id.split(".").at(-1)!, flow: String(worker.declared.flow) };
+  });
+  const flowsOfWorkers = [...new Set(workers.map((w) => w.flow))];
+  // The worker on a flow no other delegate shares, and the flow the others share.
+  const ownWorker = workers.find((w) => workers.filter((o) => o.flow === w.flow).length === 1);
+  const sharedFlow = flowsOfWorkers.find((flow) => workers.filter((w) => w.flow === flow).length > 1);
+  if (ownWorker === undefined || sharedFlow === undefined || flowsOfWorkers.includes(leadFlow)) {
+    throw new Error("the run-lab tree must put two of the lead's delegates on one flow and one on a flow of its own, none on the lead's");
+  }
 
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
-  const seatConfig = workerConfigSchema().extend({ handoff: z.enum(["per-task", "per-worker"]).optional() });
-  // A row for a seat on a flow of its own runs there, as that seat; one for a
-  // seat on the drainer's flow runs on the drainer's flow, as the drainer.
-  const address = (seat: (typeof seats)[number]) =>
-    dispatcher<TaskWorkerInput>({
-      name: `run-lab-hand-${seat.name}`,
-      action: ENTRY,
-      session: seat.policy,
-      state: { [WORKER_ID_STATE_KEY]: seat.flow !== undefined ? seat.id : drainer.id },
-      ...(seat.flow !== undefined ? { flowKind: seat.flow } : {}),
-    });
-  const BOARD_ID = `${ledger.id}-board`;
-  const leadBoard = taskBoard({
-    name: "run-lab-lead",
-    boardId: BOARD_ID,
-    collection: ledger,
-    workers: Object.fromEntries(seats.map((seat) => [seat.name, address(seat)])),
-  });
-  const drainerFlow = drainer.declared.flow as string;
-  const leadKind = defineFlow({
-    kind: drainerFlow,
-    cardinality: "collection",
-    configSchema: seatConfig,
-    session: installation.session(),
-    resources: { [ledger.id]: ledger, ...installation.resources },
-    actions: { drain: { block: leadBoard.drain }, ...hearingDoor },
-    task: { actions: { [ENTRY]: { block: scriptedRun } } },
-  } as never);
-  // A seat on a flow of its own gates its entry with the same logical board,
-  // and declares the collections a recording harness writes.
-  const ownKinds = Object.fromEntries(
-    seats
-      .filter((seat) => seat.flow !== undefined)
-      .map((seat) => {
-        const board = taskBoard({
-          name: `run-lab-${seat.flow}`,
-          boardId: BOARD_ID,
-          collection: ledger,
-          workers: {
-            [seat.name]: dispatcher<TaskWorkerInput>({
-              name: `run-lab-hand-${seat.name}-own`,
-              action: ENTRY,
-              session: seat.policy,
-              state: { [WORKER_ID_STATE_KEY]: seat.id },
-            }),
-          },
-        });
-        return [
-          seat.flow!,
-          defineFlow({
-            kind: seat.flow!,
-            cardinality: "collection",
-            configSchema: seatConfig,
-            session: installation.session(),
-            resources: {
-              [ledger.id]: ledger,
-              [OBSERVED_PLAN]: observedPlanCollection,
-              [OBSERVED_FILE_OPS]: observedFileOpsCollection,
-              ...installation.resources,
-            },
-            actions: { drain: { block: board.drain }, ...hearingDoor },
-            task: { actions: { [ENTRY]: { block: scriptedRun } } },
-          } as never),
-        ];
-      }),
-  );
-  const passiveKind = defineFlow({
-    kind: PASSIVE_KIND,
-    cardinality: "collection",
-    configSchema: seatConfig,
-    session: installation.session(),
-    resources: { ...installation.resources },
-    actions: { ...hearingDoor },
-  } as never);
 
-  workerFlows = { [drainerFlow]: leadKind, [PASSIVE_KIND]: passiveKind, ...ownKinds };
-  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
-  const mailboxKind = defineMailboxFlow({ inventory: true });
-  const instances = mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } });
+  // The lead's flow carries the session board: its delegates give its
+  // conversation the task tools and actions, and the board hands each task
+  // to a task session on its worker's flow.
+  const board = defineSessionBoard({ installation, flowKind: leadFlow });
+  const leadKind = defineFlow({
+    kind: leadFlow,
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+    resources: { ...installation.resources, ...board.resources },
+    actions: { ...hearingDoor, ...board.actions },
+    internal: { actions: board.entries(hearingDoor.message.block, () => "fixed") },
+  } as never);
+  // Each worker's flow takes tasks through Workforce's task entry; the one on
+  // a flow of its own also declares the collections a recording harness writes.
+  const workerKind = (kind: string, records: boolean) =>
+    defineFlow({
+      kind,
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: {
+        ...installation.resources,
+        ...(records ? { [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection } : {}),
+      },
+      actions: { ...hearingDoor },
+      task: { actions: { work: workerTaskEntry({ name: `run-lab-${kind}-task`, turn: scriptedRun }) } },
+    } as never);
+  const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL });
+
+  workerFlows = {
+    [leadFlow]: leadKind,
+    [COORDINATOR_KIND]: coordinator,
+    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerKind(kind, kind === ownWorker.flow)])),
+  };
+  const copies = hireWorkforce(installation);
+  // The seat write takes caller-supplied rows, so it is internal only.
+  const writer = defineFlow({
+    kind: INVENTORY_WRITER_KIND,
+    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+  } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
-    ...Object.fromEntries(instances.map((i) => [i.kind, i])),
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    [INVENTORY_WRITER_KIND]: writer,
   };
   const flowState = createFlowState({
     flows,
@@ -341,22 +322,6 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenMailboxesOptions["client"] = {
-    createSession: async (create) => {
-      const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
-      if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
-      return body;
-    },
-    getSession: async (sessionId) => {
-      const { status, body } = await call("GET", ["sessions", sessionId]);
-      if (status >= 400) throw new Error(`read session ${sessionId}: ${status}`);
-      return body?.session ?? body;
-    },
-    deleteSession: async (sessionId) => {
-      await call("DELETE", ["sessions", sessionId]);
-    },
-  };
-  await openMailboxes(tree.mailboxes, { client, userId: RUN_LAB_USER_ID });
 
   const runtime = await flowState.getRuntime();
   const act = async (flow: FlowInstance, sessionId: string, actionName: string, input: unknown, source?: string) => {
@@ -376,59 +341,88 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   };
 
   const inventory = await openInventory(
-    { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
+    { seats: inventorySeats(installation), mailboxes: [] },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
-      seatWriter: { flowKind: MAILBOX_KIND },
+      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
       userId: RUN_LAB_USER_ID,
       orgId,
     },
   );
   if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
 
-  // ---- the rows, filed through the mailbox, then one drain ------------------
-  const mailboxInstance = instances.find((i) => i.kind === MAILBOX_KIND)!;
-  const file = async (seat: (typeof seats)[number], goal: string, script: RunScript) =>
-    ((await act(mailboxInstance, mailbox.id, "fileTask", { board: boardName, goal, assignee: seat.name, input: script })) as {
-      taskId: string;
-    }).taskId;
+  // ---- the tasks, filed on the lead's conversation ----------------------------
+  const opened = await call("POST", [leadFlow, "sessions"], {
+    userId: RUN_LAB_USER_ID,
+    sessionId: RUN_LAB_LEAD_SESSION,
+    state: { [WORKER_ID_STATE_KEY]: lead.id },
+  });
+  if (opened.status !== 201) throw new Error(`the lead's conversation was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
+  const conversation = RUN_LAB_LEAD_SESSION;
+  const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[]) => {
+    const out = (await act(flows[leadFlow]!, conversation, "addTask_tasks", {
+      goal,
+      assignee: worker.id,
+      input: script,
+      ...(deps === undefined ? {} : { deps }),
+    })) as { ok: boolean; taskId?: string; error?: string };
+    if (out?.ok !== true) throw new Error(`filing for ${worker.id} was refused: ${JSON.stringify(out)}`);
+    return out.taskId!;
+  };
 
-  const filed: Array<{ taskId: string; seatId: string; kind: "held" | "short" | "waiting" | "asking" }> = [];
-  for (const seat of seats.filter((s) => s.policy === "per-task")) {
-    filed.push({ taskId: await file(seat, `${seat.name}: hold until stopped`, {}), seatId: seat.id, kind: "held" });
+  const firsts = flowsOfWorkers.map((flow) => workers.find((w) => w.flow === flow)!);
+  const filed: Array<{ taskId: string; workerId: string; kind: "held" | "short" | "waiting" | "asking" }> = [];
+  for (const worker of firsts) {
+    filed.push({ taskId: await file(worker, `${worker.name}: hold until stopped`, {}), workerId: worker.id, kind: "held" });
   }
   if (options.asking === true) {
-    // One more row for the seat on a flow of its own, whose run stops to ask a person.
-    const seat = seats.find((s) => s.policy === "per-task" && s.flow !== undefined)!;
-    filed.push({ taskId: await file(seat, `${seat.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }), seatId: seat.id, kind: "asking" });
+    // One more task for the worker on a flow of its own, whose run stops to ask a person.
+    filed.push({
+      taskId: await file(ownWorker, `${ownWorker.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }),
+      workerId: ownWorker.id,
+      kind: "asking",
+    });
   }
-  for (const seat of seats.filter((s) => s.policy === "per-worker")) {
-    for (const n of [1, 2]) filed.push({ taskId: await file(seat, `${seat.name}: short run ${n}`, { steps: 2 }), seatId: seat.id, kind: "short" });
+  for (const worker of workers.filter((w) => !firsts.includes(w))) {
+    for (const n of [1, 2]) filed.push({ taskId: await file(worker, `${worker.name}: short run ${n}`, { steps: 2 }), workerId: worker.id, kind: "short" });
   }
-  // The drain's conversation, opened naming the drainer.
-  const opened = await call("POST", [drainerFlow, "sessions"], {
-    userId: RUN_LAB_USER_ID,
-    sessionId: RUN_LAB_DRAIN_SESSION,
-    state: { [WORKER_ID_STATE_KEY]: drainer.id },
+  // It waits on the first held task, which never finishes on its own, so nothing claims it.
+  const firstHeld = filed.find((f) => f.kind === "held")!;
+  const firstWorker = workers.find((w) => w.id === firstHeld.workerId)!;
+  filed.push({
+    taskId: await file(firstWorker, `${firstWorker.name}: waits on the held task`, { steps: 1 }, [firstHeld.taskId]),
+    workerId: firstWorker.id,
+    kind: "waiting",
   });
-  if (opened.status !== 201) throw new Error(`the drain's session was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
-  await act(flows[drainerFlow]!, RUN_LAB_DRAIN_SESSION, "drain", {});
 
-  // Filed after the only drain, so nothing ever claims it.
-  const firstSeat = seats.find((s) => s.policy === "per-task")!;
-  filed.push({ taskId: await file(firstSeat, `${firstSeat.name}: filed after the drain`, { steps: 1 }), seatId: firstSeat.id, kind: "waiting" });
+  /** Every row of the person's conversation boards, read from the store. */
+  const storedRows = async (): Promise<Task[]> =>
+    Object.values(await runtime.stores.resourceState.getByPrefix("user", `${RUN_LAB_USER_ID}:~org:${orgId}`, "tasks/")).map(
+      (value) => value.state as unknown as Task,
+    );
 
   /** Abort every run still holding, through its own flow, so the Lab can close without waiting on them. */
   const stopHeldRuns = async () => {
-    for (const f of filed) {
-      const row = (await runtime.stores.resourceState.get("org", orgId, `${ledger.id}/${f.taskId}`))?.state as
-        | { run?: { sessionId: string; requestId: string } }
-        | undefined;
-      if (row?.run == null) continue;
+    for (const row of await storedRows()) {
+      if (row.run == null) continue;
       const owner = ((await runtime.stores.session.get(row.run.sessionId)) as { flowId?: string } | undefined)?.flowId;
       if (owner !== undefined) await call("POST", [owner, "requests", row.run.requestId, "abort"]).catch(() => undefined);
     }
   };
 
-  return { flowState, tree, flows, mailbox, boardName, ledger, drainerFlow, seats, filed, stopHeldRuns, releaseAsk: () => asks.open() };
+  return {
+    flowState,
+    tree,
+    flows,
+    lead,
+    leadFlow,
+    sharedFlow,
+    ownWorker,
+    conversation,
+    workers,
+    filed,
+    storedRows,
+    stopHeldRuns,
+    releaseAsk: () => asks.open(),
+  };
 }
