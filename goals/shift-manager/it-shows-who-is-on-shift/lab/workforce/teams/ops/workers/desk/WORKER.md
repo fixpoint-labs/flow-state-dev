@@ -1,6 +1,8 @@
 ---
 description: Where the ops team talks. It keeps no board.
-members: [ops.asker, ops.waiter]
+flow: coordinator
+delegates: [ops.asker, ops.waiter]
+routing: everyone
 ---
 
 The ops team's own mailbox.

@@ -1,6 +1,7 @@
 ---
-description: Drains the desk's board and hands each row to the seat it names.
+description: Files each task for the worker it names, on its own conversation's board.
 flow: lead
+delegates: [eng.coder, eng.reviewer, eng.spare, ops.asker, ops.waiter]
 ---
 
-Hand each row to its seat. You run none of them yourself.
+File each task for the worker it names. You run none of them yourself.

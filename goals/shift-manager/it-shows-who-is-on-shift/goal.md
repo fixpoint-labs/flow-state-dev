@@ -4,7 +4,7 @@
 
 **Outcome:** A person running a Lab in Shift Manager opens Roster and sees every worker the Lab has, each on shift, on call or off shift as the Lab's own records say, with the tasks it holds and what it waits on, for all teams or one. The sidebar's Roster entry, its footer and its TEAMS rows agree with the page.
 
-**Input:** the shift-lab (`lab/`), served by Shift Manager's command: two teams (`eng`, `ops`) whose workers are all members of the one board's mailbox, and one org-level seat (`chief-of-staff`) with no team. At boot it builds a **spread** (`fixtures/input.json`): per worker, rows its scripted run holds until stopped, rows its run parks for a person, rows filed after the only drain so nothing claims them, and pending approvals in a session of its own. Every assignee names exactly one worker. The check runs two spreads; another spread over the same tree must pass a correct Shift Manager too. No seat, team or board name is written in the check.
+**Input:** the shift-lab (`lab/`), served by Shift Manager's command: two teams (`eng`, `ops`) and one org-level seat (`chief-of-staff`) with no team. `eng.lead`'s `delegates:` names every worker of both teams that takes a task, and it files every task on its own conversation's board, through that conversation's `addTask_tasks`; `eng.desk` and `ops.desk` are coordinators nothing posts to. At boot it builds a **spread** (`fixtures/input.json`): per worker, tasks its scripted run holds until stopped, tasks its run parks on a question for a person (`parkOnQuestion`), tasks that wait on a held or parked task so nothing starts them, and pending approvals in a session of its own. Every assignee names exactly one worker. The check runs two spreads; another spread over the same tree must pass a correct Shift Manager too. No seat, team or board name is written in the check.
 
 **Signal:** per spread, each failure tagged `[spread <n>] <leg>`. Reached by clicking Roster, then each team in the picker, then each TEAMS row.
 
@@ -20,7 +20,7 @@
 - **filter**: each TEAMS row opens Roster for exactly that team, names it in the title, and is marked current.
 
 **Anti-game:**
-- No assertion reads Shift Manager's modules. The oracle is the store, read by this script through the Lab's HTTP routes (the inventory, each board's rows, each seat session's suspensions).
+- No assertion reads Shift Manager's modules. The oracle is the store, read by this script through the Lab's HTTP routes (the inventory, the person's conversation ledger, each seat session's suspensions). A row's board is the conversation whose partition keeps it, `<sessionId>.tasks`, by the script's own match against the listed sessions, so a HOLDING chip is graded against the real board ref.
 - The script resolves a row to a seat by its own rule (the assignee equals the seat's id, or its name after the team), never by Shift Manager's best match. The fixtures are built so both agree; the **store** leg fails if any assignee names no single seat.
 - Two spreads, so a screen tuned to one arrangement fails the other. Every status is present in each, so no group is graded empty.
 
