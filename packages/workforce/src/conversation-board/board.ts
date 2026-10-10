@@ -155,7 +155,7 @@ async function wake(ctx: BlockContext): Promise<void> {
  * marker are sent; the receiving entry dedupes, so a notice replayed while
  * its first send is in flight is acted on once.
  */
-async function replayNotices(ctx: BlockContext, rows: readonly Task[]): Promise<number> {
+export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): Promise<number> {
   const owing = rows.filter((row) => owedNotices(row, CONVERSATION_LEDGER_ID).length > 0);
   let sent = 0;
   for (const row of owing) {
