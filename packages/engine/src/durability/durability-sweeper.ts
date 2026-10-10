@@ -281,10 +281,15 @@ export function createDurabilitySweeper(
 
   arm(sweepIntervalMs);
 
-  // An ask parked in this process brings the armed tick forward.
-  const stopListening = onAskDeadline(provider, (deadline) => {
-    arm(deadline - Date.now());
-  });
+  // An ask parked in this process brings the armed tick forward. Only a
+  // sweeper that can resume an overdue ask listens: listening is also how the
+  // host tells a turn an ask is bounded here (`hasAskSweeper`).
+  const stopListening =
+    continueRequest === undefined
+      ? () => {}
+      : onAskDeadline(provider, (deadline) => {
+          arm(deadline - Date.now());
+        });
 
   return {
     dispose(): void {

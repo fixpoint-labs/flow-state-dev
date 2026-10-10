@@ -35,6 +35,16 @@
  * `assignTask` and `updateTask` present nothing, deliberately: they travel the
  * patch path, not the transition path, and a live block relabelling tasks it
  * does not hold is a supported thing to do.
+ *
+ * ## Waiting for the answer (FIX-1816)
+ *
+ * On a turn whose host can hold an ask (durable execution, and a durability
+ * sweeper that times asks out: `RequestHost.hasAskSweeper`), the capability's
+ * `addTask` takes two more flat fields: `waitForResponse`, which files the task
+ * and parks the turn until it ends, returning its output as `answer`; and
+ * `timeoutMs`, the ask's bound. Anywhere else the fields are not in the schema
+ * and `addTask` is exactly as before. It adds no tool. The `addTask_<board>`
+ * action never waits.
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
@@ -66,6 +76,7 @@ import { boardResolverOf } from "../task-board/board-resolver";
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
 import { shouldRetryOnFail } from "../tasks/collection/internal";
+import { addTaskAndWait, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS } from "../tasks/helpers/wait-for-response";
 
 /**
  * Own-state field the default resolver's board lives on. A host generator that
@@ -466,6 +477,12 @@ function buildTaskTools(
    * ticket through the claim seam.
    */
   claimless = false,
+  /**
+   * Offer `addTask`'s `waitForResponse` and `timeoutMs`. Only the capability's
+   * per-turn tool list sets it, on a host that can hold an ask
+   * ({@link canHoldAsk}).
+   */
+  wait = false,
 ) {
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
@@ -569,35 +586,78 @@ function buildTaskTools(
     return { ok: true as const };
   }
 
+  const addTaskDescription =
+    "Add a new task to your delegation board. Returns the new task id. " +
+    "assignee optionally names one of your agents or tools; leave it unset to run the task " +
+    "on a capable default worker. Set deps to task ids that must finish first, and input " +
+    "to a structured payload for the worker — when the assignee is a tool that payload is " +
+    "the tool's own arguments, and it is all the tool receives (deps order it, but it " +
+    "cannot read an upstream task's result). This records the task on the board; it does " +
+    "not run it. The board may bound how many tasks wait at once and how many it may hold " +
+    "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
+    "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.";
+  const waitDescription =
+    " Set waitForResponse to true when your next step needs the task's result: the task is " +
+    "filed as usual, then you wait until it ends and get its output back as answer. Only one " +
+    "waiting addTask per step. timeoutMs bounds the wait, from 30000 (30 seconds) to 3600000 " +
+    "(an hour), five minutes when unset, and is only valid with waitForResponse. Errors: " +
+    "wait_timed_out (it didn't end in time; it is cancelled), wait_task_failed, " +
+    "wait_task_cancelled, wait_already_pending, wait_unavailable (you are working a task " +
+    "yourself, so you can't wait), wait_timeout_out_of_range.";
+  const addTaskFields = {
+    goal: z.string(),
+    assignee: z.string().optional(),
+    deps: z.array(z.string()).optional(),
+    priority: z.number().optional(),
+    input: z
+      .unknown()
+      .optional()
+      .describe("Structured payload handed to the worker as the task's input."),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  };
+  const waitFields = {
+    waitForResponse: z
+      .boolean()
+      .optional()
+      .describe("Wait for the task to end and return its output as answer."),
+    timeoutMs: z
+      .number()
+      .optional()
+      .describe(
+        `How long to wait, in ms: ${MIN_ASK_TIMEOUT_MS} to ${MAX_ASK_TIMEOUT_MS}. Five minutes when unset. Only with waitForResponse.`,
+      ),
+  };
+  type AddTaskInput = z.infer<z.ZodObject<typeof addTaskFields>> & {
+    waitForResponse?: boolean;
+    timeoutMs?: number;
+  };
+
   const addTask = defineTool({
     name: named("addTask"),
-    description:
-      "Add a new task to your delegation board. Returns the new task id. " +
-      "assignee optionally names one of your agents or tools; leave it unset to run the task " +
-      "on a capable default worker. Set deps to task ids that must finish first, and input " +
-      "to a structured payload for the worker — when the assignee is a tool that payload is " +
-      "the tool's own arguments, and it is all the tool receives (deps order it, but it " +
-      "cannot read an upstream task's result). This records the task on the board; it does " +
-      "not run it. The board may bound how many tasks wait at once and how many it may hold " +
-      "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
-      "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
-    inputSchema: z.object({
-      goal: z.string(),
-      assignee: z.string().optional(),
-      deps: z.array(z.string()).optional(),
-      priority: z.number().optional(),
-      input: z
-        .unknown()
-        .optional()
-        .describe("Structured payload handed to the worker as the task's input."),
-      metadata: z.record(z.string(), z.unknown()).optional(),
-    }),
-    outputSchema: z.union([
-      z.object({ ok: z.literal(true), taskId: z.string() }),
-      z.object({ ok: z.literal(false), error: z.string() }),
-    ]),
+    description: wait ? addTaskDescription + waitDescription : addTaskDescription,
+    inputSchema: wait ? z.object({ ...addTaskFields, ...waitFields }) : z.object(addTaskFields),
+    outputSchema: wait
+      ? z.union([
+          z.object({ ok: z.literal(true), taskId: z.string(), answer: z.unknown().optional() }),
+          z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+        ])
+      : z.union([
+          z.object({ ok: z.literal(true), taskId: z.string() }),
+          z.object({ ok: z.literal(false), error: z.string() }),
+        ]),
     parentStateSchema,
-    execute: async (input, ctx) => {
+    execute: async (raw, ctx) => {
+      const input = raw as AddTaskInput;
+      // A bound with nothing to bound is refused, never ignored: a filer who
+      // meant to wait learns it didn't.
+      if (input.timeoutMs !== undefined && input.waitForResponse !== true) {
+        return {
+          ok: false as const,
+          error:
+            "wait_timeout_without_wait: timeoutMs bounds a wait, and this call doesn't wait. " +
+            "Set waitForResponse: true, or drop timeoutMs. Nothing was filed.",
+        };
+      }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
       // Failure order is deliberate and uniform across the tools that touch an
@@ -616,15 +676,27 @@ function buildTaskTools(
           ? undefined
           : checkAssignee(input.assignee, await rosterFor(roster, ctx));
       if (bad) return bad;
+      const init = {
+        goal: input.goal,
+        ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+        ...(input.deps !== undefined ? { deps: input.deps } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.input !== undefined ? { input: input.input } : {}),
+        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+      };
       try {
-        const task = await collection.addTask({
-          goal: input.goal,
-          ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
-          ...(input.deps !== undefined ? { deps: input.deps } : {}),
-          ...(input.priority !== undefined ? { priority: input.priority } : {}),
-          ...(input.input !== undefined ? { input: input.input } : {}),
-          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-        });
+        if (input.waitForResponse === true) {
+          const result = await addTaskAndWait(ctx, collection, init, {
+            ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+          });
+          if (result.ok) return { ok: true as const, taskId: result.taskId, answer: result.answer };
+          return {
+            ok: false as const,
+            error: result.message === undefined ? result.error : `${result.error}: ${result.message}`,
+            ...(result.taskId !== undefined ? { taskId: result.taskId } : {}),
+          };
+        }
+        const task = await collection.addTask(init);
         return { ok: true as const, taskId: task.id };
       } catch (err) {
         // A creation cap (FIX-931) is a soft error the model can act on — drain
@@ -844,6 +916,11 @@ export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
   roster?: AssigneeRosterSource,
 ): DefinedCapability {
+  // Two lists of the same eight names, built once: the turn gets the one its
+  // host can serve, so `waitForResponse` is in `addTask`'s schema only where
+  // an ask can be held and bounded.
+  const plain = buildTaskTools(resolveCollection, roster);
+  const waiting = buildTaskTools(resolveCollection, roster, undefined, undefined, false, true);
   return defineCapability({
     name: "taskTools",
     presets: {
@@ -854,11 +931,22 @@ export function createTaskToolsCapability(
         // declaration. They are also unnameable: `buildTaskTools` mints them
         // per resolver, so a `tools:` list has no stable key to let them back
         // in. A worker declaring `tools: ["someCatalogTool"]` keeps its board.
-        controlTools: buildTaskTools(resolveCollection, roster),
+        controlTools: (ctx: BlockContext) => (canHoldAsk(ctx) ? waiting : plain),
       },
       default: ["tools"],
     },
   });
+}
+
+/**
+ * Whether the running turn's host can hold an ask (FIX-1816 BR-5): durable
+ * execution (the ask resume is wired) and a durability sweeper that bounds
+ * every ask (`RequestHost.hasAskSweeper`). Read off the server's request
+ * host, never from input.
+ */
+export function canHoldAsk(ctx: Pick<BlockContext, "requestHost">): boolean {
+  const host = ctx.requestHost;
+  return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
 }
 
 /**

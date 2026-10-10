@@ -26,9 +26,10 @@
  * and neither is another parent session's child.
  *
  * The seam is **closed at five verbs**. The fifth, `resumeAsk`, was added by a
- * reviewed decision (an ask: a hand-off that waits for its answer). Adding a
- * sixth is a decision someone reviews, not a surface that grows by
- * transitivity.
+ * reviewed decision (an ask: a hand-off that waits for its answer), with one
+ * fact beside it, `hasAskSweeper`, which says whether an ask can be bounded
+ * here. Adding a sixth verb is a decision someone reviews, not a surface that
+ * grows by transitivity.
  */
 
 import type { AskOutcome } from "./ask-gate";
@@ -167,6 +168,18 @@ export interface RequestHost {
    * park there in the first place.
    */
   resumeAsk?(input: ResumeAskInput): Promise<ResumeAskResult>;
+
+  /**
+   * Whether an ask parked on this host is bounded: `true` when this process
+   * runs a durability sweeper that resumes a pending ask at its deadline with
+   * `wait_timed_out`. An ask is offered only where this is `true`, so no turn
+   * waits forever. Absent or `false` otherwise: no durable execution, no
+   * sweeper (a host that never built one, or one whose sweep is turned off).
+   *
+   * A fact read when the request starts, not a verb; the waker side
+   * (`resumeAsk`) does not depend on it.
+   */
+  readonly hasAskSweeper?: boolean;
 }
 
 /**
