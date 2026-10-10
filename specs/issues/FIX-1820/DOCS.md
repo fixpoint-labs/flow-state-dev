@@ -7,6 +7,6 @@ reader can see. The pages the epic published are its children's: "Waiting for th
 `apps/docs/docs/server/background-work.md` (FIX-1816), and the task-session and `answerTask`
 sections of `apps/docs/docs/orchestration/task-board.md` and
 `apps/docs/docs/workforce/coordinators.md` (FIX-1817). This issue follows them as written
-([PLAN → P4.D](PLAN.md#part-4--gap-sweep)). A promise there that no check reaches, or a sample
+([PLAN → Part 3](PLAN.md#part-3--gap-sweep-in-the-report)). A promise there that no check reaches, or a sample
 that differs from the call that works, is a finding against the child that published it, fixed
 on that child's route, not here.

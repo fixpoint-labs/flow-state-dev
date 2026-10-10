@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: leg a, ask survives a restart, green on the DevTeam install at its own commit; leg b, a task session stays open, green on a goal-local Lab at another commit, with no restart; and assign across a restart, never run. After: one main commit, recorded on a clean tree after every child has merged, FIX-1816's follow-up #3032 included, carrying four parts in order. Part 1 runs leg a and leg b unchanged, with leg a's controls no-run-once and no-waker and leg b's new-session and drop-answer. Part 2, new, is J4: a parked task with the server killed while it waits and again just after the answer, with controls new-session and fresh-store. Part 3 is the children's checks, which part 1 already is, so nothing is left to run. Part 4 is the gap sweep: nine seam rows with three neighbouring checks, the published promises, and the stalled ask, new, a timeout and a stop. A clean run opens the closure PR with the report as its body. A finding becomes a child of FIX-1815 that blocks FIX-1820, and the whole plan runs again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: leg a, ask survives a restart, green on the DevTeam install at its own commit; leg b, a task session stays open, green on a goal-local Lab at another commit, with no restart; and assign across a restart, never run. After: one main commit, recorded on a clean tree after every child has merged, FIX-1816&#8217;s follow-up #3032 included, carrying three parts in order. Part 1 runs leg a and leg b as merged, with their controls no-run-once, no-waker, new-session and drop-answer, plus three neighbouring checks on the same board. Part 2, new, is J4: a parked task with the server killed while it waits, answered after the restart, in the same session with one draw and the row unchanged, with a fresh-store control. Part 3 is the gap sweep, written in the report: seams, promises and not-done-if states, each mapped to a check that ran or the package test that covers it. A clean run opens the closure PR with the report as its body. A finding becomes a child of FIX-1815 that blocks FIX-1820, and the whole plan runs again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -55,42 +55,34 @@
     <circle class="pin" cx="30" cy="186" r="6"/>
     <text class="t-acc" x="44" y="182">HEAD, RECORDED</text>
 
-    <rect class="n-part" x="16" y="202" width="214" height="84" rx="5"/>
+    <rect class="n-part" x="16" y="202" width="292" height="84" rx="5"/>
     <text class="t-lbl" x="30" y="220">PART 1 · THE GOAL CHECK</text>
-    <text class="t-b" x="30" y="238">leg a and leg b</text>
-    <text class="t-s" x="30" y="254">both unchanged, as merged</text>
-    <text class="t-s" x="30" y="268">no-run-once · no-waker</text>
-    <text class="t-s" x="30" y="280">new-session · drop-answer</text>
+    <text class="t-b" x="30" y="238">leg a and leg b, as merged</text>
+    <text class="t-s" x="30" y="254">no-run-once · no-waker</text>
+    <text class="t-s" x="30" y="268">new-session · drop-answer</text>
+    <text class="t-s" x="30" y="280">+ 3 neighbouring checks on the board</text>
 
-    <rect class="n-new" x="246" y="202" width="214" height="84" rx="5"/>
-    <text class="t-acc" x="260" y="220">PART 2 · NEW</text>
-    <text class="t-b" x="260" y="238">J4 · a parked task, killed</text>
-    <text class="t-s" x="260" y="254">while parked</text>
-    <text class="t-s" x="260" y="268">and just after the answer</text>
-    <text class="t-s" x="260" y="280">new-session · fresh-store</text>
+    <rect class="n-new" x="324" y="202" width="292" height="84" rx="5"/>
+    <text class="t-acc" x="338" y="220">PART 2 · NEW</text>
+    <text class="t-b" x="338" y="238">J4 · a parked task, server killed</text>
+    <text class="t-s" x="338" y="254">answer after the restart</text>
+    <text class="t-s" x="338" y="268">same session · one draw · row unchanged</text>
+    <text class="t-s" x="338" y="280">control: fresh-store</text>
 
-    <rect class="n-alone" x="476" y="202" width="214" height="84" rx="5"/>
-    <text class="t-lbl" x="490" y="220">PART 3 · CHILDREN'S CHECKS</text>
-    <text class="t-b" x="490" y="238">= part 1</text>
-    <text class="t-s" x="490" y="254">both children's checks</text>
-    <text class="t-s" x="490" y="268">already ran there</text>
-    <text class="t-s" x="490" y="280">nothing left to run</text>
+    <rect class="n-alone" x="632" y="202" width="292" height="84" rx="5"/>
+    <text class="t-lbl" x="646" y="220">PART 3 · GAP SWEEP, IN THE REPORT</text>
+    <text class="t-b" x="646" y="238">seams, promises, not done if</text>
+    <text class="t-s" x="646" y="254">each mapped to a check that ran</text>
+    <text class="t-s" x="646" y="268">or the package test that covers it</text>
+    <text class="t-s" x="646" y="280">no new code</text>
 
-    <rect class="n-part" x="706" y="202" width="218" height="84" rx="5"/>
-    <text class="t-lbl" x="720" y="220">PART 4 · GAP SWEEP</text>
-    <text class="t-b" x="720" y="238">seams, docs, not done if</text>
-    <text class="t-s" x="720" y="254">9 seam rows · 3 neighbours</text>
-    <text class="t-s" x="720" y="268">every published promise</text>
-    <text class="t-acc" x="720" y="280">NEW · stalled ask: timeout, stop</text>
-
-    <circle class="tick" cx="123" cy="186" r="3"/>
-    <circle class="tick" cx="353" cy="186" r="3"/>
-    <circle class="tick" cx="583" cy="186" r="3"/>
-    <circle class="tick" cx="815" cy="186" r="3"/>
+    <circle class="tick" cx="162" cy="186" r="3"/>
+    <circle class="tick" cx="470" cy="186" r="3"/>
+    <circle class="tick" cx="778" cy="186" r="3"/>
   </g>
 
   <g id="outcomes">
-    <path class="line" d="M 760 286 L 760 312 L 300 312 L 300 330"/>
+    <path class="line" d="M 720 286 L 720 312 L 300 312 L 300 330"/>
     <rect class="n-part" x="16" y="330" width="430" height="52" rx="5"/>
     <text class="t-b" x="30" y="351">a clean run · the closure PR</text>
     <text class="t-s" x="30" y="369">the new directory · the report as its body</text>

@@ -2,14 +2,13 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-## Four people, before and after
+## Three people, before and after
 
 | Someone who… | Today | After this closes |
 |---|---|---|
-| **decides whether the epic is done** | Two children, each green on its own commit and its own fixture. Ask was proved on the DevTeam install, assign on a goal-local Lab, never on the same commit | One report on one `main` commit: both legs of the epic's goal, each control's FAIL, the restart journey assign never had, the seam sweep, each finding and its retest |
+| **decides whether the epic is done** | Two children, each green on its own commit and its own fixture. Ask was proved on the DevTeam install, assign on a goal-local Lab, never on the same commit | One report on one `main` commit: both legs of the epic's goal, each control's FAIL, the restart journey assign never had, the neighbouring checks, the gap sweep, each finding and its retest |
 | **assigns a job that parks on a question, on a server that restarts** | Nothing has restarted a server while an assigned task waits for its answer. FIX-1817 left that to this issue | Proven with a real model: the server dies while the task waits, the answer still resumes the same session, and the ticket the task drew before it parked is drawn once |
-| **asks a colleague who never answers, or stops the conversation** | Proven only in package tests, against a moved clock | Proven on a real server: the turn gets a timeout error within the published limit, and a stop cancels the asked task |
-| **reads the docs to use ask or assign** | Five pages changed across three PRs. Nobody has followed them end to end | Each promise those pages make is mapped to a check that ran on the commit, or is a finding |
+| **reads the docs to use ask or assign** | Five pages changed across three PRs. Nobody has followed them end to end | Each promise those pages make is mapped to a check that ran on the commit, or to the package test that covers it, or is a finding |
 
 ## The goal, and how we'll know it's met
 
@@ -34,7 +33,7 @@ flowchart LR
   B -->|"same session · names the ticket"| P
   J -->|"same session · ticket drawn once"| P
   C1["no-run-once · no-waker"] -.->|"leg a"| X["must FAIL · at the named signal"]
-  C2["new-session"] -.->|"legs b and J4"| X
+  C2["new-session · drop-answer"] -.->|"leg b"| X
   C3["fresh-store"] -.->|"J4"| X
 ```
 
@@ -43,17 +42,17 @@ control breaks one half of "survives a restart, runs once" and must fail at its 
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/hand-offs/survives-a-restart-and-runs-once/`: one runner over the commit that runs leg a (`goals/hand-offs/ask-survives-a-restart/`, unchanged), leg b (`goals/coordinators/task-session-stays-open/`, unchanged), J4 and the stalled-ask journeys (new, in this directory), and the sweep. On demand, not a CI gate. Committed by the closure PR, whose body is the report |
-| **Signal** | Leg a: its six signals, `kill:suspended` to `b:once`. Leg b: its signals `a:*` to `c:*`. J4: the server is killed while the task reads parked, and again, on a second store, just after the answer is accepted; after each restart the task completes in the session that parked, names the ticket and the region, `drawTicket` ran once, and the finished session still answers "Which ticket did you draw?" |
+| **Goal check** | `goals/hand-offs/survives-a-restart-and-runs-once/`: one runner over the commit that runs leg a (`goals/hand-offs/ask-survives-a-restart/`, unchanged), leg b (`goals/coordinators/task-session-stays-open/`, unchanged), the three neighbouring checks on the same board, and J4 (new, in this directory). The gap sweep is report prose. On demand, not a CI gate. Committed by the closure PR, whose body is the report |
+| **Signal** | Leg a: its six signals, `kill:suspended` to `b:once`. Leg b: its signals `a:*` to `c:*`. J4: the server is killed while the task reads parked; after the restart the answer is accepted, the task completes in the session that parked, names the ticket and the region, `drawTicket` ran once, one `completed` notice, the finished session still answers "Which ticket did you draw?", and the finished row is unchanged |
 | **Input** | Real workers on `openai/gpt-5.4-mini`, SQLite, the server a real process killed with SIGKILL. The word, the ticket, the region and the follow-up wording are held out at run time |
 | **Anti-game** | No assertion on a child's own tests. No restart before the hand-off is filed. Nothing in a runner writes a row, calls the waker or resumes a request; the only post-restart touch is the person listing tasks, as in leg a |
-| **Control that must fail** | `no-run-once`: leg a FAILS *one-row*. `no-waker`: leg a FAILS *a:completed*. `new-session`: leg b FAILS *a:names-ticket*, J4 FAILS *names the ticket*. `fresh-store` (the server restarts on an empty store, as an in-memory one would): J4 FAILS *the answer is accepted*, which proves the restart is real and the store carries the wait |
+| **Control that must fail** | `no-run-once`: leg a FAILS *one-row*. `no-waker`: leg a FAILS *a:completed*. `new-session`: leg b FAILS *a:names-ticket* (the same mechanism J4 depends on). `drop-answer`: leg b FAILS *a:names-region*. `fresh-store` (the server restarts on an empty store, as an in-memory one would): J4 FAILS *the answer is accepted*, which proves the restart is real and the store carries the wait |
 
 ## What changes
 
-![Today: leg a on the DevTeam install and leg b on a goal-local Lab, each green on its own commit, leg b with no restart. After: one main commit and one runner. Part 1 runs both legs unchanged with the epic's controls. Part 2 is the one new journey, a parked task killed mid-wait. Part 3 has nothing left to run, because part 1 is both children's checks. Part 4 sweeps the eight seams with three neighbouring checks, the published promises and the stalled ask. A finding becomes a child of FIX-1815, blocks this issue, and sends the whole plan round again](figures/what-changes.svg)
+![Today: leg a on the DevTeam install and leg b on a goal-local Lab, each green on its own commit, leg b with no restart. After: one main commit and one runner. Part 1 runs both legs unchanged with their controls, and three neighbouring checks on the same board. Part 2 is the one new journey, a parked task killed while it waits, with a fresh-store control. Part 3 is the gap sweep, written in the report: each seam and published promise mapped to the check or package test that covers it. A finding becomes a child of FIX-1815, blocks this issue, and sends the whole plan round again](figures/what-changes.svg)
 
-Read the commit line: everything right of it runs together, and only the two dashed boxes are new.
+Read the commit line: everything right of it runs together, and only the dashed box is new.
 
 ## What stays as it is
 
@@ -71,14 +70,15 @@ nobody asked for.
 1. **[D1](DECISIONS.md#d1) · One closure check that runs the two children's checks as they are,
    and adds only what neither walks.** If wrong: the epic's "one goal fixture" reads as one new
    script, and we rewrite two working checks to get it.
-2. **[D2](DECISIONS.md#d2) · Assign is restarted too, at two moments, with a lost-store control.**
-   If wrong: a real model run per moment for a half of the goal the epic's leg b did not spell out.
+2. **[D2](DECISIONS.md#d2) · Assign is restarted too, while parked, with a lost-store control.**
+   If wrong: one more real-model run per closure run, for a half of the goal the epic's leg b did
+   not spell out.
 
 **Open: [Q1](DECISIONS.md#q1)**, which of the epic's nine open newer children must be fixed before this
 run. It is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Improvement · closure (QA) · `goals/` only · medium, repeats per finding · one PR after a clean
+Improvement · closure (QA) · `goals/` only · small, repeats per finding · one PR after a clean
 run · epic [FIX-1815](../../epics/FIX-1815/SPEC.md), closure · required · runs after every other
 child merges, FIX-1816's follow-up [#3032](https://github.com/fixpoint-labs/flow-state-dev/pull/3032)
 included · Linear [FIX-1820](https://linear.app/fixpoint-labs/issue/FIX-1820)

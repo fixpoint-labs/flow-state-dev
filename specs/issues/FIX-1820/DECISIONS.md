@@ -8,11 +8,12 @@ for. Everything else is the closure rule applied.
 ```mermaid
 flowchart LR
   I["FIX-1820 · the epic's QA plan"] --> D1["D1 · one runner over the two children's checks, plus what neither walks"]
-  I --> D2["D2 · assign is restarted too · two moments · a lost-store control"]
+  I --> D2["D2 · assign is restarted too · while parked · a lost-store control"]
   I --> Q1["Q1 · open · which newer children block the run"]
   D1 -.->|"rewrites two working checks"| X1["one new fixture holding both legs"]
   D1 -.->|"no single commit, no report"| X2["a checklist, no runner"]
   D2 -.->|"leaves half the goal sentence unproved"| X3["the epic's leg b as written, no restart"]
+  D2 -.->|"a timing race and a model run for what J4.1 already proves"| X4["a second kill, just after the answer"]
 ```
 
 Solid edges are what you sign. Dashed edges are what lost, and why.
@@ -31,21 +32,21 @@ Solid edges are what you sign. Dashed edges are what lost, and why.
 It comes down to proof already earned: two checks that passed with their controls failing are
 worth more than one that has not run yet.
 
-**What is new, and why.** Only three things: J4, the parked-task restart (no check restarts a
-server while an assigned task waits, and FIX-1817's spec named it this issue's); the stalled-ask
-journeys of [ER-4](../../epics/FIX-1815/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)
-(timeout and stop are proved only in package tests); and the sweep's scripted seam assertions.
+**What is new, and why.** Two things: J4, the parked-task restart, because no check restarts a
+server while an assigned task waits and FIX-1817's spec named it this issue's; and the runner,
+which keeps every part on one commit. The gap sweep is report prose that maps each seam and
+promise to a check that ran or a package test, not code.
 
 <a name="d2"></a>
-## D2 · Assign is restarted too, at two moments, with a lost-store control
+## D2 · Assign is restarted too, while parked, with a lost-store control
 
 | | |
 |---|---|
-| **Instead of** | The epic's leg b as its signal reads: park, answer, follow up, no restart |
-| **Because** | The epic's goal sentence says both kinds "survive a restart without doing the work twice", and its fourth team runs Workforce on a server that restarts. Leg b's signal never says restart, and FIX-1817 listed "surviving a restart mid-hand-off" as this issue's. Two moments, because they fail differently: killed while parked, the wait itself must be durable; killed just after the answer is accepted, the restart must start the task once, in the same session, without drawing a second ticket |
-| **Locks in** | Two more real-model runs per closure run, a few cents and a few minutes. A `fresh-store` control that restarts on an empty store, so a pass cannot come from a server that never really lost its memory |
+| **Instead of** | The epic's leg b as its signal reads: park, answer, follow up, no restart. Or a second kill just after the answer is accepted |
+| **Because** | The epic's goal sentence says both kinds "survive a restart without doing the work twice", and its fourth team runs Workforce on a server that restarts. Leg b's signal never says restart, and FIX-1817 listed "surviving a restart mid-hand-off" as this issue's. One moment is enough: killed while parked, the wait must be durable, and after the answer the task must run once in the same session (`j:one-draw`, `j:one-completed`, `j:same-session`). A second kill after the answer adds a timing race and a model run for little more |
+| **Locks in** | One more real-model run per closure run, a few cents and a few minutes. A `fresh-store` control that restarts on an empty store, so a pass cannot come from a server that never really lost its memory. A kill between the answer and the task's start stays unproved end to end |
 
-![D2: is assign restarted? Chosen: yes, killed while parked and again just after the answer, with a fresh-store control. Instead of: leg b as the epic's signal reads, with no restart. It comes down to the first row, the goal sentence: only the chosen check proves assign survives a restart. Second row, what a kill after the answer catches: a task started twice, or in a new session. Third row, the price: two more model runs per closure run](figures/d2-assign-restarts.svg)
+![D2: is assign restarted? Chosen: yes, killed while parked, with a fresh-store control. Instead of: leg b as the epic's signal reads, with no restart, or a second kill just after the answer. It comes down to the first row, the goal sentence: only a restart proves assign survives one. Second row, the work runs once: proved by the chosen check after its restart; a second kill adds a timing race. Third row, the price: one more model run per closure run](figures/d2-assign-restarts.svg)
 
 It comes down to the goal sentence: without a restart, the closure proves assign works, not that
 it survives one.
@@ -85,10 +86,9 @@ It comes down to whether a promise the epic makes is broken. Only FIX-1844's is.
 
 - **#3032 is a child's work, so the run waits for it.** FIX-1816's review follow-ups change the
   ask under leg a; a run before it merges proves a commit that will not ship.
-- **The ask's time limit is the default five minutes**, not one the asking model is told to set.
-  The check then cannot pass or fail on whether the model obeyed an instruction.
-- **The stalled-ask journeys run in the sweep**, as ER-4's *checked at* says, not as a team
-  journey.
+- **ER-4's stalled ask is the package tests' job.** The Proof names neither timeout nor stop,
+  and FIX-1816's tests cover both on SQLite (its V6, V8). The report names them, as it does for
+  `wait_unavailable`, instead of running a five-minute real-server journey.
 - **The neighbouring coordinator checks re-run.** ER-12 let both children change FIX-1794's code,
   so FIX-1794's own check, and the two others on the same board, run on the commit.
 - **No `goals/lib` helper is promoted.** The kill helper has two users after J4; the library waits
@@ -96,8 +96,8 @@ It comes down to whether a promise the epic makes is broken. Only FIX-1844's is.
 - **Ask's shipped caller.** FIX-1816's [D2](../FIX-1816/DECISIONS.md#d2) named the research team
   as the caller that needs the answer in the same turn. On `main` today no shipped app or guide
   asks: FIX-1814 made `tech-brief` write its brief alone, and the research-team guide uses a static
-  board. Every Workforce worker with a delegate can ask, which leg a proves. The sweep records the
-  state (G8); it is not a finding, because the epic's goal names a worker, not an example.
+  board. Every Workforce worker with a delegate can ask, which leg a proves. The report records the
+  state in one line; it is not a finding, because the epic's goal names a worker, not an example.
 
 ## Considered and dropped
 
@@ -105,10 +105,14 @@ It comes down to whether a promise the epic makes is broken. Only FIX-1844's is.
 |---|---|
 | Legs a and b in one server life on one install | Proves nothing the seams sweep doesn't, and needs a new install that holds both the DevTeam's asker and the goal-local ticket tool |
 | A browser leg | Neither hand-off has a screen in this epic; the composer is FIX-1765's. The person's surface is the HTTP clients the docs show |
-| A 30-second ask the model is told to set | Faster, but the check would grade the model's obedience, not the timeout |
+| ER-4's timeout and stop on a real server | Five real minutes and a scratch patch every run, for what FIX-1816's package tests already prove |
+| Scripted seam scans (one resume verb, one signal module, one marker) | Structure, not behaviour: legs a and b passing is the behavioural proof, and the scans would rot with every rename |
 | Restarting leg b inside FIX-1817's own check | Changes a child's acceptance after merge; the closure re-runs children's checks, it doesn't rewrite them |
 
 ## How it got here
 
 - 2026-10-10 · drafted after FIX-1816 (#2964, #2999, #3015) and FIX-1817 (#3014) merged, with
   #3032 open.
+- 2026-10-10 · the coordinator's restraint pass before the gate: cut the stalled-ask journeys,
+  J4's second kill, J4's `new-session` control, the scripted sweep and the verdict rows in the
+  children's `goal.md`.
