@@ -223,13 +223,16 @@ async function routingOf(who: Connected, sessionId: string, postId: string | nul
     .filter((d) => d?.postId === postId);
 }
 
-/** The model the route evaluation's trace row says answered one post: its `model.actual`, if the post made a call. */
-async function routeModelOf(who: Connected, sessionId: string, postId: string | null): Promise<string | undefined> {
-  if (postId === null) return undefined;
+/**
+ * What the route evaluation's trace row says of one post: the model that
+ * answered (`model.actual`) and how long the call took, if the post made one.
+ */
+async function routeTraceOf(who: Connected, sessionId: string, postId: string | null): Promise<{ model?: string; ms?: number }> {
+  if (postId === null) return {};
   const row = (await who.routes.items(sessionId, "block_trace")).find(
     (i) => i.requestId === postId && (i as { blockName?: string }).blockName === "coordinator-route" && (i as { blockKind?: string }).blockKind === "evaluator",
-  ) as { model?: { actual?: string } } | undefined;
-  return row?.model?.actual;
+  ) as { model?: { actual?: string }; duration?: number } | undefined;
+  return { model: row?.model?.actual, ms: row?.duration };
 }
 
 /**
@@ -410,11 +413,11 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       r.failures.push(`${name}:evaluated — wanted one \`by: evaluated\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
     }
     // The model the route evaluation's trace says answered: the routing ran on Jev, or it doesn't count.
-    const answeredBy = await routeModelOf(alice, cos.id, turn.requestId);
+    const { model: answeredBy, ms } = await routeTraceOf(alice, cos.id, turn.requestId);
     o.routeModels.push(answeredBy ?? "none");
     if (answeredBy === undefined || !/jev/i.test(answeredBy)) {
       r.failures.push(`${name}:evaluated — the route evaluation's trace names ${answeredBy === undefined ? "no model" : `"${answeredBy}"`}, not Jev`);
-    } else r.notes.push(`the route evaluation answered from ${answeredBy}`);
+    } else r.notes.push(`the route evaluation answered from ${answeredBy}${ms === undefined ? "" : ` in ${ms} ms`}`);
     // Read the way talk() reads the turn: the post's own tool outputs and assistant line.
     if (turn.tools.length > 0 || turn.replied) {
       r.failures.push(`${name}:no-turn — the chief of staff took a turn on the post: tools [${turn.tools.map((t) => t.name).join(", ")}], ${turn.replied ? `wrote "${turn.reply.slice(0, 200)}"` : "wrote nothing"}`);
@@ -659,7 +662,11 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const deliveries = (await recordOf(o.store, alice, session.id)).ledger.filter((d) => d.postId === turn.requestId);
       const after = await alice.routes.items(session.id, "tool_output");
       const tools = after.filter((i) => i.requestId === turn.requestId).map((i) => String(i.toolCall?.name ?? ""));
-      r.notes.push(`${tag}: the turn ${turn.status}${approved.length === 0 ? "" : ` after approving ${approved.join(", ")}`}; tools [${tools.join(", ")}]; records ${show(records)}`);
+      const trace = await routeTraceOf(alice, session.id, turn.requestId);
+      r.notes.push(
+        `${tag}: the route evaluation answered from ${trace.model ?? "no model"}${trace.ms === undefined ? "" : ` in ${trace.ms} ms`}; ` +
+          `the turn ${turn.status}${approved.length === 0 ? "" : ` after approving ${approved.join(", ")}`}; tools [${tools.join(", ")}]; records ${show(records)}`,
+      );
       const problems: string[] = [];
       if (records.length !== 1 || records[0]!.by !== "judgment" || records[0]!.fit === undefined) {
         problems.push(`wanted one \`by: judgment\` record with best fit's \`fit\`; the post has ${records.length === 0 ? "none" : show(records)}`);
