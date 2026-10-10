@@ -28,7 +28,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalAttempts, goalTmpDir, keysServing, runGoal } from "../../../lib/index.mts";
 import { buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../../lib/shift-manager.mts";
 import { loadScriptedClients } from "../../../coordinators/files-tasks-down-the-owners-chain/scripted.mts";
 import { items, requests, sessions, taskRows, textOf, toolOutput, type StoredTask } from "../../../coordinators/files-tasks-down-the-owners-chain/store.mts";
@@ -86,6 +86,18 @@ function killTree(pid: number): number[] {
     }
   }
   return tree;
+}
+
+// ---- the ticket, as the store holds it ------------------------------------------------------
+
+/** Every `drawTicket` output the store at `file` holds, in any session: the tool's own record, never the model's retelling. */
+function drawsIn(file: string): Array<{ session: string; item: string | undefined; ticket: string | undefined }> {
+  if (!existsSync(file)) return [];
+  return sessions(file).flatMap((s) =>
+    items(file, s.id, "tool_output")
+      .filter((i) => i.toolCall?.name === "drawTicket")
+      .map((i) => ({ session: s.id, item: i.id as string | undefined, ticket: toolOutput(i)?.ticket as string | undefined })),
+  );
 }
 
 // ---- Alice's clients ----------------------------------------------------------------------
@@ -170,7 +182,14 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   say(`${o.label}: ${parked ? "the row read parked with its notice" : "the row never parked"}; SIGKILL to ${killed.join(", ")} ${killedAfterMs} ms after the filing`);
   await served.exited;
   // What the store says now is what the dead server left.
-  const atKill = { row: row(o.store, taskId), parkedNotices: noticesIn(o.store, conv, taskId, "parked") };
+  const atKill = { row: row(o.store, taskId), parkedNotices: noticesIn(o.store, conv, taskId, "parked"), draws: drawsIn(o.store) };
+  // A task that never parked, or parked with no draw persisted, leaves nothing to restart: a setup failure, never a grade.
+  if (!parked || atKill.row?.status !== "parked") {
+    throw new Error(`the task never read parked with its one notice within 120 s (the dead server left ${show(atKill.row?.status)}; filing ${show(filed.output ?? filed.error)}), so there was no wait to kill`);
+  }
+  if (atKill.draws.length !== 1 || atKill.draws[0]!.ticket === undefined) {
+    throw new Error(`the dead server's store held ${atKill.draws.length} drawTicket output(s) at the kill, not one: ${show(atKill.draws)}; the draw must be persisted before the server dies`);
+  }
 
   // After the restart: only what a person does.
   const storeAfter = freshStore ? o.fresh : o.store;
@@ -232,13 +251,16 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
   }
 
   const all = existsSync(store) ? sessions(store) : [];
-  const draws = all.flatMap((s) => items(store, s.id, "tool_output").filter((i) => i.toolCall?.name === "drawTicket").map((i) => ({ session: s.id, out: toolOutput(i) })));
-  const ticket = draws[0]?.out?.ticket as string | undefined;
+  // The ticket is the one draw the dead server's store held at the kill; after the restart that same record must be the only one.
+  const drawn = o.atKill.draws[0];
+  const ticket = drawn?.ticket;
+  const draws = drawsIn(store);
   const names = (text: unknown, value: string | undefined) => value !== undefined && typeof text === "string" && text.toUpperCase().includes(value.toUpperCase());
   const outputText = (t: StoredTask | undefined) => (typeof t?.output === "string" ? t.output : JSON.stringify(t?.output ?? ""));
   if (!names(outputText(task), ticket)) failures.push(`j:names-ticket — wanted the output to name the ticket drawn before the kill (${ticket}); it said ${show(task?.output)}`);
   if (!names(outputText(task), region)) failures.push(`j:names-region — wanted the output to name the answered region (${region}); it said ${show(task?.output)}`);
-  if (draws.length !== 1) failures.push(`j:one-draw — wanted drawTicket to run once in total; it ran ${draws.length} time(s): ${show(draws)}`);
+  const same = draws.length === 1 && draws[0]!.ticket === ticket && draws[0]!.item === drawn?.item && draws[0]!.session === drawn?.session;
+  if (!same) failures.push(`j:one-draw — wanted the one draw persisted at the kill (${show(drawn)}) to be the only draw after the restart; the store holds ${show(draws)}`);
 
   const keys = (all.find((s) => s.id === o.conv)?.state.taskNotices as string[] | undefined) ?? [];
   const completedNotices = keys.filter((k) => o.taskId !== undefined && k.startsWith(`${o.taskId}:`) && k.endsWith(":completed"));
@@ -249,7 +271,7 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
   }
 
   const reply = o.asked === null || o.found === undefined ? "" : items(store, o.found.id, "message").filter((m) => m.requestId === o.asked!.requestId && m.role === "assistant").map(textOf).join("\n");
-  if (o.found?.id !== parkedSession || !names(reply, ticket)) {
+  if (o.found?.id !== parkedSession || o.asked?.status !== "completed" || !names(reply, ticket)) {
     failures.push(`j:still-answers — wanted the task's own session (${parkedSession}, found ${o.found?.id}) to answer "${LEG_B_QUESTION}" with ${ticket}; it said ${show(reply)} (${o.asked?.status})`);
   }
   if (o.afterAll?.status !== "completed" || JSON.stringify(o.afterAll?.output) !== JSON.stringify(task?.output)) {
@@ -257,7 +279,7 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
   }
 
   const notes = [
-    `killed ${o.killedAfterMs} ms after the filing, the dead server leaving the row ${parkedRow?.status} in ${parkedSession} with ${o.atKill.parkedNotices.length} parked notice(s)`,
+    `killed ${o.killedAfterMs} ms after the filing, the dead server leaving the row ${parkedRow?.status} in ${parkedSession} with ${o.atKill.parkedNotices.length} parked notice(s) and the draw ${show(drawn)}`,
     `restarted on ${o.storeAfter}; answer: ${show(o.answered.output ?? o.answered.error)}; region ${region}; ticket ${ticket}; draws ${draws.length}`,
     `task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} ${o.endedIn} ms after the answer, attempts ${task?.attempts}; output ${show(task?.output)}`,
     `second answer: ${show(o.second.output ?? o.second.error)}, rows ${o.secondWroteNothing ? "unchanged" : "changed"}`,
@@ -295,7 +317,7 @@ await runGoal(async () => {
       timeoutMs: 180_000,
     });
 
-  const attempts = Number(process.env.GOAL_ATTEMPTS ?? (freshStore ? 1 : 3));
+  const attempts = goalAttempts(freshStore ? 1 : 3);
   let result = { failures: ["no attempt ran"], notes: [] as string[] };
   let passedOn = 0;
   let reached = !freshStore;

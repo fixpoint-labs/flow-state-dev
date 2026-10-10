@@ -13,17 +13,17 @@
 
 **Signal:** P1.a to P1.d: each check's own `goal.md` signals, its plain run PASS. J4, each failure tagged:
 
-- `kill:parked` the task read `parked`, with one `parked` notice, in the store the dead server left.
+- `kill:parked` the task read `parked`, with one `parked` notice, in the store the dead server left. A task that never parks within 120 s, or a store holding no one `drawTicket` output at the kill, is a **setup** failure of that attempt, never a grade: there was no wait, or no draw, to survive.
 - `j:answered` after the restart, `answerTask_tasks` answers `{ ok: true }`.
 - `j:completed` the task is `completed` within 90 s of the answer.
 - `j:same-session` it completed in the session that parked.
-- `j:names-ticket` · `j:names-region` its output names the ticket drawn before the kill, and the answered region.
-- `j:one-draw` · `j:one-completed` `drawTicket` ran once in total; one `completed` notice.
+- `j:names-ticket` · `j:names-region` its output names the ticket the store held at the kill, and the answered region.
+- `j:one-draw` · `j:one-completed` at the end of the run the store holds exactly one `drawTicket` output, and it is the same record (session, item and ticket) the store held at the kill; one `completed` notice.
 - `j:second-answer` a second `answerTask_tasks` is declined (`ok: false`), and every task row is byte-for-byte as before it.
-- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked, and its `run` door answers "Which ticket did you draw?" with the ticket.
+- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked, and its `run` request ends `completed` and answers "Which ticket did you draw?" with the ticket.
 - `j:row-unchanged` after that, the row is still `completed` with the same output.
 
-The runner prints one verdict per check, each with the commit's SHA, and exits non-zero when a plain check fails or a control doesn't fail as it must.
+The runner prints one verdict per check, each with the commit's SHA. It exits non-zero when a plain check fails, or when a control's red tags are not exactly its allowed set (see **Controls**).
 
 **Anti-game:** the runner refuses a dirty tree and re-checks `HEAD` before every check, so no verdict comes from another commit. It writes no row, calls no waker and resumes no request; neither does J4, whose only touches after the restart are Alice's: answer, list the board's tasks every five seconds, answer again, find the task's session and ask it. J4 kills only after the store shows the park, grades the store file read-only, and reads the ticket from `drawTicket`'s own output, so the model can't pass by inventing one. No check is graded on a child's own unit tests.
 
@@ -31,7 +31,17 @@ The runner prints one verdict per check, each with the commit's SHA, and exits n
 
 **Run:** `pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/run.mts` on a clean checkout. J4 alone: `pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/legs/parked.mts` (`GOAL_ATTEMPTS=<n>`, default 3; 1 under a control). On demand only, never a CI gate.
 
-**Controls:** the runner runs each child's controls with their own `GOAL_CONTROL` and passes only when each fails its named assertion: P1.a `no-run-once` → `one-row`, `no-waker` → `a:completed`; P1.b `new-session` → `a:names-ticket` and `c:names-ticket`, `drop-answer` → `a:names-region`. J4's own:
+**Controls:** the runner runs each child's controls with their own `GOAL_CONTROL`. A control passes only when its tags that went red are exactly its must-fail tags plus the co-failures its check documents, nothing else: any other red tag, a setup failure or a throw is a finding (QR-12).
+
+| Control | Must fail | Allowed to go red with it |
+|---|---|---|
+| P1.a `no-run-once` | `one-row` | `b:once` |
+| P1.a `no-waker` | `a:completed` | `a:word` |
+| P1.b `new-session` | `a:names-ticket`, `c:names-ticket` | `a:same-session`, `b:names-ticket`, `c:same-session`, `c:one-draw` |
+| P1.b `drop-answer` | `a:names-region` | nothing |
+| J4 `fresh-store` | `j:answered` | every `j:*` after the answer; never `kill:parked` |
+
+J4's own:
 
 - `GOAL_CONTROL=fresh-store`: the server restarts on a new, empty store file instead of the one the dead server left, as an in-memory store would. No product code changes; the run checks that the restarted server opened the new file. Must fail **`j:answered`** with `kill:parked` green. Everything after the answer goes red with it: there is no task to complete.
 
