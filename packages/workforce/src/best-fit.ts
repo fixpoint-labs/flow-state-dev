@@ -84,7 +84,7 @@ export const failedEvaluationSchema = z.object({ failed: z.string() });
  * What an answered call leaves, as far as the ladder reads it: the `member`
  * question's {@link ChoiceAnswer}, its choice unchecked (anything; the ladder
  * checks it against the options) and its confidence only when the model
- * reported one.
+ * reported one (the ladder reads one outside [0, 1] as none).
  */
 const answeredEvaluationSchema = z.object({
   answers: z.object({
@@ -118,7 +118,8 @@ function evaluationOutcome(answer: unknown): { failed: string } | { choice: unkn
   const answered = answeredEvaluationSchema.safeParse(answer);
   if (!answered.success) return { choice: undefined };
   const { choice, confidence } = answered.data.answers.member;
-  return confidence === undefined ? { choice } : { choice, confidence };
+  // Outside [0, 1] is no reported confidence, as core's cascading gate reads it.
+  return confidence === undefined || confidence < 0 || confidence > 1 ? { choice } : { choice, confidence };
 }
 
 /**

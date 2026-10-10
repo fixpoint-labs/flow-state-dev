@@ -137,7 +137,7 @@ delegates: [eng.em, eng.coder]
 
 Some evaluation models also report a confidence with each answer, a number from 0 to 1 for how sure they are. Jev, `typesafe-ai/jev` through Vercel's AI Gateway, does ([Evaluation models](../fundamentals/models.md#evaluation-models)). Set `minConfidence:` and a delegate pick below it isn't used. Picking the coordinator is used at any confidence.
 
-Best fit can't place a post when the call fails, answers with something that isn't a choice, has nobody to pick from, picks a delegate below `minConfidence:`, or reports no confidence while `minConfidence:` is set. Such a post goes to the `fallback:` delegate. With no fallback, or one that can't be reached, the coordinator's own turn takes it. If that turn fails too, nobody takes the post, and the conversation says so:
+Best fit can't place a post when the call fails, answers with something that isn't a choice, has nobody to pick from, picks a delegate below `minConfidence:`, or reports no usable confidence (none, or one outside 0 to 1) while `minConfidence:` is set. Such a post goes to the `fallback:` delegate. With no fallback, or one that can't be reached, the coordinator's own turn takes it. If that turn fails too, nobody takes the post, and the conversation says so:
 
 ```text
 Nobody took this post: best fit couldn't place it, and the coordinator's own turn failed: <error>.

@@ -2215,7 +2215,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   the coordinator's own description, reading the post with the conversation's recent lines. A
   pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
   fails, answers with something that isn't a choice, has no one to pick, or picks a delegate
-  below `minConfidence:` (or with no confidence while it is set). That post goes to the
+  below `minConfidence:` (or with no confidence, or one outside 0 to 1, while it is set). That post goes to the
   fallback, else the judgment turn. If that turn fails too, nobody takes the post, and the
   conversation says so. The judgment turn's model sees each delegate's answer prefixed
   `<worker id>, a delegate in this conversation, answered:`, and each post the routing

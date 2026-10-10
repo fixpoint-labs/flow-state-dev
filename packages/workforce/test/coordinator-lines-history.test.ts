@@ -1,7 +1,7 @@
 /**
  * The coordinator turn's history (`coordinatorHistory`): each delegate's answer said as a line
  * from that delegate, and each post the routing handed on followed by what happened to it, matched to the
- * conversation's items in order, so the coordinator's own reply stays its own
+ * conversation's items once each, first unused first, so the coordinator's own reply stays its own
  * even when its text repeats a delegate's.
  */
 import { describe, expect, it } from "vitest";
@@ -30,7 +30,7 @@ describe("the coordinator turn's history", () => {
     ]);
   });
 
-  it("matches in order, so a reply of the coordinator's own that repeats a delegate's words stays its own", () => {
+  it("matches each item once, first unused first, so a reply of the coordinator's own that repeats a delegate's words stays its own", () => {
     const items = [message("assistant", "OK.", "coordinator-judgment"), message("assistant", "OK.", "eng.em")];
     const history = [
       { role: "assistant" as const, content: "OK." },
@@ -39,6 +39,29 @@ describe("the coordinator turn's history", () => {
     expect(coordinatorHistory(history, items, NAMES)).toEqual([
       { role: "assistant", content: "OK." },
       { role: "assistant", content: "eng.em, a delegate in this conversation, answered:\nOK." }
+    ]);
+  });
+
+  it("names a delegate's answer that landed before the coordinator's reply to an earlier post", () => {
+    // The coordinator's turn on the first post outlasts the delegate's answer to the second, so the
+    // conversation holds the answer first, while the history (by request) holds the reply first.
+    const items = [
+      message("user", "audit it"),
+      message("user", "file it"),
+      message("assistant", "Filed y.", "eng.em"),
+      message("assistant", "On the audit.", "coordinator-judgment")
+    ];
+    const history = [
+      { role: "user" as const, content: "audit it" },
+      { role: "assistant" as const, content: "On the audit." },
+      { role: "user" as const, content: "file it" },
+      { role: "assistant" as const, content: "Filed y." }
+    ];
+    expect(coordinatorHistory(history, items, NAMES)).toEqual([
+      history[0],
+      history[1],
+      history[2],
+      { role: "assistant", content: "eng.em, a delegate in this conversation, answered:\nFiled y." }
     ]);
   });
 

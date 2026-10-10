@@ -56,6 +56,18 @@ describe("best fit's ladder (V1)", () => {
       { by: "none", miss: { kind: "no-confidence", choice: "eng.em", minConfidence: 0.7 }, fallbackUnreachable: false }
     ],
     [
+      "under a floor, a confidence outside 0 to 1 counts as none reported (BR-9)",
+      withSelf(),
+      answered("eng.em", 1.5),
+      { by: "none", miss: { kind: "no-confidence", choice: "eng.em", minConfidence: 0.7 }, fallbackUnreachable: false }
+    ],
+    [
+      "under a floor, a negative confidence counts as none reported (BR-9)",
+      withSelf(),
+      answered("eng.em", -0.2),
+      { by: "none", miss: { kind: "no-confidence", choice: "eng.em", minConfidence: 0.7 }, fallbackUnreachable: false }
+    ],
+    [
       "a below-floor miss goes to the fallback when it can be reached (BR-8)",
       withSelf({ fallback: "eng.lead" }),
       answered("eng.em", 0.2),

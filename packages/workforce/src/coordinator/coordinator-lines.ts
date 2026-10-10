@@ -159,9 +159,11 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
  *   happened, as an assistant message: `Handed this post to <delegates> by
  *   its routing, with no turn of mine. …`, what its `handOff` would have said.
  *
- * `history` holds no writers or requests, so its messages are matched, in
- * order, to the items with the same role and text. Anything unmatched is kept
- * as it is.
+ * `history` holds no writers or requests, so each of its messages is matched
+ * to the first item with the same role and text that no earlier message took.
+ * Not by position: history groups messages by request, and a delegate's answer
+ * can land before the coordinator's reply to an earlier post. Anything
+ * unmatched is kept as it is.
  *
  * @param history The turn's history, oldest first.
  * @param items The conversation's items, oldest first, as far back as `history`
@@ -176,15 +178,13 @@ export function coordinatorHistory(
   const messages = (role: "user" | "assistant") =>
     items.filter((item) => item.type === "message" && item.role === role && typeof item.payload === "string" && item.payload !== "");
   const byRole = { user: messages("user"), assistant: messages("assistant") };
-  const next = { user: 0, assistant: 0 };
-  /** The item a history message came from: the next of its role with its text. */
+  const used = new Set<SessionItem>();
+  /** The item a history message came from: the first of its role with its text not yet matched. */
   const itemOf = (message: LLMMessage): SessionItem | undefined => {
     if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") return undefined;
-    const role = message.role;
-    const at = byRole[role].findIndex((item, index) => index >= next[role] && item.payload === message.content);
-    if (at === -1) return undefined;
-    next[role] = at + 1;
-    return byRole[role][at];
+    const item = byRole[message.role].find((candidate) => !used.has(candidate) && candidate.payload === message.content);
+    if (item !== undefined) used.add(item);
+    return item;
   };
   const routed = routedPosts(items);
   const writers: LineWriters = { person: "", coordinator: "", coordinatorNames };
