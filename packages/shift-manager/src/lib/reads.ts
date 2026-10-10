@@ -52,7 +52,7 @@
  * workstream's Stream resolve an ask the same way: through the flow the ask's
  * session records as its owner (`flowId`), never the board's.
  */
-import { ClientHttpError, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
+import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
@@ -295,7 +295,7 @@ const PROJECT_PATTERNS = { projects: "projects/*" } as const;
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
-/** A guard against a server that pages forever; the shipped panel readers use the same bound. */
+/** A guard against a server that pages suspension items forever; collection reads use the client's shared ceiling. */
 const MAX_PAGES = 1000;
 /** Suspension items per session-state page. */
 const ASK_PAGE_SIZE = 200;
@@ -532,21 +532,8 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /** Every page of one collection, through one session. */
-  const readCollection = async (sessionId: string, ref: string) => {
-    const rows: Array<{ topic: string; clientData?: unknown }> = [];
-    let cursor: string | undefined;
-    for (let page = 0; ; page += 1) {
-      if (page >= MAX_PAGES) throw new Error(`the Lab kept returning pages of ${ref}, so the read stopped`);
-      const result = await clients.resources.listCollectionItems(sessionId, ref, {
-        limit: PAGE_SIZE,
-        ...(cursor === undefined ? {} : { cursor }),
-      });
-      rows.push(...result.items);
-      if (result.nextCursor === undefined || result.nextCursor === cursor) break;
-      cursor = result.nextCursor;
-    }
-    return rows;
-  };
+  const readCollection = (sessionId: string, ref: string) =>
+    readEveryCollectionPage(clients.resources, sessionId, ref, { limit: PAGE_SIZE });
 
   const readBoard = async (mailboxId: string, boardRef: string): Promise<BoardRow[]> =>
     (await readCollection(mailboxId, boardRef)).map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));

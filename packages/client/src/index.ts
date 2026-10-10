@@ -57,6 +57,14 @@ export {
 } from "./resource-client/resources";
 
 export {
+  readEveryCollectionPage,
+  CollectionReadStoppedError,
+  COLLECTION_READ_MAX_PAGES,
+  type CollectionReadStopReason,
+  type ReadEveryCollectionPageOptions
+} from "./resource-client/read-every-page";
+
+export {
   createRecoveryClient,
   type CreateRecoveryClientOptions,
   type CheckInterruptedOptions,
