@@ -157,7 +157,7 @@ import {
   ROUTE_ON_ACTION,
   SET_FALLBACK
 } from "./coordinator-keys";
-import { conversationLineSchema, keepLanded, linesField, readRecentLines } from "./coordinator-lines";
+import { coordinatorHistory, conversationLineSchema, keepLanded, linesField, readRecentLines } from "./coordinator-lines";
 import {
   bestFitWhySchema,
   emitCoordinatorRoute,
@@ -186,6 +186,7 @@ import {
 import {
   delegatedAnswerSchema,
   delegatedMissSchema,
+  delegatedPostHistory,
   type DelegatedAnswer,
   type DelegatedMiss
 } from "./delegated-post";
@@ -227,7 +228,7 @@ export interface CoordinatorFlowOptions {
 
 /** What best fit's one call is asked. */
 const ROUTE_QUESTION =
-  "Which delegate should answer the post? Read it with the recent lines before it: " +
+  "Who should take the post? Read it with the recent lines before it: " +
   "a post that follows up on a delegate's answer goes to that delegate.";
 
 /** The door's input: what the person says. */
@@ -348,7 +349,7 @@ function missReason(miss: BestFitMiss): string {
     case "evaluation-failed":
       return `the evaluation failed: ${miss.message}`;
     case "not-an-option":
-      return `the evaluation answered ${JSON.stringify(miss.choice)}, which is not a delegate`;
+      return `the evaluation answered ${JSON.stringify(miss.choice)}, which is not one of the choices`;
     case "below-floor":
       return `the evaluation picked "${miss.choice}" at confidence ${miss.confidence}, below the floor of ${miss.minConfidence}`;
     case "no-confidence":
@@ -924,7 +925,19 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       kind: COORDINATOR_KIND,
       answerName: COORDINATOR_JUDGMENT,
       extraTools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool, handOffTool],
-      extraUses: [conversationBoard.tools]
+      extraUses: [conversationBoard.tools],
+      // The turn's model reads a delegate's answer as a line from that
+      // delegate, never as its own reply, and a post the routing handed on as
+      // handled (`coordinatorHistory`).
+      history: async (input, ctx) =>
+        coordinatorHistory(
+          await delegatedPostHistory(input, ctx),
+          [
+            ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
+            ...ctx.session.items.all({ itemTypes: ["component"] })
+          ],
+          turn.answerNames
+        )
     }
   );
 

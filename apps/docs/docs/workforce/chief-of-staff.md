@@ -188,7 +188,7 @@ A hire is a row in the person's own data, so it is there after a restart on any 
 
 Routed by judgment, the chief of staff runs a full model turn on everything you ask, even "file this feature for the storefront", which obviously belongs to one delegate. That turn reads its delegates, hands the request on, and writes a line before the delegate answers.
 
-Route it by best fit, with Jev as the coordinator flow's `routeModel`, and one evaluator call decides instead. A plain request goes straight to the delegate, whose answer is the first thing you see. Hiring, firing, starting a project and questions about your team still reach the chief of staff's own turn, because best fit can pick the chief of staff itself:
+Route it by best fit, with Jev (`typesafe-ai/jev` through Vercel's AI Gateway, an evaluation model that reports how sure it is; see [Evaluation models](../fundamentals/models.md#evaluation-models)) as the coordinator flow's `routeModel`, and one evaluator call decides instead. A plain request goes straight to the delegate, whose answer is the first thing you see. Hiring, firing, starting a project and questions about your team still reach the chief of staff's own turn, because best fit can pick the chief of staff itself:
 
 ```diff
   ---
@@ -209,7 +209,7 @@ Route it by best fit, with Jev as the coordinator flow's `routeModel`, and one e
 +   routeModel: "typesafe-ai/jev",
 ```
 
-The description is what best fit picks the chief of staff by, so name its jobs there. Anything Jev isn't sure of, below `minConfidence:`, also goes to its turn, which can still hand it on. The trade: a post that turns out to be the chief of staff's own job costs one evaluator call before the turn, and a request sent while a delegate is still working your last one goes to that delegate. [When best fit isn't sure](./coordinators.md#when-best-fit-isnt-sure) has the details.
+The description is what best fit picks the chief of staff by, so name its jobs there. Anything Jev isn't sure of, below `minConfidence:`, also goes to its turn, which can still hand it on. The trade: a post that turns out to be the chief of staff's own job costs one evaluator call before the turn, and a request sent while a delegate is still working your last one goes to that delegate. [Picking the coordinator, and a confidence floor](./coordinators.md#picking-the-coordinator-and-a-confidence-floor) has the details.
 
 ## Starting projects
 

@@ -204,7 +204,7 @@ model: anthropic/claude-haiku-5-5
 ---
 ```
 
-It routes by best fit with Jev, so a plain request goes straight to the delegate that does it, and hiring, firing, projects and questions about the team reach its own turn.
+It routes by best fit with Jev (`typesafe-ai/jev`, an evaluation model that reports how sure it is), so a plain request goes straight to the delegate that does it, and hiring, firing, projects and questions about the team reach its own turn.
 
 A coordinator chief of staff gets a DELEGATES list in Shift Coordinator's right panel: the delegates of your conversation with it, a picker that adds one from your roster, and a remove beside each. A refused add shows the coordinator's reason. A delegate's answer appears in the conversation under the delegate's name, and each routing decision as a small note between the lines saying who the post went to and who was skipped. The chief of staff comes first in its Roster group.
 

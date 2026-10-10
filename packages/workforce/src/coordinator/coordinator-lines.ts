@@ -23,9 +23,9 @@
  *
  * A leaf, so the flow and the delegated-post entry share one line shape.
  */
-import type { SessionItem, SessionItemViews } from "@flow-state-dev/core/types";
+import type { LLMMessage, SessionItem, SessionItemViews } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { LANDED_STATE } from "./coordinator-keys";
+import { COORDINATOR_ROUTE, LANDED_STATE } from "./coordinator-keys";
 
 /** The most lines a post is routed and delivered with. */
 export const RECENT_LINES = 10;
@@ -138,6 +138,88 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
   if (item.role !== "assistant") return undefined;
   if (item.agentName === undefined || writers.coordinatorNames.includes(item.agentName)) return writers.coordinator;
   return item.agentName;
+}
+
+/**
+ * The coordinator turn's history, read so the turn knows what it did and
+ * what its delegates did. A history read as `history: true` holds the
+ * conversation's messages by role alone, which misleads the coordinator's
+ * model in two ways once posts reach delegates without its turn:
+ *
+ * - **A delegate's answer** lands as an assistant message under the
+ *   delegate's name, so the model reads it as a reply of its own. It is said
+ *   instead as a line from that delegate: `<delegate>, a delegate in this
+ *   conversation, answered:` and the answer. Data from the conversation, never
+ *   system text. It stays on the assistant side: as a user-role message it
+ *   would run into the person's next post, and the model would read the
+ *   person's words as the delegate's.
+ * - **A person's post the routing handed to delegates** has no reply of the
+ *   turn's after it, so the model reads it as still waiting on it, and acts
+ *   on it again. Right after it comes the coordinator's own account of what
+ *   happened, as an assistant message: `Handed this post to <delegates> by
+ *   its routing, with no turn of mine. …`, what its `handOff` would have said.
+ *
+ * `history` holds no writers or requests, so its messages are matched, in
+ * order, to the items with the same role and text. Anything unmatched is kept
+ * as it is.
+ *
+ * @param history The turn's history, oldest first.
+ * @param items The conversation's items, oldest first, as far back as `history`
+ *   reaches: its messages, and its routing records (`coordinator-route` components).
+ * @param coordinatorNames The `agentName`s the coordinator's own turn writes under.
+ */
+export function coordinatorHistory(
+  history: readonly LLMMessage[],
+  items: readonly SessionItem[],
+  coordinatorNames: readonly string[]
+): LLMMessage[] {
+  const messages = (role: "user" | "assistant") =>
+    items.filter((item) => item.type === "message" && item.role === role && typeof item.payload === "string" && item.payload !== "");
+  const byRole = { user: messages("user"), assistant: messages("assistant") };
+  const next = { user: 0, assistant: 0 };
+  /** The item a history message came from: the next of its role with its text. */
+  const itemOf = (message: LLMMessage): SessionItem | undefined => {
+    if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") return undefined;
+    const role = message.role;
+    const at = byRole[role].findIndex((item, index) => index >= next[role] && item.payload === message.content);
+    if (at === -1) return undefined;
+    next[role] = at + 1;
+    return byRole[role][at];
+  };
+  const routed = routedPosts(items);
+  const writers: LineWriters = { person: "", coordinator: "", coordinatorNames };
+  return history.flatMap((message): LLMMessage[] => {
+    const item = itemOf(message);
+    if (item === undefined) return [message];
+    if (item.role === "user") {
+      const to = routed.get(item.requestId);
+      if (to === undefined) return [message];
+      const answers = to.length === 1 ? "Its answer lands" : "Their answers land";
+      return [
+        message,
+        { role: "assistant", content: `Handed this post to ${to.join(", ")} by its routing, with no turn of mine. ${answers} in this conversation under ${to.length === 1 ? "its name" : "their names"}.` }
+      ];
+    }
+    const delegate = writerOf(item, writers);
+    if (delegate === undefined || delegate === writers.coordinator) return [message];
+    return [{ role: "assistant", content: `${delegate}, a delegate in this conversation, answered:\n${message.content as string}` }];
+  });
+}
+
+/** Each person's post the routing delivered without the coordinator's turn, by its request id: the delegates it reached. */
+function routedPosts(items: readonly SessionItem[]): Map<string, string[]> {
+  const routed = new Map<string, string[]>();
+  for (const item of items) {
+    const record = (item.payload as { component?: unknown; data?: unknown } | null | undefined) ?? undefined;
+    if (item.type !== "component" || record?.component !== COORDINATOR_ROUTE) continue;
+    const data = record.data as { postId?: unknown; round?: unknown; by?: unknown; delegates?: unknown } | undefined;
+    if (data?.round !== 0 || data.by === "judgment" || data.by === "unplaced" || typeof data.postId !== "string") continue;
+    const reached = (Array.isArray(data.delegates) ? data.delegates : [])
+      .filter((d: { outcome?: unknown; worker?: unknown }) => d?.outcome === "delivered" && typeof d.worker === "string")
+      .map((d: { worker: string }) => d.worker);
+    if (reached.length > 0) routed.set(data.postId, reached);
+  }
+  return routed;
 }
 
 /** The newest lines whose text fits {@link RECENT_CHARS}, the one that crosses it cut short. */

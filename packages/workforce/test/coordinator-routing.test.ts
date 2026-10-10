@@ -319,6 +319,32 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     expect((await host.items(id)).records.map((record: any) => record.by)).toEqual(["evaluated", "held"]);
   });
 
+  it("shows its own turn a delegate's answer to a post routed past it under the delegate's name, never as its own reply", async () => {
+    const judgment = answersItself();
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "desk");
+    // Routed straight to the EM: no turn of the desk's runs, and the EM's answer lands in the conversation.
+    await post(host, id, "file the cart badge [route:eng.em]");
+    const answer = (await host.items(id)).messages.find((m) => m.agentName === "eng.em")?.text ?? "";
+    expect(answer).toMatch(/^eng\.em heard: /);
+    await post(host, id, "who works here? [route:desk]");
+    const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
+    const holding = messages.filter((m) => JSON.stringify(m.content).includes("eng.em heard:"));
+    // The answer is in the turn's history once, as a line from eng.em, not as an assistant turn of its own.
+    expect(holding).toHaveLength(1);
+    // An assistant message only with the delegate named on it, so it never reads as the coordinator's own words.
+    expect(holding[0]!.role).toBe("assistant");
+    expect(String(holding[0]!.content)).toBe(`eng.em, a delegate in this conversation, answered:\n${answer}`);
+    expect(messages.some((m) => m.role === "system" && JSON.stringify(m.content).includes("eng.em heard:"))).toBe(false);
+    // The routed post reads as handled: right after it, the turn's history says where best fit sent it.
+    const at = messages.findIndex((m) => m.role === "user" && m.content === "file the cart badge [route:eng.em]");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(messages[at + 1]).toEqual({
+      role: "assistant",
+      content: "Handed this post to eng.em by its routing, with no turn of mine. Its answer lands in this conversation under its name."
+    });
+  });
+
   it("records a coordinator pick unplaced, and says so, when its turn fails (BR-14)", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");

@@ -71,7 +71,7 @@ import type {
   ToolCatalog,
   UsesSlot
 } from "@flow-state-dev/core";
-import type { BlockContext, DeclaredResourceEntry, ResourceVisibilityRule, SessionConfig } from "@flow-state-dev/core/types";
+import type { BlockContext, DeclaredResourceEntry, LLMMessage, ResourceVisibilityRule, SessionConfig } from "@flow-state-dev/core/types";
 import {
   activeSkillsArraySchema,
   createSkillActivator,
@@ -793,6 +793,11 @@ export interface AgentTurnShare {
    * one instance of each, whatever skill is loaded.
    */
   readonly extraUses?: readonly CapabilityRef[];
+  /**
+   * The answer's history, in place of {@link delegatedPostHistory}: the
+   * coordinator's says each delegate's answer as a line from that delegate.
+   */
+  readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
 }
 
 const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer" };
@@ -986,8 +991,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // default, 50 turns); older turns fall out rather than being summarized.
       // On a coordinator's delivery, the delivering conversation's recent
       // lines join it as one user-role message before the post, for this
-      // call only; on any other turn it is `history: true` unchanged.
-      history: delegatedPostHistory,
+      // call only; on any other turn it is `history: true` unchanged. A
+      // sharing flow may read it its own way (the coordinator's says who
+      // wrote each delegate's answer).
+      history: share.history ?? delegatedPostHistory,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a kind built without one
