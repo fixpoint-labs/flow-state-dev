@@ -941,7 +941,11 @@ export function createTaskToolsCapability(
   });
 }
 
-/** How a board's task tools are offered. */
+/**
+ * How a board's task tools are offered. With `resumesAsks`, two lists of the
+ * same eight tools are built, one with the wait and one without; that is
+ * deliberate, so a turn's tools are picked, never rebuilt.
+ */
 export interface TaskToolsOptions {
   /**
    * The board has a waker: whatever runs it calls `resumeOwedAsks` when it

@@ -235,6 +235,8 @@ export async function addTaskAndWait(
     });
     const existing = collection.get(planned.taskId);
     if (existing !== undefined && existing.ask?.gateId !== planned.gateId) {
+      // Unreachable with a minted UUID: only a corrupt memo or a programming
+      // error puts another row under this id. Thrown, never adopted.
       throw new Error(
         `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
       );
@@ -420,18 +422,22 @@ export async function resumeOwedAsks(
     let result: Awaited<ReturnType<NonNullable<typeof host.resumeAsk>>>;
     try {
       result = await host.resumeAsk({ gateId: row.ask.gateId, outcome: outcomeOf(row) });
-    } catch {
+    } catch (error) {
       // One row's failed resume stays owed for the next touch, and never
       // stops the rest of the touch: the other rows, or the notices a board
       // run sends after it.
+      console.warn(`[orchestration] ask "${row.id}": its resume failed and stays owed: ${(error as Error).message}`);
       stillOwed.push(row.id);
       continue;
     }
     if (result.ok || result.refused === "already-resolved") {
       try {
         await collection.clearResumeOwed(row.id);
-      } catch {
+      } catch (error) {
         // The marker stays: the next touch finds the gate resolved and clears it.
+        console.warn(
+          `[orchestration] ask "${row.id}": resumed, but its resume-owed marker was left for the next touch: ${(error as Error).message}`
+        );
         stillOwed.push(row.id);
         continue;
       }
