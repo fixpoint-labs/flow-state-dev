@@ -151,6 +151,9 @@ apart by board and partition (`runBoardSegment`), so two conversations that file
 id never share a tree. Pass `boardCollectionId` and `boardCollection` too and that board's rows
 run exactly as before.
 
+The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. A manager
+built with `ledgers` and no fixed board has no `messageDoor`: the door reads one board's rows.
+
 On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
 task id in their place, and a task naming only one of the two is refused. A fixed board still
 runs feature rows only.

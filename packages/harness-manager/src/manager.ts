@@ -426,6 +426,9 @@ export interface ManagerOptions {
    * good instead of cancelling it, a question parks the row through the
    * board's own question park instead of this manager's inbox, and the
    * {@link judge} may read the answer.
+   *
+   * Called on every fenced read and write, not once per run: a fence must read
+   * the row fresh. Keep it cheap.
    */
   ledgers?: HarnessLedgers;
   /**
@@ -607,6 +610,31 @@ const stateClaimSchema = z.object({
 });
 type StateClaim = z.infer<typeof stateClaimSchema>;
 
+/** The most of a run's final message its output carries. */
+export const MAX_ANSWER_CHARS = 8_000;
+
+/** The manager's own result. Two outcomes; there is deliberately no third. */
+const managerOutputSchema = z.object({
+  issue: z.string(),
+  phase: z.string(),
+  sessionId: z.string().nullable(),
+  /** The run's final message, cut at {@link MAX_ANSWER_CHARS}; `null` when it reported none. */
+  answer: z.string().nullable(),
+  /** The run's branch; `null` for a run with no repository, only kept files. */
+  branch: z.string().nullable(),
+  /** How many commits the run's branch has that its base does not. */
+  commits: z.number().int().nonnegative(),
+  /** Whether the host's judge read the run before it settled. */
+  judged: z.boolean(),
+});
+type ManagerOutput = z.infer<typeof managerOutputSchema>;
+
+/**
+ * What `decide` hands the steps after it: what a judge reads, or `null` when
+ * no judge runs. The output itself goes only on state (`decided`).
+ */
+const decisionSchema = harnessJudgeInputSchema.nullable();
+
 /**
  * The manager's per-run values.
  *
@@ -654,7 +682,7 @@ const managerStateSchema = z.object({
    * judge's verdict).
    */
   decided: z
-    .lazy(() => z.object({ settle: z.enum(["parked", "complete"]), output: managerOutputSchema }))
+    .object({ settle: z.enum(["parked", "complete"]), output: managerOutputSchema })
     .nullable()
     .default(null),
   /**
@@ -700,31 +728,6 @@ const managerStateSchema = z.object({
   held: heldSchema.nullable().default(null),
 });
 
-/** The most of a run's final message its output carries. */
-export const MAX_ANSWER_CHARS = 8_000;
-
-/** The manager's own result. Two outcomes; there is deliberately no third. */
-const managerOutputSchema = z.object({
-  issue: z.string(),
-  phase: z.string(),
-  sessionId: z.string().nullable(),
-  /** The run's final message, cut at {@link MAX_ANSWER_CHARS}; `null` when it reported none. */
-  answer: z.string().nullable(),
-  /** The run's branch; `null` for a run with no repository, only kept files. */
-  branch: z.string().nullable(),
-  /** How many commits the run's branch has that its base does not. */
-  commits: z.number().int().nonnegative(),
-  /** Whether the host's judge read the run before it settled. */
-  judged: z.boolean(),
-});
-type ManagerOutput = z.infer<typeof managerOutputSchema>;
-
-/** What `decide` hands the steps after it: the output, and what a judge (if one runs) is given. */
-const decisionSchema = z.object({
-  output: managerOutputSchema,
-  judge: harnessJudgeInputSchema.nullable(),
-});
-type Decision = z.infer<typeof decisionSchema>;
 
 /**
  * An attempt failed. Carries only a message — the board captures it as
@@ -1227,8 +1230,19 @@ export type HarnessManager = TaskWorker & {
   messageDoor(options: MessageDoorOptions): MessageDoorAction;
 };
 
-/** Build the manager: one handed-off worker for one phase. */
-export function harnessManager(options: ManagerOptions): HarnessManager {
+/**
+ * Build the manager: one handed-off worker for one phase.
+ *
+ * Only a manager with a fixed board has a message door: the door reads that
+ * board's rows. A manager given only {@link ManagerOptions.ledgers} is a plain
+ * task worker, and its host builds the door over the run records, which key
+ * each claim's board as the run does (`runBoardSegment`).
+ */
+export function harnessManager(
+  options: ManagerOptions & { boardCollectionId: string; boardCollection: DefinedTaskCollection },
+): HarnessManager;
+export function harnessManager(options: ManagerOptions): TaskWorker;
+export function harnessManager(options: ManagerOptions): HarnessManager | TaskWorker {
   const {
     boardCollectionId,
     boardCollection,
@@ -1694,7 +1708,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
    * answer re-queues the row with it (`input.answer` on the next attempt).
    * The question is kept on the run record first, so the next attempt can
    * pair the answer with it. No inbox row and no announcement: those are the
-   * fixed board's channel.
+   * fixed board's route.
    */
   const parkOnBoardQuestion = async (ctx: BlockContext, identity: AttemptIdentity, question: string): Promise<void> => {
     await fenced(writeRunRow(ctx, identity, { question }), "the run's question was recorded");
@@ -1804,55 +1818,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // this manager's phase, with its task id standing in for the issue.
       const payload = taskPayload(input, claim === null);
       const { issue, phase: phaseName } = payload ?? { issue: input.taskId, phase: phase.phase };
-      if (payload !== undefined) {
-        // **A manager runs exactly one phase, and it must be the one on the row.**
-        // Without this the caller's phase names the checkout, the branch and the
-        // run record while the CONFIGURED phase supplies the prompt and the
-        // done-condition — so a row seeded `review` would be handed implement's
-        // instructions, judged by implement's completion check, and settled as a
-        // completed review. That is the silent wrong success this lab exists to
-        // remove, wearing the phase surface as a disguise.
-        //
-        // Refused here as well as at `seed`, because a task can reach this board
-        // by any route that can write a row, and this is where the wrong
-        // semantics would actually execute.
-        // **Compared canonically, because the identity it guards is.** A durable
-        // row outlives the process that filed it, so a restart with the phase
-        // spelled differently — `IMPLEMENT` for `implement` — meets rows already
-        // on the board. `harnessTaskId` folds case, so those are the SAME task,
-        // the same checkout and the same branch; a raw comparison here called them
-        // different and refused, after `wake` had claimed the row and charged it.
-        // Once per wake, until a valid task's budget was gone, for a mismatch its
-        // own identity says does not exist.
-        if (!sameSegment(phaseName, phase.phase)) {
-          throw new HarnessAttemptFailed(
-            `[harness-manager] task ${input.taskId} is a "${phaseName}" row on a manager ` +
-              `configured for "${phase.phase}". Refusing rather than running ` +
-              `${phase.phase}'s prompt and completion check against it.`,
-          );
-        }
-
-        // **And the row's ID must be the one its payload derives**, for the same
-        // reason and by the same route. The board capability this flow returns
-        // lets a sibling or outer block add a row with an ID of its choosing, and
-        // every partition below — checkout, branch, run topic — is built from the
-        // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
-        // IDs therefore both pass every guard here and land on one tree, one
-        // branch and one run record: duplicate paid model work on a single
-        // artifact, one run's record overwritten by the other, and either run's
-        // pull request satisfying the other's completion check. "Separate trees
-        // pushing one ref is not isolation" is the rule `branchFor` states; this
-        // is the same collapse reached through the row id instead.
-        const canonicalId = harnessTaskId(issue, phaseName);
-        if (input.taskId !== canonicalId) {
-          throw new HarnessAttemptFailed(
-            `[harness-manager] task ${input.taskId} carries the payload for ${canonicalId}. ` +
-              `Refusing: the checkout, the branch and the run record are all derived from ` +
-              `that payload, so a second row under a different id would run the same work ` +
-              `in the same tree.`,
-          );
-        }
-      }
+      if (payload !== undefined) assertFeatureRowIdentity(input.taskId, issue, phaseName, phase.phase);
 
       // **A conductor serves one tenant, and refuses any other.**
       //
@@ -1996,7 +1962,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // After the fenced open, not before: a superseded attempt stops there and
       // must not reach in and withdraw its replacement's question.
       //
-      // The inbox is the fixed board's channel only: a board read from the
+      // The inbox serves the fixed board only: a board read from the
       // claim parks its questions on the row itself.
       if (claim === null) await withdrawEarlierQuestions(ctx, issue, phaseName, input.attempts);
     },
@@ -2305,11 +2271,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
        * answer (cut), its branch (none for a run with only kept files) and
        * the commits it made. `judged` is the settle step's to set.
        */
-      const decided = async (
+      const keep = async (
         settle: "parked" | "complete",
         commits: RunCommits,
         judgeInput: HarnessJudgeInput | null = null,
-      ): Promise<Decision> => {
+      ): Promise<HarnessJudgeInput | null> => {
         const output: ManagerOutput = {
           issue: state.issue!,
           phase: state.phase!,
@@ -2320,7 +2286,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
           judged: false,
         };
         await ctx.sequencer!.patchState({ decided: { settle, output } });
-        return { output, judge: judgeInput };
+        return judgeInput;
       };
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
@@ -2393,7 +2359,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
       if (succeeded && question !== undefined && state.claim !== null) {
         await parkOnBoardQuestion(ctx, identity, question);
-        return decided("parked", await commitsOf());
+        return keep("parked", await commitsOf());
       }
       if (succeeded && question !== undefined && questionTopicKey !== undefined) {
         const board = await boardTasks(ctx);
@@ -2411,7 +2377,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         // Returning normally is the point: the child session's request ends and the
         // row stays parked, because both recorders decline a row the worker
         // parked for review.
-        return decided("parked", await commitsOf());
+        return keep("parked", await commitsOf());
       }
 
       // ── Arm 2: succeeded AND done ──────────────────────────────────────────
@@ -2478,7 +2444,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
                   commits,
                 }
               : null;
-          return decided("complete", commits, judgeInput);
+          return keep("complete", commits, judgeInput);
         }
       }
 
@@ -2690,19 +2656,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
    */
   const settle = handler({
     name: "harness-manager-settle",
-    // `decide`'s output when no judge ran, the judge step's when one did.
-    inputSchema: z.unknown(),
+    // `null` when no judge ran (`decide`'s output, passed through), the judge
+    // step's verdict when one did.
+    inputSchema: z.object({ verdict: harnessJudgeVerdictSchema.nullable() }).nullable(),
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (input: unknown, ctx: BlockContext) => {
+    execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
       const state = managerState(harnessCtxState(ctx));
       const decision = state.decided!;
       if (decision.settle === "parked") return decision.output;
-      const read =
-        typeof input === "object" && input !== null && "verdict" in input
-          ? (input as { verdict: HarnessJudgeVerdict | null }).verdict
-          : null;
+      const read = input?.verdict ?? null;
       const identity = identityOf(ctx, state);
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
         if (read.verdict === "not-done") {
@@ -2719,7 +2683,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     },
   });
 
-  const decided = sequencer({
+  const chain = sequencer({
     name,
     inputSchema: harnessManagerInputSchema,
     outputSchema: managerOutputSchema,
@@ -2743,10 +2707,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     .step(decide);
   const worker = (
     judgeStep === undefined
-      ? decided
-      : decided.stepIf(
-          (decision: Decision) => decision.judge !== null,
-          (decision: Decision) => decision.judge!,
+      ? chain
+      : chain.stepIf(
+          (judgeInput: HarnessJudgeInput | null) => judgeInput !== null,
+          (judgeInput: HarnessJudgeInput | null) => judgeInput!,
           judgeStep,
           // Bounded like the phase's own hooks, and reserved for by
           // `harnessDrainBudgetMs({ judge: true })`.
@@ -2758,25 +2722,71 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
   worker.validate();
 
-  // The door reads one board's rows, so it is the fixed board's. A run on a
-  // board read from the claim is reached by a door its host builds over the
-  // run records, which key that board as the run does (`runBoardSegment`).
-  const messageDoor =
-    boardCollectionId !== undefined && boardCollection !== undefined
-      ? createMessageDoor({
-          name,
-          boardCollectionId,
-          boardCollection,
-          capability: managerCapability as unknown as DefinedCapability,
-          boardTasks,
-        })
-      : (): MessageDoorAction => {
-          throw new Error(
-            "[harness-manager] this manager has no fixed board, so it has no message door of its own: " +
-              "its runs read their board from the claim.",
-          );
-        };
+  // The door reads one board's rows, so only a fixed board has one.
+  if (boardCollectionId === undefined || boardCollection === undefined) return worker;
+  const messageDoor = createMessageDoor({
+    name,
+    boardCollectionId,
+    boardCollection,
+    capability: managerCapability as unknown as DefinedCapability,
+    boardTasks,
+  });
   return Object.assign(worker, { messageDoor }) as HarnessManager;
+}
+
+/**
+ * A feature row's identity checks: the row's phase is the manager's, and its id
+ * is the one its `{ issue, phase }` payload derives. A row with no payload (a
+ * task a conversation filed) has neither to check.
+ */
+function assertFeatureRowIdentity(taskId: string, issue: string, phaseName: string, configuredPhase: string): void {
+  // **A manager runs exactly one phase, and it must be the one on the row.**
+  // Without this the caller's phase names the checkout, the branch and the
+  // run record while the CONFIGURED phase supplies the prompt and the
+  // done-condition — so a row seeded `review` would be handed implement's
+  // instructions, judged by implement's completion check, and settled as a
+  // completed review. That is the silent wrong success this lab exists to
+  // remove, wearing the phase surface as a disguise.
+  //
+  // Refused here as well as at `seed`, because a task can reach this board
+  // by any route that can write a row, and this is where the wrong
+  // semantics would actually execute.
+  // **Compared canonically, because the identity it guards is.** A durable
+  // row outlives the process that filed it, so a restart with the phase
+  // spelled differently — `IMPLEMENT` for `implement` — meets rows already
+  // on the board. `harnessTaskId` folds case, so those are the SAME task,
+  // the same checkout and the same branch; a raw comparison here called them
+  // different and refused, after `wake` had claimed the row and charged it.
+  // Once per wake, until a valid task's budget was gone, for a mismatch its
+  // own identity says does not exist.
+  if (!sameSegment(phaseName, configuredPhase)) {
+    throw new HarnessAttemptFailed(
+      `[harness-manager] task ${taskId} is a "${phaseName}" row on a manager ` +
+        `configured for "${configuredPhase}". Refusing rather than running ` +
+        `${configuredPhase}'s prompt and completion check against it.`,
+    );
+  }
+
+  // **And the row's ID must be the one its payload derives**, for the same
+  // reason and by the same route. The board capability this flow returns
+  // lets a sibling or outer block add a row with an ID of its choosing, and
+  // every partition below — checkout, branch, run topic — is built from the
+  // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
+  // IDs therefore both pass every guard here and land on one tree, one
+  // branch and one run record: duplicate paid model work on a single
+  // artifact, one run's record overwritten by the other, and either run's
+  // pull request satisfying the other's completion check. "Separate trees
+  // pushing one ref is not isolation" is the rule `branchFor` states; this
+  // is the same collapse reached through the row id instead.
+  const canonicalId = harnessTaskId(issue, phaseName);
+  if (taskId !== canonicalId) {
+    throw new HarnessAttemptFailed(
+      `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
+        `Refusing: the checkout, the branch and the run record are all derived from ` +
+        `that payload, so a second row under a different id would run the same work ` +
+        `in the same tree.`,
+    );
+  }
 }
 
 /** Is the `workspace` option a host, rather than a fixed repository's config? */

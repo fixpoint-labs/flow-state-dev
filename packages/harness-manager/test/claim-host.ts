@@ -400,7 +400,7 @@ export function claimHost(options: HostOptions) {
   const record = async (topic: string): Promise<RunRecordState | null> =>
     (await act("records", { topic })).output as RunRecordState | null;
 
-  return { act, ledgerAt, seed: (input: Record<string, unknown>) => act("seed", input), row, runAttempt, record, seen, answersSeen, dir };
+  return { act, ledgerAt, manager, seed: (input: Record<string, unknown>) => act("seed", input), row, runAttempt, record, seen, answersSeen, dir };
 }
 
 /** The message a failed action carries, however the engine wrapped it. */
