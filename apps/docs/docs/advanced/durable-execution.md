@@ -222,7 +222,7 @@ The sentinel never crosses the wire — only the string `resolution: "skipped"` 
 
 ### Resolution statuses
 
-A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `skipped`, `timed_out`, or `expired` (`pending` is the sole non-resolved state). The resume action maps to the status one-to-one: `submit` → `submitted`, `skip` → `skipped`. The matching `suspension_resume` audit item carries the status in its `resolution` field.
+A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `skipped`, `timed_out`, `expired`, or `stopped` (`pending` is the sole non-resolved state). The resume action maps to the status one-to-one: `submit` → `submitted`, `skip` → `skipped`. `stopped` comes from no resume action: it means the request was stopped while it waited on the suspension. The matching `suspension_resume` audit item carries the status in its `resolution` field.
 
 ## Error handling
 
@@ -287,13 +287,15 @@ The standard store adapters all implement the durability tables:
 
 For production use with crash recovery as a goal, you want SQLite at minimum and Postgres when running multiple instances or on a platform that doesn't guarantee local disk persistence.
 
+A suspended run can be stopped as well. `session.abortRequest()` on a request paused at `ctx.suspend()` resolves the gate it waits on and ends the request `aborted`; a later approve for that gate is refused with `409`. The record keeps the gate's status as `stopped`. If the process dies after the stop is recorded and before the request is written `aborted`, the retention sweeper below finishes it.
+
 A run started in the background, dispatched to a separate process with no browser attached, can be cancelled from any process. `session.abortRequest()` stops it within one `heartbeatIntervalMs` tick (10s by default), provided the interval is nonzero. It also needs a request store shared across processes, the same SQLite-or-Postgres requirement as above. See [Connection Resilience — stopping a request that runs on another server](/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server).
 
 ## Retention and cleanup
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
 
-Retention is opt-in. Pass a `durabilityRetention` config alongside your provider and the runtime starts a sweeper: a periodic in-process job that runs on a fixed interval and reclaims records that are provably safe to drop.
+Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config alongside your provider and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a request waiting on another agent's answer has an earlier deadline, so that request times out within about a second of it.
 
 ```ts
 export const flowstate = createFlowState({
@@ -311,11 +313,12 @@ export const flowstate = createFlowState({
 });
 ```
 
-Every field has a default, so `durabilityRetention: {}` is enough to turn the sweeper on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it.
+Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for an ask's deadline: it times out overdue asks and finishes requests whose answer or stop was recorded but never acted on.
 
 What each tick does:
 
-- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval gate instead of letting it hang forever.
+- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval gate instead of letting it hang forever. A request waiting on another agent's answer is the exception: past its deadline it is resumed with a timeout error instead, because nothing else may resume it.
+- **Finishes what a crash interrupted.** A request still `suspended` (or `interrupted`) behind a gate that was already resolved, because the process died between the gate's write and the request moving on, is driven on with the recorded outcome: an answer continues it, a stop ends it `aborted`. It runs under the request's lease, so it never races a resume in progress.
 - **Prunes resolved suspensions** older than `suspensionTerminalMaxAgeMs` (measured from when they were resolved). The window exists so you can still inspect recent approval decisions; after it, they're removed.
 - **Prunes expired leases.**
 - **Prunes orphaned checkpoints.** Checkpoints of completed, failed, or aborted runs are dropped once they pass `checkpointMaxAgeMs`. An interrupted run keeps its checkpoints until `orphanCheckpointThresholdMs` passes, since you might still resume it.

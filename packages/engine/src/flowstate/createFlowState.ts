@@ -52,6 +52,7 @@ import {
 } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
+import { createParkedStopDeps } from "../durability/stop-suspended";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1085,6 +1086,14 @@ class InternalFlowState<TSettings extends object>
     const requestHost = runtimeConfig.requestHost;
     const provider = runtimeConfig.durabilityProvider;
     if (requestHost === undefined || provider === undefined) return;
+    // How a block's `ctx.session.stopRequest` stops a parked request: the same
+    // host, the same terms.
+    requestHost.parkedStop ??= createParkedStopDeps({
+      provider,
+      stores,
+      continueRequest: (options) =>
+        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+    });
     if (requestHost.askResume !== undefined) return;
 
     let operation: AskResumeOperation | undefined;

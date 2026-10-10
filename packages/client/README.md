@@ -341,7 +341,7 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest
-- `client.abortRequest(requestId)` — Signal the server to abort an in-progress request
+- `client.abortRequest(requestId)` — Signal the server to abort an in-progress request. On a server with durable execution it also stops a paused (`suspended`) request, which ends `aborted`; a `409` means the request already finished, or was resumed before the stop reached it (send it again to stop the running request)
 - `sessionQueryFor(address, flows)` — Build the `listSessions` filter (`flowId` or `flowKind`) for one flow address
 - `ClientHttpError` — Typed HTTP error class
 

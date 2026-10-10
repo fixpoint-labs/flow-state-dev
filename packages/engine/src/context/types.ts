@@ -15,6 +15,7 @@ import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
 import type { AskResumeOperation } from "./ask-resume-operation";
+import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -172,6 +173,12 @@ export type RequestHostConstructionInputs = {
    * `dispatchOperation`. Absent → the verb is absent.
    */
   askResume?: AskResumeOperation;
+  /**
+   * How this host stops a parked (`suspended`) request, for
+   * `ctx.session.stopRequest`. Installed beside `askResume`, only with durable
+   * execution. Absent → a parked request answers `"already-finished"`.
+   */
+  parkedStop?: SuspendedStopDeps;
   /** The stale-request sweeper's threshold. */
   staleThresholdMs?: number;
   /** The sweeper's cadence. Undefined or 0 → liveness is refused. */

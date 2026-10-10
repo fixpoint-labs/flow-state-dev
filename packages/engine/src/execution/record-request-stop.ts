@@ -11,6 +11,7 @@
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types";
 import { abortRequest } from "./abort-registry";
+import { pendingGatesOf, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
 
 /**
  * What recording a stop came to.
@@ -22,23 +23,36 @@ import { abortRequest } from "./abort-registry";
  *   was fired.
  * - `recorded`: the stop is recorded; the process running the request picks it
  *   up on its next heartbeat.
+ * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` on a
+ *   pending gate) and the stop resolved its gate (FIX-1816). It ends
+ *   `aborted`; a turn parked on an ask first cancels the task it asked for.
+ * - `already-resolved`: the request was parked, but its gate was resolved
+ *   first (an answer won the race), so it runs again. Nothing was written.
  */
 export type RequestStopResult =
   | { kind: "gone" }
   | { kind: "finished"; status: RequestStatus }
   | { kind: "fired" }
-  | { kind: "recorded" };
+  | { kind: "recorded" }
+  | { kind: "stopped-parked" }
+  | { kind: "already-resolved" };
 
 /**
  * Record a stop on `record`, the request the caller already checked, and fire
  * its controller when it runs in this process.
  *
+ * A parked (`suspended`) request has no run to signal, so it is stopped by
+ * resolving its gate instead, when the host can (`parked`: it has durable
+ * execution). Without that, a parked request answers `finished`, as before.
+ *
  * @param requests The request store the record was read from.
  * @param record The record the caller's access check admitted.
+ * @param parked How this host stops a parked request, when it can.
  */
 export async function recordRequestStop(
   requests: RequestStore,
-  record: Pick<RequestRecord, "id" | "createdAt" | "incarnation">
+  record: Pick<RequestRecord, "id" | "createdAt" | "incarnation">,
+  parked?: SuspendedStopDeps
 ): Promise<RequestStopResult> {
   // The request the caller's check read. Everything below acts on it and on
   // nothing else that later takes the id.
@@ -55,6 +69,26 @@ export async function recordRequestStop(
   );
 
   if (result.status === undefined) return { kind: "gone" };
+  // Parked: `suspended`, or `interrupted` (the process died) while a gate of
+  // it is still pending. An interrupted request with no pending gate is not
+  // waiting on anything, and answers as before.
+  if (
+    !result.applied &&
+    (result.status === "suspended" || result.status === "interrupted") &&
+    parked !== undefined
+  ) {
+    // Re-read: the stop resolves the gate of the request the caller checked,
+    // never of a later one that took the id.
+    const current = await parked.stores.request.get(record.id);
+    if (current === undefined || resolveRequestIncarnation(current) !== incarnation) {
+      return { kind: "gone" };
+    }
+    if (current.status === "interrupted" && (await pendingGatesOf(parked, current)).length === 0) {
+      return { kind: "finished", status: "interrupted" };
+    }
+    const stopped = await stopSuspendedRequest(parked, current);
+    return stopped === "stopped" ? { kind: "stopped-parked" } : { kind: "already-resolved" };
+  }
   if (!result.applied) return { kind: "finished", status: result.status };
 
   // Fire the in-memory controller if the checked request runs in this
