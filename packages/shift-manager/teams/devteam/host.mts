@@ -12,8 +12,7 @@
  * **The board belongs to the mailbox.** The feature mailbox's `MAILBOX.md`
  * names it (`boards: [work]`), the framework mints its id from where the
  * mailbox sits, and this host resolves it with `mailboxBoard(mailbox.id,
- * boardName)` — both read off the tree, the way
- * `packages/shift-manager/test/fixtures/multi-seat-collab/host.mts` does. Both kinds are handed that one
+ * boardName)`, both read off the tree. Both kinds are handed that one
  * ledger, so a row the EM files and the coder's run settles is the row the
  * mailbox serves. It is kept per organization, so it exists whether or not the
  * mailbox is opened.
