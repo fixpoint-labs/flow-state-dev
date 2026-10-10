@@ -212,7 +212,7 @@ Each action's output is the conversation's list as it stands after the call. `se
 }
 ```
 
-`listDelegates` also gives each delegate two things read from the roster when it is called. `description` is what the worker does: the description in its `WORKER.md`, or the one it was hired with. `takes` is what it can be handed now, from the flow it runs on: `posts`, `tasks`, `both`, or `nothing` when the worker has been fired or its flow takes neither. A delegate that takes nothing has a `description` of `null`, and so does a worker with no description. The other three actions leave both out. With an EM that takes posts and a coder whose flow takes only tasks, its `delegates` read:
+`listDelegates` also gives each delegate two things read from the roster when it is called. `description` is what the worker does: the description in its `WORKER.md`, or the one it was hired with. `takes` is what it can be handed now, from the flow it runs on: `posts`, `tasks`, `both`, or `nothing` when the worker has been fired or its flow takes neither. A flow of your own takes tasks when it's built as [Taking a conversation's tasks](#taking-a-conversations-tasks) shows. A delegate that takes nothing has a `description` of `null`, and so does a worker with no description. The other three actions leave both out. With an EM that takes posts and a coder whose `work` entry is built with `workerTaskEntry`, its `delegates` read:
 
 ```json
 [
@@ -354,9 +354,15 @@ Either way, the assignee has to be one of this conversation's delegates that tak
 { "ok": false, "error": "unknown_assignee: \"helper\" is not on this board's team. Available: support.devices, licenses. …" }
 ```
 
+A delegate whose `takes` is `nothing` is refused the same way, and the error says why:
+
+```json
+{ "ok": false, "error": "unknown_assignee: \"eng.coder\" is not on this board's team. Available: support.devices, licenses. Not taking tasks now: eng.coder: Worker \"eng.coder\" runs on flow \"coder\", which takes no task. …" }
+```
+
 A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board until you assign it.
 
-`addTask` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts by itself: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over, so one removed or fired in between doesn't run it, and the task fails instead.
+`addTask` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts by itself: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
 
 ### Hearing how it went
 
@@ -480,6 +486,43 @@ const door = generator({
 ```
 
 It's the session's history, as `history: true` reads it. On a delegated post that came with lines, the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) goes in just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
+
+### Taking a conversation's tasks
+
+A worker on the built-in `agent` flow takes a coordinator's tasks with no extra setup. A worker flow of your own takes them once its `work` task entry is built with `workerTaskEntry`:
+
+```ts
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { workerConfigSchema, workerTaskEntry } from "@flow-state-dev/workforce";
+import { z } from "zod";
+
+const inputSchema = z.object({ message: z.string() });
+
+const turn = handler({
+  name: "reviewer-turn",
+  inputSchema,
+  execute: async ({ message }) => `Reviewed: ${message}`,
+});
+
+const reviewerFlow = defineFlow({
+  kind: "reviewer",
+  configSchema: workerConfigSchema(),
+  session: installation.session(),
+  resources: { ...installation.resources },
+  actions: { run: { inputSchema, block: turn, userMessage: (input) => input.message } },
+  task: { actions: { work: workerTaskEntry({ name: "reviewer-task", turn }) } },
+});
+```
+
+| Option | What it is |
+| --- | --- |
+| `name` | Names the entry's blocks. |
+| `turn` | The flow's turn for one message: `{ message }` in, the answer out. |
+| `mailboxLists` | Optional. [Mailbox boards](./mailboxes.md#handing-a-row-to-the-worker-it-names) the entry also takes tasks from, each by the board's id, as `mailboxBoardIds(mailboxes)` returns it. |
+
+Each task runs as one turn, in a task session of its own. The task as filed is the turn's message, and what the turn returns is the task's result. When the task completes or fails, the conversation that filed it hears so, in a line under the worker's name, as in [Hearing how it went](#hearing-how-it-went).
+
+A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, and `addTask` refuses them.
 
 ## What it won't do
 

@@ -23,8 +23,7 @@
  */
 import type { FlowType } from "@flow-state-dev/core/types";
 import type { RosterWorker, WorkerInstallation, WorkerTurnContext } from "../workers/installation";
-import { WORKER_TASK_ENTRY } from "../worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
+import { DELEGATED_POST_ENTRY, takesConversationTasks } from "../worker-task-entry";
 
 /** What the check came to. */
 export type DelegateCheck =
@@ -37,12 +36,6 @@ export function takesDelegatedPost(flow: unknown): boolean {
   return internal?.actions !== undefined && Object.hasOwn(internal.actions, DELEGATED_POST_ENTRY);
 }
 
-/** Whether a worker flow declares the worker task entry. */
-function takesTask(flow: unknown): boolean {
-  const task = (flow as { task?: { actions?: Record<string, unknown> } } | undefined)?.task;
-  return task?.actions !== undefined && Object.hasOwn(task.actions, WORKER_TASK_ENTRY);
-}
-
 /** What a delegate takes, as `listDelegates` says it. */
 export const DELEGATE_TAKES = ["posts", "tasks", "both", "nothing"] as const;
 
@@ -51,11 +44,11 @@ export type DelegateTakes = (typeof DELEGATE_TAKES)[number];
 /**
  * What a worker on flow `flowKind` takes, read as the check below reads it: a
  * delegated post when `postFlows` holds the flow, a task when the flow
- * declares the task entry.
+ * declares a task entry that takes a conversation's tasks (FIX-1842).
  */
 export function flowTakes(installation: WorkerInstallation, postFlows: ReadonlySet<string>, flowKind: string): DelegateTakes {
   const post = postFlows.has(flowKind);
-  const task = takesTask(installation.workerFlows()[flowKind]?.flow);
+  const task = takesConversationTasks(installation.workerFlows()[flowKind]?.flow);
   if (post) return task ? "both" : "posts";
   return task ? "tasks" : "nothing";
 }
@@ -98,12 +91,12 @@ export function createDelegateCheck(installation: WorkerInstallation, postFlows?
     const takesPost = posts.has(worker.flow);
     const flow = (installation.workerFlows()[worker.flow]?.flow ?? undefined) as FlowType<any, any> | undefined;
     if (use === "task") {
-      return takesTask(flow)
+      return takesConversationTasks(flow)
         ? { ok: true, worker, takesPost }
         : { ok: false, message: `Worker "${workerId}" runs on flow "${worker.flow}", which takes no task.` };
     }
     if (takesPost) return { ok: true, worker, takesPost };
-    if (use === "add" && takesTask(flow)) return { ok: true, worker, takesPost };
+    if (use === "add" && takesConversationTasks(flow)) return { ok: true, worker, takesPost };
     return {
       ok: false,
       message:
