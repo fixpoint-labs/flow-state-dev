@@ -14,11 +14,15 @@ import { defineSessionBoard, workerConfigSchema, type WorkerManifest } from "../
 import type { WorkerInstallation } from "../src/workers/installation";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
+/** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
+const resolvedControlTools = (list: unknown): GeneratorTool[] =>
+  (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
+
 const TASK_TOOLS = (() => {
   const capability = createTaskToolsCapability() as unknown as {
-    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: unknown } };
   };
-  return (capability.__presetDefs?.tools?.controlTools ?? []).map((tool) => tool.config?.name ?? tool.name);
+  return resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
 })();
 
 const doorInput = z.object({ message: z.string() });

@@ -7,10 +7,10 @@
  * builds them over one installation and one flow kind:
  *
  * - **The model's tools**: `tools`, one capability for the model block's
- *   `uses`, carrying Orchestration's eight task tools while the session
+ *   `uses`, carrying Orchestration's nine task tools while the session
  *   files and none otherwise, read before each model call. Compose it once
  *   per turn: core refuses a turn with two tools of one name.
- * - **The actions**: `actions`, the eight as public actions named
+ * - **The actions**: `actions`, the nine as public actions named
  *   `<tool>_tasks`, which answer `no_delegation_board` while the session
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
@@ -38,6 +38,7 @@
  * ```
  */
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape } from "../delegates/delegate-list";
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
@@ -46,14 +47,14 @@ import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
 import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY } from "./board-entries";
 import { TASK_SETTLED_ENTRY } from "./notice-delivery";
-import { cancelPiecesBlock, settleSplitBlock } from "./split";
+import { questionPark } from "./question-park";
+import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
   CONVERSATION_BOARD_SERVER_OWNED,
   conversationBoardStateShape,
   taskSettledEntry
 } from "./task-settled";
-import type { NoticePolicy } from "./task-notice";
 
 /** What a session board is built from. */
 export interface SessionBoardOptions {
@@ -89,13 +90,18 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     delegates,
     /** The board itself: its resolver, its roster and its run. */
     board,
-    /** The model's eight task tools, granted per call: one entry for the model block's `uses`. */
+    /** The model's nine task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
+    /**
+     * `parkOnQuestion`, on a task turn that may park its row on a question
+     * (FIX-1817): one entry for the model block's `uses`, beside `tools`.
+     */
+    questions: questionPark,
     /** Whether the running session files now: one of its delegates takes a task. A task session files its task's pieces. */
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
-    /** The eight task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
+    /** The nine task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
     actions: { ...board.actions, ...delegates.actions },
     /** The ledger, for the flow's `resources`. */
     resources: board.resources,
@@ -118,7 +124,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard },
         [TASK_SETTLED_ENTRY]: taskSettledEntry({ runBoard: board.runBoard, turn, policy }),
         [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
-        [CANCEL_PIECES_ENTRY]: { inputSchema: z.object({}).strict(), block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY }
+        [CANCEL_PIECES_ENTRY]: { inputSchema: cancelPiecesInputSchema, block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY }
       };
     }
   };

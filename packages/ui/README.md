@@ -187,7 +187,7 @@ pnpm --filter @flow-state-dev/ui typecheck
 
 ## Storybook
 
-The registry components ship with stories so contributors can preview them in isolation without standing up a host app. The hosted build lives at [storybook.flow-state.dev](https://storybook.flow-state.dev) and gets per-PR preview URLs through Vercel.
+The registry components ship with stories so contributors can preview them in isolation without standing up a host app. The visual components in `@flow-state-dev/react` have theirs here too, under `stories/react/`. The hosted build lives at [storybook.flow-state.dev](https://storybook.flow-state.dev) and gets per-PR preview URLs through Vercel.
 
 ```bash
 # Run Storybook locally on http://localhost:6006

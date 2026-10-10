@@ -88,6 +88,12 @@ export interface TaskClaimTicket {
    * of the write fence: the ref a write goes through is already narrowed to it.
    */
   readonly partition?: string;
+  /**
+   * `task.followUpOf` as of the claim (FIX-1817): the finished task the
+   * claimed row follows up. A hand-over keys the follow-up's session by it, so
+   * the follow-up runs in that task's session. Not part of the write fence.
+   */
+  readonly followUpOf?: string;
 }
 
 /**
@@ -114,6 +120,8 @@ export const taskClaimTicketSchema = z.object({
   /** The partition the claim was taken in. See {@link TaskClaimTicket.partition}. */
   // Non-empty when present, as on the dispatch envelope it is copied to.
   partition: z.string().min(1).optional(),
+  /** The finished task the claimed row follows up. See {@link TaskClaimTicket.followUpOf}. */
+  followUpOf: z.string().optional(),
 });
 
 /**
@@ -146,6 +154,7 @@ export function ticketForClaim(
     ...(claimed.assignee !== undefined ? { assignee: claimed.assignee } : {}),
     ...(claimed.createdBy !== undefined ? { createdBy: claimed.createdBy } : {}),
     ...(partition !== undefined ? { partition } : {}),
+    ...(claimed.followUpOf !== undefined ? { followUpOf: claimed.followUpOf } : {}),
   };
 }
 

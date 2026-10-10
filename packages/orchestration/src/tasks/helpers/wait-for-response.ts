@@ -20,11 +20,10 @@
  *   turn its rows are owed, through `ctx.requestHost.resumeAsk`. It stops at
  *   once when no row owes one. Never called inside the asking turn.
  *
- * Package-internal until FIX-1816 P3 wires it into `addTask` and the
- * child-finished notice; nothing re-exports it yet.
- *
- * `addTask`'s option, the schema it appears in and the check on who may ask
- * are the task tools' (FIX-1816 P3); this module is the mechanism under them.
+ * `addTask`'s `waitForResponse` option is the task tools' (`../../skills/
+ * task-tools-capability.ts`): the schema it appears in and the check on who
+ * may be assigned are theirs. This module is the mechanism under them, and the
+ * notice entry that hears an asked row end calls {@link resumeOwedAsks}.
  */
 import {
   AskEndedError,
@@ -40,13 +39,33 @@ import type { Task } from "../schema/task";
 import type { TaskInit } from "../schema/task-init";
 import type { TaskCollectionRef } from "../collection/types";
 import { generateId } from "../generate-id";
+// The one task-turn test (BR-5a). Reached by path, not through the task-board
+// barrel, which imports this module's neighbours.
+import { isTaskTurn } from "../../task-board/task-turn";
 
-/** How long an ask may stay open before it times out: ten minutes, fixed. */
-export const ASK_DEADLINE_MS = 10 * 60_000;
+/** How long an ask stays open when its filer sets no `timeoutMs`: five minutes. */
+export const DEFAULT_ASK_TIMEOUT_MS = 5 * 60_000;
+
+/** The shortest `timeoutMs` an ask takes: 30 seconds. */
+export const MIN_ASK_TIMEOUT_MS = 30_000;
+
+/** The longest `timeoutMs` an ask takes: an hour. */
+export const MAX_ASK_TIMEOUT_MS = 60 * 60_000;
 
 /** The gate an asked row's turn parks on, derived from the row. */
 export function askGateId(collectionId: string, taskId: string): string {
   return `ask:${collectionId}:${taskId}`;
+}
+
+/**
+ * Whether the running turn's host can hold an ask (FIX-1816 BR-5): durable
+ * execution (the ask resume is wired) and a durability sweeper that bounds
+ * every ask (`RequestHost.hasAskSweeper`). Read off the server's request
+ * host, never from input.
+ */
+export function canHoldAsk(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
+  const host = ctx.requestHost;
+  return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
 }
 
 /** What {@link addTaskAndWait} returns. */
@@ -57,14 +76,18 @@ export type WaitForResponseResult =
       /**
        * - `wait_already_pending`: this step already waits on another ask. Nothing
        *   was filed.
-       * - `wait_unavailable`: this host or board cannot hold an ask (no durable
-       *   execution, or a board that keeps no resume marker). Nothing was filed.
+       * - `wait_unavailable`: this turn, host or board cannot hold an ask (a
+       *   task turn, no durable execution, or a board that keeps no resume
+       *   marker). Nothing was filed.
+       * - `wait_timeout_out_of_range`: `timeoutMs` is outside 30 seconds to an
+       *   hour. Nothing was filed; it is never clamped.
        * - `wait_timed_out`, `wait_task_failed`, `wait_task_cancelled`: the ask
        *   was filed and ended without an answer.
        */
       readonly error:
         | "wait_already_pending"
         | "wait_unavailable"
+        | "wait_timeout_out_of_range"
         | "wait_timed_out"
         | "wait_task_failed"
         | "wait_task_cancelled"
@@ -83,7 +106,7 @@ export type WaitForResponseResult =
  * stamps the key), so there it is derived from the block identity, to the same
  * value. The step key is derived from the block path.
  */
-function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
+export function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
   const instanceId = ctx._blockIdentity?.blockInstanceId;
   if (instanceId === undefined) return undefined;
   const parsed = parseBlockInstanceId(instanceId);
@@ -120,31 +143,66 @@ function outcomeOf(
   }
 }
 
+/** How an ask is bounded. */
+export interface AddTaskAndWaitOptions {
+  /**
+   * How long to wait, from filing: {@link MIN_ASK_TIMEOUT_MS} to
+   * {@link MAX_ASK_TIMEOUT_MS}, inclusive. {@link DEFAULT_ASK_TIMEOUT_MS} when
+   * unset. Outside the range the ask is refused before filing.
+   */
+  readonly timeoutMs?: number;
+}
+
 /**
  * File `init` on `collection` as an ask and wait for its answer.
  *
  * The caller has already run the board's own filing checks (who may be
  * assigned); this adds only what waiting needs. Must run as a block with a
- * stable call identity (a generator's tool), on a durable host.
+ * stable call identity (a generator's tool), on a durable host, and never on
+ * a task turn ({@link isTaskTurn}), so an ask is never asked from inside an
+ * ask. Every refusal comes before anything is filed.
  */
 export async function addTaskAndWait(
   ctx: BlockContext,
   collection: TaskCollectionRef,
-  init: Omit<TaskInit, "id" | "ask">
+  init: Omit<TaskInit, "ask">,
+  options: AddTaskAndWaitOptions = {}
 ): Promise<WaitForResponseResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_ASK_TIMEOUT_MS || timeoutMs > MAX_ASK_TIMEOUT_MS) {
+    return {
+      ok: false,
+      error: "wait_timeout_out_of_range",
+      message:
+        `timeoutMs must be from ${MIN_ASK_TIMEOUT_MS} (30 seconds) to ${MAX_ASK_TIMEOUT_MS} (an hour); ` +
+        `${timeoutMs} is outside it. Nothing was filed.`
+    };
+  }
+  if (isTaskTurn(ctx)) {
+    return {
+      ok: false,
+      error: "wait_unavailable",
+      message:
+        "This turn is itself working a task, so it can't wait for another. File the task without " +
+        "waitForResponse instead. Nothing was filed."
+    };
+  }
   const call = toolCallOf(ctx);
-  const host = ctx.requestHost;
+  // A host that can't bound the ask (no durable execution, or no sweeper to
+  // time it out) is refused, so no direct caller parks a turn forever.
   if (
     call === undefined ||
     ctx.runOnce === undefined ||
     ctx.suspend === undefined ||
-    host?.resumeAsk === undefined ||
+    !canHoldAsk(ctx) ||
     collection.clearResumeOwed === undefined
   ) {
     return {
       ok: false,
       error: "wait_unavailable",
-      message: "Waiting for a task's answer needs durable execution and a board that keeps one."
+      message:
+        "Waiting for a task's answer needs durable execution, a durability sweeper that times asks out, " +
+        "and a board that keeps the ask. Nothing was filed."
     };
   }
 
@@ -163,14 +221,27 @@ export async function addTaskAndWait(
   // reads the first filing back. Keyed on the call's logical id, which the
   // replay shares; never on the attempt.
   const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
-    const taskId = generateId("task");
+    // A caller's own id is kept (a follow-up's `<root>-f<n>`, whose one
+    // insert is what keeps a session to one task); otherwise one is minted.
+    // Chosen here, inside the record, so a replay reuses the first filing's id.
+    const taskId = init.id ?? generateId("task");
     const gateId = askGateId(collection.collectionId, taskId);
-    const deadline = Date.now() + ASK_DEADLINE_MS;
+    const deadline = Date.now() + timeoutMs;
     await collection.addTask({ ...init, id: taskId, ask: { gateId, deadline } });
     return { taskId, gateId, deadline };
   });
 
-  const clearMarker = (): Promise<unknown> => collection.clearResumeOwed!(filed.taskId);
+  // Never fails the call: the answer always comes back. A clear that fails
+  // leaves the marker, and the next touch clears it, the gate already resolved.
+  const clearMarker = async (): Promise<void> => {
+    try {
+      await collection.clearResumeOwed!(filed.taskId);
+    } catch (error) {
+      console.warn(
+        `[orchestration] ask "${filed.taskId}": its resume-owed marker was left for the next touch: ${(error as Error).message}`
+      );
+    }
+  };
   const park = {
     gateId: filed.gateId,
     binding: { board: collection.collectionId, taskId: filed.taskId },
@@ -222,25 +293,44 @@ export async function addTaskAndWait(
     if (!(error instanceof AskEndedError)) throw error;
     if (error.code === "wait_timed_out") {
       // The ask is over: end the row too, so its later ending is dropped.
-      await cancelIfOpen(collection, filed.taskId, "The ask timed out before the task finished.");
+      const cancelled = await cancelIfOpen(collection, filed.taskId, TIMED_OUT_REASON);
+      // Unless it had already ended on its own: one that ended after this call
+      // read it open and before the gate was written found no gate to resume,
+      // and nothing may have touched the board since. Its answer stands; it is
+      // late, never later than the deadline, but not lost.
+      // A row this ask's own timeout cancelled before a crash, read again on
+      // the re-drive, is not such an ending.
+      const ended = cancelled ? undefined : collection.get(filed.taskId);
+      if (ended !== undefined && isTerminalStatus(ended.status) && ended.error !== TIMED_OUT_REASON) {
+        await clearMarker();
+        return answerOf(filed.taskId, outcomeOf(ended));
+      }
     }
     await clearMarker();
     return { ok: false, error: error.code, taskId: filed.taskId, message: error.message };
   }
 }
 
+/** The reason an ask's own timeout cancels its row with, so a re-drive knows its own cancel. */
+const TIMED_OUT_REASON = "The ask timed out before the task finished.";
+
 /**
  * Cancel the asked row unless it already ended. Idempotent: a replay after a
  * crash cancels again harmlessly, and an ending that won a race stands.
+ *
+ * @returns Whether this call's cancel ended the row; `false` when the row had
+ *   already ended (or is gone), by its own ending or an earlier cancel.
  */
-async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reason: string): Promise<void> {
+async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reason: string): Promise<boolean> {
   const row = collection.get(taskId);
-  if (row === undefined || isTerminalStatus(row.status)) return;
+  if (row === undefined || isTerminalStatus(row.status)) return false;
   try {
     await collection.cancel(taskId, reason);
+    return true;
   } catch (error) {
     // The row ended between the read and the write: its ending stands.
     if (!(error instanceof IllegalTaskTransitionError)) throw error;
+    return false;
   }
 }
 
@@ -264,7 +354,8 @@ export type ResumeOwedReport = {
  * and stops at once when there are none. For each owed row it resumes the turn with the row's ending, through
  * the request host, which only reaches this conversation's own gates. The
  * marker clears when the resume is accepted, or refused because the gate was
- * already resolved. It stays when the gate cannot be found (the turn has not
+ * already resolved. It stays when the resume or the clear throws (never
+ * rethrown, so one row can't stop a touch), when the gate cannot be found (the turn has not
  * parked yet, and clears it itself on reaching the ended row) or another
  * resume holds the turn (`busy`); the next touch tries again.
  */
@@ -282,9 +373,24 @@ export async function resumeOwedAsks(
       stillOwed.push(row.id);
       continue;
     }
-    const result = await host.resumeAsk({ gateId: row.ask.gateId, outcome: outcomeOf(row) });
+    let result: Awaited<ReturnType<NonNullable<typeof host.resumeAsk>>>;
+    try {
+      result = await host.resumeAsk({ gateId: row.ask.gateId, outcome: outcomeOf(row) });
+    } catch {
+      // One row's failed resume stays owed for the next touch, and never
+      // stops the rest of the touch: the other rows, or the notices a board
+      // run sends after it.
+      stillOwed.push(row.id);
+      continue;
+    }
     if (result.ok || result.refused === "already-resolved") {
-      await collection.clearResumeOwed(row.id);
+      try {
+        await collection.clearResumeOwed(row.id);
+      } catch {
+        // The marker stays: the next touch finds the gate resolved and clears it.
+        stillOwed.push(row.id);
+        continue;
+      }
       if (result.ok) resumed.push(row.id);
     } else {
       stillOwed.push(row.id);

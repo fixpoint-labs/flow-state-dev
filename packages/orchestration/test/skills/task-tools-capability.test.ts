@@ -14,6 +14,10 @@ import {
 import { buildDelegationCtx } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
 
+/** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
+const resolvedControlTools = (list: unknown): GeneratorTool[] =>
+  (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
+
 
 /** Build a context whose parent exposes no delegation board (→ no_delegation_board). */
 function buildNoBoardCtx() {
@@ -59,21 +63,22 @@ function buildCtx(opts?: Parameters<typeof buildDelegationCtx>[0]) {
  */
 function findTool(name: string): GeneratorTool {
   const presetDefs = (taskTools as unknown as {
-    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: unknown } };
   }).__presetDefs;
-  const tool = presetDefs?.tools?.controlTools?.find((t) => t.config?.name === name);
+  const tool = resolvedControlTools(presetDefs?.tools?.controlTools).find((t) => t.config?.name === name);
   if (!tool) throw new Error(`tool not found: ${name}`);
   return tool;
 }
 
 describe("taskTools capability", () => {
-  it("registers eight tools under the default preset", () => {
+  it("registers nine tools under the default preset", () => {
     const presetDefs = (taskTools as unknown as {
-      __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
+      __presetDefs?: { tools?: { controlTools?: unknown } };
     }).__presetDefs;
-    const names = presetDefs?.tools?.controlTools?.map((t) => t.config?.name).sort();
+    const names = resolvedControlTools(presetDefs?.tools?.controlTools).map((t) => t.config?.name).sort();
     expect(names).toEqual([
       "addTask",
+      "answerTask",
       "assignTask",
       "blockTask",
       "cancelTask",

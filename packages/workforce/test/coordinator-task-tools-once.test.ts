@@ -19,12 +19,16 @@ import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf } from "./conversation-board-harness";
 
+/** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
+const resolvedControlTools = (list: unknown): GeneratorTool[] =>
+  (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
+
 /** The task-board capability's own tool names, from a fresh instance. */
 function taskToolNames(): string[] {
   const capability = createTaskToolsCapability() as unknown as {
-    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: unknown } };
   };
-  const names = (capability.__presetDefs?.tools?.controlTools ?? []).map((tool) => tool.config?.name ?? tool.name);
+  const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
   expect(names.length).toBeGreaterThan(0);
   return names;
 }

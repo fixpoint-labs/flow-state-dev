@@ -74,6 +74,7 @@ export type {
   TaskHandle,
   TaskTransitionOptions,
   AwaitReviewOptions,
+  UnparkOptions,
   TaskWriteOutcome,
   TaskWriteDeclineReason,
 } from "./collection/types";
@@ -136,6 +137,23 @@ export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partiti
 // each ending write hands it, inside that same write.
 export type { TaskEnding, TaskEndingRecorder } from "./collection/ending";
 export { resolveResourceCollection } from "./collection/resolve-resource-collection";
+// The child-finished signal (FIX-1794 S6 and S7, lifted by FIX-1816): the
+// notice a task's ending owes the conversation that filed it, kept on the row
+// by a ledger's ending recorder, and what that notice does there.
+export {
+  recordEnding,
+  owedNotices,
+  isNoticeOwed,
+  clearNotice,
+  noticeKey,
+  decideNotice,
+  noticeText,
+  withoutNoticeMarkers,
+  type NoticeEnding,
+  type TaskNotice,
+  type NoticePolicy,
+  type NoticeDecision,
+} from "./notice/task-notice";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";

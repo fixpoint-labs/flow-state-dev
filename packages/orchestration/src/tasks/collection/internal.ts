@@ -98,6 +98,7 @@ export function buildInitialTask<TInput, TOutput>(
     input: init.input,
     labels: init.labels,
     metadata: init.metadata,
+    ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
     ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
@@ -123,7 +124,7 @@ export function readAbandonments(task: Task): number {
 
 /**
  * How many times this row re-entered after a person's turn stopped its worker
- * (FIX-1690). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
+ * (FIX-1690), or after an answer to its question (FIX-1817). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
  */
 export function readTurnReentries(task: Task): number {
   return task.turnReentries ?? 0;
@@ -131,30 +132,61 @@ export function readTurnReentries(task: Task): number {
 
 /**
  * The fields `awaitReview` writes besides the status. `feedback` is written
- * unconditionally (a park with no reason clears the note), and the turn mark
- * is set only for a park a person's turn caused, so a question park never
- * inherits an earlier one.
+ * unconditionally (a park with no reason clears the note); the turn mark is
+ * set only for a park a person's turn caused, and the question mark only for
+ * a worker's question (FIX-1817), so no park inherits an earlier one's.
  */
 export function parkPatch(
   feedback: string | undefined,
-  forTurn: boolean | undefined
+  forTurn: boolean | undefined,
+  onQuestion?: boolean
 ): Partial<Task> {
-  return { feedback, parkedForTurn: forTurn === true ? true : undefined };
+  return {
+    feedback,
+    parkedForTurn: forTurn === true ? true : undefined,
+    parkedOnQuestion: onQuestion === true ? true : undefined,
+    answered: undefined,
+  };
 }
 
 /**
  * The fields `unpark` writes besides the status. Clears the lease, the claim
- * coordinate and the turn mark; a row that was parked for a turn counts one
- * more turn re-entry, so the claim that follows is not charged (FIX-1690).
+ * coordinate and the turn mark. A row that was parked for a turn (FIX-1690),
+ * or one re-queued by an answer to its question (`answer`, FIX-1817), counts
+ * one more turn re-entry, so the claim that follows is not charged; an answer
+ * also marks `feedback` as the answer (`answered`) for the next attempt.
  */
-export function unparkPatch(task: Task, feedback: string | undefined): Partial<Task> {
+export function unparkPatch(task: Task, feedback: string | undefined, answer = false): Partial<Task> {
   return {
     feedback: feedback ?? undefined,
     leaseUntil: undefined,
     claimedBy: undefined,
     parkedForTurn: undefined,
-    ...(task.parkedForTurn === true ? { turnReentries: readTurnReentries(task) + 1 } : {}),
+    parkedOnQuestion: undefined,
+    answered: answer ? true : undefined,
+    ...(task.parkedForTurn === true || answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
   };
+}
+
+/**
+ * Why an assignee change to `assignee` is refused on `task`, beyond the
+ * terminal and attempt-held rules each backing applies (FIX-1817), or
+ * `undefined` when it isn't. Decided inside the atomic write, so an answer or
+ * a claim landing between a caller's read and the write is honoured.
+ *
+ * - `awaiting-answer`: an answer re-queued the row and it hasn't run again
+ *   (pending, or blocked since); it must run in the session that asked,
+ *   which its assignee keys.
+ * - `follow-up`: a follow-up keeps the worker of the task it follows, whose
+ *   session it runs in.
+ */
+export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDeclineReason | undefined {
+  if (task.assignee === assignee) return undefined;
+  // The answer is unconsumed until its re-entry is claimed: pending, or
+  // blocked on the way there. Terminal rows are refused before this.
+  if (task.answered === true && task.status !== "in_progress") return "awaiting-answer";
+  if (task.followUpOf !== undefined) return "follow-up";
+  return undefined;
 }
 
 /**

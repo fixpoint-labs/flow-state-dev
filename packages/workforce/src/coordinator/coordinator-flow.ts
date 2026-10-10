@@ -759,12 +759,15 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /**
    * How this conversation hears a task it filed end: its coordinator's turn
-   * under judgment routing, a line under any fixed policy (best fit, round
-   * robin, everyone).
+   * under any routing that runs that turn, so the turn can file a failed task
+   * again and say so. Judgment always does; best fit does on a post it picks
+   * the coordinator for and on a miss with no fallback. Round robin and
+   * everyone never run it, so the ending is a line there.
    */
-  const boardEntries = sessionBoard.entries(turn.run, (ctx) =>
-    (workerConfigOf(ctx) as unknown as CoordinatorConfig).routing === "judgment" ? "judgment" : "fixed"
-  );
+  const boardEntries = sessionBoard.entries(turn.run, (ctx) => {
+    const { routing } = workerConfigOf(ctx) as unknown as CoordinatorConfig;
+    return routing === "judgment" || routing === "best-fit" ? "judgment" : "fixed";
+  });
 
   /** A task handed to a coordinator worker: one turn of its own, the task as the message. */
   const taskEntry = workerTaskEntry({ name: "coordinator-task-turn", turn: turn.run });

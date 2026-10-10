@@ -18,7 +18,7 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
@@ -112,7 +112,7 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
       const park = /\[park:([^\]]+)\]/.exec(message);
       if (park !== null && attempt === 1 && held !== undefined) {
-        await tasks!.awaitReview(taskId, park[1], { claim: ticketForClaim(tasks!.collectionId, held, partition) });
+        await tasks!.awaitReview(taskId, park[1], { claim: ticketForClaim(tasks!.collectionId, held, partition), onQuestion: true });
         return "parked";
       }
       return `${worker.id} did: ${message}`;
@@ -145,9 +145,16 @@ function helperFlow(installation: WorkerInstallation) {
   });
 }
 
+/** What the default judgment turn says: it reads what woke it and does nothing else. */
+export const QUIET_TURN = "Noted.";
+
 export type BoardHostOptions = {
   standard?: WorkerManifest[];
-  /** The judgment turn's scripted model. Omitted, a judgment turn has no script and fails. */
+  /**
+   * The judgment turn's scripted model. Omitted, every judgment turn answers
+   * {@link QUIET_TURN} and does nothing else, so a turn a task's ending wakes
+   * runs cleanly rather than failing unseen.
+   */
   judgment?: MockGeneratorInstance;
   /** The agent worker's scripted model. */
   agentAnswer?: MockGeneratorInstance;
@@ -161,6 +168,14 @@ export type BoardHostOptions = {
    * calling block's name: a test holds a turn open past its tool calls with it.
    */
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
+  /** Durable execution, so a turn can park (FIX-1816's asks). Off by default. */
+  durable?: boolean;
+  /**
+   * A step model for the judgment turn, in place of `judgment`'s script: one
+   * the generator drives step by step, so a turn parked in a tool call resumes
+   * at its next step (FIX-1816's asks).
+   */
+  judgmentModel?: GeneratorModel;
   /** More worker flows, built on the installation, registered beside the four, by kind. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
@@ -203,6 +218,19 @@ function observingTools(
   return Object.assign(resolver, base);
 }
 
+/** `base`, with the judgment turn's block answered by `model` when one is given. */
+function withJudgmentModel(
+  base: ReturnType<typeof createMockModelResolver>,
+  model: GeneratorModel | undefined
+): ReturnType<typeof createMockModelResolver> {
+  if (model === undefined) return base;
+  const resolver = ((modelId: string, blockName?: string) =>
+    blockName === "coordinator-judgment" ? model : (base as any)(modelId, blockName)) as ReturnType<
+    typeof createMockModelResolver
+  >;
+  return Object.assign(resolver, base);
+}
+
 /** One host of the app over `stores`. */
 export function bootBoardHost(options: BoardHostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
@@ -227,7 +255,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const instances: Record<string, FlowInstance> = Object.fromEntries(
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy])
   );
-  const judgment = options.judgment ?? mockGenerator({ script: [] });
+  const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
   const models = createMockModelResolver({
     evaluators: {
@@ -238,10 +266,13 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
-    modelResolver:
+    ...(options.durable === true ? { durable: true } : {}),
+    modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models
         : observingTools(models, options.observeTools, options.afterModelCall),
+      options.judgmentModel
+    ),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
       return typeof user === "string" ? { userId: user, orgId: ORG } : null;

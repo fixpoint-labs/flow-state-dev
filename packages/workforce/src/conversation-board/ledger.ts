@@ -12,7 +12,7 @@
  * ## What a row owes, and how durably
  *
  * - **A notice** is a marker the ending's own write puts on the row: every
- *   ending written here goes through `recordEnding` (`./task-notice`), so the
+ *   ending written here goes through orchestration's `recordEnding` (its notice module), so the
  *   ending and the debt to tell the conversation land together or not at all.
  *   Only the notice's delivery clears it.
  * - **A start** is no marker at all: it is the row's own state. A row that is
@@ -30,12 +30,13 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
+  recordEnding,
   type TaskCollectionRef,
-  type TaskPartitionContext
+  type TaskPartitionContext,
+  withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
-import { SPLIT_MARKER } from "./board-entries";
+import { PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filingSessionIdOf } from "./filing-session";
-import { recordEnding, withoutNoticeMarkers } from "./task-notice";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
@@ -96,14 +97,14 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
 
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
- * or a patch can't forge an owed notice, or clear one, or point a row at a
- * session as its split (FIX-1802 S4).
+ * or a patch can't forge an owed notice, or clear one, or make a row a piece
+ * of a task, or point a row at a session as its split (FIX-1802 S4).
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> | undefined {
   const kept = withoutNoticeMarkers(metadata);
-  if (kept === undefined || !Object.hasOwn(kept, SPLIT_MARKER)) return kept;
-  const { [SPLIT_MARKER]: _dropped, ...rest } = kept;
+  if (kept === undefined) return kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, ...rest } = kept;
   return rest;
 }

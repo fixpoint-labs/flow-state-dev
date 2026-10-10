@@ -26,6 +26,10 @@ import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createNotifyLog } from "../teams/devteam/notify.mts";
 
+/** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
+const resolvedControlTools = (list: unknown): GeneratorTool[] =>
+  (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
+
 const COS = "chief-of-staff";
 const DELEGATE_ANSWER = "The licenses are all MIT.";
 
@@ -144,9 +148,9 @@ async function messages(lab: Lab, sessionId: string) {
 /** The task-board capability's own tool names, from a fresh instance: never a count. */
 function taskToolNames(): string[] {
   const capability = createTaskToolsCapability() as unknown as {
-    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: unknown } };
   };
-  const names = (capability.__presetDefs?.tools?.controlTools ?? []).map((tool) => tool.config?.name ?? tool.name);
+  const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
   expect(names.length).toBeGreaterThan(0);
   return names;
 }

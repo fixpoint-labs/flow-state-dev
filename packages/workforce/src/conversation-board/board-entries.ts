@@ -26,3 +26,11 @@ export const CANCEL_PIECES_ENTRY = "cancelSplitPieces";
  * caller's filing or patch never reaches it.
  */
 export const SPLIT_MARKER = "splitInto";
+
+/**
+ * The metadata key a piece carries: the task it is a piece of, on the board
+ * above (FIX-1802 S4). A task session can run more than one task, one at a
+ * time (a task and its follow-ups), so a piece names its own. Only the board
+ * writes it; a caller's filing or patch never reaches it.
+ */
+export const PIECE_OF = "pieceOf";

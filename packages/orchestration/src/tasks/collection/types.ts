@@ -85,7 +85,18 @@ export type TaskWriteDeclineReason =
    * reads `parked` should do neither, because the work is done and a person is
    * deciding what happens to it.
    */
-  | "parked";
+  | "parked"
+  /**
+   * An assignee change on a task an answer has re-queued and that hasn't run
+   * again yet (FIX-1817): it must run in the session that asked, which its
+   * assignee keys. Lifts once the re-entry is claimed.
+   */
+  | "awaiting-answer"
+  /**
+   * An assignee change on a follow-up (FIX-1817): it runs in the session of
+   * the task it follows, with that task's worker, so it keeps its assignee.
+   */
+  | "follow-up";
 
 /**
  * What a write actually did (FIX-976).
@@ -354,6 +365,19 @@ export interface AwaitReviewOptions extends TaskTransitionOptions {
    */
   forTurn?: boolean;
   /**
+   * Runs only from `in_progress`, whatever `ifAllowed` says, as `forTurn`
+   * does, without marking the park as a turn's (FIX-1817). A worker parking
+   * on its question passes it, so a row that already parked this attempt (for
+   * a question, or for anything else) comes back `declined` naming `parked`,
+   * rather than having its question overwritten.
+   */
+  fromRunning?: boolean;
+  /**
+   * The park is the worker's question (FIX-1817, `parkOnQuestion`): marks the
+   * row `parkedOnQuestion`, the one kind of park `answerTask` answers.
+   */
+  onQuestion?: boolean;
+  /**
    * The holder parks the row for its own reasons, not to ask anyone anything
    * (FIX-1794 P2): a task waiting on pieces it handed out, say. A ledger's
    * ending recorder is told so (`TaskEnding`'s `quiet`), so a composing layer
@@ -361,6 +385,20 @@ export interface AwaitReviewOptions extends TaskTransitionOptions {
    * else about the park. A park for a person's turn (`forTurn`) is quiet too.
    */
   quiet?: boolean;
+}
+
+/**
+ * `unpark`'s options: the ordinary transition guards, plus whether the
+ * feedback answers the question the row's worker parked on (FIX-1817).
+ */
+export interface UnparkOptions extends TaskTransitionOptions {
+  /**
+   * `feedback` is the answer to the row's question (`answerTask`). The row is
+   * marked `answered`, so its next attempt is handed the answer as its
+   * message, and counts one more turn re-entry, so the claim that follows is
+   * not charged against `maxAttempts`. Every other `unpark` caller is unchanged.
+   */
+  answer?: boolean;
 }
 
 /**
@@ -591,7 +629,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   unpark(
     id: string,
     feedback?: string,
-    options?: TaskTransitionOptions
+    options?: UnparkOptions
   ): Promise<TaskWriteOutcome>;
   /**
    * Cancel the task (terminal).

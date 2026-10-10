@@ -71,6 +71,33 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
     }
   });
 
+  it("runs a follow-up's own turn in the session that split the task it follows, apart from that task's pieces", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+      h.controls.plans.s1 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      await h.settled();
+      const top = await one(h, "Plan the launch");
+      expect(top.status).toBe("completed");
+      const t1 = await h.taskSessionOf("alice", top.id);
+
+      // The follow-up files nothing of its own: it is answered by its turn.
+      h.controls.plans.s1 = [];
+      const followUp = await h.tool("alice", planner, "addTask", { goal: "Add a second venue", followUpOf: top.id });
+      expect(followUp.ok).toBe(true);
+      await h.settled();
+      const row = await one(h, "Add a second venue");
+      expect(row.status).toBe("completed");
+      expect(row.output).toBe("s1 heard: Add a second venue");
+      expect(h.controls.turns.filter((turn) => turn.sessionId === t1 && turn.message === "Add a second venue")).toHaveLength(1);
+      expect(await h.rowsNamed("alice", "Book the venue")).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("fails, naming the piece that failed for good, and the session above hears it once (BR-16)", async () => {
     const h = bootSplitHost();
     try {

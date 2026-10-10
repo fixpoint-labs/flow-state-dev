@@ -46,7 +46,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_FLOW_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY, SPLIT_MARKER } from "./board-entries";
+import { CANCEL_PIECES_ENTRY, PIECE_OF, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY, SPLIT_MARKER } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
@@ -99,22 +99,67 @@ export function splitMarkerOf(row: Task | undefined): SplitMarker | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** Whether the running task session already split its task: its own board holds pieces. */
-export async function hasPieces(ctx: BlockContext): Promise<boolean> {
+/** The task a row is a piece of, on the board above, or none. */
+export function pieceOf(row: Task): string | undefined {
+  const value = row.metadata?.[PIECE_OF];
+  return typeof value === "string" ? value : undefined;
+}
+
+/** The rows on `ref` that are pieces of `taskId`. */
+function piecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
+  return ref.list().filter((row) => pieceOf(row) === taskId);
+}
+
+/**
+ * The task on the board above that the running request holds: the row whose
+ * run link names this request (the gate wrote it, fenced by the ticket it
+ * minted, before the turn ran). A task session runs a task and its
+ * follow-ups one at a time, so this is the one running now.
+ */
+async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
+  const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
+  if (partition === undefined || stringAt(ctx, TASK_ID_STATE_KEY) === undefined) return undefined;
+  const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
+  if (requestId === undefined) return undefined;
+  const ref = await conversationLedgerAt(ctx, partition);
+  const row = ref?.list().find((task) => task.run?.requestId === requestId && task.status === "in_progress");
+  return ref === undefined || row === undefined ? undefined : { ref, row, partition };
+}
+
+/**
+ * The task a piece filed now in the running session is a piece of: the task
+ * this request holds (its turn filed it), else the parked task it settles
+ * (a turn a piece's notice woke filed it), else the session's own task. None
+ * outside a task session.
+ */
+export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefined> {
+  const own = stringAt(ctx, TASK_ID_STATE_KEY);
+  if (own === undefined) return undefined;
+  return (await heldTask(ctx))?.row.id ?? parentBindingOf(ctx)?.taskId ?? own;
+}
+
+/** Whether the running task session already split `taskId`: its own board holds pieces of it. */
+export async function hasPieces(ctx: BlockContext, taskId: string): Promise<boolean> {
   if (stringAt(ctx, TASK_ID_STATE_KEY) === undefined) return false;
   const own = await ownConversationLedger(ctx);
-  return own !== undefined && own.count() > 0;
+  return own !== undefined && piecesOf(own, taskId).length > 0;
 }
 
 /** Dispatch `action` into another session, as a request of its own. A refusal or a throw leaves the debt for the next touch. */
-async function dispatchInto(ctx: BlockContext, target: SplitMarker, action: string, from: string): Promise<void> {
+async function dispatchInto(
+  ctx: BlockContext,
+  target: SplitMarker,
+  action: string,
+  from: string,
+  payload: Record<string, unknown> = {}
+): Promise<void> {
   try {
     await dispatchThroughSeam(ctx, {
       type: "internal",
       action,
       flowKind: target.flow,
       session: { id: target.session },
-      payload: {},
+      payload,
       from
     });
   } catch {
@@ -151,9 +196,10 @@ export async function replaySplits(ctx: BlockContext, rows: readonly Task[]): Pr
 
 /** Whether the running session owes its parked task a settle now: it has a binding, and none of its pieces is open. */
 export async function settleOwed(ctx: BlockContext): Promise<boolean> {
-  if (parentBindingOf(ctx) === undefined) return false;
+  const binding = parentBindingOf(ctx);
+  if (binding === undefined) return false;
   const own = await ownConversationLedger(ctx);
-  return own !== undefined && !own.list().some(isOpen);
+  return own !== undefined && !piecesOf(own, binding.taskId).some(isOpen);
 }
 
 /** After a run of a task session's board: dispatch the settle into the session when it is owed. */
@@ -179,7 +225,7 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
   if (binding === undefined) return false;
   const own = await ownConversationLedger(ctx);
   if (own === undefined) return false;
-  const pieces = own.list();
+  const pieces = piecesOf(own, binding.taskId);
   if (pieces.some(isOpen)) return false;
   const above = await conversationLedgerAt(ctx, binding.partition);
   if (above !== undefined && above.get(binding.taskId) !== undefined) {
@@ -219,11 +265,11 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
 }
 
 /**
- * Cancel each open row on `ref`, and, for each that was split, its pieces
- * down the chain.
+ * Cancel each open row on `ref` (only the pieces of `taskId`, when it is
+ * given), and, for each that was split, its pieces down the chain.
  */
-export async function cancelOpenRows(ctx: BlockContext, ref: TaskCollectionRef, reason: string): Promise<void> {
-  for (const row of ref.list()) {
+export async function cancelOpenRows(ctx: BlockContext, ref: TaskCollectionRef, reason: string, taskId?: string): Promise<void> {
+  for (const row of taskId === undefined ? ref.list() : piecesOf(ref, taskId)) {
     if (!isOpen(row)) continue;
     const outcome = await ref.cancel(row.id, reason);
     await cascadeIfSplit(ctx, row, outcome);
@@ -241,7 +287,7 @@ export async function cascadeIfSplit(ctx: BlockContext, before: Task | undefined
   const marker = splitMarkerOf(before);
   if (marker === undefined || before?.status !== "parked") return;
   if (outcome != null && outcome.outcome === "declined") return;
-  await dispatchInto(ctx, marker, CANCEL_PIECES_ENTRY, "split-cancel");
+  await dispatchInto(ctx, marker, CANCEL_PIECES_ENTRY, "split-cancel", { taskId: before.id });
 }
 
 /**
@@ -256,24 +302,27 @@ export const parkOnPieces = handler({
   resources: { ...conversationLedgerResources },
   execute: async (answer, rawCtx) => {
     const ctx = rawCtx as unknown as BlockContext;
-    const taskId = stringAt(ctx, TASK_ID_STATE_KEY);
     const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
     const filerFlow = stringAt(ctx, FILING_FLOW_STATE_KEY);
     const taskFlow = stringAt(ctx, TASK_FLOW_STATE_KEY);
-    if (taskId === undefined || partition === undefined || filerFlow === undefined || taskFlow === undefined) return answer;
+    if (stringAt(ctx, TASK_ID_STATE_KEY) === undefined || partition === undefined || filerFlow === undefined || taskFlow === undefined) {
+      return answer;
+    }
     const own = await ownConversationLedger(ctx);
-    if (own === undefined || own.count() === 0) return answer;
-    const above = await conversationLedgerAt(ctx, partition);
+    if (own === undefined) return answer;
+    // The task this request holds. None when the turn parked it on a question
+    // of its own (FIX-1817): the answer's attempt runs the turn again, and
+    // parks on its pieces then.
+    const held = await heldTask(ctx);
+    if (held === undefined) return answer;
+    const taskId = held.row.id;
+    if (piecesOf(own, taskId).length === 0) return answer;
+    const above = held.ref;
     // The claim this request holds: the gate verified the row and wrote its
     // run link, fenced by the ticket it minted, before the turn ran. A row
     // whose run link names this request is still this attempt's, and its
     // ticket is minted from it, as the gate minted it.
-    const held = above?.get(taskId);
-    const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
-    if (above === undefined || held === undefined || held.status !== "in_progress" || held.run?.requestId !== requestId) {
-      throw new Error(`Task "${taskId}" filed pieces, but this request no longer holds it, so it can't wait on them.`);
-    }
-    const claim = ticketForClaim(above.collectionId, held, partition);
+    const claim = ticketForClaim(above.collectionId, held.row, partition);
     // The binding first, then the marker, then the park: a crash between any
     // two leaves the row held, and its next attempt parks again here.
     const binding: ParentBinding = {
@@ -288,7 +337,7 @@ export const parkOnPieces = handler({
     if (parked.outcome === "declined") {
       // Ended from above while the turn ran: its pieces have nothing to wait for.
       await ctx.session.patchState({ [PARENT_BINDING_STATE]: null } as never);
-      await cancelOpenRows(ctx, own, `Its parent task "${taskId}" ended before its pieces did.`);
+      await cancelOpenRows(ctx, own, `Its parent task "${taskId}" ended before its pieces did.`, taskId);
       return answer;
     }
     // Every piece may have ended already; then settle now, after the turn.
@@ -306,20 +355,22 @@ export const settleSplitBlock = handler({
   execute: async (_input, ctx) => ({ settled: await settleParent(ctx as unknown as BlockContext) })
 });
 
-/** The cancel entry's block: cancel the running session's open pieces, down the chain, and drop its binding. */
-export const cancelPiecesBlock = sequencer({ name: "split-cancel-pieces", inputSchema: z.unknown() }).step(
+/** What the cancel entry takes: the split task whose pieces it cancels. Only the board above dispatches it. */
+export const cancelPiecesInputSchema = z.object({ taskId: z.string().min(1) }).strict();
+
+/** The cancel entry's block: cancel the open pieces of the task ended above, down the chain, and drop its binding. */
+export const cancelPiecesBlock = sequencer({ name: "split-cancel-pieces", inputSchema: cancelPiecesInputSchema }).step(
   handler({
     name: "split-cancel-open-pieces",
-    inputSchema: z.unknown(),
+    inputSchema: cancelPiecesInputSchema,
     outputSchema: z.object({}),
     resources: { ...conversationLedgerResources },
-    execute: async (_input, rawCtx) => {
+    execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
-      const binding = parentBindingOf(ctx);
       const own = await ownConversationLedger(ctx);
-      if (own !== undefined) await cancelOpenRows(ctx, own, `Its parent task${binding ? ` "${binding.taskId}"` : ""} was ended from above.`);
+      if (own !== undefined) await cancelOpenRows(ctx, own, `Its parent task "${input.taskId}" was ended from above.`, input.taskId);
       // The settle the fence would decline anyway: drop it.
-      if (binding !== undefined) await settleParent(ctx);
+      if (parentBindingOf(ctx)?.taskId === input.taskId) await settleParent(ctx);
       return {};
     }
   })

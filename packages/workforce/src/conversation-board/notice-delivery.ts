@@ -13,9 +13,8 @@
  */
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { owedNotices, type Task, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { CONVERSATION_LEDGER_ID } from "./ledger";
-import { owedNotices, type TaskNotice } from "./task-notice";
 
 /**
  * The internal entry a task's notice arrives on in the conversation that

@@ -1,16 +1,18 @@
 /**
- * The child-finished signal's module (FIX-1794 P2, S6 and S7): pure functions
- * over a board row and the notice it owes.
+ * The child-finished signal's module (FIX-1794 P2, S6 and S7, lifted into
+ * orchestration by FIX-1816 S9): pure functions over a board row and the
+ * notice it owes, and what that notice does, an asked row's included.
  *
- * It is lifted into orchestration later (FIX-1816), so it is checked here for
- * what makes that a move rather than a rewrite: it imports nothing from this
- * package, only orchestration's row and ending types.
+ * Checked for what kept the lift a move rather than a rewrite: it imports
+ * nothing but orchestration's own row and ending types, so no composing layer
+ * (Workforce) can leak into it.
  */
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
+import type { Task } from "../../src/tasks";
 import {
   clearNotice,
   decideNotice,
@@ -21,9 +23,9 @@ import {
   recordEnding,
   withoutNoticeMarkers,
   type TaskNotice
-} from "../src/conversation-board/task-notice";
+} from "../../src/tasks/notice/task-notice";
 
-const MODULE = fileURLToPath(new URL("../src/conversation-board/task-notice.ts", import.meta.url));
+const MODULE = fileURLToPath(new URL("../../src/tasks/notice/task-notice.ts", import.meta.url));
 
 /** A row as an ending write leaves it, before the recorder runs. */
 function row(patch: Partial<Task> = {}): Task {
@@ -50,13 +52,15 @@ function specifiersOf(source: string): string[] {
 }
 
 describe("the module is layer-clean", () => {
-  it("imports nothing from workforce: only orchestration's types", () => {
+  it("imports only orchestration's own task types: no composing layer, no package", () => {
     const specifiers = specifiersOf(readFileSync(MODULE, "utf8"));
     expect(specifiers.length).toBeGreaterThan(0);
+    const tasksRoot = resolve(dirname(MODULE), "..");
     for (const specifier of specifiers) {
-      expect(specifier, `${specifier} reaches into the package`).not.toMatch(/^\.|^@flow-state-dev\/workforce/);
-      expect(specifier).toMatch(/^@flow-state-dev\/orchestration(\/|$)/);
+      expect(specifier, `${specifier} names a package`).toMatch(/^\./);
+      expect(resolve(dirname(MODULE), specifier).startsWith(`${tasksRoot}/`), `${specifier} leaves src/tasks`).toBe(true);
     }
+    expect(specifiers.sort()).toEqual(["../collection/ending", "../schema/task"]);
   });
 
   it("reads every form an import can take, so none gets past the check", () => {
@@ -177,6 +181,39 @@ describe("what an ending does: one decision", () => {
     expect(noticeText({ ...notice("parked"), question: "Which region?" }, task)).toBe(
       'Task "Audit licenses" (t1) is waiting on a question from researcher: Which region?'
     );
+  });
+});
+
+describe("an asked row's ending resumes the turn waiting on it, and wakes none (FIX-1816 S9)", () => {
+  const asked = (patch: Partial<Task> = {}) => row({ ask: { gateId: "ask:tasks:t1", deadline: 9 }, ...patch } as Partial<Task>);
+
+  it("marks its notices asked, so the receiving entry can tell", () => {
+    const completed = recordEnding(asked({ output: "yes" }), { kind: "completed", output: "yes" });
+    expect(owedNotices(completed, "tasks")).toEqual([
+      { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", asked: true }
+    ]);
+    // A row nobody waits on is not marked.
+    expect(owedNotices(recordEnding(row(), { kind: "completed", output: 1 }), "tasks")[0]).not.toHaveProperty("asked");
+  });
+
+  it("owes a notice for a cancel too: its turn waits on every ending, where a filed row's cancel stays silent", () => {
+    const cancelled = recordEnding(asked({ status: "cancelled", error: "not needed" }), { kind: "cancelled", reason: "not needed" });
+    expect(owedNotices(cancelled, "tasks").map((n) => [n.ending, n.asked])).toEqual([["cancelled", true]]);
+    const filed = row({ status: "cancelled" });
+    expect(recordEnding(filed, { kind: "cancelled" })).toBe(filed);
+  });
+
+  it("resumes, under either policy, instead of waking the judgment turn or landing a line", () => {
+    for (const ending of ["completed", "errored", "cancelled"] as const) {
+      const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending, asked: true };
+      expect(decideNotice(notice, "judgment")).toEqual({ act: "resume-ask" });
+      expect(decideNotice(notice, "fixed")).toEqual({ act: "resume-ask" });
+    }
+  });
+
+  it("still runs the board again for a retried attempt: the ask isn't over", () => {
+    const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending: "retried", asked: true };
+    expect(decideNotice(notice, "judgment")).toEqual({ act: "run-board" });
   });
 });
 

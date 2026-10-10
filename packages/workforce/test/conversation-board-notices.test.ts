@@ -4,9 +4,9 @@
  *
  * Each ending gives one notice: the write that records it marks the notice
  * owed on the row, the task session sends it to its stamped sender, and the
- * conversation acts on it once: a line under a fixed routing policy, the
- * coordinator's judgment turn otherwise, and a run of the board, with no turn,
- * for an attempt that will be tried again. A notice lost between the ending
+ * conversation acts on it once: a line, and the coordinator's own turn where
+ * its routing has one (judgment, best fit), and a run of the board, with no
+ * turn, for an attempt that will be tried again. A notice lost between the ending
  * and its send stays owed on the row, and the next touch of the board sends
  * it. Every leg reads what landed in the conversation after the dust settles,
  * and again after a later touch, so a second copy shows.
@@ -46,8 +46,11 @@ const settledRequests = async (host: BoardHost, conv: string) =>
   (await host.requestsOf(conv)).filter((request) => request.actionName === "onTaskSettled");
 
 describe("an attempt that completes (BR-22)", () => {
-  it("gives one notice, landed as a line under a fixed policy, with what came back", async () => {
-    const host = bootBoardHost();
+  it("gives one notice, a line with what came back, and wakes the turn once under best fit: best fit has a turn of its own", async () => {
+    const judgment = mockGenerator({
+      script: [{ when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }]
+    });
+    const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "desk");
       await file(host, "alice", conv, { goal: "Count licenses", assignee: "eng.tasker" });
@@ -56,6 +59,8 @@ describe("an attempt that completes (BR-22)", () => {
       expect(await linesAbout(host, conv, "Count licenses")).toEqual([
         expect.stringMatching(/^Task "Count licenses" \(task_[^)]+\) completed by eng\.tasker: eng\.tasker did: Count licenses$/)
       ]);
+      expect(judgment.calls).toHaveLength(1);
+      expect((await host.messages(conv)).filter((message) => message.text === "Twelve licenses.")).toHaveLength(1);
       const owed = (await host.rows("alice"))[0]!.metadata ?? {};
       expect(Object.entries(owed).filter(([key, value]) => key.startsWith("noticeOwed:") && value !== null)).toEqual([]);
     } finally {
@@ -471,7 +476,11 @@ describe("a notice that can't land (BR-28)", () => {
       expect(row?.status).toBe("completed");
       expect(row?.metadata?.["noticeOwed:1:completed"]).toBeNull();
       const said = (await host.messages(host.runs[0]!.sessionId)).map((message) => message.text);
-      expect(said).toEqual([expect.stringMatching(/^The conversation that filed task "outlives it \[slow:150\]" couldn't be told it completed/)]);
+      // The task as filed is the session's first message; then the refusal, said here.
+      expect(said).toEqual([
+        "outlives it [slow:150]",
+        expect.stringMatching(/^The conversation that filed task "outlives it \[slow:150\]" couldn't be told it completed/)
+      ]);
     } finally {
       await host.dispose();
     }
