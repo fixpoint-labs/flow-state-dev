@@ -23,6 +23,7 @@ import {
   type SessionClient,
 } from "@flow-state-dev/client";
 import { readBearerToken, readUserId } from "@flow-state-dev/devtool/react";
+import { createWorkforceClient, type WorkforceClient } from "@flow-state-dev/workforce/browser";
 
 /** What a connection is made from. */
 export type Connection = {
@@ -87,4 +88,13 @@ export function createLabClients(connection: Connection): LabClients {
     recovery: createRecoveryClient({ baseUrl, fetcher }),
     actions: (flowKind) => createClient({ baseUrl, fetcher, flowKind, userId: connection.userId }),
   };
+}
+
+/** A workforce client for the Lab connection `clients` reads as. */
+export function workforceClientFor(clients: LabClients): WorkforceClient {
+  return createWorkforceClient({
+    userId: clients.userId,
+    ...(clients.baseUrl === undefined ? {} : { baseUrl: clients.baseUrl }),
+    fetcher: clients.fetcher,
+  });
 }
