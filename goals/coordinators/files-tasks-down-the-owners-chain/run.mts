@@ -84,7 +84,7 @@ const CONTROLS: Record<string, Control> = {
     assertions: ["a:one-notice", "e:one-notice"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/task-notice.ts",
+        module: "packages/orchestration/src/tasks/notice/task-notice.ts",
         from: String.raw`return policy === "judgment" \? \{ act: "wake-turn" \} : \{ act: "line" \};`,
         to: 'return { act: "none" };',
       },

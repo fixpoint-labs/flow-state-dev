@@ -22,12 +22,16 @@ import type { WorkerManifest } from "../src/manifest";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost, type BoardHostOptions } from "./conversation-board-harness";
 
+/** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
+const resolvedControlTools = (list: unknown): GeneratorTool[] =>
+  (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
+
 /** The task-board capability's own tool names, read off a fresh instance: never a count. */
 function taskToolNames(): string[] {
   const capability = createTaskToolsCapability() as unknown as {
-    __presetDefs?: { tools?: { controlTools?: GeneratorTool[] } };
+    __presetDefs?: { tools?: { controlTools?: unknown } };
   };
-  const names = (capability.__presetDefs?.tools?.controlTools ?? []).map((tool) => tool.config?.name ?? tool.name);
+  const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
   expect(names.length).toBeGreaterThan(0);
   return names;
 }

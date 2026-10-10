@@ -542,6 +542,39 @@ Read it as "which run", not "is it running". Whether work is live is the task's 
 
 Nothing a caller or a model sets can write `run`. Naming a session doesn't grant access to it: opening the session or aborting the request still goes through the server's owner check.
 
+### Asking, and waiting for the answer
+
+When the server has durable execution and runs the
+[durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup), `addTask` takes a
+`waitForResponse` option. Set it and the task is filed as usual, on the same board a plain
+`addTask` writes to, then the worker's turn parks until the task ends, and the tool returns the
+task's output as its result, `{ ok: true, taskId, answer }`. One wait per step, where a step is
+one model call and the tool calls it makes: a second waiting `addTask` in the same step is
+refused. Where the server can't hold an ask, the option isn't in `addTask`'s schema at all, and
+`addTask` files without waiting.
+
+| Input | |
+|---|---|
+| `waitForResponse` | `true` to wait for the answer. Everything else is as for `addTask`, and an assignee it would refuse is refused the same way, with nothing parked |
+| `timeoutMs` | How long to wait, from 30 000 (30 seconds) to 3 600 000 (an hour). Defaults to five minutes. Only with `waitForResponse`. Fires at the deadline on a long-lived server; where the sweep is an external cron, not sooner than its next run |
+
+| Error | When |
+|---|---|
+| `wait_timed_out` | The task did not end within its time limit. It is cancelled |
+| `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed, and the value is never clamped |
+| `wait_timeout_without_wait` | `timeoutMs` was set without `waitForResponse`. Nothing is filed |
+| `wait_task_failed` | The task failed for good |
+| `wait_task_cancelled` | The task was cancelled by someone else |
+| `wait_already_pending` | This step is already waiting on a task. Nothing is filed |
+| `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
+
+Stopping the conversation while its turn waits ends the turn and cancels the task. The turn
+doesn't see an error, because it doesn't run again.
+
+An asked task is an ordinary row: `listTasks` shows it, and the board's limits apply to it.
+When an asked task ends, the waiting turn continues with the answer. The conversation gets no
+separate completion message for it. The `addTask_<board>` action has no wait option.
+
 ## Concurrency and error handling
 
 - `concurrency` — max parallel workers. Default `4`.

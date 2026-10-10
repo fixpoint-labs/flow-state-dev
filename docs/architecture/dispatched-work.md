@@ -293,8 +293,10 @@ The request host the child sees is four verbs, closed: `parentTask()` reads
 the one row this request was dispatched for, `settleParentTask()` settles it,
 `livenessOf?()` asks whether requests this session dispatched are still
 running, and `resumeAsk?()` resumes a turn in this session parked on an ask
-gate (present only with durable execution). Identity is never a parameter to
-any of them.
+gate (present only with durable execution). Beside them, one fact:
+`hasAskSweeper`, true when this process runs a durability sweeper that times
+asks out, which decides whether `addTask` offers `waitForResponse`. Identity is
+never a parameter to any of them.
 
 ## The rule that decides everything
 

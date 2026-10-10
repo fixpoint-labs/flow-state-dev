@@ -30,7 +30,7 @@
 **Controls:** each is scratch patches to Workforce modules, applied as the process under test loads them (`goals/lib/module-patch.mjs` through `NODE_OPTIONS`); printed in full by the run, and refused when they never reached the code.
 
 - `GOAL_CONTROL=unpartitioned`: one ledger for all of a user's conversations (`conversation-board/ledger.ts`, both the partition and the board's own ledger, and the task entry's check that a task session works only its own conversation's partition). Leg c must fail **`c:runs-its-own`** (the first conversation's assign reaches the other's task, and its board runs it). `c:lists-its-own` and `c:found-its-own` go red with it. `c:drain-returns` goes red too, but not on the wait: the task it measures ran under the other conversation, so it was never running when the measure starts. It has no isolating red state.
-- `GOAL_CONTROL=no-follow-up`: a task's ending reaches the conversation that filed it and nothing follows, no line and no turn (`conversation-board/task-notice.ts`); a retried attempt still runs again. Legs a and e must fail **`a:one-notice`** and **`e:one-notice`**. In leg e, `e:refiled` and `e:reply-names` go red with it: no turn, so nothing is filed again.
+- `GOAL_CONTROL=no-follow-up`: a task's ending reaches the conversation that filed it and nothing follows, no line and no turn (orchestration's `tasks/notice/task-notice.ts`); a retried attempt still runs again. Legs a and e must fail **`a:one-notice`** and **`e:one-notice`**. In leg e, `e:refiled` and `e:reply-names` go red with it: no turn, so nothing is filed again.
 
 **Before-state:** `GOAL_COMMIT=84e9e072e` is `main` just before FIX-1794's second PR merged (#2935, merge `1854a84f0`). Every leg must fail there.
 

@@ -29,6 +29,16 @@ export { resolveCatalogTools } from "./shared/resolve-catalog-tools";
 // under `./skills`.
 export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
 
+// The one task-turn test (FIX-1816 BR-5a; FIX-1817 S1 imports it): a turn the
+// receiving gate serves. Node-only like the seam below, since the claim it
+// reads is an async-context stamp.
+export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-board/task-turn";
+
+// The board touch that resumes a turn waiting on an asked task (FIX-1816),
+// for a layer that runs its own board. The rest of the ask mechanism is on
+// the `./task-board` subpath.
+export { resumeOwedAsks, type ResumeOwedReport } from "./tasks/helpers/wait-for-response";
+
 // The lease-renewal async-context seam. Deliberately NOT on the `./tasks`
 // subpath: it needs `node:async_hooks`, and that subpath is published
 // browser-safe (`docs/architecture/items.md`). This entry already reaches

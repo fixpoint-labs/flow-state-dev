@@ -30,3 +30,26 @@ export function onAskDeadline(provider: DurabilityProvider, listener: Listener):
 export function noteAskDeadline(provider: DurabilityProvider, deadline: number): void {
   for (const listener of listeners.get(provider) ?? []) listener(deadline);
 }
+
+/**
+ * Whether a durability sweeper that times out asks listens on `provider` in
+ * this process: one runs, so an ask parked here is bounded (FIX-1816 BR-5).
+ */
+export function hasAskSweeper(provider: DurabilityProvider): boolean {
+  return (listeners.get(provider)?.size ?? 0) > 0;
+}
+
+/**
+ * Install the provider-wide fact on a host's request-host inputs, read as each
+ * request starts (`RequestHost.hasAskSweeper`), unless one is installed. Used
+ * by `createFlowState` and a router's handlers alike. A router then replaces it
+ * on its own inputs with its own sweeper's answer (`createFlowApiRouter`), so a
+ * router whose sweep is off never offers an ask because another host on the
+ * same provider sweeps.
+ */
+export function installAskSweeperFact(
+  requestHost: { askSweeper?: () => boolean },
+  provider: DurabilityProvider
+): void {
+  requestHost.askSweeper ??= () => hasAskSweeper(provider);
+}

@@ -18,7 +18,7 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
@@ -161,6 +161,14 @@ export type BoardHostOptions = {
    * calling block's name: a test holds a turn open past its tool calls with it.
    */
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
+  /** Durable execution, so a turn can park (FIX-1816's asks). Off by default. */
+  durable?: boolean;
+  /**
+   * A step model for the judgment turn, in place of `judgment`'s script: one
+   * the generator drives step by step, so a turn parked in a tool call resumes
+   * at its next step (FIX-1816's asks).
+   */
+  judgmentModel?: GeneratorModel;
   /** More worker flows, built on the installation, registered beside the four, by kind. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
@@ -201,6 +209,19 @@ function observingTools(
   return Object.assign(resolver, base);
 }
 
+/** `base`, with the judgment turn's block answered by `model` when one is given. */
+function withJudgmentModel(
+  base: ReturnType<typeof createMockModelResolver>,
+  model: GeneratorModel | undefined
+): ReturnType<typeof createMockModelResolver> {
+  if (model === undefined) return base;
+  const resolver = ((modelId: string, blockName?: string) =>
+    blockName === "coordinator-judgment" ? model : (base as any)(modelId, blockName)) as ReturnType<
+    typeof createMockModelResolver
+  >;
+  return Object.assign(resolver, base);
+}
+
 /** One host of the app over `stores`. */
 export function bootBoardHost(options: BoardHostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
@@ -236,10 +257,13 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
-    modelResolver:
+    ...(options.durable === true ? { durable: true } : {}),
+    modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models
         : observingTools(models, options.observeTools, options.afterModelCall),
+      options.judgmentModel
+    ),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
       return typeof user === "string" ? { userId: user, orgId: ORG } : null;

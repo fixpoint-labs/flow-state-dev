@@ -174,6 +174,12 @@ export type RequestHostConstructionInputs = {
    */
   askResume?: AskResumeOperation;
   /**
+   * Whether a durability sweeper that times out asks runs in this process,
+   * read as each request starts (`RequestHost.hasAskSweeper`). Installed
+   * beside `askResume`. Absent → no request is told an ask is bounded.
+   */
+  askSweeper?: () => boolean;
+  /**
    * How this host stops a parked (`suspended`) request, for
    * `ctx.session.stopRequest`. Installed beside `askResume`, only with durable
    * execution. Absent → a parked request answers `"already-finished"`.

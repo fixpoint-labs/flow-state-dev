@@ -107,6 +107,7 @@ export {
   // capability around them — one that also has to declare the ledger the
   // resolver reaches, which `createTaskToolsCapability` has no slot for.
   buildTaskToolsList,
+  taskToolsForTurn,
   taskTools,
   defaultOwnStateResolver,
   DELEGATION_BOARD_FIELD,

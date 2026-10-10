@@ -37,6 +37,7 @@
  * ```
  */
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape } from "../delegates/delegate-list";
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
@@ -44,7 +45,6 @@ import type { WorkerInstallation } from "../workers/installation";
 import { RUN_BOARD_ENTRY, defineConversationBoard } from "./board";
 import { TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { TASK_NOTICES_STATE, conversationBoardStateShape, taskSettledEntry } from "./task-settled";
-import type { NoticePolicy } from "./task-notice";
 
 /** What a session board is built from. */
 export interface SessionBoardOptions {

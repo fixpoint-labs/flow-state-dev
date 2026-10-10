@@ -149,6 +149,8 @@ export type RequestHostInputs = {
    * durable execution, and then so is `resumeAsk`.
    */
   askResume?: AskResumeOperation;
+  /** Whether a sweeper bounds asks in this process; see `RequestHost.hasAskSweeper`. */
+  askSweeper?: () => boolean;
   /**
    * The running request's trusted dispatch stamp, already read through
    * {@link readDispatchStamp}. A `{ from: true }` target delivers into
@@ -649,6 +651,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   // identity comes from here, never from the block that calls the verb.
   const askResume = inputs.askResume;
   if (askResume !== undefined) {
+    // Read once, as the request starts: whether an ask parked now is bounded.
+    if (inputs.askSweeper?.() === true) (host as { hasAskSweeper?: boolean }).hasAskSweeper = true;
     host.resumeAsk = (input: ResumeAskInput): Promise<ResumeAskResult> =>
       askResume({
         gateId: input.gateId,

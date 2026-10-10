@@ -10,7 +10,8 @@
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
  *   A task session takes tasks only from the conversation it was opened for.
  * - **The ending.** The gate settles the row through the ledger, whose ending
- *   recorder marks the notice owed in that same write (`./task-notice`).
+ *   recorder marks the notice owed in that same write (orchestration's notice
+ *   module).
  * - **The notice.** After the gate, on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
  *   birth; a task session is one task) goes to the session that dispatched
@@ -26,13 +27,12 @@
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, DispatchRefusal } from "@flow-state-dev/core/types";
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import { clearNotice, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
-import { clearNotice } from "./task-notice";
 
 /**
  * A task as a worker reads it: the title when there is one, the goal, the

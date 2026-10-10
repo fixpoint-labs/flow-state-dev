@@ -129,6 +129,12 @@ export type CreateDurabilitySweeperOptions = {
 export type DurabilitySweeper = {
   /** Stop the periodic sweep. Idempotent. */
   dispose(): void;
+  /**
+   * Whether this sweeper times out overdue asks now: it runs (a positive
+   * interval, not disposed) and can resume a turn (`continueRequest`). A host
+   * that built it reads this as `RequestHost.hasAskSweeper`.
+   */
+  timesOutAsks(): boolean;
 };
 
 const DEFAULT_SWEEP_INTERVAL_MS = 600_000;
@@ -189,7 +195,7 @@ export function createDurabilitySweeper(
   const batchLimit = retention.batchLimit ?? DEFAULT_BATCH_LIMIT;
 
   if (!Number.isFinite(sweepIntervalMs) || sweepIntervalMs <= 0) {
-    return { dispose: () => {} };
+    return { dispose: () => {}, timesOutAsks: () => false };
   }
 
   let disposed = false;
@@ -281,12 +287,18 @@ export function createDurabilitySweeper(
 
   arm(sweepIntervalMs);
 
-  // An ask parked in this process brings the armed tick forward.
-  const stopListening = onAskDeadline(provider, (deadline) => {
-    arm(deadline - Date.now());
-  });
+  // An ask parked in this process brings the armed tick forward. Only a
+  // sweeper that can resume an overdue ask listens: listening is also how the
+  // host tells a turn an ask is bounded here (`hasAskSweeper`).
+  const stopListening =
+    continueRequest === undefined
+      ? () => {}
+      : onAskDeadline(provider, (deadline) => {
+          arm(deadline - Date.now());
+        });
 
   return {
+    timesOutAsks: () => !disposed && continueRequest !== undefined,
     dispose(): void {
       if (disposed) return;
       disposed = true;

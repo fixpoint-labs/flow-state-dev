@@ -53,6 +53,7 @@ import {
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
+import { installAskSweeperFact } from "../durability/ask-deadlines";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1088,6 +1089,9 @@ class InternalFlowState<TSettings extends object>
     if (requestHost === undefined || provider === undefined) return;
     // How a block's `ctx.session.stopRequest` stops a parked request: the same
     // host, the same terms.
+    // Whether an ask parked under this host is bounded: a durability sweeper
+    // listens on this provider in this process (the router builds it).
+    installAskSweeperFact(requestHost, provider);
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,
