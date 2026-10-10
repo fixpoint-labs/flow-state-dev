@@ -94,7 +94,7 @@ import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-fl
 import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { defineSessionBoard } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
-import { TASK_NOTICES_STATE, conversationBoardStateShape } from "../conversation-board/task-settled";
+import { TASK_NOTICES_STATE, REPLY_CONCURRENCY, conversationBoardStateShape } from "../conversation-board/task-settled";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { workerConfigOf } from "../workers/verified-worker";
 import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -1453,15 +1453,21 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // the four delegate actions.
       ...sessionBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
-      run: { inputSchema: doorInputSchema.strict(), block: door, userMessage: (input: DoorInput) => input.message }
+      run: {
+        inputSchema: doorInputSchema.strict(),
+        block: door,
+        userMessage: (input: DoorInput) => input.message,
+        concurrency: REPLY_CONCURRENCY
+      }
     },
     internal: {
       actions: {
         // Here only, never in `actions`: an answer, and a report of none, name their delivery.
         [DELEGATE_ANSWER_ACTION]: { inputSchema: delegatedAnswerSchema, block: delegateAnswer, concurrency: "queue" },
         [DELEGATE_MISSED_ACTION]: { inputSchema: delegatedMissSchema, block: delegateMissed, concurrency: "queue" },
-        // Only this conversation's own code sends answers back out.
-        [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry },
+        // Only this conversation's own code sends answers back out. A round's
+        // routing can run the coordinator's turn, so it is a reply too.
+        [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY },
         // A filing's wake (one run of this conversation's board, as its
         // owner), and a task this conversation filed ended: its notice.
         ...boardEntries

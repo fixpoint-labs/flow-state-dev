@@ -127,14 +127,86 @@ export async function open(page: Page, name: string): Promise<void> {
   if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
 }
 
-/** Press "New conversation" on a seat's row and wait for the panel. */
-export async function newConversation(page: Page, seat: string): Promise<void> {
-  await rail(page)
-    .locator(`[data-instance-id="${seat}"]`)
-    .locator("xpath=..")
-    .getByRole("button", { name: "New conversation" })
-    .click();
+/**
+ * Press "Talk" on a worker's row in the roster panel, which opens the person's
+ * conversation with that worker (found or started), and wait for the panel.
+ */
+export async function talkTo(page: Page, worker: string): Promise<void> {
+  await page.locator(`[data-testid="roster"]:visible [data-worker-id="${worker}"]`).getByTestId("roster-talk").click();
   await panel(page).waitFor({ timeout: 15_000 });
+}
+
+/** The flow every specialist runs on, registered as one copy at its kind. */
+export const WORKER_FLOW = "agent";
+
+/** The coordinator flow's kind, whose rail row opens into the person's conversation with each coordinator. */
+export const COORDINATOR_FLOW = "coordinator";
+
+/**
+ * Open the worker flow's kind and its one copy in the rail, unless already
+ * open, and wait for the copy's list to load. Every worker's sessions are
+ * listed there, each one a session that names its worker.
+ */
+export async function openWorkerCopy(page: Page): Promise<Locator> {
+  for (const button of [
+    rail(page).locator(`button[data-kind="${WORKER_FLOW}"]`),
+    rail(page).locator(`button[data-instance-id="${WORKER_FLOW}"]`),
+  ]) {
+    await button.waitFor({ timeout: 15_000 });
+    if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
+  }
+  const leaf = rail(page).locator(`ul[data-leaf="${WORKER_FLOW}"]`);
+  await leaf.waitFor({ timeout: 15_000 });
+  await readUntil(
+    async () => (await leaf.locator("[data-session-id]").count()) + (await leaf.getByText("No sessions yet").count()),
+    (n) => n > 0,
+    10_000,
+  );
+  return leaf;
+}
+
+/** Show the person's conversation with `coordinator` in the panel, from the rail. */
+export async function showCoordinator(page: Page, coordinator: string): Promise<void> {
+  await open(page, COORDINATOR_FLOW);
+  await row(page, coordinator).click();
+  await panel(page).getByTestId("coordinator-transcript").waitFor({ timeout: 15_000 });
+}
+
+/** One of a worker's sessions, as the server lists it. */
+export interface WorkerSession {
+  id: string;
+  parentSessionId?: string | null;
+}
+
+/**
+ * The person's sessions with `worker` on `flow`, as the server lists them by
+ * the session's readonly `workerId`; with `runs`, the sessions a coordinator's
+ * post started for it too. An index, never graded: what each session holds is
+ * read on the page.
+ */
+export async function workerSessions(
+  page: Page,
+  origin: string,
+  worker: string,
+  options: { runs?: boolean; flow?: string; user?: string } = {},
+): Promise<WorkerSession[]> {
+  const query = new URLSearchParams({
+    flowId: options.flow ?? WORKER_FLOW,
+    userId: options.user ?? "devuser",
+    "state.workerId": worker,
+    limit: "100",
+    ...(options.runs === true ? { include: "dispatch-runs" } : {}),
+  });
+  const res = await page.request.get(`${origin}/api/flows/sessions?${query}`);
+  if (!res.ok()) throw new Error(`the sessions of ${worker} could not be listed: ${res.status()} ${await res.text()}`);
+  return ((await res.json()) as { sessions: WorkerSession[] }).sessions;
+}
+
+/** The person's conversation with `coordinator`: the one session the rail opens. An index, never graded. */
+export async function coordinatorConversation(page: Page, origin: string, coordinator: string): Promise<string | undefined> {
+  const sessions = await workerSessions(page, origin, coordinator, { flow: COORDINATOR_FLOW });
+  if (sessions.length > 1) throw new Error(`the person has ${sessions.length} conversations with ${coordinator} (want at most 1)`);
+  return sessions[0]?.id;
 }
 
 /** Poll `read` until `done` holds, or the time is up; return the last reading either way. */

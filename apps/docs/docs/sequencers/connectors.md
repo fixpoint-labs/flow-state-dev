@@ -114,6 +114,8 @@ The mapper returns a string. Both `TInputSchema` and `TOutputSchema` are preserv
 
 `connectOutput` reshapes data flowing into downstream consumers. `mapModelOutput` is scoped to a single boundary — the AI SDK tool-result content the LLM sees — and preserves every existing type and observation contract.
 
+`mapModelOutput` changes what the model is told. It doesn't change what is recorded: the `tool_output` item holds the full result, under the same [record limit](../streaming/items.md#values-too-large-to-record) as any other. To keep a large value out of the record, return less from the block.
+
 The mapper is expected to be deterministic: history replay re-runs it on the persisted structured output rather than persisting the string itself.
 
 ### Devtool inspection

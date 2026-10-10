@@ -143,6 +143,15 @@ const list = async (h: BoardHost, userId: string, sessionId: string, flow: strin
   return result.output as { ok?: boolean; error?: string; tasks?: Array<{ id: string; goal: string; status: string }> };
 };
 
+/** Poll `check` until it holds, for at most `ms`. Whether it held. */
+const until = async (check: () => Promise<boolean> | boolean, ms = 3000) => {
+  for (const deadline = Date.now() + ms; Date.now() < deadline; ) {
+    if (await check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return check();
+};
+
 /** How many of the eight task tools a tool list carries, each counted. */
 const taskToolsIn = (names: readonly string[]) => names.filter((name) => TASK_TOOLS.includes(name));
 
@@ -305,6 +314,37 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       expect(rows.map((row) => [row.goal, row.status])).toEqual([["Count seats [slow:100]", "completed"]]);
       const heard = (await h.requestsOf(talk)).filter((request) => request.actionName === "onTaskSettled");
       expect(heard).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a notice to an `agent` worker that arrives mid-reply", () => {
+  it("waits for the reply to end, then runs once, as a coordinator's does", async () => {
+    let calls = 0;
+    let talk = "";
+    const seen = { noticeArrivedMidReply: false, heardMidReply: true };
+    const heardIn = async (h: BoardHost) => (await h.messages(talk)).filter((message) => message.text === "Heard it.");
+    const h: BoardHost = host({
+      agentScript: fileScript("count the chairs", "Count chairs", "eng.tasker"),
+      // Hold the filing reply open, after its model call has filed, until the
+      // notice has been dispatched and for half a second after.
+      afterModelCall: async () => {
+        if (++calls !== 1) return;
+        const settled = async () =>
+          (await h.requestsOf(talk)).filter((request) => request.actionName === "onTaskSettled").length > 0;
+        seen.noticeArrivedMidReply = await until(settled);
+        seen.heardMidReply = await until(async () => (await heardIn(h)).length > 0, 500);
+      }
+    });
+    try {
+      talk = await agentSession(h, "alice", "ana");
+      await h.post("alice", talk, "run", { message: "count the chairs" }, "agent");
+      await h.settled();
+      expect(seen.noticeArrivedMidReply).toBe(true);
+      expect(seen.heardMidReply).toBe(false);
+      expect(await heardIn(h)).toHaveLength(1);
     } finally {
       await h.dispose();
     }

@@ -9,6 +9,10 @@
  * Red state: on the tree before the shell was rebuilt, the page imports
  * `components/session-sidebar.tsx`, which types and draws a session list of
  * its own. The first and last cases both fail there.
+ *
+ * The panel drew the package's `BoardList` for `support.help`'s escalations
+ * board until the escalation feature was removed (FIX-1792): no board is left
+ * for it to draw, so it is the roster alone.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -43,12 +47,8 @@ describe("V9 · the shell's rail and panel are package components", () => {
     expect(page).not.toMatch(/components\/session-sidebar/);
   });
 
-  it("draws the panel with the package's board list, and the roster from Workforce's client", () => {
+  it("draws the panel's roster from Workforce's client", () => {
     const panel = read("components/team-panel.tsx");
-    const fromReact = importedFrom(panel, "@flow-state-dev/react");
-    expect(fromReact).toEqual(expect.arrayContaining(["BoardList"]));
-    expect(fromReact).not.toContain("BoardColumns");
-    expect(panel).toContain("<BoardList");
     expect(importedFrom(panel, "@flow-state-dev/workforce/browser")).toEqual(expect.arrayContaining(["WorkforceClient"]));
     expect(panel).toContain(".roster()");
   });

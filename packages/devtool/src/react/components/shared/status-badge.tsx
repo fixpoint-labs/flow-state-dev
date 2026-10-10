@@ -2,11 +2,11 @@ import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
 
 // Covers both request statuses and suspension statuses (approved/rejected/
-// pending/timed_out/expired) since the Suspensions view renders the latter
+// pending/timed_out/expired/stopped) since the Suspensions view renders the latter
 // through the same badge. Unknown values fall back to the neutral style.
 export type RequestStatusLabel =
   | "completed" | "in_progress" | "finishing" | "failed" | "incomplete" | "created" | "suspended"
-  | "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired";
+  | "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired" | "stopped";
 
 const statusStyles: Record<RequestStatusLabel, string> = {
   completed: "bg-green-900/40 text-green-400 border-green-800",
@@ -24,6 +24,7 @@ const statusStyles: Record<RequestStatusLabel, string> = {
   skipped: "bg-slate-800 text-slate-400 border-slate-700",
   timed_out: "bg-orange-900/40 text-orange-400 border-orange-800",
   expired: "bg-slate-800 text-slate-400 border-slate-700",
+  stopped: "bg-slate-800 text-slate-400 border-slate-700",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

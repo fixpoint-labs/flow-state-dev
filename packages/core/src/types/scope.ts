@@ -188,11 +188,18 @@ export type SessionMetadataInput = SessionMetadata & {
  *   process has its signal fired now; one running in another process is
  *   stopped on that process's next heartbeat, as an abort is.
  * - `"already-finished"`: the request had already ended; nothing was written.
+ * - `"already-resolved"`: the request was parked, but what it waited on was
+ *   resolved first (an answer won the race), so it is running again. Nothing
+ *   was written; a second stop reaches the running turn.
  * - `"not-in-this-session"`: no request under that id belongs to this session
  *   (another session's, another tenant's, or none at all). Nothing was written,
  *   and the answer does not say which.
  */
-export type StopRequestOutcome = "stopped" | "already-finished" | "not-in-this-session";
+export type StopRequestOutcome =
+  | "stopped"
+  | "already-finished"
+  | "already-resolved"
+  | "not-in-this-session";
 
 /**
  * Session scope handle — exposes per-session state and metadata. Resources

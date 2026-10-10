@@ -23,10 +23,12 @@
  * pushed wake is worth having there, it belongs on the public contract.
  *
  * `planQueueWait` is the arbiter's answer to "not my turn, now what?" for a
- * backend with no in-process wake, and `holdLeasePlace` is how a process keeps
- * a place it holds. Both are exported for an adapter's worker, which waits by
- * requeueing its job rather than holding a slot and renews the place of the
- * job it runs, and must reach the same decisions the engine would.
+ * backend with no in-process wake, `planDeferWait` its answer to "the key is
+ * not free, now what?" for a `defer` run, and `holdLeasePlace` is how a
+ * process keeps a place it holds. All three are exported for an adapter's
+ * worker, which waits by requeueing its job rather than holding a slot and
+ * renews the place of the job it runs, and must reach the same decisions the
+ * engine would.
  */
 
 import { ConcurrencyLeaseLostError, ConcurrencyQueueTimeoutError } from "../errors";
@@ -209,21 +211,73 @@ export type QueueWaitStep =
  * check — a caller that restarts it keeps the backoff at its base. A worker
  * that waits by requeueing its job carries both on the job. `random` defaults
  * to `Math.random`.
+ *
+ * `budgetMs` defaults to the `queue` budget. `Infinity` is the wait of a
+ * `defer` run that ran out of patience and lined up behind the runs on its
+ * key: it backs off the same way and never times out.
  */
 export function planQueueWait(input: {
   key: string;
   waitedMs: number;
   attempt: number;
+  budgetMs?: number;
   random?: () => number;
 }): QueueWaitStep {
-  const remaining = QUEUE_WAIT_TIMEOUT_MS - input.waitedMs;
+  const budgetMs = input.budgetMs ?? QUEUE_WAIT_TIMEOUT_MS;
+  const remaining = budgetMs - input.waitedMs;
   if (remaining <= 0) {
     return {
       kind: "timeout",
-      error: new ConcurrencyQueueTimeoutError(input.key, QUEUE_WAIT_TIMEOUT_MS)
+      error: new ConcurrencyQueueTimeoutError(input.key, budgetMs)
     };
   }
   return { kind: "wait", delayMs: Math.min(recheckDelayMs(input.attempt, input.random), remaining) };
+}
+
+/**
+ * How long a waiting `defer` run yields to `hold` runs that start after it,
+ * by default: the `queue` wait budget. See `planDeferWait`.
+ */
+export const DEFER_PATIENCE_MS = QUEUE_WAIT_TIMEOUT_MS;
+
+/** One step of a `defer` run that has not claimed its key yet. */
+export type DeferWaitStep =
+  /**
+   * Claim the key if nothing holds or waits on it (`take` with `ifEmpty`).
+   * If something does, check again in `retryInMs`, or sooner when a wake
+   * says the key emptied, but not past `patienceLeftMs`.
+   */
+  | { kind: "claim-if-free"; retryInMs: number; patienceLeftMs: number }
+  /**
+   * Out of patience: take a place at the back of the key's line and wait for
+   * its turn with no budget (`planQueueWait` with `budgetMs: Infinity`), so
+   * newer `hold` runs no longer delay it.
+   */
+  | { kind: "line-up" };
+
+/**
+ * Decide what a `defer` run that has not claimed its key does next. The one
+ * definition of the `defer` wait: the engine's arbiter waits by it in
+ * process, and a queue worker that waits by requeueing its job reaches the
+ * same decisions from the wait it carries on the job.
+ *
+ * `waitedMs` counts from the run's first claim attempt, and `attempt` counts
+ * attempts made so far, from 0, as in `planQueueWait`. `patienceMs` defaults
+ * to {@link DEFER_PATIENCE_MS}.
+ */
+export function planDeferWait(input: {
+  waitedMs: number;
+  attempt: number;
+  patienceMs?: number;
+  random?: () => number;
+}): DeferWaitStep {
+  const patienceLeftMs = (input.patienceMs ?? DEFER_PATIENCE_MS) - input.waitedMs;
+  if (patienceLeftMs <= 0) return { kind: "line-up" };
+  return {
+    kind: "claim-if-free",
+    retryInMs: Math.min(recheckDelayMs(input.attempt, input.random), patienceLeftMs),
+    patienceLeftMs
+  };
 }
 
 /**

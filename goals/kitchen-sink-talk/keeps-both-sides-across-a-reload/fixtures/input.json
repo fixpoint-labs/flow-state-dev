@@ -1,5 +1,5 @@
 {
   "port": 3037,
-  "mailbox": { "kind": "mailbox", "id": "support.help", "label": "devuser" },
+  "coordinator": { "kind": "coordinator", "id": "support.help", "label": "devuser" },
   "seat": { "kind": "agent", "id": "support.devices", "marker": "[scenario:talk-to-seat]", "replyMarker": "[reply:talk-to-seat]" }
 }

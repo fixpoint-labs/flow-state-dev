@@ -272,12 +272,13 @@ error. A `queue` policy that waits past its budget rejects the request's
 stream, not a synchronous status). Both errors are exported from this package.
 A `hold` run starts at once and marks its key busy; a `defer` run waits,
 with no time budget, until nothing on its key is running or waiting. At most
-32 defers wait on a key per process; the next is refused
+32 defers wait on a key per process (a defer handed to a queue counts until
+its job ends; see below); the next is refused
 with `ConcurrencyDeferLimitError`, a `ConcurrencyRejectedError`. A defer
 yields to newer `hold` runs for 30 seconds, then waits only
-for the runs it found. Both apply to
-in-process runs only: a run handed to an external dispatcher under either
-policy runs as `allow`.
+for the runs it found. `hold` and `defer` are enforced across a queue whose
+adapter supplies a shared `leaseBackend` (see below). Over any other external
+dispatcher, a run under either policy runs as `allow`.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
 
@@ -323,6 +324,24 @@ place while the job runs and reports it lost the way the arbiter does, and
 `settleUnstartedRequest(stores, requestId, ending)` ends a request whose run
 never started (a wait that timed out) with the same record the engine writes.
 A job whose `leasePlace` is `null` or absent runs as it always did.
+
+`hold` and `defer` reach the worker as `DispatchEnvelope.leaseTurn`. A `hold`
+job carries `{ kind: "now" }` with its place: it runs at once and gives the
+place back at the end, so the key reads busy until then. A `defer` job carries
+`{ kind: "when-free", key }` and no place: the worker claims the key with
+`take({ ifEmpty: true })` and runs under the place it gets.
+
+While the key is held, `planDeferWait({ waitedMs, attempt })` decides the
+job's next step. It returns one of two shapes:
+
+- `{ kind: "claim-if-free", retryInMs, patienceLeftMs }`: requeue the job for
+  `retryInMs` (at most 2 seconds), then try `take({ ifEmpty: true })` again.
+- `{ kind: "line-up" }`: the patience, `DEFER_PATIENCE_MS` (30 seconds), is
+  spent. Take a place at the back with `take()`, then wait for its turn with
+  `planQueueWait({ ..., budgetMs: Infinity })`, which never times out.
+
+The dispatching process counts a handed-off `defer` against its 32-per-key cap
+until the job's `finished` settles, including while the job runs.
 
 ## Authentication
 
@@ -432,6 +451,8 @@ const router = createFlowApiRouter({
   maxResponseBufferSize: 10_000,
 });
 ```
+
+Pass `maxRecordedValueBytes` to change the largest block output or tool result recorded in an item (default 256 KiB). Larger values are recorded as an `omitted` placeholder with their size and a 512-character preview; the run itself keeps the full value. A resumed request that would need such a value fails with `RECORDED_VALUE_OMITTED`.
 
 `createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](https://flow-state.dev/docs/streaming/trace-channel) for the full backend list and file layout.
 
@@ -1049,9 +1070,9 @@ A generator tool can also suspend mid-loop (`ctx.suspend()` for tool-call approv
 
 ### Durability retention
 
-Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (`setInterval` + `unref`, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
+Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (a re-armed, `unref`ed timer, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
 
-Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The sweeper is built only when both a `durabilityProvider` and a `durabilityRetention` policy are present.
+Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The router builds the sweeper whenever a `durabilityProvider` is present: it always enforces suspension expiry, times out overdue asks, re-drives a request left behind a resolved gate, and carries a stop recorded on a parked request. The pruning steps run only when a `durabilityRetention` policy is present.
 
 ```ts
 createFlowState({
@@ -1067,7 +1088,9 @@ createFlowState({
 });
 ```
 
-Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
+Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`; an ask gate past its deadline is resumed with `wait_timed_out` instead), re-drives a request left `suspended` or `interrupted` behind a gate that is already resolved (an ask's recorded outcome continues it, a `stopped` gate ends it `aborted`; under the request's lease), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. The next tick runs at the earlier of `sweepIntervalMs` and the earliest pending ask deadline, never sooner than a second; an ask parked in this process brings it forward.
+
+**Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. An ask gate continues the request with a stop outcome, so the parked call (`parkOnAsk` throws `AskStoppedError`) can end what it asked for and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A stop that finds the gate already resolved answers `409` on the route and `"already-resolved"` from `stopRequest`. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
 ## Connection resilience
 

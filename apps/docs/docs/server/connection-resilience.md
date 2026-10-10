@@ -133,7 +133,9 @@ The default is 10 seconds. Each tick costs one store read per running request, s
 
 ### What the endpoint returns
 
-The abort endpoint returns `204` when it fired the request's controller in the process that received the call, and `202` when it recorded the cancellation for the running process to pick up. It returns `404` when no request exists under that id, and `409` when the request is no longer `in_progress`.
+The abort endpoint returns `204` when it fired the request's controller in the process that received the call, and `202` when it recorded the cancellation for the running process to pick up. It returns `404` when no request exists under that id, and `409` when the request has already finished.
+
+A request that is paused (`suspended`) can be stopped too, on a runtime with durable execution. Nothing is running, so there is no controller to fire: the stop resolves whatever the request is waiting on, and the request ends `aborted`. If it was waiting on an approval, a later approve is refused. If it was waiting on another agent's answer, the task it asked for is cancelled first, and the request ends without another model call. The endpoint returns `204`. If an answer reached the paused request first, it is running again and the endpoint returns `409`; send the stop again to stop the running request. Without durable execution, a paused request answers `409` as a finished one does.
 
 Between the `202` and the run actually stopping, the request stays `in_progress` and keeps working, so items produced in that window still land on it. Treat `202` as "recorded", not "stopped". Watch for `status: "aborted"` to know it landed; `GET /api/flows/:flowKind/requests/:requestId/status` reports it with no stream attached.
 

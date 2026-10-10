@@ -1,19 +1,20 @@
 /**
  * Goal check: from the kitchen-sink page, a person talks to a specialist and
- * posts to the support mailbox, and after a reload both conversations are
- * still there, showing who said what.
+ * posts to the support desk's coordinator, and after a reload both
+ * conversations are still there, showing who said what.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * Two legs, in one real browser against the app's PRODUCTION build (built
  * here, never assumed), on its scripted model:
  *
- *   mailbox  post a unique line to `support.help` from its panel; reload; the
- *            line is in the mailbox's transcript, labelled with the app's one
- *            user.
- *   seat     start a conversation on `support.devices` from its row, send a
- *            unique message; reload; the message is there as the person's
- *            turn and the scripted reply is under it.
+ *   coordinator  post a unique line to `support.help` from its panel; reload;
+ *                the line is in the person's conversation with the
+ *                coordinator, labelled with the app's one user.
+ *   seat         "Talk" on `support.devices` in the roster, send a unique
+ *                message; reload and reopen that conversation from the rail;
+ *                the message is there as the person's turn and the scripted
+ *                reply is under it.
  *
  * The third leg this check once had, a seat whose kind takes no messages, has
  * no seat to run on: every seat in this roster is an `agent`, and the rail
@@ -24,8 +25,8 @@
  * pass. The page draws no optimistic copy of either side.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/run.mts
- * Controls: GOAL_CONTROL=no-post-item       (must FAIL at the mailbox leg only)
- *           GOAL_CONTROL=drop-user-message  (must FAIL at the seat leg only)
+ * Controls: GOAL_CONTROL=drop-coordinator-post  (must FAIL at the coordinator leg only)
+ *           GOAL_CONTROL=drop-user-message      (must FAIL at the seat leg only)
  * Held-out: GOAL_SEAT=<another specialist>
  */
 import { randomUUID } from "node:crypto";
@@ -34,39 +35,47 @@ import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
   conversation,
-  newConversation,
-  open,
+  COORDINATOR_FLOW,
   openShell as openShellAt,
+  openWorkerCopy,
   panel,
-  rail,
   readUntil,
-  row,
+  showCoordinator,
   startKitchenSink,
+  talkTo,
+  workerSessions,
+  WORKER_FLOW,
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 interface Fixture {
   port: number;
-  mailbox: { kind: string; id: string; label: string };
+  coordinator: { kind: string; id: string; label: string };
   seat: { kind: string; id: string; marker: string; replyMarker: string };
 }
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const ORIGIN = `http://127.0.0.1:${fixture.port}`;
-// The roster has one mailbox, so only the seat has a held-out override.
-const MAILBOX = fixture.mailbox.id;
+// The roster has one coordinator, so only the seat has a held-out override.
+const COORDINATOR = fixture.coordinator.id;
 const SEAT = process.env.GOAL_SEAT ?? fixture.seat.id;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The one leg each control must redden, and only that one. */
 const EXPECTED: Record<string, string> = {
-  "no-post-item": "mailbox",
+  "drop-coordinator-post": "coordinator",
   "drop-user-message": "seat",
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
+
+/** The flow whose sessions each control strips the person's messages from. */
+const STRIPPED_FLOW: Record<string, string> = {
+  "drop-coordinator-post": COORDINATOR_FLOW,
+  "drop-user-message": WORKER_FLOW,
+};
 
 // ---------------------------------------------------------------------------
 // The controls: what the page is served, with one kept side taken out
@@ -74,9 +83,15 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 
 /**
  * Runs in the page before its own scripts, under a control. Every session read,
- * every action stream and every live session stream reaches the page without
- * the one kind of item the control names, before and after the reload alike:
- * what the page sees when the server keeps none.
+ * every action stream and every live session stream of the control's flow
+ * reaches the page without the person's messages, before and after the reload
+ * alike: what the page sees when the server keeps none on that side. The
+ * person's post to the coordinator and their message to the seat are both
+ * `user` messages, so each control names the flow it strips them from.
+ *
+ * An action's flow is in its path. A session read or stream carries only the
+ * session's id, so its flow is learned from the session's state, which names
+ * it (read once per session, unfiltered).
  *
  * At the page's `fetch`, not with Playwright's routing: the live session
  * stream (`GET /api/flows/sessions/:id/stream`) never ends, and a routed
@@ -87,21 +102,28 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
  * tsx first, which adds helpers the page does not have.
  */
 const STRIP_ITEMS = `(() => {
-  const control = ${JSON.stringify(CONTROL)};
-  const stripped = (item) =>
-    item != null &&
-    (control === "no-post-item"
-      ? item.type === "component" && item.component === "mailbox-post"
-      : item.type === "message" && item.role === "user");
+  const flow = ${JSON.stringify(STRIPPED_FLOW[CONTROL] ?? "")};
+  const stripped = (item) => item != null && item.type === "message" && item.role === "user";
   const original = window.fetch.bind(window);
+  const flows = new Map();
+  const flowOf = (sessionId) => {
+    if (!flows.has(sessionId)) {
+      flows.set(sessionId, original("/api/flows/sessions/" + encodeURIComponent(sessionId) + "/state?limit=1")
+        .then((res) => res.json())
+        .then((json) => json.flowKind)
+        .catch(() => undefined));
+    }
+    return flows.get(sessionId);
+  };
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
     const method = String((init && init.method) || (input instanceof Request ? input.method : "GET")).toUpperCase();
-    const flows = url.pathname.startsWith("/api/flows/");
-    const read = method === "GET" && /\\/sessions\\/[^/]+\\/(state|stream)$/.test(url.pathname);
-    const action = method === "POST" && /\\/actions\\/[^/]+$/.test(url.pathname);
+    const read = method === "GET" ? /^\\/api\\/flows\\/sessions\\/([^/]+)\\/(state|stream)$/.exec(url.pathname) : null;
+    const action = method === "POST" ? /^\\/api\\/flows\\/([^/]+)\\/actions\\/[^/]+$/.exec(url.pathname) : null;
+    if (read === null && action === null) return original(input, init);
+    const kind = action !== null ? decodeURIComponent(action[1]) : await flowOf(decodeURIComponent(read[1]));
     const response = await original(input, init);
-    if (!flows || (!read && !action)) return response;
+    if (kind !== flow) return response;
     const type = response.headers.get("content-type") || "";
     if (type.includes("application/json")) {
       const json = await response.json();
@@ -151,14 +173,14 @@ async function applyControl(page: Page): Promise<void> {
 
 const openShell = (page: Page) => openShellAt(page, ORIGIN);
 
-/** The mailbox's transcript as drawn: each line's label and body. */
+/** The coordinator conversation's transcript as drawn: each line's label and body. */
 const transcript = (page: Page) =>
   panel(page)
-    .locator('[data-testid="mailbox-line"]')
+    .locator('[data-testid="coordinator-line"]')
     .evaluateAll((lines) =>
       lines.map((line) => ({
-        label: line.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
-        body: line.querySelector('[data-testid="mailbox-line-body"]')?.textContent ?? "",
+        label: line.querySelector('[data-testid="coordinator-line-label"]')?.textContent ?? "",
+        body: line.querySelector('[data-testid="coordinator-line-body"]')?.textContent ?? "",
       })),
     );
 
@@ -176,52 +198,47 @@ await runGoal(async (failures) => {
   const browser = await launchChromium();
   let server: KitchenSinkServer | undefined;
   try {
-    server = await startKitchenSink(fixture.port);
+    // Keyless: the scripted model answers, and no key is there to fall back on.
+    server = await startKitchenSink(fixture.port, { AI_GATEWAY_API_KEY: "" });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await applyControl(page);
 
-    // ---- mailbox: post, reload, read -------------------------------------
+    // ---- coordinator: post, reload, read ---------------------------------
     await openShell(page);
-    await open(page, fixture.mailbox.kind);
-    await row(page, MAILBOX).click();
-    await panel(page).getByLabel("Post to this mailbox").fill(line);
+    await showCoordinator(page, COORDINATOR);
+    await panel(page).getByLabel("Post to this coordinator").fill(line);
     await panel(page).getByRole("button", { name: "Send" }).click();
     // Let the post settle before the reload; nothing here is graded.
-    await readUntil(() => panel(page).getByLabel("Post to this mailbox").inputValue(), (v) => v === "", 10_000);
+    await readUntil(() => panel(page).getByLabel("Post to this coordinator").inputValue(), (v) => v === "", 10_000);
 
     await page.reload();
     await openShell(page);
-    await open(page, fixture.mailbox.kind);
-    await row(page, MAILBOX).click();
+    await showCoordinator(page, COORDINATOR);
     const lines = await readUntil(() => transcript(page), (ls) => ls.some((l) => l.body === line));
     const found = lines.filter((l) => l.body === line);
     if (found.length !== 1) {
-      fail("mailbox", `after the reload, ${MAILBOX}'s transcript holds ${found.length} copies of the posted line "${line}" (want 1); it shows ${lines.length} lines`);
-    } else if (found[0]!.label !== fixture.mailbox.label) {
-      fail("mailbox", `the posted line reads as "${found[0]!.label}", not "${fixture.mailbox.label}"`);
+      fail("coordinator", `after the reload, ${COORDINATOR}'s conversation holds ${found.length} copies of the posted line "${line}" (want 1); it shows ${lines.length} lines`);
+    } else if (found[0]!.label !== fixture.coordinator.label) {
+      fail("coordinator", `the posted line reads as "${found[0]!.label}", not "${fixture.coordinator.label}"`);
     } else {
-      evidence.push(`mailbox: after a reload, ${MAILBOX} shows "${line}" labelled ${found[0]!.label}, once`);
+      evidence.push(`coordinator: after a reload, ${COORDINATOR}'s conversation shows "${line}" labelled ${found[0]!.label}, once`);
     }
 
-    // ---- seat: a new conversation, a message, reload, read ---------------
-    await open(page, fixture.seat.kind);
-    await open(page, SEAT);
-    await newConversation(page, SEAT);
-    const sessionId = await rail(page)
-      .locator(`ul[data-leaf="${SEAT}"] [aria-current="true"]`)
-      .getAttribute("data-session-id");
+    // ---- seat: Talk, a message, reload, reopen from the rail, read ---------
+    await talkTo(page, SEAT);
     await panel(page).getByLabel("Message this seat").fill(message);
     await panel(page).getByRole("button", { name: "Send" }).click();
     await readUntil(() => conversation(page), (ms) => ms.some((m) => m.text.includes(fixture.seat.replyMarker)));
+    // Which session "Talk" opened, from the server's index by worker. Not graded.
+    const [talked, ...more] = await workerSessions(page, ORIGIN, SEAT);
 
-    if (sessionId === null) {
-      fail("seat", `"New conversation" on ${SEAT} opened no conversation in the rail`);
+    if (talked === undefined || more.length > 0) {
+      fail("seat", `"Talk" on ${SEAT} left the person ${more.length + (talked === undefined ? 0 : 1)} conversations with it (want 1)`);
     } else {
       await page.reload();
       await openShell(page);
-      await open(page, fixture.seat.kind);
-      await open(page, SEAT);
-      await rail(page).locator(`[data-session-id="${sessionId}"]`).click();
+      const leaf = await openWorkerCopy(page);
+      await leaf.locator(`[data-session-id="${talked.id}"]`).click();
       const messages = await readUntil(
         () => conversation(page),
         (ms) => ms.some((m) => m.text.includes(message)) && ms.some((m) => m.text.includes(fixture.seat.replyMarker)),
@@ -237,10 +254,9 @@ await runGoal(async (failures) => {
         fail("seat", `the reply sits above the message it answers`);
       }
       if (asked !== -1 && answered > asked) {
-        evidence.push(`seat: after a reload, ${SEAT}'s conversation ${sessionId} shows the message as the user's turn and the scripted reply under it`);
+        evidence.push(`seat: after a reload, ${SEAT}'s conversation ${talked.id}, reopened from the rail, shows the message as the user's turn and the scripted reply under it`);
       }
     }
-
   } finally {
     await browser.close();
     server?.stop();

@@ -2,7 +2,7 @@
  * Visual renderer for `BlockValue` outputs (FIX-413). Every surface that
  * shows a block's output — the inline trace tree, the right-pane block
  * detail, and the per-item detail view — routes through this component
- * so the kind discrimination (`inline` / `ref` / `structure`) is rendered
+ * so the kind discrimination (`inline` / `ref` / `structure` / `omitted`) is rendered
  * the same way everywhere.
  *
  * Refs resolve their `sourceItemId` against the trace context to display
@@ -30,7 +30,34 @@ type BlockValueViewProps = {
 export function isInternalBlockValue(v: unknown): v is BlockValueInternal<unknown> {
   if (typeof v !== "object" || v === null) return false;
   const kind = (v as { kind?: unknown }).kind;
-  return kind === "inline" || kind === "ref" || kind === "structure";
+  return kind === "inline" || kind === "ref" || kind === "structure" || kind === "omitted";
+}
+
+/**
+ * The one renderer for a value the record left out (FIX-1772): a block output
+ * or a tool result over the server's record limit. Shows the size and the
+ * preview the record kept, marked as omitted, so nobody reads the preview as
+ * the whole value.
+ */
+export function OmittedValueView({
+  value,
+  className,
+}: {
+  value: { bytes: number | null; preview: string };
+  className?: string;
+}) {
+  const size = value.bytes === null ? "could not be serialized" : `${value.bytes.toLocaleString()} bytes`;
+  return (
+    <div className={className}>
+      <KindPill kind="omitted" detail={size} />
+      <div className="mt-1 text-[11px] text-slate-500 italic">
+        Over the record limit. The run had the full value; the record keeps this preview.
+      </div>
+      {value.preview.length > 0 && (
+        <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] font-mono text-slate-400">{value.preview}…</pre>
+      )}
+    </div>
+  );
 }
 
 export function BlockValueView({ value, className }: BlockValueViewProps) {
@@ -58,6 +85,10 @@ export function BlockValueView({ value, className }: BlockValueViewProps) {
         <RefResolvedValue sourceItemId={value.sourceItemId} />
       </div>
     );
+  }
+
+  if (value.kind === "omitted") {
+    return <OmittedValueView value={value} className={className} />;
   }
 
   // structure
@@ -171,13 +202,14 @@ function KindPill({
   kind,
   detail,
 }: {
-  kind: "inline" | "ref" | "structure";
+  kind: "inline" | "ref" | "structure" | "omitted";
   detail?: string;
 }) {
-  const styles: Record<"inline" | "ref" | "structure", string> = {
+  const styles: Record<"inline" | "ref" | "structure" | "omitted", string> = {
     inline: "border-slate-700 text-slate-400",
     ref: "border-sky-700/60 text-sky-300",
     structure: "border-amber-700/60 text-amber-300",
+    omitted: "border-rose-700/60 text-rose-300",
   };
   return (
     <span

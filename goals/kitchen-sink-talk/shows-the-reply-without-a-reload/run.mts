@@ -10,12 +10,13 @@
  * (`[route:support.devices]`), which the scripted route picks; the second,
  * sent before the first is answered, goes to the same specialist. The
  * scripted specialist holds its answer about three seconds, so "working" has
- * time to show. Two posts from the mailbox's panel, the second while the
- * specialist works on the first; then a third, with the specialist's own
- * conversation for the mailbox open in a second tab. The page
- * is never reloaded until the last leg. Four legs, graded per post:
+ * time to show. Two posts from the panel of the person's conversation with
+ * `support.help`, the second while the specialist works on the first; then a
+ * third, with the specialist's own session for that conversation open in a
+ * second tab. The page is never reloaded until the last leg. Four legs,
+ * graded per post:
  *
- *   working  `support.devices is working` shows in the mailbox's panel
+ *   working  `support.devices is working` shows in the conversation's panel
  *            before its line for the post does, and before the next post is sent
  *            (a Send re-reads the runs on any page); for the second post,
  *            after its line for the first is in, since the row is the same.
@@ -24,18 +25,18 @@
  *            `support.devices`
  *            (a second copy is graded under once); the working row is gone
  *            once its run ends.
- *            For the third post, the specialist's open conversation shows the
+ *            For the third post, the specialist's open session shows the
  *            post heard and its answer after it, in the second tab.
  *   once     no line shows twice while the page is open, and after the one
  *            reload each post and each reply shows exactly once.
  *   no-poll  at most two snapshot reads by the page between Send and the line.
  *
  * Everything graded is read off the page. The server is read only to know
- * when to reload, and nothing it says is graded.
+ * when to reload and which of the specialist's sessions to open, and nothing
+ * it says is graded.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/shows-the-reply-without-a-reload/run.mts
  * Controls: GOAL_CONTROL=no-live  (must FAIL at working and line, and nothing else)
- *           GOAL_CONTROL=main     (the app before the live view, from a checkout of it: the same)
  */
 import { randomUUID } from "node:crypto";
 import type { Page } from "playwright";
@@ -43,12 +44,13 @@ import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
   conversation,
-  open,
+  coordinatorConversation,
+  openWorkerCopy,
   panel,
-  rail,
   readUntil,
-  row,
+  showCoordinator,
   startKitchenSink,
+  workerSessions,
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -60,7 +62,7 @@ interface Seat {
 
 interface Fixture {
   port: number;
-  mailbox: Seat;
+  coordinator: Seat;
   replier: Seat;
   /** What a post carries to be routed to `replier`. */
   route: string;
@@ -78,10 +80,6 @@ const EXPECTED: Record<string, string[]> = {
   // The panels don't ask to follow their session: the page stays silent
   // until a reload, so "working" never shows and neither does the line.
   "no-live": ["working", "line"],
-  // The app before the live view, run from a checkout of it with these files
-  // copied in. The app knows no control by this name; it tells this run which
-  // legs must fail.
-  main: ["working", "line"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -102,12 +100,10 @@ async function openPage(page: Page, origin: string): Promise<void> {
   await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
 }
 
-/** Open the mailbox's panel. */
-async function openMailbox(page: Page, origin: string): Promise<void> {
+/** Open the panel of the person's conversation with the coordinator. */
+async function openHelpDesk(page: Page, origin: string): Promise<void> {
   await openPage(page, origin);
-  await open(page, fixture.mailbox.kind);
-  await row(page, fixture.mailbox.id).click();
-  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
+  await showCoordinator(page, fixture.coordinator.id);
 }
 
 /** When the page read a session's snapshot (`GET …/sessions/<id>/state`). */
@@ -125,14 +121,14 @@ interface Line {
   text: string;
 }
 
-/** The mailbox's panel as drawn: whether the specialist shows as working, and every line. */
-async function readMailbox(page: Page): Promise<{ at: number; working: boolean; lines: Line[] }> {
+/** The conversation's panel as drawn: whether the specialist shows as working, and every line. */
+async function readHelpDesk(page: Page): Promise<{ at: number; working: boolean; lines: Line[] }> {
   const drawn = panel(page);
   const [working, lines] = await Promise.all([
     drawn.getByTestId("working-row").filter({ hasText: `${fixture.replier.id} is working` }).count(),
-    drawn.getByTestId("mailbox-line").evaluateAll((els) =>
+    drawn.getByTestId("coordinator-line").evaluateAll((els) =>
       els.map((el) => ({
-        label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
+        label: el.querySelector('[data-testid="coordinator-line-label"]')?.textContent ?? "",
         text: el.textContent ?? "",
       })),
     ),
@@ -160,7 +156,7 @@ const postsOf = (lines: Line[], token: string) =>
   lines.filter((l) => l.text.includes(token) && !l.text.includes(fixture.lineMarker));
 
 /**
- * Fold one reading of the mailbox into what each sent post has seen so far.
+ * Fold one reading of the conversation into what each sent post has seen so far.
  *
  * A reading counts as the specialist working on a post only when nothing else
  * could have put the row there. The specialist working on an earlier post
@@ -192,11 +188,11 @@ function observe(posts: Post[], reading: { at: number; working: boolean; lines: 
   }
 }
 
-/** Post a line from the mailbox's panel once its composer is free, reading the panel meanwhile. */
+/** Post a line from the conversation's panel once its composer is free, reading the panel meanwhile. */
 async function send(page: Page, posts: Post[], post: Post): Promise<void> {
-  const box = panel(page).getByLabel("Post to this mailbox");
+  const box = panel(page).getByLabel("Post to this coordinator");
   for (let waited = 0; waited < 10_000; waited += 100) {
-    observe(posts, await readMailbox(page));
+    observe(posts, await readHelpDesk(page));
     if ((await box.isEnabled()) && (await box.inputValue()) === "") break;
     await sleep(100);
   }
@@ -232,28 +228,28 @@ await runGoal(async (failures) => {
     const origin = server.origin;
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const reads = snapshotReads(page);
-    await openMailbox(page, origin);
+    await openHelpDesk(page, origin);
 
     // ---- two posts, the second while the specialist works on the first -----
     await send(page, posts, first);
-    for (let r = await readMailbox(page); ; r = await readMailbox(page)) {
+    for (let r = await readHelpDesk(page); ; r = await readHelpDesk(page)) {
       observe(posts, r);
       if (first.workingAt !== undefined || first.lineAt !== undefined || Date.now() - first.sentAt > 2_000) break;
       await sleep(100);
     }
     await send(page, posts, second);
-    const mailboxPosts = [first, second];
+    const deskPosts = [first, second];
     const lastDeadline = second.sentAt + fixture.lineWithinMs;
-    while (Date.now() < lastDeadline && mailboxPosts.some((p) => p.lineAt === undefined)) {
-      observe(posts, await readMailbox(page));
+    while (Date.now() < lastDeadline && deskPosts.some((p) => p.lineAt === undefined)) {
+      observe(posts, await readHelpDesk(page));
       await sleep(100);
     }
     // The specialist's run ends right after its line; give the row a few seconds to go.
     let clearedAt: number | undefined;
-    const lastLine = Math.max(...mailboxPosts.map((p) => p.lineAt ?? 0));
-    if (mailboxPosts.every((p) => p.lineAt !== undefined)) {
+    const lastLine = Math.max(...deskPosts.map((p) => p.lineAt ?? 0));
+    if (deskPosts.every((p) => p.lineAt !== undefined)) {
       while (Date.now() < lastLine + 5_000) {
-        const r = await readMailbox(page);
+        const r = await readHelpDesk(page);
         observe(posts, r);
         if (!r.working) {
           clearedAt = r.at;
@@ -263,7 +259,7 @@ await runGoal(async (failures) => {
       }
     }
 
-    for (const [i, post] of mailboxPosts.entries()) {
+    for (const [i, post] of deskPosts.entries()) {
       const name = `post ${i + 1} (${post.token})`;
       if (post.workingAt === undefined) {
         const after = i === 0 ? ", before the next post was sent" : `, once ${fixture.replier.id} had answered the earlier post`;
@@ -280,7 +276,7 @@ await runGoal(async (failures) => {
       }
       evidence.push(`${name}: working ${secs(post.sentAt, post.workingAt)}, line ${secs(post.sentAt, post.lineAt)} under ${post.label ?? "nobody"}, ${window} snapshot reads`);
     }
-    if (mailboxPosts.every((p) => p.lineAt !== undefined)) {
+    if (deskPosts.every((p) => p.lineAt !== undefined)) {
       if (clearedAt === undefined) {
         fail("line", `"${fixture.replier.id} is working" still showed 5s after its last line`);
       } else {
@@ -288,17 +284,23 @@ await runGoal(async (failures) => {
       }
     }
 
-    // ---- a third post, heard in the specialist's own conversation in a second tab
+    // ---- a third post, heard in the specialist's own session in a second tab
+    // Which of the specialist's sessions the conversation's posts run in, from
+    // the server's index by worker; the page must list it as a run of the
+    // conversation. Neither read is graded.
+    const helpConversation = await coordinatorConversation(page, origin, fixture.coordinator.id);
+    const [delegateRun] = (await workerSessions(page, origin, fixture.replier.id, { runs: true })).filter(
+      (s) => helpConversation !== undefined && s.parentSessionId === helpConversation,
+    );
     const seatPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const seatReads = snapshotReads(seatPage);
     await openPage(seatPage, origin);
-    await open(seatPage, fixture.replier.kind);
-    await open(seatPage, fixture.replier.id);
-    const runOfMailbox = rail(seatPage)
-      .locator(`ul[data-leaf="${fixture.replier.id}"]`)
-      .locator(`[data-dispatch-run-of="${fixture.mailbox.id}"]`);
-    await runOfMailbox.first().waitFor({ timeout: 15_000 });
-    await runOfMailbox.first().click();
+    if (delegateRun === undefined) throw new Error(`${fixture.replier.id} has no session for the conversation with ${fixture.coordinator.id}`);
+    const runOfConversation = (await openWorkerCopy(seatPage)).locator(
+      `[data-session-id="${delegateRun.id}"][data-dispatch-run-of="${helpConversation}"]`,
+    );
+    await runOfConversation.waitFor({ timeout: 15_000 });
+    await runOfConversation.click();
     await readUntil(() => conversation(seatPage), (ms) => ms.length > 0, 10_000);
 
     await send(page, posts, third);
@@ -314,12 +316,12 @@ await runGoal(async (failures) => {
     }
     const seatWindow = seatReads.filter((at) => at >= third.sentAt && at <= (heardAt ?? third.sentAt + fixture.lineWithinMs)).length;
     if (heardAt === undefined) {
-      fail("line", `post 3 (${third.token}): ${fixture.replier.id}'s open conversation never showed the post heard and its answer, with no reload`);
+      fail("line", `post 3 (${third.token}): ${fixture.replier.id}'s open session never showed the post heard and its answer, with no reload`);
     }
     if (seatWindow > fixture.maxSnapshotReads) {
       fail("no-poll", `post 3 (${third.token}): the second tab read a snapshot ${seatWindow} times between Send and ${fixture.replier.id}'s answer (at most ${fixture.maxSnapshotReads})`);
     }
-    evidence.push(`post 3 (${third.token}): heard and answered in ${fixture.replier.id}'s open conversation ${secs(third.sentAt, heardAt)}, ${seatWindow} snapshot reads`);
+    evidence.push(`post 3 (${third.token}): heard and answered in ${fixture.replier.id}'s open session ${delegateRun.id} ${secs(third.sentAt, heardAt)}, ${seatWindow} snapshot reads`);
 
     // ---- once: nothing twice while open, then each line once after a reload
     for (const post of posts) {
@@ -332,7 +334,7 @@ await runGoal(async (failures) => {
     await readUntil(
       async () => {
         const res = await page.request.get(
-          `${origin}/api/flows/sessions/${fixture.mailbox.id}/state?include_items=true&item_types=component&limit=1000`,
+          `${origin}/api/flows/sessions/${helpConversation}/state?include_items=true&item_types=message&limit=1000`,
         );
         const text = await res.text();
         return posts.every((p) => text.split(p.token).length - 1 >= 2);
@@ -341,9 +343,9 @@ await runGoal(async (failures) => {
       20_000,
     );
     await page.reload();
-    await openMailbox(page, origin);
+    await openHelpDesk(page, origin);
     const drawn = await readUntil(
-      async () => (await readMailbox(page)).lines,
+      async () => (await readHelpDesk(page)).lines,
       (ls) => posts.every((p) => replies(ls, p.token).length > 0),
       10_000,
     );

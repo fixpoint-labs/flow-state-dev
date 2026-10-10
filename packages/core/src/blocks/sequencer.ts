@@ -4,6 +4,7 @@ import { asRuntime } from "../types/block";
 import type { ModelIdentity } from "../types/model";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
 import { SuspensionError } from "../errors/suspension-error";
+import { RecordedValueOmittedError } from "../errors/recorded-value-omitted-error";
 import type {
   BranchStep,
   BranchStepOutput,
@@ -460,6 +461,13 @@ export async function executeBlock(
   const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
   if (replayLog !== undefined) {
     const cached = replayLog.getCompletedOutput(`${requestId}:${path}`);
+    // The block finished, but its output was over the record limit and only a
+    // placeholder was saved (FIX-1772). Injecting it would hand the later
+    // steps a size and a preview as if they were data; running the block again
+    // could repeat its side effects. Fail, naming the block.
+    if (cached !== undefined && cached.kind === "omitted") {
+      throw new RecordedValueOmittedError(block.name, cached);
+    }
     if (cached !== undefined && cached.kind === "inline") {
       // Keep this condition and `childWillReplay` in agreement — the dispatch
       // sites ask that predicate whether this child is about to be injected.

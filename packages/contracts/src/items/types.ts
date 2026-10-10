@@ -106,7 +106,27 @@ export type OutputItemBase = {
  */
 export type BlockValue<T = unknown> =
   | { kind: "inline"; value: T }
-  | { kind: "structure"; shape: StructureShape };
+  | { kind: "structure"; shape: StructureShape }
+  | OmittedValue;
+
+/**
+ * What the record holds in place of a value it left out. The response emitter
+ * writes it when a block output or a tool result is over the server's
+ * `maxRecordedValueBytes` (256 KiB by default) once serialized, or cannot be
+ * serialized at all. The run itself keeps the real value; only the log, the
+ * stream and later prompts see this. Resume never hands it on: a replay that
+ * would inject it fails with `RECORDED_VALUE_OMITTED`.
+ *
+ * The same object is a `BlockValue` case on `block_trace.output` and the
+ * `outputOmitted` field of a `tool_output`.
+ */
+export type OmittedValue = {
+  kind: "omitted";
+  /** Serialized UTF-8 size in bytes, or `null` when the value could not be serialized. */
+  bytes: number | null;
+  /** The first 512 characters of the serialized value. */
+  preview: string;
+};
 
 /**
  * Internal-only BlockValue. Adds the `ref` case used by pass-through
@@ -118,7 +138,8 @@ export type BlockValue<T = unknown> =
 export type BlockValueInternal<T = unknown> =
   | { kind: "inline"; value: T }
   | { kind: "ref"; sourceItemId: string }
-  | { kind: "structure"; shape: StructureShape };
+  | { kind: "structure"; shape: StructureShape }
+  | OmittedValue;
 
 /**
  * Shape of a `structure` BlockValue: a container of nested BlockValues.
@@ -305,6 +326,13 @@ export type ToolOutputItem = OutputItemBase & {
    * existed; readers fall back to `output`.
    */
   modelOutput?: unknown;
+  /**
+   * Set instead of `output` and `modelOutput` when either was over the record
+   * limit or could not be serialized. `bytes` is the larger of the two. Absent
+   * on every result recorded whole, and on items recorded before the limit
+   * existed.
+   */
+  outputOmitted?: OmittedValue;
   /** Resolved identity of the generator that invoked this tool. */
   model?: ModelIdentity;
   toolCall: {

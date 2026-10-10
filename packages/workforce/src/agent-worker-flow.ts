@@ -84,6 +84,7 @@ import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
 import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
+import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import {
   mailboxNotifyInputSchema,
@@ -1439,7 +1440,13 @@ function defineAgentFlowAround(
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      run: { inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema, block: run, userMessage: (input) => input.message },
+      // A reply: a task's notice to this session waits for it to end.
+      run: {
+        inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
+        block: run,
+        userMessage: (input) => input.message,
+        concurrency: REPLY_CONCURRENCY
+      },
       // On an installation: the eight task actions (`addTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A
       // session whose delegates take no task answers `no_delegation_board`.

@@ -79,10 +79,23 @@ export type Settle =
  */
 export function askFlow(
   model: GeneratorModel,
-  options: { maxAttempts?: number; endsOnFiling?: unknown } = {}
+  options: { maxAttempts?: number; endsOnFiling?: unknown; failCancelOnce?: boolean } = {}
 ): FlowInstance {
+  let cancelFailed = false;
   const askBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
     const board = await boardOf(ctx);
+    if (options.failCancelOnce === true) {
+      // The asking call's first cancel of its row fails, as a store blip would.
+      return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        cancel: async (...args: Parameters<TaskCollectionRef["cancel"]>) => {
+          if (!cancelFailed) {
+            cancelFailed = true;
+            throw new Error("store unavailable");
+          }
+          return board.cancel(...args);
+        }
+      }) as TaskCollectionRef;
+    }
     if (options.endsOnFiling === undefined) return board;
     // The colleague finishes between the filing and the park.
     return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
