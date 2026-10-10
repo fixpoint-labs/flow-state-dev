@@ -205,7 +205,7 @@ milestone's comment, in the same shape:
 | Where | Name |
 |---|---|
 | Goal check | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/` |
-| Steps | `a1` to `a5`, `b1` to `b7`, `c1` to `c7` (c7 retired), `m1` to `m6` (m6 retired), `J1`, `P3.1` to `P3.10` |
+| Steps | `a1` to `a5`, `b1` to `b7`, `c1` to `c7` (c7 retired), `m1` to `m6` (m6 retired), `J1`, `P3.1` to `P3.11` |
 | Controls | `org-scoped-workers`, `unpartitioned`, `no-follow-up`, `no-delegate-check`, `no-roster-check`; scratch patch `second-org` |
 | Subset | `GOAL_ONLY=milestone` |
 
