@@ -80,12 +80,15 @@ describe("workerTaskEntry with a block", () => {
       });
       await host.settled();
 
+      // The row's identity nonce rides the claim too, so the block can fence on it.
+      const incarnationId = (await host.row("alice", filing, taskId))?.incarnationId;
+      expect(incarnationId).toEqual(expect.any(String));
       expect(seen).toEqual([
         {
           taskId,
           goal: "look at the repo",
           input: { claim: { collectionId: "someone-elses", partition: "theirs" } },
-          claim: { collectionId: "tasks", partition: filing }
+          claim: { collectionId: "tasks", partition: filing, incarnationId }
         }
       ]);
       expect(await host.row("alice", filing, taskId)).toMatchObject({

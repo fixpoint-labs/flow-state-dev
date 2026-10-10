@@ -47,6 +47,7 @@ import {
 import { z } from "zod";
 import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
 import { hasPieces, parkOnPieces } from "./split";
@@ -131,6 +132,8 @@ const CONVERSATION_GONE: ReadonlySet<DispatchRefusal> = new Set(["session-not-fo
 export interface WorkerTaskClaim {
   readonly collectionId: string;
   readonly partition?: string;
+  /** The row's identity nonce as of the claim, when the row carries one. */
+  readonly incarnationId?: string;
 }
 
 /** What a `block` entry's block is handed: the task as the board packed it, and the claim it runs under. */
@@ -194,8 +197,34 @@ function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
   }
   return {
     collectionId: ticket.collectionId,
-    ...(ticket.partition === undefined ? {} : { partition: ticket.partition })
+    ...(ticket.partition === undefined ? {} : { partition: ticket.partition }),
+    ...(ticket.incarnationId === undefined ? {} : { incarnationId: ticket.incarnationId })
   };
+}
+
+/**
+ * The board of the conversation a task session was opened for, and how to
+ * run that board in the conversation: its run entry, on the flow that filed
+ * the task. All three come from the session's readonly fields the hand-over
+ * wrote at its birth, never from a request. `undefined` outside a
+ * conversation's task session (a mailbox list's task, or any other session).
+ *
+ * For a host's message door over a worker's runs
+ * (`harnessMessageDoor` in `@flow-state-dev/harness-manager`): the row the
+ * session works is on this board, and its next attempt starts when the
+ * conversation runs its board.
+ *
+ * @param ctx The running block's context, in the task session. Its flow must
+ *   declare the conversation ledger (`workerTaskEntry` installs it).
+ */
+export async function filingConversationBoard(
+  ctx: BlockContext
+): Promise<{ tasks: TaskCollectionRef; runEntry: string; filingFlow: string } | undefined> {
+  const partition = filingPartitionOf(ctx);
+  const filingFlow = filingFlowOf(ctx);
+  if (partition === undefined || filingFlow === undefined) return undefined;
+  const tasks = await conversationLedgerAt(ctx, partition);
+  return tasks === undefined ? undefined : { tasks, runEntry: RUN_BOARD_ENTRY, filingFlow };
 }
 
 /**
