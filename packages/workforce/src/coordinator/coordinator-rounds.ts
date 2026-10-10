@@ -49,13 +49,8 @@ import {
 } from "../delivery-ledger";
 import type { CoordinatorRouting } from "./coordinator-config";
 import { MAX_ROUNDS } from "./coordinator-keys";
-import {
-  delegateLabel,
-  roundAnswerSchema,
-  sameDelegate,
-  type OpenRound,
-  type RoundAnswer
-} from "./coordinator-delegates";
+import { delegateLabel, sameDelegate } from "../delegates/delegate-list";
+import { roundAnswerSchema, type OpenRound, type RoundAnswer } from "./coordinator-state";
 
 /** The most open rounds a conversation keeps. One more is refused: its answers go no further. */
 export const MAX_OPEN_ROUNDS = 50;

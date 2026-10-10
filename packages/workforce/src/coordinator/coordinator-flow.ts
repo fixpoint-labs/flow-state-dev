@@ -6,11 +6,12 @@
  * on the installation does: each session names its worker when it is
  * created, and each turn loads that worker's configuration.
  *
- * **What a conversation holds.** Its delegates, its fallback, best fit's
- * hold and the delivery ledger, in server-written session state
- * (`coordinator-delegates.ts`): copied from the worker's defaults the first
- * time they're read or changed, changed only by the four actions and the
- * coordinator's own tools, and never seeded by a session create.
+ * **What a conversation holds.** Its delegates and its fallback
+ * (`../delegates/delegate-list.ts`), and best fit's hold and the delivery
+ * ledger (`coordinator-state.ts`), in server-written session state: the list
+ * copied from the worker's defaults the first time it's read or changed,
+ * changed only by the four actions and the coordinator's own tools, and never
+ * seeded by a session create.
  *
  * **How a post is routed.**
  *
@@ -26,7 +27,7 @@
  * - `everyone`: each delegate.
  *
  * Every pick is checked against the user's roster when the post arrives
- * (`coordinator-check.ts`), so a fired delegate is skipped and recorded
+ * (`../delegates/delegate-check.ts`), so a fired delegate is skipped and recorded
  * without anyone editing the list.
  *
  * **The conversation's lines.** When a post opens, its conversation's recent
@@ -90,16 +91,10 @@ import {
   type DeliveryRecord
 } from "../delivery-ledger";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
-import { RUN_BOARD_ENTRY, defineConversationBoard, type TaskDelegates } from "../conversation-board/board";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
-import { TASK_SETTLED_ENTRY } from "../conversation-board/notice-delivery";
+import { defineSessionBoard } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
-import {
-  TASK_NOTICES_STATE,
-  REPLY_CONCURRENCY,
-  conversationBoardStateShape,
-  taskSettledEntry
-} from "../conversation-board/task-settled";
+import { TASK_NOTICES_STATE, REPLY_CONCURRENCY, conversationBoardStateShape } from "../conversation-board/task-settled";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { workerConfigOf } from "../workers/verified-worker";
 import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -110,28 +105,25 @@ import {
   type CoordinatorConfig,
   type CoordinatorRouting
 } from "./coordinator-config";
-import { DELEGATE_TAKES, createDelegateCheck, flowTakes, takesDelegatedPost, type DelegateTakes } from "./coordinator-check";
+import { takesDelegatedPost } from "../delegates/delegate-check";
+import {
+  currentDelegates,
+  delegateLabel,
+  readDelegates,
+  sameDelegate,
+  type DelegateDefaults,
+  type DelegateRecord
+} from "../delegates/delegate-list";
 import {
   COORDINATOR_SERVER_OWNED,
-  changeDelegates,
-  currentDelegates,
   coordinatorSessionStateSchema,
   coordinatorStateShape,
-  delegateLabel,
-  delegateRecordSchema,
-  readDelegates,
   roundAnswerSchema,
   roundRobinCursorSchema,
-  sameDelegate,
   turnOrder,
-  type DelegateChange,
-  type DelegateDefaults,
-  type DelegateList,
-  type DelegateRecord,
   type OpenRound
-} from "./coordinator-delegates";
+} from "./coordinator-state";
 import {
-  ADD_DELEGATE,
   COORDINATOR_JUDGMENT,
   COORDINATOR_KIND,
   COORDINATOR_ROUTE,
@@ -142,14 +134,10 @@ import {
   HAND_OFF,
   HOLD_STATE,
   LANDED_STATE,
-  LIST_DELEGATES,
-  MAX_DELEGATES,
-  REMOVE_DELEGATE,
   ROUND_DEADLINE_MS,
   ROUND_ROBIN_STATE,
   ROUNDS_STATE,
-  ROUTE_ON_ACTION,
-  SET_FALLBACK
+  ROUTE_ON_ACTION
 } from "./coordinator-keys";
 import { conversationLineSchema, keepLanded, linesField, readRecentLines } from "./coordinator-lines";
 import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
@@ -285,40 +273,6 @@ type DeliveryDispatch = z.infer<typeof deliveryDispatchSchema>;
 
 const dispatchFailedSchema = z.object({ dispatchFailed: z.string() });
 
-const delegateListOutputSchema = z.object({
-  delegates: z.array(delegateRecordSchema),
-  fallback: deliveryDelegateSchema.nullable(),
-  max: z.number(),
-  /**
-   * This conversation's `filingSessionId`: what each of its delegates' sessions
-   * carries, and what `findWorkerSession({ worker, filingSessionId })` takes.
-   */
-  filingSessionId: z.string()
-});
-
-/**
- * What `listDelegates` answers: the list, each delegate with what it does (its
- * worker's description, or null) and what it takes now, read and never stored.
- */
-const delegateReadOutputSchema = delegateListOutputSchema.extend({
-  delegates: z.array(
-    delegateRecordSchema.extend({ description: z.string().nullable(), takes: z.enum(DELEGATE_TAKES) })
-  )
-});
-
-/** A conversation's delegates, and the conversation's `filingSessionId`. */
-type Listed = { list: DelegateList; filingSessionId: string };
-
-/** A delegate list as the actions and tools answer it. */
-function listOutput(listed: Listed) {
-  return {
-    delegates: listed.list.delegates,
-    fallback: listed.list.fallback,
-    max: MAX_DELEGATES,
-    filingSessionId: listed.filingSessionId
-  };
-}
-
 /** The defaults a worker's configuration names. */
 function defaultsOf(config: CoordinatorConfig): DelegateDefaults {
   return { delegates: config.delegates, ...(config.fallback === undefined ? {} : { fallback: config.fallback }) };
@@ -360,13 +314,15 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     );
   }
   const postFlows = new Set(options.delegateFlows.map((flow) => flow.kind));
-  const check = createDelegateCheck(installation, postFlows);
+  /**
+   * The conversation's board and delegates (FIX-1802): the one delegate
+   * check, the four delegate actions and tools, the eight task tools and
+   * actions over its board. Its post check reaches only the flows this
+   * coordinator dispatches to.
+   */
+  const sessionBoard = defineSessionBoard({ installation, flowKind: COORDINATOR_KIND, postFlows });
+  const check = sessionBoard.delegates.check;
   const resources = { ...installation.resources };
-
-  // -------------------------------------------------------------------------
-  // The four delegate changes, shared by the actions (which refuse by
-  // throwing) and the tools (which hand the refusal back to the model).
-  // -------------------------------------------------------------------------
 
   /** The worker this conversation runs as, and its defaults. Refuses a session that names none. */
   const coordinatorOf = async (ctx: BlockContext) => {
@@ -375,128 +331,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     return { worker, config, defaults: defaultsOf(config) };
   };
 
-  type Changed = ({ ok: true } & Listed) | { ok: false; message: string };
-
-  /** A change's outcome, with the conversation's `filingSessionId` beside a list that landed. */
-  const withFiling = async (ctx: BlockContext, outcome: Awaited<ReturnType<typeof changeDelegates>>): Promise<Changed> =>
-    outcome.ok ? { ok: true, list: outcome.list, filingSessionId: await filingSessionIdOf(ctx.session) } : outcome;
-
-  const addInputSchema = z.object({ worker: z.string().min(1), note: z.string().min(1).optional() }).strict();
-  const nameInputSchema = z.object({ worker: z.string().min(1) }).strict();
-  const fallbackInputSchema = z.object({ worker: z.string().min(1).nullable() }).strict();
-
-  const add = async (ctx: BlockContext, input: z.infer<typeof addInputSchema>): Promise<Changed> => {
-    const { defaults } = await coordinatorOf(ctx);
-    const checked = await check(ctx, input.worker, "add");
-    if (!checked.ok) return checked;
-    const record: DelegateRecord = { worker: input.worker, ...(input.note === undefined ? {} : { note: input.note }) };
-    return withFiling(ctx, await changeDelegates(ctx.session, defaults, { add: record }));
-  };
-  const change = async (ctx: BlockContext, delegateChange: DelegateChange): Promise<Changed> => {
-    const { defaults } = await coordinatorOf(ctx);
-    return withFiling(ctx, await changeDelegates(ctx.session, defaults, delegateChange));
-  };
-  const list = async (ctx: BlockContext): Promise<Listed> => {
-    const { defaults } = await coordinatorOf(ctx);
-    return { list: await readDelegates(ctx.session, defaults), filingSessionId: await filingSessionIdOf(ctx.session) };
-  };
-  /**
-   * The list as `listDelegates` answers it, each delegate with what it does and
-   * what it takes now, from the roster row the check reads: its worker's
-   * description and what its flow takes. One that fails the check for an add
-   * (fired, or on a flow that takes neither) takes nothing, with no description.
-   */
-  const read = async (ctx: BlockContext) => {
-    const listed = listOutput(await list(ctx));
-    const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes }> = [];
-    for (const record of listed.delegates) {
-      const checked = await check(ctx as never, record.worker, "add");
-      delegates.push(
-        checked.ok
-          ? { ...record, description: checked.worker.description, takes: flowTakes(installation, postFlows, checked.worker.flow) }
-          : { ...record, description: null, takes: "nothing" }
-      );
-    }
-    return { ...listed, delegates };
-  };
-
-  /** Throw a refusal, for the actions. */
-  const orRefuse = (changed: Changed) => {
-    if (!changed.ok) throw new Error(changed.message);
-    return listOutput(changed);
-  };
-  /** Hand a refusal back as a value, for the tools: a model can read it and recover. */
-  const orTell = (changed: Changed) => (changed.ok ? listOutput(changed) : { refused: changed.message });
-
-  const toolOutputSchema = z.union([delegateListOutputSchema, z.object({ refused: z.string() })]);
   const blockBase = { resources, sessionStateSchema: coordinatorSessionStateSchema };
-
-  const addDelegateAction = handler({
-    name: "coordinator-add-delegate",
-    inputSchema: addInputSchema,
-    outputSchema: delegateListOutputSchema,
-    ...blockBase,
-    execute: async (input, ctx) => orRefuse(await add(ctx as never, input))
-  });
-  const removeDelegateAction = handler({
-    name: "coordinator-remove-delegate",
-    inputSchema: nameInputSchema,
-    outputSchema: delegateListOutputSchema,
-    ...blockBase,
-    execute: async (input, ctx) => orRefuse(await change(ctx as never, { remove: { worker: input.worker } }))
-  });
-  const setFallbackAction = handler({
-    name: "coordinator-set-fallback",
-    inputSchema: fallbackInputSchema,
-    outputSchema: delegateListOutputSchema,
-    ...blockBase,
-    execute: async (input, ctx) =>
-      orRefuse(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
-  });
-  const listDelegatesAction = handler({
-    name: "coordinator-list-delegates",
-    inputSchema: z.object({}).strict(),
-    outputSchema: delegateReadOutputSchema,
-    ...blockBase,
-    execute: async (_input, ctx) => read(ctx as never)
-  });
-
-  const addDelegateTool = handler({
-    name: ADD_DELEGATE,
-    description:
-      "Add a worker on this person's roster to this conversation's delegates, by its id, with an optional note on what it's good at.",
-    inputSchema: addInputSchema,
-    outputSchema: toolOutputSchema,
-    ...blockBase,
-    execute: async (input, ctx) => orTell(await add(ctx as never, input))
-  });
-  const removeDelegateTool = handler({
-    name: REMOVE_DELEGATE,
-    description: "Remove a delegate from this conversation, by its worker id.",
-    inputSchema: nameInputSchema,
-    outputSchema: toolOutputSchema,
-    ...blockBase,
-    execute: async (input, ctx) => orTell(await change(ctx as never, { remove: { worker: input.worker } }))
-  });
-  const setFallbackTool = handler({
-    name: SET_FALLBACK,
-    description:
-      "Set the delegate that takes a post best fit can't place, by its worker id, or clear it with null.",
-    inputSchema: fallbackInputSchema,
-    outputSchema: toolOutputSchema,
-    ...blockBase,
-    execute: async (input, ctx) =>
-      orTell(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
-  });
-  const listDelegatesTool = handler({
-    name: LIST_DELEGATES,
-    description:
-      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `handOff` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
-    inputSchema: z.object({}).strict(),
-    outputSchema: delegateReadOutputSchema,
-    ...blockBase,
-    execute: async (_input, ctx) => read(ctx as never)
-  });
 
   // -------------------------------------------------------------------------
   // Delivery: open in the ledger, dispatch to the delegate's flow, settle.
@@ -836,46 +671,23 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // -------------------------------------------------------------------------
 
   /**
-   * This conversation's delegates as a task sees them, read now: each that
-   * takes a task, with its flow, and why each other one can't. A record with
-   * a target is a workstream, which takes posts, not tasks.
-   */
-  const taskDelegates = async (ctx: BlockContext): Promise<TaskDelegates> => {
-    const config = workerConfigOf(ctx) as unknown as CoordinatorConfig;
-    const listed = currentDelegates(ctx.session.state, defaultsOf(config));
-    const available = new Map<string, string>();
-    const unavailable = new Map<string, string>();
-    for (const record of listed.delegates) {
-      if (record.target !== undefined) {
-        unavailable.set(record.worker, "a workstream takes posts, not tasks");
-        continue;
-      }
-      const checked = await check(ctx as never, record.worker, "task");
-      if (checked.ok) available.set(record.worker, checked.worker.flow);
-      else unavailable.set(record.worker, checked.message);
-    }
-    for (const worker of available.keys()) unavailable.delete(worker);
-    return { available, unavailable };
-  };
-
-  const conversationBoard = defineConversationBoard({ delegates: taskDelegates });
-
-  /**
    * The judgment turn: the built-in agent's own turn, shared rather than
    * copied, run as this conversation's worker. It reads the worker's
    * instructions, model, tools, skills and capabilities as an `agent` worker's
    * are read, and carries the four delegate tools, the hand-off and the eight
    * task tools on every coordinator, whatever the worker's `tools:` line
-   * grants. The task tools come from one capability instance, composed here
-   * once, so no skill or preset adds a second set.
+   * grants. The task tools come from one capability instance, the
+   * conversation's board's, composed by the turn once, so no skill or preset
+   * adds a second set; they are on a turn while one of its delegates takes a
+   * task.
    */
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {
       kind: COORDINATOR_KIND,
       answerName: COORDINATOR_JUDGMENT,
-      extraTools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool, handOffTool],
-      extraUses: [conversationBoard.tools]
+      extraTools: [...sessionBoard.delegates.tools, handOffTool],
+      board: sessionBoard
     }
   );
 
@@ -884,14 +696,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * under judgment routing, a line under any fixed policy (best fit, round
    * robin, everyone).
    */
-  const taskSettled = taskSettledEntry({
-    runBoard: conversationBoard.runBoard,
-    turn: turn.run,
-    policy: (ctx) => ((workerConfigOf(ctx) as unknown as CoordinatorConfig).routing === "judgment" ? "judgment" : "fixed")
-  });
+  const boardEntries = sessionBoard.entries(turn.run, (ctx) =>
+    (workerConfigOf(ctx) as unknown as CoordinatorConfig).routing === "judgment" ? "judgment" : "fixed"
+  );
 
   /** A task handed to a coordinator worker: one turn of its own, the task as the message. */
-  const taskEntry = workerTaskEntry({ name: "coordinator-task-turn", turn: turn.run, noticeFlow: COORDINATOR_KIND });
+  const taskEntry = workerTaskEntry({ name: "coordinator-task-turn", turn: turn.run });
 
   /** The judgment turn's one record: each hand-off it made, or that it answered itself. */
   const recordJudgment = handler({
@@ -1635,38 +1445,19 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
     },
-    resources: { ...resources, ...(turn.bound.resources ?? {}), ...conversationBoard.resources },
+    resources: { ...resources, ...(turn.bound.resources ?? {}), ...sessionBoard.resources },
     isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
-      // The eight task tools, as actions on this conversation's board:
-      // `addTask_tasks` and the rest, checked against its delegates.
-      ...conversationBoard.actions,
+      // The eight task tools, as actions on this conversation's board
+      // (`addTask_tasks` and the rest, checked against its delegates), and
+      // the four delegate actions.
+      ...sessionBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
       run: {
         inputSchema: doorInputSchema.strict(),
         block: door,
         userMessage: (input: DoorInput) => input.message,
         concurrency: REPLY_CONCURRENCY
-      },
-      [ADD_DELEGATE]: {
-        inputSchema: addInputSchema,
-        block: addDelegateAction,
-        description: "Add a worker on your roster to this conversation's delegates."
-      },
-      [REMOVE_DELEGATE]: {
-        inputSchema: nameInputSchema,
-        block: removeDelegateAction,
-        description: "Remove a delegate from this conversation."
-      },
-      [SET_FALLBACK]: {
-        inputSchema: fallbackInputSchema,
-        block: setFallbackAction,
-        description: "Set or clear this conversation's fallback delegate."
-      },
-      [LIST_DELEGATES]: {
-        inputSchema: z.object({}).strict(),
-        block: listDelegatesAction,
-        description: "Read this conversation's delegates and its fallback."
       }
     },
     internal: {
@@ -1677,10 +1468,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         // Only this conversation's own code sends answers back out. A round's
         // routing can run the coordinator's turn, so it is a reply too.
         [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY },
-        // A filing's wake: one run of this conversation's board, as its owner.
-        [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: conversationBoard.runBoard },
-        // A task this conversation filed ended: its notice.
-        [TASK_SETTLED_ENTRY]: taskSettled
+        // A filing's wake (one run of this conversation's board, as its
+        // owner), and a task this conversation filed ended: its notice.
+        ...boardEntries
       }
     },
     // A coordinator worker can be a delegate that takes a task.

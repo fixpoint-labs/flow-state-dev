@@ -39,7 +39,7 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
-import type { OpenRound } from "../src/coordinator/coordinator-delegates";
+import type { OpenRound } from "../src/coordinator/coordinator-state";
 import { claimAnswer, openDelivery, type DeliveryLedger, type DeliveryRecord } from "../src/delivery-ledger";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 

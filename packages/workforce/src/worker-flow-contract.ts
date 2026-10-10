@@ -65,7 +65,8 @@ export const CONTRACT_PROBE_BAG: Readonly<Record<string, unknown>> = Object.free
   ],
   seatTools: [PROBE_TOOL],
   seatPackages: [{ name: "probe", path: "teams/probe/packages/probe", tools: [PROBE_TOOL] }],
-  seatId: "probe"
+  seatId: "probe",
+  delegates: ["probe"]
 });
 
 /** What a flow's refusal of a bag says about the contract. */
