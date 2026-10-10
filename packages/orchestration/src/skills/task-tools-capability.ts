@@ -49,6 +49,7 @@
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, StateRef } from "@flow-state-dev/core/types";
+import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   getOrCreateTaskCollection,
@@ -916,11 +917,7 @@ export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
   roster?: AssigneeRosterSource,
 ): DefinedCapability {
-  // Two lists of the same eight names, built once: the turn gets the one its
-  // host can serve, so `waitForResponse` is in `addTask`'s schema only where
-  // an ask can be held and bounded.
-  const plain = buildTaskTools(resolveCollection, roster);
-  const waiting = buildTaskTools(resolveCollection, roster, undefined, undefined, false, true);
+  const forTurn = taskToolsForTurn(resolveCollection, roster);
   return defineCapability({
     name: "taskTools",
     presets: {
@@ -931,11 +928,29 @@ export function createTaskToolsCapability(
         // declaration. They are also unnameable: `buildTaskTools` mints them
         // per resolver, so a `tools:` list has no stable key to let them back
         // in. A worker declaring `tools: ["someCatalogTool"]` keeps its board.
-        controlTools: (ctx: BlockContext) => (canHoldAsk(ctx) ? waiting : plain),
+        controlTools: forTurn,
       },
       default: ["tools"],
     },
   });
+}
+
+/**
+ * The eight task tools as a turn gets them: two lists of the same eight
+ * names, built once, and the one the turn's host can serve. `addTask` carries
+ * `waitForResponse` and `timeoutMs` only where an ask can be held and bounded
+ * ({@link canHoldAsk}); anywhere else the list is {@link buildTaskToolsList}'s.
+ *
+ * For a composing layer that builds its own capability over a board (pass
+ * the result as a preset's `controlTools`, or call it from one).
+ */
+export function taskToolsForTurn(
+  resolveCollection: TaskCollectionResolver,
+  roster?: AssigneeRosterSource,
+): (ctx: object) => GeneratorTool[] {
+  const plain = buildTaskTools(resolveCollection, roster);
+  const waiting = buildTaskTools(resolveCollection, roster, undefined, undefined, false, true);
+  return (ctx) => (canHoldAsk(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
 }
 
 /**
@@ -944,7 +959,7 @@ export function createTaskToolsCapability(
  * every ask (`RequestHost.hasAskSweeper`). Read off the server's request
  * host, never from input.
  */
-export function canHoldAsk(ctx: Pick<BlockContext, "requestHost">): boolean {
+export function canHoldAsk(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
   const host = ctx.requestHost;
   return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
 }

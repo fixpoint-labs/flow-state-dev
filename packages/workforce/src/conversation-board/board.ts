@@ -33,8 +33,8 @@
  *   module).
  */
 import {
-  buildTaskToolsList,
   resumeOwedAsks,
+  taskToolsForTurn,
   taskToolActions,
   type TaskCollectionResolver,
   type AssigneeRoster,
@@ -360,12 +360,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * `controlTools`, as Orchestration's capability carries them, so a worker's
    * `tools:` line doesn't fence them out.
    */
-  const eight = buildTaskToolsList(resolver, roster);
+  // Chosen per turn: `addTask` waits for its answer only where the host can
+  // hold an ask (FIX-1816).
+  const eight = taskToolsForTurn(resolver, roster);
   const tools = defineCapability({
     name: "taskTools",
     resources: { ...conversationLedgerResources },
     presets: {
-      tools: { controlTools: async (ctx) => ((await files(ctx as never)) ? eight : []) },
+      tools: { controlTools: async (ctx) => ((await files(ctx as never)) ? eight(ctx as never) : []) },
       default: ["tools"]
     }
   });
