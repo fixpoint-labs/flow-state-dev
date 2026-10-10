@@ -1,330 +1,170 @@
 /**
- * The `builder` worker kind — one file under `workforce/flows/workers/`,
- * basename = the kind id every builder `WORKER.md` names in its `flow:` line.
+ * The `builder` worker flow — one file under `workforce/flows/workers/`,
+ * basename = the flow every builder `WORKER.md` names in its `flow:` line.
  *
- * Three seats are workers on this one flow, one registered copy, each draining
- * in its own session, which names it. What makes them different is the
- * routing key each answers for, and **that key reaches a seat two ways on
- * purpose**, because the whole of BR-4 lives in the gap between them:
+ * Three workers run on this one flow, one registered copy. Each takes tasks
+ * through its `work` entry, built by Workforce's `workerTaskEntry`, which is
+ * what makes a builder a delegate that takes a task: the manager, whose
+ * `delegates:` names the three, has the task tools because of it. A filed
+ * task runs here in a task session of its own, opened by the board of the
+ * session that filed it and naming the worker the task was filed for.
  *
- * - **The map** — `assignees`, seat id -> desk key, supplied by the host. This
- *   is the implementation under test. It narrows what the seat's drain claims
- *   and it is the only thing VG's negative control moves.
- * - **The tree** — each `WORKER.md`'s own `answersFor:` line, which arrives in
- *   the worker's settings when its turn loads it and is reported back out from
- *   inside the running work. This is the oracle, and it is never read by any
- *   wiring here.
+ * ## What the work reports, and why only that
  *
- * Grading the map against itself would move the oracle along with the
- * implementation and the control would stay green. So the wiring reads the map
- * and never `answersFor`, and the work reports `answersFor` and never the map.
+ * The turn is a stub that writes one line to a file outside the board and
+ * returns. The line says only what the running work alone can know: which
+ * worker this session runs as (resolved by the installation from the
+ * session, as every turn's worker is), what that worker's **own file** says
+ * in `answersFor:`, which task this session was opened for, and which
+ * session it is. The row's `assignee` is never asked of the worker: it comes
+ * off the stored row, where the filer put it, so the two sides of the routing
+ * leg come from two different places.
  *
- * ## The one line that goes wrong quietly
+ * `answersFor:` routes nothing. No filing, hand-over or wiring reads it; the
+ * turn reads it from the configuration its worker loaded and reports it back
+ * out, so a check can ask whether the worker that ran a task carries the file
+ * the task's assignee is declared by.
  *
- * Every drain claims through {@link deskDispatcher}, which narrows
- * `collection.claim` with an `eligibility` predicate on the row's assignee.
- * **Never a bare `claim`.** `ClaimOptions.eligibility` narrows the candidate set
- * *before* the CAS flip, and both backings compose it with `isClaimable` rather
- * than replacing it. Omit it and a seat's drain claims whatever is next —
- * including a row addressed to another desk — after which `keyedRouter` misses,
- * throws out of the router, and `.rescue()` writes `collection.fail` against
- * that row. The row does not merely mis-route; it settles `errored`.
+ * ## The hold
  *
- * There is **no status arm** in that predicate either. `t.status === "pending"`
- * compiles, reads correctly, and silently opts the drain out of lapsed-lease
- * recovery, because the row it has to match is `in_progress`
- * (`ClaimOptions.eligibility` names this case).
- *
- * The one arm that *is* there beside the desk key is `assignee === undefined`,
- * and it is deliberate rather than sloppy: the lab declares no `defaultWorker`,
- * so a row filed for nobody has to be *admitted* somewhere before it can be
- * refused by name. Leave it out and such a row is claimed by no seat and sits
- * `pending` in silence — quiet, where BR-7 says loud.
- *
- * ## Why the work runs in a child session
- *
- * The seat under `workers` is a `dispatcher({ action, session: "per-task" })` —
- * a **same-flow hand-off**. The row is claimed by the drain and then run in its
- * own child session, on this same flow, at the `task` entry below, naming the
- * same worker as the drain that claimed it. One ledger declaration, one hop,
- * and a child session per row that carries a `parentSessionId` and none of the
- * coordinator's transcript.
- *
- * Nothing here declares the ledger a second time: the entry is reachable from
- * this flow's own board, which is what the orphan-task-entry guard wants. The
- * two-declaration shape `packages/shift-manager/teams/devteam/board.mts` carries is the
- * cross-flow tax, and it is not this.
+ * A turn may wait on the host's {@link BuilderWorkerFlowOptions.gate} before
+ * it writes its line, so a check can read a task while it is running. The
+ * gate is the host's, not a marker in the task: what a task says is the
+ * filer's, and a stub that read instructions out of it would grade the filer
+ * against the stub.
  */
 
-import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
-  MIN_LEASE_DURATION_MS,
-  type TaskDispatcher,
-  type TaskWorkerInput,
-} from "@flow-state-dev/orchestration/tasks";
-import {
-  WORKER_ID_STATE_KEY,
-  workerConfigOf,
+  FILING_SESSION_STATE_KEY,
+  TASK_ID_STATE_KEY,
   workerConfigSchema,
-  type MailboxBoardCollection,
+  workerTaskEntry,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
+import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
-import { ledgerOf } from "../../../ledger.mts";
 import { workerDoor } from "../../../../../lib/worker-door.mts";
 
-/** The kind id every builder `WORKER.md` names. **Pinned** — the basename must match. */
+/** The flow every builder `WORKER.md` names. **Pinned** — the basename must match. */
 export const BUILDER_KIND = "builder";
 
-/** The action the check calls to make a seat work its share of the board. */
-export const DRAIN_ENTRY = "drain";
-
-/** The task entry the same-flow hand-off addresses. Reachable only through the claim gate. */
+/** The task entry a filed task is handed over through. */
 export const WORK_ENTRY = "work";
 
 /**
- * Claim a row on the shortest lease the substrate allows, and do not settle it.
+ * The lab's own setting: what this worker's own file says in `answersFor:`.
  *
- * The only way to produce a **genuinely** lapsed lease — a row whose worker
- * died — on the real path. Staging one by writing the store would prove the
- * view agrees with a row this lab wrote, which is not what BR-10 and BR-11
- * claim; this leaves a real claim, in this seat's own session, that really
- * expires.
- */
-export const HOLD_ENTRY = "hold";
-
-/**
- * The lab's own setting: the desk this seat answers for, as its own file says.
- *
- * **The oracle, and read by nothing that routes.** It is reported back out of a
- * running row so a check can ask whether the row that arrived was addressed to
- * the desk this seat's file claims.
+ * **Read by nothing that routes.** It is reported back out of a running task,
+ * so a check can compare it with what the tree says for the task's assignee.
  */
 const ANSWERS_FOR_KEY = "answersFor";
 
-/**
- * What a builder seat's settings bag holds: the contract, plus its own desk.
- * Optional here because the flow's one copy has no desk of its own; each
- * worker's file names one, and the host routes only the workers that do.
- */
+/** What a builder's settings bag holds: the contract, plus its own `answersFor:`. */
 export function builderSettingsSchema() {
   return workerConfigSchema().extend({
     [ANSWERS_FOR_KEY]: z.string().min(1).optional(),
   });
 }
 
-/** The worker a builder session runs, as its session names it (checked when the session was created). */
-function seatOf(ctx: BlockContext): string {
-  return String((ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] ?? "");
-}
-
-/** The parts of the bag this module reads where the bag's type is erased. */
-interface BuilderConfig {
-  answersFor: string;
-}
-
 /** One line the work leaves behind — a real file, outside the board entirely. */
 export const workLineSchema = z.object({
-  /** The worker that ran it, off the session it ran in. */
-  seat: z.string(),
-  /** What that seat's OWN FILE says it answers for — the oracle, from the tree. */
-  declaredAssignee: z.string(),
-  /** The row, so the check can look its `assignee` up on the ledger. */
+  /** The worker this task session runs as, resolved from the session by the installation. */
+  worker: z.string(),
+  /** What that worker's OWN FILE says in `answersFor:`, from the configuration it loaded. */
+  answersFor: z.string(),
+  /** The task this session was opened for, off the session's readonly state. */
   taskId: z.string(),
-  /** The row's goal, verbatim, so the work is graded against what was filed. */
-  goal: z.string(),
-  /** The child session this row ran in, off `ctx.session.identity.id`. */
+  /** The session that filed it, off the session's readonly state. */
+  filingSessionId: z.string(),
+  /** What the task said, as the turn was handed it. */
+  message: z.string(),
+  /** The task session this ran in. */
   session: z.string(),
 });
 
 export type WorkLine = z.infer<typeof workLineSchema>;
 
-/**
- * A claim narrowed to one seat's desk.
- *
- * Per **seat**, resolved at claim time off the drain session's worker, because
- * three seats share one flow and therefore one board object: a key captured
- * when the board was built would be one key for all three.
- *
- * A seat the map does not name claims nothing at all, rather than falling back
- * to a bare claim — the failure a fallback produces is a seat quietly eating
- * another desk's rows, which is the one thing this predicate exists to prevent.
- */
-function deskDispatcher(assignees: Record<string, string>): TaskDispatcher {
-  return {
-    async claim(collection, workerId, ctx) {
-      const desk = assignees[seatOf(ctx)];
-      if (desk === undefined) return null;
-      return collection.claim(workerId, {
-        // No status arm — claimability is the substrate's call, and adding one
-        // opts this drain out of lapsed-lease recovery. The `undefined` arm is
-        // what lets a row filed for nobody be refused by name (BR-7).
-        eligibility: (task) => task.assignee === desk || task.assignee === undefined,
-      });
-    },
-  };
-}
-
 export interface BuilderWorkerFlowOptions {
   /** The installation that runs this flow's workers. */
   installation: WorkerInstallation;
-  /** The mailbox's own ledger — the one the `MAILBOX.md` declared by name. */
-  board: MailboxBoardCollection;
-  /**
-   * Which desk keys have a body on this board — the board's vocabulary.
-   *
-   * Distinct from {@link BuilderWorkerFlowOptions.assignees}, which says which
-   * SEAT claims which key. One stub runs every desk, so this associates no key
-   * with any seat and is therefore not the thing under test.
-   */
-  desks: readonly string[];
-  /**
-   * Seat id -> desk key: **the implementation under test.**
-   *
-   * The app's, supplied by the caller and never read off the tree, which is the
-   * only thing that lets VG's negative control point one desk at the wrong seat
-   * while the tree still says where the row should have gone.
-   */
-  assignees: Record<string, string>;
-  /**
-   * The drain width — how many rows one seat runs at once.
-   *
-   * **The switch, and the whole of what this issue owes on it** (BR-17, D3). At
-   * `1` a second row for a busy desk queues behind the first; above `1` the
-   * seat takes a second copy of the work. Which of those is right is an
-   * epic-level call this lab does not make — it is wired so either runs, from
-   * one knob, with no edit to the tree and none to the checks.
-   */
-  drainWidth: number;
-  /** Where a finished row leaves its line. A side effect outside the board. */
+  /** Where a finished task leaves its line. A side effect outside the board. */
   outbox: string;
-  /** Bound on the drain loop, so a seat with nothing to claim stops rather than hangs. */
-  maxIterations?: number;
-  /** How long an idle drain waits between polls. */
-  idlePollMs?: number;
+  /**
+   * Awaited by every turn before it writes its line. The host holds it to
+   * keep a task running while a check reads it; by default it is open.
+   */
+  gate?: () => Promise<void>;
+  /**
+   * Whether the `work` entry takes a conversation's tasks — `true` builds it
+   * with `workerTaskEntry`. `false` builds the twin the tools leg reads: the
+   * same flow with a `work` entry that takes tasks from no conversation's
+   * board, so a worker on it is a delegate that takes nothing.
+   */
+  takesTasks?: boolean;
+}
+
+/** The parts of the bag this module reads where the bag's type is erased. */
+interface BuilderConfig {
+  answersFor?: string;
 }
 
 /**
- * Build the builder kind.
+ * Build the builder flow.
  *
- * @param options The ledger, the board's desk vocabulary, the seat map under
- *   test, the drain width, and where finished work leaves its line.
- * @returns The flow `hireWorkforce` registers one copy of, for every builder worker.
+ * @param options The installation, where finished work leaves its line, the
+ *   host's gate, and whether the `work` entry takes a conversation's tasks.
+ * @returns The flow `hireWorkforce` registers one copy of, for every builder.
  */
 export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
-  const outbox = options.outbox;
+  const { installation, outbox } = options;
+  const gate = options.gate ?? (async () => undefined);
 
-  /**
-   * The work itself: small, deterministic, and real.
-   *
-   * Deliberately narrow while Q1 is open — a stub that writes a file a check
-   * reads back, not a coding run. A gate that goes red for reasons unrelated to
-   * routing has stopped being a gate.
-   *
-   * It reports only what it alone can know: which seat it is, what its own file
-   * says it answers for, and which session it woke in. The row's `assignee`
-   * comes off the ledger, where the coordinator put it — asking the worker for
-   * it would let one side of the comparison answer for both.
-   */
-  const runRow = handler({
-    name: "builder-run-row",
-    inputSchema: taskWorkerInputSchema,
-    outputSchema: workLineSchema,
-    execute: async (input: TaskWorkerInput, ctx: BlockContext): Promise<WorkLine> => {
-      const config = workerConfigOf(ctx) as unknown as BuilderConfig;
+  const turn = handler({
+    name: "builder-turn",
+    inputSchema: z.object({ message: z.string() }),
+    outputSchema: z.string(),
+    resources: { ...installation.resources },
+    execute: async (input: { message: string }, ctx: BlockContext) => {
+      const worker = await installation.resolveWorker(ctx as never, BUILDER_KIND);
+      const state = ctx.session.state as Record<string, unknown>;
+      await gate();
       const line: WorkLine = {
-        seat: seatOf(ctx) || "<unknown>",
-        declaredAssignee: config.answersFor,
-        taskId: input.taskId,
-        goal: input.goal,
+        worker: worker.id,
+        answersFor: String((worker.config as unknown as BuilderConfig).answersFor ?? ""),
+        taskId: String(state[TASK_ID_STATE_KEY] ?? ""),
+        filingSessionId: String(state[FILING_SESSION_STATE_KEY] ?? ""),
+        message: input.message,
         session: String(ctx.session.identity.id),
       };
       appendFileSync(outbox, `${JSON.stringify(line)}\n`, "utf8");
-      return line;
+      return `${worker.id} did: ${input.message}`;
     },
   });
 
-  const board = taskBoard({
-    name: `${BUILDER_KIND}-desk-board`,
-    boardId: `${BUILDER_KIND}-desk-board`,
-    collection: options.board,
-    concurrency: options.drainWidth,
-    dispatcher: deskDispatcher(options.assignees),
-    maxIterations: options.maxIterations ?? 400,
-    idlePollMs: options.idlePollMs ?? 25,
-    // One stub per desk key. A row whose assignee is not among them — including
-    // a row with no assignee at all — misses the router and is refused by name,
-    // which is BR-7. No `defaultWorker`: a floor would make that refusal quiet.
-    workers: Object.fromEntries(
-      options.desks.map((desk) => [
-        desk,
-        dispatcher<TaskWorkerInput>({
-          name: `${BUILDER_KIND}-hand-off-${desk}`,
-          action: WORK_ENTRY,
-          session: "per-task",
-          // The row's session names the worker whose drain claimed it.
-          state: (_task, ctx) => ({ [WORKER_ID_STATE_KEY]: seatOf(ctx) }),
-        }),
-      ]),
-    ),
-  });
-
-  /**
-   * Claim one of this seat's rows on the minimum lease and walk away.
-   *
-   * Narrowed by the same desk predicate the drain uses, so the row it takes is
-   * one this seat is entitled to. Nothing renews the lease — a row claimed by
-   * hand gets no renewal driver — so it lapses on its own, which is precisely
-   * the state a worker that died leaves behind.
-   */
-  const holdRow = handler({
-    name: "builder-hold-row",
-    resources: { [options.board.id]: options.board },
-    inputSchema: z.object({}).optional(),
-    outputSchema: z.object({ taskId: z.string().nullable(), leaseMs: z.number() }),
-    execute: async (_input: unknown, ctx: BlockContext) => {
-      const seat = seatOf(ctx);
-      const desk = options.assignees[seat];
-      const ledger = await ledgerOf(ctx, options.board.id);
-      const claimed = await ledger.claim(`hold:${seat}`, {
-        eligibility: (task) => task.assignee === desk,
-        leaseDurationMs: MIN_LEASE_DURATION_MS,
-      });
-      return { taskId: claimed?.id ?? null, leaseMs: MIN_LEASE_DURATION_MS };
-    },
-  });
-
-  const installation = options.installation;
-  /** Loads the turn's worker, on every run of a request, so `workerConfigOf` reads it. */
-  const loadWorker = handler({
-    name: `${BUILDER_KIND}-load-worker`,
-    inputSchema: z.unknown(),
-    resources: { ...installation.resources },
-    execute: async (_input: unknown, ctx: BlockContext) => ({
-      worker: (await installation.resolveWorker(ctx as never, BUILDER_KIND)).id,
-    }),
-  });
+  // The twin's entry takes tasks from a ledger that resolves nowhere, the
+  // shape of a `work` entry gated to some other board: nothing marks it as
+  // taking a conversation's task.
+  const work =
+    options.takesTasks === false
+      ? {
+          block: turn,
+          from: taskLedgers({
+            name: "builder-elsewhere",
+            resolve: async () => undefined,
+            uses: [defineCapability({ name: "builder-elsewhere-ledger", resources: {} })],
+          }),
+        }
+      : workerTaskEntry({ name: "builder-task", turn });
 
   return defineFlow({
     kind: BUILDER_KIND,
-    cardinality: "collection",
     configSchema: builderSettingsSchema(),
     session: installation.session(),
-    resources: { [options.board.id]: options.board, ...installation.resources },
-    request: { onStarted: loadWorker },
-    actions: { ...workerDoor,
-      [DRAIN_ENTRY]: {
-        block: board.drain,
-        description: "Work this seat's share of the mailbox's board.",
-      },
-      [HOLD_ENTRY]: {
-        block: holdRow,
-        description: "Claim one row on the minimum lease and do not settle it.",
-      },
-    },
-    task: { actions: { [WORK_ENTRY]: { block: runRow } } },
+    resources: { ...installation.resources },
+    actions: { ...workerDoor },
+    task: { actions: { [WORK_ENTRY]: work } },
   } as never);
 }
