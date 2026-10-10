@@ -17,7 +17,11 @@
  *   a piece's notice woke, in that notice's own request, and never inside a
  *   turn, so the turn can still file a piece again or cancel one. Every piece
  *   completed: the task completes with their outputs. Any failed for good: it
- *   fails, naming them, and the substrate's retry budget decides the rest. The
+ *   fails, naming them, and the substrate's retry budget decides the rest. A
+ *   piece filed in the turn a failure's notice woke is that piece's retry
+ *   (`RETRY_OF`): the failure no longer counts, and the retry is judged in its
+ *   place, so a task whose failed piece was filed again and then completed
+ *   completes. The
  *   write goes through the board above at the binding's partition, fenced by
  *   the binding's ticket, so a replay after the settle landed writes nothing;
  *   then the binding clears.
@@ -33,7 +37,7 @@
  *   down. The task's own later settle is then declined by the claim fence,
  *   and the binding clears.
  */
-import { handler, sequencer } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
@@ -46,7 +50,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_FLOW_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import { CANCEL_PIECES_ENTRY, PIECE_OF, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY, SPLIT_MARKER } from "./board-entries";
+import { CANCEL_PIECES_ENTRY, PIECE_OF, RETRY_OF, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY, SPLIT_MARKER } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
@@ -102,6 +106,34 @@ export function splitMarkerOf(row: Task | undefined): SplitMarker | undefined {
 /** The task a row is a piece of, on the board above, or none. */
 export function pieceOf(row: Task): string | undefined {
   const value = row.metadata?.[PIECE_OF];
+  return typeof value === "string" ? value : undefined;
+}
+
+/** The piece a row was filed again for, or none. */
+function retryOf(row: Task): string | undefined {
+  const value = row.metadata?.[RETRY_OF];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Request state: the piece whose failure for good woke the running turn. A
+ * piece that turn files is its retry. Request-scoped, so it ends with the
+ * turn: a later turn's filing is no retry.
+ */
+const RETRYING_STATE = "splitRetrying";
+
+/**
+ * Before the turn a notice wakes: when the notice is a piece's failure for
+ * good, mark the request, so a piece the turn files is filed as its retry.
+ */
+export async function noteFailedPiece(ctx: BlockContext, row: Task): Promise<void> {
+  if (row.status !== "errored" || pieceOf(row) === undefined) return;
+  await ctx.request.patchState({ [RETRYING_STATE]: row.id } as never);
+}
+
+/** The failed piece a filing in the running request retries, or none. */
+export function retryingPiece(ctx: BlockContext): string | undefined {
+  const value = (ctx.request?.state as Record<string, unknown> | undefined)?.[RETRYING_STATE];
   return typeof value === "string" ? value : undefined;
 }
 
@@ -229,7 +261,11 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
   if (pieces.some(isOpen)) return false;
   const above = await conversationLedgerAt(ctx, binding.partition);
   if (above !== undefined && above.get(binding.taskId) !== undefined) {
-    const failed = pieces.filter((row) => row.status === "errored");
+    // A failure filed again no longer counts: its retry is judged in its place,
+    // as any piece is (an open one holds the settle above; a cancelled one
+    // fails nothing). Every piece the woken turn filed retries it.
+    const retried = new Set(pieces.map(retryOf).filter((id): id is string => id !== undefined));
+    const failed = pieces.filter((row) => row.status === "errored" && !retried.has(row.id));
     const guards = { ifAllowed: true, claim: binding.ticket } as const;
     if (failed.length > 0) {
       await above.fail(binding.taskId, failedPiecesText(failed), guards);
@@ -260,6 +296,9 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
       });
     }
   }
+  // Cleared even when the board above or the row on it is missing. Neither
+  // happens: the ledger is registered when the flow boots and stays, and
+  // nothing deletes a row. A binding that waited on one would replay forever.
   await ctx.session.patchState({ [PARENT_BINDING_STATE]: null } as never);
   return true;
 }
@@ -359,19 +398,17 @@ export const settleSplitBlock = handler({
 export const cancelPiecesInputSchema = z.object({ taskId: z.string().min(1) }).strict();
 
 /** The cancel entry's block: cancel the open pieces of the task ended above, down the chain, and drop its binding. */
-export const cancelPiecesBlock = sequencer({ name: "split-cancel-pieces", inputSchema: cancelPiecesInputSchema }).step(
-  handler({
-    name: "split-cancel-open-pieces",
-    inputSchema: cancelPiecesInputSchema,
-    outputSchema: z.object({}),
-    resources: { ...conversationLedgerResources },
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const own = await ownConversationLedger(ctx);
-      if (own !== undefined) await cancelOpenRows(ctx, own, `Its parent task "${input.taskId}" was ended from above.`, input.taskId);
-      // The settle the fence would decline anyway: drop it.
-      if (parentBindingOf(ctx)?.taskId === input.taskId) await settleParent(ctx);
-      return {};
-    }
-  })
-);
+export const cancelPiecesBlock = handler({
+  name: "split-cancel-pieces",
+  inputSchema: cancelPiecesInputSchema,
+  outputSchema: z.object({}),
+  resources: { ...conversationLedgerResources },
+  execute: async (input, rawCtx) => {
+    const ctx = rawCtx as unknown as BlockContext;
+    const own = await ownConversationLedger(ctx);
+    if (own !== undefined) await cancelOpenRows(ctx, own, `Its parent task "${input.taskId}" was ended from above.`, input.taskId);
+    // The settle the fence would decline anyway: drop it.
+    if (parentBindingOf(ctx)?.taskId === input.taskId) await settleParent(ctx);
+    return {};
+  }
+});

@@ -336,7 +336,7 @@ Import names from `@flow-state-dev/workforce/browser` in a client component; the
 
 ## Handing out tasks
 
-A post gets an answer. Some work needs doing instead: a change made, a report written, a run that takes an hour. For that a coordinator files a **task** on its conversation's board, for one of its delegates.
+A post gets an answer. When work has to be done instead, a coordinator can file a **task** on its conversation's board, for one of its delegates that takes tasks. Filing works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
 
 ```ts
 await help.sendAction(
@@ -346,9 +346,9 @@ await help.sendAction(
 );
 ```
 
-These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools, so it files a task itself when you ask it for one.
 
-Either way, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
+From your app or from the coordinator's own tools, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
 
 ```json
 { "ok": false, "error": "unknown_assignee: \"helper\" is not on this board's team. Available: support.devices, licenses. …" }
@@ -532,11 +532,12 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 - **Recall a post.** Removing a delegate doesn't take back what it was handed.
 - **Pick by a delegate's instructions.** Best fit knows each delegate by its note, or else its description, and nothing else.
 - **Show a delegate another conversation.** A post's recent lines are its own conversation's, and the delegate's model sees them for that one turn.
-- **Let a delegate file tasks of its own.** A task session's `addTask` is refused, from the delegate's tools and from your app alike, with `{ "ok": false, "error": "no_delegation_board" }`.
+- **Let a delegate file tasks for workers it doesn't delegate to.** A task session files only when its own worker has a delegate that takes tasks, and what it files are [pieces of its task](./delegating-work.md#splitting-a-task). Otherwise its `addTask` is refused, from the delegate's tools and from your app alike, with `{ "ok": false, "error": "no_delegation_board" }`.
 
 ## Related pages
 
 - [The chief of staff](./chief-of-staff.md): an org-level worker that hires workers of your own and, as a coordinator, hands them work.
 - [The built-in worker](./built-in-worker.md): the `agent` flow, whose turn a coordinator runs when it routes by judgment.
+- [Delegating work](./delegating-work.md): how any worker files tasks for its delegates, splits a task, and how far a chain goes.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [Hiring, forking and firing workers](./durable-hire.md): how a person's own workers get onto their roster.

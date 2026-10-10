@@ -46,7 +46,7 @@ import { replayNotices } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
-import { PARENT_BINDING_STATE, settleSplitBlock, splitStateShape } from "./split";
+import { noteFailedPiece, PARENT_BINDING_STATE, settleSplitBlock, splitStateShape } from "./split";
 
 /** A notice, as the entry takes it. */
 export const taskNoticeSchema = z
@@ -189,6 +189,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       await replayRest();
       if (first !== true) return { act: "none" };
+      // A piece's failure for good wakes the turn that may file it again.
+      if (decision.act === "wake-turn") await noteFailedPiece(ctx as never, row);
       return {
         act: decision.act,
         text: noticeText(notice, row),

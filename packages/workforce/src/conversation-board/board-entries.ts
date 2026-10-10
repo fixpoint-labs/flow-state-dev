@@ -34,3 +34,11 @@ export const SPLIT_MARKER = "splitInto";
  * writes it; a caller's filing or patch never reaches it.
  */
 export const PIECE_OF = "pieceOf";
+
+/**
+ * The metadata key a retried piece carries: the piece whose failure for good
+ * it was filed in answer to, in the turn that failure's notice woke. A failed
+ * piece with a retry doesn't fail its task; the retry is judged in its place.
+ * Only the board writes it; a caller's filing or patch never reaches it.
+ */
+export const RETRY_OF = "retryOf";

@@ -129,7 +129,7 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
     }
   });
 
-  it("stays open while the turn a failure woke files the work again, and settles once that piece ends (BR-15, BR-18)", async () => {
+  it("stays open while the turn a failure woke files the work again, and completes once that retry does (BR-15, BR-16a, BR-18)", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
@@ -139,15 +139,71 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       await h.turn("alice", planner);
       await h.settled();
 
-      const top = await one(h, "Plan the launch");
+      const failed = await one(h, "Print the flyers [fail]");
       const again = await one(h, "Print the flyers again");
+      expect(failed.status).toBe("errored");
       expect(again.status).toBe("completed");
+      // The board, not the turn, wrote which failure the piece retries.
+      expect(again.metadata).toMatchObject({ retryOf: failed.id });
+      const top = await one(h, "Plan the launch");
       // The task waited for the piece filed again before it settled.
       expect(top.updatedAt).toBeGreaterThanOrEqual(again.updatedAt);
+      // The work got done, so the task did: the failure it retried no longer counts.
+      expect(top.status).toBe("completed");
+      expect(top.error).toBeUndefined();
+      expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
+      expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("fails naming the retry when the piece filed again fails for good too (BR-16a)", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+      h.controls.plans.s1 = [{ goal: "Print the flyers [fail]", assignee: "eng.tasker" }];
+      h.controls.onErrored.s1 = { goal: "Print them elsewhere [fail]", assignee: "eng.writer" };
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      await h.settled();
+
+      const again = await one(h, "Print them elsewhere [fail]");
+      expect(again.status).toBe("errored");
+      const top = await one(h, "Plan the launch");
+      expect(top.status).toBe("errored");
+      // Judged in the first failure's place: the retry is what failed for good.
+      expect(top.error).toContain("Print them elsewhere [fail]");
+      expect(top.error).not.toContain("Print the flyers [fail]");
+      expect(await heard(h, planner)).toEqual([`${top.id}:errored`]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("still fails when the failed piece is never filed again, though a later turn files other work (BR-16a, control)", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+      h.controls.plans.s1 = [
+        { goal: "Print the flyers [fail]", assignee: "eng.tasker" },
+        { goal: "Book the venue [slow:600]", assignee: "eng.writer" }
+      ];
+      // The failure's turn files nothing; the venue's completion files new work.
+      h.controls.onCompleted.s1 = { goal: "Order the snacks", assignee: "eng.writer" };
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      await h.settled();
+
+      const snacks = await one(h, "Order the snacks");
+      expect(snacks.status).toBe("completed");
+      // Filed after the failure, but not in the turn it woke: no retry.
+      expect(snacks.metadata?.retryOf).toBeUndefined();
+      const top = await one(h, "Plan the launch");
+      expect(top.updatedAt).toBeGreaterThanOrEqual(snacks.updatedAt);
       expect(top.status).toBe("errored");
       expect(top.error).toContain("Print the flyers [fail]");
-      expect(await heard(h, planner)).toContain(`${top.id}:errored`);
-      expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
+      expect(await heard(h, planner)).toEqual([`${top.id}:errored`]);
     } finally {
       await h.dispose();
     }

@@ -48,3 +48,17 @@ This spec changed:
 | DOCS: `filing-work.md`, "Filing work" | **Renamed** `delegating-work.md`, "Delegating work", with the links to it | One word per thing: delegation is Workforce's word for handing work to a delegate | The page's content and place in the sidebar |
 
 Nothing in this spec assumed skill sub-agents existed, so nothing else moved.
+
+<a name="amendment-retries"></a>
+## Amended after merge (split retries, 2026-10-10)
+
+**The decision.** The product owner chose that a split task whose failed piece was filed again,
+and whose retry completed, completes ([D3](DECISIONS.md#d3)). Shipped with the last PR, beside
+the goal. This spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| BR-16: `errored` naming every piece that failed for good | **Amended**: a failure filed again in the turn it woke no longer counts; its retry is judged in its place (new BR-16a) | The work got done; a failed parent misleads the person and the coordinator above | The settle through the binding, fenced by the ticket; one notice; a failure nobody files again fails the parent |
+| BR-18: a reassign of the failed last piece keeps the parent open | **Retained**, and extended: a piece filed again keeps it open too, as an open piece does | BR-16a | The settle-owed marker |
+
+Nothing else moved: the park, the replay, the cancel and the limits are as written.

@@ -35,7 +35,7 @@ import {
   type TaskPartitionContext,
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
-import { PIECE_OF, SPLIT_MARKER } from "./board-entries";
+import { PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
 import { filingSessionIdOf } from "./filing-session";
 
 /**
@@ -98,13 +98,14 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice, or clear one, or make a row a piece
- * of a task, or point a row at a session as its split (FIX-1802 S4).
+ * of a task or another piece's retry, or point a row at a session as its
+ * split (FIX-1802 S4).
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> | undefined {
   const kept = withoutNoticeMarkers(metadata);
   if (kept === undefined) return kept;
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [RETRY_OF]: _retry, ...rest } = kept;
   return rest;
 }
