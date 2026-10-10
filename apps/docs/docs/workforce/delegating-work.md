@@ -115,9 +115,9 @@ How a filed task runs, how the filing session hears it ended, and how to manage 
 
 ## Showing a person's boards in your app
 
-A browser reads a person's boards through the `tasks` collection on any of that person's sessions. The session has to be on a flow that keeps boards: the built-in worker flow, the coordinator flow, or your own flow built with `defineSessionBoard`. The read covers the task rows of every conversation that person has, so you don't need a request per conversation. It never returns another person's rows.
+A browser reads a person's boards through the `tasks` collection on any of that person's sessions. The session has to be on a flow that keeps boards: the built-in worker flow, the coordinator flow, or your own flow built with `defineSessionBoard`. On any other session the read fails with a 404, `Unknown resource "tasks"`. The read covers the task rows of every session that person has filed from, of all three kinds above, so you don't need a request per session. It never returns another person's rows.
 
-Each row's `topic` is its key. The key's first segment, URI-decoded, names the conversation that filed the task, and `sessionIdOfFiling` turns it into that conversation's session id. `clientData` holds the board's fields: `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. A task's input, output and metadata are never sent.
+Pass the first segment of a row's `topic`, URI-decoded, to `sessionIdOfFiling` to get the id of the session that filed the task. `clientData` holds the board's fields: `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. A task's input, output and metadata are never sent.
 
 ```ts
 import { createResourceClient, readEveryCollectionPage } from "@flow-state-dev/client";
@@ -125,14 +125,16 @@ import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 
 const resources = createResourceClient();
 
-async function tasksByConversation(anySessionId: string) {
+async function tasksBySession(anySessionId: string) {
   const rows = await readEveryCollectionPage(resources, anySessionId, "tasks", { limit: 200 });
-  const byConversation = new Map<string, unknown[]>();
+  const bySession = new Map<string, unknown[]>();
   for (const row of rows) {
-    const conversation = sessionIdOfFiling(decodeURIComponent(row.topic.split("/")[0]!));
-    byConversation.set(conversation, [...(byConversation.get(conversation) ?? []), row.clientData]);
+    const filedFrom = sessionIdOfFiling(decodeURIComponent(row.topic.split("/")[0]!));
+    const tasks = bySession.get(filedFrom) ?? [];
+    tasks.push(row.clientData);
+    bySession.set(filedFrom, tasks);
   }
-  return byConversation;
+  return bySession;
 }
 ```
 
