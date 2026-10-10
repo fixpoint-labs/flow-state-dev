@@ -849,10 +849,23 @@ export function describeTenant(tenantId: string | undefined): string {
  * than a string, is refused: feature work names both, and such a row is never
  * run as a task that names neither. A refusal, not a failed attempt, because
  * a retry reads the same row.
+ *
+ * A fixed board's rows are feature rows only, as they always were: one
+ * without a usable payload is a failed attempt there, never a task naming
+ * neither.
  */
-function taskPayload(input: { input?: unknown; taskId: string }): { issue: string; phase: string } | undefined {
+function taskPayload(
+  input: { input?: unknown; taskId: string },
+  fixedBoard: boolean,
+): { issue: string; phase: string } | undefined {
   const parsed = harnessTaskInputSchema.safeParse(input.input);
   if (parsed.success) return parsed.data;
+  if (fixedBoard) {
+    throw new HarnessAttemptFailed(
+      `[harness-manager] task ${input.taskId} carries no usable issue/phase payload: ` +
+        `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
+    );
+  }
   const named = input.input;
   if (typeof named === "object" && named !== null && ("issue" in named || "phase" in named)) {
     throw new HarnessRunRefused(
@@ -1789,7 +1802,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
       // A row naming no issue and phase (a task a conversation filed) runs as
       // this manager's phase, with its task id standing in for the issue.
-      const payload = taskPayload(input);
+      const payload = taskPayload(input, claim === null);
       const { issue, phase: phaseName } = payload ?? { issue: input.taskId, phase: phase.phase };
       if (payload !== undefined) {
         // **A manager runs exactly one phase, and it must be the one on the row.**

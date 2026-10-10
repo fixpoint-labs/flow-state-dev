@@ -487,7 +487,11 @@ function leaseHasLapsed(claim: ClaimView, now: number): boolean {
  * monotonic fence can accept a stale write from the old incarnation. Closing
  * that would need the task board to pass claim identity (`incarnationId`)
  * through to the worker, which it does not — `TaskWorkerInput` carries neither
- * that nor `createdAt`. Framework work, outside this lab's boundary.
+ * that nor `createdAt`. Framework work, outside this lab's boundary. On a
+ * board read from the claim it is closed where the row carries an
+ * incarnation: the manager keeps the one its run opened on
+ * ({@link AttemptIdentity.incarnationId}) and refuses a write to a row of
+ * another.
  *
  * **The read-then-write window.** The reads above and the upsert below are not
  * one atomic operation. A replacement claim landing between them lets the

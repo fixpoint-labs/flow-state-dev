@@ -11,7 +11,7 @@
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
-import { CONVERSATIONS, FIXED_BOARD, claimHost, cleanUpHosts } from "./claim-host";
+import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts } from "./claim-host";
 
 afterAll(cleanUpHosts);
 
@@ -56,12 +56,25 @@ describe("a refused run on a fixed board", () => {
   it("is still cancelled, as before", async () => {
     const lab = claimHost({ mode: "claim" });
     const refusing = claimHost({ mode: "fixed", manager: { workspace: refusingWorkspace(lab.dir) } });
-    await refusing.seed({ ledgerId: FIXED_BOARD, id: "t1", goal: "look at the repo", input: {}, maxAttempts: 2 });
+    const id = "fix-1--implement";
+    await refusing.seed({ ledgerId: FIXED_BOARD, id, goal: "the feature", input: { issue: "FIX-1", phase: PHASE }, maxAttempts: 2 });
 
-    await refusing.runAttempt(FIXED_BOARD, "t1");
+    await refusing.runAttempt(FIXED_BOARD, id);
 
-    const row = await refusing.row(FIXED_BOARD, "t1");
+    const row = await refusing.row(FIXED_BOARD, id);
     expect(row.status).toBe("cancelled");
     expect(refusing.seen).toHaveLength(0);
+  }, 60_000);
+
+  it("still fails, as an attempt, a row that names no feature at all: a fixed board runs feature rows only", async () => {
+    const lab = claimHost({ mode: "fixed" });
+    await lab.seed({ ledgerId: FIXED_BOARD, id: "t1", goal: "look at the repo", input: {}, maxAttempts: 2 });
+
+    await lab.runAttempt(FIXED_BOARD, "t1");
+
+    const row = await lab.row(FIXED_BOARD, "t1");
+    expect(row.status).toBe("pending");
+    expect(row.feedback).toContain("carries no usable issue/phase payload");
+    expect(lab.seen).toHaveLength(0);
   }, 60_000);
 });
