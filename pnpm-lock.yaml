@@ -908,9 +908,6 @@ importers:
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
-      '@flow-state-dev/workforce':
-        specifier: workspace:*
-        version: link:../workforce
       commander:
         specifier: ^13.1.0
         version: 13.1.0

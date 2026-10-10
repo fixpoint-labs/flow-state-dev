@@ -1,123 +1,180 @@
 /**
- * `fsdev gen` command — write the module that registers an app's custom flow
- * kinds, blocks, package blocks and resource modules, from the files that
- * already declare them.
+ * `fsdev gen` command — write the module an app registers its code from, using
+ * the generator one of the app's dependencies supplies.
  *
- * Thin by design: it resolves the workforce root, calls the convention in
- * `@flow-state-dev/workforce/codegen`, writes the file and prints what it
- * found. Every rule about what the tree may hold, and every refusal, belongs to
- * that convention — this command decides nothing about registration.
+ * The command knows no convention. It reads the `package.json` nearest the
+ * working directory, and for each dependency looks for a `./fsdev-gen` subpath
+ * export whose `generator` takes a root and hands back the file to write. The
+ * generator owns every rule about what the root may hold and every refusal of
+ * it; this command owns the file it writes, `--check`, and the exit code.
  *
- * It loads no app code. Not the app's `fsdev.config.ts`, and not one file it
- * walked: the published CLI is compiled JavaScript on plain Node with no
+ * It loads no app code. Not the app's `fsdev.config.ts`, and not one file under
+ * the root: the published CLI is compiled JavaScript on plain Node with no
  * TypeScript runner, and an app's own files resolve through the app's aliases.
- * Reading the tree needs neither.
+ * The generator is a package the app installed, not a file it wrote.
  *
  * `--check` renders and compares without writing, exiting non-zero on a
  * difference. It belongs in CI as its own step — put it inside a build script
  * and the build would regenerate the file and pass.
  */
 import type { Command } from "commander";
-import { writeFile, readFile } from "node:fs/promises";
-import { resolve, join, relative } from "node:path";
-import {
-  GENERATED_FILE_NAME,
-  WorkforceCodeError,
-  discoverWorkforceCode,
-  renderWorkforceCode,
-  type DiscoveredFile,
-  type DiscoveredPackageBlock,
-  type DiscoveredResourceModule,
-  type DiscoveredSeatBlock,
-} from "@flow-state-dev/workforce/codegen";
-import { classify, refusedSymlink } from "@flow-state-dev/workforce/loader";
+import { existsSync, readFileSync } from "node:fs";
+import { lstat, writeFile, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, resolve, join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
+import { CliError } from "../resolve-block";
 import { EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR } from "../exit-codes";
 
-/** Default location of an app's workforce tree, relative to where the command runs. */
-const DEFAULT_ROOT = "workforce";
+/** The subpath a package exports its generator on. */
+export const GENERATOR_SUBPATH = "fsdev-gen";
+
+/** What a generator hands back from one run. */
+export interface GeneratedModule {
+  /** The file to write, relative to the root. */
+  file: string;
+  /** The module's full text. */
+  content: string;
+  /** The folders looked in, printed before the entries. */
+  searched: string[];
+  /** One line per registration, printed as found. */
+  entries: string[];
+  /** Every discovered path, listed when `--check` finds the file stale. */
+  paths: string[];
+  /** A one-line count of what was found. */
+  summary: string;
+}
+
+/**
+ * The `generator` a package exports on `./fsdev-gen`.
+ *
+ * A refusal of what the root holds is thrown as an error carrying a
+ * `problems` array; the command exits 1 on it. Any other throw is read as a
+ * setup problem and exits 3.
+ */
+export interface FsdevGenerator {
+  /** The root, relative to the working directory, when `--root` is not given. */
+  defaultRoot: string;
+  /** Read `root` (absolute) and render the module. Must not write. */
+  generate(root: string): Promise<GeneratedModule>;
+}
 
 /** Options `fsdev gen` accepts. */
 export interface GenCommandOptions {
-  /** The workforce directory. Defaults to `workforce` under the current directory. */
-  root: string;
+  /** The directory the generator reads. Defaults to the generator's own. */
+  root?: string;
   /** Compare against the committed file instead of writing it, and exit non-zero on a difference. */
   check?: boolean;
 }
 
 /** What one `fsdev gen` run did, for a caller that wants it without the process exiting. */
-export interface GenResult {
+export interface GenResult extends Omit<GeneratedModule, "file" | "content"> {
+  /** The package whose generator ran. */
+  generator: string;
   /** Absolute path of the generated module. */
   file: string;
-  /** Every discovered file, ordered by path. */
-  files: DiscoveredFile[];
-  /** Every discovered resource module, ordered by path. */
-  resourceModules: DiscoveredResourceModule[];
-  /** Every per-seat block registration, ordered by path then seat. */
-  seatBlocks: DiscoveredSeatBlock[];
-  /** Every block a package's `blocks/` folder carries, ordered by path. */
-  packageBlocks: DiscoveredPackageBlock[];
-  /** The folders looked in. */
-  searched: string[];
   /** True when the file on disk already matched — always true for a write that changed nothing. */
   upToDate: boolean;
 }
 
-/** Group what was discovered by the map each one lands on, for the summary line. */
-function countBySlot(
-  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks" | "packageBlocks">,
-): string {
-  const counts = { worker: 0, mailbox: 0, block: 0 };
-  for (const file of result.files) counts[file.slot] += 1;
-  // Seat blocks are counted by FILE rather than by registration: one team-level
-  // file registers for every seat on the team, and a count of registrations
-  // would not match the number of files an author can point at.
-  const seatBlockFiles = new Set(result.seatBlocks.map((entry) => entry.path)).size;
-  return (
-    `${counts.worker} worker kind(s), ${counts.mailbox} mailbox kind(s), ` +
-    `${counts.block} block(s), ${result.resourceModules.length} resource module(s), ` +
-    `${seatBlockFiles} seat block(s), ${result.packageBlocks.length} package block(s)`
-  );
-}
-
-/** Every discovered path, in one list, for the report that names what disagreed. */
-function discoveredPaths(
-  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks" | "packageBlocks">,
-): string[] {
-  const seatBlockPaths = [...new Set(result.seatBlocks.map((entry) => entry.path))];
-  return [
-    ...[...result.files, ...result.resourceModules].map((found) => found.path),
-    ...seatBlockPaths,
-    ...result.packageBlocks.map((entry) => entry.path),
-  ];
+/** The nearest `package.json` at or above `cwd`, or `undefined` when there is none. */
+function nearestManifest(cwd: string): string | undefined {
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    const candidate = join(dir, "package.json");
+    if (existsSync(candidate)) return candidate;
+    if (dirname(dir) === dir) return undefined;
+  }
 }
 
 /**
- * Walk the tree and render the module, returning what happened.
+ * The one generator the app's dependencies supply, and the package it came
+ * from. Resolved from the app's `package.json`, as the app itself would.
+ *
+ * @throws CliError (exit 3) when there is no `package.json`, when no
+ *   dependency supplies a generator, when more than one does, or when one
+ *   exports something that is not a generator.
+ */
+export async function resolveGenerator(
+  cwd: string,
+): Promise<{ name: string; generator: FsdevGenerator }> {
+  const manifest = nearestManifest(cwd);
+  if (manifest === undefined) {
+    throw new CliError(`No package.json at or above ${cwd}, so no generator to run.`, EXIT_CONFIG_ERROR);
+  }
+  const pkg = JSON.parse(readFileSync(manifest, "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const names = [
+    ...new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]),
+  ].sort();
+  const require = createRequire(manifest);
+  const found: { name: string; path: string }[] = [];
+  for (const name of names) {
+    try {
+      found.push({ name, path: require.resolve(`${name}/${GENERATOR_SUBPATH}`) });
+    } catch {
+      // Not exported, or not installed: either way, not a generator.
+    }
+  }
+  if (found.length === 0) {
+    throw new CliError(
+      `No dependency in ${manifest} exports a generator on "./${GENERATOR_SUBPATH}".`,
+      EXIT_CONFIG_ERROR,
+    );
+  }
+  if (found.length > 1) {
+    throw new CliError(
+      `More than one dependency exports a generator: ${found.map((f) => f.name).join(", ")}.`,
+      EXIT_CONFIG_ERROR,
+    );
+  }
+  const [{ name, path }] = found;
+  const mod = (await import(pathToFileURL(path).href)) as { generator?: Partial<FsdevGenerator> };
+  const generator = mod.generator;
+  if (
+    generator === undefined ||
+    typeof generator.defaultRoot !== "string" ||
+    typeof generator.generate !== "function"
+  ) {
+    throw new CliError(
+      `${name}/${GENERATOR_SUBPATH} does not export a \`generator\` with \`defaultRoot\` and \`generate\`.`,
+      EXIT_CONFIG_ERROR,
+    );
+  }
+  return { name, generator: generator as FsdevGenerator };
+}
+
+/** Whether `error` is a generator's refusal of what the root holds. */
+function isRefusal(error: unknown): boolean {
+  return error instanceof Error && Array.isArray((error as { problems?: unknown }).problems);
+}
+
+/**
+ * Run the app's generator and render the module, returning what happened.
  *
  * Writes nothing when `check` is set. Exported so a caller can drive the
  * command without a process exit.
  *
  * @param options Where to look, and whether to write.
  * @returns The rendered file's path, what was found, and whether disk matched.
- * @throws {WorkforceCodeError} If the tree holds anything the convention refuses.
+ * @throws CliError (exit 3) as {@link resolveGenerator}.
+ * @throws Whatever the generator throws, including its refusals.
  */
 export async function executeGenCommand(options: GenCommandOptions): Promise<GenResult> {
-  const root = resolve(process.cwd(), options.root);
-  // The root's own refusals — symlinked, missing, unreadable — belong to the
-  // walk and are made there, so every caller of it gets them and not just this
-  // command.
-  const { files, resourceModules, seatBlocks, packageBlocks, searched } =
-    await discoverWorkforceCode(root);
-  const rendered = renderWorkforceCode(files, resourceModules, seatBlocks, packageBlocks);
-  const file = join(root, GENERATED_FILE_NAME);
+  const { name, generator } = await resolveGenerator(process.cwd());
+  const root = resolve(process.cwd(), options.root ?? generator.defaultRoot);
+  const { file: fileName, content, ...found } = await generator.generate(root);
+  const file = join(root, fileName);
 
-  // The no-follow promise covers what we WRITE as well as what we read. Both
-  // calls below follow a symlink: `writeFile` would overwrite whatever it
-  // points at, outside the configured root, and `readFile` would compare
+  // The no-follow promise covers what we WRITE as well as what the generator
+  // read. Both calls below follow a symlink: `writeFile` would overwrite
+  // whatever it points at, outside the root, and `readFile` would compare
   // against a file that is not this app's. Checked before either, and in
   // `--check` mode too, since the wrong comparison is its own kind of wrong.
-  if ((await classify(file)).kind === "symlink") {
-    throw refusedSymlink("generated file", GENERATED_FILE_NAME);
+  const stat = await lstat(file).catch(() => undefined);
+  if (stat?.isSymbolicLink() === true) {
+    throw new Error(`Symlinked generated file "${fileName}" — refused for safety`);
   }
 
   const onDisk = await readFile(file, "utf-8").catch(() => undefined);
@@ -126,20 +183,20 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
   // LF, which would report a clean tree as stale and fail CI on Windows for a
   // difference git introduced. Only the comparison normalises — what gets
   // written stays LF.
-  const upToDate = onDisk !== undefined && onDisk.replace(/\r\n/g, "\n") === rendered;
+  const upToDate = onDisk !== undefined && onDisk.replace(/\r\n/g, "\n") === content;
 
-  if (options.check !== true && !upToDate) await writeFile(file, rendered, "utf-8");
+  if (options.check !== true && !upToDate) await writeFile(file, content, "utf-8");
 
-  return { file, files, resourceModules, seatBlocks, packageBlocks, searched, upToDate };
+  return { generator: name, file, ...found, upToDate };
 }
 
 export function registerGenCommand(program: Command): void {
   program
     .command("gen")
     .description(
-      "Generate the module registering an app's custom flow kinds, blocks and resource modules",
+      "Generate the module an app registers its code from, with the generator a dependency supplies",
     )
-    .option("--root <dir>", "The workforce directory", DEFAULT_ROOT)
+    .option("--root <dir>", "The directory the generator reads (default: the generator's own)")
     .option("--check", "Fail instead of writing when the generated file is out of date")
     .action(async (options: GenCommandOptions) => {
       // Every branch sets `process.exitCode` and returns rather than calling
@@ -154,8 +211,7 @@ export function registerGenCommand(program: Command): void {
         result = await executeGenCommand(options);
       } catch (error) {
         console.error((error as Error).message);
-        process.exitCode =
-          error instanceof WorkforceCodeError ? EXIT_EXECUTION_ERROR : EXIT_CONFIG_ERROR;
+        process.exitCode = isRefusal(error) ? EXIT_EXECUTION_ERROR : EXIT_CONFIG_ERROR;
         return;
       }
 
@@ -163,7 +219,7 @@ export function registerGenCommand(program: Command): void {
 
       if (options.check === true) {
         if (result.upToDate) {
-          console.log(`${shown} is up to date (${countBySlot(result)}).`);
+          console.log(`${shown} is up to date (${result.summary}).`);
           process.exitCode = EXIT_SUCCESS;
           return;
         }
@@ -172,8 +228,8 @@ export function registerGenCommand(program: Command): void {
         // Which is also why this report must outlive the exit.
         console.error(
           `${shown} is out of date. Run \`fsdev gen\` and commit the result.\n` +
-            `The tree holds ${countBySlot(result)}:\n` +
-            discoveredPaths(result)
+            `The tree holds ${result.summary}:\n` +
+            result.paths
               .map((path) => `  - ${path}`)
               .join("\n"),
         );
@@ -182,20 +238,11 @@ export function registerGenCommand(program: Command): void {
       }
 
       console.log(`Looked in: ${result.searched.join(", ")}`);
-      for (const file of result.files) console.log(`  ${file.path} -> ${file.name}`);
-      for (const module of result.resourceModules) {
-        console.log(`  ${module.path} -> ${module.ref}`);
-      }
-      for (const entry of result.seatBlocks) {
-        console.log(`  ${entry.path} -> ${entry.seat}.${entry.name}`);
-      }
-      for (const entry of result.packageBlocks) {
-        console.log(`  ${entry.path} -> ${entry.package}: ${entry.name}`);
-      }
+      for (const entry of result.entries) console.log(`  ${entry}`);
       console.log(
         result.upToDate
-          ? `${shown} unchanged (${countBySlot(result)}).`
-          : `Wrote ${shown} (${countBySlot(result)}).`,
+          ? `${shown} unchanged (${result.summary}).`
+          : `Wrote ${shown} (${result.summary}).`,
       );
       // Set on success as well, and for the same reason the `--check` success
       // branch does: a code already on the process outlives a run that printed

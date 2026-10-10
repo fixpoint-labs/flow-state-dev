@@ -721,6 +721,9 @@ workforce/
 `createWorkerInstallation`, `mailboxInstances`, a task board and a worker flow's tool catalog
 already take. The same file
 carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
+This package supplies the generator `fsdev gen` runs, through its `./fsdev-gen` export; the command
+finds it because your app depends on `@flow-state-dev/workforce`, and reads `workforce/` unless you
+pass `--root`.
 
 ```ts
 import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";

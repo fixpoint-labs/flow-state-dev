@@ -23,8 +23,8 @@ export {
 export type { BlockExecResult } from "./commands/block";
 export { registerDevCommand, executeDevCommand, DEVTOOL_URL_META } from "./commands/dev";
 export type { DevCommandOptions, DevServer } from "./commands/dev";
-export { registerGenCommand, executeGenCommand } from "./commands/gen";
-export type { GenCommandOptions, GenResult } from "./commands/gen";
+export { registerGenCommand, executeGenCommand, resolveGenerator, GENERATOR_SUBPATH } from "./commands/gen";
+export type { GenCommandOptions, GenResult, FsdevGenerator, GeneratedModule } from "./commands/gen";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
 export { registerServeCommand, executeServeCommand } from "./commands/serve";
 export { registerChatCommand, executeChatCommand } from "./commands/chat";
