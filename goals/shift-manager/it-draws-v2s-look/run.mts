@@ -93,7 +93,7 @@ if (CONTROL !== "" && process.env.GOAL_PAGES !== undefined) {
   process.exit(2);
 }
 
-const fixture = loadFixture<{ devteam: { issue: string; text: string }; desk: { line: string; reply: string } }>(import.meta.url);
+const fixture = loadFixture<{ devteam: { issue: string; text: string; workstream: string }; desk: { line: string; reply: string } }>(import.meta.url);
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("shift-manager-v2-look");
 const V2 = repoPath("specs", "epics", "FIX-1649", "assets", "design", "v2", "shift-manager-v2.dc.html");
@@ -815,8 +815,29 @@ async function open(page: Page, screen: Screen, ids: { mailbox: string; taskId: 
       // ---- slice C: the project holding the workstream, on its Board, under the team strip ----
       await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.mailbox}"]) [data-testid^=nav-project-]`).click();
       await ready("project");
+      // A project's Board draws only the person's own workstream sessions in it: open one from
+      // its Workstreams tab, as a person does, so the Board has a lane to draw.
+      await page.locator("[role=tab][data-tab=workstreams]").click();
+      await ready("project-open-title");
+      await page.getByTestId("project-open-title").fill(`${fixture.devteam.workstream} ${RUN_STAMP}`);
+      await page.getByTestId("project-open-submit").click();
+      await page.locator("[data-testid=project-entry-own], [data-testid=project-open-refused]").first().waitFor({ timeout: 60_000 });
+      if ((await page.getByTestId("project-open-refused").count()) > 0) {
+        throw new Error(`devteam: opening a workstream in the project was refused: ${((await page.getByTestId("project-open-refused").first().textContent()) ?? "").trim()}`);
+      }
+      // The page read the Lab's workers before the open forked the workstream's lead; read them again.
+      await page.reload();
+      await ready("project");
       await page.locator("[role=tab][data-tab=board]").click();
       await ready("project-lane");
+      // The lane reads its session's tasks before it draws them.
+      await page
+        .locator("[data-testid=project-lane] :is([data-testid=cos-tasks-empty], [data-testid=cos-tasks], [data-testid=cos-tasks-failure])")
+        .first()
+        .waitFor({ timeout: 20_000 })
+        .catch(async () => {
+          throw new Error(`devteam: the project's lane drew no tasks within 20 s: "${((await page.getByTestId("project-lane").first().textContent()) ?? "").trim()}"`);
+        });
       // ---- end slice C ----
   }
 }
