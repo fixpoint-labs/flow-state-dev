@@ -10,7 +10,16 @@
  * its coordinator's turn to read it and decide what to do.
  *
  * A notice that arrives while the conversation is replying waits for the
- * reply to end, then runs (BR-27).
+ * reply to end, then runs (BR-27). It waits for the replies running when it
+ * arrives and any that start in its first 30 seconds of waiting; after that
+ * it waits only for the replies running at that moment, so a reply that
+ * starts later can run beside it. That is the engine's `defer` patience,
+ * which keeps a stream of replies from holding a notice back forever.
+ *
+ * At most 32 notices wait on a conversation in a process; the engine refuses
+ * the next, which stays owed on its row. So every notice run sends again what
+ * the rows still owe: the last one to run has room in the line, and nothing
+ * owed waits for a later touch of the board.
  *
  * Refused when the conversation's worker was fired: the flow loads the
  * session's worker before any entry runs. The task's ending stands, and the
@@ -20,7 +29,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { isTaskSession } from "./board";
+import { isTaskSession, replayNotices } from "./board";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 import {
   clearNotice,
@@ -81,7 +90,7 @@ export interface TaskSettledOptions {
 const replyLine: ConcurrencyKey = (ctx) =>
   ctx.sessionId === undefined ? undefined : `${ctx.tenantId ?? ""}\u0000reply\u0000${ctx.sessionId}`;
 
-/** Set on each entry that runs the conversation's turn: while it runs, a task's notice waits. */
+/** Set on each entry that runs the conversation's turn: a task's notice waits for it, within the bound above. */
 export const REPLY_CONCURRENCY = { policy: "hold", key: replyLine } as const satisfies ConcurrencyConfig;
 
 /**
@@ -101,9 +110,22 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
       if (notice.boardId !== CONVERSATION_LEDGER_ID || isTaskSession(ctx)) return { act: "none" };
       const ref = await ownConversationLedger(ctx as never);
-      const row = ref?.get(notice.taskId);
+      if (ref === undefined) return { act: "none" };
+      // Whatever this run does, the notices still owed go out again behind
+      // it, but never this one: its marker is cleared below, or already was.
+      const replayRest = () =>
+        replayNotices(
+          ctx as never,
+          ref.list().map((task) =>
+            task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
+          )
+        );
+      const row = ref.get(notice.taskId);
       // A notice its row doesn't owe was delivered already, or was never owed.
-      if (ref === undefined || row === undefined || !isNoticeOwed(row, notice)) return { act: "none" };
+      if (row === undefined || !isNoticeOwed(row, notice)) {
+        await replayRest();
+        return { act: "none" };
+      }
       const key = noticeKey(notice);
       const first = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
@@ -116,6 +138,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       );
       // Delivered: the marker clears whichever copy of the notice got here.
       await ref.patchMetadata(row.id, clearNotice(notice));
+      await replayRest();
       if (first !== true) return { act: "none" };
       const decision = decideNotice(notice, options.policy(ctx as never));
       return {
