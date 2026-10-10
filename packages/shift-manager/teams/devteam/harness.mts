@@ -9,7 +9,8 @@
  * - **`stub`** (the default): the lab's scripted run, no model. It says what it
  *   is doing in the run's session, then writes one file in its checkout and
  *   commits it, so the implement phase's done-condition (a commit the base ref
- *   does not have) is met and an approved row settles `completed`. The bare
+ *   does not have) is met and an approved row settles `completed`. It ends
+ *   with a one-line answer, which is what a conversation's task needs. The bare
  *   `harnessStub()` the config used before did neither: every attempt finished
  *   with no step and no commit, and the row went back to pending with nothing
  *   left to run it.
@@ -162,6 +163,8 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
     ],
     stepEveryMs,
     duringRun: commitScriptedWork,
+    // What a conversation's task reads back: an answer task is done only with one.
+    finalMessage: "A scripted run, no model: it wrote SCRIPTED-RUN.md.",
   });
 }
 

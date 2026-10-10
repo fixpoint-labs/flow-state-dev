@@ -78,6 +78,16 @@ export const PROJECT_STATE_KEY = "projectId";
 export const FILING_WORKSTREAM_STATE_KEY = "filingWorkstreamId";
 
 /**
+ * The session-state field that names the project a task session was filed
+ * from: its filer's {@link PROJECT_STATE_KEY} (a project conversation), or its
+ * filer's own filing project, carried down at each hand-over (`projectRef`
+ * form, `<visibility>/<projectId>`). Set only by the hand-over, like
+ * {@link FILING_WORKSTREAM_STATE_KEY}, so a coding run in the task session
+ * works in the project its conversation belongs to. Readonly.
+ */
+export const FILING_PROJECT_STATE_KEY = "filingProjectId";
+
+/**
  * The session-state field that names the task a worker session was opened
  * for: set when a conversation's board hands the task over, beside the
  * worker and the filing conversation's `filingSessionId`, so the task's

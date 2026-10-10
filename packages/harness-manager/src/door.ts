@@ -2,7 +2,10 @@
  * The door — a person's message into a coding run (FIX-1690).
  *
  * A public action a coding kind declares
- * (`message: manager.messageDoor({ drain: "resume" })`).
+ * (`message: manager.messageDoor({ drain: "resume" })` for a manager's fixed
+ * board, or `message: harnessMessageDoor({ boards })` for a flow whose runs
+ * come from more than one board: the host names, per request, the boards the
+ * calling session's run may be on, each with its drain).
  * It takes `{ message }` and declares `userMessage`, so the engine writes the
  * person's line into the session as a user item before this block runs. What
  * the block decides is what that line *does* to the run:
@@ -83,9 +86,9 @@
  * door answers as delivered instead: refusing would tell the person a line
  * didn't reach the task that the task acted on.
  */
-import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import { readCommitted } from "@flow-state-dev/core/helpers";
-import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, encodeUserSegment, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
   resolveResourceCollection,
@@ -95,10 +98,18 @@ import {
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { findRunRowBySession, readConfirmedSession, readRunRow, runTopic, sessionConfirmedBy } from "./run-record";
+import {
+  findRunRowBySession,
+  readConfirmedSession,
+  readRunRow,
+  RUNS,
+  runRecordCollection,
+  runTopic,
+  sessionConfirmedBy,
+} from "./run-record";
 import { isRunOwner, runOwnerOf, runPrincipal } from "./run-owner";
-import { keepTurn, turnTakenBy, withdrawTurn } from "./turns";
-import { sleep } from "./workspace";
+import { keepTurn, turnCollection, turnTakenBy, TURNS, withdrawTurn } from "./turns";
+import { runBoardSegment, sleep } from "./workspace";
 
 /** What the door takes. Shift Manager builds it without knowing the kind. */
 export const messageDoorInputSchema = z.object({ message: z.string() });
@@ -196,18 +207,63 @@ async function pollUntil<T>(
 /** The note a row parked for a turn carries. */
 const TURN_PARK_NOTE = "A person sent a message; the run continues with it.";
 
-/** The payload a row this manager runs carries. */
+/** The payload a feature row carries. */
 const rowPayloadSchema = z.object({ issue: z.string(), phase: z.string() });
 
-/** What the door needs from the manager that built it. */
+/** A run's identity on its board: the issue and phase its run record is keyed by. */
+export interface DoorRunIdentity {
+  issue: string;
+  phase: string;
+}
+
+/**
+ * One board a door may find the calling session's run on, as the host resolves
+ * it for this request.
+ */
+export interface MessageDoorBoard {
+  /**
+   * The board's rows as the substrate sees them. Its `collectionId` and
+   * `partition` key the run records the door reads (`runBoardSegment`), the
+   * same way the manager that ran the row keyed them.
+   */
+  tasks: TaskCollectionRef;
+  /**
+   * The board is kept per organization: the door then answers only the run's
+   * own person, and refuses anyone else as a run that does not exist.
+   */
+  orgScoped: boolean;
+  /**
+   * Where the next attempt is started after a stop: the `internal` entry that
+   * runs this board's drain, and the flow that declares it, dispatched into
+   * the session that claimed the row.
+   */
+  drain: MessageDoorOptions;
+  /**
+   * The issue and phase a row's run is keyed by, or `undefined` for a row no
+   * manager behind this door runs. Absent, the row's `{ issue, phase }`
+   * payload, as on a feature board.
+   */
+  runOf?: (row: Task) => DoorRunIdentity | undefined;
+}
+
+/** What the door needs from the host or the manager that built it. */
 export interface MessageDoorDeps {
   name: string;
-  boardCollectionId: string;
-  boardCollection: DefinedTaskCollection;
-  /** The manager's own collections, plus the turn record. */
+  /** The collections the door reads and writes: the run records and the kept turns. */
   capability: DefinedCapability;
-  /** Resolve the board's rows as the substrate sees them. */
-  boardTasks: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+  /** More capabilities the door's blocks hold: the board ledgers, when the flow doesn't install them. */
+  uses?: readonly DefinedCapability[];
+  /**
+   * The boards the calling session's run may be on, for this request. The door
+   * takes the first whose run link names the session, else the first whose
+   * run record does (a claimed row whose run hasn't linked yet).
+   */
+  boards: (ctx: BlockContext) => Promise<readonly MessageDoorBoard[]>;
+  /**
+   * The drain entry `defineFlow` checks the flow declares, when there is one
+   * fixed drain. Absent, nothing is checked at build.
+   */
+  markDrain?: MessageDoorOptions;
 }
 
 /** How a flow wires the door. */
@@ -251,21 +307,39 @@ function linkedRow(tasks: TaskCollectionRef, sessionId: string): Task | undefine
   );
 }
 
+/** The run-record segment a board's runs are keyed under. */
+function segmentOf(board: MessageDoorBoard): string {
+  return runBoardSegment(board.tasks.collectionId, board.tasks.partition);
+}
+
 /**
  * The row whose next attempt was claimed but whose run has not linked yet: a
  * claim clears the run link, so the row is found by the run record's session
  * instead. A listing of the user's run records, read only when no row links
  * this session.
  */
-async function claimedRow(
-  deps: MessageDoorDeps,
-  tasks: TaskCollectionRef,
-  ctx: BlockContext,
-): Promise<Task | undefined> {
-  const record = await findRunRowBySession(ctx, deps.boardCollectionId, ctx.session.identity.id);
+async function claimedRow(board: MessageDoorBoard, ctx: BlockContext): Promise<Task | undefined> {
+  const record = await findRunRowBySession(ctx, segmentOf(board), ctx.session.identity.id);
   if (record?.taskId == null) return undefined;
-  const row = (tasks.list() as Task[]).find((task) => task.id === record.taskId);
+  const row = (board.tasks.list() as Task[]).find((task) => task.id === record.taskId);
   return row?.status === "in_progress" && row.run === undefined ? row : undefined;
+}
+
+/** The board and row this session's run works, or `undefined` when no run has worked here. */
+async function findRun(
+  deps: MessageDoorDeps,
+  ctx: BlockContext,
+): Promise<{ board: MessageDoorBoard; row: Task; linked: boolean } | undefined> {
+  const boards = await deps.boards(ctx);
+  for (const board of boards) {
+    const row = linkedRow(board.tasks, ctx.session.identity.id);
+    if (row !== undefined) return { board, row, linked: true };
+  }
+  for (const board of boards) {
+    const row = await claimedRow(board, ctx);
+    if (row !== undefined) return { board, row, linked: false };
+  }
+  return undefined;
 }
 
 /** What the decide step hands the re-queue step. */
@@ -273,32 +347,52 @@ type Decided = MessageDoorOutput & {
   requeue: boolean;
   /** The session that claimed the row, where its drain runs. */
   resumeIn: string | null;
+  /** The board the row is on, so the re-queue resolves the same one. */
+  collectionId: string | null;
+  partition: string | null;
+  /** The drain the re-queue dispatches. */
+  drain: string | null;
+  flowKind: string | null;
 };
+
+const decidedSchema = messageDoorOutputSchema.extend({
+  requeue: z.boolean(),
+  resumeIn: z.string().nullable(),
+  collectionId: z.string().nullable(),
+  partition: z.string().nullable(),
+  drain: z.string().nullable(),
+  flowKind: z.string().nullable(),
+});
+
+/** A decision that re-queues nothing. */
+function answered(outcome: MessageDoorOutput["outcome"], taskId: string): Decided {
+  return { outcome, taskId, requeue: false, resumeIn: null, collectionId: null, partition: null, drain: null, flowKind: null };
+}
 
 /** Decide what a person's line does to the run, and do it. */
 async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockContext): Promise<Decided> {
-  const tasks = await deps.boardTasks(ctx);
-  const linked = linkedRow(tasks, ctx.session.identity.id);
-  const row = linked ?? (await claimedRow(deps, tasks, ctx));
+  const found = await findRun(deps, ctx);
   // No run has worked in this session: the task never started here (BR-14).
-  if (row === undefined) throw new TurnRefused("not-started");
+  if (found === undefined) throw new TurnRefused("not-started");
+  const { board, row } = found;
+  const linked = found.linked ? row : undefined;
 
   // The run's own person only, refused as a run that does not exist (BR-6).
-  if (deps.boardCollection.scope === "org") {
+  if (board.orgScoped) {
     const owner = runOwnerOf(row);
     if (owner !== null && !isRunOwner(owner, runPrincipal(ctx))) throw new TurnRefused("no-run");
   }
   if (isTerminalStatus(row.status)) throw new TurnRefused("task-finished");
 
-  const payload = rowPayloadSchema.safeParse(row.input);
-  if (!payload.success) throw new TurnRefused("no-run");
-  const { issue, phase } = payload.data;
+  const identity = board.runOf === undefined ? payloadRun(row) : board.runOf(row);
+  if (identity === undefined) throw new TurnRefused("no-run");
+  const { issue, phase } = identity;
 
   // A run whose harness never confirmed a coding session has nothing to
   // continue: its next attempt would start fresh, and the line would reach a
   // conversation that never saw the work. A running attempt with none yet is
   // still starting, and is waited for instead.
-  const topic = runTopic(deps.boardCollectionId, issue, phase);
+  const topic = runTopic(segmentOf(board), issue, phase);
   const keep = (forAttempt: number) =>
     keepTurn(ctx, { issue, phase, forAttempt, requestId: ctx.request.identity.id, message });
   let turnKey: string;
@@ -332,16 +426,20 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
 
   try {
     return starting
-      ? await continueOnceStarted(deps, tasks, row, topic, turnKey, ctx)
-      : await continueRun(deps, tasks, row, ctx);
+      ? await continueOnceStarted(board, row, topic, turnKey, ctx)
+      : await continueRun(board, row, ctx);
   } catch (error) {
     // Anything unexpected leaves the kept turn for the next attempt.
     if (!(error instanceof TurnRefused)) throw error;
-    if ((await withdrawTurn(ctx, turnKey)) === "delivered") {
-      return { outcome: "continuing", taskId: row.id, requeue: false, resumeIn: null };
-    }
+    if ((await withdrawTurn(ctx, turnKey)) === "delivered") return answered("continuing", row.id);
     throw error;
   }
+}
+
+/** A feature row's run identity: its `{ issue, phase }` payload. */
+function payloadRun(row: Task): DoorRunIdentity | undefined {
+  const payload = rowPayloadSchema.safeParse(row.input);
+  return payload.success ? payload.data : undefined;
 }
 
 /**
@@ -349,13 +447,18 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
  * read when it started, so a row the attempt settled since reads as running
  * there. A conditional update that returns what it finds and changes nothing
  * reads the committed row, and writes nothing.
+ *
+ * A board kept per partition stores a row under its partition's segment
+ * (orchestration's layout: `<partition segment>/<task id>`).
  */
 async function storedRow(
   ctx: BlockContext,
-  collectionId: string,
+  board: MessageDoorBoard,
   taskId: string,
 ): Promise<Record<string, unknown> | undefined> {
-  const ref = await resolveResourceCollection(ctx, collectionId)?.getOptional(taskId);
+  const { collectionId, partition } = board.tasks;
+  const key = partition === undefined ? taskId : `${encodeUserSegment(partition)}/${taskId}`;
+  const ref = await resolveResourceCollection(ctx, collectionId)?.getOptional(key);
   if (ref === undefined) return undefined;
   return readCommitted<Record<string, unknown>, Record<string, unknown> | undefined>(ref, (current) => current);
 }
@@ -367,8 +470,7 @@ async function storedRow(
  * snapshot it started with. See "A run that is still starting" above.
  */
 async function continueOnceStarted(
-  deps: MessageDoorDeps,
-  tasks: TaskCollectionRef,
+  board: MessageDoorBoard,
   row: Task,
   topic: string,
   turnKey: string,
@@ -380,12 +482,10 @@ async function continueOnceStarted(
     // was not taken by this attempt, and stopping it loses nothing.
     const session = await readConfirmedSession(ctx, topic, row.attempts);
     // The attempt took the line into its own prompt: it acts on it now.
-    if ((await turnTakenBy(ctx, turnKey)) !== null) {
-      return { outcome: "continuing", taskId: row.id, requeue: false, resumeIn: null };
-    }
-    if (session !== null) return continueRun(deps, tasks, row, ctx);
+    if ((await turnTakenBy(ctx, turnKey)) !== null) return answered("continuing", row.id);
+    if (session !== null) return continueRun(board, row, ctx);
 
-    const stored = await storedRow(ctx, deps.boardCollectionId, row.id);
+    const stored = await storedRow(ctx, board, row.id);
     const status = stored?.status;
     if (typeof status === "string" && isTerminalStatus(status as Task["status"])) {
       throw new TurnRefused("finished-first");
@@ -393,7 +493,7 @@ async function continueOnceStarted(
     if (status !== "in_progress" || stored?.attempts !== row.attempts) {
       // The attempt ended. If it named its session on the way out, the run
       // continues from it; if not, it had none to continue.
-      if ((await readConfirmedSession(ctx, topic, row.attempts)) !== null) return continueRun(deps, tasks, row, ctx);
+      if ((await readConfirmedSession(ctx, topic, row.attempts)) !== null) return continueRun(board, row, ctx);
       throw new TurnRefused("cannot-continue");
     }
     return undefined;
@@ -403,18 +503,18 @@ async function continueOnceStarted(
 }
 
 /** With the turn kept: stop the running attempt and park the row for it, or leave it kept. */
-async function continueRun(
-  deps: MessageDoorDeps,
-  tasks: TaskCollectionRef,
-  row: Task,
-  ctx: BlockContext,
-): Promise<Decided> {
-  const kept = { outcome: "kept" as const, taskId: row.id, requeue: false, resumeIn: null };
-  const continuing = {
-    outcome: "continuing" as const,
+async function continueRun(board: MessageDoorBoard, row: Task, ctx: BlockContext): Promise<Decided> {
+  const { tasks } = board;
+  const kept = answered("kept", row.id);
+  const continuing: Decided = {
+    outcome: "continuing",
     taskId: row.id,
     requeue: true,
     resumeIn: row.claimedBy?.sessionId ?? null,
+    collectionId: tasks.collectionId,
+    partition: tasks.partition ?? null,
+    drain: board.drain.drain,
+    flowKind: board.drain.flowKind ?? null,
   };
 
   if (row.status === "parked") return row.parkedForTurn === true ? continuing : kept;
@@ -428,7 +528,7 @@ async function continueRun(
   // the row, the turn reached no one. Otherwise the kept turn stands and the
   // board decides what follows, which is also what an Interrupt gets (BR-17).
   if (first === "already-finished") {
-    const status = (await storedRow(ctx, deps.boardCollectionId, row.id))?.status;
+    const status = (await storedRow(ctx, board, row.id))?.status;
     if (typeof status === "string" && isTerminalStatus(status as Task["status"])) {
       throw new TurnRefused("finished-first");
     }
@@ -451,7 +551,7 @@ async function continueRun(
   // Park it for a turn, fenced to the attempt that was stopped. Refused when
   // that attempt settled the row first, or another claim holds it.
   const parked = await tasks.awaitReview(row.id, TURN_PARK_NOTE, {
-    claim: ticketForClaim(tasks.collectionId, row),
+    claim: ticketForClaim(tasks.collectionId, row, tasks.partition),
     forTurn: true,
   });
   if (parked.outcome !== "declined") return continuing;
@@ -462,29 +562,31 @@ async function continueRun(
 }
 
 /**
- * Re-queue a row parked for a turn without charging it, and run the board's
+ * Re-queue a row parked for a turn without charging it, and run its board's
  * drain in the session that claimed it, so the next attempt starts now in the
  * run's own session. Any failure here answers `kept`: the turn is kept and the
  * attempt stopped, so the run gets the line from whatever runs the row next.
  */
-async function requeue(
-  deps: MessageDoorDeps,
-  options: MessageDoorOptions,
-  decided: Decided,
-  ctx: BlockContext,
-): Promise<MessageDoorOutput> {
+async function requeue(deps: MessageDoorDeps, decided: Decided, ctx: BlockContext): Promise<MessageDoorOutput> {
   const { outcome, taskId } = decided;
   if (!decided.requeue) return { outcome, taskId };
   const kept = { outcome: "kept" as const, taskId };
   try {
-    const unparked = await (await deps.boardTasks(ctx)).unpark(taskId);
+    // The board the decision was made on, resolved again for this step.
+    const board = (await deps.boards(ctx)).find(
+      (candidate) =>
+        candidate.tasks.collectionId === decided.collectionId &&
+        (candidate.tasks.partition ?? null) === decided.partition,
+    );
+    if (board === undefined) return kept;
+    const unparked = await board.tasks.unpark(taskId);
     // Someone re-queued it first; the turn is kept for what they started.
     if (unparked.outcome !== "recorded") return kept;
-    if (decided.resumeIn === null) return kept;
+    if (decided.resumeIn === null || decided.drain === null) return kept;
     const drained = await dispatchThroughSeam(ctx, {
       type: "internal",
-      action: options.drain,
-      ...(options.flowKind !== undefined ? { flowKind: options.flowKind } : {}),
+      action: decided.drain,
+      ...(decided.flowKind !== null ? { flowKind: decided.flowKind } : {}),
       session: { id: decided.resumeIn },
       payload: {},
       from: `${deps.name}-message-requeue`,
@@ -495,34 +597,30 @@ async function requeue(
   }
 }
 
-function buildDoorSequencer(deps: MessageDoorDeps, options: MessageDoorOptions) {
+function buildDoorSequencer(deps: MessageDoorDeps) {
   const decide = handler({
     name: `${deps.name}-message-door`,
     inputSchema: messageDoorInputSchema,
-    outputSchema: messageDoorOutputSchema.extend({
-      requeue: z.boolean(),
-      resumeIn: z.string().nullable(),
-    }),
-    uses: [deps.capability],
+    outputSchema: decidedSchema,
+    uses: [deps.capability, ...(deps.uses ?? [])],
     execute: async (input, ctx: BlockContext) => deliverTurn(deps, input.message, ctx),
   });
 
   const requeueStep = handler({
     name: `${deps.name}-message-requeue`,
-    inputSchema: messageDoorOutputSchema.extend({
-      requeue: z.boolean(),
-      resumeIn: z.string().nullable(),
-    }),
+    inputSchema: decidedSchema,
     outputSchema: messageDoorOutputSchema,
-    uses: [deps.capability],
-    execute: async (decided, ctx: BlockContext) => requeue(deps, options, decided, ctx),
+    uses: [deps.capability, ...(deps.uses ?? [])],
+    execute: async (decided, ctx: BlockContext) => requeue(deps, decided, ctx),
   });
   // So `defineFlow` checks the flow declares the drain entry.
-  markDispatcher(requeueStep, {
-    type: "internal",
-    action: options.drain,
-    ...(options.flowKind !== undefined ? { flowKind: options.flowKind } : {}),
-  });
+  if (deps.markDrain !== undefined) {
+    markDispatcher(requeueStep, {
+      type: "internal",
+      action: deps.markDrain.drain,
+      ...(deps.markDrain.flowKind !== undefined ? { flowKind: deps.markDrain.flowKind } : {}),
+    });
+  }
 
   return sequencer({
     name: `${deps.name}-message`,
@@ -533,18 +631,81 @@ function buildDoorSequencer(deps: MessageDoorDeps, options: MessageDoorOptions) 
     .step(requeueStep);
 }
 
-/**
- * Build the door for one manager. `options.drain` names the flow's `internal`
- * entry that runs the board's drain.
- */
-export function createMessageDoor(deps: MessageDoorDeps) {
-  return (options: MessageDoorOptions): MessageDoorAction => ({
-    block: buildDoorSequencer(deps, options),
+/** The action entry for a door over `deps`. */
+function doorAction(deps: MessageDoorDeps): MessageDoorAction {
+  return {
+    block: buildDoorSequencer(deps),
     inputSchema: messageDoorInputSchema,
     userMessage: (input) => input.message,
     description:
       "Send a person's message into this coding run. A running attempt stops and the run " +
       "continues the same coding session with the message; otherwise the message waits for " +
       "the next attempt.",
-  });
+  };
+}
+
+/** What a manager with a fixed board hands its door. */
+export interface FixedBoardDoorDeps {
+  name: string;
+  boardCollection: DefinedTaskCollection;
+  /** The manager's own collections, plus the turn record. */
+  capability: DefinedCapability;
+  /** Resolve the board's rows as the substrate sees them. */
+  boardTasks: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+}
+
+/**
+ * Build the door for one manager's fixed board. `options.drain` names the
+ * flow's `internal` entry that runs the board's drain.
+ */
+export function createMessageDoor(deps: FixedBoardDoorDeps) {
+  return (options: MessageDoorOptions): MessageDoorAction =>
+    doorAction({
+      name: deps.name,
+      capability: deps.capability,
+      markDrain: options,
+      boards: async (ctx) => [
+        { tasks: await deps.boardTasks(ctx), orgScoped: deps.boardCollection.scope === "org", drain: options },
+      ],
+    });
+}
+
+/** How a host builds one door over every board its managers run rows from. */
+export interface HarnessMessageDoorOptions {
+  /** Names the door's blocks. Default `"harness-manager"`. */
+  name?: string;
+  /**
+   * The boards the calling session's run may be on, resolved per request from
+   * server state (the session's own fields, a resolver keyed by them), never
+   * from the request's input (BP-031). Each names its drain and, for rows with
+   * no `{ issue, phase }` payload, how its runs are keyed (`runOf`).
+   */
+  boards: (ctx: BlockContext) => Promise<readonly MessageDoorBoard[]>;
+  /**
+   * Capabilities the door's blocks hold, for the board ledgers `boards`
+   * resolves when the flow doesn't install them itself.
+   */
+  uses?: readonly DefinedCapability[];
+}
+
+/**
+ * A person's message into a coding run, for a flow whose runs come from more
+ * than one board: a manager that reads its board from the claim, or several
+ * managers on one flow. The same door a fixed-board manager's `messageDoor`
+ * builds, with the host saying which boards the calling session's run may be
+ * on. Every manager behind it must use the default run-record and turn
+ * collections, which every `harnessManager` does.
+ *
+ * Declare it as the flow's action: `actions: { message: harnessMessageDoor({ boards }) }`.
+ *
+ * @param options The boards the calling session's run may be on, and the door's name.
+ * @returns The action entry.
+ */
+export function harnessMessageDoor(options: HarnessMessageDoorOptions): MessageDoorAction {
+  const name = options.name ?? "harness-manager";
+  const capability = defineCapability({
+    name: `harness-manager-door:${name}`,
+    resources: { [RUNS]: runRecordCollection, [TURNS]: turnCollection },
+  }) as unknown as DefinedCapability;
+  return doorAction({ name, capability, boards: options.boards, ...(options.uses === undefined ? {} : { uses: options.uses }) });
 }

@@ -518,9 +518,12 @@ const reviewerFlow = defineFlow({
 | --- | --- |
 | `name` | Names the entry's blocks. |
 | `turn` | The flow's turn for one message: `{ message }` in, the answer out. |
-| `mailboxLists` | Optional. [Mailbox boards](./mailboxes.md#handing-a-row-to-the-worker-it-names) the entry also takes tasks from, each by the board's id, as `mailboxBoardIds(mailboxes)` returns it. |
+| `block` | Instead of `turn`. A block that takes the task itself (`taskId`, `goal`, `context`, `input`, `attempts`), plus `claim`, the board and partition the task was claimed from. For a flow whose work isn't one message in and one answer out, such as a coding run. Give `turn` or `block`, not both. |
+| `mailboxLists` | Optional. [Mailbox boards](./mailboxes.md#handing-a-row-to-the-worker-it-names) the entry also takes tasks from, each by the board's id, as `mailboxBoardIds(mailboxes)` returns it. When your flow already declares one of those boards as a resource, pass its declaration, `{ id, collection }`, instead of the id, so the entry uses that declaration rather than adding a second one under the same key. |
 
-Each task runs as one turn, in a task session of its own. The task as filed is the turn's message, and what the turn returns is the task's result. When the task completes or fails, the conversation that filed it hears so, in a line under the worker's name, as in [Hearing how it went](#hearing-how-it-went).
+With `turn`, each task runs as one turn, in a task session of its own. The task as filed is the turn's message, and what the turn returns is the task's result. When the task completes or fails, the conversation that filed it hears so, in a line under the worker's name, as in [Hearing how it went](#hearing-how-it-went).
+
+A coding worker built on the [harness manager](../orchestration/harness-manager.md) uses `block`: the manager takes the task, works it in its own checkout, and returns the answer. The conversation hears it the same way. The `claim` comes from the board, never from the task, so a task can't point its run at another board.
 
 A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, and `addTask` refuses them.
 

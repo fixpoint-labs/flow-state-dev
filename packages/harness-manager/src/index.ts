@@ -19,6 +19,8 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
+ * - `harnessMessageDoor`, the message door for a flow whose runs come from
+ *   more than one board.
  * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
@@ -46,12 +48,21 @@ export {
   describeTenant,
   withDeadline,
   harnessTaskInputSchema,
+  harnessClaimSchema,
+  harnessManagerInputSchema,
+  harnessJudgeInputSchema,
+  harnessJudgeVerdictSchema,
+  MAX_ANSWER_CHARS,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
   HarnessRunParked,
   HarnessRunRefused,
   RUNS,
   type ManagerOptions,
+  type HarnessLedgers,
+  type HarnessJudge,
+  type HarnessJudgeInput,
+  type HarnessJudgeVerdict,
   type HarnessSlot,
   type HarnessFeeds,
   type PhaseSpec,
@@ -62,6 +73,21 @@ export {
   type QuestionAnnouncement,
   type RequestIdentityContext,
 } from "./manager";
+
+// ── A person's message into a run, for a host whose runs span boards ────────
+export {
+  harnessMessageDoor,
+  messageDoorInputSchema,
+  messageDoorOutputSchema,
+  TurnRefused,
+  type HarnessMessageDoorOptions,
+  type MessageDoorAction,
+  type MessageDoorBoard,
+  type MessageDoorOptions,
+  type MessageDoorOutput,
+  type DoorRunIdentity,
+  type TurnRefusalReason,
+} from "./door";
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
@@ -91,6 +117,12 @@ export {
   type PlaceState,
   type CollectionHoldingContext,
 } from "./run-record";
+/**
+ * The board segment of a run's identity: the ledger id, plus its partition on
+ * a board read from the claim. `runTopic(runBoardSegment(ledgerId, partition),
+ * issue, phase)` is that run's record key.
+ */
+export { runBoardSegment } from "./workspace";
 
 // ── The question inbox ──────────────────────────────────────────────────────
 //

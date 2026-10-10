@@ -20,9 +20,10 @@
  * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
- * 1. **The board and the coder's door** (`board.mts`): the EM's board hands a
- *    row across flows, and the coder takes it through a door on the same
- *    ledger, with no board of its own. The ledger is the mailbox's.
+ * 1. **The board and the coder's entry** (`board.mts`, `coder.mts`): the EM's
+ *    board hands a row across flows, and the coder takes it through its one
+ *    `work` entry on the same ledger, with no board of its own, beside the
+ *    tasks a conversation files for it. The ledger is the mailbox's.
  * 2. **The assignee → worker address.** The board routes its own `coder`
  *    assignee to the worker the caller supplies, which is what lets a
  *    control point it at the wrong worker and watch the negative claim go
@@ -111,7 +112,8 @@ import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { ASSIGNEE, type FeatureLedger } from "./board.mts";
 import { DOCUMENT_KEY, INSPECT_ENTRY, SEAT_FACTS_COMPONENT, seatOf } from "./seat-config.mts";
-import { defineImplementPhase, noteStartingFiles } from "./phase.mts";
+import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
+import { defineCoderJudge } from "./judge.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -626,6 +628,18 @@ export interface OpenLabOptions {
    * creates projects".
    */
   withoutProjectTools?: boolean;
+  /**
+   * Build the coder's managers with no judge: a conversation's task settles
+   * on its phase's check alone. The red state of "an answer Jev judged as
+   * missing the goal doesn't close as completed".
+   */
+  withoutJudge?: boolean;
+  /**
+   * Give the coder its `work` entry as it was before it took a conversation's
+   * tasks: rows from the feature board only. The red state of "a
+   * conversation's task for the coder runs, and the conversation hears it".
+   */
+  featureDoorOnly?: boolean;
 }
 
 /** A workspace host for the lab to build: where its places live, and which remotes it may reach. */
@@ -815,6 +829,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     "sourceRepo" in options.workspace
       ? undefined
       : labWorkspaceHost(options.workspace, ledger.id, options.saveNothing === true);
+  // A conversation's answer task works in its conversation's project, or the
+  // one it names, and never in the board's: a source with no board.
+  const answerHost = answerWorkspaceHost(options.workspace, options.saveNothing === true);
   if (options.saveNothing === true && workspaceHost === undefined) {
     throw new Error("openLab: `saveNothing` needs a `{ root, remotes }` workspace; a fixed repository keeps no files");
   }
@@ -891,9 +908,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
   });
-  // The coordinator a coder seat's message door re-runs the board on, read off
-  // the tree like the board. Two would be a guess, so the lab refuses; none
-  // leaves the coder with no door, since nothing re-runs its board.
+  // The coordinator a coder worker's message door re-runs the feature board on,
+  // read off the tree like the board. Two would be a guess, so the lab refuses;
+  // none leaves the coder's feature runs taking no message, since nothing
+  // re-runs their board.
   const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_KIND);
   if (emRecords.length > 1) {
     throw new Error(`the tree declares ${emRecords.length} EM seats; this lab runs one`);
@@ -904,9 +922,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (emRecords.length === 0 && options.ask !== undefined) {
     throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found 0`);
   }
+  const coderSeatOf = seatOf(installation, CODER_KIND);
   const coderKind = defineCoderWorkerFlow({
     installation,
     ledger,
+    answerWorkspace: answerHost,
+    answerPhase: defineAnswerPhase({ seatOf: coderSeatOf }),
+    ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
+    ...(options.featureDoorOnly === true ? { featureDoorOnly: true } : {}),
     ...(emRecords[0] === undefined ? {} : { coordinatorFlow: EM_KIND }),
     // What a files run starts on, kept so its done-condition asks for a change.
     harness: (feeds) =>
@@ -925,7 +948,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // Known limit: this is a snapshot, so a charter edited while the lab is
     // open does not reach later prompts. A real host should read it per run.
     phase: defineImplementPhase({
-      seatOf: seatOf(installation, CODER_KIND),
+      seatOf: coderSeatOf,
       requireAcceptance: options.requireAcceptance === true,
       mailbox: {
         id: mailbox.id,
@@ -1558,6 +1581,23 @@ function labWorkspaceHost(options: LabWorkspaceHost, boardId: string, saveNothin
     root: options.root,
     remotes: { allow: [...options.remotes.allow] },
     source: projectWorkspace({ board: { id: boardId } }),
+  });
+  if (!saveNothing) return host;
+  return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
+}
+
+/**
+ * The coder's workspace host for a conversation's answer task:
+ * `localWorkspaceHost` beside the lab's own, with `projectWorkspace()` and no
+ * board as its source, so a task works in its conversation's project or the
+ * one it names and is refused with neither. A lab on one fixed repository
+ * reaches no remote here: only a project with no repository can answer there.
+ */
+function answerWorkspaceHost(workspace: WorkspaceConfig | LabWorkspaceHost, saveNothing: boolean): WorkspaceHost {
+  const host = localWorkspaceHost({
+    root: join(workspace.root, "answers"),
+    remotes: { allow: "remotes" in workspace ? [...workspace.remotes.allow] : [] },
+    source: projectWorkspace(),
   });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
