@@ -74,6 +74,10 @@ interface SmokePost {
   text: string;
   /** The specialist whose purpose the post names; none for a post any specialist may take. */
   want?: Role;
+  /** For a follow-up: the index of the post it leans on. */
+  followUpOf?: number;
+  /** Words any one of which the follow-up's answer names its subject by. */
+  subject?: string[];
 }
 
 interface Fixture {
@@ -895,6 +899,16 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
       else if (want !== undefined && answers[0]!.label !== want) fail("smoke", `post ${i + 1} ${JSON.stringify(post.text)} was answered by ${answers[0]!.label} (want ${want})`);
       if (worked.filter((s) => s !== undefined && s !== answers[0]?.label).length > 0) {
         fail("smoke", `post ${i + 1}: the panel showed ${worked.join(", ")} working (want the answering specialist alone)`);
+      }
+      if (post.followUpOf !== undefined && answers.length === 1) {
+        const antecedent = posts[post.followUpOf]!;
+        const theirs = answeredBy[post.followUpOf];
+        const subject = (post.subject ?? []).filter((word) => answers[0]!.body.toLowerCase().includes(word));
+        evidence.push(`follow-up: ${JSON.stringify(antecedent.text)} answered by ${theirs?.label ?? "nobody"}: ${JSON.stringify(theirs?.body ?? "")}; ${JSON.stringify(post.text)} answered by ${answers[0]!.label}: ${JSON.stringify(answers[0]!.body)}`);
+        if (theirs === undefined || answers[0]!.label !== theirs.label) {
+          fail("smoke", `the follow-up was answered by ${answers[0]!.label}, not ${theirs?.label ?? "its antecedent's specialist"}`);
+        }
+        if (subject.length === 0) fail("smoke", `the follow-up's answer names none of ${JSON.stringify(post.subject)}: ${JSON.stringify(answers[0]!.body)}`);
       }
       // A run still working (or no answer to wait out) means the next post could draw this one's answer.
       if (f.clearedAt === undefined) {
