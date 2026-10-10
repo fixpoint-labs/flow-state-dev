@@ -80,7 +80,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "./worker-task-entry";
 import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";

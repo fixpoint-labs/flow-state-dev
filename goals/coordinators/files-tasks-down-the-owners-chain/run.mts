@@ -166,7 +166,7 @@ const refusalOf = (acted: { status: string; output?: any; error?: string } | nul
   return undefined;
 };
 
-/** Leg a: Alice's coordinator files a task for her `agent` delegate; the interim rule on a task session's filing. */
+/** Leg a: Alice's coordinator files a task for her `agent` delegate; a delegate's task session splits its own. */
 function gradeA(o: any, store: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const A = o.a;
@@ -216,20 +216,38 @@ function gradeA(o: any, store: string): LegResult {
   }
   r.notes.push(`filed ${A.taskId} → ${row?.status} in ${t?.id ?? "no session"}; notice lines ${lines.length}; filing took ${A.filing.endedAt - A.filing.startedAt} ms`);
 
-  // The interim rule (FIX-1802 P2 replaces it with the split): a delegate's
-  // task session can't file yet. Since FIX-1802 P1 its turn carries no task
-  // tool at all, so "by its tool" is that no `addTask` it ran was accepted.
+  // The split (FIX-1802 P2): a delegate's task session files a piece for its
+  // own delegate, by its turn's tool; its task waits on the piece and
+  // completes from it; the app files on that session's board too.
   const S = A.split;
   const subRow = rows.find((x) => x.id === S.taskId);
   const subSessions = all.filter((s) => s.state.taskId === S.taskId && S.taskId !== null);
-  const subTool = subSessions.length === 0 ? [] : items(store, subSessions[0]!.id, "tool_output").filter((i) => i.toolCall?.name === "addTask").map(toolOutput);
-  const pieces = allTaskRows(store).filter((x) => subSessions.some((s) => x.partition.startsWith(`${s.id}~`)));
-  if (subRow?.status !== "completed" || subSessions.length !== 1 || subTool.some((x) => x?.ok !== false) || refusalOf(S.app) === undefined || pieces.length > 0) {
+  const sub = subSessions[0];
+  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => i.toolCall?.name === "addTask").map(toolOutput);
+  const pieces = allTaskRows(store).filter((x) => sub !== undefined && x.partition.startsWith(`${sub.id}~`));
+  const toolPiece = pieces.find((x) => x.goal === `a piece of: Plan the ${S.word} rollout`);
+  const pieceRun = toolPiece === undefined ? undefined : all.find((s) => s.state.taskId === toolPiece.id);
+  const fromPieces = ((subRow?.output as { pieces?: Array<{ taskId?: string; status?: string }> } | undefined)?.pieces ?? []).map((p) => `${p.taskId}:${p.status}`);
+  const heardSub = ((conv?.state.taskNotices as string[] | undefined) ?? []).filter((k) => k.startsWith(`${S.taskId}:`) && k.endsWith(":completed"));
+  if (
+    subRow?.status !== "completed" ||
+    subSessions.length !== 1 ||
+    subTool.length !== 1 ||
+    subTool[0]?.ok !== true ||
+    toolPiece?.status !== "completed" ||
+    toolPiece.assignee !== "desk.alpha" ||
+    pieceRun?.parentSessionId !== sub?.id ||
+    fromPieces.join(",") !== `${toolPiece.id}:completed` ||
+    (toolPiece.completedAt ?? Infinity) > (subRow.completedAt ?? -Infinity) ||
+    refusalOf(S.app) !== undefined ||
+    pieces.length !== 2 ||
+    heardSub.length !== 1
+  ) {
     r.failures.push(
-      `a:split-refused — wanted desk.sub's task session to file nothing, by its turn and by the app, with nothing stored; its task ${subRow?.status ?? "missing"}, sessions ${subSessions.length}, its addTask answered ${show(subTool)}, the app's ${show(S.app)}, pieces stored ${pieces.length}`,
+      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's addTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its addTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
     );
   } else {
-    r.notes.push(`desk.sub's task session filed nothing: its turn's addTask ${subTool.length === 0 ? "wasn't a tool" : `answered ${show(subTool[0])}`}; the app's ${show(S.app)}`);
+    r.notes.push(`desk.sub split its task: one piece for desk.alpha, completed, then its task; the app's ${show(S.app)}`);
   }
   return r;
 }

@@ -14,8 +14,11 @@
  *   run.
  * - **The grant** (FIX-1802 D1). A session files when its delegate list holds
  *   one that takes a task now: the same list the roster reads, read on every
- *   call, server-side. A task session files nothing yet (FIX-1802 P2 lifts
- *   that with the split).
+ *   call, server-side. A task session files too: its pieces, which its task
+ *   then waits on (`./split`).
+ * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
+ *   breadth is refused in the ref the resolver returns (`./chain`), as the
+ *   task substrate refuses a full board: `total_task_cap_exceeded`.
  * - **The tools and the actions.** Orchestration's nine task tools, on the
  *   model's turn and as public actions, over one resolver and one roster. The
  *   tools are one capability whose nine are on a turn only while the session
@@ -30,7 +33,8 @@
  *   on the board starts every row in that state.
  * - **The outbox.** Any action on the board, and every run of it, replays the
  *   notices its rows still owe into the conversation (orchestration's notice
- *   module).
+ *   module), and a run of the board into each parked split row's task
+ *   session, which settles it when its pieces are done (`./split`).
  */
 import {
   resumeOwedAsks,
@@ -42,12 +46,15 @@ import {
 } from "@flow-state-dev/orchestration";
 import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
+  TaskCapExceededError,
   isClaimable,
+  isTerminalStatus,
   owedNotices,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
-  type TaskWorkerInput
+  type TaskWorkerInput,
+  type TaskWriteOutcome
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
@@ -58,21 +65,33 @@ import type { TaskDelegates } from "../delegates/worker-delegates";
 import {
   FILING_FLOW_STATE_KEY,
   FILING_SESSION_STATE_KEY,
+  TASK_CHAIN_STATE_KEY,
+  TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
+import { PIECE_OF, RUN_BOARD_ENTRY } from "./board-entries";
+import {
+  DEFAULT_TASK_CHAIN_LIMIT,
+  MAX_TASK_DEPTH,
+  chainEntryKey,
+  deleteChain,
+  chainOfFiling,
+  markAddedInChain,
+  reserveInChain,
+  taskChainOf,
+  taskChainResources
+} from "./chain";
 import { filingSessionIdOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
   conversationLedger,
-  conversationLedgerResources,
-  ownConversationLedger
+  conversationLedgerAt,
+  conversationLedgerResources
 } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
-
-/** The internal entry a filing dispatches to run its conversation's board. */
-export const RUN_BOARD_ENTRY = "runTaskBoard";
+import { cascadeIfSplit, pieceOwnerOf, replaySplits, settleIfOwedLater } from "./split";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -94,11 +113,13 @@ export interface ConversationBoardOptions {
    * hands over sends its notice back, as the task session's `filingFlow`.
    */
   flowKind: string;
+  /** The most tasks under one top task, read on every filing. Omitted, {@link DEFAULT_TASK_CHAIN_LIMIT}. */
+  chainLimit?: () => number | undefined;
 }
 
-/** Whether the running session is a task session: one a conversation's board opened to work a task. */
-export function isTaskSession(ctx: { readonly session: { readonly state: unknown } }): boolean {
-  return typeof (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] === "string";
+/** A new task's id, minted before its add so its place in the chain is reserved first. */
+function newTaskId(): string {
+  return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
 }
 
 /** A roster over the session's task-taking delegates, naming why each other one can't take a task. */
@@ -200,14 +221,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /**
    * Whether the running session files now (FIX-1802 D1): one of its
-   * delegates takes a task, read from its list as it stands, and it isn't a
-   * task session. Server-side only: the list is server-written state, never
-   * input.
+   * delegates takes a task, read from its list as it stands. Server-side
+   * only: the list is server-written state, never input.
    */
-  const files = async (ctx: BlockContext): Promise<boolean> => {
-    if (isTaskSession(ctx)) return false;
-    return (await options.delegates(ctx)).available.size > 0;
-  };
+  const files = async (ctx: BlockContext): Promise<boolean> => (await options.delegates(ctx)).available.size > 0;
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than
@@ -244,16 +261,25 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
     },
     // The task session is born naming its worker, the task, the session
-    // that filed it and the flow that session runs on, each a readonly field
-    // the worker flow's create check confirms; all from server-written data.
-    state: async (task, ctx) => ({
-      [WORKER_ID_STATE_KEY]: task.assignee,
-      [FILING_SESSION_STATE_KEY]: await filingSessionIdOf(ctx.session),
-      [FILING_FLOW_STATE_KEY]: options.flowKind,
+    // that filed it and the flow that session runs on, its own flow, and its
+    // place in the chain (the board its task is on, and the chain's top),
+    // each a readonly field the worker flow's create check confirms; all
+    // from server-written data.
+    state: async (task, ctx) => {
+      const partition = await filingSessionIdOf(ctx.session);
+      const flow = (await options.delegates(ctx)).available.get(task.assignee);
       // The session's task: a follow-up's root, though the root's own
       // hand-over has already opened it, so this is only ever the root.
-      [TASK_ID_STATE_KEY]: claimOf(ctx)?.followUpOf ?? task.taskId
-    })
+      const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
+      return {
+        [WORKER_ID_STATE_KEY]: task.assignee,
+        [FILING_SESSION_STATE_KEY]: partition,
+        [FILING_FLOW_STATE_KEY]: options.flowKind,
+        [TASK_ID_STATE_KEY]: taskId,
+        [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
+        ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {})
+      };
+    }
   };
   const handOffToDelegate = markDispatcher(
     handler({
@@ -282,12 +308,30 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /**
    * The ledger the tools and actions write through: the running session's
-   * own board, guarded. A filing or an assign that leaves a row startable
-   * wakes the board, and a retried one wakes it again; so does an answer. No caller write
-   * reaches a notice marker.
+   * own board, guarded. A filing past the chain's limits is refused before
+   * anything is written. A filing or an assign that leaves a row startable
+   * wakes the board, and a retried one wakes it again; so does an answer. No
+   * caller write reaches a notice marker or a split marker. A write that ends
+   * a split task cancels its open pieces, down the chain.
    */
-  const guarded = (ctx: BlockContext, ref: TaskCollectionRef): TaskCollectionRef => {
+  const guarded = (ctx: BlockContext, ref: TaskCollectionRef, partition: string): TaskCollectionRef => {
     const addTask: TaskCollectionRef["addTask"] = async (init) => {
+      const id = init.id ?? newTaskId();
+      const chain = chainOfFiling(ctx, partition, id);
+      if (chain.depth > MAX_TASK_DEPTH) {
+        // The board one past the deepest takes no task.
+        throw new TaskCapExceededError({ cap: "total", limit: MAX_TASK_DEPTH, attempted: chain.depth, collectionId: ref.collectionId });
+      }
+      const entry = chainEntryKey(partition, id);
+      if (chain.top !== undefined) {
+        await reserveInChain(ctx, {
+          top: chain.top,
+          entry,
+          limit: options.chainLimit?.() ?? DEFAULT_TASK_CHAIN_LIMIT,
+          now: ref.now(),
+          collectionId: ref.collectionId
+        });
+      }
       let assignee = init.assignee;
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
@@ -295,19 +339,54 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const delegates = await options.delegates(ctx);
         if (delegates.available.size === 1) assignee = [...delegates.available.keys()][0]!;
       }
-      const metadata = callerMetadata(init.metadata);
+      // In a task session, the row is a piece of the task it was filed for:
+      // server-written, so its settle reads only its own pieces.
+      const owner = await pieceOwnerOf(ctx);
+      const given = callerMetadata(init.metadata);
+      const metadata = owner === undefined ? given : { ...(given ?? {}), [PIECE_OF]: owner };
       const added = await ref.addTask({
         ...init,
+        id,
         maxAttempts: init.maxAttempts ?? TASK_ATTEMPTS,
         ...(assignee !== undefined ? { assignee } : {}),
         ...(metadata !== undefined ? { metadata } : {})
       });
+      if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
       if (assignee !== undefined) await wake(ctx);
       return added;
     };
+    /**
+     * The options a write on this board presents: a claim the running
+     * session holds on a row of another board (a task session's own task)
+     * asks nothing of this one, so it is left off.
+     */
+    const ownClaim = (guards: unknown): unknown => {
+      const claim = (guards as { claim?: { partition?: string } } | undefined)?.claim;
+      return claim !== undefined && claim.partition !== partition ? { ...(guards as object), claim: undefined } : guards;
+    };
+    /** A write that may end a split task: cancel its open pieces once it lands. */
+    const ending =
+      (write: (id: string, ...rest: any[]) => Promise<TaskWriteOutcome>) =>
+      async (id: string, ...rest: any[]): Promise<TaskWriteOutcome> => {
+        const before = ref.get(id);
+        const last = rest.length - 1;
+        const args = last >= 0 && rest[last] !== null && typeof rest[last] === "object" ? [...rest.slice(0, last), ownClaim(rest[last])] : rest;
+        const outcome = await write(id, ...args);
+        await cascadeIfSplit(ctx, before, outcome);
+        // A top task ended here takes its chain's count with it.
+        const after = ref.get(id);
+        if (taskChainOf(ctx) === undefined && after !== undefined && isTerminalStatus(after.status) && before?.status !== after.status) {
+          await deleteChain(ctx, { partition, taskId: id });
+        }
+        return outcome;
+      };
     return {
       ...ref,
       addTask,
+      complete: ending(ref.complete.bind(ref)) as TaskCollectionRef["complete"],
+      fail: ending(ref.fail.bind(ref)) as TaskCollectionRef["fail"],
+      cancel: ending(ref.cancel.bind(ref)) as TaskCollectionRef["cancel"],
+      block: ending(ref.block.bind(ref)) as TaskCollectionRef["block"],
       async addTasks(inits) {
         const added: Task[] = [];
         for (const init of inits) added.push(await addTask(init));
@@ -335,9 +414,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /** Every action on the board, and the model's every tool call, reach it here. */
   const resolver: TaskCollectionResolver = async (ctx) => {
-    // A task session keeps no board until FIX-1802 P2 lets it split.
-    if (isTaskSession(ctx)) return undefined;
-    const ref = await ownConversationLedger(ctx);
+    const partition = await filingSessionIdOf(ctx.session);
+    const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return undefined;
     // The outbox, on every touch, a read included. A crash after an ending's
     // write and before its notice's send (BR-26a), or a wake lost after an add
@@ -347,32 +425,49 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // task-taking delegate still run and are heard (FIX-1802 BR-5).
     if (hasStartable(ref)) await wake(ctx);
     await replayNotices(ctx, ref.list());
+    // And the settles owed down the chain: each parked split row's session
+    // settles its task once its pieces are done, this one's included, behind
+    // any turn it is running (FIX-1802 BR-17).
+    await replaySplits(ctx, ref.list());
+    await settleIfOwedLater(ctx);
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
     if (!(await files(ctx))) return undefined;
-    return guarded(ctx, ref);
+    return guarded(ctx, ref, partition);
   };
 
   /**
    * After a run: send what the rows owe, including what this run's own
-   * refusals and settled dead runs owe, and resume each turn an asked row's
+   * refusals and settled dead runs owe; resume each turn an asked row's
    * ending still owes (`resumeOwedAsks`): a run of the board is a touch, and
-   * not a turn.
+   * not a turn; run the board of each parked split row's session, down the
+   * chain; mark each of this board's pieces added in its chain (a crash
+   * between an add and its mark leaves it reserved, and the lease must never
+   * drop a piece that landed); and, in a task session whose pieces are all
+   * done, settle its task, behind any turn it is running.
    */
   const afterRun = handler({
     name: "conversation-board-after-run",
     inputSchema: z.unknown(),
     outputSchema: z.object({ replayed: z.number() }),
-    resources: { ...conversationLedgerResources },
-    execute: async (_input, ctx) => {
-      const ref = await ownConversationLedger(ctx as never);
+    resources: { ...conversationLedgerResources, ...taskChainResources },
+    execute: async (_input, rawCtx) => {
+      const ctx = rawCtx as unknown as BlockContext;
+      const partition = await filingSessionIdOf(ctx.session);
+      const ref = await conversationLedgerAt(ctx, partition);
       if (ref === undefined) return { replayed: 0 };
       // One of two resume touches, with the notice entry's (`./task-settled`),
       // which is the fast path and keeps the notice owed until the resume
       // lands. Neither has to win: the gate admits one answer and refuses the
       // other `already-resolved`, and either outcome clears `resumeOwed`.
       await resumeOwedAsks(ctx as never, ref);
-      return { replayed: await replayNotices(ctx as never, ref.list()) };
+      const rows = ref.list();
+      const replayed = await replayNotices(ctx, rows);
+      await replaySplits(ctx, rows);
+      const top = taskChainOf(ctx)?.top;
+      if (top !== undefined) await markAddedInChain(ctx, top, rows.map((row) => chainEntryKey(partition, row.id)));
+      await settleIfOwedLater(ctx);
+      return { replayed };
     }
   });
 
@@ -393,7 +488,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   const eight = taskToolsForTurn(resolver, roster);
   const tools = defineCapability({
     name: "taskTools",
-    resources: { ...conversationLedgerResources },
+    resources: { ...conversationLedgerResources, ...taskChainResources },
     presets: {
       tools: { controlTools: async (ctx) => ((await files(ctx as never)) ? eight(ctx as never) : []) },
       default: ["tools"]
@@ -409,8 +504,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     tools,
     /** The nine task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster),
-    /** The ledger, for the flow's `resources`. */
-    resources: conversationLedgerResources
+    /** The ledger and the chain records, for the flow's `resources`. */
+    resources: { ...conversationLedgerResources, ...taskChainResources }
   };
 }
 

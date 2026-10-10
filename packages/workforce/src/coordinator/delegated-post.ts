@@ -34,12 +34,8 @@
 import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, LLMMessage, RequestScopeHandle } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import {
-  COORDINATOR_KIND,
-  DELEGATED_POST_ENTRY,
-  DELEGATE_ANSWER_ACTION,
-  DELEGATE_MISSED_ACTION
-} from "./coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
+import { COORDINATOR_KIND, DELEGATE_ANSWER_ACTION, DELEGATE_MISSED_ACTION } from "./coordinator-keys";
 import { conversationLineSchema, linesField, type ConversationLine } from "./coordinator-lines";
 
 /** What a delegate is handed. */
