@@ -1867,9 +1867,6 @@ async function runActionAttempt<
   // from the replay log — so it can only ever resolve the gate this request
   // actually suspended at.
   let resumeContext: ResumeContext | undefined;
-  // The gate being resumed, read with the replay log below. How the resume
-  // resolves it is `resumeContext.resolution`.
-  let resumedGate: SuspensionRecord | null = null;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
   try {
@@ -1888,28 +1885,18 @@ async function runActionAttempt<
       // exactly that gate and re-suspends at any other.
       if (resumeContextRaw !== undefined) {
         const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-        resumedGate =
-          (await options.runtimeConfig.durabilityProvider?.loadSuspension(
-            requestId,
-            resumeContextRaw.suspensionId
-          )) ?? null;
         // How this resume resolves the gate, the one source the audit item and
-        // `ctx.suspend()` both read. Usually the gate's recorded status (a
-        // stopped ask continues with a `submit`, but was stopped, FIX-1816).
-        // An expiry is the exception: named only by the continuation that owns
-        // it (the sweep's re-drive, or a stop of a turn behind an expired
-        // approval), never read back from the gate, since an expiry write that
-        // raced a person's approve can leave `expired` on an approved gate
-        // (FIX-1846). Overwrites whatever the caller supplied otherwise.
+        // `ctx.suspend()` both read. An expiry is named only by the
+        // continuation that owns it (the sweep's re-drive, or a stop of a turn
+        // behind an expired approval), never read back from the gate, since an
+        // expiry write that raced a person's approve can leave `expired` on an
+        // approved gate (FIX-1846). Any other caller-supplied value is dropped;
+        // the gate's recorded status fills it in at the checkpoint read below.
         const expiryOwned = resumeContextRaw.action === "reject" && resumeContextRaw.resolution === "expired";
-        const recorded =
-          resumedGate !== null && resumedGate.status !== "pending" && resumedGate.status !== "expired"
-            ? resumedGate.status
-            : undefined;
         resumeContext = {
           ...resumeContextRaw,
           pendingBlockLogicalId,
-          resolution: expiryOwned ? "expired" : recorded
+          resolution: expiryOwned ? "expired" : undefined
         };
       }
     }
@@ -1990,7 +1977,7 @@ async function runActionAttempt<
     // `isAbortRequested` read per run.
     await pollAbortIntent();
 
-    // Resume mode: the suspension record (read above) + checkpoint restore the durable
+    // Resume mode: the suspension record + checkpoint restore the durable
     // sequencer's accumulator state. Same-request replay (FIX-811) reads from
     // this request's own id. Step skipping is no longer positional — completed
     // blocks are injected per-logical-path via `ctx._replayLog` (set below in
@@ -1999,7 +1986,18 @@ async function runActionAttempt<
     if (resumeContext !== undefined) {
       const provider = options.runtimeConfig.durabilityProvider;
       if (provider !== undefined) {
-        const suspension = resumedGate;
+        const suspension = await provider.loadSuspension(requestId, resumeContext.suspensionId);
+        // The gate's recorded status names the resolution when the action
+        // can't (a stopped ask continues with a `submit`, FIX-1816). Never a
+        // raced `expired`: an approve stays recorded `approved`.
+        if (
+          resumeContext.resolution === undefined &&
+          suspension !== null &&
+          suspension.status !== "pending" &&
+          suspension.status !== "expired"
+        ) {
+          resumeContext.resolution = suspension.status;
+        }
         if (suspension !== null && suspension.stepIndex >= 0) {
           // The suspension's `blockInstanceId` is the durable sequencer's
           // checkpoint key. In replay mode the request id is unchanged, so the

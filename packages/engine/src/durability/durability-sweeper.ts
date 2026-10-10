@@ -70,8 +70,7 @@ import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
 import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
-import { latestGateIdOf, RESUME_LEASE_MS } from "./resume-under-lease";
-import { generateId } from "../utils/generate-id";
+import { expireUnderLease, latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -411,19 +410,11 @@ async function enforceSuspensionExpiry(
         if (after?.status === "pending") stillPending.push(after);
         continue;
       }
-      // Re-load immediately before writing: an operator may have approved or
-      // rejected this suspension via the resume endpoint between the list read
-      // above and this write. Skipping unless it is still `pending` shrinks the
-      // clobber window from the whole iteration to a single roundtrip, so the
-      // sweeper can't overwrite a just-resolved audit record with `expired`.
-      // (A full fix needs a store-level CAS the SuspensionStore API lacks.)
-      const current = await provider.loadSuspension(
-        record.requestId,
-        record.suspensionId
-      );
-      if (current === null || current.status !== "pending") continue;
-      // Step 2b continues the turn of an approval expired here (FIX-1846).
-      await expireUnderLease(provider, current, now);
+      // Fenced: the gate is re-read under its request's lease, so a resume that
+      // resolved it after the list above is never overwritten; a lease held
+      // elsewhere leaves it for the next tick. Step 2b continues the turn of an
+      // approval expired here (FIX-1846).
+      await expireUnderLease(provider, record, "durability-sweeper");
     }
     if (askGatesSkipped > 0) {
       logRuntimeEvent(
@@ -439,29 +430,6 @@ async function enforceSuspensionExpiry(
       error: err instanceof Error ? err.message : String(err)
     });
     return undefined;
-  }
-}
-
-/**
- * Write a pending gate `expired`, fenced under its request's lease (FIX-1846).
- * Every resolution of a gate (a person's resume, an ask's answer, a stop) is
- * written under that lease, so the gate re-read while holding it is current:
- * an approve that landed after the unfenced read above is never overwritten.
- * A lease held elsewhere (a resume, or its run) skips the gate; the next tick
- * reads it again.
- */
-async function expireUnderLease(provider: DurabilityProvider, gate: SuspensionRecord, now: number): Promise<void> {
-  const lease = await provider.acquireLease(gate.requestId, {
-    holder: generateId("expire"),
-    durationMs: RESUME_LEASE_MS
-  });
-  if (lease === null) return;
-  try {
-    const current = await provider.loadSuspension(gate.requestId, gate.suspensionId);
-    if (current === null || current.status !== "pending") return;
-    await provider.suspend({ ...current, status: "expired", resolvedAt: now, resolvedBy: "durability-sweeper" });
-  } finally {
-    await provider.releaseLease(gate.requestId, lease.leaseId);
   }
 }
 

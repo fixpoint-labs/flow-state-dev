@@ -339,9 +339,12 @@ attempt is still there in the job's own history.
 `active` describes what the system recorded, not what a worker is doing right
 now. If a worker's process dies mid-job the row keeps reading `active` until a
 client continues the run or a retry supersedes it — the framework marks the run
-recoverable, it does not restart it for you. A job
-whose approval request expired without an answer reads `active` indefinitely,
-because nothing discharges an approval except answering it.
+recoverable, it does not restart it for you. A job whose approval expired
+without an answer doesn't stay `active` on that account: on durable hosts, the
+durability sweeper carries the run on as if the approval had been rejected.
+The gated tool doesn't run, the model is told the approval is no longer valid,
+and the job then settles however that run ends. See
+[Retention and cleanup](../advanced/durable-execution.md#retention-and-cleanup).
 
 ### What a stopped process leaves behind
 
