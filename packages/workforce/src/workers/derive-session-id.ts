@@ -15,10 +15,18 @@
  *
  * Isomorphic: Web Crypto's SHA-256, which browsers and Node 22 both carry.
  */
-import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "../projects/workstream-ref";
+import {
+  parseProjectRef,
+  parseWorkstreamRef,
+  projectRef,
+  workstreamRef,
+  type ProjectAddressRef,
+  type WorkstreamAddress
+} from "../projects/workstream-ref";
 import {
   DERIVED_WORKER_SESSION_PREFIX,
   FILING_SESSION_STATE_KEY,
+  PROJECT_STATE_KEY,
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
@@ -29,7 +37,7 @@ import {
  * `worker`; later issues add their own keys (a task, a workstream, a
  * coordinator's conversation), each pinned by its issue and each a readonly
  * session-state field. FIX-1791 defines `filingSessionId`; FIX-1793
- * `workstreamId`; FIX-1794 `taskId`.
+ * `workstreamId` and `projectId`; FIX-1794 `taskId`.
  */
 export type WorkerSessionCriteria = {
   /** The worker the session runs: a worker id on the user's roster, or a standard one. */
@@ -50,6 +58,14 @@ export type WorkerSessionCriteria = {
    */
   workstreamId?: WorkstreamAddress;
   /**
+   * The project the session is linked to: its address. Named, the lookup
+   * returns the user's coordinator for that project; omitted, it never
+   * returns one. Only a session of the coordinator the installation names
+   * as every project's coordinator carries it, one per user per project, and
+   * a create naming a project its user can't read is refused.
+   */
+  projectId?: ProjectAddressRef;
+  /**
    * The task the session was opened for, on the board of the conversation
    * `filingSessionId` names: a task session, which a conversation's board
    * opens when it hands the task over. Named, the lookup returns that task's
@@ -68,6 +84,7 @@ export function criteriaState(criteria: WorkerSessionCriteria): Record<string, s
   const state: Record<string, string> = { [WORKER_ID_STATE_KEY]: criteria.worker };
   if (criteria.filingSessionId !== undefined) state[FILING_SESSION_STATE_KEY] = criteria.filingSessionId;
   if (criteria.workstreamId !== undefined) state[WORKSTREAM_STATE_KEY] = workstreamRef(criteria.workstreamId);
+  if (criteria.projectId !== undefined) state[PROJECT_STATE_KEY] = projectRef(criteria.projectId);
   if (criteria.taskId !== undefined) state[TASK_ID_STATE_KEY] = criteria.taskId;
   return state;
 }
@@ -81,11 +98,14 @@ export function criteriaOfState(workerId: string, state: Readonly<Record<string,
   const filing = state[FILING_SESSION_STATE_KEY];
   const workstream = state[WORKSTREAM_STATE_KEY];
   const address = typeof workstream === "string" ? parseWorkstreamRef(workstream) : undefined;
+  const linked = state[PROJECT_STATE_KEY];
+  const project = typeof linked === "string" ? parseProjectRef(linked) : undefined;
   const task = state[TASK_ID_STATE_KEY];
   return {
     worker: workerId,
     ...(typeof filing === "string" ? { filingSessionId: filing } : {}),
     ...(address !== undefined ? { workstreamId: address } : {}),
+    ...(project !== undefined ? { projectId: project } : {}),
     ...(typeof task === "string" ? { taskId: task } : {})
   };
 }
@@ -95,6 +115,7 @@ export const CRITERIA_STATE_KEYS: readonly string[] = [
   WORKER_ID_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   WORKSTREAM_STATE_KEY,
+  PROJECT_STATE_KEY,
   TASK_ID_STATE_KEY
 ];
 
@@ -129,8 +150,8 @@ async function digest(text: string): Promise<string> {
  * The derived id for one worker session.
  *
  * Every criteria key is part of it, sorted by name, so two lookups that name
- * different criteria never share an id. A workstream is taken in its
- * one-string form, so the object's key order can't change the id.
+ * different criteria never share an id. A workstream and a project are taken
+ * in their one-string forms, so an object's key order can't change the id.
  *
  * @param input The user, organization, flow and criteria.
  * @returns An id starting with {@link DERIVED_WORKER_SESSION_PREFIX}.
@@ -139,7 +160,11 @@ export async function deriveWorkerSessionId(input: DeriveWorkerSessionIdInput): 
   const criteria = Object.entries(input.criteria as Record<string, unknown>)
     .filter(([, value]) => value !== undefined)
     .map(([key, value]) =>
-      key === "workstreamId" ? ([key, workstreamRef(value as WorkstreamAddress)] as const) : ([key, value] as const)
+      key === "workstreamId"
+        ? ([key, workstreamRef(value as WorkstreamAddress)] as const)
+        : key === "projectId"
+          ? ([key, projectRef(value as ProjectAddressRef)] as const)
+          : ([key, value] as const)
     )
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const canonical = JSON.stringify(["worker-session/1", input.userId, input.orgId, input.flow, criteria]);

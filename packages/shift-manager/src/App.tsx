@@ -170,7 +170,7 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
     case "resource":
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
-      return <ProjectView snapshot={snapshot} projectId={route.projectId} tab={route.tab} gaps={gaps} />;
+      return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
     case "workstream": {
       const workstream = findWorkstream(snapshot, route.mailboxId);
       return workstream === undefined ? (

@@ -28,9 +28,8 @@
  *
  * These keys are a public surface. Moving one is a breaking change for any app
  * whose rows are already persisted. Nothing here deletes a row for going
- * missing. The two removals are `fire`'s, of a hired seat's own row in
- * `inventory/seats/`, and a mailbox row whose id became a project talk
- * template (see `open-inventory.ts`).
+ * missing. The one removal is `fire`'s, of a hired seat's own row in
+ * `inventory/seats/`.
  *
  * ## The browser read
  *

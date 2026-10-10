@@ -1,14 +1,12 @@
 /**
- * The room's own retry around a compare-and-swap write that lost a race.
+ * The projects' own retry around a compare-and-swap write that lost a race.
  *
  * The engine's resource CAS driver already retries a conflicting write three
  * times and then gives up with `concurrent_modification`. On a hot row that is
- * not enough: two members posting a burst into one room lost a post in the
- * spike that settled this design. This helper keeps going past the engine's
- * budget, with jittered backoff, for the writes that contend by design: the
- * room's counter (`room-store.ts`), the `sessions` list on a project row
- * (`join` and `bind` in `talk.ts`), and its workstream list
- * (`setWorkstreams` in `project-writes.ts`).
+ * not enough. This helper keeps going past the engine's budget, with jittered
+ * backoff, for the writes that contend by design: a project row's workstream
+ * list (`setWorkstreams` in `project-writes.ts`) and a workstream's entry
+ * (`workstream-writes.ts`).
  *
  * In a module of its own so a test can swap it for a single attempt and show
  * that, without it, a burst loses a write (the `no-retry` control).

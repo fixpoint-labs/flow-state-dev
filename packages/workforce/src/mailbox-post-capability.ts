@@ -95,8 +95,6 @@ export const ROUTED_TURN_STATE = "mailboxRoutedPost";
 export const routedTurnSchema = z.object({
   mailboxId: z.string(),
   postId: z.string(),
-  /** The delivery's `answerToken`, when it carried one (a project's talk session). Handed back with the answer. */
-  answerToken: z.string().optional(),
   handed: z.literal(true).optional(),
 });
 
@@ -154,7 +152,7 @@ const postAsSeat = dispatcher({
 });
 
 /** What {@link answerRoutedPost} is handed: a routed post's answer, as the seat. */
-const answerAsSeatInputSchema = postAsSeatInputSchema.extend({ postId: z.string(), token: z.string().optional() });
+const answerAsSeatInputSchema = postAsSeatInputSchema.extend({ postId: z.string() });
 
 type AnswerAsSeatInput = z.infer<typeof answerAsSeatInputSchema>;
 
@@ -172,7 +170,6 @@ const answerAsSeat = dispatcher({
     postId: input.postId,
     body: input.body,
     author: input.author,
-    ...(input.token === undefined ? {} : { token: input.token }),
   }),
 });
 
@@ -208,7 +205,7 @@ export const answerRoutedPost = sequencer({ name: "answer-in-mailbox", inputSche
  * `answer`, a plain `post` (not a routed turn, or another mailbox), or
  * nothing because the turn has `answered` it.
  */
-type ToolLine = PostAsSeatInput & { postId?: string; token?: string; as: "answer" | "post" | "answered" };
+type ToolLine = PostAsSeatInput & { postId?: string; as: "answer" | "post" | "answered" };
 
 /** The tool's line as the seat, and what it is against the turn's routed post. */
 const toolLineFor = (signer: Signer) => handler({
@@ -216,7 +213,6 @@ const toolLineFor = (signer: Signer) => handler({
   inputSchema: postToMailboxInputSchema,
   outputSchema: postAsSeatInputSchema.extend({
     postId: z.string().optional(),
-    token: z.string().optional(),
     as: z.enum(["answer", "post", "answered"]),
   }),
   requestStateSchema: routedTurnStateSchema,
@@ -228,12 +224,7 @@ const toolLineFor = (signer: Signer) => handler({
     const routed = ctx.request.state.mailboxRoutedPost;
     if (routed === undefined || routed.mailboxId !== input.mailbox) return { ...line, as: "post" };
     if (routed.handed === true) return { ...line, as: "answered" };
-    return {
-      ...line,
-      postId: routed.postId,
-      ...(routed.answerToken === undefined ? {} : { token: routed.answerToken }),
-      as: "answer",
-    };
+    return { ...line, postId: routed.postId, as: "answer" };
   },
 });
 
@@ -244,7 +235,6 @@ const toPost = (line: ToolLine): PostAsSeatInput => ({ mailbox: line.mailbox, bo
 const toAnswer = (line: ToolLine): AnswerAsSeatInput => ({
   ...toPost(line),
   postId: line.postId!,
-  ...(line.token === undefined ? {} : { token: line.token }),
 });
 
 /**

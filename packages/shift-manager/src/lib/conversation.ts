@@ -110,11 +110,15 @@ export interface SeatConversation {
   open(sessionId: string): void;
 }
 
-/** @param seat The seat the conversation is with. @param sessions The snapshot's sessions. */
-export function useSeatConversation(seat: Seat, sessions: readonly SessionSummary[]): SeatConversation {
+/**
+ * @param seat The seat the conversation is with.
+ * @param sessions The snapshot's sessions.
+ * @param pinned The session the conversation is, when the view found it: that one, whatever the snapshot lists.
+ */
+export function useSeatConversation(seat: Seat, sessions: readonly SessionSummary[], pinned?: string): SeatConversation {
   const { clients } = useLab();
   const [opened, setOpened] = useState<string | null>(null);
-  const sessionId = currentConversation(sessions, seat, opened);
+  const sessionId = pinned ?? currentConversation(sessions, seat, opened);
   // The id a first line goes to, kept across a failed send so a retry lands in
   // the same session if the Lab already opened it.
   const fresh = useRef<string | null>(null);

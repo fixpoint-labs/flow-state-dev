@@ -107,16 +107,11 @@ describe("V8", () => {
     expect(namedIn(`const seat = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("reaches project rooms on workforce's built-in mailbox kind", async () => {
-    const { MAILBOX_KIND } = await import("@flow-state-dev/workforce");
-    const { ROOM_KIND } = await import("../src/lib/talk");
-    expect(ROOM_KIND).toBe(MAILBOX_KIND);
-  });
-
-  it("finds a room's end with the page size workforce's `read` answers in", async () => {
-    const { ROOM_PAGE_SIZE } = await import("@flow-state-dev/workforce");
-    const { ROOM_PAGE } = await import("../src/lib/talk");
-    expect(ROOM_PAGE).toBe(ROOM_PAGE_SIZE);
+  it("reads the inventory on workforce's built-in mailbox kind, and projects on its roster flow", async () => {
+    const { MAILBOX_KIND, ROSTER_FLOW_KIND } = await import("@flow-state-dev/workforce");
+    const { INVENTORY_READER_KIND, PROJECT_READER_KIND } = await import("../src/lib/reads");
+    expect(INVENTORY_READER_KIND).toBe(MAILBOX_KIND);
+    expect(PROJECT_READER_KIND).toBe(ROSTER_FLOW_KIND);
   });
 
   it("draws no literal colour of its own", () => {
@@ -136,9 +131,9 @@ describe("V8", () => {
     const sites = (files: string[], read: (f: string) => string) =>
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
-    // A workstream post (`transcript.ts`) and a project room's talk entries
-    // (`talk.ts`) are the two mailbox actions; a line to a worker goes through `send.ts`.
-    expect(sites(code, read)).toEqual(["lib/send.ts", "lib/talk.ts", "lib/transcript.ts"]);
+    // A workstream post (`transcript.ts`) is the mailbox action, an action whose answer a
+    // view reads goes through `action.ts`, and a line to a worker goes through `send.ts`.
+    expect(sites(code, read)).toEqual(["lib/action.ts", "lib/send.ts", "lib/transcript.ts"]);
     // The door is the one the inventory names, never an action name of Shift Manager's own.
     const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
     expect(sendLines).toHaveLength(1);

@@ -173,12 +173,15 @@ describe("finding or starting a session with a worker", () => {
   it("BR-9 · the roster lists the user's own workers and every standard one, each with its flow", async () => {
     const h = host();
     await h.rosterAction("alice", "hire", { id: "scribe", flow: OTHER, description: "Takes notes." });
+    await h.rosterAction("alice", "fork", { from: "planner", id: "planner-2" });
     await h.rosterAction("bob", "hire", { id: "bobs", flow: FIXTURE });
     const roster = await h.client("alice").roster();
+    // A fork names the worker it was forked from; a hire and a standard worker name none.
     expect(roster).toEqual([
-      { id: "scribe", flow: OTHER, standard: false, description: "Takes notes." },
-      { id: "planner", flow: OTHER, standard: true, description: "Plans." },
-      { id: "researcher", flow: FIXTURE, standard: true, description: "Finds things out." }
+      { id: "planner-2", flow: OTHER, standard: false, description: "Plans.", forkedFrom: "planner" },
+      { id: "scribe", flow: OTHER, standard: false, description: "Takes notes.", forkedFrom: null },
+      { id: "planner", flow: OTHER, standard: true, description: "Plans.", forkedFrom: null },
+      { id: "researcher", flow: FIXTURE, standard: true, description: "Finds things out.", forkedFrom: null }
     ]);
   });
 });

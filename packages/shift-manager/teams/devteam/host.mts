@@ -80,14 +80,18 @@ import {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  defineWorkstreamBlocks,
+  openWorkstreamInputSchema,
+  openWorkstreamOutputSchema,
+  projectCoordinatorTools,
   projectWorkspace,
   projectWritesMailboxInventory,
   mergeSeatFlows,
   openMailboxes,
   openInventory,
   resourcesFromDocs,
-  splitResourceModules,
   workerMailboxPostCapability,
+  WORKSTREAM_OPENED_ENTRY,
   type MailboxTranscriptLine,
   type CreateProjectInput,
   type CreateProjectOutput,
@@ -97,8 +101,8 @@ import {
   setRepositoryOutputSchema,
   type InventoryActionRequest,
   type ProjectBlocks,
+  type WorkstreamBlocks,
 } from "@flow-state-dev/workforce";
-import { discoverWorkforceCode } from "@flow-state-dev/workforce/codegen";
 import {
   readDeclaredRoster,
   type DeclaredRoster,
@@ -106,7 +110,7 @@ import {
 import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { ASSIGNEE, type FeatureLedger } from "./board.mts";
 import { DOCUMENT_KEY, INSPECT_ENTRY, SEAT_FACTS_COMPONENT, seatOf } from "./seat-config.mts";
@@ -137,8 +141,21 @@ export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 /** The flow kind the lab creates projects through at open. */
 export const PROJECTS_KIND = "projects";
 
-/** The session the lab's own project writes run in, as the owner. Each creator's talk session is its child. */
+/** The session the lab's own project writes run in, as the owner. */
 export const PROJECTS_SESSION = "devforce-projects";
+
+/**
+ * The standard worker every person's project coordinator runs as: the
+ * installation names it, and each person's coordinator for a project is a
+ * session of it (`org/workers/project-coordinator/`).
+ */
+export const PROJECT_COORDINATOR = "project-coordinator";
+
+/**
+ * The standard worker Shift Manager forks to lead each workstream a person
+ * opens from a project (`org/workers/workstream-coordinator/`).
+ */
+export const WORKSTREAM_COORDINATOR = "workstream-coordinator";
 
 /** Who the lab runs as, and the org every document read is bound to. */
 export const LAB_USER_ID = "u_devforce_lab";
@@ -170,8 +187,8 @@ const LAB_PRINCIPAL_SECRET = "devforce-lab-verified-principal";
  * own, all in the lab's organization: the owner (who the lab runs as, and who
  * the page is handed), a second member of the default projects, and an
  * outsider who is in the organization and on no project. The two others exist
- * so a check can read a project's room as a member who did not create it, and
- * be refused it as someone who is not a member.
+ * so a check can act in a project as a member who did not create it, and be
+ * refused as someone who is not a member.
  */
 export const LAB_USERS = {
   owner: { userId: LAB_USER_ID, bearer: LAB_PRINCIPAL_SECRET },
@@ -181,10 +198,9 @@ export const LAB_USERS = {
 
 /**
  * More members of the default projects, each with a secret of their own. With
- * the member above they are eight people whose first joins of one project can
- * race: the engine's own retries absorb a race between two or three people
- * appending to a row's `sessions`, so a check that the room's own retry is
- * load-bearing needs more of them.
+ * the member above they are eight people whose writes to one project can
+ * race: the engine's own retries absorb a race between two or three writers,
+ * so a check that the projects' own retry is load-bearing needs more of them.
  */
 export const LAB_CROWD = Array.from({ length: 7 }, (_, i) => ({
   userId: `u_devforce_crowd_${i + 1}`,
@@ -262,11 +278,48 @@ export function boardMailboxOf(roster: Pick<DeclaredRoster, "mailboxes">): Decla
 }
 
 /**
+ * The projects flow's action that names this Lab's project setup, for Shift
+ * Manager: it names neither coordinator itself, and reads them here.
+ */
+export const PROJECT_SETUP_ACTION = "projectSetup";
+
+/**
+ * The project setup as the projects flow answers it: the installation's
+ * project coordinator, and the standard workstream coordinator when the tree
+ * declares it. `null` for one the tree doesn't declare.
+ */
+function projectSetup(installation: WorkerInstallation) {
+  return handler({
+    name: "devforce-project-setup",
+    inputSchema: z.object({}).strict(),
+    outputSchema: z.object({ projectCoordinator: z.string().nullable(), workstreamCoordinator: z.string().nullable() }),
+    execute: () => ({
+      projectCoordinator: installation.projectCoordinator()?.worker ?? null,
+      workstreamCoordinator: installation.standardWorker(WORKSTREAM_COORDINATOR) === undefined ? null : WORKSTREAM_COORDINATOR,
+    }),
+  });
+}
+
+/**
+ * The built-in `agent` flow, as the workstream writes check a lead's flow:
+ * it declares the entry that starts a workstream's session. Read before the
+ * flow is built, which needs the writes' tools in its catalog.
+ */
+const AGENT_LEADS = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+
+/** The chief of staff's project tools, by the names its `tools:` line spells. */
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams", "setRepository", "openWorkstream"];
+
+/**
  * The project writes as the chief of staff's tools, `createProject`,
- * `setWorkstreams` and `setRepository`: the same blocks the Lab's own open
- * creates projects through, under the names its `tools:` line spells. A
+ * `setWorkstreams`, `setRepository` and `openWorkstream`: the same blocks the
+ * Lab's own projects flow runs, under the names its `tools:` line spells. A
  * catalog key must be the tool's own name, so `setWorkstreams` is the block
- * under `.as()`; the two that wait for an approval first are sequencers.
+ * under `.as()`; the others are sequencers named for the tool.
+ *
+ * `openWorkstream` names its lead: the person's own worker. Shift Manager's
+ * open forks a coordinator of the workstream's own instead; giving this tool
+ * the same default is a follow-up (FIX-1793 PLAN).
  *
  * The owner is the session's user, so a project the chief of staff creates
  * belongs to the person talking to it, who is always a member; `members` adds
@@ -279,8 +332,17 @@ export function boardMailboxOf(roster: Pick<DeclaredRoster, "mailboxes">): Decla
  * nothing changes. Without durable execution the tool refuses rather than
  * writing unasked.
  */
-export function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
+export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
   return {
+    openWorkstream: sequencer({
+      name: "openWorkstream",
+      description:
+        "Open a workstream for the person you are talking to, in a project, by the project's address " +
+        "(`visibility` and `id`): a short lowercase `id`, its `title`, and its `lead`, a worker on their " +
+        "roster that leads it. They own it, and nobody else can change it. On a shared project, members only.",
+      inputSchema: openWorkstreamInputSchema,
+      outputSchema: openWorkstreamOutputSchema,
+    }).step(workstreams.openWorkstream),
     createProject: sequencer({
       name: "createProject",
       description:
@@ -407,24 +469,6 @@ function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchem
   });
 }
 
-/**
- * The organization's TypeScript resource modules (`org/resources/*.ts`), found
- * by walking the tree and imported, as the resource map `fsdev gen` would
- * render for an app. This lab has no generated module (see the header), so the
- * walk and the import happen here. The projects collection and its talk
- * template are declared this way.
- */
-async function loadResourceModules(root: string): Promise<Record<string, unknown>> {
-  // Throws, naming every problem, when the walk finds a file it won't render.
-  const found = await discoverWorkforceCode(root);
-  const modules: Record<string, unknown> = {};
-  for (const module of found.resourceModules) {
-    const imported = (await import(pathToFileURL(join(root, module.path)).href)) as { default?: unknown };
-    modules[module.ref] = imported.default;
-  }
-  return splitResourceModules(modules as never).resources;
-}
-
 export interface OpenLabOptions {
   /** The store adapter this lab runs over — `inMemoryStores()` is enough. */
   stores: unknown;
@@ -523,11 +567,10 @@ export interface OpenLabOptions {
    * Projects to create at open, as the lab's owner, through the same
    * `createProject` action anything else creates a project with. A project
    * the store already holds for the owner is handed back unchanged, so a
-   * second open on a surviving store creates and mints nothing new. Each
-   * creator's talk session is bound in the same turn.
+   * second open on a surviving store creates nothing new.
    *
-   * Needs `mailboxes`: a project's room runs on the mailbox kind, and its
-   * workstreams must be mailboxes the inventory registers, so `inventory` too.
+   * Needs `inventory`: a project's mailbox workstreams must be mailboxes the
+   * inventory registers.
    * **Absent means absent**: nothing is created, as the other checks run.
    */
   projects?: readonly CreateProjectInput[];
@@ -785,9 +828,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const resources = resourcesFromDocs(roster.documents);
 
   // The project writes, built once: the flow that creates projects at open runs
-  // them as actions, and the chief of staff calls the same two as tools.
+  // them as actions, and the chief of staff calls the same ones as tools. The
+  // workstream writes are built with the installation, below.
   const projectBlocks = defineProjectBlocks();
-  const projectTools = chiefOfStaffProjectTools(projectBlocks);
 
   // The controls mutate the RECORD, before the mint, so a perturbed seat
   // genuinely runs on what the control gave it rather than being graded as if
@@ -797,7 +840,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
-      declared.tools = (declared.tools as string[]).filter((name) => !Object.hasOwn(projectTools, name));
+      declared.tools = (declared.tools as string[]).filter((name) => !PROJECT_TOOL_NAMES.includes(name));
     }
     const redirected = { ...worker, declared };
     return options.mutateSkills === undefined
@@ -816,7 +859,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     standardWorkers: workers,
     workerFlows: () => kinds,
     documents: resources as never,
+    // Each person's coordinator for a project, when the tree declares it.
+    ...(workers.some((worker) => worker.id === PROJECT_COORDINATOR) ? { projectCoordinator: PROJECT_COORDINATOR } : {}),
   });
+  // The workstream writes. A workstream's lead runs on the built-in `agent`
+  // flow, which declares the entry that starts its workstream session.
+  const workstreamBlocks = defineWorkstreamBlocks({
+    installation,
+    leadFlows: [AGENT_LEADS],
+  });
+  const projectTools = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
   const flowOf = (workerId: string): string =>
     (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_KIND;
   // A worker of either kind reads its brief by the document it names; one that
@@ -908,8 +960,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
-    // The kind carries them, and only the chief of staff's line names them.
-    catalog: { ...(options.withoutProjectTools === true ? {} : projectTools), ...rosterTools },
+    // The kind carries them, and only the chief of staff's line names them; a
+    // project coordinator's line names `readProject`, and a workstream's
+    // lead's `updateWorkstream`.
+    catalog: {
+      ...(options.withoutProjectTools === true ? {} : projectTools),
+      ...rosterTools,
+      ...projectCoordinatorTools,
+      updateWorkstream: workstreamBlocks.updateWorkstreamTool,
+    },
     uses: [
       // The seat and mailbox inventories, which the discovery door reads.
       // The mailbox inventory is declared with the project writes' own
@@ -974,27 +1033,29 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           checkAssignee: workerLookup.filingCheck({ [ledger.id]: [ASSIGNEE] }),
           ...(options.inventory === true ? { inventory: true } : {}),
         });
-  // The org's resource modules: where the projects collection and its talk
-  // template are declared. The binder reads the template off them, builds its
-  // seats and charter onto the mailbox kind, and installs the mint on create.
-  const orgResources = mailboxKind === undefined ? {} : await loadResourceModules(options.root ?? LAB_TREE);
   const instances =
-    mailboxKind === undefined
-      ? []
-      : mailboxInstances(roster.mailboxes, {
-          kinds: { [MAILBOX_KIND]: mailboxKind as never },
-          resources: orgResources,
-        });
+    mailboxKind === undefined ? [] : mailboxInstances(roster.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } });
 
   if (options.projects !== undefined && options.inventory !== true) {
     throw new Error("openLab: `projects` needs `inventory`: a project's workstreams are checked against it");
   }
-  // The flow a project is created through at open: the project writes, as an
-  // app installs them. The chief of staff calls the same two as tools.
-  const projectsFlow =
-    options.projects === undefined
-      ? undefined
-      : defineFlow({ kind: PROJECTS_KIND, actions: projectBlocks.actions } as never)();
+  // The flow projects and workstreams are written through: the project and
+  // workstream writes, as an app installs them. A project is created through
+  // it at open, and Shift Manager opens a person's workstreams through it.
+  // The chief of staff calls the same writes as tools.
+  const projectsFlow = defineFlow({
+    kind: PROJECTS_KIND,
+    actions: {
+      ...projectBlocks.actions,
+      ...workstreamBlocks.actions,
+      [PROJECT_SETUP_ACTION]: {
+        block: projectSetup(installation),
+        description:
+          "Name this Lab's project setup: the worker each person's project coordinator runs as, and the " +
+          "worker each workstream opened in Shift Manager forks its own coordinator from.",
+      },
+    },
+  } as never)();
 
   const latencyEnv = process.env.DEVFORCE_LAB_WRITE_LATENCY_MS;
   const writeLatency = latencyEnv === undefined || latencyEnv === "" ? undefined : Number(latencyEnv);
@@ -1010,7 +1071,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const flows: Record<string, unknown> = mergeSeatFlows(
     {
       ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...(projectsFlow === undefined ? {} : { [PROJECTS_KIND]: projectsFlow }),
+      [PROJECTS_KIND]: projectsFlow,
     },
     copies,
   );

@@ -1,11 +1,9 @@
 /**
- * Projects — the `projects` rows, and the collections a project's room, its
- * workstream claims and its files live in.
+ * Projects — the `projects` rows, and the collections a project's workstream
+ * claims and its files live in.
  *
- *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, repository, talk sessions
- *   room-lines/<projectId>/<seq>        one row per line of the project's room, created and never edited
- *   room-seq/<projectId>                the room's sequence counter and its committed watermark, alone
- *   workstream-claims/<mailboxId>       which project holds a workstream; one shared key, written with `create`
+ *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, repository
+ *   workstream-claims/<mailboxId>       which project holds a mailbox workstream; one shared key, written with `create`
  *   project-files/<projectId>/<path>    one row per file the project keeps: notes, memory, a no-repository project's code
  *
  * A project is runtime data. It is created after the tree was read, so no
@@ -20,7 +18,7 @@
  * visibility, never a field on the row, so the two can't disagree, and a
  * project's address is its visibility plus its id ({@link projectAddressSchema}):
  * a user's private `apollo` and the organization's shared `apollo` are two
- * projects. Rooms and claims are shared projects' only.
+ * projects. Claims are shared projects' only.
  *
  * Every collection here is shared across flows (`flowIsolation: false`,
  * spelled out for the reason the inventory spells it out: left undefined, an
@@ -28,12 +26,9 @@
  * reason would give each flow its own copy, and every reader but the writer
  * would read empty).
  *
- * Only `projects` has a browser read. A room's lines are read through a
- * member's talk session (`talk.ts`), which checks the row's `members` first;
- * a browser read of `room-lines` would skip that check, so neither it nor the
- * counter declares one, and the collection route refuses both with a 403.
- * Project files are the same: `readProjectFiles` checks `members` first, and
- * the collection has no browser read.
+ * Only `projects` has a browser read. Project files are read through
+ * `readProjectFiles`, which checks `members` first, so the collection has no
+ * browser read.
  *
  * These keys are a public surface: Shift Manager and the chief of staff read
  * them, and moving a prefix breaks every store that already holds a project.
@@ -41,14 +36,9 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-import { recordOrgTalkTemplate, type TalkTemplate } from "./talk-template";
 
 /** The resource-map ref of the projects collection. Pinned: Shift Manager reads it by this name. */
 export const PROJECTS_RESOURCE = "projects";
-/** The resource-map ref of a room's lines. */
-export const ROOM_LINES_RESOURCE = "room-lines";
-/** The resource-map ref of a room's counter. */
-export const ROOM_SEQ_RESOURCE = "room-seq";
 /** The resource-map ref of the workstream claims. */
 export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
 /** The resource-map ref of the project files. */
@@ -57,10 +47,6 @@ export const PROJECT_FILES_RESOURCE = "project-files";
 export const PRIVATE_PROJECTS_RESOURCE = "privateProjects";
 /** The resource-map ref of the private projects' files: `project-files/**` at the owner's user scope. */
 export const PRIVATE_PROJECT_FILES_RESOURCE = "privateProjectFiles";
-/** The resource-map ref of the seat answers a room holds. Not re-exported from the package root. */
-export const ROOM_ANSWERS_RESOURCE = "room-answers";
-/** The resource-map ref of the deliveries a room's fan-out made. Not re-exported from the package root. */
-export const ROOM_DELIVERIES_RESOURCE = "room-deliveries";
 
 /**
  * The route id Shift Manager gives the workstreams no project lists. A project
@@ -89,15 +75,6 @@ export const projectAddressSchema = z
 /** @see projectAddressSchema */
 export type ProjectAddress = z.infer<typeof projectAddressSchema>;
 
-/** One member's talk session on a project: the session, and whose it is. */
-export const projectSessionLinkSchema = z.object({
-  sessionId: z.string().min(1),
-  userId: z.string().min(1)
-});
-
-/** @see projectSessionLinkSchema */
-export type ProjectSessionLink = z.infer<typeof projectSessionLinkSchema>;
-
 /**
  * One project, as it is stored.
  *
@@ -106,13 +83,9 @@ export type ProjectSessionLink = z.infer<typeof projectSessionLinkSchema>;
  * carries a default so a row written by an earlier version still reads
  * (BP-023, BP-030).
  *
- * `members` decides who reads and posts the project's room. It is written only
- * by trusted code — the creator's own grant at create — and nothing a member
- * does adds to it; `join` in particular never adds its caller.
- *
- * `sessions` is the row's side of the link to each member's talk session. It
- * holds at most one entry per user: `join` and `bind` are keyed by the
- * project and the person, never by the calling session.
+ * `members` decides who opens workstreams in a shared project and changes its
+ * workstream list. It is written only by trusted code — the creator's own
+ * grant at create — and nothing a member does adds to it.
  */
 export const projectRowSchema = z.object({
   /** The project's id, also its key under `projects/`. One path segment; never `unassigned`. */
@@ -125,8 +98,8 @@ export const projectRowSchema = z.object({
   /** The user who created it, as the engine recorded the creating session's owner. */
   ownerUserId: z.string().min(1),
   /**
-   * On a shared project, who may read and post the room and open workstreams.
-   * Always includes the owner. A private project has only its owner.
+   * On a shared project, who may open workstreams and change its workstream
+   * list. Always includes the owner. A private project has only its owner.
    */
   members: z.array(z.string()).default([]),
   /** Full mailbox ids of the declared mailboxes this project holds, from any team. */
@@ -148,9 +121,7 @@ export const projectRowSchema = z.object({
    * still carries this token, so a claim a later write has re-stamped survives.
    * Server-side: not in the browser read.
    */
-  claimTokens: z.record(z.string()).default({}),
-  /** Each member's talk session, at most one per user. */
-  sessions: z.array(projectSessionLinkSchema).default([])
+  claimTokens: z.record(z.string()).default({})
 });
 
 /** One stored project. @see projectRowSchema */
@@ -158,9 +129,9 @@ export type ProjectRow = z.infer<typeof projectRowSchema>;
 
 /**
  * Every field of the row, named rather than defaulted (BP-015), so a key a
- * later version adds stays server-side until it is listed here. A project is
- * visible to everyone in its organization; that it exists is not a secret,
- * and a session id grants nothing to anyone but its owner.
+ * later version adds stays server-side until it is listed here. A shared
+ * project is visible to everyone in its organization; that it exists is not
+ * a secret.
  */
 const PROJECT_CLIENT_FIELDS = [
   "id",
@@ -170,50 +141,8 @@ const PROJECT_CLIENT_FIELDS = [
   "ownerUserId",
   "members",
   "workstreams",
-  "repository",
-  "sessions"
+  "repository"
 ] as const;
-
-/**
- * One line of a room, or the tombstone that took a line's place.
- *
- * `userId` is the poster's session owner as the engine recorded it — never a
- * field the caller sends. A seat's answer carries its `author`; a person's
- * line carries `null`. A tombstone fills a sequence number whose line was
- * never written within the grace period, so the watermark can move past it;
- * readers skip it.
- */
-export const roomLineSchema = z.object({
-  projectId: z.string().min(1),
-  seq: z.number().int().min(1),
-  userId: z.string(),
-  author: z.string().nullable().default(null),
-  body: z.string(),
-  tombstone: z.boolean().default(false)
-});
-
-/** One stored room line. @see roomLineSchema */
-export type RoomLine = z.infer<typeof roomLineSchema>;
-
-/**
- * A room's counter. `next` is the last sequence number handed out; `committed`
- * is the highest one below which every line (or its tombstone) is written.
- * Readers see `seq <= committed` only, so a line that was allocated and not yet
- * written is never passed over.
- *
- * `stalledSince` is when `committed` was first seen stuck behind a missing
- * line, or `null` when it is not stuck. It is how the next poster knows the
- * grace period has run out for that line. Nullable with a `null` default
- * (BP-023).
- */
-export const roomSeqSchema = z.object({
-  next: z.number().int().min(0).default(0),
-  committed: z.number().int().min(0).default(0),
-  stalledSince: z.number().nullable().default(null)
-});
-
-/** One room's counter. @see roomSeqSchema */
-export type RoomSeq = z.infer<typeof roomSeqSchema>;
 
 /**
  * Which project holds one workstream, and the token of the write that last
@@ -230,55 +159,31 @@ const SHARED_ACROSS_FLOWS = false;
 
 // Each `define*Collection` below returns ONE shared declaration rather than a
 // fresh one per call. A flow refuses two different declarations under one ref
-// ("Resource conflict"), and these are declared by every mailbox kind, by the
-// project writes, and by an app's own `org/resources/projects.ts` — which may
-// all meet in one flow. Rows are addressed by pattern and scope either way.
+// ("Resource conflict"), and these are declared by the project writes, the
+// worker flows and an app's own `org/resources/projects.ts`, which may all
+// meet in one flow. Rows are addressed by pattern and scope either way.
 
 /**
  * The organization's projects, at `projects/*`.
  *
  * Install it wherever projects are read or written. Org-scoped, shared across
  * flows, and readable by a browser through `expose`. Takes no options: the
- * prefix, the scope and the sharing are what Shift Manager and the talk entries
- * join against.
+ * prefix, the scope and the sharing are what Shift Manager joins against. The
+ * declaration returned is the same one every call returns.
  *
  * **Write a row with `create()`, never `upsert()`.** `create()` refuses a key
  * that is held, and that refusal is what stops a second project taking an id.
  * The project blocks (`defineProjectBlocks`) are the writers; prefer them.
  *
- * **The org-level talk template** rides here, beside the collection: `talk`
- * names the seats a post in any project's room wakes, the room's charter, and
- * the mailbox kind talk sessions run on. It is read by `mailboxInstances`
- * (pass it the org's resource map as `resources`), which builds it onto the
- * kind and mints each creator's talk session when a row is created. The
- * declaration returned is the same one every call returns; see
- * `talk-template.ts` for why the template is the process's.
- *
- * @param options `talk`: the org-level talk template. Omitted, any template
- *   recorded earlier stands.
  * @example
  *   // workforce/org/resources/projects.ts
- *   export default defineProjectsCollection({
- *     talk: { seats: ["eng.em", "chief-of-staff"], charter: "Plan the work; say what is blocked." }
- *   });
+ *   export default defineProjectsCollection();
  */
-export function defineProjectsCollection(options: ProjectsCollectionOptions = {}) {
-  if (options.talk !== undefined) recordOrgTalkTemplate(PROJECTS_COLLECTION, options.talk);
+export function defineProjectsCollection() {
   return PROJECTS_COLLECTION;
 }
 
-/** Options for {@link defineProjectsCollection}. */
-export type ProjectsCollectionOptions = {
-  /** The org-level talk template: the seats, charter and kind of every project's room. */
-  talk?: TalkTemplate;
-};
-
-/**
- * The one projects declaration, for an identity check (`mailboxInstances`
- * asks whether a `mintFor:` names it). Not re-exported from the package root:
- * apps declare it with {@link defineProjectsCollection}.
- */
-export const PROJECTS_COLLECTION = defineResourceCollection({
+const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,
@@ -309,40 +214,6 @@ const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
 });
 
 /**
- * A room's lines, at `room-lines/<projectId>/<seq>`. Lazy, because a room
- * grows without bound and a request must never load every line; no browser
- * read, because only a member's talk session may read them.
- */
-export function defineRoomLinesCollection() {
-  return ROOM_LINES_COLLECTION;
-}
-
-const ROOM_LINES_COLLECTION = defineResourceCollection({
-  pattern: "room-lines/**",
-  scope: "org",
-  flowIsolation: SHARED_ACROSS_FLOWS,
-  prefetchMode: "lazy",
-  stateSchema: roomLineSchema
-});
-
-/**
- * One counter per room, at `room-seq/<projectId>`. Apart from the project row,
- * so posts contend only with posts, never with an edit to the project or a
- * join. No browser read.
- */
-export function defineRoomSeqCollection() {
-  return ROOM_SEQ_COLLECTION;
-}
-
-const ROOM_SEQ_COLLECTION = defineResourceCollection({
-  pattern: "room-seq/*",
-  scope: "org",
-  flowIsolation: SHARED_ACROSS_FLOWS,
-  prefetchMode: "lazy",
-  stateSchema: roomSeqSchema
-});
-
-/**
  * Workstream claims, at `workstream-claims/<mailboxId>`. One shared key per
  * workstream, written with `create`, so of two projects claiming the same
  * workstream at once exactly one lands. No browser read: the project rows
@@ -358,82 +229,6 @@ const WORKSTREAM_CLAIMS_COLLECTION = defineResourceCollection({
   flowIsolation: SHARED_ACROSS_FLOWS,
   prefetchMode: "lazy",
   stateSchema: workstreamClaimSchema
-});
-
-/**
- * One seat's answer to one post in a room, at
- * `room-answers/<projectId>/<postId>/<author>`: the durable record of the
- * answer's progress (`room-answer.ts`). Created before the line, holding the
- * seq allocated for it and the line itself, so a run that dies after the claim
- * leaves the next delivery everything it needs to finish. Never deleted.
- * Server-written: nothing a caller seeds into a session reaches it. No browser
- * read.
- */
-export const roomAnswerSchema = z.object({
-  projectId: z.string().min(1),
-  postId: z.string().min(1),
-  author: z.string().min(1),
-  /** The owner of the talk session the answer was delivered into: the line's `userId`. */
-  userId: z.string().min(1),
-  body: z.string().min(1),
-  /** The seq the line is written at. Moves only off a tombstone. */
-  seq: z.number().int().min(1)
-});
-
-/** @see roomAnswerSchema */
-export type RoomAnswer = z.infer<typeof roomAnswerSchema>;
-
-/** The seat-answer claims. Not re-exported from the package root: only the talk entries read it. */
-export function defineRoomAnswersCollection() {
-  return ROOM_ANSWERS_COLLECTION;
-}
-
-const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
-  pattern: "room-answers/**",
-  scope: "org",
-  flowIsolation: SHARED_ACROSS_FLOWS,
-  prefetchMode: "lazy",
-  stateSchema: roomAnswerSchema
-});
-
-/**
- * One post's delivery to one seat through one talk session, at
- * `room-deliveries/<postId>/<seat>/<sessionId>` ({@link roomDeliveryKey}):
- * created once by the talk fan-out before it wakes the seat. It is
- * `pending` until the seat's wake has been dispatched, then `delivered`: a
- * replayed fan-out wakes a `pending` delivery again, with the same token, and
- * skips a `delivered` one. `token` is handed to that seat alone; an answer is looked up by its post, its author and the session it
- * comes through, and must carry the token. The token is unguessable, so a
- * seat cannot answer under a delivery it was not handed. No browser read.
- */
-export const roomDeliverySchema = z.object({
-  projectId: z.string().min(1),
-  postId: z.string().min(1),
-  seat: z.string().min(1),
-  sessionId: z.string().min(1),
-  token: z.string().min(1),
-  status: z.enum(["pending", "delivered"])
-});
-
-/** The key of one post's delivery to one seat through one session. */
-export function roomDeliveryKey(delivery: Pick<RoomDelivery, "postId" | "seat" | "sessionId">): string {
-  return `${delivery.postId}/${delivery.seat}/${delivery.sessionId}`;
-}
-
-/** @see roomDeliverySchema */
-export type RoomDelivery = z.infer<typeof roomDeliverySchema>;
-
-/** The deliveries. Not re-exported from the package root: only the talk entries read it. */
-export function defineRoomDeliveriesCollection() {
-  return ROOM_DELIVERIES_COLLECTION;
-}
-
-const ROOM_DELIVERIES_COLLECTION = defineResourceCollection({
-  pattern: "room-deliveries/**",
-  scope: "org",
-  flowIsolation: SHARED_ACROSS_FLOWS,
-  prefetchMode: "lazy",
-  stateSchema: roomDeliverySchema
 });
 
 /**
@@ -498,20 +293,9 @@ export function projectFilesPrefix(projectId: string): string {
   return `${projectId}/`;
 }
 
-/** Digits a sequence number is padded to, so keys sort by `seq`. */
-const SEQ_DIGITS = 12;
-
-/**
- * The key of one room line, relative to the collection: `<projectId>/<seq>`,
- * zero-padded so a room's keys sort in sequence order.
- */
-export function roomLineKey(projectId: string, seq: number): string {
-  return `${projectId}/${String(seq).padStart(SEQ_DIGITS, "0")}`;
-}
-
 /**
  * Why a project id is not usable, or `undefined` when it is. One path segment,
- * so it can head a `room-lines` key; never {@link NO_PROJECT_ID}.
+ * so it can head a key; never {@link NO_PROJECT_ID}.
  */
 export function projectIdProblem(id: string): string | undefined {
   if (id.length === 0) return "a project id can't be empty";

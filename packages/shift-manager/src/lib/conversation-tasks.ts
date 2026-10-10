@@ -2,10 +2,10 @@
  * The tasks a coordinator conversation filed, through the conversation's own
  * `listTasks` action: its board, and nobody else's. Each conversation keeps
  * its own board, so the read runs on the conversation's session; a refusal
- * comes back as a `TalkRefused` carrying its reason.
+ * comes back as an `ActionRefused` carrying its reason.
  */
 import type { LabClients } from "./connection";
-import { runTalkAction, TalkRefused } from "./talk";
+import { runAction, ActionRefused } from "./action";
 
 /**
  * The action a coordinator conversation lists its tasks by: the task tools'
@@ -28,9 +28,9 @@ export type ConversationTask = {
 
 /** Read the tasks of the coordinator conversation `sessionId` on `kind`. */
 export async function readConversationTasks(clients: LabClients, kind: string, sessionId: string): Promise<ConversationTask[]> {
-  const output = (await runTalkAction(clients, kind, sessionId, LIST_TASKS_ACTION, {})).output as
+  const output = (await runAction(clients, kind, sessionId, LIST_TASKS_ACTION, {})).output as
     | { ok: true; tasks: ConversationTask[] }
     | { ok: false; error: string };
-  if (!output.ok) throw new TalkRefused(output.error);
+  if (!output.ok) throw new ActionRefused(output.error);
   return output.tasks;
 }

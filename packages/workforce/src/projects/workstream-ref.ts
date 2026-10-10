@@ -1,7 +1,8 @@
 /**
  * A workstream's address as one string: what its lead's workstream session
  * carries in its readonly `workstreamId` field, and what a worker-session
- * lookup filters on.
+ * lookup filters on. A project's address too, as its coordinator session's
+ * readonly `projectId` field carries it.
  *
  * A leaf with no imports, so the browser client, the derived session id and
  * the server share one spelling.
@@ -41,6 +42,25 @@ export type WorkstreamAddress = {
  */
 export function workstreamRef(address: WorkstreamAddress): string {
   return `${address.project.visibility}/${address.project.id}/${address.id}`;
+}
+
+/** A project's address: where it lives, and its id. */
+export type ProjectAddressRef = { visibility: "shared" | "private"; id: string };
+
+/**
+ * `<visibility>/<projectId>`: a project's address as one string, what a
+ * project coordinator session's readonly `projectId` field carries.
+ */
+export function projectRef(project: ProjectAddressRef): string {
+  return `${project.visibility}/${project.id}`;
+}
+
+/** The address a {@link projectRef} names, or `undefined` when it names none. */
+export function parseProjectRef(ref: string): ProjectAddressRef | undefined {
+  const [visibility, id, ...rest] = ref.split("/");
+  if (rest.length > 0 || id === undefined || id.length === 0) return undefined;
+  if (visibility !== "shared" && visibility !== "private") return undefined;
+  return { visibility, id };
 }
 
 /** The address a {@link workstreamRef} names, or `undefined` when it names none. */

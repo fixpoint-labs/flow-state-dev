@@ -14,9 +14,7 @@
  * for: a row carries an id, a kind, and for a mailbox its members. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
  * registered in this org*, not *still declared*", and nothing reconciles or
- * deletes a row for going missing. So a row on its own cannot mean *open*. A
- * mailbox declaration that became a project talk template (`mintFor:`) is not a
- * mailbox, so it is never the declaration behind a row here.
+ * deletes a row for going missing. So a row on its own cannot mean *open*.
  *
  * An entry is therefore projected only where BOTH layers answer. That is the
  * liveness filter (BR-12a) and it is also what makes a well-formed entry
@@ -50,7 +48,6 @@
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
-import { isTalkTemplate } from "./mailbox/mailbox-binder";
 import type { MailboxManifest, WorkerManifest } from "./manifest";
 import type { MailboxInventoryRow, SeatInventoryRow } from "./inventory/collections";
 
@@ -214,11 +211,7 @@ function seatsSource(
  * a recorded past event rather than a claim about now.
  */
 function mailboxesSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
-  // A project talk template (`mintFor:`) is not a mailbox, so a row an earlier
-  // boot wrote under its id when it was one is never advertised.
-  const declared = new Map(
-    roster.mailboxes.filter((mailbox) => !isTalkTemplate(mailbox)).map((mailbox) => [mailbox.id, mailbox])
-  );
+  const declared = new Map(roster.mailboxes.map((mailbox) => [mailbox.id, mailbox]));
   return {
     domain: "mailboxes",
     origin: "createWorkforceCapability",

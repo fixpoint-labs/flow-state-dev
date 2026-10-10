@@ -10,7 +10,8 @@
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /w/<mailboxId>/<stream|board|brief|results>
- *     /p/<projectId>/<stream|board|workstreams|brief>
+ *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
+ *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the person's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
  */
@@ -39,7 +40,15 @@ export type Route =
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "workstream"; mailboxId: string; tab: WorkstreamTab }
-  | { level: "project"; projectId: string; tab: ProjectTab }
+  | {
+      level: "project";
+      projectId: string;
+      tab: ProjectTab;
+      /** `"private"` for one of the person's own private projects; absent for a shared one. */
+      visibility?: "private";
+      /** One workstream of the project, opened from its Workstreams: its owner and its id. */
+      entry?: { owner: string; id: string };
+    }
   | { level: "resource"; sessionId: string; ref: string }
   /** `team: null` is All. */
   | { level: "roster"; team: string | null };
@@ -52,6 +61,9 @@ function oneOf<T extends string>(values: readonly T[], value: string | undefined
 export function parseRoute(pathname: string, search = ""): Route {
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
   const [head, a, b, c] = parts;
+  if (head === "p" && a === "private" && b !== undefined && c !== undefined) {
+    return { level: "project", projectId: b, visibility: "private", tab: oneOf(PROJECT_TABS, c, "stream"), ...entryOf(search) };
+  }
   if (head === "tasks" && a !== undefined && b !== undefined) {
     return { level: "task", boardRef: a, taskId: b, tab: oneOf(TASK_TABS, c, "session") };
   }
@@ -59,11 +71,19 @@ export function parseRoute(pathname: string, search = ""): Route {
     return { level: "tasks", by: oneOf(TASK_GROUPINGS, new URLSearchParams(search).get("by") ?? undefined, "state") };
   }
   if (head === "w" && a !== undefined) return { level: "workstream", mailboxId: a, tab: oneOf(WORKSTREAM_TABS, b, "stream") };
-  if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream") };
+  if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream"), ...entryOf(search) };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
   return { level: "cos" };
+}
+
+/** The workstream a project route's query names, when it names both its owner and its id. */
+function entryOf(search: string): { entry?: { owner: string; id: string } } {
+  const query = new URLSearchParams(search);
+  const owner = query.get("owner");
+  const id = query.get("ws");
+  return owner && id ? { entry: { owner, id } } : {};
 }
 
 /** The path for a route. */
@@ -80,8 +100,11 @@ export function pathFor(route: Route): string {
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
     case "workstream":
       return `/w/${e(route.mailboxId)}/${route.tab}`;
-    case "project":
-      return `/p/${e(route.projectId)}/${route.tab}`;
+    case "project": {
+      const at = route.visibility === "private" ? `/p/private/${e(route.projectId)}` : `/p/${e(route.projectId)}`;
+      const entry = route.entry === undefined ? "" : `?owner=${e(route.entry.owner)}&ws=${e(route.entry.id)}`;
+      return `${at}/${route.tab}${entry}`;
+    }
     case "resource":
       return `/r/${e(route.sessionId)}/${e(route.ref)}`;
     case "roster":

@@ -23,15 +23,9 @@
  * the declared roster, not authentication. Whether a line is a seat's — and so
  * wakes nobody — is `seatAuthored`, set only by the seat post action and the
  * answer entry. A `post`, public or dispatched, never sets it.
- *
- * The same kind also serves a project's talk sessions: a session whose state
- * names a project (`resourceId`) is a person's way into that project's room,
- * and `post`, `read` and `answer` on it go to the room instead
- * (`../projects/talk.ts` is canonical). `join` and the internal `bind` exist
- * for them alone.
  */
 
-import { defineFlow, dispatcher, handler, router, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { readCommitted, withOutcome } from "@flow-state-dev/core/helpers";
 import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
@@ -70,21 +64,6 @@ import {
   membershipKey,
   seatInventoryRowSchema
 } from "../inventory/collections";
-import { PROJECTS_COLLECTION, roomLineKey, roomLineSchema, type RoomLine } from "../projects/collections";
-import {
-  recentTalkLines,
-  markTalkDelivered,
-  recordTalkDelivery,
-  TALK_RESOURCES,
-  talkAnswer,
-  talkBind,
-  talkJoin,
-  talkPost,
-  talkProjectOf,
-  talkReadFor,
-  talkReadOutputSchema
-} from "../projects/talk";
-import { isTemplateMailbox, type TalkTemplateFacts } from "../projects/talk-template";
 import type { SeatInventoryRow } from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
@@ -115,14 +94,7 @@ export const mailboxSessionStateSchema = z.object({
    * `mailbox-post` item. Read-only: `read` returns them ahead of the posted
    * lines, and nothing writes here any more.
    */
-  transcript: z.array(mailboxTranscriptLineSchema).default([]),
-  /**
-   * The project a talk session is about (`../projects/talk.ts`), or `null`. A
-   * declared mailbox never sets it. It selects which project row a talk entry
-   * checks, and grants nothing on its own. Nullable with a `null` default
-   * (BP-023, BP-030), so a mailbox opened before it existed still parses.
-   */
-  resourceId: z.string().nullable().default(null)
+  transcript: z.array(mailboxTranscriptLineSchema).default([])
 });
 
 export type MailboxSessionState = z.infer<typeof mailboxSessionStateSchema>;
@@ -162,13 +134,7 @@ export const mailboxAnswerInputSchema = z
   .object({
     postId: z.string().min(1),
     body: z.string().min(1),
-    author: z.string().min(1),
-    /**
-     * The delivery's `answerToken`, handed back. Required on a project's talk
-     * session, where the answer's author is the seat the token was issued to;
-     * a declared mailbox ignores it.
-     */
-    token: z.string().min(1).optional()
+    author: z.string().min(1)
   })
   .strict();
 
@@ -225,7 +191,6 @@ export type MailboxRefusalReason =
   | "author-not-a-member"
   | "board-not-declared"
   | "board-needs-an-org"
-  | "mailbox-is-a-template"
   | "unknown-assignee";
 
 /**
@@ -275,40 +240,11 @@ export function boundMailbox(
 }
 
 /**
- * Refuse a mailbox action on a session whose id is now a project talk
- * template's `MAILBOX.md` (`mintFor:`). The session it had as a mailbox may
- * survive in the store, still bound; a template is never a mailbox, so its
- * `post`, `read` and `answer` are refused rather than served from that state.
- */
-function refuseTemplateMailbox(ctx: { session: { identity: { id: string } } }): void {
-  const id = ctx.session.identity.id;
-  if (isTemplateMailbox(PROJECTS_COLLECTION, id)) {
-    throw new MailboxPostRefusedError(
-      "mailbox-is-a-template",
-      `"${id}" is declared as a project talk template (\`mintFor:\`), not a mailbox. A project's room is ` +
-        "reached through a member's talk session (`join`)."
-    );
-  }
-}
-
-/**
- * The open mailbox this session is, after the template fence: every mailbox
- * action that acts on its mailbox (post, read, answer, the board actions and
- * the inventory registration) finds it here, so none of them serves a session
- * whose id is now a project talk template's. `undefined` when the session is
- * not a bound mailbox; each caller refuses that in its own words.
- */
-function openMailboxOf(ctx: { session: { identity: { id: string }; state: Readonly<Record<string, unknown>> } }) {
-  refuseTemplateMailbox(ctx);
-  return boundMailbox(ctx.session.state);
-}
-
-/**
  * The line a post makes, or the mailbox's refusal. Writes nothing: each append
  * keeps the line itself.
  */
 function lineFor(input: MailboxPostInput, ctx: BlockContext, seatAuthored: boolean): MailboxTranscriptLine {
-  const mailbox = openMailboxOf(ctx);
+  const mailbox = boundMailbox(ctx.session.state);
   if (mailbox === undefined) {
     throw new MailboxPostRefusedError(
       "mailbox-not-bound",
@@ -499,7 +435,7 @@ const readMailboxFor = (boardIds: readonly string[]) =>
     inputSchema: z.object({}).strict(),
     outputSchema: mailboxReadOutputSchema,
     execute: async (_input, ctx): Promise<MailboxReadOutput> => {
-      const mailbox = openMailboxOf(ctx);
+      const mailbox = boundMailbox(ctx.session.state);
       if (mailbox === undefined) {
         throw new MailboxPostRefusedError(
           "mailbox-not-bound",
@@ -641,7 +577,7 @@ async function ledgerNamed(
   boardIds: readonly string[],
   name: string
 ): Promise<{ boardId: string; mailbox: MailboxSessionState; ledger: MailboxTaskLedger }> {
-  const mailbox = openMailboxOf(ctx);
+  const mailbox = boundMailbox(ctx.session.state);
   if (mailbox === undefined) {
     throw new MailboxPostRefusedError(
       "mailbox-not-bound",
@@ -862,42 +798,20 @@ export const mailboxNotifyInputSchema = z.object({
   seatAuthored: z.literal(true).optional(),
   /**
    * `true` when the mailbox's route picked this member, the one member the
-   * post is delivered to; and on a project's talk session, for each of the
-   * template's seats, every one of which answers into the room. Absent on
-   * every other delivery. A kind that hears posts decides what it does with
-   * the mark; the built-in agent kind posts its reply into the mailbox, which
-   * on a talk session is the project's room.
+   * post is delivered to. Absent on every other delivery. A kind that hears
+   * posts decides what it does with the mark; the built-in agent kind posts
+   * its reply into the mailbox.
    */
   routed: z.boolean().optional(),
   /**
    * On a routed delivery, the mailbox's last lines before the post (up to
-   * 20), oldest first: the ones the route read. On a talk session's delivery,
-   * the room's last lines before the post, up to 20. Absent on every other
+   * 20), oldest first: the ones the route read. Absent on every other
    * delivery.
    */
-  recent: z.array(mailboxTranscriptLineSchema).optional(),
-  /**
-   * On a talk session's delivery, the token for this seat's answer: issued to
-   * this member alone, and handed back as the answer's `token`. The answer's
-   * author is the seat it was issued to. Absent on every other delivery.
-   */
-  answerToken: z.string().optional()
+  recent: z.array(mailboxTranscriptLineSchema).optional()
 });
 
 export type MailboxNotifyInput = z.infer<typeof mailboxNotifyInputSchema>;
-
-/** The internal entry a talk post hands its fan-out to, in the poster's own talk session. */
-const TALK_POSTED_ACTION = "onTalkPosted";
-
-/** What a talk post's fan-out is handed: the line as the room stored it. Internal-only entry. */
-const talkFanOutInputSchema = z.object({
-  projectId: z.string(),
-  seq: z.number().int(),
-  body: z.string(),
-  principal: z.string()
-});
-
-type TalkFanOutInput = z.infer<typeof talkFanOutInputSchema>;
 
 /** What a rescued delivery failure carries out: the reason, and nothing durable. */
 const mailboxRefusalNoteSchema = z.object({
@@ -980,17 +894,6 @@ export const INVENTORY_REGISTER_MAILBOX = "registerMailboxInInventory";
  */
 export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
 
-/**
- * The action the boot binder dispatches ONCE when the roster carries project
- * talk templates (`mintFor:`), naming their ids, so a mailbox row an earlier
- * boot wrote under one of those ids is retired: a template is never a mailbox,
- * so a row advertising it as one is wrong rather than merely old.
- *
- * **Pinned**, and internal-only like {@link INVENTORY_REGISTER_SEATS}: its whole
- * input is ids to delete, with nothing to check them against.
- */
-export const INVENTORY_RETIRE_MAILBOXES = "retireMailboxesInInventory";
-
 /** Nothing a caller supplies reaches the mailbox's row. */
 const registerMailboxInputSchema = z.object({}).strict();
 
@@ -1008,12 +911,6 @@ const registerSeatsInputSchema = z
 
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
-
-/** The ids of the roster's talk templates, whose mailbox rows are retired. */
-const retireMailboxesInputSchema = z.object({ ids: z.array(z.string().min(1)) }).strict();
-
-/** What the retirement reports: how many mailbox rows it removed. */
-export const inventoryMailboxesRetiredSchema = z.object({ retired: z.number() });
 
 /**
  * Write one seat row from a boot. A seat's row is its standard worker's, the
@@ -1058,10 +955,7 @@ async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInvento
  *     session: { stateSchema: briefingState },
  *     actions: { ...myActions, registerMailboxInInventory: writer.registerMailboxInInventory },
  *     internal: {
- *       actions: {
- *         registerSeatsInInventory: writer.registerSeatsInInventory,
- *         retireMailboxesInInventory: writer.retireMailboxesInInventory
- *       }
+ *       actions: { registerSeatsInInventory: writer.registerSeatsInInventory }
  *     }
  *   });
  */
@@ -1080,7 +974,7 @@ export function inventoryWriterActions(kind: string) {
     outputSchema: inventoryMailboxRegisteredSchema,
     resources: { mailboxes, memberships },
     execute: async (_input, ctx) => {
-      const mailbox = openMailboxOf(ctx);
+      const mailbox = boundMailbox(ctx.session.state);
       if (mailbox === undefined) {
         throw new MailboxPostRefusedError(
           "mailbox-not-bound",
@@ -1186,44 +1080,6 @@ export function inventoryWriterActions(kind: string) {
     }
   });
 
-  const retireMailboxes = handler({
-    name: "inventory-retire-mailboxes",
-    inputSchema: retireMailboxesInputSchema,
-    outputSchema: inventoryMailboxesRetiredSchema,
-    resources: { mailboxes, memberships },
-    execute: async (input, ctx) => {
-      if (ctx.org === undefined) {
-        throw new Error(
-          "the retired mailbox rows cannot be removed: this request carries no organization, and " +
-            "the inventory is org-scoped storage. Run it under the same `orgId` the mailboxes were opened with."
-        );
-      }
-      // What to delete comes from the membership rows themselves, never from
-      // the mailbox row's `members`: registration can leave a membership row
-      // the mailbox row no longer lists, and the mailbox row may already be
-      // gone. The index is keyed seat-first (`<seatId>/<mailboxId>`), so no
-      // prefix reaches one mailbox's rows; the closest the store gets is one
-      // listing of the index per run, kept to the retiring ids' rows before
-      // anything is deleted. This runs once per boot, and only when the roster
-      // carries a template.
-      const retiring = new Set(input.ids);
-      const stale = (await ctx.resources.memberships.list()).filter((ref) => retiring.has(ref.state.mailboxId));
-      // Every membership row first, the mailbox rows last: a run that fails
-      // partway leaves the mailbox row standing, and the next run lists and
-      // finishes whatever is left either way.
-      for (const ref of stale) {
-        await ctx.resources.memberships.delete(membershipKey(ref.state.seatId, ref.state.mailboxId));
-      }
-      let retired = 0;
-      for (const id of input.ids) {
-        if ((await ctx.resources.mailboxes.getOptional(id)) === undefined) continue;
-        await ctx.resources.mailboxes.delete(id);
-        retired += 1;
-      }
-      return { retired };
-    }
-  });
-
   return {
     [INVENTORY_REGISTER_MAILBOX]: {
       block: registerMailbox,
@@ -1237,12 +1093,6 @@ export function inventoryWriterActions(kind: string) {
       description:
         "Write the org's seat rows into the live inventory. Boot machinery, called once by " +
         "`openInventory` with the roster it was hired from."
-    },
-    [INVENTORY_RETIRE_MAILBOXES]: {
-      block: retireMailboxes,
-      description:
-        "Remove the mailbox rows of ids the roster now declares as project talk templates. Boot " +
-        "machinery, called once by `openInventory`."
     }
   };
 }
@@ -1332,16 +1182,6 @@ export interface DefineMailboxFlowOptions {
    * `routing:` reaches an open mailbox at the next boot.
    */
   routing?: Readonly<Record<string, MailboxRouting>>;
-
-  /**
-   * The talk template this kind's project talk sessions run under: the seats
-   * a post in a project's room wakes, and the room's charter. Supplied by
-   * `mailboxInstances` from the org-level default or a `MAILBOX.md` marked
-   * `mintFor:`, as `boards` is, never by an app. Built onto the kind at every
-   * boot and never written into a session, so an edited template reaches
-   * every project's room at the next boot. Absent, a talk post wakes nobody.
-   */
-  template?: TalkTemplateFacts;
 }
 
 /**
@@ -1361,8 +1201,6 @@ export type MailboxFlowFactory = ReturnType<typeof defineFlow> & {
   withRouting: (routing: Readonly<Record<string, MailboxRouting>>) => MailboxFlowFactory;
   /** The same kind, rebuilt exposing these mailboxes' board task actions. */
   withBoardActions: (mailboxIds: readonly string[]) => MailboxFlowFactory;
-  /** The same kind, rebuilt holding a project talk template's seats and charter. */
-  withTemplate: (template: TalkTemplateFacts) => MailboxFlowFactory;
 };
 
 /** Is this mailbox kind one {@link defineMailboxFlow} built? */
@@ -1383,19 +1221,6 @@ const KIND_ROUTE = Symbol("mailbox-kind-route");
  */
 export function routeOf(kind: unknown): MailboxRoute | undefined {
   return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: MailboxRoute })[KIND_ROUTE] : undefined;
-}
-
-/** The key a kind {@link defineMailboxFlow} built with a notify slot carries `true` under. */
-const KIND_WAKES = Symbol("mailbox-kind-wakes");
-
-/**
- * Was this mailbox kind built with a notify slot, so a post can wake anyone?
- * `false` for a kind built without one, or one {@link defineMailboxFlow} did
- * not build. The binder reads it to refuse a talk template whose seats would
- * never be woken. Not re-exported from the package root.
- */
-export function wakesSeats(kind: unknown): boolean {
-  return typeof kind === "function" && (kind as { [KIND_WAKES]?: boolean })[KIND_WAKES] === true;
 }
 
 /**
@@ -1620,186 +1445,6 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
           .step(appendAnswer)
           .tapIf((line: MailboxTranscriptLine | null) => line !== null, fanOutOf, handOff);
 
-  // A project's talk session is a session on this kind whose state names a
-  // project (`resourceId`). `post`, `read` and `answer` keep one name each and
-  // pick their path by that field: a talk session's lines go to the project's
-  // room (`../projects/talk.ts`), every other session's take today's path,
-  // unchanged. The field only selects; the talk path checks membership on the
-  // project row before it touches the room.
-  const isTalk = (ctx: { session: { state: Readonly<Record<string, unknown>> } }): boolean =>
-    talkProjectOf(ctx.session.state) !== undefined;
-  const anyBlock = (block: unknown) => block as BlockDefinition<any, any>;
-
-  // A talk post wakes the template's seats, once each, under the poster: the
-  // fan-out runs in the poster's own talk session, so each seat's
-  // conversation is keyed per person per room. Handed off to a separate
-  // request, as a mailbox's fan-out is, so the post queue's hold covers the
-  // append only. Each delivery is routed: every seat's reply lands in the
-  // room through this session's `answer`. Declared only when there is a seat
-  // to wake and a notify block to wake it with.
-  const templateSeats = [...(options.template?.seats ?? [])];
-  const talkDeliveries = handler({
-    name: "mailbox-talk-deliveries",
-    inputSchema: talkFanOutInputSchema,
-    outputSchema: z.array(mailboxNotifyInputSchema),
-    resources: TALK_RESOURCES,
-    execute: async (posted: TalkFanOutInput, ctx): Promise<MailboxNotifyInput[]> => {
-      const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
-      const postId = roomLineKey(posted.projectId, posted.seq);
-      // One wake per seat; each is recorded, woken and marked in its own
-      // rescued run (`talkDeliver`), so one seat's failure is that seat's alone.
-      return templateSeats.map((member) => ({
-        mailboxId: ctx.session.identity.id,
-        member,
-        postId,
-        body: posted.body,
-        principal: posted.principal,
-        routed: true,
-        recent
-      }));
-    }
-  });
-  // One delivery per post, seat and session, recorded `pending` before the
-  // seat is woken and marked `delivered` after (`talkDelivered`): its token is
-  // how the seat's answer proves which seat it speaks for. A replay wakes a
-  // still-pending delivery again with its token; a delivered one comes back
-  // with no token and is not woken.
-  const talkRecorded = handler({
-    name: "mailbox-talk-recorded",
-    inputSchema: mailboxNotifyInputSchema,
-    outputSchema: mailboxNotifyInputSchema,
-    resources: TALK_RESOURCES,
-    execute: async (delivery: MailboxNotifyInput, ctx): Promise<MailboxNotifyInput> => {
-      const answerToken = await recordTalkDelivery(ctx as unknown as BlockContext, {
-        projectId: talkProjectOf(ctx.session.state) as string,
-        postId: delivery.postId as string,
-        seat: delivery.member,
-        sessionId: delivery.mailboxId
-      });
-      return answerToken === undefined ? delivery : { ...delivery, answerToken };
-    }
-  });
-  const toWake = (delivery: MailboxNotifyInput): boolean => delivery.answerToken !== undefined;
-  // After a seat's wake has been dispatched: its delivery stops being one a
-  // replay would wake again.
-  const talkDelivered = handler({
-    name: "mailbox-talk-delivered",
-    inputSchema: mailboxNotifyInputSchema,
-    outputSchema: z.object({ delivered: z.literal(true) }),
-    resources: TALK_RESOURCES,
-    execute: async (delivery: MailboxNotifyInput, ctx) => {
-      await markTalkDelivered(ctx as unknown as BlockContext, {
-        postId: delivery.postId as string,
-        seat: delivery.member,
-        sessionId: delivery.mailboxId
-      });
-      return { delivered: true as const };
-    }
-  });
-  // One seat's record, wake and mark, rescued together: a failed record, or a
-  // refused or failed wake, skips the mark, so the delivery stays `pending`
-  // (or unrecorded) for a replay, and the failure is that seat's alone. `notify` runs bare here rather than as `deliver`,
-  // whose own rescue would turn the refusal into a success the mark follows.
-  const talkDeliver =
-    notify === undefined
-      ? undefined
-      : sequencer({ name: "mailbox-talk-deliver", inputSchema: mailboxNotifyInputSchema })
-          .step(talkRecorded)
-          .tapIf(toWake, notify)
-          .stepIf(toWake, talkDelivered)
-          .rescue([{ block: noteDeliveryRefusal }]);
-  // Every seat attempted, then any refused one reported: a fan-out with a seat
-  // left `pending` did not complete, and says so.
-  const talkSettled = handler({
-    name: "mailbox-talk-settled",
-    inputSchema: z.array(z.unknown()),
-    outputSchema: z.object({ woken: z.number() }),
-    execute: async (outcomes: unknown[]) => {
-      const refused = outcomes.filter(
-        (outcome): outcome is { delivered: false; reason: string } =>
-          typeof outcome === "object" && outcome !== null && (outcome as { delivered?: unknown }).delivered === false
-      );
-      if (refused.length > 0) {
-        throw new Error(
-          `${refused.length} of ${outcomes.length} seat wakes were not dispatched and stay pending for a replay:\n  - ` +
-            refused.map((outcome) => outcome.reason).join("\n  - ")
-        );
-      }
-      return { woken: outcomes.length };
-    }
-  });
-  const talkFanOut =
-    talkDeliver === undefined || templateSeats.length === 0
-      ? undefined
-      : sequencer({ name: "mailbox-talk-fan-out", inputSchema: talkFanOutInputSchema })
-          .step(talkDeliveries)
-          .forEach((deliveries: MailboxNotifyInput[]) => deliveries, talkDeliver)
-          .step(talkSettled);
-  const talkPostEntry =
-    talkFanOut === undefined
-      ? talkPost
-      : sequencer({ name: "mailbox-talk-post", inputSchema: mailboxPostInputSchema, outputSchema: roomLineSchema })
-          .step(talkPost)
-          .tap(
-            (line: RoomLine): TalkFanOutInput => ({
-              projectId: line.projectId,
-              seq: line.seq,
-              body: line.body,
-              principal: line.userId
-            }),
-            dispatcher({
-              name: "mailbox-talk-hand-off",
-              action: TALK_POSTED_ACTION,
-              inputSchema: talkFanOutInputSchema,
-              session: { id: (_input, ctx) => ctx.session.identity.id }
-            }).rescue([{ block: noteHandOffRefusal }])
-          );
-
-  const postEntry = router({
-    name: "mailbox-post-entry",
-    inputSchema: mailboxPostInputSchema,
-    outputSchema: z.union([mailboxTranscriptLineSchema, roomLineSchema]),
-    routes: [anyBlock(post), anyBlock(talkPostEntry)],
-    execute: (_input, ctx) => {
-      if (isTalk(ctx)) return anyBlock(talkPostEntry);
-      refuseTemplateMailbox(ctx);
-      return anyBlock(post);
-    }
-  });
-
-  const talkRead = talkReadFor(options.template);
-
-  const readInputSchema = z.object({ after: z.number().int().min(0).optional() }).strict();
-  const readEntry = router({
-    name: "mailbox-read-entry",
-    inputSchema: readInputSchema,
-    outputSchema: z.union([mailboxReadOutputSchema, talkReadOutputSchema]),
-    routes: [anyBlock(readMailbox), anyBlock(talkRead)],
-    // A mailbox's read takes no cursor: it returns the recent transcript.
-    execute: (input, ctx) => {
-      if (isTalk(ctx)) return anyBlock(talkRead).connectInput(() => ({ after: input.after ?? 0 }));
-      refuseTemplateMailbox(ctx);
-      return anyBlock(readMailbox).connectInput(() => ({}));
-    }
-  });
-
-  // On a kind without a route there is no mailbox answer, so a talk session's
-  // is the only path; anywhere else it refuses `talk-not-bound`.
-  const answerEntry =
-    answer === undefined
-      ? talkAnswer
-      : router({
-          name: "mailbox-answer-entry",
-          inputSchema: mailboxAnswerInputSchema,
-          outputSchema: z.union([mailboxTranscriptLineSchema.nullable(), roomLineSchema.nullable()]),
-          routes: [anyBlock(answer), anyBlock(talkAnswer)],
-          execute: (_input, ctx) => {
-            if (isTalk(ctx)) return anyBlock(talkAnswer);
-            refuseTemplateMailbox(ctx);
-            return anyBlock(answer);
-          }
-        });
-
   const flow = defineFlow({
     kind: MAILBOX_KIND,
     // Not a preference: it is the declared mechanism for "one kind means one
@@ -1812,31 +1457,21 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     resources: boardResources,
     actions: {
       post: {
-        block: postEntry,
-        description:
-          "Post a line to this mailbox. The mailbox is the session; `author` is an unverified claim. " +
-          "On a project's talk session, the line goes to the project's room, members only.",
+        block: post,
+        description: "Post a line to this mailbox. The mailbox is the session; `author` is an unverified claim.",
         // Keyed on the session by default, so two posts on ONE mailbox
         // serialise and posts on two mailboxes never contend.
         concurrency: "queue"
       },
       read: {
-        block: readEntry,
+        block: readMailbox,
         // Names boards only on a kind that holds one: this string is what a
         // model is told the action does, and a boardless kind returns no
         // `boards` key at all.
         description:
           boardIds.length === 0
-            ? "Read this mailbox's recent transcript lines, members and description; `after` is ignored. " +
-              "On a project's talk session, read the room's lines after `after`, members only."
-            : "Read this mailbox's recent transcript lines, members, description and declared board names; " +
-              "`after` is ignored. On a project's talk session, read the room's lines after `after`, members only."
-      },
-      join: {
-        block: talkJoin,
-        description:
-          "Join a project's room. Members only. Returns your one talk session on the project: the one " +
-          "the project already lists for you, or this session, now bound."
+            ? "Read this mailbox's recent transcript lines, members and description."
+            : "Read this mailbox's recent transcript lines, members, description and declared board names."
       },
       ...(fileTask === undefined || readBoard === undefined
         ? {}
@@ -1879,18 +1514,14 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // through to another, so a name in `actions` is unreachable by an
         // internal dispatch, and the arbiter reads `concurrency` off whichever
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
-        post: { block: postEntry, concurrency: "queue" },
+        post: { block: post, concurrency: "queue" },
         [MAILBOX_SEAT_POST_ACTION]: { block: seatLine, concurrency: "queue" },
         // Here only, never in `actions`: the answer names the post it answers,
         // so a caller who could reach it could take that post's one answer.
         // On the post queue's key (the session), so answers and posts are one
         // line at a time.
-        [MAILBOX_ANSWER_ACTION]: { block: answerEntry, concurrency: "queue" as const },
-        read: { block: readEntry },
-        // `bind` is here only: it names its project, and the trusted callers
-        // that reach it are a project's create and the app's own code.
-        bind: { block: talkBind },
-        join: { block: talkJoin },
+        ...(answer === undefined ? {} : { [MAILBOX_ANSWER_ACTION]: { block: answer, concurrency: "queue" as const } }),
+        read: { block: readMailbox },
         ...(fileTask === undefined || readBoard === undefined
           ? {}
           : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),
@@ -1914,23 +1545,14 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // that function's own doc comment.
         ...(inventoryActions === undefined
           ? {}
-          : {
-              [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS],
-              // Internal for the same reason: its input is ids to delete.
-              [INVENTORY_RETIRE_MAILBOXES]: inventoryActions[INVENTORY_RETIRE_MAILBOXES]
-            }),
+          : { [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS] }),
         ...(fanOut === undefined
           ? {}
           : {
               // `allow`, deliberately: this is the work that must NOT sit
               // behind the post queue.
               onPosted: { block: fanOut, concurrency: "allow" as const }
-            }),
-        // A talk post's wake, for the same reason, and only on a kind holding
-        // a template with seats to wake.
-        ...(talkFanOut === undefined
-          ? {}
-          : { [TALK_POSTED_ACTION]: { block: talkFanOut, concurrency: "allow" as const } })
+            })
       }
     }
   });
@@ -1944,11 +1566,9 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     withRouting: (routing: Readonly<Record<string, MailboxRouting>>) =>
       defineMailboxFlow({ ...options, routing }),
     withBoardActions: (boardActions: readonly string[]) =>
-      defineMailboxFlow({ ...options, boardActions }),
-    withTemplate: (template: TalkTemplateFacts) => defineMailboxFlow({ ...options, template })
+      defineMailboxFlow({ ...options, boardActions })
   }) as MailboxFlowFactory;
   if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
-  if (options.notify !== undefined) Object.assign(factory, { [KIND_WAKES]: true });
   return factory;
 }
 

@@ -48,9 +48,7 @@
  * row is deletable because firing a seat is half of what a roster is for,
  * while an inventory row means *was registered here*. A declared seat's
  * inventory row is never removed; a runtime-hired seat's is removed by its
- * fire, and only while it carries the incarnation fired. A mailbox's row stays
- * until its `MAILBOX.md` becomes a project talk template (`mintFor:`), when
- * the next `openInventory` retires it.
+ * fire, and only while it carries the incarnation fired. A mailbox's row stays.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";

@@ -10,8 +10,10 @@
  * targets is two delegates; uniqueness and the cap go by the record.
  *
  * The list is `null` until the session's delegates are first read or
- * changed, and is then a copy of the worker's defaults. The defaults are
- * never written back, so a change stays in the session it was made in.
+ * changed, and is then a copy of the worker's defaults, with any records the
+ * flow seeds the session with (a project coordinator's: one per workstream
+ * its user has open in the project). The defaults are never written back, so
+ * a change stays in the session it was made in.
  *
  * Every change is one versioned write that recomputes on retry: two changes
  * arriving together both land, and neither is lost. Only this module writes
@@ -47,8 +49,11 @@ export const DELEGATE_SERVER_OWNED: readonly string[] = [DELEGATES_STATE, FALLBA
 
 export const delegateSessionStateSchema = z.object(delegateStateShape);
 
-/** A worker's defaults: the worker ids its configuration lists, and its fallback. */
-export type DelegateDefaults = { delegates: readonly string[]; fallback?: string };
+/**
+ * A worker's defaults: the worker ids its configuration lists, and its
+ * fallback; and the records the flow seeds this session with, beside them.
+ */
+export type DelegateDefaults = { delegates: readonly string[]; fallback?: string; records?: readonly DelegateRecord[] };
 
 /** The conversation's delegates and fallback, seeded from the defaults when never set. */
 export type DelegateList = { delegates: DelegateRecord[]; fallback: DeliveryDelegate | null };
@@ -69,7 +74,7 @@ export function currentDelegates(state: Readonly<Record<string, unknown>>, defau
   const stored = parsed.success ? parsed.data : {};
   if (stored[DELEGATES_STATE] === null || stored[DELEGATES_STATE] === undefined) {
     return {
-      delegates: defaults.delegates.map((worker) => ({ worker })),
+      delegates: [...defaults.delegates.map((worker) => ({ worker })), ...(defaults.records ?? []).map((record) => ({ ...record }))],
       fallback: defaults.fallback === undefined ? null : { worker: defaults.fallback }
     };
   }

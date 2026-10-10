@@ -4,7 +4,7 @@
  * **Shared or private.** `createProject` takes a `visibility`, `"shared"` when
  * omitted. A shared project is a row of the organization's `projects`; a
  * private one is the same row in its owner's user scope, with only its owner
- * as a member, no workstreams by mailbox id, and no room. Every later read
+ * as a member and no workstreams by mailbox id. Every later read
  * and write names the project by its address, its visibility plus its id
  * (`project-address.ts`).
  *
@@ -46,17 +46,13 @@
  * it until then.
  *
  * **Re-sending a create.** The same owner sending the same id again gets the
- * existing row back, unchanged, and its talk session bound if it was not:
- * `createProject` dispatches `bind` to the talk kind, keyed on the row id,
- * whenever the owner has no entry in `sessions` after the write. A bind that
- * fails leaves the row unbound until the owner's next create, or `join`.
+ * existing row back, unchanged.
  */
 
-import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { ActionConfig, BlockContext, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { MAILBOX_KIND } from "../mailbox/mailbox-flow";
 import { defineMailboxInventoryCollection, type MailboxInventoryRow } from "../inventory/collections";
 import { retryOnConflict } from "./cas-retry";
 import {
@@ -78,7 +74,6 @@ import { readProjectFiles } from "./project-files";
 import { readProject } from "./project-read";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
-import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
  * The resource-map ref the mailbox inventory is read through here. Private to
@@ -114,8 +109,8 @@ export const createProjectInputSchema = z
      */
     visibility: projectVisibilitySchema.optional(),
     /**
-     * On a shared project, who besides the creator may read and post the room
-     * and open workstreams. The creator is always a member. A private project
+     * On a shared project, who besides the creator may open workstreams and
+     * change its workstream list. The creator is always a member. A private project
      * names nobody else.
      */
     members: z.array(z.string().min(1)).optional(),
@@ -165,7 +160,7 @@ export const setRepositoryOutputSchema = z.object({ project: projectRowSchema })
 
 /** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
-  createProject: ReturnType<typeof createProjectSequence>;
+  createProject: typeof writeProject;
   setWorkstreams: typeof setWorkstreams;
   setRepository: typeof setRepository;
   readProject: typeof readProject;
@@ -303,8 +298,6 @@ function assertRepository(repository: string | null | undefined): void {
   if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
 }
 
-const ownerBound = (row: ProjectRow): boolean => row.sessions.some((link) => link.userId === row.ownerUserId);
-
 const writeProject = handler({
   name: "project-create",
   inputSchema: createProjectInputSchema,
@@ -369,8 +362,7 @@ const writeProject = handler({
       members: unique([owner, ...(input.members ?? [])]),
       workstreams,
       repository: input.repository ?? null,
-      claimTokens: Object.fromEntries(workstreams.map((id) => [id, token])),
-      sessions: []
+      claimTokens: Object.fromEntries(workstreams.map((id) => [id, token]))
     });
     try {
       await projects.create(input.id, row);
@@ -437,31 +429,6 @@ async function writePrivateProject(ctx: BlockContext, input: CreateProjectInput,
   return done(row, true);
 }
 
-function createProjectSequence() {
-  // Talk sessions run on the built-in mailbox kind, the one the talk
-  // template's reaction mints on too (`talk-template.ts`).
-  const bindOwner = dispatcher({
-    name: "project-bind-owner",
-    flowKind: MAILBOX_KIND,
-    action: TALK_BIND_ACTION,
-    inputSchema: createProjectOutputSchema,
-    // Keyed on the row, from the creating session: a re-sent create from the
-    // same session re-enters the same talk session rather than minting another,
-    // and the template's reaction on create (`talk-template.ts`) derives the
-    // same key, so the two converge on one session.
-    session: { key: (out: CreateProjectOutput) => talkSessionKey(out.project.id) },
-    payload: (out: CreateProjectOutput) => ({ resourceId: out.project.id })
-  }).rescue([{ block: noteBindRefusal }]);
-
-  return sequencer({
-    name: "create-project",
-    inputSchema: createProjectInputSchema,
-    outputSchema: createProjectOutputSchema
-  })
-    .step(writeProject)
-    // Rooms are shared projects': a private project binds no talk session.
-    .tapIf((out: CreateProjectOutput) => out.visibility === "shared" && !ownerBound(out.project), bindOwner);
-}
 
 /**
  * `setWorkstreams`: replace a project's workstreams. Members only. Every listed
@@ -617,7 +584,7 @@ async function settleFailedStamps(
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
 export function defineProjectBlocks(): ProjectBlocks {
-  const createProject = createProjectSequence();
+  const createProject = writeProject;
   return {
     createProject,
     setWorkstreams,

@@ -351,19 +351,20 @@ function ProjectsSection({
   const workstreamItem = (w: Workstream) => (
     <StreamItem key={w.id} id={w.id} state={marks.get(w.id) ?? null} active={route.level === "workstream" && route.mailboxId === w.id} />
   );
-  const projectItem = (projectId: string, label: string) => (
+  // A project's address is its visibility and its id: a private project and a shared one can share an id.
+  const projectItem = (projectId: string, label: string, visibility: "shared" | "private" = "shared") => (
     <NavItem
-      label={label}
-      active={route.level === "project" && route.projectId === projectId}
-      onClick={() => navigate({ level: "project", projectId, tab: "stream" })}
-      testId={`nav-project-${projectId}`}
+      label={visibility === "private" ? `${label} · private` : label}
+      active={route.level === "project" && route.projectId === projectId && (route.visibility ?? "shared") === visibility}
+      onClick={() => navigate({ level: "project", projectId, tab: "stream", ...(visibility === "private" ? { visibility } : {}) })}
+      testId={visibility === "private" ? `nav-project-private-${projectId}` : `nav-project-${projectId}`}
     />
   );
   return (
     <>
       {view.value.projects.map(({ project, workstreams }) => (
-        <div key={project.id} data-testid="project-group" data-project-id={project.id}>
-          {projectItem(project.id, project.title)}
+        <div key={`${project.visibility}/${project.id}`} data-testid="project-group" data-project-id={project.id} data-visibility={project.visibility}>
+          {projectItem(project.id, project.title, project.visibility)}
           <div className="pl-3">
             {workstreams.map(({ id, workstream }) =>
               workstream === undefined ? (

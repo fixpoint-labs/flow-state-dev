@@ -29,8 +29,6 @@ import {
   buildProjectedResourceContextFromSession,
   getPersistedData
 } from "../resources/internal";
-import { ownerKeyMaySeed } from "../resources/owner-private";
-import { ownKeyRecord } from "../resources/own-key-record";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
@@ -140,6 +138,16 @@ export async function handleGetSessionState(
     getPersistedData(persistCtx, flow, route.sessionId, "user", ctx.tenantId),
     getPersistedData(persistCtx, flow, route.sessionId, "org", ctx.tenantId)
   ]);
+  // `undefined` is "this scope has no cell for this session" (org with no org
+  // binding); the projection below treats that as an empty scope, as it did
+  // when the walk produced an empty merge.
+  const sessionContent = sessionPersisted?.content ?? {};
+  const userContent = userPersisted?.content ?? {};
+  const orgContent = orgPersisted?.content ?? {};
+  const sessionState = sessionPersisted?.resources ?? {};
+  const userState = userPersisted?.resources ?? {};
+  const orgState = orgPersisted?.resources ?? {};
+
   // FIX-435: partition the flat flow.resources map back into per-scope
   // buckets so the existing per-scope storage helpers and snapshot builders
   // continue to work. Each entry's `scope` is intrinsic to its definition.
@@ -152,29 +160,6 @@ export async function handleGetSessionState(
     else if (def.scope === "user") userConfigs[accessor] = def;
     else if (def.scope === "org") orgConfigs[accessor] = def;
   }
-
-  // `undefined` is "this scope has no cell for this session" (org with no org
-  // binding); the projection below treats that as an empty scope, as it did
-  // when the walk produced an empty merge.
-  //
-  // The persisted maps hold every row the scope's buckets do, other users'
-  // owner-private rows included. Keep the rows a run's cache would hold for
-  // this user (`ownerKeyMaySeed`), so a reader of the raw maps (a
-  // `contentTemplateRef`) sees what a run sees.
-  const seedable = <T>(rows: Record<string, T> | undefined, configs: Record<string, unknown>): Record<string, T> => {
-    const kept = ownKeyRecord<T>();
-    const collections = Object.values(configs);
-    for (const [key, value] of Object.entries(rows ?? {})) {
-      if (ownerKeyMaySeed(key, session.userId, collections)) kept[key] = value;
-    }
-    return kept;
-  };
-  const sessionContent = seedable(sessionPersisted?.content, sessionConfigs);
-  const userContent = seedable(userPersisted?.content, userConfigs);
-  const orgContent = seedable(orgPersisted?.content, orgConfigs);
-  const sessionState = seedable(sessionPersisted?.resources, sessionConfigs);
-  const userState = seedable(userPersisted?.resources, userConfigs);
-  const orgState = seedable(orgPersisted?.resources, orgConfigs);
 
   const sessionResources = createScopeResources({
     scope: "session",

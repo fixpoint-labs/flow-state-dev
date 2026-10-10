@@ -5,7 +5,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/engine";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -21,7 +20,7 @@ import {
   workstreamOpenedEntry,
   type ProgressEntry
 } from "../src/index";
-import { bootProjectsHost } from "./projects-harness";
+import { bootProjectsHost, countingStores } from "./projects-harness";
 
 const NOW = Date.parse("2026-10-08T12:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -98,31 +97,6 @@ describe("projectProgress", () => {
     ]);
   });
 });
-
-/**
- * In-memory stores that log every resource-state read: `get <key>`,
- * `prefix <prefix>` or `all`, each with its scope. What V4 counts is these,
- * the reads that reach the store.
- */
-function countingStores() {
-  const registry = createInMemoryStores();
-  const stores = { capabilities: ["primary"], resolve: () => Promise.resolve(registry) };
-  const reads: string[] = [];
-  const inner = registry.resourceState;
-  registry.resourceState = new Proxy(inner, {
-    get(target, method, receiver) {
-      const value = Reflect.get(target, method, receiver);
-      if (typeof value !== "function") return value;
-      return (...args: unknown[]) => {
-        if (method === "get") reads.push(`${String(args[0])} get ${String(args[2])}`);
-        if (method === "getByPrefix") reads.push(`${String(args[0])} prefix ${String(args[2])}`);
-        if (method === "getAll") reads.push(`${String(args[0])} all`);
-        return (value as (...a: unknown[]) => unknown).apply(target, args);
-      };
-    }
-  });
-  return { stores, reads };
-}
 
 /** The owner's own entry, aged by flow code as an old write would leave it. */
 const age = handler({
@@ -221,7 +195,7 @@ describe("readProject", () => {
     });
     // The row holds no workstreams and no totals.
     expect(Object.keys(out.project).sort()).toEqual(
-      ["brief", "claimTokens", "id", "members", "ownerUserId", "repository", "sessions", "status", "title", "workstreams"].sort()
+      ["brief", "claimTokens", "id", "members", "ownerUserId", "repository", "status", "title", "workstreams"].sort()
     );
     expect(out.project.workstreams).toEqual([]);
   });

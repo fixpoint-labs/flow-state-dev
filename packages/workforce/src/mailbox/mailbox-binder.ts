@@ -43,7 +43,6 @@ import {
   defineMailboxFlow,
   holdsBoards,
   routeOf,
-  wakesSeats,
   type MailboxSessionState
 } from "./mailbox-flow";
 import {
@@ -53,15 +52,6 @@ import {
 } from "./mailbox-board";
 import type { MailboxRouting } from "./mailbox-route";
 import { PRE_RENAME_NAMES, preRenameKindNameProblem, preRenameOccupantProblem } from "./pre-rename";
-import { PROJECTS_COLLECTION } from "../projects/collections";
-import {
-  orgTalkTemplateOf,
-  registeredTalkTemplate,
-  registerTalkTemplate,
-  talkTemplateConflict,
-  templateSeatsProblem,
-  type TalkTemplateFacts
-} from "../projects/talk-template";
 
 /** The `MAILBOX.md` key that routes a mailbox, and its one subkey. */
 const ROUTING_KEY = "routing";
@@ -69,9 +59,6 @@ const FALLBACK_KEY = "fallback";
 
 /** The `MAILBOX.md` key that exposes a mailbox's boards' task tools as actions. */
 const BOARD_ACTIONS_KEY = "boardActions";
-
-/** The `MAILBOX.md` key that marks the file a project talk template, not a mailbox. */
-const MINT_FOR_KEY = "mintFor";
 
 /**
  * Every key a `MAILBOX.md` may declare. Closed, and checked by name.
@@ -91,12 +78,6 @@ const MINT_FOR_KEY = "mintFor";
  * `boardActions` is the seventh: `true` exposes each of the mailbox's boards'
  * eight task tools as mailbox actions. Boolean only, off by default, and built
  * onto the kind the same way.
- *
- * `mintFor` is the eighth and the newest: it names a collection in the org's
- * resource map, and makes the file that collection's project talk template
- * rather than a mailbox. A template is never opened and never registered; its
- * `members:` are the seats a post in a project's room wakes and its body is
- * the room's charter, built onto the kind at every boot.
  */
 const DECLARABLE_KEYS = [
   "flow",
@@ -105,55 +86,8 @@ const DECLARABLE_KEYS = [
   MAILBOX_BOARDS_KEY,
   INSTRUCTIONS_KEY,
   ROUTING_KEY,
-  BOARD_ACTIONS_KEY,
-  MINT_FOR_KEY
+  BOARD_ACTIONS_KEY
 ] as const;
-
-/**
- * Is this record a project talk template (`mintFor:`) rather than a mailbox?
- * A template is never opened and never registered in the inventory, so
- * `openMailboxes` and `openInventory` pass it over. Not re-exported from the
- * package root.
- */
-export function isTalkTemplate(manifest: MailboxManifest): boolean {
-  return Object.hasOwn(manifest.declared, MINT_FOR_KEY);
-}
-
-/**
- * Why a template file is not one, or `undefined`. A template is the shape of a
- * project's room, not a mailbox: it holds no board (a board per project is
- * still an open question), routes no post (every seat it names hears every
- * post), and its `members:` are seat ids.
- */
-function templateFileProblem(declared: Record<string, unknown>): string | undefined {
-  const target = declared[MINT_FOR_KEY];
-  if (typeof target !== "string" || target.trim().length === 0) {
-    return `declares a \`${MINT_FOR_KEY}:\` that is not a collection name. Name the collection whose rows this template mints a room for, as \`${MINT_FOR_KEY}: projects\`.`;
-  }
-  const notHeld = ["flow", MAILBOX_BOARDS_KEY, ROUTING_KEY, BOARD_ACTIONS_KEY].filter((key) => Object.hasOwn(declared, key));
-  if (notHeld.length > 0) {
-    return (
-      `declares \`${MINT_FOR_KEY}:\` and ${notHeld.map((key) => `\`${key}:\``).join(", ")}. A talk template is ` +
-      `not a mailbox: it holds no board, routes no post, and runs on the built-in mailbox kind. ` +
-      `Drop ${notHeld.length === 1 ? "that line" : "those lines"}.`
-    );
-  }
-  if (Object.hasOwn(declared, "members") && isListOfNames(declared.members)) {
-    const problem = templateSeatsProblem(declared.members);
-    if (problem !== undefined) return `declares \`${MINT_FOR_KEY}:\`, and ${problem}`;
-  }
-  return undefined;
-}
-
-/** One talk template, from either site, as the binder checks and builds it. */
-type DeclaredTemplate = {
-  /** Where it was declared, for a refusal to name. */
-  site: string;
-  collection: object;
-  /** The collection's ref in the org's resource map. */
-  ref: string;
-  facts: TalkTemplateFacts;
-};
 
 /**
  * A mailbox kind: a flow factory carrying the same identity contract the
@@ -195,27 +129,6 @@ export interface MailboxInstancesOptions {
    * this to one: a custom kind is zero-arg by contract.
    */
   inventory?: boolean;
-
-  /**
-   * The organization's resource map, keyed by ref: the `resources` half of
-   * `splitResourceModules(resourceModules)`, or the app's own map. Where the
-   * project talk templates are read from. The org-level default rides on the
-   * projects collection itself (`defineProjectsCollection({ talk })`), and a
-   * `MAILBOX.md`'s `mintFor:` names a collection by its ref here.
-   *
-   * Absent, no org-level template is read, and a `mintFor:` names no
-   * collection, so it is refused.
-   *
-   * **The first call that finds a projects template registers it for the
-   * process** and sets `reactTo.created` on the one projects declaration, so
-   * creating a row in a flow turn mints the creator's talk session on the
-   * built-in mailbox kind. Every later call builds its mailbox kind from that
-   * registration, whether or not it passes `resources`, so its talk sessions
-   * hold the same seats and charter. A later call that finds a different
-   * template throws, and every call's mailbox kind must be able to wake the
-   * template's seats.
-   */
-  resources?: Readonly<Record<string, unknown>>;
 }
 
 export interface OpenMailboxesOptions {
@@ -398,11 +311,6 @@ function validate(
 
   if (Object.hasOwn(declared, "description") && typeof declared.description !== "string") {
     return { problem: "declares a `description:` that is not text" };
-  }
-
-  if (Object.hasOwn(declared, MINT_FOR_KEY)) {
-    const problem = templateFileProblem(declared);
-    if (problem !== undefined) return { problem };
   }
 
   // Shape first, then each name. A `boards:` that is not a list is one problem
@@ -647,30 +555,6 @@ export function mailboxInstances(
   const routingByKind = new Map<string, Record<string, MailboxRouting>>();
   /** Each selected kind's mailboxes that declared `boardActions: true`. */
   const boardActionsByKind = new Map<string, string[]>();
-  /** Every project talk template, from either site, checked. */
-  const templates: DeclaredTemplate[] = [];
-
-  // The org-level defaults first: each rides on the collection it was
-  // declared beside, in the org's resource map.
-  let orgDeclarations = 0;
-  const readCollections = new Set<unknown>();
-  for (const [ref, entry] of Object.entries(options.resources ?? {})) {
-    const template = orgTalkTemplateOf(entry);
-    if (template === undefined) continue;
-    // One collection under two refs is one declaration, not two rivals.
-    if (readCollections.has(entry)) continue;
-    readCollections.add(entry);
-    orgDeclarations += 1;
-    const site = `the talk template beside "${ref}" in the org's resources`;
-    // Its seats were checked where it was declared (`defineProjectsCollection`).
-    const declared = templateFrom(
-      { ref, seats: template.seats, charter: template.charter ?? "" },
-      site,
-      options.resources
-    );
-    if ("problem" in declared) problems.push(`${site} — ${declared.problem}`);
-    else templates.push(declared);
-  }
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -689,24 +573,6 @@ export function mailboxInstances(
     const result = validate(manifest, kinds, available);
     if ("problem" in result) {
       refuse(result.problem);
-      continue;
-    }
-
-    // A template is the shape of a project's room, not a mailbox: it adds its
-    // template, and nothing a mailbox adds.
-    if (isTalkTemplate(manifest)) {
-      const ref = manifest.declared[MINT_FOR_KEY] as string;
-      const declared = templateFrom(
-        {
-          ref,
-          seats: isListOfNames(manifest.declared.members) ? manifest.declared.members : [],
-          charter: stateFor(manifest).instructions
-        },
-        `mailbox "${manifest.id}"`,
-        options.resources
-      );
-      if ("problem" in declared) refuse(declared.problem);
-      else templates.push(declared);
       continue;
     }
 
@@ -748,64 +614,13 @@ export function mailboxInstances(
     }
   }
 
-  // One template per collection, across both sites. A project's members each
-  // hold one talk session on it, so its rows are minted from one template.
-  // One refusal per collection, naming every template that shares it.
-  const byCollection = new Map<object, DeclaredTemplate[]>();
-  for (const template of templates) {
-    byCollection.set(template.collection, [...(byCollection.get(template.collection) ?? []), template]);
-  }
-  for (const rivals of byCollection.values()) {
-    if (rivals.length < 2) continue;
-    problems.push(
-      `the "${rivals[0]!.ref}" collection has ${rivals.length} talk templates: ` +
-        `${rivals.map((other) => other.site).join("; ")}. A project's ` +
-        `members each hold one talk session, so a collection's rows are minted from one template. Keep one.`
-    );
-  }
-
-  // The template this call builds on: the one it found, or the one an earlier
-  // call registered for the process. Either way, this call's mailbox kind
-  // runs the talk sessions, so it must be able to hold and wake it.
-  const found = templates.find((template) => template.collection === PROJECTS_COLLECTION);
-  // A template found here that differs from the one an earlier call
-  // registered is refused with everything else, not after it.
-  const conflict = found === undefined ? undefined : talkTemplateConflict(PROJECTS_COLLECTION, found);
-  if (conflict !== undefined) problems.push(`${found!.site} — ${conflict}`);
-  const standing = found ?? registeredTalkTemplate(PROJECTS_COLLECTION);
-  if (standing !== undefined) {
-    const problem = talkKindProblem(kinds, standing.facts);
-    if (problem !== undefined) {
-      problems.push(
-        found !== undefined
-          ? `${found.site} — ${problem}`
-          : `the talk template registered in this process (${standing.site}) — ${problem}`
-      );
-    }
-  }
-
   if (problems.length > 0) {
-    // Worded as before when every declaration is a mailbox file.
-    const declarations = ordered.length + orgDeclarations;
-    const noun = orgDeclarations > 0 ? "declarations" : ordered.length === 1 ? "mailbox" : "mailboxes";
+    const noun = ordered.length === 1 ? "mailbox" : "mailboxes";
     throw new Error(
-      `mailboxInstances refused ${problems.length} of ${declarations} ` +
+      `mailboxInstances refused ${problems.length} of ${ordered.length} ` +
         `${noun}; nothing was registered:\n  - ${problems.join("\n  - ")}`
     );
   }
-
-  // The template found here is registered for the process, with the reaction
-  // that mints a creator's talk session (`talk-template.ts`); a different one
-  // already registered throws. The mailbox kind is then built holding the
-  // registered template, and registered even when no mailbox runs on it: its
-  // talk sessions do. A call that finds no template still builds from the
-  // registration, so every mailbox kind in the process holds the same one.
-  if (found !== undefined) {
-    const templateIds = ordered.filter(isTalkTemplate).map((manifest) => manifest.id);
-    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, MAILBOX_KIND, templateIds);
-  }
-  const template = registeredTalkTemplate(PROJECTS_COLLECTION);
-  if (template !== undefined) selected.add(MAILBOX_KIND);
 
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
@@ -813,81 +628,15 @@ export function mailboxInstances(
     const routing = routingByKind.get(kind);
     // A kind holding nothing is built exactly as it was before boards existed,
     // and `validate` has already refused the third case — boards named on a
-    // kind that cannot hold them. Routing and templates likewise: only a kind
+    // kind that cannot hold them. Routing likewise: only a kind
     // this package built gets here holding any.
     if (!holdsBoards(factory)) return factory();
     const boardActions = boardActionsByKind.get(kind);
-    const facts = kind === MAILBOX_KIND ? template?.facts : undefined;
     const withBoards = boards === undefined ? factory : factory.withBoards(boards);
     const withRouting = routing === undefined ? withBoards : withBoards.withRouting(routing);
     const withBoardActions = boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions);
-    return (facts === undefined ? withBoardActions : withBoardActions.withTemplate(facts))();
+    return withBoardActions();
   });
-}
-
-/**
- * Check one talk template's collection, from either site. It must be the
- * projects collection in the org's resource map: a talk session is about a
- * project, and its entries read that collection.
- */
-function templateFrom(
-  declared: { ref: string; seats: readonly string[]; charter: string },
-  site: string,
-  resources: Readonly<Record<string, unknown>> | undefined
-): DeclaredTemplate | { problem: string } {
-  const collection = resources !== undefined && Object.hasOwn(resources, declared.ref) ? resources[declared.ref] : undefined;
-  if (collection === undefined) {
-    return {
-      problem:
-        `names collection "${declared.ref}", which is not in the org's resources passed to mailboxInstances. ` +
-        `Declare it in \`org/resources/${declared.ref}.ts\` and pass the org's resource map as \`resources\`.`
-    };
-  }
-  if (collection !== PROJECTS_COLLECTION) {
-    return {
-      problem:
-        `names "${declared.ref}", which is not the projects collection. A talk session is about a project, ` +
-        `so a template mints rooms for the rows \`defineProjectsCollection()\` declares.`
-    };
-  }
-  return {
-    site,
-    collection,
-    ref: declared.ref,
-    facts: { seats: [...declared.seats], charter: declared.charter }
-  };
-}
-
-/**
- * Why this call's mailbox kind cannot run talk sessions on `facts`, or
- * `undefined`. Talk sessions run on the built-in kind (`"mailbox"`), so what
- * sits under that key must be a kind {@link defineMailboxFlow} built (the
- * template is built onto it, as `boards:` is), of that kind, and able to wake
- * the template's seats.
- */
-function talkKindProblem(kinds: Record<string, MailboxKind>, facts: TalkTemplateFacts): string | undefined {
-  const factory = kinds[MAILBOX_KIND]!;
-  if (factory.kind !== MAILBOX_KIND) {
-    return (
-      `talk sessions run on kind "${MAILBOX_KIND}", but the flow passed under that key is kind ` +
-      `"${String(factory.kind)}" — they would run a different mailbox's graph.`
-    );
-  }
-  if (!holdsBoards(factory)) {
-    return (
-      `talk sessions run on kind "${MAILBOX_KIND}", and the flow passed under that key is not one ` +
-      `\`defineMailboxFlow\` built. A custom kind is zero-arg, so there is no way to hand it the template's ` +
-      `seats and charter.`
-    );
-  }
-  if (facts.seats.length > 0 && !wakesSeats(factory)) {
-    return (
-      `names seats, but talk sessions run on kind "${MAILBOX_KIND}", which was built with no \`notify\` ` +
-      `block, so a post would wake none of them. Pass it built with one, as ` +
-      `\`kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }\`.`
-    );
-  }
-  return undefined;
 }
 
 /**
@@ -895,10 +644,9 @@ function talkKindProblem(kinds: Record<string, MailboxKind>, facts: TalkTemplate
  *
  * Built from named keys only, which is why an undeclared key cannot reach
  * state even though the session route would not refuse one: there is nowhere
- * for it to go. `resourceId` is a talk session's alone, and a declared
- * mailbox's state carries no such key.
+ * for it to go.
  */
-function stateFor(manifest: MailboxManifest): Omit<MailboxSessionState, "resourceId"> {
+function stateFor(manifest: MailboxManifest): MailboxSessionState {
   const declared = manifest.declared;
   const charter =
     manifest.body.trim().length > 0
@@ -1063,9 +811,7 @@ export async function openMailboxes(
   // address. The binder no longer takes an `orgId` at all, and never did have
   // the authority to choose one.
 
-  // A talk template is the shape of a project's room, never a mailbox, so it
-  // is never opened.
-  for (const manifest of orderedById(manifests.filter((record) => !isTalkTemplate(record)))) {
+  for (const manifest of orderedById(manifests)) {
     const selected = kindOf(manifest.declared);
     if ("problem" in selected) {
       throw new Error(`mailbox "${manifest.id}" — ${selected.problem}`);

@@ -111,18 +111,4 @@ describe("private and shared projects", () => {
     expect(orgRow!.data).toMatchObject({ title: "The org's Apollo", ownerUserId: "bob", repository: null });
     expect(privateRow!.data).toMatchObject({ title: "Alice's Apollo", ownerUserId: "alice", repository: "git@github.com:alice/apollo.git" });
   });
-
-  it("binds no talk session for a private project, not even into the org's project with its id: rooms are shared projects' (BR-1)", async () => {
-    const h = await boot();
-    // The org's `apollo`, which Alice is a member of: a bind keyed by the id would land her in its room.
-    await h.ok("bob", "lab", await h.openSession("bob", "lab"), "createProject", { id: "apollo", title: "The org's", members: ["alice"] });
-    const lab = await h.openSession("alice", "lab");
-    await h.ok("alice", "lab", lab, "createProject", { id: "apollo", title: "Mine", visibility: "private" });
-    // Give a bind that was dispatched time to land.
-    await new Promise((r) => setTimeout(r, 200));
-    const [mine] = await h.listed("alice", lab, PRIVATE_PROJECTS_RESOURCE);
-    const [orgs] = await h.listed("alice", lab, PROJECTS_RESOURCE);
-    expect(mine!.data.sessions).toEqual([]);
-    expect((orgs!.data.sessions as Array<{ userId: string }>).map((link) => link.userId)).toEqual(["bob"]);
-  });
 });
