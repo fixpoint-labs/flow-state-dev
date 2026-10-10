@@ -133,6 +133,23 @@ describe.each(BACKINGS)("an answered question (%s)", (_name, makeBacking) => {
     expect(parked.feedback).toBe("And the account?");
   });
 
+  it("refuses, inside the write, to move an answered row to another worker until it is claimed again", async () => {
+    const tasks = await makeBacking();
+    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 2, assignee: "a" });
+    await claimThenAsk(tasks);
+    await tasks.unpark("t", "eu-west", { answer: true });
+    expect(await tasks.setAssignee("t", "b")).toMatchObject({ outcome: "declined", reason: "awaiting-answer" });
+    expect((tasks.get("t") as Task).assignee).toBe("a");
+    expect(await tasks.setAssignee("t", "a")).toMatchObject({ outcome: "unchanged" });
+  });
+
+  it("refuses, inside the write, to move a follow-up to another worker", async () => {
+    const tasks = await makeBacking();
+    await tasks.addTask({ id: "f", goal: "f", assignee: "a", followUpOf: "root" });
+    expect(await tasks.setAssignee("f", "b")).toMatchObject({ outcome: "declined", reason: "follow-up" });
+    expect((tasks.get("f") as Task).assignee).toBe("a");
+  });
+
   it("declines an answer to a row that isn't parked, writing nothing", async () => {
     const tasks = await makeBacking();
     await tasks.addTask({ id: "t", goal: "t", maxAttempts: 1 });

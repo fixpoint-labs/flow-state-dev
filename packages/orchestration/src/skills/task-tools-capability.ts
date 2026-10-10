@@ -417,6 +417,17 @@ const declinedWriteToolError = (
       clause,
     });
   }
+  if (declined.reason === "awaiting-answer") return awaitingAnswerError(taskId);
+  if (declined.reason === "follow-up") {
+    return {
+      ok: false as const,
+      taskId,
+      error:
+        `follow_up_takes_no_assignee: task "${taskId}" is a follow-up, and it runs in the ` +
+        `session of the task it follows, with that task's worker. Its assignee doesn't change. ` +
+        `Nothing was written.`,
+    };
+  }
   if (declined.reason === "not-my-task" && heldTaskId !== undefined) {
     return {
       ok: false as const,
@@ -545,24 +556,29 @@ function resolveFollowUp(
     };
   }
   const root = named.followUpOf ?? named.id;
-  const busy = collection
-    .list()
-    .find((task) => (task.followUpOf ?? task.id) === root && !isTerminalStatus(task.status));
-  if (busy !== undefined) {
+  const rootTask = collection.get(root);
+  // A follow-up runs in the session its root task ran in, with that worker:
+  // a root that never ran (cancelled before anyone took it) or had no worker
+  // has no session to follow up in.
+  if (rootTask === undefined || rootTask.assignee === undefined || rootTask.run === undefined) {
     return {
       ok: false as const,
       error:
-        `session_has_unfinished_task: task "${busy.id}" is still ${busy.status} in the session ` +
-        `"${followUpOf}" ran in, and a session works one task at a time. Follow up once it ` +
-        `finishes. Nothing was filed.`,
+        `follow_up_of_unfinished: task "${followUpOf}" never ran with a worker, so there is ` +
+        `no session to follow up in. File a new task instead. Nothing was filed.`,
     };
   }
-  // The follow-up's id is the root's, numbered by how many follow-ups it has
-  // had. Two follow-ups filed at once both pass the scan above and pick the
-  // same number, and the ledger's insert takes one id once: the check and the
-  // insert are one atomic write, and the loser is refused naming the winner.
-  const number = collection.list().filter((task) => task.followUpOf === root).length + 1;
-  return { root, assignee: collection.get(root)?.assignee ?? named.assignee, id: `${root}-f${number}` };
+  const busy = collection
+    .list()
+    .find((task) => (task.followUpOf ?? task.id) === root && !isTerminalStatus(task.status));
+  if (busy !== undefined) return followUpBusyError(busy.id, busy.status, followUpOf);
+  // The follow-up's id is the root's, with the lowest number no row holds.
+  // Two follow-ups filed at once both pass the scan above and pick the same
+  // id, and the ledger's insert takes one id once: the check and the insert
+  // are one atomic write, and the loser is refused naming the winner.
+  let number = 1;
+  while (collection.get(`${root}-f${number}`) !== undefined) number += 1;
+  return { root, assignee: rootTask.assignee, id: `${root}-f${number}` };
 }
 
 /**
@@ -588,14 +604,33 @@ const awaitingAnswerError = (taskId: string) => ({
     `with its worker, in the session that asked. Reassign it after that run starts. Nothing was written.`,
 });
 
-/** `addTask`'s refusal for a follow-up whose session took another follow-up first. */
-const followUpBusyError = (id: string, followUpOf: string) => ({
+/** `addTask`'s refusal for a follow-up whose session still has an unfinished task. */
+const followUpBusyError = (id: string, status: string, followUpOf: string) => ({
   ok: false as const,
   error:
-    `session_has_unfinished_task: task "${id}" is still unfinished in the session ` +
+    `session_has_unfinished_task: task "${id}" is still ${status} in the session ` +
     `"${followUpOf}" ran in, and a session works one task at a time. Follow up once it ` +
     `finishes. Nothing was filed.`,
 });
+
+/**
+ * What a follow-up's add answers when its id was taken by a row filed at the
+ * same moment: the session is busy when that row is an unfinished follow-up
+ * of the same root (the race this id exists to settle); anything else is an
+ * id clash, and the follow-up can simply be filed again.
+ */
+function followUpTakenError(err: unknown, collection: TaskCollectionRef, id: string, root: string, followUpOf: string) {
+  const winner = ((err as { currentValue?: unknown } | null)?.currentValue ?? collection.get(id)) as
+    | Partial<Task>
+    | undefined;
+  if (winner?.followUpOf === root && (winner.status === undefined || !isTerminalStatus(winner.status))) {
+    return followUpBusyError(id, winner.status ?? "pending", followUpOf);
+  }
+  return {
+    ok: false as const,
+    error: `task_id_taken: another task took the id "${id}" at the same moment. File the follow-up again. Nothing was filed.`,
+  };
+}
 
 /** Where `parkOnQuestion` reads the row a task turn holds. */
 export interface ParkOnQuestionOptions {
@@ -1002,7 +1037,9 @@ function buildTaskTools(
         if (err instanceof TaskCapExceededError) return capError(err);
         // A follow-up's id was taken by one filed at the same moment: that
         // one holds the session now (see `resolveFollowUp`).
-        if (followUp !== undefined && isTakenTaskId(err)) return followUpBusyError(followUp.id, input.followUpOf!);
+        if (followUp !== undefined && isTakenTaskId(err)) {
+          return followUpTakenError(err, collection, followUp.id, followUp.root, input.followUpOf!);
+        }
         throw err;
       }
     },

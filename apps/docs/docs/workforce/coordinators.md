@@ -428,7 +428,7 @@ await help.sendAction(
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. `addTask` refuses the follow-up, filing nothing, if the task it names isn't finished, if that session still has an unfinished task, or if you pass an `assignee`:
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. `addTask` refuses the follow-up, filing nothing, if the task it names isn't finished or never ran, if that session still has an unfinished task, or if you pass an `assignee`:
 
 ```json
 { "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" is in_progress. A follow-up names a finished task. Nothing was filed." }

@@ -61,6 +61,15 @@ async function answerAsOf(b: Awaited<ReturnType<typeof board>>, asOf: Task, answ
   return runForTest(toolNamed(tools, "answerTask"), { taskId: asOf.id, answer }, b.ctx) as Promise<any>;
 }
 
+/** File `id` for researcher and run it to completion, as a board does: claimed, run-linked, completed. */
+async function ranAndCompleted(ref: TaskCollectionRef, id: string) {
+  await ref.addTask({ id, goal: `do ${id}`, assignee: "researcher" });
+  const claimed = (await ref.claim("w", { eligibility: (t) => t.id === id }))!;
+  const ticket = ticketForClaim(ref.collectionId, claimed, ref.partition);
+  await ref.linkRun(id, { sessionId: "s-root", requestId: "r-root", attempt: claimed.attempts }, { claim: ticket });
+  await ref.complete(id, "done", { claim: ticket });
+}
+
 /** `base` as a turn of the task session on request `requestId`. */
 const turnCtx = (base: object, requestId: string) => ({
   ...base,
@@ -147,6 +156,19 @@ describe("answerTask (S2)", () => {
     expect(b.get("t")).toMatchObject({ status: "parked", feedback: "Which account?" });
   });
 
+  it("still declines a reassign when the answer lands between the tool's read and its write", async () => {
+    const b = await board([row("t", { status: "parked", parkedOnQuestion: true, feedback: "Which region?", attempts: 1, assignee: "researcher" })]);
+    // The tool reads the row before the answer...
+    const before = b.get("t")!;
+    expect(await b.call("answerTask", { taskId: "t", answer: "eu-west" })).toEqual({ ok: true });
+    // ...and writes after it: the write itself must refuse.
+    const stale = { ...b.ref, get: (id: string) => (id === "t" ? before : b.ref.get(id)) } as TaskCollectionRef;
+    const tools = buildTaskToolsList(async () => stale);
+    const out = (await runForTest(toolNamed(tools, "assignTask"), { taskId: "t", assignee: "writer" }, b.ctx)) as any;
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^task_awaiting_answer: /) });
+    expect(b.get("t")!.assignee).toBe("researcher");
+  });
+
   it("answers an unknown task as not found: another board's rows are unknown here (BR-11)", async () => {
     const b = await board([]);
     expect(await b.call("answerTask", { taskId: "elsewhere", answer: "x" })).toEqual({
@@ -159,7 +181,7 @@ describe("answerTask (S2)", () => {
 
 describe("addTask's followUpOf (S4)", () => {
   it("files a new row naming the finished task, with its worker (BR-20)", async () => {
-    const b = await board([row("root", { status: "completed", assignee: "researcher", attempts: 1 })]);
+    const b = await board([row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } })]);
     const out = await b.call("addTask", { goal: "Now open the PR", followUpOf: "root" });
     expect(out).toMatchObject({ ok: true });
     expect(out.taskId).not.toBe("root");
@@ -169,7 +191,7 @@ describe("addTask's followUpOf (S4)", () => {
 
   it("resolves a follow-up of a follow-up to the first task (BR-24)", async () => {
     const b = await board([
-      row("root", { status: "completed", assignee: "researcher", attempts: 1 }),
+      row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),
       row("f1", { status: "completed", assignee: "researcher", attempts: 1, followUpOf: "root" })
     ]);
     const out = await b.call("addTask", { goal: "and again", followUpOf: "f1" });
@@ -186,8 +208,36 @@ describe("addTask's followUpOf (S4)", () => {
     }
   );
 
+  it("refuses a follow-up of a task cancelled before it ever ran, filing nothing", async () => {
+    const b = await board([row("root", { status: "cancelled", assignee: "researcher" })]);
+    const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished: task "root" never ran/) });
+    expect(b.ref.list()).toHaveLength(1);
+  });
+
+  it("takes the lowest free number when an unrelated row already holds <root>-f1", async () => {
+    const b = await board([
+      row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),
+      row("root-f1", { status: "pending" })
+    ]);
+    const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
+    expect(out).toMatchObject({ ok: true, taskId: "root-f2" });
+    expect(b.get("root-f2")).toMatchObject({ followUpOf: "root" });
+  });
+
+  it.each(["assignTask", "updateTask"] as const)("declines moving a pending follow-up to another worker by %s", async (tool) => {
+    const b = await board([
+      row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),
+      row("root-f1", { status: "pending", assignee: "researcher", followUpOf: "root" })
+    ]);
+    const input = tool === "assignTask" ? { taskId: "root-f1", assignee: "writer" } : { taskId: "root-f1", patch: { assignee: "writer" } };
+    const out = await b.call(tool, input);
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee: /) });
+    expect(b.get("root-f1")!.assignee).toBe("researcher");
+  });
+
   it("refuses an assignee beside followUpOf at input (BR-22)", async () => {
-    const b = await board([row("root", { status: "completed", assignee: "researcher", attempts: 1 })]);
+    const b = await board([row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } })]);
     const out = await b.call("addTask", { goal: "next", followUpOf: "root", assignee: "writer" });
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee/) });
     expect(b.ref.list()).toHaveLength(1);
@@ -221,7 +271,7 @@ describe("addTask's followUpOf (S4)", () => {
       collection: createFakeResourceCollection(),
       onChange: createCapturedChanges().onChange
     });
-    await ref.addTask({ id: "root", goal: "do root", status: "completed", assignee: "researcher" });
+    await ranAndCompleted(ref, "root");
     const tools = buildTaskToolsList(async () => ref);
     const { ctx } = buildDelegationCtx({ self: false });
     const file = (goal: string) => runForTest(toolNamed(tools, "addTask"), { goal, followUpOf: "root" }, ctx) as Promise<any>;
@@ -236,7 +286,7 @@ describe("addTask's followUpOf (S4)", () => {
 
   it("refuses while the session has an unfinished task, naming it (BR-25)", async () => {
     const b = await board([
-      row("root", { status: "completed", assignee: "researcher", attempts: 1 }),
+      row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),
       row("f1", { status: "in_progress", assignee: "researcher", attempts: 1, followUpOf: "root" })
     ]);
     const out = await b.call("addTask", { goal: "more", followUpOf: "root" });

@@ -169,6 +169,24 @@ export function unparkPatch(task: Task, feedback: string | undefined, answer = f
 }
 
 /**
+ * Why an assignee change to `assignee` is refused on `task`, beyond the
+ * terminal and attempt-held rules each backing applies (FIX-1817), or
+ * `undefined` when it isn't. Decided inside the atomic write, so an answer or
+ * a claim landing between a caller's read and the write is honoured.
+ *
+ * - `awaiting-answer`: an answer re-queued the row and it hasn't run again;
+ *   it must run in the session that asked, which its assignee keys.
+ * - `follow-up`: a follow-up keeps the worker of the task it follows, whose
+ *   session it runs in.
+ */
+export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDeclineReason | undefined {
+  if (task.assignee === assignee) return undefined;
+  if (task.answered === true && task.status === "pending") return "awaiting-answer";
+  if (task.followUpOf !== undefined) return "follow-up";
+  return undefined;
+}
+
+/**
  * How many times a task's work may be handed back out after its worker died
  * before the substrate stops recovering it and settles the row `errored`
  * (FIX-1005).

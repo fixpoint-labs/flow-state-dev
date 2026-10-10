@@ -123,6 +123,7 @@ import {
   routeFailure,
   assertTransitionFrom,
   transitionDeclineReason,
+  assigneeChangeDecline,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -982,6 +983,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             if (options.immutableAssignee === true && ATTEMPT_OWNED_STATUSES.has(task.status)) {
               throw new WriteDeclined("immutable-assignee", task.status);
             }
+            const refused = assigneeChangeDecline(task as Task, assignee);
+            if (refused !== undefined) throw new WriteDeclined(refused, task.status);
             return task.assignee === assignee ? undefined : { assignee };
           },
           { declineOnTerminal: true }
@@ -991,7 +994,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // from the updater skips the store's check of that snapshot. Unlike
       // `terminal`, an attempt-held status is one another request moves on,
       // so confirm the decline against the committed row before reporting it.
-      if (outcome.outcome === "declined" && outcome.reason === "immutable-assignee") {
+      // An answered row's fence lifts when another request claims it, so it
+      // is confirmed against the committed row the same way.
+      if (
+        outcome.outcome === "declined" &&
+        (outcome.reason === "immutable-assignee" || outcome.reason === "awaiting-answer")
+      ) {
         const ref = mirror.get(id);
         if (ref !== undefined) {
           await readCommitted(ref, () => undefined);

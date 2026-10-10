@@ -780,8 +780,9 @@ the answer reaches the session that asked.
 
 `addTask` takes `followUpOf` to file new work on a finished task: the follow-up
 is a new task, with the same worker, that runs in the finished task's session. It
-refuses an `assignee` beside it
-(`follow_up_takes_no_assignee`), a task that hasn't finished
+keeps that worker: `assignTask` and `updateTask` won't move it
+(`follow_up_takes_no_assignee`). `addTask` refuses an `assignee` beside it
+(`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
 (`follow_up_of_unfinished`), and a session that still has an unfinished task
 (`session_has_unfinished_task`), all before anything is filed.
 

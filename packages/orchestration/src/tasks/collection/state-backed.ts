@@ -27,6 +27,7 @@ import {
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
+  TaskWriteDeclineReason,
   TaskWriteOutcome,
 } from "./types";
 import {
@@ -54,6 +55,7 @@ import {
   sumGrantedRetries,
   assertTransitionFrom,
   transitionDeclineReason,
+  assigneeChangeDecline,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -385,7 +387,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     id: string,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
-    options?: { declineOnTerminal?: boolean }
+    options?: {
+      declineOnTerminal?: boolean;
+      /** A refusal decided on the freshest committed task, inside the write. */
+      decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined;
+    }
   ): Promise<TaskWriteOutcome> {
     /** What one `patchOne` invocation did — returned, never captured outward. */
     type PatchResult =
@@ -407,6 +413,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               kind: "declined",
               verdict: { outcome: "declined", reason: "terminal", status: task.status },
             },
+          };
+        }
+        const refused = options?.decline?.(task);
+        if (refused !== undefined) {
+          return {
+            state: undefined,
+            result: { kind: "declined", verdict: { outcome: "declined", reason: refused, status: task.status } },
           };
         }
         const update = patch(task);
@@ -804,7 +817,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "assignee_changed",
         (task) => (task.assignee === assignee ? undefined : { assignee }),
-        { declineOnTerminal: true }
+        { declineOnTerminal: true, decline: (task) => assigneeChangeDecline(task as Task, assignee) }
       );
     },
 

@@ -14,6 +14,7 @@ import {
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
+  ticketForClaim,
   type TaskCollectionRef
 } from "../../src";
 import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./ask-fixture";
@@ -34,7 +35,12 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
     execute: async (_input, ctx) => {
-      await (await boardOf(ctx))!.addTask({ id: "root", goal: "the first job", status: "completed", assignee: "researcher" });
+      const board = (await boardOf(ctx))!;
+      await board.addTask({ id: "root", goal: "the first job", assignee: "researcher" });
+      const claimed = (await board.claim("w"))!;
+      const ticket = ticketForClaim(board.collectionId, claimed, board.partition);
+      await board.linkRun("root", { sessionId: "s-root", requestId: "r-root", attempt: claimed.attempts }, { claim: ticket });
+      await board.complete("root", "done", { claim: ticket });
       return null;
     }
   });

@@ -85,7 +85,18 @@ export type TaskWriteDeclineReason =
    * reads `parked` should do neither, because the work is done and a person is
    * deciding what happens to it.
    */
-  | "parked";
+  | "parked"
+  /**
+   * An assignee change on a task an answer has re-queued and that hasn't run
+   * again yet (FIX-1817): it must run in the session that asked, which its
+   * assignee keys. Lifts once the re-entry is claimed.
+   */
+  | "awaiting-answer"
+  /**
+   * An assignee change on a follow-up (FIX-1817): it runs in the session of
+   * the task it follows, with that task's worker, so it keeps its assignee.
+   */
+  | "follow-up";
 
 /**
  * What a write actually did (FIX-976).
