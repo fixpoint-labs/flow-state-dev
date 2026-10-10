@@ -941,9 +941,8 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     expect(seen).toEqual(["first:approved"]);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
 
-    // The sweep's earlier reads, landing now.
+    // The list is the stale pending read. The expiry write re-reads under the lease.
     vi.spyOn(h.provider, "listSuspended").mockResolvedValueOnce([stale]);
-    vi.spyOn(h.provider, "loadSuspension").mockResolvedValueOnce(stale);
     const continued = h.finished.length;
     await runTick(tickArgs(h));
     await drain(h);
