@@ -128,6 +128,7 @@ import {
   hostForConfig,
   placeFor,
   releaseCheckout,
+  runBoardSegment,
   type RunLocation,
   type RunPrincipal,
   type OwnershipBounds,
@@ -136,7 +137,11 @@ import {
 
 /** What a phase's prompt builder and done-condition are handed. */
 export interface PhaseRunContext {
-  /** The board's discriminator — see `RunLocation.epic`. */
+  /**
+   * The board's discriminator — see `RunLocation.epic`. A fixed board's id, or
+   * for a board read from the claim, its ledger id and partition digest
+   * (`runBoardSegment`).
+   */
   epic: string;
   issue: string;
   phase: string;
@@ -317,6 +322,21 @@ export interface PhaseSpec {
   validate?(workspace: WorkspaceConfig | WorkspaceHost): unknown;
 }
 
+/**
+ * Finds a board by the ledger id and partition a task's claim names, or
+ * answers `undefined` for a board this manager may not read. Typed as
+ * orchestration's `taskLedgers` resolver, so one function can serve both.
+ *
+ * Resolve against `ctx`, at the running user's scope, never from a
+ * process-wide map: the ledger id and partition arrive on the manager's input,
+ * and the row the returned ref holds is what the attempt fence then checks.
+ */
+export type HarnessLedgers = (
+  ledgerId: string,
+  ctx: BlockContext,
+  partition: string | undefined,
+) => Promise<TaskCollectionRef | undefined>;
+
 /** How the manager is wired to its board and its host. */
 export interface ManagerOptions {
   /**
@@ -327,8 +347,10 @@ export interface ManagerOptions {
    * dots. Checked when the manager is built, so an id a git branch cannot carry
    * (a `.lock` ending, a doubled or trailing dot, a separator) is refused here
    * rather than after a row has been claimed.
+   *
+   * Give it with {@link boardCollection}, or give {@link ledgers}, or both.
    */
-  boardCollectionId: string;
+  boardCollectionId?: string;
   /**
    * The board's ledger declaration.
    *
@@ -337,7 +359,25 @@ export interface ManagerOptions {
    * resolves it as a `TaskCollectionRef` so `awaitReview` is the substrate's
    * own transition rather than a status this lab writes by hand.
    */
-  boardCollection: DefinedTaskCollection;
+  boardCollection?: DefinedTaskCollection;
+  /**
+   * Read each run's board from its claim instead of from one fixed board.
+   *
+   * A worker that takes tasks from many boards (each conversation keeps its
+   * own) has no single board to name. With this, the manager reads the ledger
+   * id and partition from the claim the entry adapter hands it on its input
+   * (`claim`, next to the task's fields) and resolves the board through this
+   * function. It never trusts that claim by itself: every read and write goes
+   * through the attempt fence against the row at that ledger and partition.
+   *
+   * A task whose claim names {@link boardCollectionId} with no partition is
+   * that fixed board's row and runs exactly as it does without this option.
+   * On every other board, three things differ: a refused run fails the row for
+   * good instead of cancelling it, a question parks the row through the
+   * board's own question park instead of this manager's inbox, and the
+   * {@link judge} may read the answer.
+   */
+  ledgers?: HarnessLedgers;
   /**
    * The tenant this conductor serves — the same value that partitions the
    * board's collection identity. Every request must resolve to it.
@@ -480,6 +520,37 @@ export const harnessTaskInputSchema = z.object({
 });
 
 /**
+ * The board a task was claimed on, as the trusted entry adapter hands it to
+ * the manager: the gate's verified ticket's ledger id and partition, and its
+ * incarnation when the adapter passes it.
+ *
+ * **Server-supplied, and still never trusted by itself** (BP-031). The adapter
+ * copies it from the gate's ticket, never from the task. The manager resolves
+ * the board through its `ledgers` resolver at the running user's scope, and
+ * then requires the row there to be this task, on this attempt, still running
+ * (and of this incarnation, when one is named) before it opens a run, and
+ * again on every write. A claim naming another board fails that check.
+ */
+export const harnessClaimSchema = z.object({
+  collectionId: z.string().min(1),
+  partition: z.string().min(1).optional(),
+  incarnationId: z.string().optional(),
+});
+
+/** The manager's input: the board's worker input, plus the claim a board read from the claim names. */
+export const harnessManagerInputSchema = taskWorkerInputSchema.extend({
+  claim: harnessClaimSchema.optional(),
+});
+
+/** A board read from the claim, as the manager records it on its state. */
+const stateClaimSchema = z.object({
+  collectionId: z.string(),
+  partition: z.string().nullable(),
+  incarnationId: z.string().nullable(),
+});
+type StateClaim = z.infer<typeof stateClaimSchema>;
+
+/**
  * The manager's per-run values.
  *
  * Sequencer state, not session state: `defineFlow` refuses a handed-off worker
@@ -488,6 +559,14 @@ export const harnessTaskInputSchema = z.object({
  * shapes corrupt each other silently.
  */
 const managerStateSchema = z.object({
+  /**
+   * The board this run's task was claimed on, when it was read from the claim
+   * rather than from the fixed board. Recorded when the run opens; every read
+   * and write of the board goes through it.
+   */
+  claim: stateClaimSchema.nullable().default(null),
+  /** The board segment of the run's identity (`runBoardSegment`). */
+  epic: z.string().nullable().default(null),
   issue: z.string().nullable().default(null),
   phase: z.string().nullable().default(null),
   topic: z.string().nullable().default(null),
@@ -665,19 +744,28 @@ export function describeTenant(tenantId: string | undefined): string {
   return tenantId === undefined ? "no tenant" : `"${tenantId}"`;
 }
 
-/** Read the typed payload off the worker input, refusing an unusable one loudly. */
-function taskPayload(input: { input?: unknown; taskId: string }): {
-  issue: string;
-  phase: string;
-} {
+/**
+ * Read the typed payload off the worker input: the `{ issue, phase }` a
+ * feature row carries, or `undefined` for a row that names neither (a task a
+ * conversation filed), whose task id then stands in for the issue.
+ *
+ * A row naming one of the two and not the other, or either as something other
+ * than a string, is refused: feature work names both, and such a row is never
+ * run as a task that names neither. A refusal, not a failed attempt, because
+ * a retry reads the same row.
+ */
+function taskPayload(input: { input?: unknown; taskId: string }): { issue: string; phase: string } | undefined {
   const parsed = harnessTaskInputSchema.safeParse(input.input);
-  if (!parsed.success) {
-    throw new HarnessAttemptFailed(
-      `[harness-manager] task ${input.taskId} carries no usable issue/phase payload: ` +
-        `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
+  if (parsed.success) return parsed.data;
+  const named = input.input;
+  if (typeof named === "object" && named !== null && ("issue" in named || "phase" in named)) {
+    throw new HarnessRunRefused(
+      `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
+        `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}. ` +
+        `Feature work names both an issue and a phase.`,
     );
   }
-  return parsed.data;
+  return undefined;
 }
 
 /**
@@ -969,10 +1057,12 @@ export function resolveOwnership(options: {
  * own), so declaring it open is the honest type as well as the usable one.
  */
 function createManagerCapability(options: {
-  /** The board's ledger collection id — also the accessor the fence reads it under. */
-  boardCollectionId: string;
-  /** The board's ledger declaration — the same object the board itself registers. */
-  boardCollection: DefinedTaskCollection;
+  /** The capability's name: the fixed board's id, or the manager's name when it has none. */
+  name: string;
+  /** The fixed board's ledger collection id — also the accessor the fence reads it under. */
+  boardCollectionId: string | undefined;
+  /** The fixed board's ledger declaration — the same object the board itself registers. */
+  boardCollection: DefinedTaskCollection | undefined;
 }): DefinedCapability<
   string,
   Record<string, never>,
@@ -983,7 +1073,7 @@ function createManagerCapability(options: {
 > {
   const { boardCollectionId, boardCollection } = options;
   return defineCapability({
-    name: `harness-manager:${boardCollectionId}`,
+    name: `harness-manager:${options.name}`,
     resources: {
       [RUNS]: runRecordCollection,
       // Where a question is posted, withdrawn, and read back as an answer. The
@@ -996,8 +1086,11 @@ function createManagerCapability(options: {
       [TURNS]: turnCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
-      // rather than a second storage slot that looks like the first.
-      [boardCollectionId]: boardCollection,
+      // rather than a second storage slot that looks like the first. A board
+      // read from the claim is resolved by the host's resolver instead.
+      ...(boardCollectionId !== undefined && boardCollection !== undefined
+        ? { [boardCollectionId]: boardCollection }
+        : {}),
     },
   });
 }
@@ -1027,6 +1120,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   const {
     boardCollectionId,
     boardCollection,
+    ledgers,
     tenant,
     phase: callerPhase,
     workspace,
@@ -1037,13 +1131,28 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     name = "harness-manager",
   } = options;
 
+  // **A board to read, named one way or the other.** A fixed board needs both
+  // halves; without one, the resolver is the only way to a board.
+  if ((boardCollectionId === undefined) !== (boardCollection === undefined)) {
+    throw new Error(
+      "[harness-manager] give `boardCollectionId` and `boardCollection` together: the fence " +
+        "reads the board by the id, and the park arm resolves it from the declaration.",
+    );
+  }
+  if (boardCollectionId === undefined && ledgers === undefined) {
+    throw new Error(
+      "[harness-manager] give a board: `boardCollectionId` with `boardCollection`, or " +
+        "`ledgers` to read each run's board from its claim.",
+    );
+  }
+
   // **The board id is checked HERE, not first at an attempt.** It becomes a
   // path segment and a git ref component in every run. Refused at the attempt,
   // the row is claimed, the checkout fails, and the retry budget is spent on a
   // name no retry can fix; refused here, the host fails before anything is
   // hired. The attempt still derives through the same function, so the two
   // cannot disagree.
-  assertDerivedIdentity("boardCollectionId", boardCollectionId);
+  if (boardCollectionId !== undefined) assertDerivedIdentity("boardCollectionId", boardCollectionId);
 
   // **A phase is caller-owned validated configuration, so it is snapshotted.**
   // Held by reference, a host could swap `implement` for `review` after this
@@ -1132,7 +1241,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing
   // anywhere saying why. This fails loudly, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX, TURNS]);
+  const RESERVED_ACCESSORS = new Set([RUNS, INBOX, TURNS, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
 
   /** Refuse a capability set that claims one of the manager's accessors. */
   const assertClaimsNothingReserved = (
@@ -1153,8 +1262,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
         `"${RUNS}" is the run record, "${INBOX}" is the question inbox, "${TURNS}" holds ` +
-        `a person's messages to a run, and ` +
-        `"${boardCollectionId}" is the board ledger the attempt fence reads. All ` +
+        `a person's messages to a run` +
+        (boardCollectionId !== undefined
+          ? `, and "${boardCollectionId}" is the board ledger the attempt fence reads`
+          : "") +
+        `. All ` +
         `are already available to the phase; declaring them again would replace ` +
         `the manager's own.`,
     );
@@ -1190,6 +1302,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   ) as typeof hostUses;
 
   const managerCapability = createManagerCapability({
+    name: boardCollectionId ?? `${name}:by-claim`,
     boardCollectionId,
     boardCollection,
   });
@@ -1211,6 +1324,9 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
    * rather than captured as a boolean per call site.
    */
   const boardTasks = (ctx: BlockContext): Promise<TaskCollectionRef> => {
+    if (boardCollectionId === undefined || boardCollection === undefined) {
+      throw new Error("[harness-manager] this manager has no fixed board; its runs read their board from the claim.");
+    }
     const collection = resolveResourceCollection(ctx, boardCollectionId);
     if (collection === undefined) {
       throw new Error(
@@ -1226,6 +1342,88 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       collection,
       immutableAssignee: hasFrozenLedgerAssignee(boardCollection),
     });
+  };
+
+  /**
+   * The board a claim names, through the host's resolver, or `undefined` when
+   * the resolver does not answer for it or answers with another ledger or
+   * partition than the claim names. Every read of a board read from the claim
+   * goes through here.
+   */
+  const claimLedger = async (ctx: BlockContext, claim: StateClaim): Promise<TaskCollectionRef | undefined> => {
+    const partition = claim.partition ?? undefined;
+    const resolved = await ledgers?.(claim.collectionId, ctx, partition);
+    if (resolved === undefined) return undefined;
+    if (resolved.collectionId !== claim.collectionId || resolved.partition !== partition) return undefined;
+    return resolved;
+  };
+
+  /** The run's board as the substrate sees it: the one its claim names, or the fixed board. */
+  const runBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
+    const claim = harnessCtxState(ctx)?.claim ?? null;
+    if (claim === null) return boardTasks(ctx);
+    const board = await claimLedger(ctx, claim);
+    if (board === undefined) {
+      throw new Error(
+        `[harness-manager] the board this run was claimed on (ledger "${claim.collectionId}"` +
+          `${claim.partition === null ? "" : `, partition "${claim.partition}"`}) no longer resolves.`,
+      );
+    }
+    return board;
+  };
+
+  /**
+   * The attempt identity every run-record write is fenced against. On a board
+   * read from the claim, the fence reads the row through the resolver at the
+   * claim's ledger and partition, and compares its incarnation too.
+   *
+   * Typed by what it reads, like {@link harnessCtxState}: a harness feed is
+   * handed a narrower context than a block, and the resolver needs only what
+   * every block context carries.
+   */
+  const identityOf = (
+    ctx: { sequencer?: { state?: unknown } | undefined },
+    state: ManagerState | undefined,
+  ): AttemptIdentity => {
+    const claim = state?.claim ?? null;
+    const base = identityFrom(state, claim?.collectionId ?? boardCollectionId!);
+    if (claim === null) return base;
+    return {
+      ...base,
+      readBoardRow: async () => (await claimLedger(ctx as BlockContext, claim))?.get(base.taskId),
+      ...(claim.incarnationId !== null ? { incarnationId: claim.incarnationId } : {}),
+    };
+  };
+
+  /**
+   * The board this task was claimed on, from the claim on the manager's input:
+   * `null` for the fixed board (no claim, or a claim naming it with no
+   * partition), the claim otherwise. Refused when this manager cannot read
+   * the board the input names.
+   */
+  const claimFrom = (input: z.infer<typeof harnessManagerInputSchema>): StateClaim | null => {
+    const named = input.claim;
+    if (named === undefined) {
+      if (boardCollectionId === undefined) {
+        throw new Error(
+          `[harness-manager] task ${input.taskId} reached a manager that reads its board from the ` +
+            `claim, with no claim on its input. Its entry must hand the manager the gate's claim.`,
+        );
+      }
+      return null;
+    }
+    if (named.partition === undefined && named.collectionId === boardCollectionId) return null;
+    if (ledgers === undefined) {
+      throw new Error(
+        `[harness-manager] task ${input.taskId} was claimed on ledger "${named.collectionId}", and ` +
+          `this manager reads only its fixed board "${boardCollectionId}".`,
+      );
+    }
+    return {
+      collectionId: named.collectionId,
+      partition: named.partition ?? null,
+      incarnationId: named.incarnationId ?? null,
+    };
   };
 
   /**
@@ -1251,7 +1449,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     }
     if (state?.topic != null && state.taskId != null && state.attempt != null) {
       await fenced(
-        writeRunRow(ctx, identityFrom(state, boardCollectionId), {
+        writeRunRow(ctx, identityOf(ctx, state), {
           lastSave: { at: Date.now(), conflicts: leftAlone, error },
         }),
         "the run's kept files were saved",
@@ -1278,7 +1476,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     const state = harnessCtxState(ctx);
     const place = state?.place;
     if (place == null || place.holding === undefined) return true;
-    const identity = identityFrom(state, boardCollectionId);
+    const identity = identityOf(ctx, state);
     const previous = state?.held ?? null;
     const recorded = recordedHoldOf(previous);
     const writeHeld = (held: HeldRecord, where: string) =>
@@ -1322,7 +1520,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
    */
   const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceState): Promise<void> => {
     await fenced(
-      writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), {
+      writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
         place: { host: placeHost, state: placeState },
       }),
       `the place was recorded ${placeState}`,
@@ -1388,7 +1586,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     placeHost: string | null,
   ): Promise<never> => {
     const state = managerState(harnessCtxState(ctx));
-    const identity = identityFrom(state, boardCollectionId);
+    const identity = identityOf(ctx, state);
     const held = state.held === null ? null : { ...state.held, parked: true };
     await fenced(
       writeRunRow(ctx, identity, {
@@ -1421,7 +1619,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
    */
   const openRun = handler({
     name: "harness-manager-open-run",
-    inputSchema: taskWorkerInputSchema,
+    inputSchema: harnessManagerInputSchema,
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
     // The host's capabilities too: the workspace's run source is asked here,
@@ -1430,54 +1628,87 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     // Annotated for the reason `prepare`'s is: the host's `uses` widens the
     // inferred context past what the helpers below accept.
     execute: async (input, ctx: BlockContext) => {
-      const { issue, phase: phaseName } = taskPayload(input);
-
-      // **A manager runs exactly one phase, and it must be the one on the row.**
-      // Without this the caller's phase names the checkout, the branch and the
-      // run record while the CONFIGURED phase supplies the prompt and the
-      // done-condition — so a row seeded `review` would be handed implement's
-      // instructions, judged by implement's completion check, and settled as a
-      // completed review. That is the silent wrong success this lab exists to
-      // remove, wearing the phase surface as a disguise.
-      //
-      // Refused here as well as at `seed`, because a task can reach this board
-      // by any route that can write a row, and this is where the wrong
-      // semantics would actually execute.
-      // **Compared canonically, because the identity it guards is.** A durable
-      // row outlives the process that filed it, so a restart with the phase
-      // spelled differently — `IMPLEMENT` for `implement` — meets rows already
-      // on the board. `harnessTaskId` folds case, so those are the SAME task,
-      // the same checkout and the same branch; a raw comparison here called them
-      // different and refused, after `wake` had claimed the row and charged it.
-      // Once per wake, until a valid task's budget was gone, for a mismatch its
-      // own identity says does not exist.
-      if (!sameSegment(phaseName, phase.phase)) {
-        throw new HarnessAttemptFailed(
-          `[harness-manager] task ${input.taskId} is a "${phaseName}" row on a manager ` +
-            `configured for "${phase.phase}". Refusing rather than running ` +
-            `${phase.phase}'s prompt and completion check against it.`,
-        );
+      // **Which board, from the claim, checked against the row before
+      // anything else.** The claim on the input is the entry adapter's copy of
+      // the gate's ticket; the row at that ledger and partition is the
+      // authority. It must be this task, on this attempt, still running, and
+      // of the claim's incarnation when it names one; the incarnation found is
+      // kept, so every later write is fenced against it too.
+      let claim = claimFrom(input);
+      if (claim !== null) {
+        const board = await claimLedger(ctx, claim);
+        if (board === undefined) {
+          throw new Error(
+            `[harness-manager] task ${input.taskId} was claimed on ledger "${claim.collectionId}", ` +
+              `which this manager's resolver does not answer for at that partition.`,
+          );
+        }
+        const row = board.get(input.taskId);
+        const sameIncarnation =
+          claim.incarnationId === null || row?.incarnationId === undefined || row.incarnationId === claim.incarnationId;
+        if (row === undefined || row.attempts !== input.attempts || row.status !== "in_progress" || !sameIncarnation) {
+          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live row of this attempt)");
+        }
+        claim = { ...claim, incarnationId: claim.incarnationId ?? row.incarnationId ?? null };
+        assertDerivedIdentity("the claim's ledger id", claim.collectionId);
       }
+      const epic = claim === null ? boardCollectionId! : runBoardSegment(claim.collectionId, claim.partition ?? undefined);
+      // On state before anything can refuse, so a refusal settles under this
+      // attempt's own claim.
+      await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts });
 
-      // **And the row's ID must be the one its payload derives**, for the same
-      // reason and by the same route. The board capability this flow returns
-      // lets a sibling or outer block add a row with an ID of its choosing, and
-      // every partition below — checkout, branch, run topic — is built from the
-      // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
-      // IDs therefore both pass every guard here and land on one tree, one
-      // branch and one run record: duplicate paid model work on a single
-      // artifact, one run's record overwritten by the other, and either run's
-      // pull request satisfying the other's completion check. "Separate trees
-      // pushing one ref is not isolation" is the rule `branchFor` states; this
-      // is the same collapse reached through the row id instead.
-      const canonicalId = harnessTaskId(issue, phaseName);
-      if (input.taskId !== canonicalId) {
-        throw new HarnessAttemptFailed(
-          `[harness-manager] task ${input.taskId} carries the payload for ${canonicalId}. ` +
-            `Refusing: the checkout, the branch and the run record are all derived from ` +
-            `that payload, so a second row under a different id would run the same work ` +
-            `in the same tree.`,
-        );
+      // A row naming no issue and phase (a task a conversation filed) runs as
+      // this manager's phase, with its task id standing in for the issue.
+      const payload = taskPayload(input);
+      const { issue, phase: phaseName } = payload ?? { issue: input.taskId, phase: phase.phase };
+      if (payload !== undefined) {
+        // **A manager runs exactly one phase, and it must be the one on the row.**
+        // Without this the caller's phase names the checkout, the branch and the
+        // run record while the CONFIGURED phase supplies the prompt and the
+        // done-condition — so a row seeded `review` would be handed implement's
+        // instructions, judged by implement's completion check, and settled as a
+        // completed review. That is the silent wrong success this lab exists to
+        // remove, wearing the phase surface as a disguise.
+        //
+        // Refused here as well as at `seed`, because a task can reach this board
+        // by any route that can write a row, and this is where the wrong
+        // semantics would actually execute.
+        // **Compared canonically, because the identity it guards is.** A durable
+        // row outlives the process that filed it, so a restart with the phase
+        // spelled differently — `IMPLEMENT` for `implement` — meets rows already
+        // on the board. `harnessTaskId` folds case, so those are the SAME task,
+        // the same checkout and the same branch; a raw comparison here called them
+        // different and refused, after `wake` had claimed the row and charged it.
+        // Once per wake, until a valid task's budget was gone, for a mismatch its
+        // own identity says does not exist.
+        if (!sameSegment(phaseName, phase.phase)) {
+          throw new HarnessAttemptFailed(
+            `[harness-manager] task ${input.taskId} is a "${phaseName}" row on a manager ` +
+              `configured for "${phase.phase}". Refusing rather than running ` +
+              `${phase.phase}'s prompt and completion check against it.`,
+          );
+        }
+
+        // **And the row's ID must be the one its payload derives**, for the same
+        // reason and by the same route. The board capability this flow returns
+        // lets a sibling or outer block add a row with an ID of its choosing, and
+        // every partition below — checkout, branch, run topic — is built from the
+        // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
+        // IDs therefore both pass every guard here and land on one tree, one
+        // branch and one run record: duplicate paid model work on a single
+        // artifact, one run's record overwritten by the other, and either run's
+        // pull request satisfying the other's completion check. "Separate trees
+        // pushing one ref is not isolation" is the rule `branchFor` states; this
+        // is the same collapse reached through the row id instead.
+        const canonicalId = harnessTaskId(issue, phaseName);
+        if (input.taskId !== canonicalId) {
+          throw new HarnessAttemptFailed(
+            `[harness-manager] task ${input.taskId} carries the payload for ${canonicalId}. ` +
+              `Refusing: the checkout, the branch and the run record are all derived from ` +
+              `that payload, so a second row under a different id would run the same work ` +
+              `in the same tree.`,
+          );
+        }
       }
 
       // **A conductor serves one tenant, and refuses any other.**
@@ -1502,10 +1733,13 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // The first run records its starter; a row another member owns is
       // refused here, which is the backstop for a board whose drain was not
       // wired with `runOwnerDispatcher` — that dispatcher refuses before the
-      // claim and so charges nothing, where this refusal comes after it.
-      if (boardCollection.scope === "org") {
+      // claim and so charges nothing, where this refusal comes after it. A
+      // board read from the claim gets the same check through its own ref:
+      // the manager cannot see that board's scope, and on a board one user
+      // holds the starter is always that user.
+      if (claim !== null || boardCollection!.scope === "org") {
         const principal = runPrincipal(ctx);
-        const tasks = await boardTasks(ctx);
+        const tasks = await runBoard(ctx);
         const owner = runOwnerOf(tasks.get(input.taskId));
         if (owner === null) {
           await tasks.patchMetadata(input.taskId, {
@@ -1524,12 +1758,12 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // overwrite on disk.
       const location: RunLocation = {
         principal: runPrincipal(ctx),
-        epic: boardCollectionId,
+        epic,
         issue,
         phase: phaseName,
       };
       const branch = branchFor(location);
-      const topic = runTopic(boardCollectionId, issue, phaseName);
+      const topic = runTopic(epic, issue, phaseName);
 
       await ctx.sequencer!.patchState({
         issue,
@@ -1595,12 +1829,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       await fenced(
         openRunRow(
           ctx,
-          {
-            taskId: input.taskId,
-            attempt: input.attempts,
-            topic,
-            boardCollectionId,
-          },
+          identityOf(ctx, harnessCtxState(ctx)),
           { workspacePath, branch, childSessionId: ctx.session.identity.id },
         ),
         "the run row was opened",
@@ -1623,7 +1852,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       //
       // After the fenced open, not before: a superseded attempt stops there and
       // must not reach in and withdraw its replacement's question.
-      await withdrawEarlierQuestions(ctx, issue, phaseName, input.attempts);
+      //
+      // The inbox is the fixed board's channel only: a board read from the
+      // claim parks its questions on the row itself.
+      if (claim === null) await withdrawEarlierQuestions(ctx, issue, phaseName, input.attempts);
     },
   });
 
@@ -1662,12 +1894,15 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // Read here rather than inside the builder so the ORDER is the manager's:
       // a fold whose order depends on where a phase happens to sort is a prompt
       // that changes between replays.
-      const answers = (await listQuestions(ctx, state.issue!, state.phase!))
-        .filter((row) => row.state.status === "answered" && row.state.answer !== null)
-        .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
+      const answers =
+        state.claim !== null
+          ? []
+          : (await listQuestions(ctx, state.issue!, state.phase!))
+              .filter((row) => row.state.status === "answered" && row.state.answer !== null)
+              .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
 
       const run: PromptRunContext = {
-        epic: boardCollectionId,
+        epic: state.epic!,
         issue: state.issue!,
         phase: state.phase!,
         attempt: input.attempts,
@@ -1746,7 +1981,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // attempt stops rather than running the agent somewhere else.
       const location: RunLocation = {
         principal: runPrincipal(ctx),
-        epic: boardCollectionId,
+        epic: state.epic!,
         issue: state.issue!,
         phase: state.phase!,
       };
@@ -1778,7 +2013,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
             ? { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null }
             : { filesOnly: true };
         await fenced(
-          writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), pin),
+          writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
           "the run's source was recorded",
         );
         await ctx.sequencer!.patchState(pin);
@@ -1911,7 +2146,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     // argument.
     execute: async (handle, ctx: BlockContext) => {
       const state = managerState(harnessCtxState(ctx));
-      const identity = identityFrom(harnessCtxState(ctx), boardCollectionId);
+      const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
 
       // Everything the run reported goes on the row before anything is decided,
@@ -2011,7 +2246,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         const done = await withDeadline(
           async () =>
             runPhase.isDone({
-              epic: boardCollectionId,
+              epic: state.epic!,
               issue: state.issue!,
               phase: state.phase!,
               attempt: identity.attempt,
@@ -2169,12 +2404,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         // correct outcome. Every other call site stops on refusal.
         await writeRunRow(
           ctx,
-          {
-            taskId: state.taskId,
-            attempt: state.attempt,
-            topic: state.topic,
-            boardCollectionId,
-          },
+          identityOf(ctx, state),
           { outcome: "failed", reason },
         );
       }
@@ -2184,11 +2414,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // error being unwound is what the caller gets either way.
       if (error instanceof HarnessRunRefused && state?.taskId != null && state.attempt != null) {
         try {
-          const tasks = await boardTasks(ctx);
+          const tasks = await runBoard(ctx as BlockContext);
           const row = tasks.get(state.taskId);
           if (row !== undefined) {
             await tasks.cancel(state.taskId, reason, {
-              claim: { ...ticketForClaim(boardCollectionId, row), attempt: state.attempt },
+              claim: { ...ticketForClaim(tasks.collectionId, row, tasks.partition), attempt: state.attempt },
             });
           }
         } catch {
@@ -2226,7 +2456,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     // itself: it is mid-stream in paid model work on a row it no longer owns.
     onSession: async (sessionId, ctx) => {
       await fenced(
-        writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), {
+        writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
           sessionId,
         }),
         "the harness named its session",
@@ -2236,7 +2466,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
   const worker = sequencer({
     name,
-    inputSchema: taskWorkerInputSchema,
+    inputSchema: harnessManagerInputSchema,
     outputSchema: managerOutputSchema,
     stateSchema: managerStateSchema,
   })
@@ -2260,13 +2490,24 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
   worker.validate();
 
-  const messageDoor = createMessageDoor({
-    name,
-    boardCollectionId,
-    boardCollection,
-    capability: managerCapability as unknown as DefinedCapability,
-    boardTasks,
-  });
+  // The door reads one board's rows, so it is the fixed board's. A run on a
+  // board read from the claim is reached by a door its host builds over the
+  // run records, which key that board as the run does (`runBoardSegment`).
+  const messageDoor =
+    boardCollectionId !== undefined && boardCollection !== undefined
+      ? createMessageDoor({
+          name,
+          boardCollectionId,
+          boardCollection,
+          capability: managerCapability as unknown as DefinedCapability,
+          boardTasks,
+        })
+      : (): MessageDoorAction => {
+          throw new Error(
+            "[harness-manager] this manager has no fixed board, so it has no message door of its own: " +
+              "its runs read their board from the claim.",
+          );
+        };
   return Object.assign(worker, { messageDoor }) as HarnessManager;
 }
 

@@ -358,6 +358,20 @@ export interface AttemptIdentity {
   topic: string;
   /** The board's ledger collection id, resolved from `ctx.resources`. */
   boardCollectionId: string;
+  /**
+   * How to read this task's row on a board read from the claim, in place of
+   * resolving {@link boardCollectionId} off `ctx.resources`: such a board is
+   * one of many the host's resolver answers for, at the partition the claim
+   * names, and is never registered under one accessor. Answers `undefined`
+   * when the row is not there.
+   */
+  readBoardRow?: () => Promise<unknown>;
+  /**
+   * The row's incarnation as the attempt opened it. A row carrying another is
+   * a different task under the same id, so its writes are refused. Compared
+   * only when both sides carry one, as the substrate compares it.
+   */
+  incarnationId?: string;
 }
 
 /**
@@ -368,6 +382,7 @@ interface ClaimView {
   status?: string;
   attempts?: number;
   leaseUntil?: number | null;
+  incarnationId?: string;
 }
 
 /**
@@ -490,13 +505,23 @@ export async function writeRunRow(
   update: Partial<RunRecordState>,
 ): Promise<RunRowWrite> {
   const runs = collectionRef(ctx, RUNS);
-  const board = collectionRef(ctx, identity.boardCollectionId);
+  const row =
+    identity.readBoardRow !== undefined
+      ? await identity.readBoardRow()
+      : (await collectionRef(ctx, identity.boardCollectionId).getOptional(identity.taskId))?.state;
 
-  const claim = readClaim((await board.getOptional(identity.taskId))?.state);
+  const claim = readClaim(row);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
   if (leaseHasLapsed(claim, Date.now())) return "refused";
+  if (
+    identity.incarnationId !== undefined &&
+    claim.incarnationId !== undefined &&
+    claim.incarnationId !== identity.incarnationId
+  ) {
+    return "refused";
+  }
 
   const existing = (await runs.getOptional(identity.topic))?.state as
     | RunRecordState
@@ -558,6 +583,10 @@ export async function openRunRow(
 /**
  * The row of the run that last opened an attempt in `sessionId`, within one
  * board's topics, or `undefined` when none did.
+ *
+ * `epic` is the board's run segment (`runBoardSegment` in `./workspace`): a
+ * fixed board's id as it is, or a ledger id and its partition's digest for a
+ * board read from a claim, so two conversations' runs are never confused.
  */
 export async function findRunRowBySession(
   ctx: CollectionHoldingContext,
