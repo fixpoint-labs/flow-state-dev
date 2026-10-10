@@ -155,11 +155,13 @@ export interface ResumeContext {
    */
   pendingBlockLogicalId?: string;
   /**
-   * How the gate being resolved was recorded, when that is not the action's
-   * own status: `expired` for an approval that passed its `expiresAt` and is
-   * continued as a rejection, so `ctx.suspend()` throws a
-   * `SuspensionRejectedError` marked `expired`. Set by the server at re-entry
-   * from the stored gate, overwriting any supplied value.
+   * `expired` when this `reject` is the continuation of an approval that passed
+   * its `expiresAt` unanswered, so `ctx.suspend()` throws a
+   * `SuspensionRejectedError` marked `expired` and the audit item records
+   * `expired`. Supplied by the engine's own expiry continuation (the
+   * durability sweep's re-drive, or a stop of a turn behind an expired
+   * approval); ignored with any other action or value. Never read back from
+   * the gate, whose status an expiry write can race.
    */
   resolution?: SuspensionStatus;
 }

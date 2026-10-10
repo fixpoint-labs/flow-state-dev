@@ -95,7 +95,12 @@ export async function stopSuspendedRequest(
     // on its own, so the stop does, and it ends through its own lifecycle.
     const expired = await expiredLatestGate(deps, record);
     if (expired !== undefined) {
-      const resumeContext: ResumeContext = { suspensionId: expired.suspensionId, action: "reject", resumedBy: "stop" };
+      const resumeContext: ResumeContext = {
+        suspensionId: expired.suspensionId,
+        action: "reject",
+        resumedBy: "stop",
+        resolution: "expired"
+      };
       return (await continueWithStop(deps, record, resumeContext)) ? "stopped" : "already-resolved";
     }
     // No pending gate: an answer resolved it first, and the turn runs again.
@@ -245,7 +250,12 @@ export async function redriveResolvedGate(
         // No longer valid: the gated call reads a rejection marked expired,
         // and the turn carries on.
         return {
-          resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy }
+          resumeContext: {
+            suspensionId: current.suspensionId,
+            action: "reject",
+            resumedBy: current.resolvedBy,
+            resolution: "expired"
+          }
         };
       }
       if (!isAskGate(current)) {

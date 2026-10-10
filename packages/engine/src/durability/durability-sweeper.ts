@@ -70,7 +70,8 @@ import { isAskGate } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
 import { isExpiredApproval, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
-import { latestGateIdOf } from "./resume-under-lease";
+import { latestGateIdOf, RESUME_LEASE_MS } from "./resume-under-lease";
+import { generateId } from "../utils/generate-id";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -422,7 +423,7 @@ async function enforceSuspensionExpiry(
       );
       if (current === null || current.status !== "pending") continue;
       // Step 2b continues the turn of an approval expired here (FIX-1846).
-      await provider.suspend({ ...current, status: "expired", resolvedAt: now, resolvedBy: "durability-sweeper" });
+      await expireUnderLease(provider, current, now);
     }
     if (askGatesSkipped > 0) {
       logRuntimeEvent(
@@ -438,6 +439,29 @@ async function enforceSuspensionExpiry(
       error: err instanceof Error ? err.message : String(err)
     });
     return undefined;
+  }
+}
+
+/**
+ * Write a pending gate `expired`, fenced under its request's lease (FIX-1846).
+ * Every resolution of a gate (a person's resume, an ask's answer, a stop) is
+ * written under that lease, so the gate re-read while holding it is current:
+ * an approve that landed after the unfenced read above is never overwritten.
+ * A lease held elsewhere (a resume, or its run) skips the gate; the next tick
+ * reads it again.
+ */
+async function expireUnderLease(provider: DurabilityProvider, gate: SuspensionRecord, now: number): Promise<void> {
+  const lease = await provider.acquireLease(gate.requestId, {
+    holder: generateId("expire"),
+    durationMs: RESUME_LEASE_MS
+  });
+  if (lease === null) return;
+  try {
+    const current = await provider.loadSuspension(gate.requestId, gate.suspensionId);
+    if (current === null || current.status !== "pending") return;
+    await provider.suspend({ ...current, status: "expired", resolvedAt: now, resolvedBy: "durability-sweeper" });
+  } finally {
+    await provider.releaseLease(gate.requestId, lease.leaseId);
   }
 }
 

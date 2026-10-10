@@ -1867,10 +1867,10 @@ async function runActionAttempt<
   // from the replay log — so it can only ever resolve the gate this request
   // actually suspended at.
   let resumeContext: ResumeContext | undefined;
-  // The gate being resumed, and how it was recorded resolved, read with the
-  // replay log below. The audit item reports the status: a stopped ask
-  // continues with a `submit` action, but was stopped (FIX-1816); an expired
-  // approval continues with a `reject`, but expired (FIX-1846).
+  // The gate being resumed, and how it was resolved, read with the replay log
+  // below. The audit item reports it: a stopped ask continues with a `submit`
+  // action, but was stopped (FIX-1816); an expired approval continues with a
+  // `reject`, but expired (FIX-1846).
   let resumedGate: SuspensionRecord | null = null;
   let resumedGateStatus: SuspensionRecord["status"] | undefined;
   let replayLog: ReplayLog | undefined;
@@ -1891,15 +1891,25 @@ async function runActionAttempt<
       // exactly that gate and re-suspends at any other.
       if (resumeContextRaw !== undefined) {
         const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-        // Read before the context is built, so `ctx.suspend()` knows how the
-        // gate was recorded: an expired approval rejects as no longer valid.
         resumedGate =
           (await options.runtimeConfig.durabilityProvider?.loadSuspension(
             requestId,
             resumeContextRaw.suspensionId
           )) ?? null;
-        if (resumedGate !== null && resumedGate.status !== "pending") resumedGateStatus = resumedGate.status;
-        resumeContext = { ...resumeContextRaw, pendingBlockLogicalId, resolution: resumedGateStatus };
+        // An expiry is named by the continuation that owns it (the sweep's
+        // re-drive, or a stop of a turn behind an expired approval), never read
+        // back from the gate: an expiry write that raced a person's approve can
+        // leave `expired` on a gate that was approved (FIX-1846).
+        const expiryOwned = resumeContextRaw.action === "reject" && resumeContextRaw.resolution === "expired";
+        if (expiryOwned) resumedGateStatus = "expired";
+        else if (resumedGate !== null && resumedGate.status !== "pending" && resumedGate.status !== "expired") {
+          resumedGateStatus = resumedGate.status;
+        }
+        resumeContext = {
+          ...resumeContextRaw,
+          pendingBlockLogicalId,
+          resolution: expiryOwned ? "expired" : undefined
+        };
       }
     }
 
