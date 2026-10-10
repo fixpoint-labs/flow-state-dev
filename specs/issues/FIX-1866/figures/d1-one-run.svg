@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 438" role="img" aria-label="D1, how a conversation&#x27;s task becomes a coding run. Chosen: the same supervised run, reading its board from the task&#x27;s claim. Instead of: a lighter coding turn for chat. It comes down to the first row: what a chat task keeps. The supervised run keeps the checkout lease, the attempt fence, the verdict, questions and messages into the run; the lighter turn loses them. Second row: FIX-1792 moves feature work onto a conversation board, so the chosen path is needed anyway, while the lighter turn would be a second way to run a harness. The price, third row: the largest change to the run since it shipped, against a small new block. Locks in: run records keyed by board and conversation. Flips if: FIX-1792 keeps feature work on an org board."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="438"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does a conversation&#x27;s task become a coding run?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The same supervised run</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A lighter coding turn</text>
+  </g>
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT A CHAT TASK</text>
+    <text class="t-lbl" x="32" y="169">KEEPS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Lease, fence, verdict, questions</text>
+    <text class="t-s" x="248" y="179">and messages into a running run</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">None of them</text>
+    <text class="t-s" x="612" y="179">a run that made nothing can still close</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="230">FIX-1792 MOVES</text>
+    <text class="t-lbl" x="32" y="243">FEATURE WORK</text>
+    <text class="mark plus" x="228" y="236">+</text>
+    <text class="t-b" x="248" y="235">Already the path it needs</text>
+    <text class="t-s" x="248" y="253">the EM files the coder on its own board</text>
+    <text class="mark minus" x="592" y="236">−</text>
+    <text class="t-b" x="612" y="235">Two ways to run a harness</text>
+    <text class="t-s" x="612" y="253">every later fix lands twice</text>
+    <line class="row" x1="16" y1="266" x2="924" y2="266"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="296">SIZE OF</text>
+    <text class="t-lbl" x="32" y="309">THE CHANGE</text>
+    <text class="mark minus" x="228" y="302">−</text>
+    <text class="t-b" x="248" y="301">The run’s largest since it shipped</text>
+    <text class="t-s" x="248" y="319">every read goes through the claim</text>
+    <text class="mark plus" x="592" y="302">+</text>
+    <text class="t-b" x="612" y="301">One small new block</text>
+    <text class="t-s" x="612" y="319">nothing existing moves</text>
+    <line class="row" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="369">LOCKS IN</text>
+    <text class="t-b" x="32" y="389">Runs keyed by board and conversation</text>
+    <text class="t-s" x="32" y="407">a fixed board keeps today’s keys, byte for byte</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="369">FLIPS IF</text>
+    <text class="t-b" x="494" y="389">FIX-1792 keeps feature work on an org board</text>
+    <text class="t-s" x="494" y="407">then only chat needs the new path</text>
+  </g>
+</svg>

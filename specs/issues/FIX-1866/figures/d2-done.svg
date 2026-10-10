@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 438" role="img" aria-label="D2, when a task that is not feature work counts as done. Chosen: when the run ends with an answer, commits reported. Instead of: only when the branch carries a commit. It comes down to the first row: a read-only ask like take a look at our repo completes under the chosen rule, and fails every attempt after a paid run under the commit rule. The price, second row: a change task that changed nothing reads as done, with only commits zero in the line to say so. Third row, a tie: a run that stops at its limit or says nothing fails either way. Locks in: feature work is told apart by the task, and a task naming an issue and a phase still needs a commit on any board. Flips if: most chat asks turn out to be change requests."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="438"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When does a task that isn&#x27;t feature work count as done?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">It ends with an answer</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A commit, as on the feature board</text>
+  </g>
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A READ-ONLY</text>
+    <text class="t-lbl" x="32" y="169">ASK</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Completes with its answer</text>
+    <text class="t-s" x="248" y="179">commits: 0 in the line</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Fails every attempt</text>
+    <text class="t-s" x="612" y="179">after a paid run, then errored</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="230">A CHANGE TASK THAT</text>
+    <text class="t-lbl" x="32" y="243">CHANGED NOTHING</text>
+    <text class="mark minus" x="228" y="236">−</text>
+    <text class="t-b" x="248" y="235">Reads as done</text>
+    <text class="t-s" x="248" y="253">only commits: 0 says otherwise</text>
+    <text class="mark plus" x="592" y="236">+</text>
+    <text class="t-b" x="612" y="235">Fails, as it should</text>
+    <text class="t-s" x="612" y="253">the run has to show a commit</text>
+    <line class="row" x1="16" y1="266" x2="924" y2="266"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="296">STOPPED AT LIMIT</text>
+    <text class="t-lbl" x="32" y="309">OR SILENT</text>
+    <text class="mark tie" x="228" y="302">=</text>
+    <text class="t-b" x="248" y="301">Fails</text>
+    <text class="t-s" x="248" y="319">no answer is no result</text>
+    <text class="mark tie" x="592" y="302">=</text>
+    <text class="t-b" x="612" y="301">Fails</text>
+    <text class="t-s" x="612" y="319">the same</text>
+    <line class="row" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="369">LOCKS IN</text>
+    <text class="t-b" x="32" y="389">Feature work is told apart by the task</text>
+    <text class="t-s" x="32" y="407">issue + phase still needs a commit, on any board</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="369">FLIPS IF</text>
+    <text class="t-b" x="494" y="389">Most chat asks turn out to be changes</text>
+    <text class="t-s" x="494" y="407">then a task says what it expects</text>
+  </g>
+</svg>

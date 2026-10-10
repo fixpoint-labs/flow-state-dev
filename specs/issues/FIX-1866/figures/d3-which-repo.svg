@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 438" role="img" aria-label="D3, which repository a conversation&#x27;s task works in. Chosen: the conversation&#x27;s project, else the project the task names, else refuse. Instead of: a default repository the host configures. It comes down to the first row: in an org with several projects, a conversation with no project gets a clear refusal or the named project under the chosen rule, while the default silently codes in the wrong repository. The price, second row: the coordinator has to name a project, where the default needs nothing. Third row, a tie: a project or workstream conversation works in its own project either way. Locks in: coder tasks from a conversation with no project carry input.project. Flips if: every org that runs coders has exactly one repository."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="438"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Which repository does a conversation&#x27;s task work in?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Its project, else the named one</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A default repository</text>
+  </g>
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">NO PROJECT, AN ORG</text>
+    <text class="t-lbl" x="32" y="169">WITH SEVERAL</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">The named one, or a clear no</text>
+    <text class="t-s" x="248" y="179">the person is asked which</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Silently the wrong one</text>
+    <text class="t-s" x="612" y="179">code lands where nobody looks</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="230">WHAT THE</text>
+    <text class="t-lbl" x="32" y="243">COORDINATOR WRITES</text>
+    <text class="mark minus" x="228" y="236">−</text>
+    <text class="t-b" x="248" y="235">A project on the task</text>
+    <text class="t-s" x="248" y="253">one field, and sometimes a question</text>
+    <text class="mark plus" x="592" y="236">+</text>
+    <text class="t-b" x="612" y="235">Nothing</text>
+    <text class="t-s" x="612" y="253">the host decided it once</text>
+    <line class="row" x1="16" y1="266" x2="924" y2="266"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="296">A PROJECT</text>
+    <text class="t-lbl" x="32" y="309">CONVERSATION</text>
+    <text class="mark tie" x="228" y="302">=</text>
+    <text class="t-b" x="248" y="301">Its own project</text>
+    <text class="t-s" x="248" y="319">nobody names it</text>
+    <text class="mark tie" x="592" y="302">=</text>
+    <text class="t-b" x="612" y="301">Its own project</text>
+    <text class="t-s" x="612" y="319">the same</text>
+    <line class="row" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="369">LOCKS IN</text>
+    <text class="t-b" x="32" y="389">Coder tasks may carry input.project</text>
+    <text class="t-s" x="32" y="407">a conversation’s own project always wins</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="348" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="369">FLIPS IF</text>
+    <text class="t-b" x="494" y="389">Every org with coders has one repository</text>
+    <text class="t-s" x="494" y="407">then a default is never wrong</text>
+  </g>
+</svg>
