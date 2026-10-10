@@ -69,6 +69,8 @@ export interface HarnessStep {
   outcome?: "finished" | "stopped-at-limit";
   /** Throw this message instead of returning a handle. */
   throws?: string;
+  /** Run while the harness holds the checkout, before it reports, on the harness's own context. */
+  during?: (ctx: BlockContext) => Promise<unknown>;
 }
 
 /** What the stub harness saw on one call. */
@@ -102,6 +104,7 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[]) {
         const sessionId = resume ?? `sess_${seen.length}`;
         await feeds.onSession(sessionId, ctx as never);
         if (step.commits !== undefined) commitIn(cwd, step.commits, `call${seen.length}`);
+        if (step.during !== undefined) await step.during(ctx as unknown as BlockContext);
         if (step.ask !== undefined) {
           const marker = /ASK: (\S+)/.exec(input.prompt)?.[1];
           if (marker === undefined) throw new Error("the prompt names no ask marker");
@@ -271,6 +274,16 @@ export function claimHost(options: HostOptions) {
       return ref.unpark(input.id, input.answer, { answer: true });
     },
   });
+  const cancel = handler({
+    name: "claim-host-cancel",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      return ref.cancel(input.id, "cancelled by the test");
+    },
+  });
   const records = handler({
     name: "claim-host-records",
     inputSchema: z.object({ topic: z.string() }),
@@ -286,6 +299,7 @@ export function claimHost(options: HostOptions) {
       claim: { block: claim },
       row: { block: rowAction },
       answer: { block: answer },
+      cancel: { block: cancel },
       records: { block: records },
     },
     task: {
@@ -386,7 +400,7 @@ export function claimHost(options: HostOptions) {
   const record = async (topic: string): Promise<RunRecordState | null> =>
     (await act("records", { topic })).output as RunRecordState | null;
 
-  return { act, seed: (input: Record<string, unknown>) => act("seed", input), row, runAttempt, record, seen, answersSeen, dir };
+  return { act, ledgerAt, seed: (input: Record<string, unknown>) => act("seed", input), row, runAttempt, record, seen, answersSeen, dir };
 }
 
 /** The message a failed action carries, however the engine wrapped it. */
