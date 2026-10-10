@@ -13,6 +13,7 @@ import {
   ClientHttpError,
   createResourceClient,
   createSessionClient,
+  readEveryCollectionPage,
   type ClientFetch,
   type SessionSummary
 } from "@flow-state-dev/client";
@@ -121,16 +122,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       throw error;
     }));
 
-  const listAll = async (sessionId: string, ref: string) => {
-    const items: Array<{ topic: string; clientData?: unknown }> = [];
-    let cursor: string | undefined;
-    do {
-      const page = await resources.listCollectionItems(sessionId, ref, cursor === undefined ? {} : { cursor });
-      items.push(...page.items);
-      cursor = page.nextCursor;
-    } while (cursor !== undefined);
-    return items;
-  };
+  const listAll = (sessionId: string, ref: string) => readEveryCollectionPage(resources, sessionId, ref);
 
   /** The roster as it is now: read on every call, since a hire changes it. */
   const readRoster = async (id: string): Promise<RosterEntry[]> => {
