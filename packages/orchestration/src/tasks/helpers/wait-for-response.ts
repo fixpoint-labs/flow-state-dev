@@ -20,11 +20,10 @@
  *   turn its rows are owed, through `ctx.requestHost.resumeAsk`. It stops at
  *   once when no row owes one. Never called inside the asking turn.
  *
- * Package-internal until FIX-1816 P3 wires it into `addTask` and the
- * child-finished notice; nothing re-exports it yet.
- *
- * `addTask`'s option, the schema it appears in and the check on who may ask
- * are the task tools' (FIX-1816 P3); this module is the mechanism under them.
+ * `addTask`'s `waitForResponse` option is the task tools' (`../../skills/
+ * task-tools-capability.ts`): the schema it appears in and the check on who
+ * may be assigned are theirs. This module is the mechanism under them, and the
+ * notice entry that hears an asked row end calls {@link resumeOwedAsks}.
  */
 import {
   AskEndedError,
@@ -40,9 +39,18 @@ import type { Task } from "../schema/task";
 import type { TaskInit } from "../schema/task-init";
 import type { TaskCollectionRef } from "../collection/types";
 import { generateId } from "../generate-id";
+// The one task-turn test (BR-5a). Reached by path, not through the task-board
+// barrel, which imports this module's neighbours.
+import { isTaskTurn } from "../../task-board/task-turn";
 
-/** How long an ask may stay open before it times out: ten minutes, fixed. */
-export const ASK_DEADLINE_MS = 10 * 60_000;
+/** How long an ask stays open when its filer sets no `timeoutMs`: five minutes. */
+export const DEFAULT_ASK_TIMEOUT_MS = 5 * 60_000;
+
+/** The shortest `timeoutMs` an ask takes: 30 seconds. */
+export const MIN_ASK_TIMEOUT_MS = 30_000;
+
+/** The longest `timeoutMs` an ask takes: an hour. */
+export const MAX_ASK_TIMEOUT_MS = 60 * 60_000;
 
 /** The gate an asked row's turn parks on, derived from the row. */
 export function askGateId(collectionId: string, taskId: string): string {
@@ -57,14 +65,18 @@ export type WaitForResponseResult =
       /**
        * - `wait_already_pending`: this step already waits on another ask. Nothing
        *   was filed.
-       * - `wait_unavailable`: this host or board cannot hold an ask (no durable
-       *   execution, or a board that keeps no resume marker). Nothing was filed.
+       * - `wait_unavailable`: this turn, host or board cannot hold an ask (a
+       *   task turn, no durable execution, or a board that keeps no resume
+       *   marker). Nothing was filed.
+       * - `wait_timeout_out_of_range`: `timeoutMs` is outside 30 seconds to an
+       *   hour. Nothing was filed; it is never clamped.
        * - `wait_timed_out`, `wait_task_failed`, `wait_task_cancelled`: the ask
        *   was filed and ended without an answer.
        */
       readonly error:
         | "wait_already_pending"
         | "wait_unavailable"
+        | "wait_timeout_out_of_range"
         | "wait_timed_out"
         | "wait_task_failed"
         | "wait_task_cancelled"
@@ -120,18 +132,50 @@ function outcomeOf(
   }
 }
 
+/** How an ask is bounded. */
+export interface AddTaskAndWaitOptions {
+  /**
+   * How long to wait, from filing: {@link MIN_ASK_TIMEOUT_MS} to
+   * {@link MAX_ASK_TIMEOUT_MS}, inclusive. {@link DEFAULT_ASK_TIMEOUT_MS} when
+   * unset. Outside the range the ask is refused before filing.
+   */
+  readonly timeoutMs?: number;
+}
+
 /**
  * File `init` on `collection` as an ask and wait for its answer.
  *
  * The caller has already run the board's own filing checks (who may be
  * assigned); this adds only what waiting needs. Must run as a block with a
- * stable call identity (a generator's tool), on a durable host.
+ * stable call identity (a generator's tool), on a durable host, and never on
+ * a task turn ({@link isTaskTurn}), so an ask is never asked from inside an
+ * ask. Every refusal comes before anything is filed.
  */
 export async function addTaskAndWait(
   ctx: BlockContext,
   collection: TaskCollectionRef,
-  init: Omit<TaskInit, "id" | "ask">
+  init: Omit<TaskInit, "id" | "ask">,
+  options: AddTaskAndWaitOptions = {}
 ): Promise<WaitForResponseResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_ASK_TIMEOUT_MS || timeoutMs > MAX_ASK_TIMEOUT_MS) {
+    return {
+      ok: false,
+      error: "wait_timeout_out_of_range",
+      message:
+        `timeoutMs must be from ${MIN_ASK_TIMEOUT_MS} (30 seconds) to ${MAX_ASK_TIMEOUT_MS} (an hour); ` +
+        `${timeoutMs} is outside it. Nothing was filed.`
+    };
+  }
+  if (isTaskTurn(ctx)) {
+    return {
+      ok: false,
+      error: "wait_unavailable",
+      message:
+        "This turn is itself working a task, so it can't wait for another. File the task without " +
+        "waitForResponse instead. Nothing was filed."
+    };
+  }
   const call = toolCallOf(ctx);
   const host = ctx.requestHost;
   if (
@@ -165,7 +209,7 @@ export async function addTaskAndWait(
   const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
     const taskId = generateId("task");
     const gateId = askGateId(collection.collectionId, taskId);
-    const deadline = Date.now() + ASK_DEADLINE_MS;
+    const deadline = Date.now() + timeoutMs;
     await collection.addTask({ ...init, id: taskId, ask: { gateId, deadline } });
     return { taskId, gateId, deadline };
   });

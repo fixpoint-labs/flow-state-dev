@@ -41,7 +41,10 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
       const [row] = await rows(state, flow);
       expect(row).toMatchObject({ status: "pending", resumeOwed: false });
       expect(row!.ask?.gateId).toBe(askGateId(BOARD, row!.id));
-      expect(row!.ask!.deadline - Date.now()).toBeGreaterThan(9 * 60_000);
+      // The default bound: five minutes from filing (BR-14).
+      const left = row!.ask!.deadline - Date.now();
+      expect(left).toBeGreaterThan(4 * 60_000);
+      expect(left).toBeLessThanOrEqual(5 * 60_000);
 
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
       // The ending owes the turn its answer.
@@ -229,7 +232,7 @@ describe("ask on the board: the row ended first, and the deadline", () => {
       const parked = await act(state, flow, "run");
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
 
-      // Eleven minutes on.
+      // Past the five-minute default.
       const real = Date.now.bind(Date);
       vi.spyOn(Date, "now").mockImplementation(() => real() + 11 * 60_000);
       await until(state, parked.requestId!, "completed");

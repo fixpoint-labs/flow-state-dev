@@ -1,12 +1,12 @@
 /**
  * The child-finished signal: how a task's ending becomes one notice to the
- * conversation that filed it (FIX-1794 P2, S6 and S7).
+ * conversation that filed it (FIX-1794 P2, S6 and S7), and, for an asked row,
+ * the resume of the turn that waits on it (FIX-1816 S9).
  *
  * Pure functions over a board row and the notice it owes. Nothing here reads
- * a store, runs a block or knows a worker, a delegate or a conversation; the
- * row and ending types are orchestration's. That is deliberate: FIX-1816
- * lifts this module into orchestration as it stands, and a test fails if it
- * ever imports from this package.
+ * a store, runs a block or knows a worker, a delegate or a conversation. It
+ * was built in Workforce and lifted here as it stood, and a test fails if it
+ * ever imports from outside orchestration's task types.
  *
  * ## The row is the outbox
  *
@@ -24,21 +24,28 @@
  * board refusing a hand-off, and the board settling a row whose worker died
  * too often. A cancel owes no notice, and neither does a park that asks nobody
  * anything (a park the board makes for its own reasons, or one for a person's
- * turn): {@link recordEnding} returns those rows unchanged.
+ * turn): {@link recordEnding} returns those rows unchanged. An asked row is
+ * the exception for a cancel: its turn waits on every ending, so a cancel owes
+ * the notice that resumes it.
  *
  * ## What an ending does
  *
  * {@link decideNotice} is the one choice: a retried attempt runs the board
- * again with no turn; an ending wakes the coordinator's judgment turn, or
- * lands as a line under a fixed routing policy. The receiving entry only acts
- * on the value. {@link noticeKey} is the dedupe key, task and attempt and
- * ending, so a notice sent twice (a replay racing the first send) is acted on
- * once.
+ * again with no turn; an asked row's ending resumes the turn parked on it
+ * (`waitForResponse`) and wakes none; any other ending wakes the coordinator's
+ * judgment turn, or lands as a line under a fixed routing policy. The
+ * receiving entry only acts on the value. {@link noticeKey} is the dedupe key,
+ * task and attempt and ending, so a notice sent twice (a replay racing the
+ * first send) is acted on once.
  */
-import type { Task, TaskEnding } from "@flow-state-dev/orchestration/tasks";
+import type { Task } from "../schema/task";
+import type { TaskEnding } from "../collection/ending";
 
-/** The endings a conversation hears about. A cancel is not one (BR-29). */
-export type NoticeEnding = "completed" | "errored" | "parked" | "retried";
+/**
+ * The endings a conversation hears about. A cancel is one only for an asked
+ * row, whose waiting turn must hear every ending (BR-29 otherwise).
+ */
+export type NoticeEnding = "completed" | "errored" | "parked" | "retried" | "cancelled";
 
 /**
  * One notice: plain data, the same whether the task session sends it or a
@@ -55,6 +62,8 @@ export interface TaskNotice {
   readonly output?: unknown;
   readonly error?: string;
   readonly question?: string;
+  /** The row is asked (`waitForResponse`): a turn is parked on its ending. */
+  readonly asked?: true;
 }
 
 /** The marker each owed notice is kept under, in the row's metadata. */
@@ -89,14 +98,15 @@ function markerFor(row: Task, ending: TaskEnding): OwedMarker | undefined {
         ...(ending.question !== undefined ? { question: ending.question } : {})
       };
     case "cancelled":
-      return undefined;
+      // Only an asked row's turn hears a cancel: it waits on every ending.
+      return row.ask != null ? { attempt: row.attempts, ending: "cancelled" } : undefined;
   }
 }
 
 /**
  * Record an ending: the row to write in the one write that records it, with
- * the notice it owes marked. A cancel, and a park that asks nobody anything,
- * owe none and come back unchanged.
+ * the notice it owes marked. A cancel of a row nobody waits on, and a park
+ * that asks nobody anything, owe none and come back unchanged.
  *
  * The ledger's ending recorder: every write that records an ending runs it
  * inside that write. Callable on its own too, for a write that parks a row for
@@ -134,7 +144,8 @@ export function owedNotices(row: Task, boardId: string): TaskNotice[] {
       ending: value.ending,
       ...(value.ending === "completed" ? { output: row.output } : {}),
       ...(value.error !== undefined ? { error: value.error } : {}),
-      ...(value.question !== undefined ? { question: value.question } : {})
+      ...(value.question !== undefined ? { question: value.question } : {}),
+      ...(row.ask != null ? { asked: true as const } : {})
     });
   }
   return notices.sort((a, b) => a.attempt - b.attempt);
@@ -172,11 +183,18 @@ export type NoticeDecision =
   /** An ending: the coordinator's judgment turn reads it and decides. */
   | { readonly act: "wake-turn" }
   /** An ending, under a fixed policy: a line in the conversation. */
-  | { readonly act: "line" };
+  | { readonly act: "line" }
+  /**
+   * An asked row's ending: resume the turn parked on it through the request
+   * host's ask resume (`resumeOwedAsks`), with no turn woken and no line: the
+   * answer is the waiting call's result.
+   */
+  | { readonly act: "resume-ask" };
 
 /** The one choice of what a notice does. */
-export function decideNotice(notice: Pick<TaskNotice, "ending">, policy: NoticePolicy): NoticeDecision {
+export function decideNotice(notice: Pick<TaskNotice, "ending" | "asked">, policy: NoticePolicy): NoticeDecision {
   if (notice.ending === "retried") return { act: "run-board" };
+  if (notice.asked === true) return { act: "resume-ask" };
   return policy === "judgment" ? { act: "wake-turn" } : { act: "line" };
 }
 
@@ -209,6 +227,8 @@ export function noticeText(
       return `${named} is waiting on a question from ${worker}: ${notice.question ?? "no question was recorded"}`;
     case "retried":
       return `${named} failed with ${worker} and runs again: ${notice.error ?? "no error was recorded"}`;
+    case "cancelled":
+      return `${named} was cancelled`;
   }
 }
 

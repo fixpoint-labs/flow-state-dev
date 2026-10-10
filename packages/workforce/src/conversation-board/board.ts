@@ -21,10 +21,12 @@
  *   (`./ledger`), so a refused or lost wake strands nothing: any later action
  *   on the board starts every row in that state.
  * - **The outbox.** Any action on the board, and every run of it, replays the
- *   notices its rows still owe into the conversation (`./task-notice`).
+ *   notices its rows still owe into the conversation (orchestration's notice
+ *   module).
  */
 import {
   createTaskToolsCapability,
+  resumeOwedAsks,
   taskToolActions,
   type TaskCollectionResolver,
   type AssigneeRoster,
@@ -33,6 +35,7 @@ import {
 import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   isClaimable,
+  owedNotices,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -53,7 +56,6 @@ import {
   ownConversationLedger
 } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
-import { owedNotices } from "./task-notice";
 
 /** The internal entry a filing dispatches to run its conversation's board. */
 export const RUN_BOARD_ENTRY = "runTaskBoard";
@@ -300,7 +302,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /**
    * After a run: send what the rows owe, including what this run's own
-   * refusals and settled dead runs owe.
+   * refusals and settled dead runs owe, and resume each turn an asked row's
+   * ending still owes (`resumeOwedAsks`): a run of the board is a touch, and
+   * not a turn.
    */
   const afterRun = handler({
     name: "conversation-board-after-run",
@@ -310,6 +314,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     execute: async (_input, ctx) => {
       const ref = await ownConversationLedger(ctx as never);
       if (ref === undefined) return { replayed: 0 };
+      await resumeOwedAsks(ctx as never, ref);
       return { replayed: await replayNotices(ctx as never, ref.list()) };
     }
   });

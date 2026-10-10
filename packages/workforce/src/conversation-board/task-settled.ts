@@ -5,9 +5,11 @@
  * Deduped by task, attempt and ending, which absorbs the replays the board's
  * outbox sends: a notice is acted on only while its row still owes it, and
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
- * attempt runs the board again with no turn; an ending lands as a line under
- * the delegate's name and, when the conversation routes by judgment, wakes
- * its coordinator's turn to read it and decide what to do.
+ * attempt runs the board again with no turn; an asked row's ending resumes
+ * the turn parked on it (`waitForResponse`), with no line and no turn woken;
+ * any other ending lands as a line under the delegate's name and, when the
+ * conversation routes by judgment, wakes its coordinator's turn to read it
+ * and decide what to do.
  *
  * A notice that arrives while the conversation is replying waits for the
  * reply to end, then runs (BR-27). It waits for the replies running when it
@@ -27,10 +29,7 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
-import { z } from "zod";
-import { isTaskSession, replayNotices } from "./board";
-import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
+import { resumeOwedAsks } from "@flow-state-dev/orchestration";
 import {
   clearNotice,
   decideNotice,
@@ -39,7 +38,11 @@ import {
   noticeText,
   type NoticePolicy,
   type TaskNotice
-} from "./task-notice";
+} from "@flow-state-dev/orchestration/tasks";
+import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
+import { z } from "zod";
+import { isTaskSession, replayNotices } from "./board";
+import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 
 /** A notice, as the entry takes it. */
 export const taskNoticeSchema = z
@@ -47,10 +50,11 @@ export const taskNoticeSchema = z
     boardId: z.string().min(1),
     taskId: z.string().min(1),
     attempt: z.number().int().nonnegative(),
-    ending: z.enum(["completed", "errored", "parked", "retried"]),
+    ending: z.enum(["completed", "errored", "parked", "retried", "cancelled"]),
     output: z.unknown().optional(),
     error: z.string().optional(),
-    question: z.string().optional()
+    question: z.string().optional(),
+    asked: z.literal(true).optional()
   })
   .strict();
 
@@ -66,7 +70,7 @@ export const conversationBoardStateShape = {
 } as const;
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask"]),
   text: z.string().optional(),
   worker: z.string().optional()
 });
@@ -139,8 +143,15 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       // Delivered: the marker clears whichever copy of the notice got here.
       await ref.patchMetadata(row.id, clearNotice(notice));
       await replayRest();
-      if (first !== true) return { act: "none" };
       const decision = decideNotice(notice, options.policy(ctx as never));
+      // An asked row's ending: resume the turn parked on it. Every copy
+      // tries, since the gate admits one answer and a copy whose resume was
+      // turned away (`busy`) must not leave it owed; no line, no turn.
+      if (decision.act === "resume-ask") {
+        await resumeOwedAsks(ctx as never, ref);
+        return { act: first === true ? "resume-ask" : "none" };
+      }
+      if (first !== true) return { act: "none" };
       return {
         act: decision.act,
         text: noticeText(notice, row),
