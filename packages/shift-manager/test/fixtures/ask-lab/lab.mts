@@ -3,12 +3,17 @@
  * before they act.
  *
  * Neither goal tree raises an ask on `main` today, so this is the tree the
- * ask paths (Inbox, a workstream Stream's asks, the shared resume) are proved
- * on. It is an ordinary Lab config: read the tree, build the installation and
- * register one copy of the asker flow, build the mailbox kind with the
- * framework's own member wake and the inventory writer, open the mailboxes and
- * then the inventory, default-export the `FlowState`. In-memory stores, so
- * every load is a fresh Lab.
+ * ask paths (Inbox, the shared resume) are proved on. It is an ordinary Lab
+ * config: read the tree, build the installation and register one copy of the
+ * asker flow and of Workforce's `coordinator` flow, open the person's
+ * conversations with the two coordinators (`ops.desk` and `ops.side`, each
+ * under its worker's id), then the inventory, written from a small flow of the
+ * Lab's own that carries the inventory writer. In-memory stores, so every load
+ * is a fresh Lab.
+ *
+ * A post to a coordinator conversation reaches each of its delegates, which
+ * asks a person in a session the delivery opened: a dispatch run. Nothing
+ * files a task, so each conversation's board is empty.
  *
  * `fsdev.config.mts` beside this file is the config the `shift-manager` command
  * loads; tests call {@link openAskLab} directly for the handle and the tree.
@@ -23,21 +28,17 @@ import {
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  MAILBOX_KIND,
-  mailboxBoardIds,
-  mailboxInstances,
+  COORDINATOR_KIND,
   createWorkerInstallation,
-  defineMailboxFlow,
+  defineCoordinatorFlow,
   hireWorkforce,
   inventorySeats,
+  inventoryWriterActions,
   resourcesFromDocs,
   defineProjectBlocks,
-  openMailboxes,
   openInventory,
-  wakeMemberSeats,
   type CreateProjectInput,
   type InventoryActionRequest,
-  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
@@ -86,14 +87,27 @@ function bearerOnly(secret: string, orgId: string): PrincipalResolver {
   };
 }
 
+/** The coordinators whose conversations the Lab opens for its person at boot, each under the worker's own id. */
+export const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
+
+/**
+ * The model best fit's one evaluator call would run on. Both coordinators
+ * route to everyone and never make that call, but the flow names no default.
+ */
+const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+
+/** The flow the inventory is written from: the Lab's own, carrying the writer. */
+const INVENTORY_WRITER_KIND = "inventory-writer";
+
 /** How to open the ask-lab. */
 export type AskLabOptions = {
   /**
-   * Open the mailboxes at boot. Default true. `false` opens nothing, so the
-   * person holds no session: a Lab with nothing to say which organization
-   * they are in. The inventory, which needs the mailboxes, stays shut too.
+   * Open the person's coordinator conversations at boot. Default true.
+   * `false` opens nothing, so the person holds no session: a Lab with nothing
+   * to say which organization they are in. The inventory, whose writes run in
+   * a session of the person's, stays shut too.
    */
-  mailboxes?: boolean;
+  conversations?: boolean;
   /** Open the inventory at boot. Default true. */
   inventory?: boolean;
   /**
@@ -103,9 +117,10 @@ export type AskLabOptions = {
    */
   doors?: boolean;
   /**
-   * Build the mailbox kind with the inventory's collections. Default true.
-   * `false` is a Lab whose flows never declare an inventory, so no session it
-   * serves lists one. The inventory is not opened either.
+   * Declare the inventory's collections: the writer's flow, and the asker
+   * kind for a browser to read. Default true. `false` is a Lab whose flows
+   * never declare an inventory, so no session it serves lists one. The
+   * inventory is not opened either.
    */
   inventoryDeclared?: boolean;
   /**
@@ -138,19 +153,29 @@ export async function openAskLab(options: AskLabOptions = {}) {
   const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : (options.orgId ?? ASK_LAB_ORG_ID);
   const tree = await readAskLabTree();
   if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
+  const declared = options.inventoryDeclared !== false;
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
+  const asker = defineAskerFlow(installation, resourcesFromDocs(tree.documents), {
+    projects: options.seatsStartProjects,
+    inventory: declared,
+  });
   workerFlows = {
-    [ASKER_KIND]: defineAskerFlow(installation, resourcesFromDocs(tree.documents), { projects: options.seatsStartProjects }),
+    [ASKER_KIND]: asker,
+    [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [asker], routeModel: ROUTE_MODEL }),
   };
-  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
-  const declared = options.inventoryDeclared !== false;
-  const mailboxKind = defineMailboxFlow({ notify: wakeMemberSeats(copies, { installation }), inventory: declared });
+  const copies = hireWorkforce(installation);
   const flows: Record<string, FlowInstance> = {
-    ...Object.fromEntries(
-      mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i]),
-    ),
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    // The seat write takes caller-supplied rows, so it is internal only.
+    ...(declared
+      ? {
+          [INVENTORY_WRITER_KIND]: defineFlow({
+            kind: INVENTORY_WRITER_KIND,
+            internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+          } as never)(),
+        }
+      : {}),
     ...(options.projects === undefined
       ? {}
       : {
@@ -182,23 +207,15 @@ export async function openAskLab(options: AskLabOptions = {}) {
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenMailboxesOptions["client"] = {
-    createSession: async (create) => {
-      const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
-      if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
-      return body;
-    },
-    getSession: async (sessionId) => {
-      const { status, body } = await call("GET", ["sessions", sessionId]);
-      if (status >= 400) throw new Error(`read session ${sessionId}: ${status}`);
-      return body?.session ?? body;
-    },
-    deleteSession: async (sessionId) => {
-      await call("DELETE", ["sessions", sessionId]);
-    },
-  };
-  if (options.mailboxes === false) return { flowState, tree, flows };
-  await openMailboxes(tree.mailboxes, { client, userId: ASK_LAB_USER_ID });
+  if (options.conversations === false) return { flowState, tree, flows };
+  for (const workerId of ASK_LAB_COORDINATORS) {
+    const { status, body } = await call("POST", [COORDINATOR_KIND, "sessions"], {
+      userId: ASK_LAB_USER_ID,
+      sessionId: workerId,
+      state: { workerId },
+    });
+    if (status >= 400) throw new Error(`open the ${workerId} conversation: ${status} ${JSON.stringify(body)}`);
+  }
 
   if (declared && options.inventory !== false) {
     const runtime = await flowState.getRuntime();
@@ -224,9 +241,9 @@ export async function openAskLab(options: AskLabOptions = {}) {
         seats: options.doors === false
           ? inventorySeats(installation).map((seat) => ({ ...seat, actions: {} }))
           : inventorySeats(installation),
-        mailboxes: tree.mailboxes,
+        mailboxes: [],
       },
-      { run, seatWriter: { flowKind: MAILBOX_KIND }, userId: ASK_LAB_USER_ID, orgId },
+      { run, seatWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 

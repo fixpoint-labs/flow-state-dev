@@ -1,6 +1,8 @@
 ---
 description: A second room the asker also sits in.
-members: [ops.asker]
+flow: coordinator
+delegates: [ops.asker]
+routing: everyone
 ---
 
 Side conversations.

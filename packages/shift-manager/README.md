@@ -212,7 +212,7 @@ Below DELEGATES, TASKS lists the tasks your conversation filed for its delegates
 
 A Lab with no chief of staff needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `chief-of-staff` seat. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
-`test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
+`test/fixtures/ask-lab/lab.mts` is a small Lab that does the above in one file, with no mailbox: it writes its inventory from a flow of its own that carries `inventoryWriterActions`, as its `seatWriter`.
 
 ## What you see
 

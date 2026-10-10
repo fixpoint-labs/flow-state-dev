@@ -1,5 +1,5 @@
 ---
-description: In no mailbox at all.
+description: No coordinator's delegate.
 flow: asker
 ---
 
