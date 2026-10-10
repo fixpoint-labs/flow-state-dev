@@ -14,10 +14,10 @@
  *   module).
  * - **The notice.** After the gate, on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
- *   birth; a task session is one task) goes to the conversation that
- *   dispatched this request, its
- *   stamped sender (`{ from: true }`), never an address from the row or the
- *   task. Delivery clears the marker in the conversation. A refusal (the
+ *   birth; a task session is one task) goes to the session that dispatched
+ *   this request, its stamped sender (`{ from: true }`), on the flow the
+ *   hand-over named at the session's birth (`filingFlow`), never an address
+ *   from the row or the task. Delivery clears the marker in the conversation. A refusal (the
  *   conversation is gone) clears it here and says so in this session; the
  *   task's ending stands. A thrown send, or any other refusal, leaves it owed
  *   for the conversation's next touch of its board. A conversation whose
@@ -30,7 +30,7 @@ import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestratio
 import { clearNotice, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
-import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
 
@@ -74,6 +74,16 @@ function sessionTaskOf(ctx: BlockContext): string | undefined {
 }
 
 /**
+ * The flow the session that filed a task session's task runs on, as its
+ * board's hand-over named it at birth (a readonly field): where the task's
+ * notice goes.
+ */
+function filingFlowOf(ctx: BlockContext): string | undefined {
+  const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
+  return typeof flow === "string" ? flow : undefined;
+}
+
+/**
  * The refusals that say the conversation that filed a task can't be told,
  * now or later: its session is gone, or no longer this user's. Every other
  * refusal leaves the notice owed.
@@ -86,11 +96,6 @@ export interface WorkerTaskEntryOptions {
   readonly name: string;
   /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
   readonly turn: BlockDefinition<any, any>;
-  /**
-   * The flow a filing conversation runs on, where a task's notice goes. A
-   * conversation's board is kept by the coordinator's conversations.
-   */
-  readonly noticeFlow: string;
   /** Mailbox task lists the entry also takes tasks from, by minted id. */
   readonly mailboxLists?: readonly string[];
 }
@@ -140,13 +145,14 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const tellFiler = async (ctx: BlockContext): Promise<number> => {
     const taskId = sessionTaskOf(ctx);
     const partition = filingPartitionOf(ctx);
+    const flowKind = filingFlowOf(ctx);
     // A task off a mailbox list owes no notice: its ledger records none, and
-    // its session names no conversation.
-    if (taskId === undefined || partition === undefined) return 0;
+    // its session names no filing session.
+    if (taskId === undefined || partition === undefined || flowKind === undefined) return 0;
     const ref = await conversationLedgerAt(ctx, partition);
     const row = ref?.get(taskId);
     if (ref === undefined || row === undefined) return 0;
-    const address = { session: { from: true }, flowKind: options.noticeFlow, from: `${name}-tell` } as const;
+    const address = { session: { from: true }, flowKind, from: `${name}-tell` } as const;
     return sendOwedNotices(ctx, row, address, async (notice, refusal) => {
       // Any other refusal (the host turned it away, the store was down) may
       // pass: the marker stays for the conversation's next touch.

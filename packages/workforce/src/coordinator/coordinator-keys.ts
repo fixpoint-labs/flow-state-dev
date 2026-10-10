@@ -1,6 +1,8 @@
 /**
- * The names the coordinator pins: its flow, its record, its actions, the
- * entry a delegate's flow declares, and the server-written session state.
+ * The names the coordinator pins: its flow, its record, the entry a
+ * delegate's flow declares, and its routing's server-written session state.
+ * The delegate actions and the delegate list's state are any worker's
+ * (`../delegates/delegate-keys`).
  *
  * A leaf with no imports, so the flow, the delegated-post entry and the
  * delegate modules share one spelling of each.
@@ -18,12 +20,6 @@ export const COORDINATOR_ROUTE = "coordinator-route";
 
 /** The judgment turn's generator block, which a scripted model resolves by name. */
 export const COORDINATOR_JUDGMENT = "coordinator-judgment";
-
-/** The four delegate actions. **Pinned**: an app sends them by name. */
-export const ADD_DELEGATE = "addDelegate";
-export const REMOVE_DELEGATE = "removeDelegate";
-export const SET_FALLBACK = "setFallback";
-export const LIST_DELEGATES = "listDelegates";
 
 /** The coordinator's tool that hands the post it is reading to one delegate. */
 export const HAND_OFF = "handOff";
@@ -55,19 +51,12 @@ export const ROUTE_ON_ACTION = "routeOn";
  */
 export const DELEGATED_POST_ENTRY = "onDelegatedPost";
 
-/** The most delegate records one conversation holds. */
-export const MAX_DELEGATES = 25;
-
 /** The highest `rounds:` a coordinator may set. */
 export const MAX_ROUNDS = 3;
 
 /** How long a round waits for its answers before it closes without the rest, unless the flow sets its own. */
 export const ROUND_DEADLINE_MS = 5 * 60_000;
 
-/** Server-written session state: the conversation's delegate records, `null` until first read or changed. */
-export const DELEGATES_STATE = "delegates";
-/** Server-written session state: the conversation's fallback delegate record, or `null`. */
-export const FALLBACK_STATE = "fallback";
 /** Server-written session state: who best fit holds the person's next post for. */
 export const HOLD_STATE = "bestFitHold";
 /** Server-written session state: the delivery ledger. */

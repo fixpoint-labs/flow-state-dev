@@ -3,15 +3,18 @@
  * set on top of the settings of the turn it runs (the built-in agent's: its
  * model, tools, skills and capabilities).
  *
- * - `delegates`: the defaults each conversation starts from. Copied into the
- *   conversation the first time its delegates are read or changed; never
- *   written back.
+ * - `delegates`: the defaults each conversation starts from, the worker
+ *   contract's key (`workerConfigSchema()`), which any worker may list.
+ *   Copied into the conversation the first time its delegates are read or
+ *   changed; never written back.
  * - `routing`: how a post finds its delegates. `judgment` (the default) is the
  *   coordinator's own turn deciding; `best-fit` is one evaluator call;
  *   `round-robin` is the next delegate in list order; `everyone` is each
  *   delegate.
  * - `fallback`: the delegate a post best fit can't place goes to. One of
  *   `delegates`.
+ * - `minConfidence`: under `best-fit` only, the lowest confidence, from 0 to
+ *   1, at which a delegate pick is used. No default: without it, any pick is.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
  *   {@link MAX_ROUNDS}.
  * - `model`, `tools`, `skills` and the rest: the agent turn's own, read the
@@ -19,7 +22,10 @@
  */
 import { z } from "zod";
 import { workerConfigSchema } from "../worker-config";
-import { MAX_DELEGATES, MAX_ROUNDS } from "./coordinator-keys";
+import { MAX_ROUNDS } from "./coordinator-keys";
+
+/** How a `minConfidence:` out of range is refused. */
+const MIN_CONFIDENCE_RANGE = "minConfidence must be a number from 0 to 1";
 
 /** The routing policies a coordinator can name. */
 export const COORDINATOR_ROUTING = ["judgment", "best-fit", "round-robin", "everyone"] as const;
@@ -36,12 +42,16 @@ export function coordinatorConfigSchema<TBase extends z.AnyZodObject>(base?: TBa
   return (base ?? workerConfigSchema().extend({ model: z.string().min(1).optional() })).extend(coordinatorShape());
 }
 
-/** The keys a coordinator adds to its turn's settings. */
+/** The keys a coordinator adds to its turn's settings. Its `delegates` are the worker contract's. */
 function coordinatorShape() {
   return {
-    delegates: z.array(z.string().min(1)).max(MAX_DELEGATES).default([]),
     routing: z.enum(COORDINATOR_ROUTING).default("judgment"),
     fallback: z.string().min(1).optional(),
+    minConfidence: z
+      .number({ invalid_type_error: MIN_CONFIDENCE_RANGE })
+      .min(0, { message: MIN_CONFIDENCE_RANGE })
+      .max(1, { message: MIN_CONFIDENCE_RANGE })
+      .optional(),
     rounds: z
       .number()
       .int()
@@ -53,17 +63,21 @@ function coordinatorShape() {
 
 /** The keys every coordinator configuration carries, whatever its base. */
 export type CoordinatorConfig = z.infer<z.ZodObject<ReturnType<typeof coordinatorShape>>> & {
+  delegates: string[];
   model?: string;
   instructions?: string;
 };
 
 /**
  * What a configuration's schema can't check across keys: the fallback must be
- * one of the defaults, and no default is named twice.
+ * one of the defaults, no default is named twice, and a floor is set only
+ * where best fit reads it.
  *
  * @returns Each problem; empty when there is none.
  */
-export function coordinatorConfigProblems(config: Pick<CoordinatorConfig, "delegates" | "fallback">): string[] {
+export function coordinatorConfigProblems(
+  config: Pick<CoordinatorConfig, "delegates" | "fallback"> & Partial<Pick<CoordinatorConfig, "routing" | "minConfidence">>
+): string[] {
   const problems: string[] = [];
   const twice = config.delegates.filter((name, index) => config.delegates.indexOf(name) !== index);
   if (twice.length > 0) {
@@ -71,6 +85,9 @@ export function coordinatorConfigProblems(config: Pick<CoordinatorConfig, "deleg
   }
   if (config.fallback !== undefined && !config.delegates.includes(config.fallback)) {
     problems.push(`names "${config.fallback}" as \`fallback:\`, which isn't one of its \`delegates:\``);
+  }
+  if (config.minConfidence !== undefined && config.routing !== "best-fit") {
+    problems.push("sets `minConfidence:`, which only `routing: best-fit` reads");
   }
   return problems;
 }

@@ -75,5 +75,15 @@ export const TASK_ID_STATE_KEY = "taskId";
  */
 export const ROSTER_FLOW_KIND = "workforce-roster";
 
+/**
+ * The session-state field that names the flow a task session's filer runs
+ * on: set when a session's board hands a task over, beside
+ * {@link TASK_ID_STATE_KEY}, so the task's notice reaches the filing session
+ * on its own flow, whichever flow that is (FIX-1802). Readonly, and set only
+ * by the hand-over: the installation's create check refuses a create on any
+ * other path that names it.
+ */
+export const FILING_FLOW_STATE_KEY = "filingFlow";
+
 /** The prefix every derived worker-session id starts with. */
 export const DERIVED_WORKER_SESSION_PREFIX = "wks_";

@@ -124,7 +124,7 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
     session: installation.session(),
     resources: { ...installation.resources, ...conversationLedgerResources },
     actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { work: workerTaskEntry({ name: "tasker-task", turn, noticeFlow: "coordinator" }) } }
+    task: { actions: { work: workerTaskEntry({ name: "tasker-task", turn }) } }
   });
 }
 
@@ -155,12 +155,16 @@ export type BoardHostOptions = {
   agent?: CoordinatorFlowOptions["agent"];
   stores?: StoreRegistry;
   /** Told the names of the tools each model call is handed, by the calling block's name. */
-  observeTools?: (blockName: string | undefined, names: string[]) => void;
+  observeTools?: (blockName: string | undefined, names: string[], input: unknown) => void;
   /**
    * Awaited after each model call, before its block sees the answer, by the
    * calling block's name: a test holds a turn open past its tool calls with it.
    */
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
+  /** More worker flows, built on the installation, registered beside the four, by kind. */
+  flows?: (installation: WorkerInstallation) => Record<string, unknown>;
+  /** More scripted generators, by block name. */
+  generators?: Record<string, MockGeneratorInstance>;
 };
 
 /**
@@ -178,7 +182,7 @@ function observingTools(
     return {
       ...model,
       generate: async (options: any) => {
-        observe?.(blockName, names(options));
+        observe?.(blockName, names(options), options);
         const result = await model.generate(options);
         await after?.(blockName);
         return result;
@@ -187,7 +191,7 @@ function observingTools(
         ? {}
         : {
             stream: async function* (options: any) {
-              observe?.(blockName, names(options));
+              observe?.(blockName, names(options), options);
               yield* model.stream(options);
               await after?.(blockName);
             }
@@ -215,7 +219,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent })
   });
-  flows = { tasker, helper, agent, coordinator };
+  flows = { tasker, helper, agent, coordinator, ...(options.flows?.(installation) ?? {}) };
 
   // One copy per worker flow, and the roster flow, as an app registers them.
   const instances: Record<string, FlowInstance> = Object.fromEntries(
@@ -227,7 +231,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     evaluators: {
       [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { member: { type: "choice", choice: "eng.tasker" } } })
     },
-    generators: { "coordinator-judgment": judgment, "agent-answer": agentAnswer }
+    generators: { "coordinator-judgment": judgment, "agent-answer": agentAnswer, ...(options.generators ?? {}) }
   });
   const state = createFlowState({
     flows: instances,

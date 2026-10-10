@@ -39,7 +39,7 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
-import type { OpenRound } from "../src/coordinator/coordinator-delegates";
+import type { OpenRound } from "../src/coordinator/coordinator-state";
 import { claimAnswer, openDelivery, type DeliveryLedger, type DeliveryRecord } from "../src/delivery-ledger";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
@@ -297,7 +297,8 @@ describe("rounds (V5)", () => {
     expect(host.heard[1]!.message).toMatch(/^eng\.em, through desk: eng\.em heard: /);
     expect(host.route.calls).toHaveLength(2);
     const offered = (call: number) => Object.keys((host.route.calls[call]!.questions as any).member.criteria);
-    expect(offered(0)).toEqual(["eng.em", "eng.coder", "support.general"]);
+    // The coordinator is a choice on the person's post only (FIX-1833 BR-3).
+    expect(offered(0)).toEqual(["eng.em", "eng.coder", "support.general", "desk"]);
     expect(offered(1)).toEqual(["eng.coder", "support.general"]);
     const { records } = await host.items(id);
     expect(records.map((record: any) => [record.round, record.by, record.delegates])).toEqual([

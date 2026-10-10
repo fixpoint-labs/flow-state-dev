@@ -2185,7 +2185,7 @@ const researchFlow = defineFlow({
 const coordinatorFlow = defineCoordinatorFlow({
   installation,
   delegateFlows: [researchFlow],     // the flows a delivery can reach
-  routeModel: "openai/gpt-5.4-mini", // best fit's one evaluator call
+  routeModel: "typesafe-ai/jev",     // best fit's one evaluator call; typesafe-ai/jev reports confidence
   agent: { catalog, uses },          // what you give defineAgentWorkerFlow: the judgment turn is the agent's
   roundDeadlineMs: 5 * 60_000,       // optional: how long a round waits for its answers (the default)
 });
@@ -2204,15 +2204,22 @@ flow: coordinator
 delegates: [researcher, scribe]
 routing: best-fit        # judgment (the default), best-fit, round-robin or everyone
 fallback: scribe         # one of the delegates
+minConfidence: 0.7       # best-fit only: a delegate pick below this goes to the fallback, else the coordinator's own turn
 rounds: 0                # how many times an answer goes back out: 0 (the default) to 3
 ---
 ```
 
 - **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
   `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
-  person's last post, else makes one evaluator call over each delegate's note or description,
-  reading the post with the conversation's recent lines, else sends it to the fallback, else runs
-  the judgment turn. If that turn fails too, nobody takes the post, and the conversation says so.
+  person's last post, else makes one evaluator call over each delegate's note or description and
+  the coordinator's own description, reading the post with the conversation's recent lines. A
+  pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
+  fails, answers with something that isn't a choice, has no one to pick, or picks a delegate
+  below `minConfidence:` (or with no confidence, or one outside 0 to 1, while it is set). That post goes to the
+  fallback, else the judgment turn. If that turn fails too, nobody takes the post, and the
+  conversation says so. The judgment turn's model sees each delegate's answer prefixed
+  `<worker id>, a delegate in this conversation, answered:`, and each post the routing
+  handed to delegates followed by a note of where it went.
   `round-robin` sends each post to the next delegate in list order, skipping one that can't be
   reached. `everyone` sends it to each delegate that can be reached. When no delegate can be
   reached, nobody takes the post, and the conversation says so.
@@ -2291,12 +2298,16 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `postId`, `round`, `policy`, `by` (`judgment`, `held`, `evaluated`, `fallback`,
   `round-robin`, `everyone` or `unplaced`), `delegates` (each with `worker`, `outcome` of
   `delivered`, `skipped` or `failed`, and a `reason` when it wasn't delivered), `none` (why
-  nobody was delivered to, when nobody was), and `note` (why the round's answers go no further,
-  when it was refused at the cap on open rounds). Render it apart from the conversation's lines.
+  nobody was delivered to, when nobody was), `note` (why the round's answers go no further,
+  when it was refused at the cap on open rounds), and `fit`: why best fit handed the post to the
+  fallback or the judgment turn (`reason`: `coordinator`, `below-floor`, `no-confidence`,
+  `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the
+  `minConfidence` where there are some). Render it apart from the conversation's lines.
 
 `hireWorkforce` refuses a broken standard coordinator at load, naming the problem: a `rounds:`
 above 3 (`rounds can be at most 3`), a `routing:` outside the four, a `fallback:` that isn't one
-of its `delegates:`, or a delegate named twice. `installation.standardWorkerProblems()` returns the
+of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that doesn't route by
+`best-fit`, or a delegate named twice. `installation.standardWorkerProblems()` returns the
 same problems without throwing.
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries

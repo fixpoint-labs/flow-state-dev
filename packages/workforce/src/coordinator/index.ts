@@ -10,9 +10,9 @@
  *   `delegatedPostHistory`, a generator `history` that hands a turn's model
  *   the conversation's recent lines a post came with, as a user-role message.
  *   The built-in `agent` flow has all three.
- * - The pinned names: the flow's kind, its `coordinator-route` record, its
- *   four delegate actions and its configuration keys.
- * - `DelegateTakes`: what `listDelegates` says each delegate takes.
+ * - The pinned names: the flow's kind, its `coordinator-route` record and
+ *   its configuration keys. Its delegates, and their four actions, are any
+ *   worker's (`../delegates`).
  */
 export { defineCoordinatorFlow, type CoordinatorFlowOptions } from "./coordinator-flow";
 export {
@@ -22,21 +22,15 @@ export {
   type CoordinatorRouting
 } from "./coordinator-config";
 export {
-  ADD_DELEGATE,
   COORDINATOR_JUDGMENT,
   COORDINATOR_KIND,
   COORDINATOR_ROUTE,
   DELEGATED_POST_ENTRY,
-  LIST_DELEGATES,
-  MAX_DELEGATES,
-  MAX_ROUNDS,
-  REMOVE_DELEGATE,
-  SET_FALLBACK
+  MAX_ROUNDS
 } from "./coordinator-keys";
-export { delegateRecordSchema, type DelegateRecord } from "./coordinator-delegates";
-export type { DelegateTakes } from "./coordinator-check";
 export {
   coordinatorRouteRecordSchema,
+  type BestFitWhy,
   type CoordinatorRouteRecord,
   type RoutedDelegate
 } from "./coordinator-route";

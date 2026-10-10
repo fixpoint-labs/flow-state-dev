@@ -1,17 +1,18 @@
 /**
- * The one delegate check: every add and every delivery, from the app or the
- * coordinator's own tool, asks it about the record's worker.
+ * The one delegate check: every add, every delivery and every filing, from
+ * the app or a worker's own tool, on any flow, asks it about the record's
+ * worker.
  *
- * A worker passes when it is on the conversation's user's roster now (one of
+ * A worker passes when it is on the session's user's roster now (one of
  * their own, read at their scope, or a standard one), its row can be read,
- * and its flow can take the work: a delegated post for a delivery; a
- * delegated post or a task for an add (FIX-1802 D1). Another user's worker is
- * simply not on this user's roster, so it gets exactly the answer a worker
- * that doesn't exist gets.
+ * and its flow can take the work: a delegated post for a delivery; a task for
+ * a filing or a task's hand-over; a delegated post or a task for an add
+ * (FIX-1802 D1). Another user's worker is simply not on this user's roster,
+ * so it gets exactly the answer a worker that doesn't exist gets.
  *
  * Removing a delegate and naming the fallback ask only whether the record is
- * on the conversation's list, so a fired delegate can still be removed. That
- * lives in `coordinator-delegates.ts`, not here.
+ * on the session's list, so a fired delegate can still be removed. That
+ * lives in `delegate-list.ts`, not here.
  *
  * The check answers "is it yours, and can it take this", never "may it run":
  * FIX-1788's create check still links each delegate session at create, and
@@ -23,7 +24,7 @@
 import type { FlowType } from "@flow-state-dev/core/types";
 import type { RosterWorker, WorkerInstallation, WorkerTurnContext } from "../workers/installation";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "./coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "../coordinator/coordinator-keys";
 
 /** What the check came to. */
 export type DelegateCheck =
@@ -60,13 +61,26 @@ export function flowTakes(installation: WorkerInstallation, postFlows: ReadonlyS
 }
 
 /**
+ * The kinds of the installation's worker flows that take a delegated post,
+ * read now: each one that declares {@link DELEGATED_POST_ENTRY}.
+ */
+export function postTakingFlows(installation: WorkerInstallation): ReadonlySet<string> {
+  const kinds = new Set<string>();
+  for (const [kind, entry] of Object.entries(installation.workerFlows())) {
+    if (takesDelegatedPost(entry.flow)) kinds.add(kind);
+  }
+  return kinds;
+}
+
+/**
  * The check, bound to an installation and the flows a delivery can reach.
  *
- * @param installation The worker installation the coordinator runs on.
- * @param postFlows The kinds of the worker flows that take a delegated post,
- *   which the coordinator can dispatch to.
+ * @param installation The worker installation the session's worker runs on.
+ * @param postFlows The kinds of the worker flows that take a delegated post:
+ *   the ones a coordinator can dispatch to. Omitted, every worker flow on the
+ *   installation that declares the delegated-post entry, read per check.
  */
-export function createDelegateCheck(installation: WorkerInstallation, postFlows: ReadonlySet<string>) {
+export function createDelegateCheck(installation: WorkerInstallation, postFlows?: ReadonlySet<string>) {
   /**
    * Check `workerId` for `use`.
    *
@@ -76,11 +90,12 @@ export function createDelegateCheck(installation: WorkerInstallation, postFlows:
    */
   return async (ctx: WorkerTurnContext, workerId: string, use: "add" | "post" | "task"): Promise<DelegateCheck> => {
     const worker = await installation.rosterWorker(ctx, workerId);
+    const posts = postFlows ?? postTakingFlows(installation);
     if (worker === undefined) return { ok: false, message: `No worker "${workerId}" on your roster.` };
     if (worker.problem !== undefined) {
       return { ok: false, message: `Worker "${workerId}" can't be a delegate: ${worker.problem}.` };
     }
-    const takesPost = postFlows.has(worker.flow);
+    const takesPost = posts.has(worker.flow);
     const flow = (installation.workerFlows()[worker.flow]?.flow ?? undefined) as FlowType<any, any> | undefined;
     if (use === "task") {
       return takesTask(flow)

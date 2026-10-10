@@ -24,7 +24,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { coordinatorConfigSchema } from "../src/coordinator/coordinator-config";
-import { applyDelegateChange } from "../src/coordinator/coordinator-delegates";
+import { applyDelegateChange } from "../src/delegates/delegate-list";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
@@ -74,6 +74,31 @@ describe("a coordinator's configuration (V1)", () => {
     }
     const unknown = await host.hire("alice", { id: "triage-random", flow: "coordinator", settings: { routing: "random" } });
     expect(messageOf(unknown.error)).toMatch(/routing/);
+  });
+
+  it("refuses a minConfidence outside 0 to 1, or not a number, naming the key, at load and on save (FIX-1833 BR-15)", async () => {
+    for (const bad of [-0.1, 1.5, "high"]) {
+      const host = bootHost({ standard: standardWorkers({ desk: { minConfidence: bad } }) });
+      expect(host.installation.standardWorkerProblems().join("\n")).toMatch(/worker "desk" — .*minConfidence must be a number from 0 to 1/);
+    }
+    const host = bootHost();
+    const saved = await host.hire("alice", { id: "triage", flow: "coordinator", settings: { routing: "best-fit", minConfidence: 2 } });
+    expect(messageOf(saved.error)).toMatch(/minConfidence must be a number from 0 to 1/);
+  });
+
+  it("refuses a minConfidence on a coordinator that doesn't route by best fit, naming both (FIX-1833 BR-16)", async () => {
+    const host = bootHost({ standard: standardWorkers({ chief: { minConfidence: 0.7 } }) });
+    expect(host.installation.standardWorkerProblems().join("\n")).toMatch(/`minConfidence:`.*`routing: best-fit`/);
+    const saved = await host.hire("alice", { id: "triage", flow: "coordinator", settings: { routing: "everyone", minConfidence: 0.5 } });
+    expect(messageOf(saved.error)).toMatch(/`minConfidence:`.*`routing: best-fit`/);
+  });
+
+  it("takes a best-fit file with a minConfidence from 0 to 1, and one without it (FIX-1833 V2)", async () => {
+    for (const minConfidence of [0, 0.7, 1, undefined]) {
+      const host = bootHost({ standard: standardWorkers({ desk: minConfidence === undefined ? {} : { minConfidence } }) });
+      expect(host.installation.standardWorkerProblems()).toEqual([]);
+    }
+    expect(coordinatorConfigSchema().parse({ routing: "best-fit" }).minConfidence).toBeUndefined();
   });
 
   it("refuses a fallback that isn't one of its defaults", () => {

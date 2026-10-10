@@ -43,9 +43,9 @@ describe("workerConfigSchema — the bag itself", () => {
   // The whole contract in one assertion: an empty bag is valid, and what comes
   // out of it is an empty skills list and nothing else. Present-and-empty is
   // the answer for "nothing to give".
-  it("parses an empty bag into the two imposed collections, empty, and no other key", () => {
+  it("parses an empty bag into the two imposed collections and the delegate list, empty, and no other key", () => {
     const parsed = workerConfigSchema().parse({});
-    expect(parsed).toEqual({ [SEAT_SKILLS_KEY]: [], [SEAT_TOOLS_KEY]: [] });
+    expect(parsed).toEqual({ [SEAT_SKILLS_KEY]: [], [SEAT_TOOLS_KEY]: [], delegates: [] });
   });
 
   // Absent, not empty — both of them. An empty string would be a different

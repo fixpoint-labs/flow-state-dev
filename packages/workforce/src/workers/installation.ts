@@ -43,6 +43,7 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
+  FILING_FLOW_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
   TASK_ID_STATE_KEY,
@@ -193,6 +194,7 @@ export type WorkerSessionStateShape = {
   readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
 
 /** The installation's worker model. Build it once, at boot. */
@@ -371,7 +373,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional()
+    [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */
@@ -496,12 +499,14 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // A task's session is opened only by its board's hand-over, a dispatch
     // into a child of the conversation. A caller naming a task would make a
     // decoy that lookups and `isTaskSession` take for the real one (BP-031).
-    if (input.state[TASK_ID_STATE_KEY] !== undefined && input.via !== "dispatch") {
-      return {
-        ok: false,
-        status: 400,
-        message: `"${TASK_ID_STATE_KEY}" is set only when a conversation's board hands a task over; a caller cannot set it.`
-      };
+    for (const key of [TASK_ID_STATE_KEY, FILING_FLOW_STATE_KEY]) {
+      if (input.state[key] !== undefined && input.via !== "dispatch") {
+        return {
+          ok: false,
+          status: 400,
+          message: `"${key}" is set only when a session's board hands a task over; a caller cannot set it.`
+        };
+      }
     }
 
     // A derived id names its owner. Recomputed for this caller, so a create at

@@ -202,17 +202,21 @@ describe("attempts and reassigns (BR-17, BR-18)", () => {
 });
 
 describe("a task session can't file yet (BR-7)", () => {
-  it("is answered no_delegation_board, by tool and by action, and nothing is stored", async () => {
+  it("gets none of the task tools on its turn, its action is answered no_delegation_board, and nothing is stored", async () => {
     // `boss` hands a task to `lead`, a coordinator: the task runs lead's own
-    // turn, in a session of its own on the coordinator flow.
-    const judgment = mockGenerator({
-      script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "a piece", assignee: "eng.tasker" } }] },
-        { text: "I'll do it myself." },
-        { text: "Noted." }
-      ]
+    // turn, in a session of its own on the coordinator flow. lead's delegate
+    // takes tasks, so only its being a task session keeps it from filing
+    // (FIX-1802 S6: P2 lifts that with the split).
+    const judgment = mockGenerator({ script: [{ text: "I'll do it myself." }, { text: "Noted." }] });
+    const taskTurnTools: string[][] = [];
+    const host = bootBoardHost({
+      judgment,
+      observeTools: (block, names, input) => {
+        const text = JSON.stringify(input);
+        // lead's task turn; boss's own turn on the notice of its ending carries the tools.
+        if (block === "coordinator-judgment" && text.includes("Ship the release") && !text.includes("completed by")) taskTurnTools.push(names);
+      }
     });
-    const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "boss");
       const filing = await host.filingOf("alice", conv);
@@ -221,11 +225,11 @@ describe("a task session can't file yet (BR-7)", () => {
       const app = host.client("alice");
       const taskSession = await app.findWorkerSession({ worker: "lead", taskId: filed.taskId!, filingSessionId: filing });
       expect(taskSession).toBeDefined();
-      // The tool's answer, as lead's turn recorded it in the task session.
-      const outputs = (await host.requestsOf(taskSession!.id))
-        .flatMap((request) => (request as unknown as { items?: Array<{ type: string }> }).items ?? [])
-        .filter((item) => item.type === "tool_output");
-      expect(outputs.map((item) => JSON.stringify(item)).filter((text) => text.includes("no_delegation_board"))).toHaveLength(1);
+      // lead's turn in the task session was handed none of the task tools.
+      expect(taskTurnTools.length).toBeGreaterThan(0);
+      for (const names of taskTurnTools) {
+        expect(names.filter((name) => ["addTask", "assignTask", "listTasks", "cancelTask"].includes(name))).toEqual([]);
+      }
       const byAction = await host.act("alice", taskSession!.id, "addTask_tasks", { goal: "another piece", assignee: "eng.tasker" });
       expect(byAction.output).toEqual({ ok: false, error: "no_delegation_board" });
       // The only row is the one boss filed, completed by lead's turn.

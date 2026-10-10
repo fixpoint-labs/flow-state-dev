@@ -44,6 +44,7 @@
 
 import { z } from "zod";
 import type { BlockDefinition } from "@flow-state-dev/core";
+import { MAX_DELEGATES } from "./delegates/delegate-keys";
 import {
   INSTRUCTIONS_KEY,
   SEAT_ID_KEY,
@@ -187,7 +188,23 @@ export function workerConfigSchema() {
      * Optional in the schema only so a kind can still be run outside a hire
      * (a test, a single-flow app); every hired seat carries it.
      */
-    [SEAT_ID_KEY]: z.string().min(1).optional()
+    [SEAT_ID_KEY]: z.string().min(1).optional(),
+
+    /**
+     * The workers this worker hands work to, by id: its **delegates**
+     * (FIX-1802 D1). Authored, unlike the keys above, and the defaults each
+     * of its sessions starts from: a session's list is copied from it the
+     * first time it is read or changed, and changes there without writing
+     * back.
+     *
+     * One list, read two ways. A flow that routes posts (the coordinator)
+     * posts to the ones that take a post; any worker whose flow carries the
+     * task tools files tasks for the ones that take a task, and that is the
+     * whole grant: a worker with none that takes a task gets no task tools.
+     * A list nothing uses is accepted. A standard worker may name only
+     * standard workers here.
+     */
+    delegates: z.array(z.string().min(1)).max(MAX_DELEGATES).default([])
   });
 }
 

@@ -151,13 +151,15 @@ describe("an assignee this conversation can't hand a task to", () => {
       const conv = await host.conversation("alice", "desk");
       // A record with a target, as FIX-1793's workstreams will write it: no
       // action writes one yet, so the test writes the conversation's state.
+      // Beside it a delegate that takes a task, so the conversation files
+      // (FIX-1802 D1) and the roster is what refuses.
       const stored = await host.session(conv);
       const store = (await host.state.getRuntime()).stores.session;
       await store.set(
         conv,
         {
           ...stored,
-          state: { ...stored.state, delegates: [{ worker: "eng.tasker", target: "ws-billing" }] },
+          state: { ...stored.state, delegates: [{ worker: "eng.tasker", target: "ws-billing" }, { worker: "eng.writer" }] },
           version: stored.version + 1,
           updatedAt: Date.now()
         } as never,
