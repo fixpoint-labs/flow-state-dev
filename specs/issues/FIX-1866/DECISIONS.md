@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-What was considered, what was chosen, why, and what each choice locks in. Three decisions are
-the sign-off surface.
+What was considered, what was chosen, why, and what each choice locks in. Four decisions are
+the sign-off surface; D4 is already Jake's.
 
 ## The tree
 
@@ -16,6 +16,8 @@ flowchart TD
   D2 -.->|"rejected"| X2["a commit required<br/>every read-only ask fails"]
   I --> D3["D3 · the conversation's project<br/>else the one the task names"]
   D3 -.->|"rejected"| X3["a default repository<br/>a silent guess"]
+  I --> D4["D4 · Jev judges the answer<br/>against the task's goal"]
+  D4 -.->|"rejected"| X4["the code check alone<br/>an off-target answer closes as done"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -65,6 +67,27 @@ should say what it expects, and a change task should need a commit.
 
 It comes down to an org with several projects: a default codes, silently, in the wrong one.
 
+<a name="d4"></a>
+## D4 · Before a conversation's task closes, Jev judges the answer against the task's goal
+
+Decided by Jake on 2026-10-10, on a decision card in the project thread.
+
+| | |
+|---|---|
+| **Instead of** | D2's code check alone: an answer that isn't empty (a commit, for feature work) closes the task |
+| **Because** | The code check proves the run said something, not that it did what was asked. An off-target answer, or "I changed nothing" on a change request, closes as done, and the person finds out by reading. Jev already judges fit for the coordinator, with a confidence it reports |
+| **How** | After the phase's own check passes, the manager runs a judge, an evaluator block the host passes in, on the task's goal, the answer, and the run's commits (count and subjects). It returns one of three, with a confidence and a reason: **done** closes the task; **not done** fails the attempt with Jev's reason as the next attempt's feedback, so the second miss ends `errored` with that reason on the line; **ask** parks the row through the conversation's `row.ask` with Jev's question, and the person's answer reaches the next prompt (BR-16's path). A *not done* or *ask* under the confidence floor counts as done |
+| **Which tasks** | Any task with a goal, which is every conversation task, feature work filed there included. Feature-board rows carry only an issue and a phase, no goal, so they keep today's check (BR-22) |
+| **Locks in** | A judge slot on the harness manager, generic (no Workforce, no model named): the host passes the block. One Jev call per judged task. When the judge itself fails (the gateway is down), the task closes on the code check and the output says `judged: false`, so an outage never fails work that passed its own check |
+
+![D4: when a conversation's task counts as done. Chosen: Jev judges the answer against the goal. Instead of: the code check alone. Decides it: an answer that misses the ask, retried with Jev's reason or closed as done. Price: one Jev call per task. Locks in a judge slot the host fills. Flips if Jev's not-done is often wrong](figures/d4-judge.svg)
+
+It comes down to an off-target answer: under the code check alone it reads as done.
+
+**What would change my mind:** Jev's *not done* turning out wrong often enough that retries cost
+more than reading the answer does. Then raise the confidence floor, or make the verdict a note on
+the line instead of a retry.
+
 ## Decided, not asked
 
 - **The coder keeps one `work` door.** It takes both the feature board and conversations' boards,
@@ -87,7 +110,7 @@ It comes down to an org with several projects: a default codes, silently, in the
   feature board keeps the cancel. A sweeper for the general case is orchestration's, filed as a
   follow-up.
 - **A question from the run goes through the conversation.** On a board read from the claim, the
-  run's question parks the row the way the conversation board parks any task, and the person's
+  run's question, or the judge's (D4), parks the row the way the conversation board parks any task, and the person's
   answer comes back as the task's answer, which the manager puts in the next prompt. The
   manager's own inbox stays the feature board's channel.
 
@@ -110,7 +133,7 @@ It comes down to an org with several projects: a default codes, silently, in the
   errored with a notice (`tasks/collection/internal.ts`, `DEFAULT_MAX_ABANDONMENTS`). The true
   part, recovery only on a touch, is the follow-up above.
 
-**Open: none.**
+**Open: none.** D4 was asked and answered: Jake chose the Jev check on 2026-10-10.
 
 ## How it got here
 
@@ -124,3 +147,6 @@ It comes down to an org with several projects: a default codes, silently, in the
   and phase is refused rather than answered (BR-13b); the claim premise moves ahead of P1 as a
   spike, and P1 builds in two milestones; the message door's shape and the shared resolver are
   named in the plan; changesets are `patch`. No decision changed.
+- **Jake's question** (2026-10-10, project thread): "is done deterministic, or could the worker
+  or Jev decide?" The spec's done was the code check alone. Jake chose a Jev judge on a decision
+  card; it became D4, with BR-24 to BR-28, S13, S14, leg d2 and the `no-judge` control.

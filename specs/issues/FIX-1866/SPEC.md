@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-## Five people, before and after
+## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -10,6 +10,7 @@
 | **asks from a conversation that belongs to a project** (a project or workstream conversation) | n/a | The coder works in that project's repository, or on its files when it has none. Nobody names the project |
 | **asks from a conversation with no project** (the Shift Coordinator) | n/a | The task names the project, and the coder checks the person may use it. With no project named, the task fails at once and the conversation is told to name one |
 | **asks for something the coder can't finish, or asks back** | n/a | A failure ends the task failed, with one line in the conversation saying why. A question from the coder lands as a line, and the person's answer goes back into the same run |
+| **gets an answer that misses the ask** | n/a | Jev reads the task's goal against the answer and the commits before the task closes. An answer that misses gets one more attempt with Jev's reason, then fails saying why; an ask Jev can't judge without the person becomes a question in the conversation |
 | **files features for the coder** | The EM's board hands rows to the coder, which must commit | The same, unchanged. A task that names an issue and a phase still needs a commit, wherever it was filed |
 
 Part of epic [FIX-1786](../../epics/FIX-1786/SPEC.md). It builds on [FIX-1794](../FIX-1794/SPEC.md)'s
@@ -27,7 +28,7 @@ name. When the coder can't do the work, the conversation hears that it failed an
 | **The real need** | Jake, live: "the coder should take a look at our repo" hung the Shift Coordinator. The [issue](https://linear.app/fixpoint-labs/issue/FIX-1866): the coder takes a conversation's task as a coding run in the project's repository, and the answer comes back under its name; feature work unchanged |
 | **Smaller, and rejected** | "`addTask` for the coder is accepted." True as soon as the coder's entry is marked, and the task could still run nowhere, or in the wrong repository, or end with only three ids in the chat |
 | **Bigger, and not this issue's** | Publishing a chat task's branch or opening a pull request from it; the line names the branch and commit count only ([follow-up](PLAN.md#follow-ups)) · moving the coder's feature work onto the EM's workstream board ([FIX-1792](../FIX-1792/PLAN.md) P3) · a timer that recovers any task whose run never started ([follow-up](PLAN.md#follow-ups)) |
-| **Not done if** | The answer could have been written without reading the repository · the run worked in the project's own repository instead of a checkout of its own, or in Storefront when another project was meant · a project the person isn't a member of was accepted · a read-only ask fails because it made no commit · a failure ends with the task still in progress, or cancelled with no line · the line landed in another conversation, or twice after a retry · the coordinator's turn waited for the run · any of the six `goals/devforce-lab/` checks went red |
+| **Not done if** | The answer could have been written without reading the repository · the run worked in the project's own repository instead of a checkout of its own, or in Storefront when another project was meant · a project the person isn't a member of was accepted · a read-only ask fails because it made no commit · an answer Jev judged as missing the goal closed as completed · a failure ends with the task still in progress, or cancelled with no line · the line landed in another conversation, or twice after a retry · the coordinator's turn waited for the run · any of the six `goals/devforce-lab/` checks went red |
 
 ```mermaid
 flowchart LR
@@ -47,11 +48,11 @@ the task, and leg a must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/devforce-lab/it-answers-a-conversations-task/`, run with `run.mts` beside its `goal.md` like the other DevForce lab checks · stub harness in every leg; a scripted coordinator in legs a to c, `openai/gpt-5.4-mini` as the coordinator in leg d (`OPENAI_API_KEY`) · DevTeam over HTTP · run by the implementer at completion · verdict in the last implementation PR · a required leg of FIX-1797's closure run |
-| **Signal** | Each clock starts at the filing. **a**: the coordinator's turn returns within 10 s; one `completed` line under `eng.coder` in the Shift Coordinator conversation within 60 s, its worker read off the row's assignee, carrying the marker; the run's working folder, read off its run record, is a checkout distinct from the project's repository, and the repository's branches are unchanged. **b**: the same from a project conversation on the second project, which names no project; and on Sandbox (no repository), with a marker in its project files. **c**: a task naming no project, and one naming a project the person isn't a member of, each give one `errored` line naming why, after one attempt; a run whose stub throws a random error string twice gives one `errored` line carrying that string. Every row reads `errored`, none `in_progress` or `cancelled`, 5 s later. **d**: on the standard install, where Storefront is the only project with a repository, "the coder should take a look at our repo" gives a filed task for `eng.coder` naming Storefront, and a line carrying the marker |
+| **Goal check** | `goals/devforce-lab/it-answers-a-conversations-task/`, run with `run.mts` beside its `goal.md` like the other DevForce lab checks · stub harness in every leg; a scripted coordinator in legs a to c, with a scripted judge; `openai/gpt-5.4-mini` as the coordinator and Jev as the judge in legs d and d2 (`OPENAI_API_KEY`, the AI Gateway key) · DevTeam over HTTP · run by the implementer at completion · verdict in the last implementation PR · a required leg of FIX-1797's closure run |
+| **Signal** | Each clock starts at the filing. **a**: the coordinator's turn returns within 10 s; one `completed` line under `eng.coder` in the Shift Coordinator conversation within 60 s, its worker read off the row's assignee, carrying the marker; the run's working folder, read off its run record, is a checkout distinct from the project's repository, and the repository's branches are unchanged. **b**: the same from a project conversation on the second project, which names no project; and on Sandbox (no repository), with a marker in its project files. **c**: a task naming no project, and one naming a project the person isn't a member of, each give one `errored` line naming why, after one attempt; a run whose stub throws a random error string twice gives one `errored` line carrying that string; a stub that answers without reading the repository ("I could not find the repository") with a scripted judge saying *not done* gives one `errored` line carrying the judge's reason, after two attempts. Every row reads `errored`, none `in_progress` or `cancelled`, 5 s later. **d**: on the standard install, where Storefront is the only project with a repository, "the coder should take a look at our repo" gives a filed task for `eng.coder` naming Storefront, and a line carrying the marker, judged by Jev itself. **d2**: the same ask with a stub that answers off the point ("Storefront is a project.") ends `errored`, with Jev's reason on the line, under real Jev |
 | **Input** | DevTeam's standard install (`openLab` as `fsdev.config.mts` opens it), plus, for legs a to c, a second project with its own bare repository, made by the check. Each marker is a random string committed to the project's repository (or written to Sandbox's project files) after the server starts; the stub reads a named file in its working folder and puts it in its last message. A different marker, or a third project, must pass too |
 | **Anti-game** | No drain, row, notice or session written by the check. The marker never appears in the task, the prompt, the brief or the coordinator's context. Read the conversation's lines, not the row's output alone. A crash or a timeout is not a FAIL for a control |
-| **Control that must fail** | `GOAL_CONTROL=feature-door-only` (the coder's `work` entry as today): leg a FAILS on *one line under eng.coder*. `GOAL_CONTROL=no-filing-project` (the hand-over drops the project): leg b FAILS on *carrying the marker*. Today's `main`: legs a, b and d FAIL. Each FAIL shown before the PASS |
+| **Control that must fail** | `GOAL_CONTROL=feature-door-only` (the coder's `work` entry as today): leg a FAILS on *one line under eng.coder*. `GOAL_CONTROL=no-filing-project` (the hand-over drops the project): leg b FAILS on *carrying the marker*. `GOAL_CONTROL=no-judge` (the coder runs with no judge): leg d2 FAILS on *ends `errored`*. Today's `main`: legs a, b and d FAIL. Each FAIL shown before the PASS |
 
 ## What changes
 
@@ -92,8 +93,9 @@ flowchart LR
 
 The run reads its board from the task's claim, so the same supervised run serves the feature
 board and any conversation. A task naming an issue and a phase is feature work and needs a
-commit; any other task needs an answer. The project comes from the conversation, or from the
-task when the conversation has none. "One run" means one code path: the coder holds two
+commit; any other task needs an answer. Then Jev judges the answer against the task's goal: done,
+one more attempt with its reason, or a question to the person. The project comes from the
+conversation, or from the task when the conversation has none. "One run" means one code path: the coder holds two
 manager blocks over it, one per phase, and sends each task to one of them.
 
 ## What stays as it is
@@ -121,6 +123,9 @@ that could be made up, or a task that never ends.
 3. **[D3](DECISIONS.md#d3) · The repository is the conversation's project, or else the one the
    task names; with neither, the task fails saying so.** If wrong: the coordinator has to name
    a project the person thinks is obvious.
+4. **[D4](DECISIONS.md#d4) · Before a conversation's task closes, Jev judges the answer against
+   the task's goal.** Decided by Jake on 2026-10-10. If wrong: one Jev call per task, and an
+   attempt wasted each time Jev wrongly says "not done".
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).

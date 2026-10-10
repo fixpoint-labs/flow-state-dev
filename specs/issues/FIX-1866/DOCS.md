@@ -50,6 +50,14 @@ on first use on the harness page.
 > conversation hears why; on a fixed board it's cancelled, as before. And a question the run asks
 > parks the task the way the conversation parks any task: the person answers in the
 > conversation, and the run's next attempt gets the answer in its prompt.
+>
+> You can also give the manager a `judge`: an evaluator block that reads a task's goal, the
+> run's answer and its commits, and says whether the work is done. It runs after the phase's own
+> check passes, and only for a task that has a goal. It answers one of three ways. *Done* closes
+> the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's
+> reason. *Ask* puts a question to the person, the same way a question from the run does. A
+> verdict below the confidence floor you set counts as done, and a judge that fails never fails
+> the task: the task settles on the phase's check, and its output says `judged: false`.
 
 ## UPDATE · `apps/docs/docs/workforce/coordinators.md` · "Taking a conversation's tasks"
 

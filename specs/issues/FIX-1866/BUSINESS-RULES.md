@@ -51,20 +51,30 @@ coordinator session with its own task board ([FIX-1794](../FIX-1794/BUSINESS-RUL
 | BR-20 | The task completes | One line under `eng.coder`, carrying the answer's start, through the task entry's own notice | CI · VG a |
 | BR-21 | The task ends `errored` for any reason above | One line under `eng.coder` with the error. The row is `errored`, never left `in_progress` | CI · VG c |
 
+## Jev's judgement (D4)
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-24 | A task with a goal passes its phase's check | The judge reads the goal, the answer, and the commits (count and subjects), once, before the row settles | CI · VG d |
+| BR-25 | The judge says done, or says anything under the confidence floor | `completed`, as BR-14. The output carries `judged: true` | CI · VG a |
+| BR-26 | The judge says not done, at or over the floor | The attempt fails with the judge's reason; the next attempt's prompt carries it. A second miss ends `errored` with the reason, one line under `eng.coder` | CI · VG c · VG d2 |
+| BR-27 | The judge says ask, at or over the floor | The row parks through the conversation with the judge's question (BR-16's path). The person's answer reaches the next attempt's prompt | CI |
+| BR-28 | The judge fails (throws, times out, the gateway is down) | The task settles on the phase's check alone, `judged: false` in the output. The judge never fails a task by failing itself | CI |
+
 ## The feature board, unchanged
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-22 | The EM's board hands the coder a feature row | The same run as today: the implement phase, a commit required, its run records under their old keys, no notice | The six `goals/devforce-lab/` checks |
+| BR-22 | The EM's board hands the coder a feature row | The same run as today: the implement phase, a commit required, its run records under their old keys, no notice, no judge (the row has no goal) | The six `goals/devforce-lab/` checks |
 | BR-23 | A feature row and a conversation task run at once | Each in its own checkout, under its own key | CI |
 
 **Failure taxonomy.** A refusal of where to work (no project, not a member, a remote the host
 refuses) is fatal on the first attempt, never retried, and ends `errored` on a conversation's
 board. A run that fails (a throw, no
-answer, the limit) retries once. A question parks. Every ending reaches the conversation once.
+answer, the limit, the judge's not done) retries once. A question, the run's or the judge's, parks. Every ending reaches the conversation once.
 Nothing the coder refuses happens before the claim, so no row is left in progress by it.
 
-**Acceptance criteria this issue owns.** VG legs a to d pass, and each control fails on its named
+**Acceptance criteria this issue owns.** VG legs a to d2 pass, and each control fails on its named
 signal. BR-22 holds: the DevForce lab checks are green on the last PR. The integration test runs
 coordinator → `addTask` → `eng.coder` → a line in the conversation, and the failure case ends
 `errored` with a notice.
