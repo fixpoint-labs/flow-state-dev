@@ -4,7 +4,7 @@
  * A writer that sees only the pages DOCS.md lists, the pentest Lab's README
  * and a scratch copy of `goals/pentest-lab/lab/` (S5) adds the chief of staff,
  * the hire capability with `askBefore: ["fire"]`, the `projects` collection
- * with its template and the project tools. The writer is an isolated Claude
+ * and the project tools. The writer is an isolated Claude
  * Code agent (the Agent SDK) whose only tools read and write inside its own
  * workspace: the docs and the copy, nothing else of the repository. Every
  * step it reports no page covered is a failed step, reason *doc silent*
@@ -12,7 +12,7 @@
  *
  * Then Shift Manager serves the copy, and the person asks its chief of staff
  * for a project and a seat in the Chief of Staff view: PROJECTS must list the
- * project with a room the person can post in, TEAMS the worker it hired, and a
+ * project, TEAMS the worker it hired, and a
  * fire of that worker must suspend on one `human_approval` in the store (askBefore). The copy is
  * deleted after the run; `packages/shift-manager` is left untouched.
  */
@@ -22,7 +22,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { labRoutes, personPage, startShiftManager, openShiftManager } from "../../lib/shift-manager.mts";
-import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, readRoom, RunRecord, sleep, teamsSeats, visible, World } from "./steps.mts";
+import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, RunRecord, sleep, teamsSeats, World } from "./steps.mts";
 
 /** The pages D3's writer sees, as published on the commit (DOCS.md). */
 export const J4_PAGES = [
@@ -43,8 +43,8 @@ Read only the pages under \`docs/\` (and the Lab's own files) to learn how. Noth
 What the Lab must get:
 1. A chief of staff: the org seat Shift Manager talks to, on the built-in agent kind, able to hire seats at once and
    fire them only after a person approves (the hire capability installed with askBefore: ["fire"]).
-2. Projects: the organization's \`projects\` collection with its talk template, and the project tools on the chief
-   of staff so a person can ask it to create a project. A project must have a room its members can post in.
+2. Projects: the organization's \`projects\` collection, and the project tools on the chief of staff so a person can
+   ask it to create a project.
 
 Keep everything the Lab does today working. Edit the files under \`lab/\` (its host and config, and its workforce tree).
 The Lab is served by Shift Manager from \`lab/fsdev.config.mts\`.
@@ -239,33 +239,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
           const titled = await world.page.locator("[data-testid=project-group]").evaluateAll((els, t) => els.filter((e) => (e.textContent ?? "").toLowerCase().includes(String(t).toLowerCase())).map((e) => e.getAttribute("data-project-id") ?? ""), title);
           const id = titled[0];
           if (id === undefined) failures.push(`J4: PROJECTS doesn't list "${title}" (lists [${ids.join(", ")}])`);
-          else {
-            await openShiftManager(world.page, served.origin, `/p/${encodeURIComponent(id)}/stream`);
-            const token = `j4-${hex(3)}`;
-            if (!(await visible(world.page, "composer-input", 15_000))) failures.push(`J4: ${id}'s Stream has no composer for the person`);
-            else {
-              await world.page.getByTestId("composer-input").fill(`${token} hello room`);
-              await world.page.getByTestId("composer-send").click();
-              try {
-                await world.page.getByTestId("transcript-line-body").filter({ hasText: token }).first().waitFor({ timeout: 30_000 });
-                notes.push(`J4: PROJECTS lists ${id} ("${title}"); the person posted ${token} in its Stream and it is drawn`);
-              } catch {
-                failures.push(`J4: the line posted in ${id}'s Stream was never drawn`);
-              }
-              // The room the Stream reads: its talk session, as the page names it, read back through the Lab.
-              const talk = (await world.page.getByTestId("stream").getAttribute("data-talk-session").catch(() => null)) ?? undefined;
-              if (talk === undefined) failures.push(`J4: ${id}'s Stream names no talk session, so the room can't be read from the store`);
-              else {
-                const read = await readRoom(world.routes.owner, talk).then(
-                  (lines) => ({ lines }),
-                  (error: Error) => ({ error: error.message }),
-                );
-                if ("error" in read) failures.push(`J4: ${id}'s room could not be read through ${talk}: ${read.error.slice(0, 300)}`);
-                else if (!read.lines.some((l) => l.body.includes(token))) failures.push(`J4: ${id}'s room holds no line with ${token}`);
-                else notes.push(`J4: ${id}'s room, read through ${talk}, holds the line with ${token}`);
-              }
-            }
-          }
+          else notes.push(`J4: PROJECTS lists ${id} ("${title}")`);
         }
         const seat = `helper-${hex()}`;
         // Name the kind, so the chief of staff isn't left to ask which one: the writer's Lab says which it may hire.

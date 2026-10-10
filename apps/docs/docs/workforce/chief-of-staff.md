@@ -180,7 +180,7 @@ Every flow in `workerFlows` can take a hire, and so can the built-in `agent`, un
 
 Putting the tools in the catalog doesn't hand them to every worker on either flow. A worker holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other.
 
-A post in a mailbox or a project's room doesn't wake a chief of staff on the `coordinator` flow, even when it is listed there: that flow doesn't hear mailbox posts, so [`wakeMemberSeats`](./mailboxes.md#waking-agent-seats) hands that delivery to the notify block you pass as its `fallback`, if you pass one. Listing it in a mailbox's `members:` lets it post there. To have a worker answer every post in a project's room, name one on the `agent` kind in the template's `seats`, as [Setting up the room](./projects.md#setting-up-the-room) shows.
+A post in a mailbox doesn't wake a chief of staff on the `coordinator` flow, even when it is listed there: that flow doesn't hear mailbox posts, so [`wakeMemberSeats`](./mailboxes.md#waking-agent-seats) hands that delivery to the notify block you pass as its `fallback`, if you pass one. Listing it in a mailbox's `members:` lets it post there.
 
 A hire is a row in the person's own data, so it is there after a restart on any store that keeps data. Every process sees it on the next turn.
 
@@ -213,14 +213,14 @@ The description is what best fit picks the chief of staff by, so name its jobs t
 
 ## Starting projects
 
-Ask the chief of staff for a project and it creates one, owned by you. You are always a member, and anyone you name joins you. Your own talk session on the project's room is ready when it answers.
+Ask the chief of staff for a project and it creates one, owned by you, shared with your organization or private to you, as you ask. On a shared project you are always a member, and anyone you name is one too. It can also open workstreams in a project for you, each led by a worker from your roster.
 
-It needs the project tools in its `tools:` line and in `agentTurn.catalog`: `createProject` and `setWorkstreams`, plus `setRepository` if it should also name the [repository](./projects.md#a-projects-code-and-files) a project's code lives in. [Giving the writes to a seat](./projects.md#giving-the-writes-to-a-seat) shows the catalog entries for the first two, and `setRepository` goes in the same way. Add the names to the file:
+It needs the project tools in its `tools:` line and in `agentTurn.catalog`: `createProject` and `openWorkstream`, plus `setRepository` if it should also name the [repository](./projects.md#a-projects-code-and-files) a project's code lives in, and `setWorkstreams` if it should list [mailboxes](./projects.md#mailboxes-on-a-project) on a project. `openWorkstream` comes from [`defineWorkstreamBlocks`](./projects.md#workstreams), the others from `defineProjectBlocks`. [Giving the writes to a worker](./projects.md#giving-the-writes-to-a-worker) shows the catalog entries. Add the names to the file:
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
 flow: coordinator
-tools: [hire, fire, post-to-mailbox, createProject, setWorkstreams, setRepository]
+tools: [hire, fire, post-to-mailbox, createProject, openWorkstream, setRepository]
 ---
 ```
 
@@ -229,15 +229,17 @@ and tell it how to use them in the body, for example:
 ```md
 When the person asks for a project, call `createProject` with the title they
 gave and a short lowercase `id` made from it. They own it and are always a
-member; put anyone else they name in `members`. Add workstreams only when they
-name them, by full mailbox id.
+member; put anyone else they name in `members`. For a project only they see,
+pass `visibility: "private"` and name no members. To open a workstream, call
+`openWorkstream` with the project's `visibility` and `id`, a short lowercase
+`id` for the workstream, its title, and a `lead` from their roster.
 ```
 
-The `devteam` profile's chief of staff holds all three.
+The `devteam` profile's chief of staff holds these three, and `setWorkstreams` too.
 
-The `inventory` capability from [Adding one](#adding-one) is the inventory declaration the project tools read. Don't add a second one, such as a `defineMailboxInventoryCollection()` of your own: [Giving the writes to a seat](./projects.md#giving-the-writes-to-a-seat) shows the error the kind throws.
+The `inventory` capability from [Adding one](#adding-one) is the inventory declaration the project tools read. Don't add a second one, such as a `defineMailboxInventoryCollection()` of your own: [Giving the writes to a worker](./projects.md#giving-the-writes-to-a-worker) shows the error the kind throws.
 
-A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
+A refused tool call writes nothing, and its refusal names the reason, such as a lead that isn't on the person's roster, a shared project they aren't a member of, or a mailbox another project already lists. Tell the chief of staff in its body to pass that on.
 
 ## Giving it memory
 
@@ -290,8 +292,9 @@ has nothing on it, say you have no memory of it. Never make up a memory.
 | --- | --- | --- |
 | `hire` | Hires a worker of the person's own, on a worker flow your app runs, under the id it is given | Only when you wrap it with an ask |
 | `fire` | Removes one of the person's own workers. Its sessions stay readable to them | Only when you wrap it with an ask, as above |
-| `createProject` | Creates a project owned by the person asking, with the members and workstreams they name | Never |
-| `setWorkstreams` | Replaces a project's workstreams. The person asking must be one of its members | Never |
+| `createProject` | Creates a project owned by the person asking, private or shared, with the members they name | Never |
+| `openWorkstream` | Opens a workstream the person asking owns, led by a worker from their roster. On a shared project they must be one of its members | Never |
+| `setWorkstreams` | Replaces the mailboxes a shared project lists. The person asking must be one of its members | Never |
 | `setRepository` | Sets the repository a project's code lives in, or clears it with `null`. The person asking must be one of its members | Never |
 
 The roster tools work on the person's own workers. Another member's workers are theirs: the chief of staff can't list or fire them.

@@ -50,6 +50,7 @@ describe("@flow-state-dev/workforce/browser", () => {
     expect(entry.COORDINATOR_ROUTE).toBe("coordinator-route");
     expect(entry.COORDINATOR_JUDGMENT).toBe("coordinator-judgment");
     expect(typeof entry.mailboxTranscriptLineSchema.parse).toBe("function");
+    expect(typeof entry.parseWorkstreamEntry).toBe("function");
     // The `MailboxTranscriptLine` type is pinned in `browser-exports.test-d.ts`.
   });
 

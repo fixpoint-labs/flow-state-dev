@@ -209,10 +209,11 @@ export function seams(base: string): SeamRow[] {
     const gained = (after ?? []).filter((k) => !(before ?? []).includes(k));
     const lost = (before ?? []).filter((k) => !(after ?? []).includes(k));
     out.push(`$ MAILBOX.md DECLARABLE_KEYS ${base.slice(0, 9)} → commit: [${before?.join(", ")}] → [${after?.join(", ")}]; gained [${gained.join(", ")}], lost [${lost.join(", ")}]`);
-    const keysOk = before !== undefined && after !== undefined && JSON.stringify(gained) === JSON.stringify(["MINT_FOR_KEY"]) && lost.length === 0;
+    // The one key the epic added, `mintFor`, went with the project rooms (FIX-1793): the list is the base's again.
+    const keysOk = before !== undefined && after !== undefined && gained.length === 0 && lost.length === 0;
     if (naming.length > 0) out.push("FAIL: core or engine gained a Project, Workstream, CoS or admin-seat name");
     if (all.length > 0) out.push("FAIL: a forbidden tree folder or MAILBOXES.md was added");
-    if (!keysOk) out.push("FAIL: MAILBOX.md's key list gained something other than mintFor");
+    if (!keysOk) out.push("FAIL: MAILBOX.md's key list changed");
     return naming.length === 0 && all.length === 0 && keysOk;
   });
 
@@ -220,12 +221,14 @@ export function seams(base: string): SeamRow[] {
   row("Docs published (ER-18)", (out) => {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));
     const owned: Array<[string, string, RegExp]> = [
-      ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?\bproject\b\W* groups workstreams\b/im],
+      // Since FIX-1793 a project no longer groups workstreams by list: the section defines both terms.
+      ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?\*\*project\*\*[\s\S]*?\*\*workstream\*\* is one area of a project\b/im],
       ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
-      ["A room per project (FIX-1718)", "apps/docs/docs/workforce/mailboxes.md", /^## A room per project$/m],
       ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*chief of staff/m],
       ["Shift Manager's PROJECTS (FIX-1718)", "packages/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
       ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/chief-of-staff.md", /^# The chief of staff$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "human_approval"/m],
+      // Each person talks to a project through their own project coordinator; the project rooms are gone (FIX-1793).
+      ["Talking to a project (FIX-1793)", "apps/docs/docs/workforce/projects.md", /^## Talking to a project$[\s\S]*?\*\*project coordinator\*\*[\s\S]*?^### How its delegates follow your workstreams$/m],
       // FIX-1621's repair of a seat whose kind is gone was retired by FIX-1788: a worker is a row its owner fires or edits.
       ["Changing or firing a worker (FIX-1788, in place of FIX-1621)", "apps/docs/docs/workforce/durable-hire.md", /^## Changing or firing a worker$[\s\S]*?`fire` deletes the row/m],
     ];

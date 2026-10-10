@@ -1,11 +1,12 @@
 /**
- * Control `no-retry`: the room's writes with their own retry removed.
+ * Control `no-retry`: the projects' writes with their own retry removed.
  *
  * Loaded into the served Lab in place of `packages/workforce/src/projects/
  * cas-retry.ts` (`swap-loader.mjs`). Each contended write gets one attempt,
- * the engine's own three, and no more: the room's sequence counter and the
- * `sessions` list a join appends to. With the Lab's store writes held
- * (`write-latency.mts`), the bursts lose writes and both burst legs fail.
+ * the engine's own three, and no more: a workstream entry's updates and the
+ * write that names its session. With the Lab's store writes held
+ * (`write-latency.mts`), the race's updates lose writes and "a write race
+ * lands whole" fails.
  */
 
 /** One attempt: a write that loses its race throws. */

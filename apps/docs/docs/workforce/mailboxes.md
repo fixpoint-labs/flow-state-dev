@@ -46,7 +46,7 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 `members` is the mailbox's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a mailbox means editing the record and opening a fresh mailbox. An edit to `members` does not reach a mailbox that is already open.
 
-Eight keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`, `routing`, `boardActions` and `mintFor`. [Routing a mailbox](#routing-a-mailbox) covers `routing`, [Holding a board](#holding-a-board) covers `boards` and `boardActions`, and [A room per project](#a-room-per-project) covers `mintFor`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+Seven keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`, `routing` and `boardActions`. [Routing a mailbox](#routing-a-mailbox) covers `routing`, and [Holding a board](#holding-a-board) covers `boards` and `boardActions`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
 ## Mailboxes on disk
 
@@ -99,7 +99,7 @@ Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-th
 
 ### What the file is checked for
 
-`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of eight keys is checked later. So a `MAILBOX.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
+`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of seven keys is checked later. So a `MAILBOX.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
 
 ### When a folder is wrong
 
@@ -220,7 +220,7 @@ That HTTP call is a client `post`. It may include `author`. The line keeps that 
 
 That line is a client `post` that set `author`. `authorVerified` is `false`. There is no `seatAuthored`. The same body through the dispatcher above is the same kind of line.
 
-`read` takes no input on a mailbox. An `after` cursor is ignored there: it only means something on a [project's talk session](./projects.md#the-room-and-talk-sessions).
+`read` takes no input on a mailbox.
 
 The transcript is the mailbox's `mailbox-post` items and nothing else from its history, which also carries fan-out requests, dispatch handles and refusals. `read` returns the recent lines: the ones inside the session's history window, which is 50 requests by default. On a mailbox with a notify block, each post uses two of them.
 
@@ -911,10 +911,6 @@ task: {
 ```
 
 `reviewTask` receives a `TaskWorkerInput` (`taskId`, `goal`, `title`, `context`, `input`, and the rest), and what it returns is the row's result. A task from a board outside `boardIds` is refused. An entry whose blocks keep session state is refused unless you pass `mailboxTaskLists(boardIds, { allowSessionState: true })`; do that only when tasks are handed over `per-task`, or the state has the same shape for every task. [A task entry served by many boards](../orchestration/task-board.md#a-task-entry-served-by-many-boards) covers the checks every arriving task gets.
-
-## A room per project
-
-`mintFor: projects` makes a `MAILBOX.md` the template every [project](./projects.md)'s room is built from, instead of a mailbox. A room runs on the built-in mailbox kind, but no session is the room: each member talks through a talk session of their own, and the lines are kept as organization data. [Setting up the room](./projects.md#setting-up-the-room) covers the template, and [A room or a mailbox](./projects.md#a-room-or-a-mailbox) compares the two.
 
 ## Registering a kind of your own
 

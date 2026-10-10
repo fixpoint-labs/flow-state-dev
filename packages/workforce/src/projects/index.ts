@@ -65,6 +65,7 @@ export { ProjectRefusedError, type ProjectRefusalReason } from "./project-refusa
 export {
   definePrivateWorkstreamsCollection,
   defineWorkstreamsCollection,
+  parseWorkstreamEntry,
   PRIVATE_WORKSTREAMS_RESOURCE,
   workstreamAddressSchema,
   workstreamDueSchema,
@@ -78,6 +79,7 @@ export {
   WORKSTREAMS_RESOURCE,
   workstreamStatusSchema,
   workstreamViewSchema,
+  type ParsedWorkstreamEntry,
   type WorkstreamEntry,
   type WorkstreamEntryPlace,
   type WorkstreamObjective,

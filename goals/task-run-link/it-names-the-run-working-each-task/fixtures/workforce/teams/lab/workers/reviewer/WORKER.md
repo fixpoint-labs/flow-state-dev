@@ -1,7 +1,6 @@
 ---
-description: Takes every row it is handed in one session it keeps.
+description: Reviews each task it is handed.
 flow: seat
-handoff: per-worker
 ---
 
-Work the rows you are handed, in order, remembering the last.
+Review the task you are handed.

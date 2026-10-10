@@ -389,9 +389,44 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const { screen } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);
+    await openAs(alice, setup, "checkout");
+    const seen = recordRequests();
     openApp(alice.clients, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     expect(conversation.getAttribute("data-session-id")).toBe(await projectCoordinator(alice, setup));
     expect(conversation.getAttribute("data-seat-id")).toBe("project-coordinator");
+    // Stream draws no entry, so it never reads them; nor does Brief.
+    const entryReads = () => seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
+    expect(entryReads()).toEqual([]);
+    const { act, fireEvent } = dom!;
+    act(() => fireEvent.click(screen.getByRole("tab", { name: /brief/i })));
+    await screen.findByTestId(/^project-brief(-none)?$/);
+    expect(entryReads()).toEqual([]);
+    // Workstreams does, by the project's one prefix.
+    act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
+    await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 });
+    expect(entryReads().length).toBeGreaterThan(0);
+  });
+
+  it("flags an entry gone quiet by the project's progress, one clock for the row and the count (BR-19)", async () => {
+    const { setup, as } = await open();
+    const alice = await as(ALICE);
+    const bob = await as(BOB);
+    await openAs(alice, setup, "checkout");
+    await openAs(bob, setup, "search");
+    const fresh = (await readProject(alice.clients, alice.reader, APOLLO))!;
+    expect(fresh.progress.stale).toEqual([]);
+    expect(fresh.entries.map((e) => e.stale)).toEqual([false, false]);
+    // Eight days on, both are quiet; once Bob's is done it is never stale, in the row as in the count.
+    const later = Date.now() + 8 * 24 * 60 * 60 * 1000;
+    await runAction(bob.clients, setup.flow, readerSessionId(BOB.userId, setup.flow), "updateWorkstream", {
+      project: APOLLO,
+      id: "search",
+      status: "done",
+    });
+    const quiet = (await readProject(alice.clients, alice.reader, APOLLO, later))!;
+    const flagged = quiet.entries.filter((e) => e.stale).map((e) => `${e.owner}/${e.id}`);
+    expect(flagged).toEqual([`${ALICE.userId}/checkout`]);
+    expect(quiet.progress.stale.map((e) => `${e.owner}/${e.id}`)).toEqual(flagged);
   });
 });

@@ -24,9 +24,8 @@ import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext 
 import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
+  parseWorkstreamEntry,
   workstreamEntriesPrefix,
-  workstreamEntrySchema,
-  workstreamPlaceOf,
   workstreamViewSchema,
   type WorkstreamView
 } from "./workstream-collections";
@@ -67,10 +66,10 @@ export async function projectEntries(ctx: ResourcesContext, project: ProjectAddr
   const entries = workstreamsAt(ctx, project.visibility);
   const workstreams: WorkstreamView[] = [];
   for (const ref of await entries.list(workstreamEntriesPrefix(project.id))) {
-    const place = workstreamPlaceOf(ref.path);
     // The pattern holds exactly three segments, so every key under the prefix is a direct entry.
-    if (place === undefined || place.project !== project.id) continue;
-    workstreams.push({ ...workstreamEntrySchema.parse(ref.state), project, id: place.id, owner: place.owner });
+    const entry = parseWorkstreamEntry(ref.path, ref.state);
+    if (entry === undefined || entry.project !== project.id) continue;
+    workstreams.push({ ...entry, project });
   }
   return workstreams.sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
 }

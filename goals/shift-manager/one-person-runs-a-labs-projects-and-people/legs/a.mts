@@ -1,14 +1,14 @@
 /**
  * Leg a: the person asks the chief of staff for two projects, one spanning two
- * teams, and finds them under PROJECTS, each with four tabs and a room its
- * members share and an outsider can't read, before and after a restart.
+ * teams, and finds them under PROJECTS, each with four tabs whose Stream is
+ * the person's own project coordinator for it, before and after a restart.
  *
  * Steps a1 to a5 (PLAN.md → Checks). Only rows the chief of staff created in
  * this run are graded: the boot's own rows are snapshotted first and must be
  * unchanged.
  */
 import type { Page } from "playwright";
-import { hex, quote, callsTo, projectsDrawn, readProjects, readRoom, same, sleep, visible, askCos, type ProjectRow, type World } from "../steps.mts";
+import { hex, quote, callsTo, projectCoordinatorOf, projectsDrawn, readProjects, same, sleep, streamCoordinator, visible, askCos, type ProjectRow, type World } from "../steps.mts";
 
 /** Open Shift Manager at `url` in another person's page: whether its shell drew, or the refusal it drew instead. */
 async function openAs(page: Page, url: string): Promise<{ ok: true } | { ok: false; why: string }> {
@@ -24,12 +24,12 @@ export interface LegA {
   p1: ProjectRow;
   p2: ProjectRow;
   defaults: ProjectRow[];
-  token: string;
-  answer: string | undefined;
+  /** The session each project's Stream drew for the person, by project id, so a restart can find the same. */
+  streams: Record<string, string>;
 }
 
 const teamOf = (mailboxId: string) => mailboxId.split(".")[0]!;
-const rowKey = (r: ProjectRow) => JSON.stringify({ t: r.title, b: r.brief ?? null, o: r.ownerUserId, m: [...r.members].sort(), w: r.workstreams, s: r.sessions.map((s) => `${s.userId}=${s.sessionId}`).sort() });
+const rowKey = (r: ProjectRow) => JSON.stringify({ t: r.title, b: r.brief ?? null, o: r.ownerUserId, m: [...r.members].sort(), w: r.workstreams });
 
 /**
  * When Shift Manager refuses a person who holds no session (the refusal is
@@ -89,7 +89,6 @@ export async function legA(world: World, mailboxSession: string): Promise<LegA |
     if (row.ownerUserId !== owner.userId) r.fail("a1", `${row.id} is owned by ${row.ownerUserId}, not the person who asked (${owner.userId})`);
     if (!same(row.members, members)) r.fail("a1", `${row.id}'s members are [${row.members.join(", ")}], asked for [${members.join(", ")}]`);
     if (!same(row.workstreams, workstreams)) r.fail("a1", `${row.id}'s workstreams are [${row.workstreams.join(", ")}], asked for [${workstreams.join(", ")}]`);
-    if (!row.sessions.some((s) => s.userId === owner.userId)) r.fail("a1", `${row.id}'s sessions list no talk session for the person`);
   }
   const defaults = after.rows.filter((row) => before.has(row.id));
   for (const row of boot.rows) {
@@ -98,19 +97,18 @@ export async function legA(world: World, mailboxSession: string): Promise<LegA |
   }
   r.saw("a1", `asked "${words}"; CoS: ${quote(turn)}; new rows ${p1.id} {owner ${p1.ownerUserId}, members [${p1.members}], workstreams [${p1.workstreams}]} and ${p2.id} {owner ${p2.ownerUserId}, members [${p2.members}], workstreams [${p2.workstreams}]}`);
 
-  const state: LegA = { p1, p2, defaults: boot.rows, token: `room-${hex(4)}`, answer: undefined };
+  const state: LegA = { p1, p2, defaults: boot.rows, streams: {} };
   await readBack(world, mailboxSession, state, false);
   return state;
 }
 
 /**
- * a2 to a4 (and, after a restart, a5: the same reads on a new process). The
- * first time, a3 posts the token into P1's room; after a restart it only reads.
+ * a2 to a4 (and, after a restart, a5: the same reads on a new process, each
+ * Stream on the same coordinator session as before).
  */
 export async function readBack(world: World, mailboxSession: string, state: LegA, restarted: boolean): Promise<void> {
   const r = world.record;
   const tag = (step: string) => (restarted ? "a5" : step);
-  const { owner } = world.people;
   const { p1, p2 } = state;
   const store = await readProjects(world.routes.owner, mailboxSession);
   const row1 = store.rows.find((x) => x.id === p1.id);
@@ -147,6 +145,8 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
 
   // ---- a3 · four tabs each -----------------------------------------------------
   const tabs = tag("a3");
+  const coordinator = await projectCoordinatorOf(world);
+  if ("error" in coordinator) r.fail(tabs, `the Stream's coordinator can't be graded: ${coordinator.error}`);
   for (const row of [row1, row2]) {
     const tab = async (name: string) => {
       await world.open(`/p/${encodeURIComponent(row.id)}/${name}`);
@@ -163,68 +163,36 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
       if (drawn !== row.brief.trim()) r.fail(tabs, `${row.id}'s Brief draws "${drawn}", stored "${row.brief}"`);
     }
     await tab("workstreams");
-    if (row.workstreams.length === 0) {
-      if (!(await visible(world.page, "project-workstreams-none"))) r.fail(tabs, `${row.id} lists no workstream and its Workstreams doesn't say so`);
-    } else {
-      await visible(world.page, "project-workstream");
-      const listed = await world.page.locator("[data-testid=project-workstream]").evaluateAll((els) => els.map((e) => e.getAttribute("data-mailbox-id") ?? ""));
-      if (!same(listed, row.workstreams)) r.fail(tabs, `${row.id}'s Workstreams lists [${listed}], its row [${row.workstreams}]`);
-      // Each entry opens its workstream: click it, as a person would, and read where the page went.
-      for (const id of listed) {
-        await world.open(`/p/${encodeURIComponent(row.id)}/workstreams`);
-        await world.page.locator(`[data-testid=project-workstream][data-mailbox-id="${id}"] button`).click({ timeout: 10_000 }).catch(() => undefined);
-        await sleep(300);
-        const path = new URL(world.page.url()).pathname;
-        if (!path.startsWith(`/w/${encodeURIComponent(id)}`)) r.fail(tabs, `${row.id}'s Workstreams entry ${id} opens ${path}, not its workstream`);
-      }
+    if (!(await visible(world.page, "project-progress"))) r.fail(tabs, `${row.id}'s Workstreams draws no progress`);
+    if (row.workstreams.length > 0) await visible(world.page, "project-workstream");
+    const listed = await world.page.locator("[data-testid=project-workstream]").evaluateAll((els) => els.map((e) => e.getAttribute("data-mailbox-id") ?? ""));
+    if (!same(listed, row.workstreams)) r.fail(tabs, `${row.id}'s Workstreams lists mailbox workstreams [${listed}], its row [${row.workstreams}]`);
+    // Each mailbox workstream opens its workstream: click it, as a person would, and read where the page went.
+    for (const id of listed) {
+      await world.open(`/p/${encodeURIComponent(row.id)}/workstreams`);
+      await world.page.locator(`[data-testid=project-workstream][data-mailbox-id="${id}"] button`).click({ timeout: 10_000 }).catch(() => undefined);
+      await sleep(300);
+      const path = new URL(world.page.url()).pathname;
+      if (!path.startsWith(`/w/${encodeURIComponent(id)}`)) r.fail(tabs, `${row.id}'s Workstreams entry ${id} opens ${path}, not its workstream`);
     }
     await tab("board");
     if (!(await visible(world.page, "project-board-none"))) r.fail(tabs, `${row.id}'s Board doesn't draw its named no-board state`);
     await tab("stream");
-  }
-  const own = row1.sessions.find((s) => s.userId === owner.userId)?.sessionId;
-  if (own === undefined) {
-    r.fail(tabs, `${row1.id} lists no talk session for the person`);
-    return;
-  }
-  if (!restarted) {
-    await world.open(`/p/${encodeURIComponent(row1.id)}/stream`);
-    if (!(await visible(world.page, "composer-input"))) {
-      r.fail(tabs, `${row1.id}'s Stream has no composer`);
-      return;
-    }
-    await world.page.getByTestId("composer-input").fill(`${state.token}: what does this project need first?`);
-    await world.page.getByTestId("composer-send").click();
-    // The seat's answer: a later room line with an author, waited for, not retried.
-    let room: Awaited<ReturnType<typeof readRoom>> = [];
-    let mine: (typeof room)[number] | undefined;
-    let answer: (typeof room)[number] | undefined;
-    for (const until = Date.now() + 180_000; Date.now() < until; await sleep(1000)) {
-      room = await readRoom(world.routes.owner, own);
-      mine = room.find((l) => l.body.includes(state.token) && l.userId === owner.userId && l.author === null);
-      answer = mine === undefined ? undefined : room.find((l) => l.seq > mine!.seq && l.author !== null);
-      if (answer !== undefined) break;
-    }
-    if (mine === undefined) r.fail(tabs, `${row1.id}'s room holds no line with the token posted from its Stream`);
-    else if (answer === undefined) r.fail(tabs, `no template seat answered in ${row1.id}'s room within 180 s (lines: ${room.map((l) => `${l.seq}:${l.author ?? l.userId}`).join(" ")})`);
-    else {
-      state.answer = answer.body;
-      r.saw(tabs, `room: the person's line at seq ${mine.seq}, ${answer.author}'s answer at seq ${answer.seq}: "${answer.body.slice(0, 160)}"`);
-    }
-  }
-  if (state.answer !== undefined) {
-    await world.open(`/p/${encodeURIComponent(row1.id)}/stream`);
-    for (const body of [state.token, state.answer.slice(0, 60)]) {
-      try {
-        await world.page.getByTestId("transcript-line-body").filter({ hasText: body }).first().waitFor({ timeout: 30_000 });
-      } catch {
-        r.fail(tabs, `${row1.id}'s Stream doesn't draw "${body.slice(0, 60)}" after the wake`);
+    // The Stream is the person's own project coordinator for this project, and after a restart the same one.
+    if (!("error" in coordinator)) {
+      const drawn = await streamCoordinator(world.page, world.routes.owner, coordinator, row.id);
+      if ("why" in drawn) r.fail(tabs, `${row.id}'s Stream: ${drawn.why}`);
+      else if (restarted && state.streams[row.id] !== undefined && state.streams[row.id] !== drawn.session) {
+        r.fail(tabs, `${row.id}'s Stream draws coordinator session ${drawn.session} after the restart, ${state.streams[row.id]} before`);
+      } else {
+        state.streams[row.id] = drawn.session;
+        r.saw(tabs, `${row.id}'s Stream is the person's ${coordinator.worker} session ${drawn.session}`);
       }
     }
   }
   await r.shot(world.page, restarted ? "a5" : "a3");
 
-  // ---- a4 · org-wide, members only -------------------------------------------
+  // ---- a4 · the second member's own coordinator; the outsider reads the org's projects ----
   const a4 = tag("a4");
   const memberView = await world.as("member");
   try {
@@ -233,15 +201,11 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
     if (!refused.ok) r.fail(a4, `the second member can't open Shift Manager: "${refused.why}"`);
     const opened = refused.ok ? refused : await openWithSession(world, "member", memberView.page, url, mailboxSession);
     if (!refused.ok && opened.ok) r.saw(a4, `the rest of a4's member checks ran after the check made the member a session over HTTP (${(opened as { madeSession?: string }).madeSession})`);
-    if (opened.ok) {
-      if (await visible(memberView.page, "project-join", 8_000)) await memberView.page.getByTestId("project-join").click();
-      for (const body of [state.token, ...(state.answer === undefined ? [] : [state.answer.slice(0, 60)])]) {
-        try {
-          await memberView.page.getByTestId("transcript-line-body").filter({ hasText: body }).first().waitFor({ timeout: 30_000 });
-        } catch {
-          r.fail(a4, `the second member's ${row1.id} Stream doesn't draw "${body.slice(0, 60)}"`);
-        }
-      }
+    if (opened.ok && !("error" in coordinator)) {
+      const drawn = await streamCoordinator(memberView.page, world.routes.member, coordinator, row1.id);
+      if ("why" in drawn) r.fail(a4, `the second member's ${row1.id} Stream: ${drawn.why}`);
+      else if (drawn.session === state.streams[row1.id]) r.fail(a4, `the second member's ${row1.id} Stream draws the person's own coordinator session ${drawn.session}`);
+      else r.saw(a4, `the second member's ${row1.id} Stream is their own ${coordinator.worker} session ${drawn.session}`);
     }
     await r.shot(memberView.page, restarted ? "a5-member" : "a4-member");
   } finally {
@@ -260,15 +224,9 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
     if (!refused.ok) r.saw(a4, `the rest of a4's outsider checks ran after the check made the outsider a session over HTTP (${(opened as { madeSession?: string }).madeSession})`);
     const seen = await projectsDrawn(outsiderView.page);
     for (const row of [row1, row2]) if (!seen.some((g) => g.id === row.id)) r.fail(a4, `the outsider's PROJECTS doesn't list ${row.id}`);
-    await outsiderView.page.goto(`${world.served.origin}/p/${encodeURIComponent(row1.id)}/stream`);
-    await outsiderView.page.getByTestId("shell").waitFor({ timeout: 30_000 });
-    if (!(await visible(outsiderView.page, "project-stream-members-only", 15_000))) r.fail(a4, `the outsider's ${row1.id} Stream doesn't draw the members-only state`);
-    await sleep(1500);
-    const html = await outsiderView.page.content();
-    if (html.includes(state.token) || (state.answer !== undefined && html.includes(state.answer.slice(0, 40)))) r.fail(a4, `the outsider's page holds a line of ${row1.id}'s room`);
     await r.shot(outsiderView.page, restarted ? "a5-outsider" : "a4-outsider");
   } finally {
     await outsiderView.context.close();
   }
-  r.saw(a4, `the second member read both lines in ${row1.id}'s Stream; the outsider saw ${row1.id} and ${row2.id} listed and the members-only state`);
+  r.saw(a4, `the outsider saw ${row1.id} and ${row2.id} listed`);
 }

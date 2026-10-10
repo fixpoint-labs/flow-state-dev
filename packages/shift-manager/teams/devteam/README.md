@@ -44,7 +44,7 @@ workforce/
     workers/coder.mts                              kind `coder`
   org/
     resources/engineering-handbook.md              the coordinator's document
-    resources/projects.ts                          the projects collection, and its rooms' seats and charter
+    resources/projects.ts                          the projects collection
   teams/
     eng/
       resources/feature-brief.md                   the working seat's brief

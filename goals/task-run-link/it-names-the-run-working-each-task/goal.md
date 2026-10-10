@@ -1,32 +1,35 @@
 # task-run-link › it names the run working each task
 
-**Issue:** FIX-1668 (check VG of the spec's Checks table)
+**Issue:** FIX-1668 (check VG of the spec's Checks table). Converted onto a conversation's own board by FIX-1792 P2: the mailbox and its org-scoped board are gone.
 
-**Outcome:** Someone looking at a task on a board can open exactly the run working it, or the run that last worked it, and never another task's run or a guess. Each handed-off row carries `run: { sessionId, requestId, attempt }`, and that link reaches every read a board view uses.
+**Outcome:** Someone looking at a task on a board can open exactly the run working it, or the run that last worked it, and never another task's run or a guess. Each handed-over task carries `run: { sessionId, requestId, attempt }`, and that link reaches every read a board view uses: the conversation's task list (`listTasks`, what Shift Manager's task panel and a model read) and each run's own stream.
 
-**Input:** `fixtures/workforce/` — one team `lab`, one mailbox `desk` whose `MAILBOX.md` declares `boards: [work]`, a member `lead` that drains it, and three seats it hands rows to: `coder` (`handoff: per-task`), `reviewer` (`handoff: per-worker`) and `auditor` (`handoff: per-task`, on a flow of its own, `flow: audit`). A seat that names `flow: seat` runs on the drainer's flow. Held out: the mailbox, the board, the drainer, the seats and their policies all come off the tree. Rename the team, mailbox or board, or swap which seat is per-worker, and a correct build still passes.
+**Input:** `fixtures/workforce/`: one team `lab`. `lead` is the worker that files: its `WORKER.md` names `delegates: [lab.coder, lab.reviewer, lab.auditor]`, and that list is what gives its conversation the task tools and actions. `coder` and `reviewer` take tasks on one flow (`seat`), and `auditor` on a flow of its own (`audit`), each through Workforce's task entry (`workerTaskEntry`). Held out: the filer, its delegates and their flows all come off the tree. Rename the team or a worker, or move another delegate onto a flow of its own, and a correct build still passes.
 
-Five rows are filed through the mailbox's own `fileTask`: one per seat, a second for the per-worker seat, and one on the first per-task seat whose worker fails its first attempt (`maxAttempts: 2`), so it is re-drained.
+Six tasks are filed through the conversation's own `addTask_tasks` action, over HTTP as a person's app sends it: one per delegate, a second for a worker on the shared flow, one that fails its first attempt (so it runs again), and one that fails every attempt.
 
-**Signal:** model-free, over a real `createFlowState` host, real dispatch, real child sessions, and the real HTTP router. The board is drained from conversation A, and re-drained from conversation B once A's runs settle. Every worker writes what it saw from inside its own run (session, request, attempt, a random marker) to a file outside the board. Legs, by name:
+**Signal:** model-free, over a real `createFlowState` host, its HTTP router with a verified caller, the real conversation board, and real task sessions. Every worker writes what it saw from inside its own run (session, request, attempt, a random marker) to a file outside the board. Legs, by name:
 
-- **browser** — the board's browser read (`GET /sessions/:mailbox/resources/:ledger`) names, for every row, the session and request its worker recorded, and `attempt` equal to the row's `attempts`. No `claimedBy`.
-- **model** — the same on the mailbox's `readBoard`.
-- **stream** — each run is opened from its link: the link's session is read for its owning flow (`flowId`), then that request's stream is read through that flow. The last `task-change` item on it names the same run. No `claimedBy`.
-- **shared** — the per-worker seat's two rows name one session and two different requests.
-- **redrain** — after its failed first attempt the retried row names the failed run; after conversation B re-drains it, it names B's run, not A's.
-- **marker** — the cross-flow seat's run, opened through its session's owner, returns the marker its worker emitted.
+- **a**: the tree alone produces the filer, its delegates and their flows.
+- **ran**: every task's last run left its proof on disk.
+- **browser**: the conversation's `listTasks_tasks`, read back over HTTP as an app reads an action's answer, names for every task the session and request its worker recorded, and `attempt` equal to the task's `attempts`. No `claimedBy`.
+- **stream**: each run is opened from its link: the link's session is read for its owning flow (`flowId`), then that request's stream is read through that flow. The last `task-change` item on it names the same run. No `claimedBy`.
+- **own**: no two tasks name one session; a task that runs again names its own session again, under a new request.
+- **retry**: the task that failed once names its second run, not its first; the task that failed every attempt ended `errored` naming the run that last failed.
+- **marker**: the cross-flow worker's run, opened through its session's owner, returns the marker its worker emitted.
 
-**Anti-game:** A hollow pass would assert the link is present, or equals the ids the hand-off reported to the drain, or equals `claimedBy`. The first passes with the claiming conversation's coordinate written in; the second is a neighbour of the claim, generated on the path being tested; the third is exactly the defect `stamp-at-claim` models. So the check compares every read against a file each worker wrote from its own context, never against the board's own report. It reads through the browser route and the model action rather than a collection ref, so a field stripped on the way to a reader fails. It opens runs through the session's recorded owner, so a reader that assumed the board's flow fails on the cross-flow seat.
+**Anti-game:** A hollow pass would assert the link is present, or equals the ids the hand-over reported, or equals `claimedBy`. The first passes with the claiming conversation's coordinate written in; the second is a neighbour of the claim, generated on the path being tested; the third is exactly the defect `stamp-at-claim` models. So the check compares every read against a file each worker wrote from its own context, and counts the attempt from that file, never from the board. It reads through the HTTP action an app uses rather than a collection ref, so a field dropped on the way to a reader fails. It opens runs through the session's recorded owner, so a reader that assumed the filer's flow fails.
 
-**Model:** n/a — model-free. A row is handed off, a run starts, or it doesn't.
+**What changed in the conversion, and why.** A conversation's board opens a task session per task (FIX-1794), so the old `handoff: per-task | per-worker` policy has no subject: the **shared** leg (a per-worker seat's two rows in one session) became **own** (no two tasks share a session; one task's two attempts do). Only the conversation that filed a task runs it (FIX-1794), so the **redrain** leg (a second conversation re-draining the board) became **retry**: the board runs a failed task again itself, and the link follows. The mailbox's `readBoard` model read and the board's browser resource read became one read, the conversation's `listTasks` (the tool and its action are one function). That read did not carry the link when this conversion began; FIX-1792 P2 adds `run` to `listTasks`' answer, which is what makes **browser** pass (its before-state is the `no-list-link` control).
+
+**Model:** n/a, model-free. A task is handed over, a run starts, or it doesn't.
 
 **Run:** `pnpm tsx goals/task-run-link/it-names-the-run-working-each-task/run.mts`
 
-**Controls:** each perturbs `run.mts`, never the tree.
-- `GOAL_CONTROL=stamp-at-claim` — the worker overwrites the link with the claiming conversation's coordinate (`claimedBy`). Must FAIL at **browser**/**model** *"session equals the worker's"*.
-- `GOAL_CONTROL=server-only` — `run` joins `SERVER_ONLY_TASK_FIELDS` and leaves the browser list. Must FAIL at **browser** *"link present on the browser read"*.
-- `GOAL_CONTROL=board-flow` — every run is opened through the drainer's flow instead of its session's owner. Must FAIL at **marker** *"marker read on the cross-flow seat"*, and nothing else.
+**Controls:** `stamp-at-claim` and `no-list-link` are scratch patches applied to the code under test as the process loads it (`goals/lib/module-patch.mts`; the run prints the patch and refuses a patch that never reached its module). `board-flow` perturbs `run.mts`. None touches the tree.
+- `GOAL_CONTROL=stamp-at-claim`: the claim gate writes the link from the claiming conversation's coordinate (`held.claimedBy`) instead of the run's. Must FAIL at **browser** *"session equals the worker's"*.
+- `GOAL_CONTROL=no-list-link`: `listTasks` leaves `run` out of its answer. Must FAIL at **browser** *"link present on the browser read"*, and nothing else.
+- `GOAL_CONTROL=board-flow`: every run is opened through the filer's flow instead of its session's owner. Must FAIL at **marker** *"marker read on the cross-flow worker"*; **stream** goes red with it, since no task runs on the filer's flow.
 
 ## Verdict log
 
@@ -37,3 +40,8 @@ Five rows are filed through the mailbox's own `fileTask`: one per seat, a second
 | 2026-09-30 | same (control: `server-only`) | n/a | FAIL (expected) | Named **browser** *"link present on the browser read"* on all 5 rows, and **stream** on all 5 (the change item no longer carries `run`). **model** stayed green: the model list is a separate allowlist the control does not touch. |
 | 2026-09-30 | same (control: `board-flow`) | n/a | FAIL (expected) | Named only **marker** *"marker read on the cross-flow seat"*: the auditor's run, opened through `lab.lead`, answered 404. The same-flow seats' runs still opened, because their owner is the drainer's flow. |
 | 2026-09-30 | origin/main f1abccf14 (no implementation) | n/a | FAIL (expected) | Before-state: every row *"carries no run"* on **browser**, **model** and **stream**, and **redrain** found no link after the failed attempt. |
+| 2026-10-10 | claude/project-thread-5s0me3 on f90171c1, the tree converted, the old check | n/a | FAIL (expected) | The mailbox check on the converted tree: *"the tree declared no mailbox holding a board"*. |
+| 2026-10-10 | claude/project-thread-5s0me3 on f90171c1 + uncommitted (this conversion) | n/a | PASS | `lab.lead` (flow `lead`) filed 6 tasks in one conversation for `lab.coder@seat`, `lab.reviewer@seat`, `lab.auditor@audit`. Every task's link on the conversation's task list and on the last `task-change` of its run's own stream equals the session and request its worker recorded (8 proofs on disk); no two tasks share a session. The fails-once task ran twice in one `dsx_` session under two requests and names the second; the always-failing task ended `errored` naming its last run. The auditor's run opened through its session's `flowId` and returned its marker. |
+| 2026-10-10 | same (control: `stamp-at-claim`) | n/a | FAIL (expected) | **browser** *"session equals the worker's"* and *"request equals the worker's"* on all 6 tasks (each names the conversation's `sess_` and its board run's request). **stream**, **own**, **retry** and **marker** red with it: the link now names the conversation, so no task's run opens from it and every task names one session. |
+| 2026-10-10 | same (control: `no-list-link`) | n/a | FAIL (expected) | **browser** *"link present on the browser read"* on all 6 tasks, and nothing else. This is also the before-state of the conversion: `listTasks` on `main` answers no `run`. |
+| 2026-10-10 | same (control: `board-flow`) | n/a | FAIL (expected) | **marker** *"marker read on the cross-flow worker"* (the auditor's run, opened through `lead`, answered 404) and **stream** on all 6 tasks (404 through `lead`): every task runs on its delegate's flow, none on the filer's. |

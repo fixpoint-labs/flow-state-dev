@@ -73,7 +73,7 @@ Checks that cannot fail are the common case, not the rare one. A leg asserting `
 **Prefer a named control over an ad-hoc mutation.** A control is a flag the run already understands, so the red state is reproducible by anyone, on any checkout, without touching the tree:
 
 ```bash
-GOAL_CONTROL=by-name pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
+GOAL_CONTROL=hollow-run pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
 ```
 
 `run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the assertions it must fail, by name (`a:working`, not leg a) — a leg goes red on any of its assertions, so a control that fails the wrong one is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
@@ -99,6 +99,7 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
 | `server`     | `refuseIfAnswering`, `stopProcessGroup` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade |
 | `module-patch` | `modulePatchEnv`, `describePatches`, `assertPatched` — a named control as scratch patches to source modules, applied as the process under test loads them (`module-patch.mjs` through `NODE_OPTIONS`), never written to the checkout; the run prints the patch and fails when it never reached the code it served |
+| `http-actions` | `httpActions(router, userId)` (`call`, `act`, `open`) — drive an in-process host's router as a verified caller and read an action's answer back from the session's ended request, as an app does; `untilIdle(stores)` — wait until no request is running. The host's `resolvePrincipal` reads the caller from `x-user` |
 | `playwright` | `launchChromium`, `preinstalledChromium` — Chromium for a goal that reads the shipped DevTool. **Not re-exported from `index.mts`**, so a goal that opens no browser does not load Playwright; import `../../lib/playwright.mts` directly |
 | `shift-manager` | `buildShiftManagerCopy` (a patched scratch copy, built with Vite), `startShiftManager` (its command over a Lab, with `NODE_ENV` as it was before any in-process build; optional `root`, `tsx` and `timeoutMs` to serve another checkout, including an older one that has only `bin/start.mts`), `labApi` (the Lab's routes), `pendingSeatAsks` (the person's pending asks on the seats' sessions, picked as Shift Manager picks them), `workerOf` (the worker a listed session names) and `pickShift` (a theme picked with the sidebar's theme mark) — for the Shift Manager goals; and, for a goal that drives Shift Manager as a person in Playwright, `buildShiftManagerPages`, `labRoutes` (`labApi` read as one verified user) and `personPage` (a browser context as a given person). **Not re-exported from `index.mts`**; import `../../lib/shift-manager.mts` directly |
 

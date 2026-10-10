@@ -26,10 +26,10 @@
  */
 import type { SessionSummary } from "@flow-state-dev/client";
 import {
-  DONE_STATUS,
+  parseWorkstreamEntry,
   projectProgress,
-  STALE_AFTER_MS,
   workstreamsAccessor,
+  type ParsedWorkstreamEntry,
   type ProjectProgress,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
@@ -58,8 +58,8 @@ export type WorkstreamEntry = {
   due: string | null;
   objectives: WorkstreamObjective[];
   updatedAt: string;
-  /** The latest report, when the read carries it. */
-  report: string | null;
+  /** Whether it has gone quiet, as the project's progress counts it (BR-19): one clock, `progress.stale`. */
+  stale: boolean;
 };
 
 /** A project as its view opens: the row, its workstreams, and the progress worked out from them. */
@@ -91,34 +91,30 @@ export function projectReaderOf(sessions: readonly SessionSummary[]): string | n
   return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_KIND)?.id ?? null;
 }
 
-/** An entry, from what the entries' browser read publishes. A row missing its title or lead is left out. */
-function toEntry(storageKey: string, data: unknown): WorkstreamEntry | undefined {
-  const [, , owner, id] = storageKey.split("/");
-  if (owner === undefined || id === undefined || !owner.startsWith("~")) return undefined;
-  const row = (data ?? {}) as Record<string, unknown>;
-  if (typeof row.title !== "string" || typeof row.lead !== "string") return undefined;
-  const objectives = Array.isArray(row.objectives) ? row.objectives : [];
-  let ownerId: string;
+/**
+ * An entry, from what the entries' browser read publishes, parsed by
+ * Workforce's own entry parser so this view and `readProject` read one shape.
+ * A row that doesn't parse as an entry is left out of the view.
+ */
+function toEntry(storageKey: string, data: unknown): Omit<WorkstreamEntry, "stale"> | undefined {
+  let parsed: ParsedWorkstreamEntry | undefined;
   try {
-    ownerId = decodeURIComponent(owner.slice(1));
+    parsed = parseWorkstreamEntry(storageKey, data);
   } catch {
     return undefined;
   }
+  if (parsed === undefined) return undefined;
   return {
     key: storageKey,
-    owner: ownerId,
-    id,
-    title: row.title,
-    lead: row.lead,
-    sessionId: typeof row.sessionId === "string" ? row.sessionId : null,
-    status: typeof row.status === "string" ? row.status : "on-track",
-    due: typeof row.due === "string" ? row.due : null,
-    objectives: objectives.flatMap((objective) => {
-      const o = objective as { text?: unknown; met?: unknown };
-      return typeof o.text === "string" ? [{ text: o.text, met: o.met === true }] : [];
-    }),
-    updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : "",
-    report: null,
+    owner: parsed.owner,
+    id: parsed.id,
+    title: parsed.title,
+    lead: parsed.lead,
+    sessionId: parsed.sessionId,
+    status: parsed.status,
+    due: parsed.due,
+    objectives: parsed.objectives.map((objective) => ({ text: objective.text, met: objective.met })),
+    updatedAt: parsed.updatedAt,
   };
 }
 
@@ -135,7 +131,7 @@ export async function readProject(clients: LabClients, readerSessionId: string, 
   const [row, entries] = await Promise.all([
     clients.resources.getCollectionItemState(readerSessionId, projectsAccessor(address.visibility), address.id),
     (async () => {
-      const found: WorkstreamEntry[] = [];
+      const found: Omit<WorkstreamEntry, "stale">[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const listed = await clients.resources.listCollectionItems(readerSessionId, workstreamsAccessor(address.visibility), {
@@ -157,7 +153,9 @@ export async function readProject(clients: LabClients, readerSessionId: string, 
   if (row === null) return null;
   const project = toProject(row.clientData, address.visibility);
   if (project === undefined) return null;
-  return { project, entries, progress: projectProgress(entries, now) };
+  const progress = projectProgress(entries, now);
+  const quiet = new Set(progress.stale.map((entry) => `${entry.owner}/${entry.id}`));
+  return { project, entries: entries.map((entry) => ({ ...entry, stale: quiet.has(`${entry.owner}/${entry.id}`) })), progress };
 }
 
 /**
@@ -172,12 +170,6 @@ export async function readEntryReport(
 ): Promise<string | null> {
   const read = await clients.resources.getCollectionItemContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
   return typeof read.content === "string" && read.content.length > 0 ? read.content : null;
-}
-
-/** Whether an entry has gone quiet: unchanged for seven days, and not done (BR-19). */
-export function isStale(entry: Pick<WorkstreamEntry, "status" | "updatedAt">, now = Date.now()): boolean {
-  const at = Date.parse(entry.updatedAt);
-  return entry.status !== DONE_STATUS && Number.isFinite(at) && now - at >= STALE_AFTER_MS;
 }
 
 /** Project setups read, per connection: one read per page load. */

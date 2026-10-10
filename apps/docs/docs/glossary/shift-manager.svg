@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 572" role="img" aria-labelledby="title desc">
   <title id="title">Shift Manager: what each screen reads</title>
-  <desc id="desc">Each Shift Manager screen beside what it reads. A Lab is the FlowState an fsdev config exports. The Shift Coordinator is your session with the chief of staff worker. Inbox lists asks, runs suspended on a person. Tasks lists tasks on every mailbox board. Roster lists inventory workers with a derived status. The workstream view shows a mailbox and its boards. The project view shows a project row and its room.</desc>
+  <desc id="desc">Each Shift Manager screen beside what it reads. A Lab is the FlowState an fsdev config exports. The Shift Coordinator is your session with the chief of staff worker. Inbox lists asks, runs suspended on a person. Tasks lists tasks on every mailbox board. Roster lists inventory workers with a derived status. The workstream view shows a mailbox and its boards. The project view shows a project, its workstreams with their progress, your own workstreams’ boards, and your own project coordinator.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -99,9 +99,9 @@
   <text x="42" y="498" class="h">Project view</text>
   <text x="42" y="516" class="code">/p/&lt;project id&gt;</text>
   <rect x="344" y="476" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="497" class="tag-org">PROJECT + ROOM</text>
-  <text x="508" y="497" class="p">A project row, the boards of its workstreams,</text>
-  <text x="508" y="515" class="p">and its room, read through your own session.</text>
+  <text x="358" y="497" class="tag-org">PROJECT</text>
+  <text x="508" y="497" class="p">Its workstreams and their progress, your own boards,</text>
+  <text x="508" y="515" class="p">and your own project coordinator to talk to it.</text>
   <path d="M296 502 L342 502" class="edge"/>
   <text x="28" y="552" class="muted">Green: Workforce. Purple: Orchestration. Blue: Core. Grey: Engine.</text>
 </svg>

@@ -170,16 +170,16 @@ const FILES = {
     { done: "P1", had: { boardActions: 1, routing: 1 }, target: "coordinator", boards: ["escalations"], use: "kitchen-sink's help desk. Its escalations board goes with the escalation feature, removed by the product owner (2026-10-06)" },
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire/fixtures/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
     { done: "FIX-1788, which retired its goal", target: "session", boards: ["work"], use: "a coordinator hires a worker and files it a task by name" },
-  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
-    { target: "session", boards: ["triage", "parked"], use: "one worker files a row and another's board runs it; the filer has the task tools through its delegates and files on its own session board; parked is drained by nobody and goes" },
-  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/notices/MAILBOX.md":
-    { target: "removed", boards: [], use: "a mailbox on a kind of its own (digest), kept only for the retired a-mailbox-holds-the-work goal" },
+  "goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains/fixtures/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
+    { target: "removed", boards: ["triage", "parked"], use: "the row goal's old tree (one worker files a row and another's board runs it). P2 converted the row goal onto WORKER.md files (the filer's delegates give it the task tools; it files on its own conversation's board) and moved this tree into the retiring a-mailbox-holds-the-work goal, which still reads it; it goes with that goal in P4" },
+  "goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains/fixtures/workforce/teams/eng/mailboxes/notices/MAILBOX.md":
+    { target: "removed", boards: [], use: "a mailbox on a kind of its own (digest), kept only for the retired a-mailbox-holds-the-work goal; moved there from the row goal in P2" },
   "goals/manager-queue-lab/lab/refusal-trees/board-in-a-seat-folder-corrected/teams/eng/mailboxes/queue/MAILBOX.md":
-    { target: "removed", boards: ["work"], use: "the corrected twin of a refusal tree: the board declared where it belongs loads. No file declares a board after the conversion, so the leg it served goes" },
+    { done: "P2", target: "removed", boards: ["work"], use: "the corrected twin of a refusal tree: the board declared where it belongs loads. No file declares a board after the conversion, so the leg it served goes" },
   "goals/manager-queue-lab/lab/refusal-trees/board-in-a-seat-folder/teams/eng/mailboxes/queue/MAILBOX.md":
-    { target: "removed", boards: ["work"], use: "a refusal tree: a worker folder that declares the board is refused. No file declares a board after the conversion, so the leg goes" },
+    { done: "P2", target: "removed", boards: ["work"], use: "a refusal tree: a worker folder that declares the board is refused. No file declares a board after the conversion, so the leg goes" },
   "goals/manager-queue-lab/lab/workforce/teams/eng/mailboxes/queue/MAILBOX.md":
-    { target: "session", boards: ["work"], use: "the manager files one row per desk; each desk's worker takes only its own" },
+    { done: "P2", target: "session", boards: ["work"], use: "the manager files one row per desk; each desk's worker takes only its own" },
   "goals/pentest-lab/lab/refusal-trees/unknown-kind-corrected/teams/pentest/mailboxes/findings/MAILBOX.md":
     { done: "P1", target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
   "goals/pentest-lab/lab/refusal-trees/unknown-kind/teams/pentest/mailboxes/findings/MAILBOX.md":
@@ -205,7 +205,7 @@ const FILES = {
   "goals/shift-manager/it-shows-who-is-on-shift/lab/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
     { target: "coordinator", boards: [], use: "a team that talks and keeps no board" },
   "goals/task-run-link/it-names-the-run-working-each-task/fixtures/workforce/teams/lab/mailboxes/desk/MAILBOX.md":
-    { target: "session", boards: ["work"], use: "each handed-off row links the run working it" },
+    { done: "P2", target: "session", boards: ["work"], use: "each handed-off row links the run working it" },
   "goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents/fixtures/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { done: "P1", target: "coordinator", boards: [], use: "a post wakes each agent member once, never on its own post" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/front/MAILBOX.md":
@@ -272,6 +272,7 @@ const FILE_CLASS = {
   "packages/workforce/src/best-fit.ts": "E · S9 · a comment names the mailbox's route wrapper, routeByPurpose",
   "packages/shift-manager/test/devteam-cos-tool-names.test.ts": "E · S7 · the chief of staff loses setWorkstreams",
   "packages/shift-manager/test/devteam-chief-of-staff-coordinator.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
+  "packages/shift-manager/test/devteam-chief-of-staff-tasks.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
   "packages/shift-manager/test/devteam-chief-of-staff-memory.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
   ".agents/skills/concept-doc/example/CONCEPT.md": "E · S12 · the concept-doc skill's worked example names removed exports; P4 edits it or `--after` fails on it",
   ".omp/extensions/mailbox.ts": "U · — · the agent-mailbox tool's command, not Workforce",
@@ -286,6 +287,7 @@ const FILE_CLASS = {
   "apps/docs/docs/workforce/built-in-worker.md": "E · S12 · taskLists from mailbox boards",
   "apps/docs/docs/workforce/chief-of-staff.md": "E · S12 · post-to-mailbox and setWorkstreams leave its tools",
   "apps/docs/docs/workforce/code-on-disk.md": "E · S12 · the flows/mailboxes slot and mailboxKinds go",
+  "apps/docs/docs/workforce/coordinators.md": "E · S12 · workerTaskEntry's mailboxLists option goes with the mailbox boards",
   "apps/docs/docs/workforce/durable-hire.md": "E · S12 · the mailboxBoards hire option goes",
   "apps/docs/docs/workforce/inventory.md": "E · S12 · mailbox and membership rows go",
   "apps/docs/docs/workforce/mailbox-or-room.svg": "T · — · FIX-1793 removes it with rooms",
@@ -339,7 +341,6 @@ const FILE_CLASS = {
   "packages/shift-manager/README.md": "E · S12 · workstreams and the DevTeam's mailboxes",
   "packages/shift-manager/src/components/flow-state/chat-assistant.tsx": "E · S8 · renders coordinator-route",
   "packages/shift-manager/src/lib/reads.ts": "E · S8 · mailbox and claim reads go",
-  "packages/shift-manager/src/lib/talk.ts": "T · — · FIX-1793 removes the room client; names MailboxTranscriptLine",
   "packages/shift-manager/src/lib/task.tsx": "E · S8 · a task's board ref",
   "packages/shift-manager/src/lib/transcript.ts": "E · S8 · mailbox transcript lines",
   "packages/shift-manager/src/surfaces/Project.tsx": "E · S8 · MailboxTranscriptLine, after FIX-1793 moves the Stream tab",
@@ -359,6 +360,7 @@ const FILE_CLASS = {
   "packages/shift-manager/test/build-inputs.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/chief-of-staff.test.ts": "E · S8 · workstreams as mailboxes in a fixture",
   "packages/shift-manager/test/columns.test.ts": "E · S8 · tests",
+  "packages/shift-manager/test/project-workstreams.test.tsx": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
   "packages/shift-manager/test/devteam-legacy-org.test.ts": "E · S7 · the mailbox session leaves its old-org fixture",
   "packages/shift-manager/test/devteam-pre-rename-store.test.ts": "R · S3 · the pre-rename store check goes with the refusal (D2)",
   "packages/shift-manager/test/devteam-repository-ask.test.ts": "C · S7 · the project's workstream, not a claim",
@@ -379,7 +381,6 @@ const FILE_CLASS = {
   "packages/shift-manager/test/shell-lines.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/shell.test.tsx": "E · S8 · tests",
   "packages/shift-manager/test/static.test.ts": "E · S8 · tests",
-  "packages/shift-manager/test/talk.test.ts": "T · — · FIX-1793 removes it with rooms",
   "packages/shift-manager/test/teams-roster.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/turn-routes.test.ts": "E · S8 · tests",
   "packages/ui/registry/components/chat-assistant.tsx": "E · S9 · mailbox-route rendering goes",
@@ -417,8 +418,6 @@ const FILE_CLASS = {
   "packages/workforce/src/projects/index.ts": "E · S10 · claim and setWorkstreams exports",
   "packages/workforce/src/projects/project-workspace.ts": "E · S10 · the claim path goes",
   "packages/workforce/src/projects/project-writes.ts": "E · S10 · setWorkstreams and claims go",
-  "packages/workforce/src/projects/talk-template.ts": "T · — · FIX-1793 removes it with rooms",
-  "packages/workforce/src/projects/talk.ts": "T · — · FIX-1793 removes it with rooms",
   "packages/workforce/test/agent-routed-answer.test.ts": "R · S9 · a routed mailbox answer; FIX-1791's delegated post replaces it",
   "packages/workforce/test/agent-worker-history.test.ts": "E · S9 · its wake fixture",
   "packages/workforce/test/agent-worker-mailbox-post.test.ts": "R · S9 · tests of the agent's onMailboxPost entry; FIX-1791 S9's delegated post replaces it",
@@ -448,7 +447,6 @@ const FILE_CLASS = {
   "packages/workforce/test/manifest-sources.test.ts": "E · S1 · tests",
   "packages/workforce/test/merge-seat-flows.test.ts": "E · S9 · a mailbox flow key in an example",
   "packages/workforce/test/pre-rename.test.ts": "R · S3 · tests",
-  "packages/workforce/test/project-talk-template.test.ts": "T · — · FIX-1793 removes it with rooms",
   "packages/workforce/test/project-workspace.test.ts": "E · S10 · the claim path goes",
   "packages/workforce/test/projects.test.ts": "E · S10 · setWorkstreams and claims go",
   "packages/workforce/test/published-tree-surface.test.ts": "E · S1 · tests",
