@@ -201,7 +201,22 @@ harnessManager({
 });
 ```
 
-`projectWorkspace` finds the project that holds the board's workstream and reads its row, nothing else. It refuses a run before any file is read when the person the run belongs to isn't one of the project's members (`not-a-member`), or when no project holds the workstream (`no-project`). The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+`projectWorkspace` finds the project a run works in, in this order:
+
+1. The workstream the task came from, when it was filed from one.
+2. The project the task came from, when it was filed from a project's conversation.
+3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the person's own coordinator.
+4. The project holding the board's workstream, when you built it with `board`, as above.
+
+A task that names a project other than the one its conversation belongs to is refused (`other-project`), naming both. So is one that names a project by its id alone (`no-project`): a private and a shared project can share an id, so a project is named by its visibility and id. The run is also refused before any file is read when the person it belongs to isn't one of the project's members (`not-a-member`), or when none of the four finds a project (`no-project`). What the task says never counts toward membership; that's read from the person the run belongs to. The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried, and the conversation that filed the task hears why.
+
+A coordinator filing for a coding worker from a conversation with no project names one:
+
+```json
+{ "goal": "Take a look at our repo and tell me what the checkout flow does", "assignee": "eng.coder", "input": { "project": { "visibility": "shared", "id": "storefront" } } }
+```
+
+The block that asks the source needs `projectWorkspaceCapability` on its `uses`, as above. It holds the conversation board a task's row is read from as well as the project collections.
 
 ### The project's own files
 
