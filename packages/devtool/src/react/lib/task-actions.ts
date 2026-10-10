@@ -31,7 +31,11 @@ function takesTaskId(schema: ActionInputSchema | undefined): boolean {
   return field !== undefined && field.type === "string" && field.required;
 }
 
-/** The eight task tools `taskToolActions` generates for a board, always together. */
+/**
+ * Eight of the task tools `taskToolActions` generates for a board, always
+ * together. It also generates `answerTask`; these eight are enough to find a
+ * board's family.
+ */
 const TASK_TOOLS = [
   "addTask",
   "assignTask",
@@ -45,8 +49,8 @@ const TASK_TOOLS = [
 
 /**
  * The board suffixes the flow's own action list names: every `<suffix>` for
- * which all eight `<tool>_<suffix>` are actions. `taskToolActions` generates
- * the eight together, so a whole family is a board's tools even when this
+ * which all eight `<tool>_<suffix>` above are actions. `taskToolActions` generates
+ * them together, so a whole family is a board's tools even when this
  * session has no rows on that board (a sibling Workforce mailbox sharing the
  * flow kind, or a board with no tasks yet). An app's own `cancelTask_now`
  * comes with no family, so it names no board.

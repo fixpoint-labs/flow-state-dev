@@ -72,7 +72,7 @@ request of its own; the policy decides what keys its session:
 
 | `session` | Keyed on | Use it when |
 |---|---|---|
-| `"per-task"` | the task id | rows are independent |
+| `"per-task"` | the task id, or for a row filed with `followUpOf` the task it follows, so it runs in that task's child | rows are independent |
 | `"per-worker"` | the assignee, one child per claiming session | the worker should remember what it already did |
 | `{ key: fn }` | what the function returns from the worker input | one issue across spec, implement and review |
 

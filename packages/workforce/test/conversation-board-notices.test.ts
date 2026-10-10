@@ -471,7 +471,11 @@ describe("a notice that can't land (BR-28)", () => {
       expect(row?.status).toBe("completed");
       expect(row?.metadata?.["noticeOwed:1:completed"]).toBeNull();
       const said = (await host.messages(host.runs[0]!.sessionId)).map((message) => message.text);
-      expect(said).toEqual([expect.stringMatching(/^The conversation that filed task "outlives it \[slow:150\]" couldn't be told it completed/)]);
+      // The task as filed is the session's first message; then the refusal, said here.
+      expect(said).toEqual([
+        "outlives it [slow:150]",
+        expect.stringMatching(/^The conversation that filed task "outlives it \[slow:150\]" couldn't be told it completed/)
+      ]);
     } finally {
       await host.dispose();
     }

@@ -1,9 +1,12 @@
 /**
  * `taskTools` capability — the model's surface onto a task board.
  *
- * Eight handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
- * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`) let a model
- * assign work, mark a task complete, or query the board.
+ * Nine handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
+ * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`/`answerTask`)
+ * let a model assign work, mark a task complete, answer a task's question, or
+ * query the board. A task turn's own question park, `parkOnQuestion`, is
+ * built apart from them (`createParkOnQuestion`): it acts on the row the
+ * turn's claim holds, never on a board a resolver names.
  *
  * The board is a **ledger** these tools plan on — `addTask` records a row and
  * returns its id; nothing executes it by itself. Whatever drains that board
@@ -54,6 +57,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   IllegalTaskTransitionError,
+  ticketForClaim,
   isTerminalStatus,
   isTransitionAllowed,
   taskSchema,
@@ -72,12 +76,14 @@ import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 // The resolver `taskBoard()` recorded for its handle, read without importing
 // the task-board barrel (which imports this module's neighbours).
 import { boardResolverOf } from "../task-board/board-resolver";
+// The one task-turn test (FIX-1816 BR-5a), owned by the task-board.
+import { isTaskTurn } from "../task-board/task-turn";
 // `shouldRetryOnFail` is the collection's own routing predicate for `fail()`.
 // Imported from the module rather than the package barrel so the recovery
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
 import { shouldRetryOnFail } from "../tasks/collection/internal";
-import { addTaskAndWait, canHoldAsk, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS } from "../tasks/helpers/wait-for-response";
+import { addTaskAndWait, canHoldAsk, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS, toolCallOf } from "../tasks/helpers/wait-for-response";
 
 /**
  * Own-state field the default resolver's board lives on. A host generator that
@@ -411,6 +417,17 @@ const declinedWriteToolError = (
       clause,
     });
   }
+  if (declined.reason === "awaiting-answer") return awaitingAnswerError(taskId);
+  if (declined.reason === "follow-up") {
+    return {
+      ok: false as const,
+      taskId,
+      error:
+        `follow_up_takes_no_assignee: task "${taskId}" is a follow-up, and it runs in the ` +
+        `session of the task it follows, with that task's worker. Its assignee doesn't change. ` +
+        `Nothing was written.`,
+    };
+  }
   if (declined.reason === "not-my-task" && heldTaskId !== undefined) {
     return {
       ok: false as const,
@@ -457,6 +474,282 @@ const claimGuard = (
 ): TaskTransitionOptions | undefined => (claim === undefined ? undefined : { claim });
 
 // ---------------------------------------------------------------------------
+// Questions and follow-ups (FIX-1817)
+// ---------------------------------------------------------------------------
+
+/**
+ * Why `answerTask` can't answer `task`, or `undefined` when it is parked on a
+ * question. A terminal row answers as every other write to one does; a park
+ * for a person's turn has its own way back (FIX-1690); anything else isn't
+ * waiting on an answer.
+ */
+function notParkedOnQuestion(task: Task) {
+  if (isTerminalStatus(task.status)) {
+    return terminalWriteToolError({
+      code: "terminal_task_write_declined",
+      taskId: task.id,
+      status: task.status,
+      clause: STATUS_CLAUSE,
+    });
+  }
+  if (task.status !== "parked") {
+    return {
+      ok: false as const,
+      taskId: task.id,
+      error:
+        `not_parked_on_question: task "${task.id}" is ${task.status}, so it isn't waiting ` +
+        `on an answer. Nothing was written.`,
+    };
+  }
+  if (task.parkedForTurn === true) {
+    return {
+      ok: false as const,
+      taskId: task.id,
+      error:
+        `not_parked_on_question: task "${task.id}" is parked for a person's turn, not on a ` +
+        `question. Its run picks up again through that turn. Nothing was written.`,
+    };
+  }
+  if (task.parkedOnQuestion !== true) {
+    return {
+      ok: false as const,
+      taskId: task.id,
+      error:
+        `not_parked_on_question: task "${task.id}" is parked, but not on its worker's ` +
+        `question (it may be waiting on its own sub-tasks). Nothing was written.`,
+    };
+  }
+  return undefined;
+}
+
+const followUpAssigneeError = (followUpOf: string) => ({
+  ok: false as const,
+  error:
+    `follow_up_takes_no_assignee: a follow-up of "${followUpOf}" runs in that task's session, ` +
+    `with its worker, and another worker is another session. Leave assignee unset.`,
+});
+
+/**
+ * Check a follow-up against the board it is filed on (FIX-1817 BR-20 to
+ * BR-25): the named task is on this board (its partition, so another
+ * conversation's or user's task is unknown here), it has finished, and the
+ * session it ran in has no unfinished task. Answers the root, the first task
+ * of the chain, and the worker that root ran on.
+ */
+function resolveFollowUp(
+  collection: TaskCollectionRef,
+  followUpOf: string,
+): { root: string; assignee: string | undefined; id: string } | { ok: false; error: string } {
+  const named = collection.get(followUpOf);
+  if (named === undefined) {
+    return {
+      ok: false as const,
+      error: `task_not_found: there is no task "${followUpOf}" on this board to follow up.`,
+    };
+  }
+  if (!isTerminalStatus(named.status)) {
+    return {
+      ok: false as const,
+      error:
+        `follow_up_of_unfinished: task "${followUpOf}" is ${named.status}. A follow-up names ` +
+        `a finished task. Nothing was filed.`,
+    };
+  }
+  const root = named.followUpOf ?? named.id;
+  const rootTask = collection.get(root);
+  // A follow-up runs in the session its root task ran in, with that worker:
+  // a root that never ran (cancelled before anyone took it) or had no worker
+  // has no session to follow up in.
+  if (rootTask === undefined || rootTask.assignee === undefined || rootTask.run === undefined) {
+    return {
+      ok: false as const,
+      error:
+        `follow_up_of_unfinished: task "${followUpOf}" never ran with a worker, so there is ` +
+        `no session to follow up in. File a new task instead. Nothing was filed.`,
+    };
+  }
+  const busy = collection
+    .list()
+    .find((task) => (task.followUpOf ?? task.id) === root && !isTerminalStatus(task.status));
+  if (busy !== undefined) return followUpBusyError(busy.id, busy.status, followUpOf);
+  // The follow-up's id is the root's, with the lowest number no row holds.
+  // Two follow-ups filed at once both pass the scan above and pick the same
+  // id, and the ledger's insert takes one id once: the check and the insert
+  // are one atomic write, and the loser is refused naming the winner.
+  let number = 1;
+  while (collection.get(`${root}-f${number}`) !== undefined) number += 1;
+  return { root, assignee: rootTask.assignee, id: `${root}-f${number}` };
+}
+
+/**
+ * Whether an add failed because its id is already on the board: the durable
+ * ledger's create refuses a live key (`resource_already_exists`), the state
+ * backing throws "already exists". Read structurally, so this module takes no
+ * engine dependency.
+ */
+function isTakenTaskId(err: unknown): boolean {
+  if ((err as { code?: unknown } | null)?.code === "resource_already_exists") return true;
+  return err instanceof Error && /already exists/.test(err.message);
+}
+
+/**
+ * The refusal for reassigning a task an answer has re-queued and that hasn't
+ * run again yet. Lifts once the re-entry is claimed.
+ */
+const awaitingAnswerError = (taskId: string) => ({
+  ok: false as const,
+  taskId,
+  error:
+    `task_awaiting_answer: task "${taskId}" was just answered and is about to pick up again ` +
+    `with its worker, in the session that asked. Reassign it after that run starts. Nothing was written.`,
+});
+
+/** `addTask`'s refusal for a follow-up whose session still has an unfinished task. */
+const followUpBusyError = (id: string, status: string, followUpOf: string) => ({
+  ok: false as const,
+  error:
+    `session_has_unfinished_task: task "${id}" is still ${status} in the session ` +
+    `"${followUpOf}" ran in, and a session works one task at a time. Follow up once it ` +
+    `finishes. Nothing was filed.`,
+});
+
+/**
+ * What a follow-up's add answers when its id was taken by a row filed at the
+ * same moment: the session is busy when that row is an unfinished follow-up
+ * of the same root (the race this id exists to settle); anything else is an
+ * id clash, and the follow-up can simply be filed again.
+ */
+function followUpTakenError(err: unknown, collection: TaskCollectionRef, id: string, root: string, followUpOf: string) {
+  const winner = ((err as { currentValue?: unknown } | null)?.currentValue ?? collection.get(id)) as
+    | Partial<Task>
+    | undefined;
+  if (winner?.followUpOf === root && (winner.status === undefined || !isTerminalStatus(winner.status))) {
+    return followUpBusyError(id, winner.status ?? "pending", followUpOf);
+  }
+  return {
+    ok: false as const,
+    error: `task_id_taken: another task took the id "${id}" at the same moment. File the follow-up again. Nothing was filed.`,
+  };
+}
+
+/** Where `parkOnQuestion` reads the row a task turn holds. */
+export interface ParkOnQuestionOptions {
+  /**
+   * The ledger the running task turn's row is on, or `undefined` when this
+   * flow can't reach it. Resolve from server-set state only (a task session's
+   * birth fields, say), never from input (BP-031).
+   */
+  resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>;
+}
+
+/**
+ * The worker's question park (FIX-1817 S1): `parkOnQuestion({ question })`,
+ * for a task turn, and the rule for when a turn is offered it.
+ *
+ * - **Which row.** The one the turn holds, never a task id from input. Inside
+ *   a board's own drain that is the claim its worker body stamped
+ *   (`currentWorkerClaim`). On a handed-off turn it is the row whose run
+ *   link names this session and this request, on this attempt: the
+ *   link the receiving gate wrote from the run's own context, fenced by the
+ *   claim, before the turn began. The ticket is minted from that row, as the
+ *   gate mints its own. So a person's message into a task session, another
+ *   request, holds no row and has no tool.
+ * - **The park.** `awaitReview` with the question, fenced by that ticket and
+ *   to a running row (`fromRunning`), so it is declined once the claim was
+ *   displaced (a cancel or reassign landed) and once the row has already
+ *   parked this attempt, for its question or for anything else. A task waits
+ *   on one thing at a time.
+ * - **When it is offered** (`offered`). On a task turn ({@link isTaskTurn})
+ *   that holds a running row, when the row isn't asked: in v1 an asked task's worker
+ *   answers with what it has, or fails (epic ER-22).
+ *
+ * The turn's own answer after a park is not recorded: the board refuses to
+ * settle a parked row from its worker's result (FIX-1234).
+ */
+export function createParkOnQuestion(options: ParkOnQuestionOptions) {
+  const claimedRow = async (
+    ctx: BlockContext,
+  ): Promise<{ claim: TaskClaimTicket; ledger: TaskCollectionRef; row: Task | undefined } | undefined> => {
+    if (!isTaskTurn(ctx)) return undefined;
+    const ledger = await options.resolve(ctx);
+    if (ledger === undefined) return undefined;
+    const stamped = currentWorkerClaim();
+    if (stamped !== undefined) {
+      if (stamped.collectionId !== ledger.collectionId || stamped.partition !== ledger.partition) return undefined;
+      return { claim: stamped, ledger, row: ledger.get(stamped.taskId) };
+    }
+    const sessionId = ctx.session?.identity?.id;
+    const requestId = ctx.request?.identity?.id;
+    if (sessionId === undefined || requestId === undefined) return undefined;
+    // Any status: a row this turn held and that has since parked, settled or
+    // been cancelled is still this turn's, and the park declines naming it.
+    const row = ledger
+      .list()
+      .find((task) => task.run?.sessionId === sessionId && task.run.requestId === requestId && task.run.attempt === task.attempts);
+    if (row === undefined) return undefined;
+    return { claim: ticketForClaim(ledger.collectionId, row, ledger.partition), ledger, row };
+  };
+
+  const tool = handler({
+    name: "parkOnQuestion",
+    description:
+      "Stop work on the task you are running and ask the person who assigned it a question " +
+      "you can't go on without: which region, which account, whether you may delete " +
+      "something. The task waits, and your next turn in this session is their answer. " +
+      "Use it instead of guessing. After calling it, end your turn with a short note; " +
+      "nothing you answer now is recorded as the task's result.",
+    inputSchema: z.object({ question: z.string().min(1) }),
+    outputSchema: z.union([
+      z.object({ ok: z.literal(true), taskId: z.string(), status: z.literal("parked") }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+    execute: async (input, ctx) => {
+      const held = await claimedRow(ctx);
+      if (held === undefined) {
+        return {
+          ok: false as const,
+          error: "not_a_task_turn: this turn isn't running a task, so there is no task to park.",
+        };
+      }
+      const { claim, ledger, row } = held;
+      if (row?.ask !== undefined) {
+        return {
+          ok: false as const,
+          error:
+            `asked_task: task "${claim.taskId}" was handed to you by a turn that is waiting ` +
+            `for it. Answer with what you have, or fail it.`,
+        };
+      }
+      const outcome: TaskWriteOutcome | undefined = await ledger.awaitReview(claim.taskId, input.question, {
+        claim,
+        fromRunning: true,
+        onQuestion: true,
+      });
+      if (outcome == null || outcome.outcome === "declined") {
+        const status = outcome?.status ?? ledger.get(claim.taskId)?.status ?? "unknown";
+        return {
+          ok: false as const,
+          error:
+            `park_declined: task "${claim.taskId}" is ${status}, so it can't wait on your ` +
+            `question now. Nothing was written.`,
+        };
+      }
+      return { ok: true as const, taskId: claim.taskId, status: "parked" as const };
+    },
+  });
+
+  return {
+    /** The tool, for a task turn's tool list. */
+    tool,
+    /** Whether the running turn is offered the tool: a task turn holding a claim on a row that isn't asked. */
+    offered: async (ctx: BlockContext): Promise<boolean> => {
+      const held = await claimedRow(ctx);
+      return held !== undefined && held.row?.status === "in_progress" && held.row.ask === undefined;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Tool factory — closes over the resolver so a capability instance targets a
 // specific board (own-state default or an injected shared board).
 // ---------------------------------------------------------------------------
@@ -487,9 +780,9 @@ function buildTaskTools(
 ) {
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
-   * The eight names, optionally board-qualified.
+   * The nine names, optionally board-qualified.
    *
-   * A generator asserts its tool names are unique, and these eight are fixed
+   * A generator asserts its tool names are unique, and these nine are fixed
    * strings, so composing two boards' capabilities into one block collides on
    * every one of them. A suffix is what makes a second board addressable at
    * all; without one the surface is single-board by construction.
@@ -532,7 +825,14 @@ function buildTaskTools(
   ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
     const collection = await resolve(ctx);
     if (!collection) return noBoardError;
-    if (!collection.get(taskId)) return taskNotFoundError(taskId);
+    const current = collection.get(taskId);
+    if (!current) return taskNotFoundError(taskId);
+    // An answered task waits to run again in the session that asked, which
+    // its assignee keys: moving it before that run would hand the answer to
+    // a session that never saw the task or the question (FIX-1817).
+    if (options?.assignee !== undefined && current.answered === true && current.status !== "in_progress" && !isTerminalStatus(current.status)) {
+      return awaitingAnswerError(taskId);
+    }
     // Read only when there is an assignee to check: a status change or a
     // label write asks nothing of the roster, so a per-call roster is not
     // read for it.
@@ -615,6 +915,13 @@ function buildTaskTools(
       .optional()
       .describe("Structured payload handed to the worker as the task's input."),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    followUpOf: z
+      .string()
+      .optional()
+      .describe(
+        "The id of a finished task this one follows up. It runs in that task's session, " +
+          "with its worker, so leave assignee unset.",
+      ),
   };
   const waitFields = {
     waitForResponse: z
@@ -659,8 +966,31 @@ function buildTaskTools(
             "Set waitForResponse: true, or drop timeoutMs. Nothing was filed.",
         };
       }
+      // A follow-up takes the finished task's worker: another worker is
+      // another session. Refused at input, before the board is read.
+      if (input.followUpOf !== undefined && input.assignee !== undefined) {
+        return followUpAssigneeError(input.followUpOf);
+      }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
+      // The follow-up's checks run before anything is filed, in this board's
+      // partition only, so a refusal stores nothing.
+      let followUp: { root: string; assignee: string | undefined; id: string } | undefined;
+      if (input.followUpOf !== undefined) {
+        // On the waiting path the checks and the id they pick are recorded
+        // with the call, so the replay after the answer reuses them instead of
+        // re-counting against a board that now holds this follow-up.
+        const followUpOf = input.followUpOf;
+        const check = async () => resolveFollowUp(collection, followUpOf);
+        const call = input.waitForResponse === true ? toolCallOf(ctx) : undefined;
+        const resolved =
+          call !== undefined && ctx.runOnce !== undefined
+            ? await ctx.runOnce(`fsd.followUp:${call.logicalId}`, check)
+            : await check();
+        if ("error" in resolved) return resolved;
+        followUp = resolved;
+      }
+      const assignee = followUp !== undefined ? followUp.assignee : input.assignee;
       // Failure order is deliberate and uniform across the tools that touch an
       // assignee: no board (above) -> unknown assignee -> creation cap.
       //
@@ -673,13 +1003,14 @@ function buildTaskTools(
       // would then still hit after fixing it. `checkAssignee` is a pure
       // pre-flight, so running it first costs nothing.
       const bad =
-        input.assignee === undefined
+        assignee === undefined
           ? undefined
-          : checkAssignee(input.assignee, await rosterFor(roster, ctx));
+          : checkAssignee(assignee, await rosterFor(roster, ctx));
       if (bad) return bad;
       const init = {
         goal: input.goal,
-        ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+        ...(assignee !== undefined ? { assignee } : {}),
+        ...(followUp !== undefined ? { id: followUp.id, followUpOf: followUp.root } : {}),
         ...(input.deps !== undefined ? { deps: input.deps } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
@@ -704,6 +1035,11 @@ function buildTaskTools(
         // to free enqueue slots, or stop planning at the lifetime ceiling. Every
         // other throw still propagates.
         if (err instanceof TaskCapExceededError) return capError(err);
+        // A follow-up's id was taken by one filed at the same moment: that
+        // one holds the session now (see `resolveFollowUp`).
+        if (followUp !== undefined && isTakenTaskId(err)) {
+          return followUpTakenError(err, collection, followUp.id, followUp.root, input.followUpOf!);
+        }
         throw err;
       }
     },
@@ -876,11 +1212,63 @@ function buildTaskTools(
     },
   });
 
-  return [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks];
+  const answerTask = defineTool({
+    name: named("answerTask"),
+    description:
+      "Answer a task that is parked on its worker's question. The task goes back in the " +
+      "queue with your answer, and its worker picks it up in the same session, with " +
+      "everything it did before it asked. Answering does not use up the task's retries. " +
+      "A task that isn't waiting on a question, or one already answered, is turned away.",
+    inputSchema: z.object({ taskId: z.string(), answer: z.string() }),
+    outputSchema: okOrError,
+    parentStateSchema,
+    execute: async (input, ctx) => {
+      const collection = await resolve(ctx);
+      if (!collection) return noBoardError;
+      const task = collection.get(input.taskId);
+      if (!task) return taskNotFoundError(input.taskId);
+      const refused = notParkedOnQuestion(task);
+      if (refused !== undefined) return refused;
+      // The question this answer is for is the park read above, on its
+      // attempt: the write is fenced by a ticket minted from that read, so an
+      // answer that arrives after the task was answered, ran again and parked
+      // on a newer question is refused inside the atomic write rather than
+      // taken as the newer question's answer. Server-derived: the row, never
+      // input. The fenced `unpark` also refuses a row that left `parked`.
+      const outcome: TaskWriteOutcome | undefined = await collection.unpark(input.taskId, input.answer, {
+        answer: true,
+        claim: ticketForClaim(collection.collectionId, task, collection.partition),
+      });
+      if (outcome != null && outcome.outcome === "declined") {
+        if (outcome.reason === "terminal") return declinedWriteToolError(input.taskId, outcome, STATUS_CLAUSE);
+        if (outcome.status === "parked") {
+          return {
+            ok: false as const,
+            taskId: input.taskId,
+            error:
+              `not_parked_on_question: task "${input.taskId}" has moved on to a newer question ` +
+              `since this answer was given. Nothing was written.`,
+          };
+        }
+        return (
+          notParkedOnQuestion({ ...task, status: outcome.status }) ?? {
+            ok: false as const,
+            taskId: input.taskId,
+            error:
+              `task_write_declined: the answer to task "${input.taskId}" was refused ` +
+              `(${outcome.reason}); the task is ${outcome.status}. Nothing was written.`,
+          }
+        );
+      }
+      return { ok: true as const };
+    },
+  });
+
+  return [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, answerTask];
 }
 
 /**
- * Build the eight `taskTools` handler tools directly (for pushing into a
+ * Build the nine `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
  *
@@ -936,7 +1324,7 @@ export function createTaskToolsCapability(
 }
 
 /**
- * The eight task tools as a turn gets them: two lists of the same eight
+ * The nine task tools as a turn gets them: two lists of the same nine
  * names, built once, and the one the turn's host can serve. `addTask` carries
  * `waitForResponse` and `timeoutMs` only where an ask can be held and bounded
  * ({@link canHoldAsk}); anywhere else the list is {@link buildTaskToolsList}'s.
@@ -967,11 +1355,11 @@ export function taskToolsForTurn(
 export const taskTools = createTaskToolsCapability();
 
 // ---------------------------------------------------------------------------
-// The eight tools as flow actions
+// The nine tools as flow actions
 // ---------------------------------------------------------------------------
 
 /**
- * The qualifier that makes one board's eight task tools distinct from
+ * The qualifier that makes one board's nine task tools distinct from
  * another's: the board's collection id with every character a provider does
  * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
  * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
@@ -996,7 +1384,7 @@ export interface TaskToolActionsBoard {
 }
 
 /**
- * A durable board's eight task tools as a flow `actions` map, named
+ * A durable board's nine task tools as a flow `actions` map, named
  * `<tool>_<suffix>` ({@link taskToolSuffix}). Spread it into `defineFlow`'s
  * `actions` to let a caller — a person in the DevTool, an app's own screen —
  * change a task from outside the run that works it.

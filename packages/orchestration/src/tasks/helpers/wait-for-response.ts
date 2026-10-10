@@ -106,7 +106,7 @@ export type WaitForResponseResult =
  * stamps the key), so there it is derived from the block identity, to the same
  * value. The step key is derived from the block path.
  */
-function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
+export function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
   const instanceId = ctx._blockIdentity?.blockInstanceId;
   if (instanceId === undefined) return undefined;
   const parsed = parseBlockInstanceId(instanceId);
@@ -165,7 +165,7 @@ export interface AddTaskAndWaitOptions {
 export async function addTaskAndWait(
   ctx: BlockContext,
   collection: TaskCollectionRef,
-  init: Omit<TaskInit, "id" | "ask">,
+  init: Omit<TaskInit, "ask">,
   options: AddTaskAndWaitOptions = {}
 ): Promise<WaitForResponseResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
@@ -221,7 +221,10 @@ export async function addTaskAndWait(
   // reads the first filing back. Keyed on the call's logical id, which the
   // replay shares; never on the attempt.
   const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
-    const taskId = generateId("task");
+    // A caller's own id is kept (a follow-up's `<root>-f<n>`, whose one
+    // insert is what keeps a session to one task); otherwise one is minted.
+    // Chosen here, inside the record, so a replay reuses the first filing's id.
+    const taskId = init.id ?? generateId("task");
     const gateId = askGateId(collection.collectionId, taskId);
     const deadline = Date.now() + timeoutMs;
     await collection.addTask({ ...init, id: taskId, ask: { gateId, deadline } });
