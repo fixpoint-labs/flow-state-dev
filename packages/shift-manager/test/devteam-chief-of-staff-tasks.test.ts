@@ -241,8 +241,8 @@ const CODER = "eng.coder";
 const MARKER_FILE = "MARKER.txt";
 const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
 
-/** What the scripted judge answers, in order; past the end, `done`. `throw` fails the call. */
-type Verdict = { choice: string; confidence?: number } | "throw";
+/** What the scripted judge answers, in order, and why when not done; past the end, `done`. `throw` fails the call. */
+type Verdict = { choice: string; why?: string; confidence?: number } | "throw";
 
 /** A scripted model: the judgment's calls, a helper's fixed line, and the judge's verdicts, recording what it was asked. */
 function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdict[] = [], judged: unknown[] = []): ModelResolver {
@@ -261,7 +261,11 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
       verdict += 1;
       if (next === "throw") throw new Error("the gateway is down");
       return {
-        answers: { verdict: { type: "choice", choice: next.choice } },
+        answers: {
+          verdict: { type: "choice", choice: next.choice },
+          // Jev answers every question it is asked; why is read only for not done.
+          why: { type: "choice", choice: next.why ?? "off-target" },
+        },
         usage: { inputTokens: 1, outputTokens: 1 },
         warnings: [],
         providerMetadata: next.confidence === undefined ? undefined : { typesafe: { confidence: { verdict: next.confidence } } },
@@ -453,7 +457,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
 
   it("retries a run the judge says missed the goal with its reason, and ends errored with that reason on the line", async () => {
     const stub = harnessStub({ finalMessage: "Storefront is a project." });
-    const notDone = { choice: "off-target", confidence: 0.9 };
+    const notDone = { choice: "not-done", why: "off-target", confidence: 0.9 };
     const { lab } = await openCoderLab(
       scriptedCoder([fileForCoder("explain the checkout flow", { project: STOREFRONT })], [notDone, notDone]),
       stub,
@@ -467,7 +471,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
   });
 
   it("closes as done on a miss under the floor, and on the phase's check alone when the judge fails", async () => {
-    for (const verdict of [{ choice: "off-target", confidence: 0.5 }, "throw"] as Verdict[]) {
+    for (const verdict of [{ choice: "not-done", why: "off-target", confidence: 0.5 }, "throw"] as Verdict[]) {
       const stub = readsMarker();
       const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })], [verdict]), stub);
       const { task, taskId } = await fileAndSettle(lab);
@@ -481,7 +485,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
   it("with no judge, an answer that misses the goal closes as completed (the control's red state)", async () => {
     const stub = harnessStub({ finalMessage: "Storefront is a project." });
     const { lab } = await openCoderLab(
-      scriptedCoder([fileForCoder("explain the checkout flow", { project: STOREFRONT })], [{ choice: "off-target", confidence: 0.9 }]),
+      scriptedCoder([fileForCoder("explain the checkout flow", { project: STOREFRONT })], [{ choice: "not-done", why: "off-target", confidence: 0.9 }]),
       stub,
       { withoutJudge: true },
     );
@@ -558,7 +562,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(stub.runs).toHaveLength(0);
   });
 
-  it("runs a feature row and a conversation's task at once, each in its own checkout", async () => {
+  it("runs a feature row and a conversation's task at once, each in its own checkout, and judges only the conversation's", async () => {
+    const judged: unknown[] = [];
     let release: () => void = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
     const stub = readsMarker({
@@ -572,7 +577,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
         await held;
       },
     });
-    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })], [], judged), stub);
     const id = await conversation(lab);
     expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     await until(async () => stub.runs.length, (n) => n >= 1, "the conversation's run");
@@ -599,6 +604,11 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await quiet(lab);
     expect(stub.runs).toHaveLength(2);
     expect(stub.runs[0]!.cwd).not.toBe(stub.runs[1]!.cwd);
+    // A feature row keeps today's check: the judge reads the conversation's task alone.
+    expect(feature?.output).toMatchObject({ judged: false });
+    expect(judged).toHaveLength(1);
+    expect(JSON.stringify(judged[0])).toContain("look at the repo");
+    expect(JSON.stringify(judged[0])).not.toContain("Add a greeting.");
   });
 
   it("refuses to open with a harness that isn't detached, naming the entry", async () => {
