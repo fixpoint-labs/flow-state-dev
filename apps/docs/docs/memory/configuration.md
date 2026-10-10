@@ -170,6 +170,7 @@ User-scoped past sessions stored as encoded `Episode` records. Pass `true` for d
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `scope` | `"user" \| "org"` | `"user"` | Persistence scope for episodes |
+| `flowIsolation` | `boolean` | follows `isolateUserState` / `isolateOrgState` | `true` keeps episodes per flow, `false` shares them across flows. See [Sharing a tier across flows](#sharing-a-tier-across-flows) |
 | `significanceThreshold` | `number` | `0.6` | Minimum importance for an item to be encoded as an episode |
 | `maxEpisodes` | `number` | `200` | Cap on retained episodes |
 
@@ -180,6 +181,7 @@ User-scoped consolidated facts. Periodically, the system runs an LLM consolidati
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `scope` | `"user" \| "org"` | inherited from episodic, else `"user"` | Persistence scope for facts |
+| `flowIsolation` | `boolean` | follows `isolateUserState` / `isolateOrgState` (not inherited from episodic) | `true` keeps facts per flow, `false` shares them across flows. See [Sharing a tier across flows](#sharing-a-tier-across-flows) |
 | `consolidation.episodicThreshold` | `number` | `5` | Run consolidation after N new episodic entries |
 | `consolidation.onEviction` | `boolean` | `true` | Also consolidate when persistent items are evicted from working memory |
 | `consolidation.minInterval` | `number` | framework default | Don't consolidate more than once per N turns |
@@ -199,6 +201,8 @@ User-scoped rolling summary that gets regenerated periodically. The digest is th
 | `topN.facts` | `number` | `30` | Top-N semantic facts (by reinforcement count) fed to regeneration |
 | `topN.episodes` | `number` | `10` | Top-N recent-and-significant episodes fed to regeneration |
 
+The digest has no `flowIsolation` of its own, because it summarizes episodes and facts. It is kept per flow copy when either `episodic` or `semantic` sets `flowIsolation: true`, shared across flows only when both set `false`, and follows the flow's default otherwise. When `episodic` sits at a different scope from `semantic` and sets nothing, the digest is kept per flow copy, because it can't follow the other scope's flag. So a flow's isolated episodes never reach another flow's digest.
+
 ### `hygiene`
 
 Time-based maintenance for the semantic and episodic stores. On by default. Decays the confidence of stable facts as time-since-reinforcement grows, and applies durability-based TTLs to episodic episodes. See [Hygiene](./hygiene) for the full picture and how to tune it.
@@ -206,6 +210,41 @@ Time-based maintenance for the semantic and episodic stores. On by default. Deca
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `hygiene` | `HygieneConfig \| true \| false` | `true` | Pass `false` to revert to pre-hygiene behavior (no decay, unbounded growth) |
+
+### Sharing a tier across flows
+
+Episodic, semantic and digest memory live at user (or org) scope, so by default they follow the flow's own setting: shared by every flow on the server for that user, or kept to the flow when it sets `isolateUserState: true` (`isolateOrgState` at org scope). See [Sharing State Across Flows](/docs/advanced/flow-isolation) for what those flags do.
+
+`flowIsolation` on the `episodic` or `semantic` config overrides that default for one tier:
+
+- **`true`**: the tier is kept per flow copy (each flow registered on the server, or each named copy of a collection flow), even when the flow doesn't isolate its user or org state.
+- **`false`**: the tier is shared by every flow for that user (or org), even when the flow sets `isolateUserState: true`.
+- **Omitted**: the tier follows the flow's `isolateUserState` / `isolateOrgState`.
+
+A chief-of-staff flow that keeps its user state to itself might keep its own episodes but read and add to the facts the person's other flows share:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { system } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: true,
+  episodic: true,                       // follows isolateUserState: kept to this flow
+  semantic: { flowIsolation: false },   // shared with the person's other flows
+});
+
+defineFlow({
+  kind: "coordinator",
+  isolateUserState: true,
+  resources: { ...mem.sessionResources, ...mem.userResources },
+  actions: { /* ... */ },
+});
+```
+
+The reverse works too: leave the flow shared and set `episodic: { flowIsolation: true }` to keep one flow's episodes out of the others. Each tier is set on its own, so `semantic` doesn't pick up the `flowIsolation` you give `episodic`. Working memory is per session and has no `flowIsolation`.
+
+The per-tier capability factories take the same field, as in `createEpisodicMemoryCapability({ scope: "user", flowIsolation: true })`, and so do `createSemanticMemoryCapability` and `createDigestMemoryCapability`. The resource factories take it in an options argument (`MemoryResourceOptions`): `createEpisodicMemoryResource("user", { flowIsolation: true })`, the same for `createDigestMemoryResource`, and as the third argument of `createSemanticMemoryResource(scope, relations, options)`. Composing tiers by hand this way skips the digest rule above, so give the digest `flowIsolation: true` whenever either source is isolated.
 
 ## Capability presets
 

@@ -79,6 +79,7 @@ export {
   createEpisodicMemoryResource,
 } from './episodic-memory'
 export type { Episode, EpisodicMemoryState } from './episodic-memory'
+export type { MemoryResourceOptions } from './resource-options'
 
 // ---------------------------------------------------------------------------
 // Layer 1: Memory system tracking resource

@@ -312,9 +312,9 @@ export interface AgentWorkerFlowOptions {
    * data behind under the old name — and so does flipping this flag on a
    * roster already in use.
    *
-   * All-or-nothing for the kind: a roster is either all-isolated or
-   * all-shared, never a mix. Mixing would need each resource to carry its own
-   * `flowIsolation`, which is FIX-1396's.
+   * A memory tier that declares its own `flowIsolation`
+   * (`system({ semantic: { flowIsolation: false } })`) wins over this flag in
+   * both directions, so one kind can isolate some tiers and share others.
    */
   isolateUserState?: boolean;
   /**

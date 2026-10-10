@@ -25,6 +25,7 @@ import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFI
 import type { MemorySystemState, ReadMessage } from './memory-system'
 import { findBestOverlap } from '@flow-state-dev/core/helpers'
 import { canonicalizeSubject, edgesOf } from './internal/helpers'
+import { episodicResourceOf, semanticResourceOf } from './internal/tier-resources'
 import { createDigestMemoryResource } from './digest-memory'
 import { digestRegenerate, type DigestBlocksConfig } from './digest-blocks'
 import { memorySystemJanitor, type ResolvedHygieneConfig } from './janitor-blocks'
@@ -56,6 +57,8 @@ export interface MemorySystemBlocksConfig {
   working: WorkingMemoryHelperConfig
   episodic?: {
     scope: 'user' | 'org'
+    /** The tier's own `flowIsolation`; undefined takes the flow's default. */
+    flowIsolation?: boolean
     significanceThreshold: number
     maxEpisodes: number
   }
@@ -64,6 +67,8 @@ export interface MemorySystemBlocksConfig {
   /** Semantic memory config. */
   semantic?: {
     scope: 'user' | 'org'
+    /** The tier's own `flowIsolation`; undefined takes the flow's default. */
+    flowIsolation?: boolean
     consolidation: {
       episodicThreshold: number
       onEviction: boolean
@@ -628,9 +633,7 @@ export function memorySystemObserve(
   config: MemorySystemBlocksConfig,
   readWindow?: (input: unknown, ctx: { parent?: { input?: unknown } }) => string | undefined,
 ) {
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
+  const episodicResource = episodicResourceOf(config)
 
   const sessionResources = {
     workingMemory: workingMemoryResource,
@@ -734,13 +737,9 @@ export function memorySystemReflect(
   config: MemorySystemBlocksConfig,
   readJudged?: (ctx: { parent?: { input?: unknown } }) => Pick<JudgedWindow, 'boundary' | 'judged'>,
 ) {
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
+  const episodicResource = episodicResourceOf(config)
 
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
+  const semanticResource = semanticResourceOf(config)
 
   const helperConfig: WorkingMemoryHelperConfig = {
     capacity: config.working.capacity,
@@ -983,13 +982,9 @@ function withDigestRegenerate<S extends { step: (b: any) => any }>(
  * Checks whether consolidation should run based on trigger conditions.
  */
 export function consolidationGuard(config: MemorySystemBlocksConfig) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
+  const semanticResource = semanticResourceOf(config)
 
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
+  const episodicResource = episodicResourceOf(config)
 
   const guardOutputSchema = z.object({
     triggered: z.boolean(),
@@ -1215,13 +1210,9 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
  * Processes the consolidation output and writes to stores.
  */
 export function consolidationPersist(config: MemorySystemBlocksConfig) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
+  const semanticResource = semanticResourceOf(config)
 
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
+  const episodicResource = episodicResourceOf(config)
 
   return handler({
     name: config.name ? `${config.name}/consolidate/persist` : 'memory/consolidate/persist',
@@ -1477,9 +1468,7 @@ export type PruneOutput = z.infer<typeof pruneOutputSchema>
  * and passes all facts forward for evaluation.
  */
 export function pruneGuard(config: MemorySystemBlocksConfig) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
+  const semanticResource = semanticResourceOf(config)
 
   const pruneGuardOutputSchema = z.object({
     triggered: z.boolean(),
@@ -1587,9 +1576,7 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
  * Processes removals and merges from the prune generator output.
  */
 export function prunePersist(config: MemorySystemBlocksConfig) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
+  const semanticResource = semanticResourceOf(config)
 
   return handler({
     name: config.name ? `${config.name}/prune/persist` : 'memory/prune/persist',
@@ -1683,9 +1670,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
  */
 export function memorySystemPrune(config: MemorySystemBlocksConfig) {
   // Ensure all prune blocks share the same semantic resource reference
-  const sharedResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
+  const sharedResource = semanticResourceOf(config)
 
   const pruneConfig = { ...config, _semanticResource: sharedResource }
 

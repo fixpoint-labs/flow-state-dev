@@ -271,7 +271,7 @@ const coordinator = defineCoordinatorFlow({
 
 - **`mem.capability`** puts working memory and a rolling digest of earlier conversations into each turn's `<memory>` context.
 - **`memory/recall`** is the [recall tool](../memory/recall-tool.md), which searches what memory has stored. The chief of staff holds it only when its `tools:` line names it: `tools: [hire, fire, post-to-mailbox, memory/recall]`.
-- **`isolateUserState: true`** keeps what the coordinator remembers per person, separate from that person's other flows. Every worker on this coordinator flow shares that memory.
+- **`isolateUserState: true`** keeps what the coordinator remembers per person, separate from that person's other flows. Every worker on this coordinator flow shares that memory. A tier can set its own `flowIsolation` instead, for example to keep episodes here and share semantic facts with the person's other flows: see [Sharing a tier across flows](../memory/configuration.md#sharing-a-tier-across-flows).
 - **`afterAnswer`** records each conversation into memory after the chief of staff answers. It runs memory's capture pipeline, which makes extra model calls after every turn. Leave it out and nothing is written: working memory, the digest and `memory/recall` stay empty unless something else in your app stores into that same memory.
 
 Then tell it in the `WORKER.md` body what counts as memory, for example:
