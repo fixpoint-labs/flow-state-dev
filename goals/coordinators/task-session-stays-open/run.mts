@@ -77,11 +77,8 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
-        // The answer's place is kept, so the turn reads an answered question and finishes as the plain run
-        // does; only what it was answered differs. Handed nothing, or the brief again, the model either gave
-        // up or asked again, and asking again reddened most of the check (FIX-1867).
-        from: String.raw`if \(task\.answer !== (?:undefined|void 0)\) return`,
-        to: String.raw`if (task.answer !== undefined) return "Answer to your question:\n\nUse ${DECOY_REGION}."; if (false) return`,
+        from: String.raw`\$\{task\.answer\}`,
+        to: `Use ${DECOY_REGION}.`,
       },
     ],
     does: `the answer re-queues the task in its session, but the re-entered turn is handed an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,
