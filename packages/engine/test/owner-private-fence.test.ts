@@ -175,6 +175,16 @@ describe("key fence · a process that never declared an owner-private collection
       search: async () => ({ hits: [{ key: "~alice/research", state: { text: ALICE_TEXT } }] }),
       client: { state: { read: true }, content: { read: true } },
     }),
+    // A projected collection whose template is Alice's row, by storage key.
+    // `/state` resolves it from the scope's persisted content, not a handle.
+    templated: defineProjectedResourceCollection({
+      pattern: "rack/*",
+      scope: "org",
+      stateSchema: passthrough,
+      read: async ({ key }: { key: string }) => (key === "plain" ? { text: "plain" } : null),
+      search: async () => ({ hits: [] }),
+      contentTemplateRef: ALICE_KEY,
+    }),
     // A single resource whose template is read from the run's content cache by
     // storage key: a reader of the raw seed, not of any collection handle.
     peek: defineResource({
@@ -257,6 +267,12 @@ describe("key fence · a process that never declared an owner-private collection
               byName: wide.getOptional(aliceParams) === undefined ? "absent" : "present",
               get,
             };
+          },
+          templateSeen: async (ctx: { resources: Record<string, unknown> }) => {
+            const templated = ctx.resources.templated as {
+              getOptional(key: string): Promise<{ readContentRaw(): Promise<string | null> } | undefined>;
+            };
+            return (await (await templated.getOptional("plain"))?.readContentRaw()) ?? null;
           },
           projectedSeen: async (ctx: { resources: Record<string, unknown> }) => {
             const projected = ctx.resources.projected as {
@@ -382,6 +398,15 @@ describe("key fence · a process that never declared an owner-private collection
     expect(snapshot.json.resources.org.notesWide.count).toBe(1);
     expect(snapshot.json.clientData.org.wideSeen).toEqual({ list: [], count: 0, byName: "absent", get: REFUSAL });
     expect(snapshot.json.clientData.org.projectedSeen).toEqual({ byName: "absent", get: REFUSAL });
+    expect(snapshot.json.clientData.org.templateSeen).toBeNull();
+  });
+
+  it("the session state snapshot resolves a template from the owner's row only for the owner", async () => {
+    const h = await bootOpen();
+    const aliceSession = await h.open("open", "alice");
+    const snapshot = await h.call("alice", "GET", ["sessions", aliceSession, "state"]);
+    expect(snapshot.status).toBe(200);
+    expect(snapshot.json.clientData.org.templateSeen).toBe(ALICE_TEXT);
   });
 
   it("the debug endpoints list, count and read without the row", async () => {
