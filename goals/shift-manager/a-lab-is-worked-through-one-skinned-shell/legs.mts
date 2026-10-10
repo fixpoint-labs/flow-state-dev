@@ -14,6 +14,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Browser, Page } from "playwright";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
+import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { pickShift } from "../../lib/shift-manager.mts";
@@ -376,6 +378,30 @@ async function runningRow(api: LabApi, tree: Tree, userId: string, withinMs: num
     const store = await readStore(api, tree, userId);
     const row = Object.values(store.rows).flat().find((r) => r.status === "in_progress" && r.run !== null);
     if (row !== undefined) return row;
+  }
+  return undefined;
+}
+
+/**
+ * A running row on the lead's conversation board, for a tree whose work is
+ * filed there rather than on a mailbox's board: the lead is the worker whose
+ * file names delegates (no coordinator), and its board is the person's
+ * conversation ledger, read through that conversation and kept to its rows.
+ */
+async function conversationRunningRow(api: LabApi, root: string, userId: string, withinMs: number): Promise<{ id: string } | undefined> {
+  const roster = await readDeclaredRoster(root);
+  const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
+  if (lead === undefined) return undefined;
+  for (const until = Date.now() + withinMs; Date.now() < until; await sleep(500)) {
+    const sessions = ((await api.get(`/sessions?userId=${encodeURIComponent(userId)}`)).sessions ?? []) as Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
+    const conversation = sessions.find((s) => s.flowKind === lead.declared.flow && s.parentSessionId == null)?.id;
+    if (conversation === undefined) continue;
+    const body = await api.get(`/sessions/${encodeURIComponent(conversation)}/resources/tasks?limit=200`);
+    const row = ((body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>)
+      .filter((i) => sessionIdOfFiling(decodeURIComponent(i.topic.split("/")[0] ?? "")) === conversation)
+      .map((i) => i.clientData ?? {})
+      .find((r) => r.status === "in_progress" && r.run != null);
+    if (row !== undefined) return { id: String(row.id) };
   }
   return undefined;
 }
@@ -833,10 +859,9 @@ export async function legC(ctx: LegCtx): Promise<void> {
     const runLab = await startShiftManager(ctx.scratch, `c-run-lab-${shift}`, { config: RUN_LAB_CONFIG, pages: ctx.pages, shift, env: KEYLESS });
     const second = await newPage(ctx.browser);
     try {
-      const lab = await readTree(TREES.runLab);
       await open(second.page, runLab.origin, "/tasks");
       const { userId, bearer } = await injected(second.page);
-      const row = await runningRow(labApi(runLab.origin, bearer), lab, userId, 30_000);
+      const row = await conversationRunningRow(labApi(runLab.origin, bearer), TREES.runLab, userId, 30_000);
       if (row === undefined) report.fail("c:reach", `[${shift}] the run-lab's board never held a running row`);
       else {
         await second.page.getByTestId("nav-tasks").click();
