@@ -722,13 +722,18 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
   });
 
   it("an overdue ask gate left pending on a finished turn is expired, not retried every tick", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() - 1_000 });
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, "ask");
     // The turn ended without its gate resolving (a stop that ended it before
     // its replay reached the ask).
     await h.stores.request.setFieldsIfStatus(requestId, { status: "aborted" }, ["suspended"], Date.now());
+    // Past the deadline, so the tick finds the gate overdue. (A deadline
+    // already past at park time is stored as 1 ms ahead, which a tick in the
+    // same millisecond would still read as not due.)
+    await vi.advanceTimersByTimeAsync(31_000);
 
     const pending = await runTick(tickArgs(h));
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
