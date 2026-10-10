@@ -329,7 +329,7 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
-A dispatch run is an ordinary session — of this flow, or of the flow the seat names with `flowKind`. Which session a row lands in is derived from the seat's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
+A dispatch run is an ordinary session — of this flow, or of the flow the seat names with `flowKind`. Which session a row lands in is derived from the seat's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
 A seat hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. The stamped address is `type: "task"` — do not set `type` on the seat. A board can mix seats that hand off with seats that run inline:
 
@@ -379,7 +379,7 @@ export default defineFlow({
 
 | `session` | How many runs | Reach for it when |
 |---|---|---|
-| `"per-task"` | one per task | tasks are independent |
+| `"per-task"` | one per task; a follow-up task runs in the session of the task it follows | tasks are independent |
 | `"per-worker"` | one per seat, shared by every task the seat runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several seats, or a key you compute from the task |
 

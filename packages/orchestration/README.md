@@ -469,7 +469,7 @@ export default defineFlow({
 
 | `session` | Child session | Use it when |
 |---|---|---|
-| `"per-task"` | one per row, keyed on the task id | rows are independent |
+| `"per-task"` | one per row, keyed on the task id; a task filed with `followUpOf` runs in its root task's child | rows are independent |
 | `"per-worker"` | one per seat, shared by every row the seat runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across seats |
 
