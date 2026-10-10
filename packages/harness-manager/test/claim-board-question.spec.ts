@@ -3,7 +3,7 @@
  * board, the way a conversation's board parks any task, and the person's
  * answer comes back through the row.
  *
- * The fixed board's question inbox is that board's own channel. A
+ * The fixed board's questions go to its own inbox. A
  * conversation already has one: the row parks on the worker's question, the
  * conversation tells the person, and their answer re-queues the row with it.
  * The next attempt is handed that answer where answered inbox questions go,

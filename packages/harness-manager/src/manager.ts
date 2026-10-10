@@ -1694,7 +1694,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
    * answer re-queues the row with it (`input.answer` on the next attempt).
    * The question is kept on the run record first, so the next attempt can
    * pair the answer with it. No inbox row and no announcement: those are the
-   * fixed board's channel.
+   * fixed board's route.
    */
   const parkOnBoardQuestion = async (ctx: BlockContext, identity: AttemptIdentity, question: string): Promise<void> => {
     await fenced(writeRunRow(ctx, identity, { question }), "the run's question was recorded");
@@ -1996,7 +1996,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // After the fenced open, not before: a superseded attempt stops there and
       // must not reach in and withdraw its replacement's question.
       //
-      // The inbox is the fixed board's channel only: a board read from the
+      // The inbox serves the fixed board only: a board read from the
       // claim parks its questions on the row itself.
       if (claim === null) await withdrawEarlierQuestions(ctx, issue, phaseName, input.attempts);
     },
