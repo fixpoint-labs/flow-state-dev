@@ -126,11 +126,8 @@ export type AskLabOptions = {
   /**
    * Projects to create once the inventory is open, each as `owner` (default
    * the Lab's person) through the project writes' own `createProject`.
-   * `unbound` creates it through a second host on the same store that serves
-   * no mailbox kind, so its owner's talk session is never minted: the row a
-   * failed mint leaves behind.
    */
-  projects?: Array<CreateProjectInput & { owner?: string; unbound?: boolean }>;
+  projects?: Array<CreateProjectInput & { owner?: string }>;
 };
 
 /** The flow kind the ask-lab creates projects through. */
@@ -233,23 +230,16 @@ export async function openAskLab(options: AskLabOptions = {}) {
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 
-    // A host on the same store that serves no mailbox kind: a create there
-    // commits its row, and its bind of the owner is refused.
-    const unboundFlow = defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)();
-    const unboundRuntime = (options.projects ?? []).some((p) => p.unbound === true)
-      ? await createFlowState({ flows: { [PROJECTS_KIND]: unboundFlow }, stores: { default: { primary } } } as never).getRuntime()
-      : undefined;
-    for (const { owner = ASK_LAB_USER_ID, unbound, ...input } of options.projects ?? []) {
-      const host = unbound === true ? unboundRuntime! : runtime;
+    for (const { owner = ASK_LAB_USER_ID, ...input } of options.projects ?? []) {
       const result = (await runAction({
-        flow: unbound === true ? unboundFlow : flows[PROJECTS_KIND],
+        flow: flows[PROJECTS_KIND],
         actionName: "createProject",
         input,
         userId: owner,
         orgId,
         sessionId: `projects-${owner}`,
-        stores: host.stores,
-        runtimeConfig: host.runtimeConfig,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
       } as never)) as { error?: unknown };
       if (result.error !== undefined) throw new Error(`project ${input.id}: ${String((result.error as Error).message ?? result.error)}`);
     }

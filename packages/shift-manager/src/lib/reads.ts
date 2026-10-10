@@ -16,12 +16,13 @@
  *    and nothing else is read (BR-3).
  * 2. **The organization**, off a listed session. The listing only ever holds
  *    sessions in the organization the Lab resolved for the person, and a
- *    session records it. A person who holds no session on the room kind yet
- *    has one opened first (`withRoomSession`), and the Lab stamps it with the
- *    organization it resolves for them, so a member on a first visit is read
- *    like any other. A Lab that still lists the person no session (it serves
- *    no room kind) names no organization, and gets the refusal too: Shift
- *    Manager never draws a Lab under an unknown one (ER-4).
+ *    session records it. A person who holds no session of their own on the
+ *    mailbox kind or the roster flow yet has one opened on each first
+ *    (`withReaderSessions`), and the Lab stamps it with the organization it
+ *    resolves for them, so a member on a first visit is read like any other.
+ *    A Lab that still lists the person no session (it serves neither) names
+ *    no organization, and gets the refusal too: Shift Manager never draws a
+ *    Lab under an unknown one (ER-4).
  * 3. **The inventory**: the organization's seat and mailbox collections, found
  *    by their published key patterns in the manifest of a listed session whose
  *    flow declares them (the mailbox kind does). Nothing about the tree is
@@ -35,11 +36,12 @@
  *    pending. Not the transcript.
  * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
- * 7. **The organization's projects**: every row of its `projects` collection,
- *    found by its published key pattern on a workstream's mailbox kind.
- *    PROJECTS groups the workstreams by them. A project's room is never read
- *    here: it is read through the person's own talk session when a project's
- *    Stream opens (`talk.ts`).
+ * 7. **The projects the person reads**: every row of the organization's
+ *    `projects` collection and of their own private one, found by the
+ *    published key pattern and scope on a flow the person holds a session of
+ *    (the roster flow declares both). PROJECTS lists them. A project's
+ *    workstream entries are never read here: a project's view reads them, by
+ *    its one prefix, when it opens (`projects.ts`).
  *
  * Every read after the first fails on its own: a failed section carries its
  * failure and the rest of the snapshot is whole (BR-11). Nothing retries by
@@ -56,7 +58,7 @@ import { ClientHttpError, type ResourceManifest, type SessionSummary } from "@fl
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -104,22 +106,26 @@ export type Workstream = {
   members: string[];
 };
 
-/** One member's talk session on a project: their own way into its room. */
-export type ProjectSession = { sessionId: string; userId: string };
+/** Where a project lives: the organization's, or the person's own. */
+export type ProjectVisibility = "shared" | "private";
 
 /**
- * A project: a row of the organization's `projects` collection. It names no
- * team; its workstreams are mailbox ids from any team.
+ * A project: a row of the organization's `projects` collection (shared), or of
+ * the person's own (private). It names no team; the mailbox workstreams it
+ * lists are mailbox ids from any team. Its address is its visibility and its
+ * id: a private project and a shared one can share an id.
  */
 export type Project = {
-  /** The row id, also the project's address in Shift Manager. */
+  /** The row id; with the visibility, the project's address. */
   id: string;
+  /** Where the row lives. */
+  visibility: ProjectVisibility;
   title: string;
   /** What the project is for; its Brief tab. `null` when none was given. */
   brief: string | null;
   status: string;
   ownerUserId: string;
-  /** Who may read and post the project's room. */
+  /** On a shared project, who may open workstreams in it. */
   members: string[];
   /** The mailbox ids the project holds, as the row lists them. */
   workstreams: string[];
@@ -129,13 +135,11 @@ export type Project = {
    * existed reads as none.
    */
   repository: string | null;
-  /** Each member's talk session, at most one per person. */
-  sessions: ProjectSession[];
 };
 
-/** The organization's projects. */
+/** The projects the person reads: the organization's, and their own private ones. */
 export type Projects = {
-  /** Every row, in the collection's order. */
+  /** Every row: the shared ones in the collection's order, then the private ones. */
   rows: Project[];
 };
 
@@ -225,9 +229,9 @@ export const DISPATCHED_RUN_UNANSWERABLE =
 
 /**
  * Why a Lab that lists the person no session, even after one was asked for on
- * the room kind, is refused: nothing it serves says which organization they are in.
+ * the reader kinds, is refused: nothing it serves says which organization they are in.
  */
-function noOrganization(userId: string, why = "it holds no session of theirs and serves no mailbox kind to open one on"): string {
+function noOrganization(userId: string, why = "it holds no session of theirs and serves no mailbox kind or roster flow to open one on"): string {
   return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
 }
 
@@ -281,17 +285,26 @@ export type LabSnapshot =
 const INVENTORY_PATTERNS = { seats: "inventory/seats/*", mailboxes: "inventory/mailboxes/*" } as const;
 
 /**
- * The flow kind every project's room is on: workforce's built-in mailbox kind
- * (`MAILBOX_KIND`), whichever kind a workstream runs on or the projects were
- * read through. Spelled here because the workforce browser entry doesn't
- * export it; `static.test.ts` pins the two together.
+ * The flow kind a person's own session for reading the organization's
+ * inventory is opened on, when they hold none: workforce's built-in mailbox
+ * kind (`MAILBOX_KIND`), which declares the inventory until mailboxes become
+ * workstreams. Spelled here because the workforce browser entry doesn't export
+ * it; `static.test.ts` pins the two together.
  */
-export const ROOM_KIND = "mailbox";
+export const INVENTORY_READER_KIND = "mailbox";
 
 /**
- * The organization's projects, by their published key pattern.
+ * The flow a person's own session for reading their projects and the
+ * workstream entries is opened on, when they hold none: workforce's roster
+ * flow, which declares the projects at both scopes and the entries.
  */
-const PROJECT_PATTERNS = { projects: "projects/*" } as const;
+export const PROJECT_READER_KIND = ROSTER_FLOW_KIND;
+
+/**
+ * The projects, by their published key pattern: one pattern, at the
+ * organization's scope for the shared ones and the person's for their own.
+ */
+const PROJECT_PATTERN = "projects/*";
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -394,14 +407,14 @@ export function toWorkstream(row: unknown): Workstream | undefined {
  * can address or own, and is left out; every other field reads as empty when
  * absent, so a row an earlier version wrote still reads (BP-030).
  */
-export function toProject(row: unknown): Project | undefined {
+export function toProject(row: unknown, visibility: ProjectVisibility = "shared"): Project | undefined {
   const id = text(field(row, "id"));
   const title = text(field(row, "title"));
   const ownerUserId = text(field(row, "ownerUserId"));
   if (id === null || title === null || ownerUserId === null) return undefined;
-  const sessions = field(row, "sessions");
   return {
     id,
+    visibility,
     title,
     // An empty brief is still the brief the row was given; only a missing or non-string one is none.
     brief: typeof field(row, "brief") === "string" ? (field(row, "brief") as string) : null,
@@ -410,13 +423,6 @@ export function toProject(row: unknown): Project | undefined {
     members: strings(field(row, "members")),
     workstreams: strings(field(row, "workstreams")),
     repository: text(field(row, "repository")),
-    sessions: Array.isArray(sessions)
-      ? sessions.flatMap((link) => {
-          const sessionId = text(field(link, "sessionId"));
-          const userId = text(field(link, "userId"));
-          return sessionId === null || userId === null ? [] : [{ sessionId, userId }];
-        })
-      : [],
   };
 }
 
@@ -501,21 +507,21 @@ export type LabReader = {
   resume(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
 };
 
-/** Build the reader for one connection. */
 /**
- * The id of `userId`'s own session on the room kind: one per person, so two
- * first visits at once (two tabs) open the same session rather than two.
+ * The id of `userId`'s own reading session on `kind`: one per person per kind,
+ * so two first visits at once (two tabs) open the same session rather than two.
  */
-export function roomSessionId(userId: string): string {
-  return `${ROOM_KIND}-own-${userId}`;
+export function readerSessionId(userId: string, kind: string): string {
+  return `${kind}-own-${userId}`;
 }
 
 /**
- * Room-session opens in flight, per client, so reads that overlap on one page
- * (StrictMode replaying the boot) share one open rather than racing it.
+ * Reading-session opens in flight, per client and kind, so reads that overlap
+ * on one page (StrictMode replaying the boot) share one open rather than racing it.
  */
-const openingRoom = new WeakMap<LabClients, Promise<void>>();
+const openingReaders = new WeakMap<LabClients, Map<string, Promise<void>>>();
 
+/** Build the reader for one connection. */
 export function createLabReader(clients: LabClients): LabReader {
   const manifests = new Map<string, Promise<ResourceManifest>>();
 
@@ -603,100 +609,126 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * The organization's projects, read once, through a session of this
-   * person's own whose flow declares the projects collection with a browser
-   * read. A project needs no workstream, so neither does this read. That
-   * session only carries the read; rooms are on the built-in mailbox kind
-   * (`ROOM_KIND`).
+   * The projects the person reads, once, through a session of their own whose
+   * flow declares `projects/*` with a browser read: the organization's (org
+   * scope) and their own private ones (user scope), each from the first flow
+   * that declares it. A project needs no workstream, so neither does this read.
    *
-   * `read` opens one on the room kind for a person who holds none
-   * (`withRoomSession`). No flow declaring the collection is a Lab with no
-   * projects: zero rows, not a failure (a pre-project Lab, or one that serves
-   * no room kind). A room session that should have been opened and couldn't
-   * is a failure, and says why; it is never drawn as an empty list (D3).
+   * `read` opens one on the roster flow for a person who holds none
+   * (`withReaderSessions`). No flow declaring the collection is a Lab with no
+   * projects: zero rows, not a failure (a pre-project Lab). A reading session
+   * that should have been opened and couldn't is a failure, and says why; it
+   * is never drawn as an empty list (D3).
    */
-  const readProjects = async (sessions: SessionSummary[], roomFailure: Failure | null): Promise<Section<Projects>> => {
-    const projectsRef = (manifest: ResourceManifest) =>
+  const readProjects = async (sessions: SessionSummary[], readerFailure: Failure | null): Promise<Section<Projects>> => {
+    const projectsRef = (manifest: ResourceManifest, scope: "org" | "user") =>
       manifest.resources.find(
-        (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
+        (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERN && r.scope === scope && r.client.state?.read === true,
       )?.ref;
     const carriers = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !carriers.has(session.flowKind)) carriers.set(session.flowKind, session.id);
     }
     try {
-      let found: { sessionId: string; ref: string } | undefined;
+      const found: Partial<Record<"org" | "user", { sessionId: string; ref: string }>> = {};
       for (const [kind, sessionId] of carriers) {
-        const ref = projectsRef(await manifestFor(kind, sessionId));
-        if (ref !== undefined) {
-          found = { sessionId, ref };
-          break;
+        const manifest = await manifestFor(kind, sessionId);
+        for (const scope of ["org", "user"] as const) {
+          const ref = found[scope] === undefined ? projectsRef(manifest, scope) : undefined;
+          if (ref !== undefined) found[scope] = { sessionId, ref };
         }
+        if (found.org !== undefined && found.user !== undefined) break;
       }
-      if (found === undefined) {
-        if (roomFailure === null) return { ok: true, value: { rows: [] } };
+      if (found.org === undefined && found.user === undefined) {
+        if (readerFailure === null) return { ok: true, value: { rows: [] } };
         return {
           ok: false,
           failure: {
-            ...roomFailure,
-            message: `None of your sessions can read this Lab's projects, and one that can couldn't be opened: ${roomFailure.message}`,
+            ...readerFailure,
+            message: `None of your sessions can read this Lab's projects, and one that can couldn't be opened: ${readerFailure.message}`,
           },
         };
       }
-      // Invariant: `projects/*` is one org-wide collection, so the first kind
-      // that declares it reads every project, and the rest are not asked.
-      const rows = (await readCollection(found.sessionId, found.ref))
-        .map((row) => toProject(row.clientData))
-        .filter((p): p is Project => p !== undefined);
-      return { ok: true, value: { rows } };
+      const rowsAt = async (where: { sessionId: string; ref: string } | undefined, visibility: ProjectVisibility) =>
+        where === undefined
+          ? []
+          : (await readCollection(where.sessionId, where.ref))
+              .map((row) => toProject(row.clientData, visibility))
+              .filter((p): p is Project => p !== undefined);
+      // Invariant: each scope's `projects/*` is one collection, so the first
+      // kind that declares it reads every row the person may, and the rest are
+      // not asked.
+      const [shared, own] = await Promise.all([rowsAt(found.org, "shared"), rowsAt(found.user, "private")]);
+      return { ok: true, value: { rows: [...shared, ...own] } };
     } catch (error) {
       return { ok: false, failure: describeFailure(error) };
     }
   };
 
   /**
-   * This person's sessions, with one of their own on the room kind. A member
-   * who hasn't joined a room yet may hold only a seat's session, or none at
-   * all on a first visit, and nothing of theirs can read the organization's
-   * inventory or projects; a session on
-   * the room kind can, since that kind declares both. It is opened once, under
-   * {@link roomSessionId} so overlapping first reads can't open two, and
-   * listed from then on. If it can't be opened, the sessions are returned as
-   * they were, with why: `null` when there is nothing to open (the Lab serves
-   * no room kind, a 404), so nothing declares what it would have read.
+   * This person's sessions, with one of their own on each reader kind: the
+   * mailbox kind, which declares the organization's inventory, and the roster
+   * flow, which declares the projects and the workstream entries. A person may
+   * hold only a seat's session, or none at all on a first visit, and nothing
+   * of theirs can read either. Each is opened once, under
+   * {@link readerSessionId} so overlapping first reads can't open two, and
+   * listed from then on. One that can't be opened leaves the sessions as they
+   * were, with why: `null` when there is nothing to open (the Lab serves no
+   * such kind, a 404), so nothing declares what it would have read.
    */
-  const withRoomSession = async (
+  const withReaderSessions = async (
     sessions: SessionSummary[],
-  ): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
-    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return { sessions, failure: null };
+  ): Promise<{ sessions: SessionSummary[]; inventory: Failure | null; projects: Failure | null }> => {
+    const missing = [INVENTORY_READER_KIND, PROJECT_READER_KIND].filter(
+      (kind) => !sessions.some((s) => s.parentSessionId == null && s.flowKind === kind),
+    );
+    if (missing.length === 0) return { sessions, inventory: null, projects: null };
+    const failures = new Map<string, Failure | null>();
+    await Promise.all(
+      missing.map(async (kind) => {
+        try {
+          let opening = openingReaders.get(clients);
+          if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
+          let open = opening.get(kind);
+          if (open === undefined) {
+            open = openReaderSession(kind).finally(() => opening!.delete(kind));
+            opening.set(kind, open);
+          }
+          await open;
+        } catch (error) {
+          const failure = describeFailure(error);
+          failures.set(kind, failure.httpStatus === 404 ? null : failure);
+        }
+      }),
+    );
+    let listed = sessions;
     try {
-      let opening = openingRoom.get(clients);
-      if (opening === undefined) {
-        opening = openRoomSession().finally(() => openingRoom.delete(clients));
-        openingRoom.set(clients, opening);
-      }
-      await opening;
-      return { sessions: await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" }), failure: null };
-    } catch (error) {
-      const failure = describeFailure(error);
-      return { sessions, failure: failure.httpStatus === 404 ? null : failure };
+      listed = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+    } catch {
+      // The opens landed or failed on their own; the next refresh lists them.
     }
+    return {
+      sessions: listed,
+      inventory: failures.get(INVENTORY_READER_KIND) ?? null,
+      projects: failures.get(PROJECT_READER_KIND) ?? null,
+    };
   };
 
   /**
-   * Open the person's room session under its one id. A 409 is usually another
-   * page that opened it first, and the listing then holds it. Session ids are
-   * not scoped by organization, so a 409 the listing doesn't explain is that id
-   * held in another of the person's organizations: open one under a fresh id.
+   * Open the person's reading session on `kind` under its one id. A 409 is
+   * usually another page that opened it first, and the listing then holds it.
+   * Session ids are not scoped by organization, so a 409 the listing doesn't
+   * explain is that id held in another of the person's organizations: open one
+   * under a fresh id.
    */
-  const openRoomSession = async (): Promise<void> => {
+  const openReaderSession = async (kind: string): Promise<void> => {
     try {
-      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId, sessionId: roomSessionId(clients.userId) });
+      await clients.sessions.createSession({ flowKind: kind, userId: clients.userId, sessionId: readerSessionId(clients.userId, kind) });
     } catch (error) {
       if (describeFailure(error).httpStatus !== 409) throw error;
       const listed = await clients.sessions.listSessions({ userId: clients.userId });
-      if (listed.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return;
-      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
+      if (listed.some((s) => s.parentSessionId == null && s.flowKind === kind)) return;
+      await clients.sessions.createSession({ flowKind: kind, userId: clients.userId });
     }
   };
 
@@ -783,14 +815,15 @@ export function createLabReader(clients: LabClients): LabReader {
       return firstFailure(describeFailure(error));
     }
     // Before the organization is read, on purpose, even though a Lab with no
-    // room kind answers it 404 on every refused read: the room session is the
-    // only session a first-visit person can have for the org to be read off.
-    const room = await withRoomSession(sessions);
-    sessions = room.sessions;
+    // reader kind answers it 404 on every refused read: a reading session is
+    // the only session a first-visit person can have for the org to be read off.
+    const readers = await withReaderSessions(sessions);
+    sessions = readers.sessions;
     let orgId: string | undefined;
     try {
       const first = sessions[0];
-      if (first === undefined) return room.failure === null ? { refused: { message: noOrganization(clients.userId) } } : firstFailure(room.failure);
+      const opened = readers.inventory ?? readers.projects;
+      if (first === undefined) return opened === null ? { refused: { message: noOrganization(clients.userId) } } : firstFailure(opened);
       orgId = (await clients.sessions.getSession(first.id)).orgId;
     } catch (error) {
       return firstFailure(describeFailure(error));
@@ -828,7 +861,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
-      readProjects(sessions, room.failure),
+      readProjects(sessions, readers.projects),
     ]);
 
     return {

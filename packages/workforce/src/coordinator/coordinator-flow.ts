@@ -46,6 +46,14 @@
  * conversation deleted and created again under the same id opens fresh
  * delegate sessions. A later delivery from this conversation reuses it.
  *
+ * **A project's coordinator** (FIX-1793): a conversation linked to a project
+ * (its readonly `projectId`) has a delegate record per workstream its user has
+ * open there, the lead with the workstream as the record's target
+ * (`../projects/project-coordinator.ts`). A delivery to such a record goes
+ * into the workstream's own session, the one its entry names, not a session
+ * of this conversation's; the records change only through the workstream's
+ * entry paths, on the internal {@link WORKSTREAM_DELEGATE_ACTION}.
+ *
  * **How an answer lands.** On the internal {@link DELEGATE_ANSWER_ACTION}, with
  * its delivery's token, claimed once. It lands as a line under the delegate's
  * name. The round, the delegate and the post come from the delivery the
@@ -99,6 +107,13 @@ import {
 } from "../delivery-ledger";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
+import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
+import {
+  resolveWorkstreamTarget,
+  WORKSTREAM_DELEGATE_ACTION,
+  workstreamDelegateEntry,
+  workstreamDelegateSeed
+} from "../projects/project-coordinator";
 import { defineSessionBoard } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import { TASK_NOTICES_STATE, REPLY_CONCURRENCY, conversationBoardStateShape } from "../conversation-board/task-settled";
@@ -113,6 +128,7 @@ import {
   type CoordinatorRouting
 } from "./coordinator-config";
 import { takesDelegatedPost } from "../delegates/delegate-check";
+import { DELEGATES_STATE } from "../delegates/delegate-keys";
 import {
   currentDelegates,
   delegateLabel,
@@ -281,6 +297,10 @@ const deliveryDispatchSchema = deliveryRequestSchema.extend({
   /** False when the ledger already settled this delivery: nothing is dispatched. */
   deliver: z.boolean(),
   sessionKey: z.string(),
+  /** For a record with a target: the session its target resolved to, which the delivery goes into. */
+  targetSessionId: z.string().optional(),
+  /** For a record with a target that resolved to no session: why. The delivery fails with it. */
+  targetProblem: z.string().optional(),
   /** Its round's deadline, when its answer can go back out. */
   deadlineAt: z.number().int().optional()
 });
@@ -371,15 +391,28 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * actions over its board. Its post check reaches only the flows this
    * coordinator dispatches to.
    */
-  const sessionBoard = defineSessionBoard({ installation, flowKind: COORDINATOR_KIND, postFlows });
+  const sessionBoard = defineSessionBoard({
+    installation,
+    flowKind: COORDINATOR_KIND,
+    postFlows,
+    // A project's coordinator starts with its user's open workstreams there.
+    seed: (ctx) => workstreamDelegateSeed(ctx as never)
+  });
   const check = sessionBoard.delegates.check;
-  const resources = { ...installation.resources };
+  const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES };
 
-  /** The worker this conversation runs as, and its defaults. Refuses a session that names none. */
+  /**
+   * The worker this conversation runs as, and its defaults, with the
+   * conversation's seed while its list was never written. Refuses a session
+   * that names none.
+   */
   const coordinatorOf = async (ctx: BlockContext) => {
     const worker = await installation.resolveWorker(ctx, COORDINATOR_KIND);
     const config = worker.config as unknown as CoordinatorConfig;
-    return { worker, config, defaults: defaultsOf(config) };
+    const records = (ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] == null
+      ? await workstreamDelegateSeed(ctx as never)
+      : undefined;
+    return { worker, config, defaults: { ...defaultsOf(config), ...(records === undefined ? {} : { records }) } };
   };
 
   const blockBase = { resources, sessionStateSchema: coordinatorSessionStateSchema };
@@ -398,6 +431,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     inputSchema: deliveryRequestSchema,
     outputSchema: deliveryDispatchSchema,
     sessionStateSchema: coordinatorSessionStateSchema,
+    resources,
     execute: async (request: DeliveryRequest, ctx): Promise<DeliveryDispatch> => {
       const token = mintDeliveryToken();
       const now = Date.now();
@@ -419,15 +453,52 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         }
       );
       if (opened === undefined) throw new Error("The delivery could not be opened.");
+      // A record with a target goes into the session its target names now.
+      const target = request.delegate.target;
+      const resolved =
+        opened.deliver && target !== undefined
+          ? await resolveWorkstreamTarget(ctx as never, { worker: request.delegate.worker, target })
+          : undefined;
       return {
         ...request,
         token: opened.token,
         deliver: opened.deliver,
         sessionKey: `delegate:${delegateKey(request.delegate)}`,
+        ...(resolved === undefined ? {} : "sessionId" in resolved ? { targetSessionId: resolved.sessionId } : { targetProblem: resolved.problem }),
         ...(opened.deadlineAt === undefined ? {} : { deadlineAt: opened.deadlineAt })
       };
     }
   });
+
+  /** What a delegate is handed, from a delivery. */
+  const postPayload = (delivery: DeliveryDispatch) => ({
+    token: delivery.token,
+    body: delivery.body,
+    from: delivery.from,
+    coordinator: delivery.coordinator,
+    ...(delivery.deadlineAt === undefined ? {} : { deadlineAt: delivery.deadlineAt }),
+    ...linesField(delivery.recent)
+  });
+
+  /**
+   * One dispatcher per flow a delegate can take a post on, into a session a
+   * record's target resolved to: an existing session of this user's, never
+   * created here.
+   */
+  const targetDispatchers = new Map<string, BlockDefinition<any, any>>();
+  for (const kind of postFlows) {
+    targetDispatchers.set(
+      kind,
+      dispatcher({
+        name: `coordinator-deliver-target-${kind}`,
+        flowKind: kind,
+        action: DELEGATED_POST_ENTRY,
+        inputSchema: deliveryDispatchSchema,
+        session: { id: (delivery: DeliveryDispatch) => delivery.targetSessionId! },
+        payload: postPayload
+      })
+    );
+  }
 
   /** One dispatcher per flow a delegate can take a post on. */
   const dispatchers = new Map<string, BlockDefinition<any, any>>();
@@ -450,14 +521,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
             [FILING_SESSION_STATE_KEY]: delivery.filingSessionId
           })
         },
-        payload: (delivery: DeliveryDispatch) => ({
-          token: delivery.token,
-          body: delivery.body,
-          from: delivery.from,
-          coordinator: delivery.coordinator,
-          ...(delivery.deadlineAt === undefined ? {} : { deadlineAt: delivery.deadlineAt }),
-          ...linesField(delivery.recent)
-        })
+        payload: postPayload
       })
     );
   }
@@ -465,8 +529,16 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const dispatchDelivery = router({
     name: "coordinator-dispatch-delivery",
     inputSchema: deliveryDispatchSchema,
-    routes: [...dispatchers.values()],
+    routes: [...dispatchers.values(), ...targetDispatchers.values()],
     execute: (delivery: DeliveryDispatch) => {
+      if (delivery.delegate.target !== undefined) {
+        if (delivery.targetSessionId === undefined) {
+          throw new Error(delivery.targetProblem ?? `"${delivery.delegate.target}" resolved to no session.`);
+        }
+        const route = targetDispatchers.get(delivery.flow);
+        if (route === undefined) throw new Error(`No delivery reaches flow "${delivery.flow}".`);
+        return route;
+      }
       const route = dispatchers.get(delivery.flow);
       if (route === undefined) throw new Error(`No delivery reaches flow "${delivery.flow}".`);
       return route;
@@ -641,7 +713,17 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   // --- judgment ------------------------------------------------------------
 
-  const handOffInputSchema = z.object({ worker: z.string().min(1) }).strict();
+  const handOffInputSchema = z
+    .object({
+      worker: z.string().min(1),
+      /**
+       * The record's target, for a delegate this conversation holds more than
+       * once (a lead of two workstreams): which record. Omitted, the worker's
+       * one record.
+       */
+      target: z.string().min(1).optional()
+    })
+    .strict();
   const handOffRefusedSchema = z.object({ refused: z.string(), worker: z.string() });
 
   /** The sentence a refused hand-off ends with: who on the list a hand-off reaches now, by the same check. */
@@ -668,13 +750,26 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const post = postOf(ctx as never);
       // Read now, through the versioned read: an add earlier in this turn is on it.
       const listed = currentDelegates(ctx.session.state, post.defaults);
-      const record = listed.delegates.find((candidate) => sameDelegate(candidate, { worker: input.worker }));
-      if (record === undefined) {
+      const named = { worker: input.worker, ...(input.target === undefined ? {} : { target: input.target }) };
+      // Without a target, the worker's one record, whatever its target.
+      const records = listed.delegates.filter((candidate) =>
+        input.target === undefined ? candidate.worker === input.worker : sameDelegate(candidate, named)
+      );
+      if (records.length === 0) {
         return {
           worker: input.worker,
-          refused: `"${input.worker}" isn't a delegate in this conversation. Add it first.`
+          refused: `"${delegateLabel(named)}" isn't a delegate in this conversation. Add it first.`
         };
       }
+      if (records.length > 1) {
+        return {
+          worker: input.worker,
+          refused:
+            `"${input.worker}" is ${records.length} delegates here: ${records.map(delegateLabel).join(", ")}. ` +
+            `Name the one you mean by its target.`
+        };
+      }
+      const record = records[0]!;
       const checked = await check(ctx as never, record.worker, "post");
       if (!checked.ok) {
         return { worker: input.worker, refused: `${checked.message} ${await postTakers(ctx as never, listed.delegates)}` };
@@ -1559,7 +1654,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY },
         // A filing's wake (one run of this conversation's board, as its
         // owner), and a task this conversation filed ended: its notice.
-        ...boardEntries
+        ...boardEntries,
+        // A workstream's entry path adds or removes its record, on a project's
+        // coordinator only (FIX-1793). Never public: a record with a target
+        // is written nowhere else.
+        [WORKSTREAM_DELEGATE_ACTION]: {
+          ...workstreamDelegateEntry({ check, defaults: async (ctx) => (await coordinatorOf(ctx)).defaults }),
+          concurrency: "queue"
+        }
       }
     },
     // A coordinator worker can be a delegate that takes a task.

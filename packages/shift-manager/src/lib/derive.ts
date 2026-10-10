@@ -263,12 +263,12 @@ export type ProjectGroup = { project: Project; workstreams: ListedWorkstream[] }
 export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] };
 
 /**
- * PROJECTS (BR-22, D3): every project row with the workstreams it lists, a
- * project that lists none included, and then every workstream no row lists,
+ * PROJECTS (BR-22, D3): every project the person reads, shared ones and their
+ * own private ones, with the mailbox workstreams its row lists, a project
+ * that lists none included, and then every mailbox workstream no row lists,
  * which is No project.
  *
- * Derived from the snapshot alone: no read of its own, and nothing about a
- * project's room or anyone's talk session decides where a workstream sits.
+ * Derived from the snapshot alone: no read of its own.
  * Fails when either read it groups did: the inventory's failure first, since
  * without it no workstream can be placed.
  */
@@ -290,32 +290,6 @@ export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
   };
 }
 
-/**
- * How a person reaches a project's room (BR-23), from the row alone:
- *
- * - **member**: they are a member and the row lists their talk session.
- * - **repair**: they own the project and the row lists no session of theirs:
- *   the mint at create failed or never ran. Opening the project joins for
- *   them, which binds them (BR-8a).
- * - **join**: a member with no talk session yet. They join to get one.
- * - **outsider**: not a member. The room is for its members (Q3).
- *
- * The row decides, never a session's state: `members` is written only by
- * trusted code, and a session's own record of its project grants nothing.
- */
-export type Talk =
-  | { kind: "member"; sessionId: string }
-  | { kind: "repair" }
-  | { kind: "join" }
-  | { kind: "outsider" };
-
-/** See {@link Talk}. */
-export function talkFor(project: Project, viewer: string): Talk {
-  if (!project.members.includes(viewer)) return { kind: "outsider" };
-  const own = project.sessions.find((link) => link.userId === viewer);
-  if (own !== undefined) return { kind: "member", sessionId: own.sessionId };
-  return project.ownerUserId === viewer ? { kind: "repair" } : { kind: "join" };
-}
 
 /** How many seats are in each status, and how many waits-on entries they have. */
 export type ShiftCounts = Record<ShiftStatus, number> & {

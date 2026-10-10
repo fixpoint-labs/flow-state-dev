@@ -1,12 +1,12 @@
 /**
- * The refusals a project write or a room entry gives, as one error type with a
+ * The refusals a project or workstream write gives, as one error type with a
  * `reason` a caller can branch on without matching message text — the same
  * shape the mailbox's own refusals use.
  */
 
 /**
- * Why a project write or a room entry was refused. Each leaves the row, the
- * claims and the room as they were.
+ * Why a project or workstream write was refused. Each leaves the row, the
+ * claims and the entries as they were.
  *
  * - `not-a-member`: the session's owner is not in the row's `members`.
  * - `no-such-project`: no row holds the id at that visibility. Another user's
@@ -27,10 +27,8 @@
  *   credential. The refusal never repeats the value.
  * - `unknown-workstream`: a workstream id is not a mailbox in the inventory.
  * - `workstream-claimed`: another project holds the workstream.
- * - `talk-not-bound`: a room entry ran on a session bound to no project.
- * - `talk-bound-elsewhere`: the session is already bound to another project.
- * - `talk-on-a-mailbox`: the session is a declared mailbox's; a project is joined from a session of its own.
- * - `author-on-a-person-post`: a person's line named an `author`; seats answer through `answer`.
+ * - `too-many-workstreams`: the owner has as many open workstreams in the project
+ *   as their project coordinator holds delegates.
  */
 export type ProjectRefusalReason =
   | "not-a-member"
@@ -48,15 +46,9 @@ export type ProjectRefusalReason =
   | "invalid-repository"
   | "unknown-workstream"
   | "workstream-claimed"
-  | "talk-not-bound"
-  | "talk-bound-elsewhere"
-  | "talk-on-a-mailbox"
-  | "author-on-a-person-post"
-  | "answer-not-delivered"
-  | "answer-not-yours"
-  | "talk-session-not-listed";
+  | "too-many-workstreams";
 
-/** A project write or room entry refused on the project's own terms. */
+/** A project or workstream write refused on the project's own terms. */
 export class ProjectRefusedError extends Error {
   readonly reason: ProjectRefusalReason;
 

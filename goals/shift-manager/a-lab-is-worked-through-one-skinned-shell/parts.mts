@@ -356,7 +356,7 @@ export function part4(base: string, report: Report): void {
 
   // One session write path (ER-15): every write Shift Manager makes, by call and by module.
   const allowed: Record<string, string[]> = {
-    "sendAction(": ["lib/send.ts", "lib/transcript.ts", "lib/talk.ts"],
+    "sendAction(": ["lib/send.ts", "lib/transcript.ts", "lib/action.ts"],
     "abortRequest(": ["lib/run.ts"],
     "resumeSuspension(": ["lib/reads.ts"],
     "createSession(": ["lib/reads.ts", "lib/conversation.ts"],
@@ -373,25 +373,16 @@ export function part4(base: string, report: Report): void {
   }
   const transcriptPost = /sendAction\("post"/.test(readFileSync(join(src, "lib", "transcript.ts"), "utf8"));
   if (!transcriptPost) report.fail("P4:ER-15", "lib/transcript.ts sends something other than the mailbox's post");
-  // The project room (FIX-1718): talk.ts sends one action, through runTalkAction, and only read,
-  // post or join; every caller hands its room functions the room kind. The person's own session, never a worker's.
-  const talk = stripComments(readFileSync(join(src, "lib", "talk.ts"), "utf8"));
-  const talkSends = talk.match(/\bsendAction\(/g)?.length ?? 0;
-  const talkCalls = [...talk.matchAll(/\brunTalkAction\(\s*clients,\s*kind,\s*[^,]+,\s*("?)(\w+)\1/g)].map((m) => (m[1] === '"' ? m[2]! : `<${m[2]}>`));
-  const talkRuns = (talk.match(/\brunTalkAction\(/g)?.length ?? 0) - 1; // less its definition
-  if (talkSends !== 1 || !/sendAction\(action, input, \{ sessionId: session \}\)/.test(talk)) report.fail("P4:ER-15", `lib/talk.ts sends ${talkSends} action(s) outside runTalkAction's one send`);
-  const offTalk = talkCalls.filter((a) => !["read", "post", "join"].includes(a));
-  if (offTalk.length > 0 || talkCalls.length !== talkRuns) report.fail("P4:ER-15", `lib/talk.ts runs talk actions other than read, post and join: [${offTalk.join(", ")}]${talkCalls.length !== talkRuns ? `, ${talkRuns - talkCalls.length} unread` : ""}`);
-  const roomCalls = own
-    .filter((f) => !f.endsWith(join("lib", "talk.ts")))
-    .flatMap((f) => [...stripComments(readFileSync(f, "utf8")).matchAll(/\b(readRoom|postToRoom|joinRoom)\(\s*clients,\s*([^,)]+)/g)].map((m) => `${relative(src, f)} ${m[1]}(${m[2]!.trim()})`));
-  const offRoom = roomCalls.filter((c) => !c.endsWith("(ROOM_KIND)"));
-  if (offRoom.length > 0) report.fail("P4:ER-15", `a talk action runs on a kind other than the room kind: ${offRoom.join("; ")}`);
-  // The person's room session (FIX-1718, FIX-1752): reads.ts creates sessions on the room kind only.
+  // An action whose answer a view reads (FIX-1793 removed the project room): action.ts sends
+  // one action, in its one runner, on the session the caller names or a fresh one of its own.
+  const action = stripComments(readFileSync(join(src, "lib", "action.ts"), "utf8"));
+  const actionSends = action.match(/\bsendAction\(/g)?.length ?? 0;
+  if (actionSends !== 1 || !/sendAction\(action, input, \{ sessionId: session \}\)/.test(action)) report.fail("P4:ER-15", `lib/action.ts sends ${actionSends} action(s) outside runAction's one send`);
+  // The person's reading sessions (FIX-1752, FIX-1793): reads.ts creates sessions on its reader kinds only.
   const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*ROOM_KIND\b/.test(args))) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than the room kind");
+  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\[INVENTORY_READER_KIND, PROJECT_READER_KIND\]/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kinds");
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));
@@ -400,7 +391,7 @@ export function part4(base: string, report: Report): void {
   if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*seat\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*seat\.id\s*\}/.test(opens[0]!)) {
     report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
   }
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the mailbox's post (transcript.ts), the project room's ${talkCalls.join("/")} on the room kind (talk.ts; ${roomCalls.length} call(s)), the person's room session (reads.ts; ${creates.length} createSession on ROOM_KIND), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the mailbox's post (transcript.ts), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kinds), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
   // One ask rendering: Inbox's detail and the stream's card draw through AskCard.
   for (const surface of ["Inbox.tsx", "Stream.tsx", "ChiefOfStaff.tsx"]) {

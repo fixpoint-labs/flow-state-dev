@@ -4,7 +4,24 @@
  * the delegate sessions a conversation's deliveries open (FIX-1791), the
  * partition its task board keeps its rows in, and the task sessions its board
  * hands work to (FIX-1794). Any two spellings would drift.
+ *
+ * And the workstream a session works for, which a task session's hand-over
+ * carries down from the session that filed it (FIX-1793 S6).
  */
+import { FILING_WORKSTREAM_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
+
+/**
+ * The workstream a session works for, from its server-written fields: the one
+ * it leads (`workstreamId`), else the one it was filed from
+ * (`filingWorkstreamId`), in `workstreamRef` form. `undefined` for neither.
+ */
+export function filingWorkstreamOf(state: unknown): string | undefined {
+  const fields = state as Record<string, unknown> | undefined;
+  const led = fields?.[WORKSTREAM_STATE_KEY];
+  if (typeof led === "string") return led;
+  const filed = fields?.[FILING_WORKSTREAM_STATE_KEY];
+  return typeof filed === "string" ? filed : undefined;
+}
 
 /** Hex of the first 8 bytes of the SHA-256 of `text`. */
 async function shortDigest(text: string): Promise<string> {

@@ -57,6 +57,27 @@ export const FILING_SESSION_STATE_KEY = "filingSessionId";
 export const WORKSTREAM_STATE_KEY = "workstreamId";
 
 /**
+ * The session-state field that links a worker session to one project: the
+ * project's address, as `projectRef` writes it (`<visibility>/<projectId>`).
+ * Set when the session is created, only on a session of the standard
+ * coordinator the installation names as every project's coordinator, and
+ * checked at create: the creator must be able to read the project. Readonly.
+ * **Pinned**: the criteria key `findWorkerSession` and `ensureWorkerSession`
+ * take (FIX-1793).
+ */
+export const PROJECT_STATE_KEY = "projectId";
+
+/**
+ * The session-state field that names the workstream a task session works
+ * for: the one its filer leads, or its filer's own, carried down at each
+ * hand-over from the session that filed the task (`workstreamRef` form). Set
+ * only by the hand-over, like {@link TASK_ID_STATE_KEY}, so a coding run in a
+ * task session finds its project through the workstream it was filed from
+ * (FIX-1793 S6). Readonly.
+ */
+export const FILING_WORKSTREAM_STATE_KEY = "filingWorkstreamId";
+
+/**
  * The session-state field that names the task a worker session was opened
  * for: set when a conversation's board hands the task over, beside the
  * worker and the filing conversation's `filingSessionId`, so the task's

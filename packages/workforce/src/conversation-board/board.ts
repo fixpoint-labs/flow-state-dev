@@ -54,11 +54,12 @@ import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import type { TaskDelegates } from "../delegates/worker-delegates";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_WORKSTREAM_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { filingSessionIdOf } from "./filing-session";
+import { filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
@@ -230,12 +231,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // The task session is born naming its worker, the task, the session
     // that filed it and the flow that session runs on, each a readonly field
     // the worker flow's create check confirms; all from server-written data.
-    state: async (task, ctx) => ({
-      [WORKER_ID_STATE_KEY]: task.assignee,
-      [FILING_SESSION_STATE_KEY]: await filingSessionIdOf(ctx.session),
-      [FILING_FLOW_STATE_KEY]: options.flowKind,
-      [TASK_ID_STATE_KEY]: task.taskId
-    })
+    // A filer that works for a workstream (its lead's session, or a task
+    // filed from one) passes the workstream down, so a coding run in the
+    // task session finds its project (FIX-1793 S6).
+    state: async (task, ctx) => {
+      const workstream = filingWorkstreamOf(ctx.session.state);
+      return {
+        [WORKER_ID_STATE_KEY]: task.assignee,
+        [FILING_SESSION_STATE_KEY]: await filingSessionIdOf(ctx.session),
+        [FILING_FLOW_STATE_KEY]: options.flowKind,
+        [TASK_ID_STATE_KEY]: task.taskId,
+        ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream })
+      };
+    }
   };
   const handOffToDelegate = markDispatcher(
     handler({

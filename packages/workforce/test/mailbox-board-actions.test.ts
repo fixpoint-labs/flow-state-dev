@@ -493,7 +493,6 @@ describe("a mailbox's board task actions", () => {
     const [mailbox] = mailboxInstances([record("eng.feature", { boards: ["triage"] })]);
     expect(Object.keys((mailbox as unknown as { actions: object }).actions).sort()).toEqual([
       "fileTask",
-      "join",
       "post",
       "read",
       "readBoard"

@@ -17,6 +17,18 @@
  * named its session. Its lead doesn't change: an open naming another lead is
  * refused.
  *
+ * **Its project coordinator's record** (FIX-1793 BR-21a). When the
+ * installation names a project coordinator, each open workstream is one
+ * delegate record on its owner's coordinator for the project: the lead, with
+ * the workstream's address as its target. An open (and opening it again)
+ * adds the record, marking it done removes it, and moving it back out of
+ * done adds it again, each by dispatching the coordinator's internal
+ * `changeWorkstreamDelegate` into the owner's coordinator session, found at
+ * the id derived for it. A coordinator not yet created takes its records
+ * when it is (`project-coordinator.ts`). The coordinator holds at most
+ * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
+ * project is refused another before anything is written (BR-21b).
+ *
  * **Updating one.** Only its owner writes an entry, and the engine enforces
  * that at the store whichever flow writes. The app's action writes the entry
  * its input names, the caller's own unless it names another owner, which the
@@ -29,11 +41,16 @@
  */
 
 import { dispatcher, dispatchHandleSchema, handler, router, sequencer } from "@flow-state-dev/core";
-import type { ActionConfig, BlockDefinition, ResourceRef } from "@flow-state-dev/core/types";
+import { DispatchRefusedError, type ActionConfig, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { MAX_DELEGATES } from "../delegates/delegate-keys";
 import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
+import { deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
+import { WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
+import { DONE_STATUS } from "./project-progress";
+import { projectEntries } from "./project-read";
 import { retryOnConflict } from "./cas-retry";
 import { projectAddressSchema } from "./collections";
 import { isMember } from "./membership-gate";
@@ -54,6 +71,22 @@ import {
 } from "./workstream-collections";
 import { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY } from "./workstream-lead";
 import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+
+/** What a write hands on for its coordinator's record: none, or the change and the record. */
+const recordChangeSchema = z.object({
+  change: z.enum(["add", "remove"]),
+  worker: z.string(),
+  target: z.string(),
+  /** The owner's coordinator session for the project, at the id derived for it. */
+  coordinatorSessionId: z.string()
+});
+
+type RecordChange = z.infer<typeof recordChangeSchema>;
+
+/** A write's own output, with the change its coordinator's record takes, when it takes one. */
+const updatedStepSchema = z.object({ workstream: workstreamViewSchema, record: recordChangeSchema.optional() });
+
+type UpdatedStep = z.infer<typeof updatedStepSchema>;
 
 /** What the workstream blocks are built from. */
 export interface WorkstreamBlocksOptions {
@@ -278,6 +311,20 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       const address: WorkstreamAddress = { project: input.project, id: input.id };
       const entries = workstreamsAt(ctx, input.project.visibility);
       const key = workstreamEntryKey(input.project.id, owner, input.id);
+      // Each open workstream is a record on the owner's coordinator, which
+      // holds so many: refused before anything is written (BR-21b).
+      if (installation.projectCoordinator() !== undefined && (await entries.getOptional(key)) === undefined) {
+        const open = (await projectEntries(ctx, input.project)).filter(
+          (held) => held.owner === owner && held.status !== DONE_STATUS
+        );
+        if (open.length >= MAX_DELEGATES) {
+          throw new ProjectRefusedError(
+            "too-many-workstreams",
+            `you have ${open.length} open workstreams in project "${input.project.id}", and your project ` +
+              `coordinator holds at most ${MAX_DELEGATES} delegates, one for each. Mark one done first.`
+          );
+        }
+      }
       const at = nowIso();
       const fresh: Omit<WorkstreamEntry, "writtenBy"> = {
         title: input.title,
@@ -366,7 +413,91 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
   });
 
-  const openWorkstream = sequencer({
+  // --- the coordinator's record -------------------------------------------
+
+  const coordinator = installation.projectCoordinator();
+
+  /**
+   * The change the owner's coordinator record takes for `workstream`, now
+   * that it reads `status` and read `before` it, or none: an open workstream
+   * is a record, a done one isn't. `before` is `undefined` for an open.
+   */
+  const recordFor = async (
+    ctx: Pick<SharedWriteContext, "session">,
+    workstream: WorkstreamView,
+    before: string | undefined
+  ): Promise<RecordChange | undefined> => {
+    if (coordinator === undefined) return undefined;
+    const done = workstream.status === DONE_STATUS;
+    const change = before === undefined ? (done ? undefined : "add") : before === DONE_STATUS ? (done ? undefined : "add") : done ? "remove" : undefined;
+    if (change === undefined) return undefined;
+    const orgId = (ctx.session.identity as { orgId?: string }).orgId;
+    if (orgId === undefined) throw new Error("A workstream's write needs a session in an organization, to find its project coordinator.");
+    const coordinatorSessionId = await deriveWorkerSessionId({
+      userId: workstream.owner,
+      orgId,
+      flow: coordinator.flow,
+      criteria: { worker: coordinator.worker, projectId: workstream.project }
+    });
+    return {
+      change,
+      worker: workstream.lead,
+      target: workstreamRef({ project: workstream.project, id: workstream.id }),
+      coordinatorSessionId
+    };
+  };
+
+  /** A coordinator not created yet has nothing to change: it takes its records when it is. */
+  const noCoordinatorYet = handler({
+    name: "workstream-record-no-coordinator",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({}),
+    execute: (error: unknown) => {
+      if (error instanceof DispatchRefusedError && error.refused === "session-not-found") return {};
+      throw error;
+    }
+  });
+
+  /** Add or remove the record on the owner's coordinator session, which runs the one delegate path. */
+  const changeRecord =
+    coordinator === undefined
+      ? undefined
+      : dispatcher({
+          name: "workstream-record-change",
+          flowKind: coordinator.flow,
+          action: WORKSTREAM_DELEGATE_ACTION,
+          inputSchema: recordChangeSchema,
+          session: { id: (step: RecordChange) => step.coordinatorSessionId },
+          payload: (step: RecordChange) => ({ change: step.change, worker: step.worker, target: step.target })
+        }).rescue([{ block: noCoordinatorYet }]);
+
+  /** Hand a write's record change, when it has one, to the owner's coordinator; answer the entry. */
+  const withRecord = (name: string, write: BlockDefinition<any, any>, description?: string) => {
+    const steps = sequencer({
+      name,
+      ...(description === undefined ? {} : { description }),
+      inputSchema: write.inputSchema,
+      outputSchema: updateWorkstreamOutputSchema
+    }).step(write);
+    return (
+      changeRecord === undefined
+        ? steps
+        : steps.tapIf((step: UpdatedStep) => step.record !== undefined, (step: UpdatedStep) => step.record!, changeRecord)
+    ).map((step: UpdatedStep) => ({ workstream: step.workstream }));
+  };
+
+  /** An open's answer, with the record change it hands the owner's coordinator. */
+  const recordOpen = handler({
+    name: "workstream-open-record",
+    inputSchema: openWorkstreamOutputSchema,
+    outputSchema: openWorkstreamOutputSchema.extend({ record: recordChangeSchema.optional() }),
+    execute: async (out: OpenWorkstreamOutput, ctx) => {
+      const record = await recordFor(ctx, out.workstream, undefined);
+      return record === undefined ? out : { ...out, record };
+    }
+  });
+
+  const openSteps = sequencer({
     name: "open-workstream",
     inputSchema: openWorkstreamInputSchema,
     outputSchema: openWorkstreamOutputSchema
@@ -374,34 +505,49 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     .step(checkOpen)
     .stepIf((step: OpenStep) => step.needsSession, createSession)
     .step(finishOpen);
+  const openWorkstream =
+    changeRecord === undefined
+      ? openSteps
+      : openSteps
+          .step(recordOpen)
+          .tapIf((out: { record?: RecordChange }) => out.record !== undefined, (out: { record?: RecordChange }) => out.record!, changeRecord)
+          .map(({ workstream, opened }: OpenWorkstreamOutput) => ({ workstream, opened }));
 
-  const updateWorkstream = handler({
-    name: "workstream-update",
+  const updateFromApp = handler({
+    name: "workstream-update-write",
     inputSchema: updateWorkstreamInputSchema,
-    outputSchema: updateWorkstreamOutputSchema,
+    outputSchema: updatedStepSchema,
     resources: WORKSTREAM_RESOURCES,
-    execute: async (input: UpdateWorkstreamInput, ctx) => {
+    execute: async (input: UpdateWorkstreamInput, ctx): Promise<UpdatedStep> => {
       const { project, id, owner, ...changes } = input;
-      return { workstream: await updateEntry(ctx, { project, id }, owner ?? ownerOf(ctx, "updateWorkstream"), changes) };
+      const written = await updateEntry(ctx, { project, id }, owner ?? ownerOf(ctx, "updateWorkstream"), changes);
+      const record = await recordFor(ctx, written.workstream, written.before);
+      return { workstream: written.workstream, ...(record === undefined ? {} : { record }) };
     }
   });
+  const updateWorkstream = withRecord("workstream-update", updateFromApp);
 
-  const updateWorkstreamTool = handler({
-    name: "updateWorkstream",
-    description:
-      "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it.",
+  const updateFromLead = handler({
+    name: "workstream-update-own-write",
     inputSchema: updateOwnWorkstreamInputSchema,
-    outputSchema: updateWorkstreamOutputSchema,
+    outputSchema: updatedStepSchema,
     resources: WORKSTREAM_RESOURCES,
-    execute: async (changes, ctx) => {
+    execute: async (changes, ctx): Promise<UpdatedStep> => {
       const ref = ctx.session.state[WORKSTREAM_STATE_KEY];
       const address = typeof ref === "string" ? parseWorkstreamRef(ref) : undefined;
       if (address === undefined) {
         throw new ProjectRefusedError("not-a-workstream-session", "this session leads no workstream, so there is none to update.");
       }
-      return { workstream: await updateEntry(ctx, address, ownerOf(ctx, "updateWorkstream"), changes) };
+      const written = await updateEntry(ctx, address, ownerOf(ctx, "updateWorkstream"), changes);
+      const record = await recordFor(ctx, written.workstream, written.before);
+      return { workstream: written.workstream, ...(record === undefined ? {} : { record }) };
     }
   });
+  const updateWorkstreamTool = withRecord(
+    "updateWorkstream",
+    updateFromLead,
+    "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it."
+  );
 
   return {
     openWorkstream,
@@ -463,7 +609,7 @@ async function updateEntry(
   address: WorkstreamAddress,
   owner: string,
   changes: Omit<UpdateWorkstreamInput, "project" | "id" | "owner">
-): Promise<WorkstreamView> {
+): Promise<{ workstream: WorkstreamView; before: string }> {
   assertWorkstreamId(address.id);
   const entries = workstreamsAt(ctx, address.project.visibility);
   const entry = await entries.getOptional(workstreamEntryKey(address.project.id, owner, address.id));
@@ -474,8 +620,12 @@ async function updateEntry(
     );
   }
   const { report, objectives, ...fields } = changes;
+  // The status the write that landed replaced: each retry recomputes from the
+  // state it is handed, so the last one read is the one written over.
+  let before = entry.state.status;
   await retryOnConflict(() =>
     entry.updateState((state) => {
+      before = state.status;
       const at = nowIso();
       const signed = withWrittenBy(ctx, {});
       return withWrittenBy(ctx, {
@@ -487,5 +637,5 @@ async function updateEntry(
     })
   );
   if (report !== undefined) await entry.writeContent(report);
-  return viewOf(address, owner, entry.state);
+  return { workstream: viewOf(address, owner, entry.state), before };
 }

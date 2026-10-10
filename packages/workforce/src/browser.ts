@@ -31,6 +31,24 @@ export {
   isDerivedWorkerSessionId,
   type WorkerSessionCriteria
 } from "./workers/derive-session-id";
-export { ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
-export { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./projects/workstream-ref";
+export { PROJECT_STATE_KEY, ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
+export {
+  parseProjectRef,
+  parseWorkstreamRef,
+  PRIVATE_WORKSTREAMS_RESOURCE,
+  projectRef,
+  workstreamRef,
+  WORKSTREAMS_RESOURCE,
+  workstreamsAccessor,
+  workstreamStorageKey,
+  type ProjectAddressRef,
+  type WorkstreamAddress
+} from "./projects/workstream-ref";
+export {
+  DONE_STATUS,
+  projectProgress,
+  STALE_AFTER_MS,
+  type ProgressEntry,
+  type ProjectProgress
+} from "./projects/project-progress";
 export { COORDINATOR_JUDGMENT, COORDINATOR_KIND, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";

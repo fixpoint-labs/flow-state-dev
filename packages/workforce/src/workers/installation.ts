@@ -45,12 +45,16 @@ import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from
 import {
   FILING_FLOW_STATE_KEY,
   FILING_SESSION_STATE_KEY,
+  FILING_WORKSTREAM_STATE_KEY,
+  PROJECT_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
   TASK_ID_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "./keys";
+import { COORDINATOR_KIND } from "../coordinator/coordinator-keys";
+import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE } from "../projects/collections";
 import {
   PRIVATE_WORKSTREAMS_RESOURCE,
   WORKSTREAM_RESOURCES,
@@ -58,7 +62,7 @@ import {
   workstreamEntryKey,
   workstreamsAccessor
 } from "../projects/workstream-collections";
-import { parseWorkstreamRef } from "../projects/workstream-ref";
+import { parseProjectRef, parseWorkstreamRef } from "../projects/workstream-ref";
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
@@ -95,6 +99,13 @@ export interface WorkerInstallationOptions {
   skills?: readonly InitialSkill[];
   /** The packages a user's own worker may hold by name (the org's library). */
   packages?: readonly PackageManifest[];
+  /**
+   * The standard worker every user's project coordinator runs as: a standard
+   * worker on the `coordinator` flow. A session linked to a project
+   * (`projectId`) is a session of this worker, one per user per project.
+   * Omitted, no session links to a project.
+   */
+  projectCoordinator?: string;
 }
 
 /**
@@ -195,6 +206,8 @@ export type WorkerSessionStateShape = {
   readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
 
 /** The installation's worker model. Build it once, at boot. */
@@ -219,7 +232,9 @@ export interface WorkerInstallation extends WorkerGrants {
    * coordinator's delivery set it, names the conversation it was opened for;
    * `workstreamId`, when a workstream's open set it, names the workstream the
    * session leads; `taskId`, when a conversation's board handed a task over,
-   * names the task the session works.
+   * names the task the session works, and `filingWorkstreamId` the workstream
+   * it was filed from; `projectId`, on a project coordinator's session, names
+   * its project.
    */
   readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
@@ -265,6 +280,11 @@ export interface WorkerInstallation extends WorkerGrants {
   standardWorkers(): readonly WorkerManifest[];
   /** The worker flows, resolved: each one's flow and whether it is kept for standard workers. */
   workerFlows(): Record<string, ResolvedWorkerFlow>;
+  /**
+   * The standard worker every user's project coordinator runs as, and the
+   * flow it runs on, or `undefined` when the installation names none.
+   */
+  projectCoordinator(): { readonly worker: string; readonly flow: string } | undefined;
   /**
    * Check a worker's configuration as its flow would on a turn, without
    * running anything: the same resolution and the same refusals. Used by
@@ -325,6 +345,23 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
   }
 
+  const projectCoordinator = options.projectCoordinator;
+  if (projectCoordinator !== undefined) {
+    const manifest = standard.get(projectCoordinator);
+    if (manifest === undefined) {
+      throw new Error(
+        `createWorkerInstallation: the project coordinator "${projectCoordinator}" isn't a standard worker. ` +
+          `Name one the installation's files declare.`
+      );
+    }
+    if (standardWorkerFlow(manifest, AGENT_KIND) !== COORDINATOR_KIND) {
+      throw new Error(
+        `createWorkerInstallation: the project coordinator "${projectCoordinator}" runs on flow ` +
+          `"${standardWorkerFlow(manifest, AGENT_KIND)}"; a project coordinator runs on "${COORDINATOR_KIND}".`
+      );
+    }
+  }
+
   // The built-in `agent`, bound to this installation, unless the app passes
   // its own: built on first use, once, so every turn checks its workers
   // against the one copy `hireWorkforce` registers.
@@ -374,7 +411,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional()
+    [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */
@@ -499,7 +538,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // A task's session is opened only by its board's hand-over, a dispatch
     // into a child of the conversation. A caller naming a task would make a
     // decoy that lookups and `isTaskSession` take for the real one (BP-031).
-    for (const key of [TASK_ID_STATE_KEY, FILING_FLOW_STATE_KEY]) {
+    for (const key of [TASK_ID_STATE_KEY, FILING_FLOW_STATE_KEY, FILING_WORKSTREAM_STATE_KEY]) {
       if (input.state[key] !== undefined && input.via !== "dispatch") {
         return {
           ok: false,
@@ -544,8 +583,68 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (found.found === "own" && found.standardOnly) {
       return { ok: false, message: `Worker "${workerId}" ${standardOnlyReason(found.flow, false)}.` };
     }
+    const project = input.state[PROJECT_STATE_KEY];
+    if (typeof project === "string") return projectLinkCheck(input, workerId, project);
     const workstream = input.state[WORKSTREAM_STATE_KEY];
     return typeof workstream === "string" ? workstreamLinkCheck(input, workerId, workstream) : { ok: true };
+  };
+
+  /**
+   * A session that names a project is that user's coordinator for it: a
+   * session of the standard worker the installation names, one per user per
+   * project (so at the id derived from the user, the organization and the
+   * project), on a project the creator can read now. A private project is
+   * read in the creator's own user scope and a shared one in their
+   * organization, so another user's private project, or another
+   * organization's, is never found.
+   */
+  const projectLinkCheck = async (
+    input: SessionCreateCheckInput,
+    workerId: string,
+    ref: string
+  ): Promise<SessionCreateCheckResult> => {
+    if (projectCoordinator === undefined) {
+      return { ok: false, message: `"${PROJECT_STATE_KEY}" links a session to a project, and this installation names no project coordinator.` };
+    }
+    if (workerId !== projectCoordinator) {
+      return {
+        ok: false,
+        message: `Only a session of the project coordinator "${projectCoordinator}" links to a project, not one of "${workerId}".`
+      };
+    }
+    if (!isDerivedWorkerSessionId(input.sessionId)) {
+      return {
+        ok: false,
+        message:
+          `A project's coordinator is one session per user per project, at the id derived for it: ` +
+          `create it with ensureWorkerSession({ worker, projectId }), with no session id of your own.`
+      };
+    }
+    const address = parseProjectRef(ref);
+    if (address === undefined) {
+      return { ok: false, message: `"${PROJECT_STATE_KEY}" "${ref}" names no project: it is <visibility>/<project>.` };
+    }
+    const accessor = address.visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE;
+    let row: Record<string, unknown> | undefined;
+    try {
+      row = await input.readCollectionItem(accessor, address.id);
+    } catch {
+      return {
+        ok: false,
+        message: `Flow "${input.flow.kind}" declares no project rows, so a session of it can't be linked to project "${address.id}".`
+      };
+    }
+    if (row === undefined) {
+      return {
+        ok: false,
+        status: 404,
+        message:
+          address.visibility === "private"
+            ? `You have no private project "${address.id}".`
+            : `This organization has no project "${address.id}" you can read.`
+      };
+    }
+    return { ok: true };
   };
 
   /**
@@ -710,6 +809,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     standardWorker: (id) => standard.get(id),
     standardWorkers: () => [...standard.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     workerFlows,
+    projectCoordinator: () =>
+      projectCoordinator === undefined
+        ? undefined
+        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_KIND)! },
     configurationProblems,
     standardWorkerProblems
   };

@@ -13,7 +13,7 @@ import {
   createLabReader,
   DISPATCHED_RUN_UNANSWERABLE,
   REOPENED_SOURCES,
-  roomSessionId,
+  readerSessionId,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
@@ -21,6 +21,9 @@ import { asksFor, workstreamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { ASKER_KIND } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
+
+/** The two session opens a first visit makes: a reading session on the mailbox kind and on the roster flow. */
+const READER_OPENS = ["/api/flows/mailbox/sessions", "/api/flows/workforce-roster/sessions"];
 
 const served: ServedLab[] = [];
 afterEach(async () => {
@@ -94,8 +97,8 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
-    // The Lab opens nothing at boot and serves no room kind to open one on, so
-    // the person holds no session and nothing the Lab serves says which
+    // The Lab opens nothing at boot and serves no reader kind to open one on,
+    // so the person holds no session and nothing the Lab serves says which
     // organization they are in.
     const { baseUrl } = await lab({ mailboxes: false });
     const seen: string[] = [];
@@ -103,30 +106,32 @@ describe("the refusal (V2, BR-3)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
-      if (url.pathname === "/api/flows/mailbox/sessions") return new Response(JSON.stringify({ error: "no flow" }), { status: 404 });
+      if (READER_OPENS.includes(url.pathname)) return new Response(JSON.stringify({ error: "no flow" }), { status: 404 });
       return real(input, init);
     });
     const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
-    expect(seen).toEqual(["GET /api/flows/sessions", "POST /api/flows/mailbox/sessions"]);
+    expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
+    expect(seen.slice(1, 3).sort()).toEqual(READER_OPENS.map((path) => `POST ${path}`));
+    expect(seen.slice(3).every((s) => s === "GET /api/flows/sessions")).toBe(true);
   });
 
   // FIX-1752: projects are org-wide, so a person the Lab verifies reaches them on a first
-  // visit. Their room session is opened first, and the Lab stamps it with their organization.
-  it("reads the organization off a room session it opens for a person who holds none", async () => {
+  // visit. Their reading sessions are opened first, and the Lab stamps them with their organization.
+  it("reads the organization off a reading session it opens for a person who holds none", async () => {
     // The Lab opens nothing at boot; its verified principal puts the person in `org_first_visit`.
     const { baseUrl } = await lab({ mailboxes: false, bearer: "ask-lab-secret", orgId: "org_first_visit" });
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
     expect(await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).toEqual([]);
     const snapshot = loaded(await createLabReader(clients).read());
     expect(snapshot.orgId).toBe("org_first_visit");
-    expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["mailbox"]);
+    expect(snapshot.sessions.map((s) => s.flowKind).sort()).toEqual(["mailbox", "workforce-roster"]);
   });
 
   // Two reads of a first visit can overlap: StrictMode replays the boot, or the person opens
-  // two tabs. Either way the person ends up with one room session, never two.
-  it("opens one room session for overlapping first-visit reads, on one page and across two", async () => {
+  // two tabs. Either way the person ends up with one reading session on each kind, never two.
+  it("opens one reading session per kind for overlapping first-visit reads, on one page and across two", async () => {
     const { baseUrl } = await lab({ mailboxes: false });
     const page = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     const [a, b] = await Promise.all([createLabReader(page).read(), createLabReader(page).read()]);
@@ -134,19 +139,19 @@ describe("the refusal (V2, BR-3)", () => {
     const tab = () => createLabClients({ baseUrl, userId: "u_two_tabs" });
     const [c, d] = await Promise.all([createLabReader(tab()).read(), createLabReader(tab()).read()]);
     for (const snapshot of [a, b, c, d]) expect(loaded(snapshot).orgId).toBe(DEFAULT_ORG_ID);
-    expect((await page.sessions.listSessions({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["mailbox"]);
-    expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["mailbox"]);
+    expect((await page.sessions.listSessions({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind).sort()).toEqual(["mailbox", "workforce-roster"]);
+    expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind).sort()).toEqual(["mailbox", "workforce-roster"]);
   });
 
-  // Session ids aren't scoped by organization. A person whose room id is already held in
+  // Session ids aren't scoped by organization. A person whose reading id is already held in
   // another of their organizations must still reach this one, not be locked out of it.
-  it("opens the room session under a fresh id when its one id is held where this organization can't list it", async () => {
+  it("opens the reading session under a fresh id when its one id is held where this organization can't list it", async () => {
     const { baseUrl } = await lab({ mailboxes: false });
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       // The other organization's session under the same id: a conflict, which this listing never shows.
-      if (/\/api\/flows\/mailbox\/sessions$/.test(url) && String(init?.body ?? "").includes(roomSessionId(ASK_LAB_USER_ID))) {
+      if (/\/api\/flows\/mailbox\/sessions$/.test(url) && String(init?.body ?? "").includes(readerSessionId(ASK_LAB_USER_ID, "mailbox"))) {
         return new Response(JSON.stringify({ error: "Session already exists" }), { status: 409 });
       }
       return real(input, init);
@@ -156,22 +161,24 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
     const rooms = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowKind === "mailbox");
     expect(rooms).toHaveLength(1);
-    expect(rooms[0]!.id).not.toBe(roomSessionId(ASK_LAB_USER_ID));
+    expect(rooms[0]!.id).not.toBe(readerSessionId(ASK_LAB_USER_ID, "mailbox"));
   });
 
-  it("a person with no session whose room session is refused gets the Lab's refusal, and nothing else is read", async () => {
+  it("a person with no session whose reading sessions are refused gets the Lab's refusal, and nothing else is read", async () => {
     const { baseUrl } = await lab({ mailboxes: false });
     const seen: string[] = [];
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
-      if (url.pathname === "/api/flows/mailbox/sessions") return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
+      if (READER_OPENS.includes(url.pathname)) return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
       return real(input, init);
     });
     const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused).toMatchObject({ httpStatus: 403, message: "not in this Lab" });
-    expect(seen).toEqual(["GET /api/flows/sessions", "POST /api/flows/mailbox/sessions"]);
+    expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
+    expect(seen.slice(1, 3).sort()).toEqual(READER_OPENS.map((path) => `POST ${path}`));
+    expect(seen.slice(3).every((s) => s === "GET /api/flows/sessions")).toBe(true);
   });
 
   it("refuses when the person's session carries no organization", async () => {

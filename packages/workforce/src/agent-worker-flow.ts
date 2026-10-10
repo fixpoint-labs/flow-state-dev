@@ -1329,11 +1329,7 @@ function defineAgentFlowAround(
     requestStateSchema: routedTurnStateSchema,
     execute: async (post: MailboxNotifyInput, ctx) => {
       await ctx.request.patchState({
-        [ROUTED_TURN_STATE]: {
-          mailboxId: post.mailboxId,
-          postId: post.postId,
-          ...(post.answerToken === undefined ? {} : { answerToken: post.answerToken })
-        }
+        [ROUTED_TURN_STATE]: { mailboxId: post.mailboxId, postId: post.postId }
       });
       return {};
     }
@@ -1360,8 +1356,7 @@ function defineAgentFlowAround(
         mailbox: z.string(),
         postId: z.string(),
         body: z.string(),
-        author: z.string(),
-        token: z.string().optional()
+        author: z.string()
       }),
       z.object({ answeredAlready: z.literal(true) })
     ]),
@@ -1379,8 +1374,7 @@ function defineAgentFlowAround(
           author:
             options.installation === undefined
               ? String((ctx.flow.config as Record<string, unknown>).seatId)
-              : workerIdOfTurn(ctx),
-          ...(routed.answerToken === undefined ? {} : { token: routed.answerToken })
+              : workerIdOfTurn(ctx)
         };
       }
       if (routed.handed === true) return { answeredAlready: true as const };
