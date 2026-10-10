@@ -76,8 +76,13 @@ often enough to notice.
 - **It is keyed by its worker id and picked by its description**, the way a delegate is picked by
   its note or description. A coordinator with no description isn't offered, and neither is one
   with no delegate to choose: then there is no choice to make, and today's misses apply.
-- **Best fit's question stays as #2955 words it.** A question that names the coordinator lowered
-  Jev's confidence on both kinds of ask (POC, set S2 against S1).
+- **Best fit's question asks "Who should take the post?"** *(Amended 2026-10-10, in
+  implementation; this spec first kept #2955's wording.)* #2955's question asks which delegate
+  should answer, which no longer fits once the coordinator is one of the choices. The POC's
+  objection was to a question that *names* the coordinator: that lowered Jev's confidence on both
+  kinds of ask (set S2 against S1). The new wording names nobody. On the goal it held: the chief
+  of staff picked itself for its own asks at 0.8 to 1, plain asks still went to the EM, and legs
+  a, c, g and h each passed 6 of 6 (#2997, `goal.md`).
 - **The DevTeam's `routeModel` is `typesafe-ai/jev`.** It is the gateway's evaluation model that
   reports confidence; `openai/gpt-5.4-mini` can't evaluate through the gateway
   ([Evaluation models](../../../apps/docs/docs/fundamentals/models.md#evaluation-models)).
