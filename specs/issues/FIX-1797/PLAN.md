@@ -151,6 +151,7 @@ stands for that child's control and is not run again.
 | P3.8 | FIX-1796 · the retired-terms census, with `--control`. Its list decides what is retired: Workforce's seat goes, and so does the task board's `seat`, now `assignee` (the epic's [D7](../../epics/FIX-1786/DECISIONS.md#d7), 2026-10-07) | its control | — |
 | P3.9 | **Every other goal directory** whose code reaches `@flow-state-dev/workforce`, the task board or `packages/shift-manager`, computed by import on the pre-epic baseline's tree and on the commit, and taken as the union. This closure's S1 excluded | their own, as each goal names | — |
 | P3.10 | FIX-1802 · `goals/workers/files-and-splits-down-the-chain/`, legs a to e, leg e on the real model. The split is graded here, on goal-local workers | `no-parent-settle` (its leg a) | `no-delegate-check` (b6) for its leg c |
+| P3.11 | FIX-1866 · `goals/devforce-lab/it-answers-a-conversations-task/`, legs a to d2 on DevTeam over HTTP, legs d and d2 on the real model with Jev as the judge, graded once (QR-10). It is the only check where the coordinator → coder → answer path runs end to end, so it is required: red or skipped is a finding (QR-13) | `feature-door-only` (leg a), `no-filing-project` (leg b), `no-judge` (leg d2) | — |
 
 For P3.9, the union is what keeps a deleted goal in scope: a directory on the baseline and gone
 from the commit is still listed, and needs its retirement line like any other. Each directory
