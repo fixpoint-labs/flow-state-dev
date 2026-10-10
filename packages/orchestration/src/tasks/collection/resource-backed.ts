@@ -1044,6 +1044,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
+    async markCancelOwed(id) {
+      return patchRef(id, "cancel_owed", (task) =>
+        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+          ? { cancelOwed: true }
+          : undefined
+      );
+    },
+
     get(id) {
       const taskRef = mirror.get(id);
       return taskRef === undefined

@@ -279,12 +279,12 @@ export async function addTaskAndWait(
    * clear what it owes, and end this turn `aborted`, with no further model
    * call. Safe to run again on a re-drive after a crash (BR-16c): a row that
    * already ended is left as it is. The turn ends even when that cleanup
-   * fails: a marker left set is cleared by the next touch. A row left open
-   * stays open; nothing on the board records that its asker stopped waiting.
+   * fails: a marker left set is cleared by the next touch, and a cancel that
+   * failed is owed on the row, for the next touch to pay (FIX-1844).
    */
   const endStopped = async (): Promise<WaitForResponseResult> => {
     try {
-      await cancelIfOpen(collection, filed.taskId, "The asking turn was stopped.");
+      await cancelOrOwe(collection, filed.taskId, "The asking turn was stopped.");
       await clearMarker();
     } finally {
       await ctx.session?.stopRequest?.(ctx.request.identity.id);
@@ -325,7 +325,7 @@ export async function addTaskAndWait(
     if (!(error instanceof AskEndedError)) throw error;
     if (error.code === "wait_timed_out") {
       // The ask is over: end the row too, so its later ending is dropped.
-      const cancelled = await cancelIfOpen(collection, filed.taskId, ASK_TIMED_OUT_REASON);
+      const cancelled = await cancelOrOwe(collection, filed.taskId, ASK_TIMED_OUT_REASON);
       // Unless it had already ended on its own: one that ended after this call
       // read it open and before the gate was written found no gate to resume,
       // and nothing may have touched the board since. Its answer stands; it is
@@ -361,6 +361,34 @@ function endedInTime(row: Pick<Task, "status" | "completedAt">, deadline: number
 
 /** The reason an ask's own timeout cancels its row with. A record for people, never read back. */
 const ASK_TIMED_OUT_REASON = "The ask timed out before the task finished.";
+
+/**
+ * {@link cancelIfOpen} for an ask that is over, which never fails the turn
+ * (FIX-1844): a cancel that throws is recorded on the row as owed
+ * (`Task.cancelOwed`), and the next touch of the board pays it
+ * ({@link resumeOwedAsks}). A mark that throws too leaves the row open.
+ *
+ * @returns Whether this call's cancel ended the row; `false` when it threw.
+ */
+async function cancelOrOwe(collection: TaskCollectionRef, taskId: string, reason: string): Promise<boolean> {
+  try {
+    return await cancelIfOpen(collection, taskId, reason);
+  } catch (error) {
+    try {
+      if (collection.markCancelOwed === undefined) throw new Error("this board can't record a cancel as owed");
+      await collection.markCancelOwed(taskId);
+      console.warn(
+        `[orchestration] ask "${taskId}": its cancel failed and is owed, for the next touch: ${(error as Error).message}`
+      );
+    } catch (markError) {
+      console.warn(
+        `[orchestration] ask "${taskId}": its cancel failed, and so did recording it as owed; the row stays open: ` +
+          `${(error as Error).message}; ${(markError as Error).message}`
+      );
+    }
+    return false;
+  }
+}
 
 /**
  * Cancel the asked row unless it already ended. Idempotent: a replay after a
@@ -400,8 +428,15 @@ export type ResumeOwedReport = {
   readonly stillOwed: readonly string[];
 };
 
+/** The reason a touch cancels a row whose ask is over with. A record for people, never read back. */
+const ASK_OVER_REASON = "The ask was over (stopped or timed out) before the task finished.";
+
 /**
  * Resume every turn this board's rows are owed (the board touch).
+ *
+ * First it pays every cancel owed (`Task.cancelOwed`, FIX-1844): a row whose
+ * ask is over and whose own cancel failed is cancelled now. That ending owes
+ * no resume. A cancel that throws again stays owed for the next touch.
  *
  * Reads the owed rows with one filtered `list` over the board's loaded rows,
  * and stops at once when there are none. For each owed row it resumes the turn with the row's ending, through
@@ -416,6 +451,13 @@ export async function resumeOwedAsks(
   ctx: BlockContext,
   collection: TaskCollectionRef
 ): Promise<ResumeOwedReport> {
+  for (const row of collection.list({ cancelOwed: true })) {
+    try {
+      await cancelIfOpen(collection, row.id, ASK_OVER_REASON);
+    } catch (error) {
+      console.warn(`[orchestration] ask "${row.id}": its owed cancel failed and stays owed: ${(error as Error).message}`);
+    }
+  }
   const owed = collection.list({ resumeOwed: true });
   if (owed.length === 0) return { resumed: [], stillOwed: [] };
   const host = requireRequestHost(ctx);

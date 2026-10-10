@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { addTaskAndWait } from "../../src/tasks/helpers/wait-for-response";
+import { addTaskAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 function boardCtx(): BlockContext {
@@ -51,7 +51,7 @@ const BACKINGS: Record<string, () => Promise<TaskCollectionRef>> = {
 };
 
 /** What the scripted gate does when the call parks. */
-type Park = "park" | { timedOut: true };
+type Park = "park" | { timedOut: true } | { stopped: true };
 
 /**
  * A turn's context for one generator tool call. `memo` is the request's
@@ -61,7 +61,7 @@ type Park = "park" | { timedOut: true };
 function turnCtx(memo: Map<string, unknown>, park: Park, callId = "c1"): BlockContext {
   return {
     _blockIdentity: { blockName: "addTask", blockInstanceId: `req_1:root/step[0]/tool[addTask][0%3A${callId}]:0` },
-    session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
+    session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {}, stopRequest: async () => undefined },
     request: { identity: { type: "request", id: "req_1" } },
     requestHost: { resumeAsk: async () => ({ ok: true }), hasAskSweeper: true },
     runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
@@ -72,6 +72,7 @@ function turnCtx(memo: Map<string, unknown>, park: Park, callId = "c1"): BlockCo
     },
     suspend: async () => {
       if (park === "park") throw new Error("parked");
+      if ("stopped" in park) return { answered: false, stopped: true };
       return { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } };
     }
   } as unknown as BlockContext;
@@ -272,6 +273,66 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       } finally {
         lateBy = 0;
       }
+    });
+    describe("an ask whose own cancel fails (FIX-1844)", () => {
+      /** The board, with its first cancel failing as a store blip would. */
+      function failingFirstCancel(board: TaskCollectionRef): TaskCollectionRef {
+        let failed = false;
+        return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+          cancel: async (...args: Parameters<TaskCollectionRef["cancel"]>) => {
+            if (!failed) {
+              failed = true;
+              throw new Error("store unavailable");
+            }
+            return board.cancel(...args);
+          }
+        }) as TaskCollectionRef;
+      }
+
+      for (const [ending, park, error] of [
+        ["timed out", { timedOut: true }, "wait_timed_out"],
+        ["stopped", { stopped: true }, "wait_stopped"]
+      ] as const) {
+        it(`a ${ending} ask still ends as ${error}, and the next touch cancels the row it left open`, async () => {
+          const board = await build();
+          const blip = failingFirstCancel(board);
+
+          const result = await addTaskAndWait(turnCtx(new Map(), park), blip, init);
+          expect(result).toMatchObject({ ok: false, error });
+          // Nobody waits on the row now, and its worker would keep at it: the
+          // cancel is owed, on the row.
+          const [left] = board.list();
+          expect(left).toMatchObject({ status: "pending", cancelOwed: true });
+
+          const touched = await resumeOwedAsks(turnCtx(new Map(), "park"), blip);
+          const [row] = board.list();
+          expect(row).toMatchObject({ status: "cancelled" });
+          // The ask is over, so its ending owes the turn nothing, and the debt is paid.
+          expect(row?.resumeOwed).toBeUndefined();
+          expect(row?.cancelOwed).toBeUndefined();
+          expect(touched).toEqual({ resumed: [], stillOwed: [] });
+        });
+      }
+
+      it("a row whose worker ends it before the touch pays the debt with that ending, and owes the turn nothing", async () => {
+        const board = await build();
+        await addTaskAndWait(turnCtx(new Map(), { stopped: true }), failingFirstCancel(board), init);
+        await board.claim("researcher-worker");
+        await board.complete(board.list()[0]!.id, "done anyway");
+
+        const [row] = board.list();
+        expect(row).toMatchObject({ status: "completed" });
+        expect(row?.cancelOwed).toBeUndefined();
+        expect(row?.resumeOwed).toBeUndefined();
+      });
+
+      it("a touch with no cancel owed leaves an open ask alone", async () => {
+        const board = await build();
+        await expect(addTaskAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
+        await resumeOwedAsks(turnCtx(new Map(), "park"), board);
+        expect(board.list()[0]).toMatchObject({ status: "pending" });
+        expect(board.list()[0]?.cancelOwed).toBeUndefined();
+      });
     });
   });
 }
