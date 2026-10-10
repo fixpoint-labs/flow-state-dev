@@ -366,7 +366,7 @@ The conversation that filed a task hears once when it ends, in a line under the 
 Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
 ```
 
-It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. When the line arrives, a coordinator that routes by judgment takes a turn to read it and decide what to do next. One with a fixed routing policy shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word.
+It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word.
 
 ### Managing tasks
 
