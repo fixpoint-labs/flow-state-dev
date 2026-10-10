@@ -80,6 +80,8 @@ Only documents are narrowed. The stores and boards its kind declares stay reacha
 
 `packages:` names the [packages](./packages-on-disk.md) this worker takes from its team's or the org's library, as a list: `packages: [escalation]`. The packages in its own `packages/` folder need no line.
 
+`delegates:` names the workers this worker hands work to, as a list: `delegates: [eng.coder, eng.reviewer]`. When one of them takes tasks, the worker gets the tools to [file tasks](./delegating-work.md) for them. A worker on your own flow also needs the flow to carry them, through [`defineSessionBoard`](./delegating-work.md#on-your-own-worker-flow).
+
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
 The frontmatter is the same dialect a [`SKILL.md`](../skills/overview.md) uses. If you have written one of those, you already know the shape.
