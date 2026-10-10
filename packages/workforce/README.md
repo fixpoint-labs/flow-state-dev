@@ -2329,7 +2329,7 @@ follow-up with `addTask`'s `followUpOf`, which runs in the same session with the
 
 A browser reads its person's boards through the ordinary collection read: `tasks`, fetched through
 any of that person's sessions on a flow that carries the session board, answers every one of their
-conversations' rows at once and none of another person's. Each row's key starts with the
+conversations' rows in one listing, paged like any collection read, and none of another person's. Each row's key starts with the
 conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that conversation's
 session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
 and the like), never a task's input, output or metadata.
