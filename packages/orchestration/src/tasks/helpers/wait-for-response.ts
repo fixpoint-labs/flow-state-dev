@@ -277,6 +277,9 @@ export async function addTaskAndWait(
     const recorded = await recordedAskOutcome(ctx, park);
     if (recorded !== undefined && "stopped" in recorded) return endStopped();
     await clearMarker();
+    // A re-drive after a crash that came after this ask's own timeout had
+    // cancelled the row: the ask timed out, the task wasn't cancelled.
+    if (isOwnTimeoutCancel(row)) return timedOut(filed.taskId);
     return answerOf(filed.taskId, outcomeOf(row));
   }
 
@@ -290,15 +293,15 @@ export async function addTaskAndWait(
     if (!(error instanceof AskEndedError)) throw error;
     if (error.code === "wait_timed_out") {
       // The ask is over: end the row too, so its later ending is dropped.
-      const cancelled = await cancelIfOpen(collection, filed.taskId, TIMED_OUT_REASON);
+      const cancelled = await cancelIfOpen(collection, filed.taskId, ASK_TIMED_OUT_REASON);
       // Unless it had already ended on its own: one that ended after this call
       // read it open and before the gate was written found no gate to resume,
       // and nothing may have touched the board since. Its answer stands; it is
       // late, never later than the deadline, but not lost.
-      // A row this ask's own timeout cancelled before a crash, read again on
-      // the re-drive, is not such an ending.
+      // A row this ask's own timeout cancelled before a crash is not such an
+      // ending.
       const ended = cancelled ? undefined : collection.get(filed.taskId);
-      if (ended !== undefined && isTerminalStatus(ended.status) && ended.error !== TIMED_OUT_REASON) {
+      if (ended !== undefined && isTerminalStatus(ended.status) && !isOwnTimeoutCancel(ended)) {
         await clearMarker();
         return answerOf(filed.taskId, outcomeOf(ended));
       }
@@ -309,7 +312,22 @@ export async function addTaskAndWait(
 }
 
 /** The reason an ask's own timeout cancels its row with, so a re-drive knows its own cancel. */
-const TIMED_OUT_REASON = "The ask timed out before the task finished.";
+/**
+ * The reason an ask's own timeout cancels its row with: the one value both the
+ * cancel writes and a re-drive after a crash reads, to tell that cancel from
+ * the task being cancelled by someone else.
+ */
+export const ASK_TIMED_OUT_REASON = "The ask timed out before the task finished.";
+
+/** Whether `row` ended by this ask's own timeout cancel. */
+function isOwnTimeoutCancel(row: Pick<Task, "status" | "error">): boolean {
+  return row.status === "cancelled" && row.error === ASK_TIMED_OUT_REASON;
+}
+
+/** An ask that timed out, as the call answers it. */
+function timedOut(taskId: string): WaitForResponseResult {
+  return { ok: false, error: "wait_timed_out", taskId, message: ASK_TIMED_OUT_REASON };
+}
 
 /**
  * Cancel the asked row unless it already ended. Idempotent: a replay after a

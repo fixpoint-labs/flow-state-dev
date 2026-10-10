@@ -256,6 +256,7 @@ export {
   addTaskAndWait,
   canHoldAsk,
   askGateId,
+  ASK_TIMED_OUT_REASON,
   DEFAULT_ASK_TIMEOUT_MS,
   MIN_ASK_TIMEOUT_MS,
   MAX_ASK_TIMEOUT_MS,

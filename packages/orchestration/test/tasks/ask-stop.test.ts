@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { ASK_TIMED_OUT_REASON } from "../../src/task-board";
 import {
   act,
   askCall,
@@ -223,6 +224,29 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     const { flow, after } = await restart(filename, seen);
     await untilStatus(after, requestId, "aborted");
     expect(seen).toHaveLength(1);
+    expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+  });
+
+  it("a timed-out ask killed after its row's cancel is driven on as wait_timed_out, not wait_task_cancelled", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+    // The sweep timed the ask out and the resumed call cancelled its row; the
+    // process died before the turn moved on.
+    await provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resolvedBy: "sweep",
+      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+    });
+    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: ASK_TIMED_OUT_REASON } });
+    await before.dispose();
+
+    const { flow, after } = await restart(filename, seen);
+    await until(after, requestId, "completed");
+    expect(seen).toHaveLength(2);
+    expect(toolResults(seen[1]!.messages)).toContain("wait_timed_out");
+    expect(toolResults(seen[1]!.messages)).not.toContain("wait_task_cancelled");
     expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
   });
 
