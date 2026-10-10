@@ -66,10 +66,10 @@ import {
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
-import { isExpiredApproval, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
+import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
 import { latestGateIdOf, RESUME_LEASE_MS } from "./resume-under-lease";
 import { generateId } from "../utils/generate-id";
 import type { ResumeDeps } from "./resume-under-lease";

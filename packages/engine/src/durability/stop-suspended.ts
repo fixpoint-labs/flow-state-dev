@@ -31,7 +31,7 @@
  * A stop of a turn parked behind one still ends it `aborted`: the stop is
  * recorded on the turn, which its first abort poll reads before anything runs.
  */
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
 import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
@@ -124,18 +124,6 @@ export async function stopSuspendedRequest(
 
   const ended = await stopAtNonAskGate(deps, record, gate);
   return ended ? "stopped" : "already-resolved";
-}
-
-/**
- * Whether `gate` is an approval that expired: a non-ask gate a person could
- * have rejected, past its deadline. Its turn is owed a continuation that reads
- * it as no longer valid (FIX-1846). A gate that allows no rejection (an input
- * form) only expires, as before.
- */
-export function isExpiredApproval(gate: SuspensionRecord): boolean {
-  if (gate.status !== "expired" || isAskGate(gate)) return false;
-  // Absent on records written before `allow` existed: binary, as the resume route reads it.
-  return (gate.allow ?? ["approve", "reject"]).includes("reject");
 }
 
 /** The turn's last logged gate, when it expired: the turn waits on nothing now. */

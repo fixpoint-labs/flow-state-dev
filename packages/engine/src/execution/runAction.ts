@@ -82,7 +82,7 @@ import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { noteAskDeadline } from "../durability/ask-deadlines";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -1834,7 +1834,7 @@ async function runActionAttempt<
         const keepsResolution =
           suspension !== null &&
           (suspension.status === "stopped" ||
-            suspension.status === "expired" ||
+            isExpiredApproval(suspension) ||
             (suspension.status === "submitted" && isAskGate(suspension)));
         if (suspension !== null && !keepsResolution) {
           await provider.suspend({
@@ -1867,12 +1867,9 @@ async function runActionAttempt<
   // from the replay log — so it can only ever resolve the gate this request
   // actually suspended at.
   let resumeContext: ResumeContext | undefined;
-  // The gate being resumed, and how it was resolved, read with the replay log
-  // below. The audit item reports it: a stopped ask continues with a `submit`
-  // action, but was stopped (FIX-1816); an expired approval continues with a
-  // `reject`, but expired (FIX-1846).
+  // The gate being resumed, read with the replay log below. How the resume
+  // resolves it is `resumeContext.resolution`.
   let resumedGate: SuspensionRecord | null = null;
-  let resumedGateStatus: SuspensionRecord["status"] | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
   try {
@@ -1896,19 +1893,23 @@ async function runActionAttempt<
             requestId,
             resumeContextRaw.suspensionId
           )) ?? null;
-        // An expiry is named by the continuation that owns it (the sweep's
-        // re-drive, or a stop of a turn behind an expired approval), never read
-        // back from the gate: an expiry write that raced a person's approve can
-        // leave `expired` on a gate that was approved (FIX-1846).
+        // How this resume resolves the gate, the one source the audit item and
+        // `ctx.suspend()` both read. Usually the gate's recorded status (a
+        // stopped ask continues with a `submit`, but was stopped, FIX-1816).
+        // An expiry is the exception: named only by the continuation that owns
+        // it (the sweep's re-drive, or a stop of a turn behind an expired
+        // approval), never read back from the gate, since an expiry write that
+        // raced a person's approve can leave `expired` on an approved gate
+        // (FIX-1846). Overwrites whatever the caller supplied otherwise.
         const expiryOwned = resumeContextRaw.action === "reject" && resumeContextRaw.resolution === "expired";
-        if (expiryOwned) resumedGateStatus = "expired";
-        else if (resumedGate !== null && resumedGate.status !== "pending" && resumedGate.status !== "expired") {
-          resumedGateStatus = resumedGate.status;
-        }
+        const recorded =
+          resumedGate !== null && resumedGate.status !== "pending" && resumedGate.status !== "expired"
+            ? resumedGate.status
+            : undefined;
         resumeContext = {
           ...resumeContextRaw,
           pendingBlockLogicalId,
-          resolution: expiryOwned ? "expired" : undefined
+          resolution: expiryOwned ? "expired" : recorded
         };
       }
     }
@@ -2103,7 +2104,7 @@ async function runActionAttempt<
       type: "suspension_resume",
       status: "completed",
       suspensionId: resumeContext.suspensionId,
-      resolution: resumedGateStatus ?? RESUME_ACTION_STATUS[resumeContext.action],
+      resolution: resumeContext.resolution ?? RESUME_ACTION_STATUS[resumeContext.action],
       resolvedBy: resumeContext.resumedBy,
       resumeData: resumeContext.data,
       resolvedAt: Date.now(),
