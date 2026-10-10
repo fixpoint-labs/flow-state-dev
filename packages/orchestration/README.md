@@ -720,11 +720,15 @@ actions. With no board resolvable, a call returns
 
 `addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
 then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
-minutes by default). The option is in the schema only where the host can hold an ask: durable
-execution and a running durability sweeper. A composing layer that builds its own capability
-gets the same per-turn list from `taskToolsForTurn(resolver, roster)`. An ask is refused on a
-turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. See the
-task board page for limits and errors.
+minutes by default). The option is in the schema only on a board that resumes asks and a host
+that can hold one: pass `createTaskToolsCapability(resolver, roster, { resumesAsks: true })`
+only when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn
+(a board run, a task's notice), and the host has durable execution and a running durability
+sweeper. `resumesAsks` defaults to `false`, so the standalone `taskTools` and a custom resolver
+never offer the option. A composing layer that builds its own capability gets the same per-turn
+list from `taskToolsForTurn(resolver, roster, { resumesAsks })`. `listTasks` marks an asked row
+`asked: true`. An ask is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
+returns true for those turns. See the task board page for limits and errors.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
