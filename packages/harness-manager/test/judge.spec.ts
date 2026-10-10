@@ -12,7 +12,7 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
@@ -111,6 +111,27 @@ describe("a judged run on a board read from the claim", () => {
 
     expect(read).toHaveLength(1);
     expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", output: { judged: false } });
+  }, 60_000);
+});
+
+describe("a composite judge", () => {
+  it("settles on the phase's check alone when a step inside it fails", async () => {
+    // A judge is usually a sequencer around an evaluator: a failure inside it is still no verdict.
+    const reading = handler({
+      name: "judge-reading",
+      inputSchema: harnessJudgeInputSchema,
+      outputSchema: z.unknown(),
+      execute: () => {
+        throw new Error("the gateway is down");
+      },
+    });
+    const block = sequencer({ name: "composite-judge", inputSchema: harnessJudgeInputSchema }).step(reading);
+    const lab = claimHost({ mode: "claim", script: [{ answer: "an answer" }], manager: { judge: { block: block as never, floor: FLOOR } } });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "look at our repo", input: {} });
+
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+
+    expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", attempts: 1, output: { judged: false } });
   }, 60_000);
 });
 

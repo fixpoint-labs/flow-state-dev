@@ -2625,11 +2625,24 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * phase's check alone (`judged: false`). Absent when no judge was given, so
    * a manager without one runs the chain it always ran.
    */
+  //
+  // Wrapped in a sequencer of the manager's own, whose chain-level rescue
+  // catches a failure anywhere beneath it: a block-level rescue on the host's
+  // block does not reach a failure inside a composite judge (a sequencer
+  // around an evaluator, which is what a judge usually is).
   const judgeStep =
     judge === undefined
       ? undefined
-      : judge.block
-          .connectOutput((verdict: unknown) => ({ verdict: harnessJudgeVerdictSchema.parse(verdict) }))
+      : sequencer({ name: `${name}-judge`, inputSchema: harnessJudgeInputSchema })
+          .step(judge.block)
+          .step(
+            handler({
+              name: `${name}-judge-verdict`,
+              inputSchema: z.unknown(),
+              outputSchema: z.object({ verdict: harnessJudgeVerdictSchema }),
+              execute: (verdict: unknown) => ({ verdict: harnessJudgeVerdictSchema.parse(verdict) }),
+            }),
+          )
           .rescue([
             {
               block: handler({
