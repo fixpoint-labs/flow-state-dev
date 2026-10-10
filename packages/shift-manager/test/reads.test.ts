@@ -436,6 +436,57 @@ describe("asks through the mailbox-notify path (V7)", () => {
     expect(snapshot.inventory.ok).toBe(true);
   });
 
+  it("a 404 from the roster's own reads fails Inbox's asks; only a Lab with no roster flow has no own workers", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(clients, "ops.asker", "deploy");
+    const real = globalThis.fetch;
+    const spy = vi.spyOn(globalThis, "fetch");
+    spy.mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/resources/workforceWorkers")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "no such collection" }), { status: 404 }));
+      }
+      return real(input, init);
+    });
+    expect(loaded(await createLabReader(clients).read()).asks).toMatchObject({ ok: false });
+
+    // The Lab refuses the roster flow itself, as one that doesn't serve it does.
+    spy.mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes(`/${ROSTER_FLOW_KIND}/sessions`)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `Unknown flow "${ROSTER_FLOW_KIND}"` }), { status: 404 }));
+      }
+      return real(input, init);
+    });
+    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: "u_no_roster" })).read());
+    expect(snapshot.asks).toEqual({ ok: true, value: [] });
+  });
+
+  it("a session on another flow that names the person's own worker is not that worker's", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await hire(clients, "ops.mine");
+    await ask(clients, "ops.mine", "ship it");
+    // The control: on the flow its roster names, the ask is the worker's.
+    await eventually(async () => {
+      const s = loaded(await createLabReader(clients).read());
+      return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
+    }, "the own worker's ask");
+    // The roster now says the worker runs elsewhere, so the asker session only names it.
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const response = await real(input, init);
+      if (!url.endsWith("/resources/workforceWorkers")) return response;
+      const body = (await response.json()) as { items: Array<{ clientData?: Record<string, unknown> }> };
+      for (const item of body.items) item.clientData = { ...item.clientData, flow: "elsewhere" };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.asks).toEqual({ ok: true, value: [] });
+  });
+
   it("another person's own worker's ask is in their Inbox, never in this person's", async () => {
     const { baseUrl } = await lab();
     const mine = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
