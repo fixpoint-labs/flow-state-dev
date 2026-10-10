@@ -62,6 +62,16 @@ describe('per-tier flowIsolation', () => {
     })
   })
 
+  it('isolates the digest when episodic sits at another scope and follows that scope\'s flag', () => {
+    // The digest keys at semantic's scope, so it cannot follow the org flag
+    // that decides an org-scoped episodic store's isolation.
+    const mem = system({ model: MODEL, working: true, episodic: { scope: 'org' }, semantic: { scope: 'user' }, digest: true })
+    expect(mem.capability.userResources.digestMemory?.flowIsolation).toBe(true)
+    // Same scope: the digest's default is the one episodic follows.
+    const same = system({ model: MODEL, working: true, episodic: true, semantic: { flowIsolation: false }, digest: true })
+    expect(same.capability.userResources.digestMemory?.flowIsolation).toBeUndefined()
+  })
+
   it('does not carry episodic isolation over to semantic', () => {
     expect(tiers({ flowIsolation: true }, true).semantic).toBeUndefined()
   })

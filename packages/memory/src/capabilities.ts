@@ -201,7 +201,11 @@ export const semanticMemoryCapability = createSemanticMemoryCapability()
 // Digest Memory Capability
 // ---------------------------------------------------------------------------
 
-/** Config for digest memory capability. */
+/**
+ * Config for digest memory capability. `system()` derives `flowIsolation` from
+ * the episodic and semantic tiers; a caller composing tiers by hand sets it to
+ * `true` whenever either source is isolated.
+ */
 export interface DigestMemoryCapabilityConfig extends MemoryResourceOptions {
   /** Resource scope. Default: 'user'. Should mirror semantic memory's scope. */
   scope?: 'user' | 'org'

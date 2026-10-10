@@ -116,13 +116,18 @@ function resolveRelationsConfig(
  * episodes, so a digest shared across flows would show one flow's episodes to
  * another. It is isolated when either source is, shared only when both are,
  * and takes the flow's default otherwise.
+ *
+ * The digest sits at semantic's scope, so that default is semantic's. When
+ * episodic sits at the other scope and sets nothing, its isolation comes from
+ * the other flow flag, which the digest can't follow; it is isolated then.
  */
 function digestFlowIsolation(
-  episodic: boolean | undefined,
-  semantic: boolean | undefined,
+  episodic: { scope: 'user' | 'org'; flowIsolation?: boolean },
+  semantic: { scope: 'user' | 'org'; flowIsolation?: boolean },
 ): boolean | undefined {
-  if (episodic === true || semantic === true) return true
-  if (episodic === false && semantic === false) return false
+  if (episodic.flowIsolation === true || semantic.flowIsolation === true) return true
+  if (episodic.flowIsolation === false && semantic.flowIsolation === false) return false
+  if (episodic.flowIsolation === undefined && episodic.scope !== semantic.scope) return true
   return undefined
 }
 
@@ -178,7 +183,9 @@ export function resolveMemoryConfigs(config: MemoryTierOptions): ResolvedMemoryC
       }
     : undefined
 
-  const digestIsolation = digestFlowIsolation(episodicConfig?.flowIsolation, semanticConfig?.flowIsolation)
+  const digestIsolation = episodicConfig && semanticConfig
+    ? digestFlowIsolation(episodicConfig, semanticConfig)
+    : undefined
   const digestConfig: ResolvedDigestConfig | undefined = config.digest && semanticConfig
     ? {
         scope: semanticConfig.scope,

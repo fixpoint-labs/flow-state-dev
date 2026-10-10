@@ -201,7 +201,7 @@ User-scoped rolling summary that gets regenerated periodically. The digest is th
 | `topN.facts` | `number` | `30` | Top-N semantic facts (by reinforcement count) fed to regeneration |
 | `topN.episodes` | `number` | `10` | Top-N recent-and-significant episodes fed to regeneration |
 
-The digest has no `flowIsolation` of its own, because it summarizes episodes and facts. It is kept per flow copy when either `episodic` or `semantic` sets `flowIsolation: true`, shared across flows only when both set `false`, and follows the flow's default otherwise. So a flow's isolated episodes never reach another flow's digest.
+The digest has no `flowIsolation` of its own, because it summarizes episodes and facts. It is kept per flow copy when either `episodic` or `semantic` sets `flowIsolation: true`, shared across flows only when both set `false`, and follows the flow's default otherwise. When `episodic` sits at a different scope from `semantic` and sets nothing, the digest is kept per flow copy, because it can't follow the other scope's flag. So a flow's isolated episodes never reach another flow's digest.
 
 ### `hygiene`
 

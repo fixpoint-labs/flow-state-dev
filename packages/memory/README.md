@@ -89,7 +89,7 @@ Rule of thumb: if your flow never calls into the capture pipeline, reach for `cr
 | Digest | user | Summarized rollups across many sessions |
 | Hygiene | session | Time-based confidence decay and episodic TTL maintenance |
 
-Episodic, semantic and digest follow the flow's `isolateUserState` / `isolateOrgState` by default. Set `flowIsolation: true` or `false` on the `episodic` or `semantic` config to keep that tier per flow copy or share it across flows regardless. Semantic doesn't inherit episodic's setting. The digest is isolated when either source is `true`, shared only when both are `false`. Working memory is per session. See [Sharing a tier across flows](https://flow-state.dev/docs/memory/configuration#sharing-a-tier-across-flows).
+Episodic, semantic and digest follow the flow's `isolateUserState` / `isolateOrgState` by default. Set `flowIsolation: true` or `false` on the `episodic` or `semantic` config to keep that tier per flow copy or share it across flows regardless. Semantic doesn't inherit episodic's setting. The digest is isolated when either source is `true`, or when episodic sits at a different scope and sets nothing; it is shared only when both are `false`. Working memory is per session. See [Sharing a tier across flows](https://flow-state.dev/docs/memory/configuration#sharing-a-tier-across-flows).
 
 Two entry points: `createMemoryCapability()` builds the read-side capability; `system()` builds the same capability plus the auto-capture and lifecycle pipeline.
 
