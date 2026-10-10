@@ -40,7 +40,7 @@
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { DELEGATE_SERVER_OWNED, delegateStateShape } from "../delegates/delegate-list";
+import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
@@ -70,6 +70,12 @@ export interface SessionBoardOptions {
    * Omitted, every worker flow on the installation that takes one.
    */
   readonly postFlows?: ReadonlySet<string>;
+  /**
+   * The records a session's delegates start with beside its worker's
+   * defaults, copied in the first time they are read or changed. A project
+   * coordinator's flow seeds one per workstream its user has open there.
+   */
+  readonly seed?: (ctx: BlockContext) => Promise<readonly DelegateRecord[] | undefined>;
 }
 
 /**

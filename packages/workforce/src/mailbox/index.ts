@@ -23,7 +23,6 @@ export {
   MailboxPostRefusedError,
   INVENTORY_REGISTER_MAILBOX,
   INVENTORY_REGISTER_SEATS,
-  INVENTORY_RETIRE_MAILBOXES,
   inventoryMailboxRegisteredSchema,
   inventorySeatsRegisteredSchema,
   inventoryWriterActions,

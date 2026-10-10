@@ -7,19 +7,22 @@
  *
  * - `lab`: the app's own flow, with the project blocks and the workstream
  *   blocks as actions, plus whatever test-only actions a test file adds.
- * - `lead` and `quiet`: two fixture worker flows on one worker installation.
- *   A worker on `lead` can lead a workstream; a worker on `quiet` can't.
+ * - `lead`, `lead2` and `quiet`: three fixture worker flows on one worker
+ *   installation. A worker on `lead` or `lead2` can lead a workstream when
+ *   the test declares the entry on it; a worker on `quiet` can't.
  * - `roster`: the roster flow, with the hire block, so each user hires their
  *   own workers.
+ * - Whatever further flows a test file adds on the same installation (the
+ *   coordinator, say), with the standard workers it names.
  *
  * Every user's worker is hired through the app, never seeded.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
+import { createFlowState, createInMemoryStores, inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { MAILBOX_KIND, mailboxFlow } from "../src/index";
+import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
@@ -37,8 +40,16 @@ export type HostExtras = {
   lead?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** Extra internal actions on the `lead` flow. */
   leadInternal?: (installation: WorkerInstallation) => Record<string, unknown>;
-  /** Whether the room's talk kind is registered. Default true: `createProject` binds a talk session. */
-  mailbox?: boolean;
+  /** Extra internal actions on the `lead2` flow. */
+  lead2Internal?: (installation: WorkerInstallation) => Record<string, unknown>;
+  /** The installation's standard workers. Default none. */
+  standardWorkers?: readonly WorkerManifest[];
+  /** The standard worker the installation names as every project's coordinator. */
+  projectCoordinator?: string;
+  /** More worker flows on the installation, by kind, built once it exists. */
+  flows?: (installation: WorkerInstallation) => Record<string, unknown>;
+  /** The scripted models, as `createMockModelResolver` takes them. */
+  models?: Parameters<typeof createMockModelResolver>[0];
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -76,10 +87,16 @@ function workerFlow(
 export async function bootProjectsHost(extras: HostExtras, options: { stores?: StoreAdapter } = {}) {
   const stores = options.stores ?? inMemoryStores();
   let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+  const installation = createWorkerInstallation({
+    standardWorkers: extras.standardWorkers ?? [],
+    workerFlows: () => flows as never,
+    ...(extras.projectCoordinator === undefined ? {} : { projectCoordinator: extras.projectCoordinator })
+  });
   const lead = workerFlow("lead", installation, extras.lead?.(installation), extras.leadInternal?.(installation));
+  const lead2 = workerFlow("lead2", installation, {}, extras.lead2Internal?.(installation));
   const quiet = workerFlow("quiet", installation);
-  flows = { lead, quiet };
+  const more = extras.flows?.(installation) ?? {};
+  flows = { lead, lead2, quiet, ...more };
 
   const hireBlocks = createWorkerHireBlocks(installation);
   const roster = defineWorkerRosterFlow(installation, {
@@ -91,14 +108,17 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const instances: Record<string, FlowInstance> = {
     lab: lab() as unknown as FlowInstance,
     lead: lead() as unknown as FlowInstance,
+    lead2: lead2() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
     [ROSTER_FLOW_KIND]: roster() as unknown as FlowInstance,
-    ...(extras.mailbox === false ? {} : { [MAILBOX_KIND]: mailboxFlow() as unknown as FlowInstance })
+    ...Object.fromEntries(
+      Object.entries(more).map(([kind, flow]) => [kind, (flow as () => unknown)() as unknown as FlowInstance])
+    )
   };
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
-    modelResolver: createMockModelResolver({}),
+    modelResolver: createMockModelResolver(extras.models ?? {}),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
       const org = context.request?.headers.get("x-org") ?? ORG;
@@ -220,11 +240,37 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     hire,
     sessionRecord,
     fetcherFor,
-    sessionsWith
+    sessionsWith,
+    instances
   };
 }
 
 export type ProjectsHost = Awaited<ReturnType<typeof bootProjectsHost>>;
+
+/**
+ * In-memory stores that log every resource-state read: `get <key>`,
+ * `prefix <prefix>` or `all`, each with its scope. A read count is these, the
+ * reads that reach the store.
+ */
+export function countingStores() {
+  const registry = createInMemoryStores();
+  const stores = { capabilities: ["primary"], resolve: () => Promise.resolve(registry) };
+  const reads: string[] = [];
+  const inner = registry.resourceState;
+  registry.resourceState = new Proxy(inner, {
+    get(target, method, receiver) {
+      const value = Reflect.get(target, method, receiver);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        if (method === "get") reads.push(`${String(args[0])} get ${String(args[2])}`);
+        if (method === "getByPrefix") reads.push(`${String(args[0])} prefix ${String(args[2])}`);
+        if (method === "getAll") reads.push(`${String(args[0])} all`);
+        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    }
+  });
+  return { stores, reads };
+}
 
 /** A refusal's text, for matching its reason. */
 export const refusal = (result: { settled?: string; error?: unknown }) => JSON.stringify(result.error ?? "");

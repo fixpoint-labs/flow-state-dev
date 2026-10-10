@@ -64,6 +64,7 @@ import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import type { TaskDelegates } from "../delegates/worker-delegates";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_WORKSTREAM_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
@@ -82,7 +83,7 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import { filingSessionIdOf } from "./filing-session";
+import { filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
@@ -264,20 +265,24 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // that filed it and the flow that session runs on, its own flow, and its
     // place in the chain (the board its task is on, and the chain's top),
     // each a readonly field the worker flow's create check confirms; all
-    // from server-written data.
+    // from server-written data. A filer that works for a workstream (its
+    // lead's session, or a task filed from one) passes the workstream down,
+    // so a coding run in the task session finds its project (FIX-1793 S6).
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
       const flow = (await options.delegates(ctx)).available.get(task.assignee);
       // The session's task: a follow-up's root, though the root's own
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
+      const workstream = filingWorkstreamOf(ctx.session.state);
       return {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
         [FILING_FLOW_STATE_KEY]: options.flowKind,
         [TASK_ID_STATE_KEY]: taskId,
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
-        ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {})
+        ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
+        ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream })
       };
     }
   };

@@ -117,7 +117,8 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
   const h = await bootProjectsHost({
     lab: (installation) => {
       const leadFlow = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
-      const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [leadFlow] });
+      const lead2Flow = { kind: "lead2", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+      const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [leadFlow, lead2Flow] });
       return {
         ...projects.actions,
         ...workstreams.actions,
@@ -127,6 +128,7 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
       };
     },
     leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+    lead2Internal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
     lead: (installation) => {
       const { updateWorkstreamTool } = defineWorkstreamBlocks({
         installation,
@@ -245,6 +247,22 @@ describe("opening a workstream", () => {
     expect(refusal(await attempt("nobody"))).toContain("no-such-worker");
     expect(refusal(await attempt("alice-quiet"))).toContain("cannot-lead");
     expect(await entriesOf(h)).toEqual([]);
+  });
+
+  it("starts each lead's workstream session on the flow that lead runs on, with two lead flows", async () => {
+    const h = await boot();
+    const onFirst = await open(h, "alice", "checkout", "alice-lead");
+    await h.hire("alice", "alice-lead2", "lead2");
+    const onSecond = await h.ok("alice", "lab", await h.lab("alice"), "openWorkstream", {
+      project: apollo,
+      id: "search",
+      title: "Search",
+      lead: "alice-lead2"
+    });
+    expect(await h.sessionRecord(onFirst.workstream.sessionId)).toMatchObject({ flowKind: "lead" });
+    const second = await h.sessionRecord(onSecond.workstream.sessionId);
+    expect(second).toMatchObject({ flowKind: "lead2", userId: "alice" });
+    expect(second!.state).toMatchObject({ workerId: "alice-lead2", workstreamId: "shared/apollo/search" });
   });
 
   it("refuses a workstream id that is not one path segment (BR-15)", async () => {

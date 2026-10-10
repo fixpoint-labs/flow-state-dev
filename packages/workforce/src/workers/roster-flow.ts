@@ -2,7 +2,9 @@
  * The roster flow: a flow that runs no worker, through which a client reads a
  * user's roster. It declares the two worker collections, so a session of it
  * reads the user's own workers and the standard ones over the collection-state
- * routes, and it adds no endpoint.
+ * routes, and it adds no endpoint. It declares the projects at both scopes and
+ * the workstream entries too, so the same session reads the projects its user
+ * may, private ones included, and a project's entries by its prefix.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session
@@ -11,6 +13,7 @@
  */
 import { defineFlow } from "@flow-state-dev/core";
 import type { ActionConfig } from "@flow-state-dev/core/types";
+import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { ROSTER_FLOW_KIND } from "./keys";
 
@@ -27,7 +30,7 @@ export function defineWorkerRosterFlow(
 ) {
   return defineFlow({
     kind: ROSTER_FLOW_KIND,
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...PROJECT_ROW_RESOURCES },
     actions
   });
 }

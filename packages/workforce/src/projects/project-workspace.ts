@@ -8,7 +8,9 @@
  *
  * **From a workstream.** A run whose session leads a workstream (its readonly
  * `workstreamId`, set when the workstream's open created it and linked at
- * create against the owner's entry) works for that workstream:
+ * create against the owner's entry), or a run in a task session filed from
+ * one (its readonly `filingWorkstreamId`, which each hand-over carries down
+ * from the session that filed it), works for that workstream:
  *
  *   session's workstreamId → the owner's entry → the project's row at its visibility
  *         → the project's repository, with its files beside the checkout
@@ -62,7 +64,7 @@ import {
   type RunSourceAnswer,
   type RunSourceRefusal
 } from "@flow-state-dev/workspace";
-import { WORKSTREAM_STATE_KEY } from "../workers/keys";
+import { filingWorkstreamOf } from "../conversation-board/filing-session";
 import {
   defineProjectFilesCollection,
   definePrivateProjectFilesCollection,
@@ -151,8 +153,8 @@ export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSour
   const workstream = options.board === undefined ? undefined : boardWorkstream(options.board.id);
 
   const source: RunSource = async (ctx): Promise<RunSourceAnswer> => {
-    const link = ctx.session?.state?.[WORKSTREAM_STATE_KEY];
-    if (typeof link === "string") return fromWorkstream(ctx, link);
+    const link = filingWorkstreamOf(ctx.session?.state);
+    if (link !== undefined) return fromWorkstream(ctx, link);
     if (workstream === undefined) {
       return refused(
         "no-project",

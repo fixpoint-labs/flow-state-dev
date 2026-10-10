@@ -1,7 +1,6 @@
 /**
  * Projects: shared and private `projects` rows and the writes that create
- * them, each project's workstream entries, and each shared project's room,
- * reached through a member's own talk session.
+ * them, and each project's workstream entries.
  *
  * `collections.ts` is canonical for the project keys and row shapes;
  * `project-address.ts` for reaching a project by its visibility and id;
@@ -10,10 +9,7 @@
  * `project-read.ts` and `project-progress.ts` for a project's read and the
  * progress worked out from its entries; `project-files.ts` for a member's read
  * of a project's files; `project-workspace.ts` for the run source a coding run
- * gets its files from; `talk.ts` for how a session reaches a room;
- * `room-store.ts` for how a room is written and read; `talk-template.ts` for a
- * room's seats and charter, and the mint on create. The talk entries are built
- * into every mailbox kind by `defineMailboxFlow`.
+ * gets its files from.
  */
 
 export {
@@ -21,8 +17,6 @@ export {
   definePrivateProjectsCollection,
   defineProjectFilesCollection,
   defineProjectsCollection,
-  defineRoomLinesCollection,
-  defineRoomSeqCollection,
   defineWorkstreamClaimsCollection,
   NO_PROJECT_ID,
   PRIVATE_PROJECT_FILES_RESOURCE,
@@ -33,23 +27,13 @@ export {
   projectFilesPrefix,
   PROJECTS_RESOURCE,
   projectRowSchema,
-  projectSessionLinkSchema,
   projectVisibilitySchema,
   type ProjectAddress,
   type ProjectVisibility,
-  ROOM_LINES_RESOURCE,
-  ROOM_SEQ_RESOURCE,
-  roomLineKey,
-  roomLineSchema,
-  roomSeqSchema,
   WORKSTREAM_CLAIMS_RESOURCE,
   workstreamClaimSchema,
   type ProjectFile,
   type ProjectRow,
-  type ProjectsCollectionOptions,
-  type ProjectSessionLink,
-  type RoomLine,
-  type RoomSeq,
   type WorkstreamClaim
 } from "./collections";
 
@@ -119,7 +103,7 @@ export {
   type ReadProjectOutput
 } from "./project-read";
 
-export { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+export { parseProjectRef, parseWorkstreamRef, projectRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
 export { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lead";
 
@@ -140,18 +124,15 @@ export {
 } from "./workstream-writes";
 
 export {
+  projectCoordinatorTools,
+  WORKSTREAM_DELEGATE_ACTION,
+  workstreamDelegateChangeSchema,
+  type WorkstreamDelegateChange
+} from "./project-coordinator";
+
+export {
   projectWorkspace,
   projectWorkspaceCapability,
   type ProjectWorkspaceOptions,
   type ProjectWorkspaceRefusalReason
 } from "./project-workspace";
-
-export { ROOM_LINE_GRACE_MS, ROOM_PAGE_SIZE } from "./room-store";
-
-export {
-  talkReadOutputSchema,
-  talkSessionStateSchema,
-  type TalkReadOutput
-} from "./talk";
-
-export type { TalkTemplate } from "./talk-template";

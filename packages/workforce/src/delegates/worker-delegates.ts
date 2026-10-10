@@ -15,6 +15,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
 import { deliveryDelegateSchema } from "../delivery-ledger";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
@@ -55,6 +56,13 @@ export interface WorkerDelegatesOptions {
    * coordinator names the ones it dispatches to.
    */
   readonly postFlows?: ReadonlySet<string>;
+  /**
+   * The records a session starts with beside its worker's defaults, read the
+   * first time its delegates are read or changed and copied in then, never
+   * after. A project coordinator's are one per workstream its user has open
+   * in its project. Answer `undefined` for a session that takes none.
+   */
+  readonly seed?: (ctx: BlockContext) => Promise<readonly DelegateRecord[] | undefined>;
 }
 
 const delegateListOutputSchema = z.object({
@@ -108,9 +116,21 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const postFlows = (): ReadonlySet<string> => options.postFlows ?? postTakingFlows(installation);
   const resources = { ...installation.resources };
 
-  /** The session's worker's defaults, loaded now. Refuses a session that names no worker. */
+  /**
+   * `defaults` with the flow's seed beside them, while the session's list
+   * has never been written: once it has, the seed is never read again.
+   */
+  const seeded = async (ctx: BlockContext, defaults: DelegateDefaults): Promise<DelegateDefaults> => {
+    if (options.seed === undefined) return defaults;
+    const stored = (ctx.session.state as Record<string, unknown> | undefined)?.[DELEGATES_STATE];
+    if (stored !== null && stored !== undefined) return defaults;
+    const records = await options.seed(ctx);
+    return records === undefined ? defaults : { ...defaults, records };
+  };
+
+  /** The session's worker's defaults, loaded now, with the seed. Refuses a session that names no worker. */
   const ownerDefaults = async (ctx: BlockContext): Promise<DelegateDefaults> =>
-    delegateDefaultsOf((await installation.resolveWorker(ctx, flowKind)).config);
+    seeded(ctx, delegateDefaultsOf((await installation.resolveWorker(ctx, flowKind)).config));
 
   /**
    * The defaults of the worker this turn runs as: the one its request loaded;
@@ -119,7 +139,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    * copy's own settings, as the turn reads them (`seatConfigOf`).
    */
   const turnDefaults = async (ctx: BlockContext): Promise<DelegateDefaults> => {
-    if (verifiedWorkerOf(ctx.session) !== undefined) return delegateDefaultsOf(workerConfigOf(ctx));
+    if (verifiedWorkerOf(ctx.session) !== undefined) return seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx)));
     const named = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
     return typeof named === "string" ? ownerDefaults(ctx) : delegateDefaultsOf(seatConfigOf(ctx));
   };
@@ -273,6 +293,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   return {
     /** The one check, for an add, a post or a task. */
     check,
+    /** The session's worker's defaults, with the flow's seed while its list was never written. */
+    defaults: ownerDefaults,
     /** The flows a delegated post reaches now. */
     postFlows,
     /** The session's delegates as a task sees them, read now. */

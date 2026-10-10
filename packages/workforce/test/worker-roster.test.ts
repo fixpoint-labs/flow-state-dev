@@ -56,8 +56,8 @@ describe("hiring a worker", () => {
     await h.rosterAction("bob", "hire", { id: "scribe", flow: OTHER, instructions: "Bob's." });
     const alices = (await h.client("alice").roster()).filter((entry) => !entry.standard);
     const bobs = (await h.client("bob").roster()).filter((entry) => !entry.standard);
-    expect(alices).toEqual([{ id: "scribe", flow: FIXTURE, standard: false, description: null }]);
-    expect(bobs).toEqual([{ id: "scribe", flow: OTHER, standard: false, description: null }]);
+    expect(alices).toEqual([{ id: "scribe", flow: FIXTURE, standard: false, description: null, forkedFrom: null }]);
+    expect(bobs).toEqual([{ id: "scribe", flow: OTHER, standard: false, description: null, forkedFrom: null }]);
     const session = await h.client("alice").ensureWorkerSession({ worker: "scribe" });
     expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Alice's." });
   });

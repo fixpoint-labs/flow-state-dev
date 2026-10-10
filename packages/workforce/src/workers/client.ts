@@ -46,6 +46,8 @@ export type RosterEntry = {
   standard: boolean;
   /** What it is for, or `null`. */
   description: string | null;
+  /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
+  forkedFrom: string | null;
 };
 
 /** A user's roster, and their sessions with each worker. */
@@ -128,13 +130,14 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   const readRoster = async (id: string): Promise<RosterEntry[]> => {
     const [own, standard] = await Promise.all([listAll(id, WORKERS_RESOURCE), listAll(id, STANDARD_WORKERS_RESOURCE)]);
     const entry = (item: { topic: string; clientData?: unknown }, isStandard: boolean): RosterEntry => {
-      const data = (item.clientData ?? {}) as { flow?: unknown; description?: unknown };
+      const data = (item.clientData ?? {}) as { flow?: unknown; description?: unknown; forkedFrom?: unknown };
       const topic = item.topic.slice(item.topic.lastIndexOf("/") + 1);
       return {
         id: topic,
         flow: String(data.flow),
         standard: isStandard,
-        description: typeof data.description === "string" ? data.description : null
+        description: typeof data.description === "string" ? data.description : null,
+        forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null
       };
     };
     return [...own.map((item) => entry(item, false)), ...standard.map((item) => entry(item, true))];

@@ -1,18 +1,15 @@
 /**
- * The membership gate: may this session's owner read and post this project's
- * room?
+ * The membership gate: is this session's owner one of a shared project's
+ * members, who may change its workstream list and open workstreams in it?
  *
  * One function, in a module of its own, so it is the one place the answer is
- * given and the one thing a test swaps to prove the room has no other fence
- * (the `no-gate` control). Every room entry calls it before it reads or writes
- * a line.
+ * given and the one thing a test swaps to prove the writes have no other fence
+ * (the `no-gate` control).
  *
  * It reads exactly two things: the row's `members`, and the session's owner as
  * the engine recorded it when the session was created (from the verified
  * principal, never from the request body). It never reads session state or a
- * caller's input. Session state is written by the caller at create, so a
- * `resourceId` in it proves nothing; that is why the gate looks the row up
- * instead (BP-031).
+ * caller's input (BP-031).
  */
 
 import type { ProjectRow } from "./collections";

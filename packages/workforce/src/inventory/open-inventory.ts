@@ -30,19 +30,12 @@
  * another process opened. A reader tolerates a row naming something it cannot
  * reach; there is no undoing a row that should not have been removed.
  *
- * Each removal is positive evidence, not absence. A roster record marked
- * `mintFor:` is a project talk template, never a mailbox, so a mailbox row an
- * earlier boot wrote under its id is retired ({@link INVENTORY_RETIRE_MAILBOXES},
- * through the seat writer). And `fire` (`removeHiredSeat`) deletes the row of
- * the hired seat it removes, which it knows exactly.
+ * Each removal is positive evidence, not absence: `fire` (`removeHiredSeat`)
+ * deletes the row of the hired seat it removes, which it knows exactly.
  */
 
-import { isTalkTemplate, kindOf, orderedById } from "../mailbox/mailbox-binder";
-import {
-  INVENTORY_REGISTER_MAILBOX,
-  INVENTORY_REGISTER_SEATS,
-  INVENTORY_RETIRE_MAILBOXES
-} from "../mailbox/mailbox-flow";
+import { kindOf, orderedById } from "../mailbox/mailbox-binder";
+import { INVENTORY_REGISTER_MAILBOX, INVENTORY_REGISTER_SEATS } from "../mailbox/mailbox-flow";
 import type { MailboxManifest } from "../manifest";
 import { seatDoorOf } from "../seat-door";
 
@@ -165,9 +158,7 @@ export interface OpenInventoryOptions {
    * about this call that is not already decided by the roster.
    *
    * Required when the roster carries seats, and refused by name when it is
-   * missing. A roster with no seats does not need one. A roster carrying talk
-   * templates uses it too, to retire their old mailbox rows; without one that
-   * is named in `problems`.
+   * missing. A roster with no seats does not need one.
    */
   seatWriter?: InventorySeatWriter;
 
@@ -255,10 +246,7 @@ export async function openInventory(
   options: OpenInventoryOptions
 ): Promise<InventoryBinding> {
   const seats = orderedById(roster.seats);
-  // A project talk template (`mintFor:`) is never opened, so it has no session
-  // to register from, and the Lab's mailbox list stays its declared mailboxes.
-  const mailboxes = orderedById(roster.mailboxes.filter((manifest) => !isTalkTemplate(manifest)));
-  const templates = orderedById(roster.mailboxes.filter(isTalkTemplate));
+  const mailboxes = orderedById(roster.mailboxes);
 
   // `openInventory` writes through trusted direct execution, below any
   // resolver, so it names the organization itself (BR-4) — an ABSENT one is
@@ -328,32 +316,6 @@ export async function openInventory(
       // app with no inventory, and the caller is the one that knows whether a
       // seatless inventory is worth refusing to boot over.
       problems.push(`the seat rows could not be written — ${messageOf(error)}`);
-    }
-  }
-
-  // A record that was a mailbox at an earlier boot and is a template now: its
-  // old mailbox row would keep advertising it as an addressable mailbox.
-  if (templates.length > 0) {
-    const ids = templates.map((manifest) => manifest.id);
-    if (options.seatWriter === undefined) {
-      problems.push(
-        `the talk templates ${ids.map((id) => `"${id}"`).join(", ")} could not be retired from the ` +
-          `mailbox inventory — no \`seatWriter\` was named to run the removal in`
-      );
-    } else {
-      try {
-        await options.run({
-          action: INVENTORY_RETIRE_MAILBOXES,
-          input: { ids },
-          userId: options.userId,
-          orgId,
-          flowKind: options.seatWriter.flowKind,
-          sessionId: options.seatWriter.sessionId ?? INVENTORY_SEAT_WRITER_SESSION,
-          source: "internal"
-        });
-      } catch (error) {
-        problems.push(`the talk templates' old mailbox rows could not be retired — ${messageOf(error)}`);
-      }
     }
   }
 
