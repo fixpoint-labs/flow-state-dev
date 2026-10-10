@@ -138,12 +138,11 @@ export interface OpenLabOptions {
    */
   builderTakesTasks?: boolean;
   /**
-   * Swap these two workers' files under their ids — the `repointed-map`
-   * control. Every id stays well-formed and the roster still hires; each of
-   * the two runs with the other's file, while the tree still says which file
-   * declares which worker.
+   * Swap the first two builders' files under their ids — the `repointed-map`
+   * control. `roster` stays the tree; only the copies the installation hires
+   * move, so a check reads the oracle off `roster` after open.
    */
-  swapRecords?: readonly [string, string];
+  swapBuilders?: boolean;
 }
 
 /** Everything a check needs to drive and observe one lab. */
@@ -248,8 +247,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
     return { ...worker, declared };
   });
-  if (options.swapRecords !== undefined) {
-    const [first, second] = options.swapRecords;
+  const builderIds = roster.workers
+    .filter((worker) => worker.declared.flow === BUILDER_KIND)
+    .map((worker) => worker.id);
+  if (options.swapBuilders === true) {
+    const [first, second] = builderIds;
     const a = workers.find((worker) => worker.id === first);
     const b = workers.find((worker) => worker.id === second);
     if (a === undefined || b === undefined) throw new Error(`cannot swap ${first} and ${second}: not both hired`);
@@ -266,9 +268,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (managerRecord === undefined) {
     throw new Error(`the tree at ${LAB_TREE} hired no worker onto the "${COORDINATOR_KIND}" flow`);
   }
-  const builderIds = roster.workers
-    .filter((worker) => worker.declared.flow === BUILDER_KIND)
-    .map((worker) => worker.id);
 
   // The hold: a turn waits while it is set.
   let gateOpen: Promise<void> = Promise.resolve();

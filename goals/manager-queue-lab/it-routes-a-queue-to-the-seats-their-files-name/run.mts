@@ -47,7 +47,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { gatewayModel, goalTmpDir, runGoal, stripIntentOverrides } from "../../lib/index.mts";
+import { gatewayModel, goalTmpDir, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { openLab, partitionOf, LAB_TREE, LAB_USER_ID, type Lab } from "../lab/host.mts";
 
 /**
@@ -89,9 +89,6 @@ const FILER = CONTROL !== "" || process.env.GOAL_FILER === "scripted" ? "scripte
 const LEG_C_IDENTITY = "whose own file";
 const LEG_B_MARKS = ["carry the same piece", "combines", "carries none of the work"];
 
-/** Silence the engine's own logging; a goal's output is its verdict. */
-const silent = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
-
 stripIntentOverrides();
 
 await runGoal(async (failures) => {
@@ -103,37 +100,33 @@ await runGoal(async (failures) => {
   writeFileSync(outbox, "", "utf8");
   const model = gatewayModel();
 
-  // The tree, read before the lab opens: which worker the manager names as its
-  // delegates, and what each builder's own file says. Never the host's records,
-  // which the control moves.
-  const probe = await openLab({ stores: inMemoryStores(), outbox, logger: silent });
-  const manager = probe.roster.workers.find((worker) => worker.id === probe.managerId);
-  const delegates = ((manager?.declared.delegates as string[] | undefined) ?? []).slice();
-  const ownFile = Object.fromEntries(
-    probe.roster.workers
-      .filter((worker) => worker.declared.answersFor !== undefined)
-      .map((worker) => [worker.id, String(worker.declared.answersFor)]),
-  );
-  const swapped = CONTROL === "repointed-map" ? ([probe.builderIds[0]!, probe.builderIds[1]!] as const) : undefined;
-  await probe.dispose();
-
-  if (delegates.length !== 3 || delegates.some((id) => ownFile[id] === undefined)) {
-    return {
-      failures: [`the manager's file names ${JSON.stringify(delegates)} as delegates, not three builders with files`],
-      evidence: "",
-    };
-  }
-
   const lab: Lab = await openLab({
     stores: inMemoryStores(),
     outbox,
-    logger: silent,
+    logger: silentLogger,
     ...(FILER === "model" ? { model } : {}),
-    ...(swapped === undefined ? {} : { swapRecords: swapped }),
+    ...(CONTROL === "repointed-map" ? { swapBuilders: true } : {}),
   });
   let evidence = "";
 
   try {
+    const manager = lab.roster.workers.find((worker) => worker.id === lab.managerId);
+    const delegates = ((manager?.declared.delegates as string[] | undefined) ?? []).slice();
+    const ownFile = Object.fromEntries(
+      lab.roster.workers
+        .filter((worker) => worker.declared.answersFor !== undefined)
+        .map((worker) => [worker.id, String(worker.declared.answersFor)]),
+    );
+    const swapped =
+      CONTROL === "repointed-map" ? ([lab.builderIds[0]!, lab.builderIds[1]!] as const) : undefined;
+
+    if (delegates.length !== 3 || delegates.some((id) => ownFile[id] === undefined)) {
+      return {
+        failures: [`the manager's file names ${JSON.stringify(delegates)} as delegates, not three builders with files`],
+        evidence: "",
+      };
+    }
+
     const filing = await lab.filingSessionId();
 
     // ---- a. the rows are filed, on the manager's own board -----------------
