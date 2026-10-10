@@ -61,7 +61,7 @@ export const generator = {
 `;
 
 /** Install a package named `name` into `dir`, exporting `exports`. */
-function installPackage(dir: string, name: string, exports: Record<string, string>, files: Record<string, string>): void {
+function installPackage(dir: string, name: string, exports: Record<string, unknown>, files: Record<string, string>): void {
   const pkg = join(dir, "node_modules", name);
   mkdirSync(pkg, { recursive: true });
   writeFileSync(join(pkg, "package.json"), JSON.stringify({ name, type: "module", exports }));
@@ -110,6 +110,24 @@ describe("finding the generator", () => {
     expect(result.generator).toBe("fake-gen");
     expect(result.file).toBe(join(dir, "code/out.gen.ts"));
     expect(readFileSync(result.file, "utf-8")).toContain(`"triage.ts"`);
+  });
+
+  it("finds a generator exported only under the import condition, at its import target", async () => {
+    // Resolving with `require` conditions would miss this export entirely and
+    // report that no dependency supplies a generator; where the two targets
+    // differ it would load the wrong file.
+    const dir = mkdtempSync(join(tmpdir(), "fsdev-gen-"));
+    roots.push(dir);
+    installPackage(
+      dir,
+      "esm-gen",
+      { "./fsdev-gen": { import: "./gen.mjs", require: "./missing.cjs" } },
+      { "gen.mjs": GENERATOR_SOURCE },
+    );
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { "esm-gen": "1.0.0" } }));
+    mkdirSync(join(dir, "code/blocks"), { recursive: true });
+    process.chdir(dir);
+    expect(await executeGenCommand({})).toMatchObject({ generator: "esm-gen" });
   });
 
   it("reads --root instead of the generator's default", async () => {

@@ -20,10 +20,10 @@
 import type { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import { lstat, writeFile, readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, resolve, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CliError } from "../resolve-block";
+import { resolvePackageExport } from "../package-export";
 import { EXIT_SUCCESS, EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR } from "../exit-codes";
 
 /** The subpath a package exports its generator on. */
@@ -108,15 +108,11 @@ export async function resolveGenerator(
   const names = [
     ...new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]),
   ].sort();
-  const require = createRequire(manifest);
-  const found: { name: string; path: string }[] = [];
-  for (const name of names) {
-    try {
-      found.push({ name, path: require.resolve(`${name}/${GENERATOR_SUBPATH}`) });
-    } catch {
-      // Not exported, or not installed: either way, not a generator.
-    }
-  }
+  // Resolved under `import` conditions, as the import below loads it.
+  const found = names.flatMap((name) => {
+    const path = resolvePackageExport(dirname(manifest), name, `./${GENERATOR_SUBPATH}`);
+    return path === undefined ? [] : [{ name, path }];
+  });
   if (found.length === 0) {
     throw new CliError(
       `No dependency in ${manifest} exports a generator on "./${GENERATOR_SUBPATH}".`,
