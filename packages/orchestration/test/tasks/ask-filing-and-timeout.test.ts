@@ -9,7 +9,7 @@
  * `suspend` the test scripts); the board is a real resource- or state-backed
  * collection, so every write goes through the backing's own transitions.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
@@ -73,6 +73,9 @@ function turnCtx(memo: Map<string, unknown>, park: Park): BlockContext {
 
 const init = { goal: "Is ACME's SOC 2 current?", assignee: "researcher" };
 
+/** The tool call's logical id, which a replay shares. */
+const LOGICAL_ID = "req_1:root/step[0]/tool[addTask][0%3Ac1]";
+
 for (const [backing, build] of Object.entries(BACKINGS)) {
   describe(`addTaskAndWait on the ${backing} backing`, () => {
     it("files one row when the process dies after the row's commit and before the filing is recorded", async () => {
@@ -96,6 +99,47 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init)).rejects.toThrow("parked");
 
       expect(board.list()).toHaveLength(1);
+    });
+
+    it("a replay of an ask filed before the id step existed finds that filing, under its old key", async () => {
+      const board = await build();
+      const taskId = "task_legacy";
+      const gateId = `ask:asks:${taskId}`;
+      // What the earlier code recorded: the filing itself, under fsd.ask.file.
+      await board.addTask({ ...init, id: taskId, ask: { gateId, deadline: Date.now() + 300_000 } });
+      const memo = new Map<string, unknown>([
+        [`fsd.ask.file:${LOGICAL_ID}`, { taskId, gateId, deadline: Date.now() + 300_000 }]
+      ]);
+      await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
+      expect(board.list().map((row) => row.id)).toEqual([taskId]);
+    });
+
+    it("a crash between the id step and the filing, then downtime past the bound, files with a fresh deadline", async () => {
+      const board = await build();
+      let failed = false;
+      // The process dies before the row is written.
+      const dying = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        addTask: async (row: Parameters<TaskCollectionRef["addTask"]>[0]) => {
+          if (!failed) {
+            failed = true;
+            throw new Error("the process died");
+          }
+          return board.addTask(row);
+        }
+      }) as TaskCollectionRef;
+      const memo = new Map<string, unknown>();
+      await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("the process died");
+      // Down for ten minutes, longer than the ask's bound.
+      const real = Date.now.bind(Date);
+      vi.spyOn(Date, "now").mockImplementation(() => real() + 10 * 60_000);
+      try {
+        const restartedAt = Date.now();
+        await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("parked");
+        const [row] = board.list();
+        expect(row!.ask!.deadline).toBeGreaterThanOrEqual(restartedAt + 60_000);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
 
     it("an ask whose row completed just before its timeout's cancel answers with the row, not wait_timed_out", async () => {

@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { ASK_TIMED_OUT_REASON } from "../../src/task-board";
 import {
   act,
   askCall,
@@ -239,7 +238,7 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
       resolvedBy: "sweep",
       resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
     });
-    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: ASK_TIMED_OUT_REASON } });
+    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "The ask timed out before the task finished." } });
     await before.dispose();
 
     const { flow, after } = await restart(filename, seen);
@@ -248,6 +247,29 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     expect(toolResults(seen[1]!.messages)).toContain("wait_timed_out");
     expect(toolResults(seen[1]!.messages)).not.toContain("wait_task_cancelled");
     expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+  });
+
+  it("a task someone else cancelled, whatever its reason says, is driven on as the cancel the gate recorded", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+    // A colleague cancelled the task with the timeout's own words; the touch
+    // resolved the gate with that cancel; the process died before the turn moved on.
+    await act(before, flowBefore, "settle", {
+      outcome: { kind: "cancel", reason: "The ask timed out before the task finished." }
+    });
+    await provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resolvedBy: `ask:${SESSION}`,
+      resumeData: { answered: false, error: { code: "wait_task_cancelled", message: "The asked task was cancelled." } }
+    });
+    await before.dispose();
+
+    const { after } = await restart(filename, seen);
+    await until(after, requestId, "completed");
+    expect(toolResults(seen[1]!.messages)).toContain("wait_task_cancelled");
+    expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
   });
 
   it("an answered ask killed before its turn continued is driven on to completion, once (V9)", async () => {

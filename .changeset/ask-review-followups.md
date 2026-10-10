@@ -1,6 +1,6 @@
 ---
-"@flow-state-dev/orchestration": patch
+"@flow-state-dev/orchestration": minor
 "@flow-state-dev/workforce": patch
 ---
 
-Ask follow-ups (FIX-1816). `createTaskToolsCapability` and `taskToolsForTurn` take `{ resumesAsks }`: `addTask` offers `waitForResponse` only on a board whose runner calls `resumeOwedAsks`, and the option defaults to off, so the standalone `taskTools` and a custom resolver no longer offer a wait nothing would wake. Workforce's conversation board opts in. `listTasks` marks an asked row `asked: true`. `addTaskAndWait` files its row once even across a crash between the row's write and the record of the filing, answers with a row that completed just before its timeout's cancel, and reports a re-driven ask its own timeout cancelled as `wait_timed_out`; `ASK_TIMED_OUT_REASON` is that cancel's reason.
+Ask follow-ups (FIX-1816): `createTaskToolsCapability` and `taskToolsForTurn` take `{ resumesAsks }`, off by default, so an existing caller of either no longer offers `waitForResponse` until it passes `resumesAsks: true` for a board whose runner calls `resumeOwedAsks` (Workforce's conversation board does); `listTasks` marks an asked row `asked: true`; and `addTaskAndWait` files its row once across a crash, counts the deadline from the filing, answers with a row that completed just before its timeout's cancel, and on a re-drive reports the outcome its gate recorded.

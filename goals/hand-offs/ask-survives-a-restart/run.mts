@@ -52,8 +52,8 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: WAIT,
-        from: String.raw`const filed = await ctx\.runOnce\(`,
-        to: "const filed = await ((_key, fn) => fn())(",
+        from: String.raw`\(await ctx\.runOnce\(\`fsd\.ask\.plan:`,
+        to: "(await ((_key, fn) => fn())(`fsd.ask.plan:",
       },
     ],
     does: "the ask records its row's id without runOnce, so the replay after the resume reaches addTask with a new id and files again",
