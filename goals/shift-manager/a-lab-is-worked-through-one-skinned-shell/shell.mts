@@ -251,11 +251,17 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
       ? []
       : (await api.collection(host, mailboxesRef)).map((r) => ({ id: String(r.id), kind: String(r.kind), members: Array.isArray(r.members) ? (r.members as string[]) : [] }));
 
-  const projectsRef = refOf("projects/*");
+  // The projects, through the person's own session on the roster flow, which declares them (Shift Manager reads them there).
+  const reader = await api.call("POST", "/workforce-roster/sessions", { userId });
+  const readerId = reader.status === 201 ? String(reader.body.session.id) : undefined;
+  const readerManifest = readerId === undefined ? undefined : await api.get(`/sessions/${encodeURIComponent(readerId)}/manifest`);
+  const projectsRef = (readerManifest?.resources as Array<{ kind: string; ref: string; pattern: string; scope?: string }> | undefined)?.find(
+    (r) => r.kind === "collection" && r.pattern === "projects/*" && r.scope === "org",
+  )?.ref;
   const projects =
-    projectsRef === undefined
+    projectsRef === undefined || readerId === undefined
       ? []
-      : (await api.collection(host, projectsRef)).map((r) => ({
+      : (await api.collection(readerId, projectsRef)).map((r) => ({
           id: String(r.id),
           title: String(r.title),
           brief: typeof r.brief === "string" ? r.brief : null,

@@ -60,9 +60,9 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
   "goals/shift-manager/it-groups-workstreams-under-their-projects": {
     unread: { legs: [/^\[control unread\] PROJECTS equals the store's rows:/] },
     "gap-tabs": { legs: [/^\[control gap-tabs\] a project's four tabs:/] },
-    "no-gate": { legs: [/^\[control no-gate\] the outsider is refused:/] },
-    "no-retry": { legs: [/^\[control no-retry\] a burst of joins leaves one session per member:/, /^\[control no-retry\] a burst of posts lands whole:/] },
-    "in-memory": { legs: [/^\[control in-memory\] a restart keeps the projects and their rooms:/] },
+    "no-gate": { legs: [/^\[control no-gate\] the outsider's open is refused:/], only: /^\[control no-gate\] the outsider's open is refused:/ },
+    "no-retry": { legs: [/^\[control no-retry\] a write race lands whole:/], only: /^\[control no-retry\] a write race lands whole:/ },
+    "in-memory": { legs: [/^\[control in-memory\] a restart keeps the projects and their entries:/] },
   },
   "goals/devforce-lab/it-codes-in-the-projects-repository": {
     // `a:marker` (and every leg that needs a project's source)

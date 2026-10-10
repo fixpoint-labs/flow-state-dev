@@ -235,11 +235,11 @@ export async function walkSurfaces(
 
   // The project level: No project, then each of the store's projects, in four
   // tabs. A tab draws the store's content, or its named empty state when the
-  // store holds none: No project has no room and no brief.
+  // store holds none: No project has no coordinator and no brief.
   const inProject = new Set(store.projects.flatMap((p) => p.workstreams));
   const levels = [
-    { id: "unassigned", nav: "projects-heading", room: false, brief: null, workstreams: store.mailboxes.map((c) => c.id).filter((id) => !inProject.has(id)) },
-    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, room: true, brief: p.brief, workstreams: p.workstreams })),
+    { id: "unassigned", nav: "projects-heading", project: false, brief: null, workstreams: store.mailboxes.map((c) => c.id).filter((id) => !inProject.has(id)) },
+    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, project: true, brief: p.brief, workstreams: p.workstreams })),
   ];
   const holdsBoard = new Set(tree.mailboxes.filter((c) => c.boardRefs.length > 0).map((c) => c.id));
   for (const level of levels) {
@@ -253,9 +253,19 @@ export async function walkSurfaces(
       await page.locator(`[role=tab][data-tab=${tab}]`).click();
       if (!(await tabSelected(page, tab))) reach(`${where}'s ${tab} tab is not selected`);
       if (tab === "stream") {
-        // A project's room as this person reaches it: read, or Join, or members only. No project has none.
-        const named = level.room ? "[data-testid=stream], [data-testid=project-stream-join], [data-testid=project-stream-members-only]" : "[data-testid=project-stream-none]";
-        if (!(await page.locator(named).first().waitFor({ timeout: 10_000 }).then(() => true, () => false))) reach(`${where}'s Stream shows ${level.room ? "neither its room nor a named state" : "no named empty state"}`);
+        // A project's Stream is the person's conversation with their project coordinator for it,
+        // drawn once its session is found or started; No project has none, by name.
+        if (level.project) {
+          const session = await page
+            .waitForFunction(() => document.querySelector("[data-testid=project-stream-conversation]")?.getAttribute("data-session-id") || null, undefined, { timeout: 30_000 })
+            .then(() => true, () => false);
+          if (!session) reach(`${where}'s Stream draws no project coordinator conversation naming its session`);
+        } else if (!(await visible(page, "project-stream-none"))) reach(`${where}'s Stream shows no named empty state`);
+      } else if (tab === "board" && level.project) {
+        // A project's Board draws the person's own workstream sessions in it, or names that they hold none.
+        if (!(await page.locator("[data-testid=project-board], [data-testid=project-board-none]").first().waitFor({ timeout: 10_000 }).then(() => true, () => false))) {
+          reach(`${where}'s Board shows neither the person's workstreams nor a named empty state`);
+        }
       } else if (tab === "board") {
         const lanesWanted = level.workstreams.filter((id) => holdsBoard.has(id));
         if (lanesWanted.length === 0) {
@@ -270,6 +280,12 @@ export async function walkSurfaces(
             if (!same(cards, want)) reach(`${where}'s ${id} lane: ${diff(want, cards)}`);
           }
         }
+      } else if (tab === "workstreams" && level.project) {
+        // A project's Workstreams: the progress worked out from its entries, then the mailbox workstreams its row lists.
+        if (!(await visible(page, "project-progress"))) reach(`${where}'s Workstreams draws no progress`);
+        if (level.workstreams.length > 0) await page.getByTestId("project-workstream").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+        const listed = await attr(page, "project-workstream", "data-mailbox-id");
+        if (!same(listed, level.workstreams)) reach(`${where}'s Workstreams: ${diff(level.workstreams, listed)}`);
       } else if (tab === "workstreams") {
         if (level.workstreams.length === 0) {
           if (!(await visible(page, "project-workstreams-none"))) reach(`${where} lists no workstream and says nothing`);

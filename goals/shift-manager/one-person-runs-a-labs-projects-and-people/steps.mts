@@ -14,6 +14,7 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { PROJECTS_KIND } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import {
   labRoutes,
   openShiftManager,
@@ -175,12 +176,20 @@ export type ProjectRow = {
   ownerUserId: string;
   members: string[];
   workstreams: string[];
-  sessions: Array<{ sessionId: string; userId: string }>;
 };
 
-/** The `projects` rows and the inventoried mailboxes, read through a mailbox's session. */
+/**
+ * The organization's `projects` rows, read through the person's roster
+ * session (Shift Manager reads them there too), and the inventoried
+ * mailboxes, read through a mailbox's session.
+ */
 export async function readProjects(routes: LabRoutes, mailboxSession: string): Promise<{ rows: ProjectRow[]; mailboxes: string[] }> {
-  const rows = (await routes.collection(mailboxSession, "projects/*").catch(() => [])) as ProjectRow[];
+  const reader = await rosterSession(routes);
+  const manifest = await routes.get(`/sessions/${encodeURIComponent(reader)}/manifest`);
+  const ref = (manifest.resources as Array<{ kind: string; pattern?: string; scope?: string; ref: string }>).find(
+    (r) => r.kind === "collection" && r.pattern === "projects/*" && r.scope === "org",
+  )?.ref;
+  const rows = ref === undefined ? [] : ((await pageRows(routes, reader, ref)).map((i) => i.clientData ?? {}) as ProjectRow[]);
   const mailboxes = (await routes.collection(mailboxSession, "inventory/mailboxes/*").catch(() => [])).map((r) => String(r.id));
   return { rows, mailboxes };
 }
@@ -201,43 +210,74 @@ export type WorkerRow = { id: string; flow: string; description: string | null }
  * topic.
  */
 export async function readWorkers(routes: LabRoutes): Promise<WorkerRow[]> {
-  const listed = (await routes.sessions()).filter((s) => s.flowKind === ROSTER_FLOW && s.parentSessionId == null).sort((a, b) => b.createdAt - a.createdAt);
-  let sessionId = listed[0]?.id;
-  if (sessionId === undefined) {
-    const made = await routes.call("POST", `/${ROSTER_FLOW}/sessions`, { userId: routes.user.userId });
-    if (made.status !== 201) throw new Error(`no roster session for ${routes.user.userId}: ${made.status} ${JSON.stringify(made.body)}`);
-    sessionId = String(made.body.session.id);
-  }
+  const sessionId = await rosterSession(routes);
   const ref = await routes.refOf(sessionId, WORKERS_PATTERN);
   if (ref === undefined) throw new Error(`the roster session ${sessionId} declares no ${WORKERS_PATTERN}`);
-  const rows: WorkerRow[] = [];
+  return (await pageRows(routes, sessionId, ref)).map((item) => {
+    const data = item.clientData ?? {};
+    return { id: item.topic.slice(item.topic.lastIndexOf("/") + 1), flow: String(data.flow), description: typeof data.description === "string" ? data.description : null };
+  });
+}
+
+/** The person's newest session of Workforce's roster flow; with none yet, one is opened (it names no worker and changes nothing). */
+async function rosterSession(routes: LabRoutes): Promise<string> {
+  const listed = (await routes.sessions()).filter((s) => s.flowKind === ROSTER_FLOW && s.parentSessionId == null).sort((a, b) => b.createdAt - a.createdAt);
+  if (listed[0] !== undefined) return listed[0].id;
+  const made = await routes.call("POST", `/${ROSTER_FLOW}/sessions`, { userId: routes.user.userId });
+  if (made.status !== 201) throw new Error(`no roster session for ${routes.user.userId}: ${made.status} ${JSON.stringify(made.body)}`);
+  return String(made.body.session.id);
+}
+
+/** Every item of a collection, through one session, page by page. */
+async function pageRows(routes: LabRoutes, sessionId: string, ref: string): Promise<Array<{ topic: string; clientData?: Record<string, any> }>> {
+  const items: Array<{ topic: string; clientData?: Record<string, any> }> = [];
   let cursor: string | undefined;
   for (let page = 0; page < 100; page += 1) {
     const body = await routes.get(`/sessions/${encodeURIComponent(sessionId)}/resources/${encodeURIComponent(ref)}?limit=200${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`);
-    for (const item of (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, unknown> }>) {
-      const data = item.clientData ?? {};
-      rows.push({ id: item.topic.slice(item.topic.lastIndexOf("/") + 1), flow: String(data.flow), description: typeof data.description === "string" ? data.description : null });
-    }
+    items.push(...((body.items ?? []) as typeof items));
     if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
     cursor = body.nextCursor;
   }
-  return rows;
+  return items;
 }
 
-/** Every line of a project's room after `after`, read through one talk session's `read` action. */
-export async function readRoom(routes: LabRoutes, talkSession: string): Promise<Array<{ seq: number; userId: string; author: string | null; body: string }>> {
-  const kind = String((await routes.get(`/sessions/${encodeURIComponent(talkSession)}`)).session?.flowKind ?? "");
-  const lines: Array<{ seq: number; userId: string; author: string | null; body: string; tombstone?: boolean }> = [];
-  let cursor = 0;
-  for (let page = 0; page < 200; page += 1) {
-    const read = await routes.act(kind, talkSession, "read", { after: cursor });
-    if (read.status !== "completed") throw new Error(`read refused (${read.status}): ${read.error ?? ""}`);
-    lines.push(...((read.output?.lines ?? []) as typeof lines));
-    const next = Number(read.output?.nextCursor);
-    if (!(next > cursor)) break;
-    cursor = next;
+/** The worker each person's project coordinator runs as, and its flow, as the Lab's projects flow names them (`projectSetup`). */
+export async function projectCoordinatorOf(world: World): Promise<{ worker: string; flow: string } | { error: string }> {
+  const owner = world.routes.owner;
+  const made = await owner.call("POST", `/${PROJECTS_KIND}/sessions`, { userId: owner.user.userId });
+  if (made.status !== 201) return { error: `no ${PROJECTS_KIND} session: ${made.status} ${JSON.stringify(made.body)}` };
+  const setup = await owner.act(PROJECTS_KIND, String(made.body.session.id), "projectSetup", {});
+  const worker = (setup.output as { projectCoordinator?: unknown } | undefined)?.projectCoordinator;
+  if (setup.status !== "completed" || typeof worker !== "string") return { error: `the Lab names no project coordinator: ${setup.status} ${JSON.stringify(setup.output ?? setup.error)}` };
+  const flow = (await treeWorkers(world)).find((w) => w.id === worker)?.declared.flow;
+  if (typeof flow !== "string") return { error: `the tree declares no "${worker}" with a flow` };
+  return { worker, flow };
+}
+
+/**
+ * The session a project's Stream draws in `page`, already open on that Stream,
+ * checked to be `routes`' person's own project coordinator for the project: one
+ * of their sessions, on the coordinator's flow, naming the coordinator as its
+ * worker and `shared/<projectId>` as its project. The session id, or why not.
+ */
+export async function streamCoordinator(
+  page: Page,
+  routes: LabRoutes,
+  coordinator: { worker: string; flow: string },
+  projectId: string,
+): Promise<{ session: string } | { why: string }> {
+  const named = await page
+    .waitForFunction(() => document.querySelector("[data-testid=project-stream-conversation]")?.getAttribute("data-session-id") || null, undefined, { timeout: 30_000 })
+    .then((handle) => handle.jsonValue() as Promise<string>, () => undefined);
+  if (named === undefined) return { why: "the Stream draws no coordinator conversation naming its session" };
+  const own = (await routes.sessions()).find((s) => s.id === named);
+  if (own === undefined) return { why: `the Stream draws session ${named}, which is not one of ${routes.user.userId}'s own` };
+  const state = ((await routes.get(`/sessions/${encodeURIComponent(named)}`)).session?.state ?? {}) as Record<string, unknown>;
+  const project = `shared/${projectId}`;
+  if (own.flowKind !== coordinator.flow || state.workerId !== coordinator.worker || state.projectId !== project) {
+    return { why: `the Stream draws session ${named} on ${own.flowKind} naming worker ${String(state.workerId)} and project ${String(state.projectId)}, not ${coordinator.worker} on ${coordinator.flow} for ${project}` };
   }
-  return lines.filter((l) => l.tombstone !== true);
+  return { session: named };
 }
 
 // ---- the page --------------------------------------------------------------------

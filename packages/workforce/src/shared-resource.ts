@@ -21,25 +21,12 @@
 import { z } from "zod";
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { verifiedWorkerOf } from "./workers/verified-worker";
+import { writtenBySchema, type WrittenBy } from "./written-by";
 
 /** The field every entry of a shared resource carries. */
 export const WRITTEN_BY_KEY = "writtenBy";
 
-/**
- * Who wrote one entry: the user, and the worker when one wrote it. Each a
- * non-empty string; nothing else is accepted.
- */
-export const writtenBySchema = z
-  .object({
-    /** The user whose session wrote the entry. */
-    userId: z.string().min(1),
-    /** The worker that wrote it. Absent when a person wrote it through the app. */
-    workerId: z.string().min(1).optional()
-  })
-  .strict();
-
-/** Who wrote one entry of a shared resource. */
-export type WrittenBy = z.infer<typeof writtenBySchema>;
+export { writtenBySchema, type WrittenBy } from "./written-by";
 
 /**
  * The mark {@link sharedResource} leaves on what it returns: a

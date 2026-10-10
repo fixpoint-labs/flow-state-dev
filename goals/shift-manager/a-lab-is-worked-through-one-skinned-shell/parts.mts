@@ -253,13 +253,15 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
     await setup.close();
     if (row === undefined) return fail("DevForce filed no row after its ask was approved");
     const ch = tree.mailboxes[0]!.id;
+    const project = (await readStore(api, tree, userId)).projects[0]?.id;
     const task = `/tasks/${encodeURIComponent(row.ref)}/${encodeURIComponent(row.id)}`;
     const addresses: Array<{ path: string; surface: string | string[]; owner: string }> = [
       { path: "/cos", surface: "cos", owner: "Chief of Staff (FIX-1719's seat; FIX-1722's view)" },
       { path: "/roster", surface: "roster", owner: "TEAMS, workers, shift status (Workforce; FIX-1723)" },
       { path: `/roster?team=${tree.teams[0]}`, surface: "roster", owner: "a team's workers (Workforce; FIX-1723)" },
-      // No project: no room and no brief, by name; its Board and Workstreams draw the workstreams no project lists, or say there are none.
-      { path: "/p/unassigned/stream", surface: "project-stream-none", owner: "No project's room (FIX-1718)" },
+      // No project: no coordinator and no brief, by name; its Board and Workstreams draw the workstreams no project lists, or say there are none.
+      { path: "/p/unassigned/stream", surface: "project-stream-none", owner: "No project's Stream, with no coordinator (FIX-1718, FIX-1793)" },
+      ...(project === undefined ? [] : [{ path: `/p/${encodeURIComponent(project)}/stream`, surface: "project-stream-conversation", owner: "a project's Stream: the person's project coordinator (FIX-1793)" }]),
       { path: "/p/unassigned/board", surface: ["project-board", "project-board-none"], owner: "No project's board (FIX-1718)" },
       { path: "/p/unassigned/workstreams", surface: ["project-workstreams", "project-workstreams-none"], owner: "No project's workstreams (FIX-1718)" },
       { path: "/p/unassigned/brief", surface: "project-brief-none", owner: "No project's brief (FIX-1718)" },
@@ -360,6 +362,8 @@ export function part4(base: string, report: Report): void {
     "abortRequest(": ["lib/run.ts"],
     "resumeSuspension(": ["lib/reads.ts"],
     "createSession(": ["lib/reads.ts", "lib/conversation.ts"],
+    // The person's project coordinator for a project, found or started through Workforce's client (FIX-1793).
+    "ensureWorkerSession(": ["surfaces/Project.tsx"],
   };
   const writes: string[] = [];
   for (const file of own) {
@@ -373,8 +377,8 @@ export function part4(base: string, report: Report): void {
   }
   const transcriptPost = /sendAction\("post"/.test(readFileSync(join(src, "lib", "transcript.ts"), "utf8"));
   if (!transcriptPost) report.fail("P4:ER-15", "lib/transcript.ts sends something other than the mailbox's post");
-  // An action whose answer a view reads (FIX-1793 removed the project room): action.ts sends
-  // one action, in its one runner, on the session the caller names or a fresh one of its own.
+  // An action whose answer a view reads (FIX-1793): action.ts sends one action, in its one
+  // runner, on the session the caller names or a fresh one of its own.
   const action = stripComments(readFileSync(join(src, "lib", "action.ts"), "utf8"));
   const actionSends = action.match(/\bsendAction\(/g)?.length ?? 0;
   if (actionSends !== 1 || !/sendAction\(action, input, \{ sessionId: session \}\)/.test(action)) report.fail("P4:ER-15", `lib/action.ts sends ${actionSends} action(s) outside runAction's one send`);
@@ -391,7 +395,7 @@ export function part4(base: string, report: Report): void {
   if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*seat\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*seat\.id\s*\}/.test(opens[0]!)) {
     report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
   }
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the mailbox's post (transcript.ts), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kinds), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the mailbox's post (transcript.ts), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kinds), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
   // One ask rendering: Inbox's detail and the stream's card draw through AskCard.
   for (const surface of ["Inbox.tsx", "Stream.tsx", "ChiefOfStaff.tsx"]) {

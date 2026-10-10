@@ -90,7 +90,7 @@ async function runLegs(
         say(`${label}: leg a`);
         const a = await legA(world, BOARD_MAILBOX);
         if (a !== undefined) {
-          // a5: the rows as they stand now (the member joined at a4), on a new process.
+          // a5: the rows as they stand now, on a new process.
           const now = (await readProjects(world.routes.owner, BOARD_MAILBOX)).rows;
           a.p1 = now.find((r) => r.id === a.p1.id) ?? a.p1;
           a.p2 = now.find((r) => r.id === a.p2.id) ?? a.p2;

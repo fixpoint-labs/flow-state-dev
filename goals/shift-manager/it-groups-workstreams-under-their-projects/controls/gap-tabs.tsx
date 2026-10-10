@@ -7,7 +7,7 @@
  */
 import { EmptyState, Tabs } from "../../../../packages/shift-manager/src/components/ui";
 import type { LoadedSnapshot } from "../../../../packages/shift-manager/src/lib/derive";
-import { navigate, PROJECT_TABS, type ProjectTab } from "../../../../packages/shift-manager/src/lib/routes";
+import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../../../../packages/shift-manager/src/lib/routes";
 import type { Gaps } from "../../../../packages/shift-manager/src/gaps";
 
 /** The copy each tab drew before projects shipped. */
@@ -24,7 +24,8 @@ const GAP_COPY: Record<ProjectTab, { title: string; body: string }> = {
   brief: { title: "No project brief yet", body: "A project's brief arrives with FIX-1650." },
 };
 
-export function ProjectView({ projectId, tab }: { snapshot: LoadedSnapshot; projectId: string; tab: ProjectTab; gaps: Gaps }) {
+export function ProjectView({ route }: { snapshot: LoadedSnapshot; route: Extract<Route, { level: "project" }>; gaps: Gaps }) {
+  const { projectId, tab } = route;
   const gap = GAP_COPY[tab];
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project" data-project-id={projectId}>

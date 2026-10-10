@@ -1226,10 +1226,9 @@ organization scope resolves against it inside the mailbox, including file-declar
 mailbox board's rows. A session's organization is fixed when the session is created, so open your
 mailboxes as a caller whose verified identity already carries the organization you want them in.
 
-A record declares eight keys and no others: `flow` (which kind, optional), `description`, `members`,
+A record declares seven keys and no others: `flow` (which kind, optional), `description`, `members`,
 `boards`, `instructions` (or a body, which is the same setting), `routing` (see the mailboxes
-guide, "Routing a mailbox"), `boardActions`, and `mintFor` (see [Projects](#projects): it makes
-the file a project talk template, not a mailbox). `boardActions: true` exposes each of the mailbox's
+guide, "Routing a mailbox"), and `boardActions`. `boardActions: true` exposes each of the mailbox's
 boards' task tools as mailbox actions (`cancelTask_<mailbox>_<board>` and its seven siblings), each
 working only in its own mailbox's session; it is off by default, because anyone who can reach the
 mailbox can then settle or reassign its rows. An opted-in board whose action names come out the
@@ -1710,9 +1709,7 @@ collections, so a block reads them the way it reads any other resource.
 **A row means registered, not open.** It records that a seat or mailbox was registered in this
 organization, not that the seat is working or the mailbox is open now. Nothing deletes a row for
 going missing. A runtime-hired seat's row is removed when it is fired, and only the row its own
-hire published (it carries that hire's `incarnation`). When a `MAILBOX.md` becomes a project talk
-template (`mintFor: projects`), the next `openInventory` removes its mailbox row and membership
-rows, and discovery never lists a template as a mailbox. A mailbox's `members` are the ones it had
+hire published (it carries that hire's `incarnation`). A mailbox's `members` are the ones it had
 when it registered.
 
 | Factory | One row per | Fields |
@@ -1930,108 +1927,98 @@ membershipPrefix("");
 
 ## Projects
 
-A project is a row in the organization's `projects` collection: a title, a brief, an owner, its
-`members`, the workstreams (declared mailboxes, from any team) it groups, the git remote its code
-lives in (`repository`, or `null`), and each member's talk session. Declare the collection once in `workforce/org/resources/projects.ts` with
-`defineProjectsCollection()`. The guide is the docs site's Workforce → Projects page.
+A project is a row with a title, a brief, an owner, its `members` and the git remote its code
+lives in (`repository`, or `null`). A **shared** project is a row of the organization's
+`projects` collection, which everyone in the org lists and reads. A **private** project is the same
+row in its creator's own user scope, which nobody else lists or reads, with its creator as its only
+member. A project's address is `{ visibility, id }`, and every read and write after the create takes
+one; another user's private project is refused as `no-such-project`. Declare the shared collection
+once in `workforce/org/resources/projects.ts` with `defineProjectsCollection()`. The guide is the
+docs site's Workforce → Projects page.
 
 ```ts
-import { defineProjectBlocks } from "@flow-state-dev/workforce";
+import { defineProjectBlocks, defineWorkstreamBlocks } from "@flow-state-dev/workforce";
 
 const projects = defineProjectBlocks();
-defineFlow({ kind: "lab", actions: { ...projects.actions } });
+const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agent] });
+defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.actions } });
 ```
 
-- **`createProject { id, title, brief?, members?, workstreams?, repository? }`** writes a row with `create`.
-  The owner is the calling session's owner, and is always a member. An id held by another owner,
-  `unassigned`, a workstream not in the mailbox inventory, and a workstream another project holds
-  are each refused, and nothing is half written. The same owner re-sending an id gets the row back
-  (`created: false`) and its talk session bound if it wasn't.
-- **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
+- **`createProject { id, title, brief?, visibility?, members?, workstreams?, repository? }`** writes a
+  row with `create` and returns `{ project, visibility, created }`. `visibility` defaults to
+  `"shared"`. The owner is the calling session's owner, and is always a member. An id another owner's
+  shared project holds (`project-id-held`), `unassigned` (`invalid-project-id`), a private project
+  naming other members (`private-has-members`) or mailboxes (`private-has-workstreams`), a mailbox
+  not in the inventory, and a mailbox another project holds are each refused, and nothing is half
+  written. The same owner re-sending an id gets the row back (`created: false`).
+- **`openWorkstream { project, id, title, lead, due?, objectives? }`** opens a workstream the caller
+  owns: an entry at `workstreams/<projectId>/<~owner>/<id>`, and the lead's workstream session,
+  owned by the caller, whose id the entry records. The lead is a worker on the caller's roster, on
+  one of `leadFlows`. Returns `{ workstream, opened }`; opening it again hands the entry back
+  (`opened: false`). Refused: `not-a-member` on a shared project, `no-such-worker`, `cannot-lead`,
+  `lead-differs`, `invalid-workstream-id`, and `too-many-workstreams` past 25 open workstreams per
+  owner per project when the installation names a project coordinator.
+- **`updateWorkstream { project, owner?, id, title?, status?, due?, objectives?, report? }`** changes
+  an entry and returns `{ workstream }`. `status` is a label of up to 80 characters; `"done"` marks
+  it finished. `objectives` is the whole list, each met or not; `report` is the entry's content. The
+  entries are an owner-writes collection, so a write to anyone else's entry throws
+  `A row of an owner-writes collection is written only by the user it belongs to.`, whichever flow
+  sends it. Nothing deletes an entry. **`updateWorkstreamTool`** is the same write as the lead's tool,
+  named `updateWorkstream`: it takes only the changes and writes the workstream its session leads
+  (`not-a-workstream-session` elsewhere).
+- **`readProject { project }`** returns `{ project, visibility, workstreams, progress }`: every entry,
+  oldest first, without reports, and the progress worked out from them at read (`projectProgress`),
+  never stored. A browser reads the same entries through the resource routes and parses each with
+  `parseWorkstreamEntry` from `./browser`.
+- **`setWorkstreams { projectId, workstreams }`** replaces the mailboxes a shared project lists, by
+  full mailbox id. Members only. A mailbox belongs to at most one project (`workstream-claimed`).
 - **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
   returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
   or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
-  repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted. Stored rows
-  aren't re-parsed on read: treat a missing `repository` as `null`, or read through
-  `projectRowSchema.parse`.
+  repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted.
 - **`readProjectFiles { project: { visibility, id } }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
-  never the body, since the output is logged as the tool result), the files the
-  project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
-  `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and
-  has no browser read.
-- **`projectWorkspace({ board })`** is a run source for a workspace host (`@flow-state-dev/workspace`):
-  for a run on that mailbox board, the repository of the project that holds the board's
-  workstream, with the project's files beside the checkout, or the project's files alone when it
-  has no repository. It reads only the workstream's claim and the project row, and refuses the run
-  with `no-project` when no project holds the workstream and `not-a-member` when the run's owner is
-  not one of the project's members. The block that asks it must hold
-  `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
+  never the body, since the output is logged as the tool result), the files the project keeps at
+  `project-files/<projectId>/<path>`, in the org's `project-files` collection for a shared project
+  and in the owner's scope for a private one. Members only. Neither collection has a browser read.
+- **`projectWorkspace({ board? })`** is a run source for a workspace host (`@flow-state-dev/workspace`):
+  the repository of the project the run works for, with the project's files beside the checkout, or
+  the project's files alone when it has no repository. A run in a workstream's session, or a task
+  session filed from one, works for that workstream, and is refused `not-the-owner` when the run's
+  owner isn't the workstream's. With `board`, a run on that mailbox board works in the shared
+  project that lists its mailbox, for its members only (`not-a-member`). `no-project` when neither
+  applies. The block that asks it must hold `projectWorkspaceCapability`; with harness-manager, pass
+  it on `uses`:
 
   ```ts
-  const work = mailboxBoard("eng.feature", "work");
   harnessManager({
-    boardCollectionId: work.id,
-    boardCollection: work,
-    workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
+    // ...the board and the rest, as usual
+    workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
     uses: [projectWorkspaceCapability],
-    // ...
   });
   ```
 - **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so give each that name with
-  `projects.createProject.as({ name: "createProject", description: "…" })`. The owner is the session the seat
-  answers in, so the project belongs to the person who asked. A kind that also reads the mailbox
+  `projects.createProject.as({ name: "createProject", description: "…" })`. The owner is the session the worker
+  answers in, so the project or workstream belongs to the person who asked. A kind that also reads the mailbox
   inventory (the `discover` door) declares it with `projectWritesMailboxInventory`: a flow refuses a
   second declaration of the collection beside the writes'.
-- **The talk entries** are built into every mailbox kind. A talk session is a mailbox-kind session
-  whose state names a project (`resourceId`), which grants nothing: every entry checks the
-  session's owner against the row's `members` first, and refuses `not-a-member`.
-  `join { projectId }` returns the member's one talk session: the one the project lists for them,
-  or else the calling session. `bind` does what `join` does, as an internal entry for trusted code.
-  `post { body }` adds a person's line to `room-lines`. `answer` is how a seat's reply reaches the
-  room; you don't call it. `read { after }` returns committed lines after a cursor, 200 at most,
-  with the room's `charter` and `seats`. On any other mailbox session, `post`, `read` and `answer`
-  work on the mailbox's transcript, and `read` ignores `after`.
 
 Refusals are `ProjectRefusedError`, with a `reason`.
 
-**The talk template** is a room's seats and charter, shared by every project. Declare the
-org-level default beside the collection, and pass the org's resource map to `mailboxInstances`:
-
-```ts
-// workforce/org/resources/projects.ts
-export default defineProjectsCollection({
-  talk: { seats: ["engineering.lead", "chief-of-staff"], charter: "Plan the work; say what is blocked." }
-});
-
-// at boot
-const { resources } = splitResourceModules(resourceModules);
-mailboxInstances(mailboxes, { kinds, resources });
-```
-
-Or declare it in a team's `MAILBOX.md` with `mintFor: projects`: its `members:` are the seats, and
-its body is the charter. A template is never opened and never registered in the inventory. Seats
-are full seat ids from any team (`engineering.lead`) or a dotless org seat id (`chief-of-staff`).
-Talk sessions run on the built-in `mailbox` kind, so pass it built with a `notify` block, as
-`kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`.
-`mailboxInstances` refuses, with its other refusals, a template that declares `flow:`, `boards:`,
-`routing:` or `boardActions:`, a `mintFor:` that names no collection in `resources` or names one
-other than the projects collection (under whatever key you passed it), a bad or repeated seat id, seats on a `mailbox` kind built with no `notify`
-block (none of them would wake), and a second template for the collection at either site.
-The first call that finds the template registers it for the process. Every later call builds its
-`mailbox` kind holding it, with or without `resources`, and a later call that finds a different
-template throws.
-`createProject` always gets the creator's talk session ready. With a template, so does any other
-code that creates a project inside a flow turn. A `post` in a project's room wakes each seat once,
-under the poster, with the room's last 20 lines. A seat's reply lands in
-the room through `answer`, once per post and seat, so a repeated delivery adds no second line. A
-seat answers only for itself: each delivery carries an `answerToken` issued to that seat, and the
-answer hands it back as `token` (the built-in agent kind does this for you; a kind of your own
-passes it through). An answer with no token, naming another seat, or sent through a session other than the poster's is refused. The
-template is built onto the kind at every boot, so an edit reaches every project's room at the next
-restart.
+**The project coordinator.** Each user talks to a project through their own project coordinator: a
+session of the standard worker `createWorkerInstallation({ projectCoordinator })` names (a worker on
+the `coordinator` flow), one per user per project, found or started with
+`ensureWorkerSession({ worker, projectId: { visibility, id } })`. A create for a project the user
+can't read is refused. Its `readProject` tool (`projectCoordinatorTools`) reads every entry. Its
+delegates are the user's open workstreams in the project, one per workstream: the lead, with the
+workstream's address as the target, so it hands work only to the user's own workstreams. They
+follow the workstreams: the session's delegate list starts with one per open workstream the first
+time it's read; `openWorkstream` adds one; `updateWorkstream` removes it when the status becomes
+`"done"` and adds it back when it leaves `"done"`; and a hand-off to one is delivered into the
+session the user's entry names, looked up at delivery, so the post lands in that workstream's
+session.
 
 ## Workers as data
 
@@ -2362,7 +2349,7 @@ the root exports, and reaches no Node built-in.
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the seat and mailbox sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare and the mailboxes. |
 | `workforceManifestSources({ roster, inventory })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. |
-| `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
+| `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages?, projectCoordinator? })` | The worker model's one module (see [Workers as data](#workers-as-data)). `projectCoordinator` names the standard worker on the `coordinator` flow every user's project coordinator runs as (see [Projects](#projects)); any other worker throws. Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
@@ -2374,7 +2361,7 @@ the root exports, and reaches no Node built-in.
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker, filingSessionId? })` and `ensureWorkerSession({ worker, filingSessionId? })`, over the session and resource clients. From `./browser` only. |
+| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)` and `ensureWorkerSession(criteria)`, over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
@@ -2426,11 +2413,15 @@ the root exports, and reaches no Node built-in.
 | `mailboxRouteRecordSchema` / `MailboxRouteRecord` / `MAILBOX_ROUTE_COMPONENT` / `MAILBOX_ROUTE_EVALUATOR` | One route decision as it is kept on the mailbox's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"mailbox-route"`. |
 | `MailboxRoute` / `MailboxRouting` | What `routeByPurpose` returns, and a mailbox file's `routing:` as read (`{ fallback }`). |
 | `mailboxFlow` | The built-in mailbox kind, seeded by `mailboxInstances` when you register none. |
-| `mailboxInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in mailbox kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); with a template registered, the `mailbox` kind is returned holding it even when no mailbox runs on it. Register these. |
-| `defineProjectsCollection({ talk? })` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. `talk` is the org-level talk template: the first one declared stands, the same one again is a no-op, and a different one throws. You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
+| `mailboxInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in mailbox kind. Register these. |
+| `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineWorkstreamClaimsCollection`, `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the mailbox claims and the files; none has a browser read. |
 | `projectWritesMailboxInventory` | The mailbox inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineMailboxInventoryCollection()` there is a resource collision when the flow is built. |
-| `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). A created project's `bind` is dispatched to the built-in `mailbox` kind. |
-| `projectWorkspace({ board })` / `projectWorkspaceCapability` | A run source for a coding run on a project's mailbox board, and the capability holding the collections it reads. See [Projects](#projects). |
+| `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, setRepository, readProject, readProjectFiles, actions }`. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
+| `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
+| `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. |
+| `projectWorkspace({ board? })` / `projectWorkspaceCapability` | A run source for a coding run on a project: from the workstream its session leads, or from a mailbox board a shared project lists. The capability holds the collections it reads. See [Projects](#projects). |
 | `openMailboxes(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readMailboxesDirectory(root)` | Read a `teams/<id>/mailboxes/<name>/` tree into one `MailboxManifest` per mailbox. Ships from the `./loader` subpath (Node only). |
 | `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |
@@ -2443,7 +2434,7 @@ the root exports, and reaches no Node built-in.
 | `MailboxBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
 | `mailboxBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
 | `mailboxFileTaskInputSchema` / `mailboxFileTaskOutputSchema` / `mailboxReadBoardInputSchema` / `mailboxReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
-| `MailboxPostRefusedError` | A post or filing refused on the mailbox's own terms; `reason` is `mailbox-not-bound`, `author-not-a-member`, `board-not-declared`, `board-needs-an-org`, `mailbox-is-a-template` or `unknown-assignee`. |
+| `MailboxPostRefusedError` | A post or filing refused on the mailbox's own terms; `reason` is `mailbox-not-bound`, `author-not-a-member`, `board-not-declared`, `board-needs-an-org` or `unknown-assignee`. |
 | `mailboxPostInputSchema` / `mailboxReadOutputSchema` / `mailboxNotifyInputSchema` | The post, read and notify contracts. |
 | `mailboxSessionStateSchema` / `mailboxTranscriptLineSchema` | A mailbox session's state, and one transcript line. On a kind built with a route, a mailbox's state also carries `mailboxRouteLedger`, which this schema does not describe. |
 | `MAILBOX_POST_COMPONENT` / `emitMailboxPostLine(ctx, line)` / `readMailboxPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a mailbox kind of your own. |
@@ -2507,7 +2498,7 @@ the root exports, and reaches no Node built-in.
 | A record file or records folder under its name from before the rename | Collected in `readMailboxesDirectory`'s `errors` as `kind: "pre-rename-record"`, one per old file (or one for a folder holding none), keyed by the old path and naming where it belongs now. Never read as a mailbox |
 | The kinds folder from before the rename, or a kind file named for the built-in's name from before it | `discoverWorkforceCode` refuses it by name in its `WorkforceCodeError`, so `fsdev gen` generates nothing. A session on that name would read as old data |
 | Workforce root unreadable or symlinked, read for mailboxes | `readMailboxesDirectory` throws — the root is never followed through a link |
-| Mailbox cannot be bound | `mailboxInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two mailboxes would share, `boards:` on a custom kind that does not support them, or a `kinds` key that is the built-in's name from before the rename (refused before anything else). Also `instructions:` given both in the frontmatter and as a body. For a talk template (`mintFor:`, or the org default): `boards:`, `routing:` or `boardActions:` on it, a `mintFor:` naming no collection in `resources` or one other than the projects collection, a seat that is not a seat id or is listed twice, a kind filed under another kind's key or one `defineMailboxFlow` did not build, seats on a kind with no `notify` block, or a second template for the collection. Collected: one error names every bad mailbox, and nothing is registered |
+| Mailbox cannot be bound | `mailboxInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two mailboxes would share, `boards:` on a custom kind that does not support them, or a `kinds` key that is the built-in's name from before the rename (refused before anything else). Also `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad mailbox, and nothing is registered |
 | Mailbox cannot be opened | `openMailboxes` throws, naming the mailbox — except a 409, which means the id is taken. An open mailbox there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable mailbox — is named and refused rather than released. A session of the kind from before the rename is refused as a store to reset, never as a collision |
 | `mailbox-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the mailbox's declared members. Per-request; nothing is written |

@@ -304,7 +304,7 @@ The check gets one object:
 |-------|------------|
 | `state` | The session's initial state, after the schema parsed it. A state the schema refuses never reaches the check. |
 | `principal` | The caller: `{ userId, orgId, tenantId? }`. |
-| `readCollectionItem(ref, topic)` | Reads one row of a user- or org-scoped collection this flow declares. `ref` is the key in the flow's `resources` (`"projects"`). `topic` is the row's key in the collection: `"q3-launch"` for `projects/q3-launch`, or the parameters for a pattern like `[room]/info` (`{ room: "lobby" }`). Resolves the row's state, or `undefined` when there is no such row. Throws if `ref` isn't a user- or org-scoped collection of this flow. |
+| `readCollectionItem(ref, topic)` | Reads one row of a user- or org-scoped collection this flow declares. `ref` is the key in the flow's `resources` (`"projects"`). `topic` is the row's key in the collection: `"q3-launch"` for `projects/q3-launch`, or the parameters for a pattern like `[team]/info` (`{ team: "eng" }`). Resolves the row's state, or `undefined` when there is no such row. Throws if `ref` isn't a user- or org-scoped collection of this flow. |
 | `sessionId`, `flow`, `via` | The id being created, the flow (`{ kind, id }`), and which path is creating it: `"create"`, `"action"`, `"webhook"`, `"cli"` or `"dispatch"`. |
 
 `readCollectionItem` reads only the caller's own scope: their own rows of a user-scoped collection, their own organization's rows of an org-scoped one. The check above answers "not yours" with the same 404 as "doesn't exist", so it doesn't reveal which projects exist.

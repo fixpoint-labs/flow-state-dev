@@ -24,75 +24,47 @@
  *
  * Leaf module: core, zod and the shared-resource helper only, so the worker
  * installation's create check and the project blocks share one declaration.
+ * The entry's own shape and parser are `workstream-entry.ts`, a leaf a browser
+ * imports.
  */
 
 import { ownerSegment } from "@flow-state-dev/core";
 import { z } from "zod";
-import { sharedResource, writtenBySchema } from "../shared-resource";
+import { sharedResource } from "../shared-resource";
 import { projectAddressSchema, type ProjectVisibility } from "./collections";
-import { WORKSTREAM_STATUS_MAX_LENGTH } from "./project-progress";
+import {
+  parseWorkstreamEntry,
+  workstreamDueSchema,
+  workstreamEntryShape,
+  workstreamEntrySchema,
+  workstreamObjectiveSchema,
+  workstreamPlaceOf,
+  workstreamStatusSchema,
+  type ParsedWorkstreamEntry,
+  type WorkstreamEntry,
+  type WorkstreamEntryPlace,
+  type WorkstreamObjective,
+  type WorkstreamStatus
+} from "./workstream-entry";
 import { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_RESOURCE, workstreamsAccessor } from "./workstream-ref";
 
 export { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_RESOURCE, workstreamsAccessor };
+export {
+  parseWorkstreamEntry,
+  workstreamDueSchema,
+  workstreamEntrySchema,
+  workstreamObjectiveSchema,
+  workstreamPlaceOf,
+  workstreamStatusSchema,
+  type ParsedWorkstreamEntry,
+  type WorkstreamEntry,
+  type WorkstreamEntryPlace,
+  type WorkstreamObjective,
+  type WorkstreamStatus
+};
 
 /** The entries' key pattern. **Pinned**: persisted, and FIX-1792 and FIX-1794 read it. */
 export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
-
-/** The storage prefix of every entry, before the project's id. */
-const STORAGE_PREFIX = "workstreams/";
-
-/**
- * Where a workstream stands: a short label in the owner's own words
- * (`"on-track"`, `"waiting on legal"`), trimmed, not empty, at most
- * {@link WORKSTREAM_STATUS_MAX_LENGTH} characters. One label has a meaning,
- * `"done"` (`DONE_STATUS`): a done workstream stays listed, is never stale and is
- * never the next due date.
- */
-export const workstreamStatusSchema = z.string().trim().min(1).max(WORKSTREAM_STATUS_MAX_LENGTH);
-
-/** @see workstreamStatusSchema */
-export type WorkstreamStatus = z.infer<typeof workstreamStatusSchema>;
-
-/** A calendar date, `YYYY-MM-DD`, which sorts as text. */
-export const workstreamDueSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "a due date is YYYY-MM-DD");
-
-/**
- * One objective: what it is, and whether it is met, when and by whom. `metAt`
- * and `metBy` are set by the write that met it, from the server's clock and
- * the session.
- */
-export const workstreamObjectiveSchema = z.object({
-  text: z.string().min(1),
-  met: z.boolean().default(false),
-  metAt: z.string().nullable().default(null),
-  metBy: writtenBySchema.nullable().default(null)
-});
-
-/** @see workstreamObjectiveSchema */
-export type WorkstreamObjective = z.infer<typeof workstreamObjectiveSchema>;
-
-/** The entry's own fields; {@link sharedResource} adds `writtenBy`. */
-const entryShape = {
-  title: z.string().min(1),
-  /** The worker that leads it, on the owner's roster. Chosen at open, never changed. */
-  lead: z.string().min(1),
-  /** The lead's workstream session, the owner's. `null` until the open that made the entry has made it. */
-  sessionId: z.string().nullable().default(null),
-  /** A label in the owner's words; `"done"` marks it finished. Stored trimmed. */
-  status: z.string().min(1).max(WORKSTREAM_STATUS_MAX_LENGTH).default("on-track"),
-  due: workstreamDueSchema.nullable().default(null),
-  objectives: z.array(workstreamObjectiveSchema).default([]),
-  /** When it was opened, by the server's clock. */
-  openedAt: z.string(),
-  /** When it was last written, by the server's clock. Seven days unchanged reads as stale. */
-  updatedAt: z.string()
-};
-
-/** One workstream entry, as stored. Its latest report is the entry's content. */
-export const workstreamEntrySchema = z.object({ ...entryShape, writtenBy: writtenBySchema });
-
-/** @see workstreamEntrySchema */
-export type WorkstreamEntry = z.infer<typeof workstreamEntrySchema>;
 
 /** Every field a browser reads, named (BP-015). The session id grants nothing to anyone but the owner. */
 const ENTRY_CLIENT_FIELDS = [
@@ -108,7 +80,7 @@ const ENTRY_CLIENT_FIELDS = [
 ] as const;
 
 const declaration = (scope: ProjectVisibility) =>
-  sharedResource(WORKSTREAMS_PATTERN, entryShape, {
+  sharedResource(WORKSTREAMS_PATTERN, workstreamEntryShape, {
     scope: scope === "private" ? "user" : "org",
     ownerWrites: { param: "owner" },
     // Shared across flows: the project blocks, the lead's worker flow and the
@@ -177,22 +149,3 @@ export function workstreamEntriesPrefix(project: string): string {
   return `${project}/`;
 }
 
-/** An entry's place, read off its storage path: its project, its owner and its id. */
-export type WorkstreamEntryPlace = { project: string; owner: string; id: string };
-
-/**
- * Where the entry at `path` sits, or `undefined` for a path that is not a
- * direct entry of a project (`workstreams/<project>/<~owner>/<id>`).
- */
-export function workstreamPlaceOf(path: string): WorkstreamEntryPlace | undefined {
-  if (!path.startsWith(STORAGE_PREFIX)) return undefined;
-  const segments = path.slice(STORAGE_PREFIX.length).split("/");
-  if (segments.length !== 3 || !segments[1]!.startsWith("~")) return undefined;
-  let owner: string;
-  try {
-    owner = decodeURIComponent(segments[1]!.slice(1));
-  } catch {
-    return undefined;
-  }
-  return { project: segments[0]!, owner, id: segments[2]! };
-}
