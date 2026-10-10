@@ -2327,6 +2327,13 @@ the task picks up in its own session with the answer as its next message, withou
 retry. A task's session stays open after the task finishes: message its worker there, or file a
 follow-up with `addTask`'s `followUpOf`, which runs in the same session with the same worker.
 
+A browser reads its person's boards through the ordinary collection read: `tasks`, fetched through
+any of that person's sessions on a flow that carries the session board, answers every one of their
+conversations' rows at once and none of another person's. Each row's key starts with the
+conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that conversation's
+session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
+and the like), never a task's input, output or metadata.
+
 ## Importing from a browser component
 
 The package root is server code. The mailbox floor reaches the task board, which imports
@@ -2344,8 +2351,9 @@ import {
 
 It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
 `ROSTER_FLOW_KIND`, `WORKER_ID_STATE_KEY`, `MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema`,
-`MailboxTranscriptLine`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` and `COORDINATOR_JUDGMENT` (the
-coordinator's own turn's answer name, which its messages carry as `agentName`), the same values
+`MailboxTranscriptLine`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE`, `COORDINATOR_JUDGMENT` (the
+coordinator's own turn's answer name, which its messages carry as `agentName`) and
+`sessionIdOfFiling` (the conversation a board row was filed in), the same values
 the root exports, and reaches no Node built-in.
 
 ## Exports

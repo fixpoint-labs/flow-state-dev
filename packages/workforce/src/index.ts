@@ -67,6 +67,7 @@ export { workerFlowProblems } from "./worker-flow-contract";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
 export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
 export { workerTaskEntry, type WorkerTaskEntryOptions } from "./conversation-board/task-entry";
+export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
   createWorkerLookup,
   type WorkerLookup,
