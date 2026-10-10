@@ -45,6 +45,7 @@ import { taskChainSchema } from "../conversation-board/chain";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_PROJECT_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
@@ -212,6 +213,7 @@ export type WorkerSessionStateShape = {
   readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
   readonly [TASK_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [FILING_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
 
@@ -237,9 +239,9 @@ export interface WorkerInstallation extends WorkerGrants {
    * coordinator's delivery set it, names the conversation it was opened for;
    * `workstreamId`, when a workstream's open set it, names the workstream the
    * session leads; `taskId`, when a conversation's board handed a task over,
-   * names the task the session works, and `filingWorkstreamId` the workstream
-   * it was filed from; `projectId`, on a project coordinator's session, names
-   * its project.
+   * names the task the session works, `filingWorkstreamId` the workstream
+   * it was filed from, and `filingProjectId` the project; `projectId`, on a
+   * project coordinator's session, names its project.
    */
   readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
@@ -420,6 +422,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
     [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [FILING_PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
     [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
 
@@ -546,14 +549,15 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // into a child of the conversation. A caller naming a task would make a
     // decoy that lookups take for the real one, a caller naming a chain or a
     // flow would set how deep its filings go and where its split is reached,
-    // and one naming a workstream would point a run at another project's
-    // files (BP-031).
+    // and one naming a workstream or a filing project would point a run at
+    // another project's files (BP-031).
     for (const key of [
       TASK_ID_STATE_KEY,
       FILING_FLOW_STATE_KEY,
       TASK_CHAIN_STATE_KEY,
       TASK_FLOW_STATE_KEY,
-      FILING_WORKSTREAM_STATE_KEY
+      FILING_WORKSTREAM_STATE_KEY,
+      FILING_PROJECT_STATE_KEY
     ]) {
       if (input.state[key] !== undefined && input.via !== "dispatch") {
         return {
