@@ -13,6 +13,7 @@ import {
   type Section,
   type Seat,
   type Workstream,
+  workerOf,
 } from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
@@ -21,6 +22,18 @@ export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unrea
 /** Every row on every attached board that loaded, across workstreams. */
 export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
   return Object.values(snapshot.boards).flatMap((boards) => (boards.ok ? boards.value.rows : []));
+}
+
+/**
+ * What a row's board is called on a screen: the workstream's id, or, for a
+ * conversation's board, the worker that conversation is with (`@<worker>`),
+ * else the conversation's id.
+ */
+export function holderOf(snapshot: LoadedSnapshot, row: BoardRow): string {
+  if (snapshot.inventory.ok && snapshot.inventory.value.workstreams.some((w) => w.id === row.mailboxId)) return row.mailboxId;
+  const session = snapshot.sessions.find((s) => s.id === row.mailboxId);
+  const worker = session === undefined ? null : workerOf(session);
+  return worker === null ? row.mailboxId : `@${worker}`;
 }
 
 /** The rows Tasks shows: every attached board's, excluding done ones (BR-15). */

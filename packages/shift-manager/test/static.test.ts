@@ -114,6 +114,15 @@ describe("V8", () => {
     expect(PROJECT_READER_KIND).toBe(ROSTER_FLOW_KIND);
   });
 
+  it("reads conversation boards from the collection their task actions are named for", async () => {
+    // Workforce's conversation ledger id isn't exported; the boards' own
+    // action name is, by the task tools' rule (`<tool>_<ledger id>`), and the
+    // Lab tests that read a board end to end fail if either drifts.
+    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/reads");
+    const { LIST_TASKS_ACTION } = await import("../src/lib/conversation-tasks");
+    expect(LIST_TASKS_ACTION).toBe(`listTasks_${CONVERSATION_BOARD_COLLECTION}`);
+  });
+
   it("draws no literal colour of its own", () => {
     expect(sources.length).toBeGreaterThan(10);
     expect(sources.flatMap((file) => literalColours(file, readFileSync(file, "utf8")))).toEqual([]);

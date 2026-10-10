@@ -30,7 +30,11 @@
  *    comes from.
  * 4. **Each workstream's attached boards**: the mailbox kind's manifest lists
  *    one collection per attached board, `<mailboxId>.<name>`, read through the
- *    mailbox's own session.
+ *    mailbox's own session. **And every conversation's board**: the tasks a
+ *    conversation filed sit in one collection at the person's own scope,
+ *    each under its conversation's partition, so one read through any
+ *    session whose flow declares it answers every board of theirs, grouped
+ *    here by the conversation that holds it (`<sessionId>.tasks`).
  * 5. **Pending asks**: for each listed session a seat owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
  *    pending. Not the transcript. A seat is one the inventory registers, or
@@ -61,7 +65,7 @@ import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type S
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { workforceClientFor, type LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -157,8 +161,9 @@ export type RunLink = { sessionId: string; requestId: string; attempt: number };
 
 /** One row on an attached board, with the fields a board publishes to a browser. */
 export type BoardRow = {
-  /** The board's collection ref, `<mailboxId>.<name>`. */
+  /** The board's ref, `<holder>.<name>`: a mailbox's board, or a conversation's (`<sessionId>.tasks`). */
   boardRef: string;
+  /** Who holds the board: the mailbox's id, or the conversation's session id. Both are session ids. */
   mailboxId: string;
   id: string;
   title: string;
@@ -277,7 +282,10 @@ export type LabSnapshot =
        * under No project.
        */
       projects: Section<Projects>;
-      /** Per workstream id. Absent for a workstream when the inventory did not load. */
+      /**
+       * Per board holder: a workstream's id, or the id of a conversation that
+       * keeps a board. Absent for a workstream when the inventory did not load.
+       */
       boards: Record<string, Section<WorkstreamBoards>>;
       asks: Section<Ask[]>;
       /** The declared documents Jump to finds and opens read-only (BR-10). */
@@ -495,6 +503,31 @@ export function boardRefsFor(mailboxId: string, manifest: ResourceManifest): str
     .map((entry) => entry.ref);
 }
 
+/**
+ * The collection every conversation's board keeps its rows in: Workforce's
+ * conversation ledger (`CONVERSATION_LEDGER_ID`), which its browser entry
+ * doesn't export. `static.test.ts` pins the two together.
+ */
+export const CONVERSATION_BOARD_COLLECTION = "tasks";
+
+/**
+ * A conversation board's ref: `<sessionId>.tasks`, the shape a mailbox's
+ * board ref has, so a task route and a row name their board one way.
+ */
+export function conversationBoardRef(sessionId: string): string {
+  return `${sessionId}.${CONVERSATION_BOARD_COLLECTION}`;
+}
+
+/**
+ * The conversation a conversation-ledger row belongs to: its topic is
+ * `<partition>/<taskId>`, the partition the conversation's `filingSessionId`
+ * percent-encoded into one segment, whose session id is everything before its
+ * last `~`. Server-written, so this reads nothing a caller chose.
+ */
+export function conversationOfTopic(topic: string): string {
+  return sessionIdOfFiling(decodeURIComponent(topic.split("/")[0] ?? ""));
+}
+
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
 async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
@@ -508,7 +541,7 @@ async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input:
 export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
-  /** Re-read one workstream's one board, for a screen waiting on a row to move. */
+  /** Re-read one board, a workstream's or a conversation's, for a screen waiting on a row to move. */
   readBoard(mailboxId: string, boardRef: string): Promise<BoardRow[]>;
   /**
    * Answer an ask through its session's owning flow. Rejects when the session
@@ -568,8 +601,61 @@ export function createLabReader(clients: LabClients): LabReader {
   const readCollection = (sessionId: string, ref: string) =>
     readEveryCollectionPage(clients.resources, sessionId, ref, { limit: PAGE_SIZE });
 
-  const readBoard = async (mailboxId: string, boardRef: string): Promise<BoardRow[]> =>
-    (await readCollection(mailboxId, boardRef)).map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
+  const readBoard = async (mailboxId: string, boardRef: string): Promise<BoardRow[]> => {
+    if (boardRef !== conversationBoardRef(mailboxId)) {
+      return (await readCollection(mailboxId, boardRef)).map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
+    }
+    // A conversation's board: the person's whole ledger, read through the
+    // conversation, keeping its own partition's rows.
+    return (await readCollection(mailboxId, CONVERSATION_BOARD_COLLECTION))
+      .filter((row) => conversationOfTopic(row.topic) === mailboxId)
+      .map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
+  };
+
+  /**
+   * Every board the person's conversations keep, by conversation: one read of
+   * the conversation ledger through the first listed session whose flow lets
+   * a browser read it, its rows grouped by the conversation that filed them.
+   * Only listed conversations' boards are kept. A Lab no flow of which keeps
+   * conversation boards has none, which is not a failure; a failed read is
+   * one failed section, under the session it was read through.
+   */
+  const readConversationBoards = async (
+    sessions: SessionSummary[],
+  ): Promise<Array<readonly [string, Section<WorkstreamBoards>]>> => {
+    const byKind = new Map<string, string>();
+    for (const session of sessions) {
+      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+    }
+    let carrier: string | undefined;
+    try {
+      for (const [kind, sessionId] of byKind) {
+        const manifest = await manifestFor(kind, sessionId);
+        const declared = manifest.resources.some(
+          (r) => r.kind === "collection" && r.ref === CONVERSATION_BOARD_COLLECTION && r.client.state?.read === true,
+        );
+        if (declared) {
+          carrier = sessionId;
+          break;
+        }
+      }
+      if (carrier === undefined) return [];
+      const listed = new Set(sessions.map((s) => s.id));
+      const byHolder = new Map<string, BoardRow[]>();
+      for (const row of await readCollection(carrier, CONVERSATION_BOARD_COLLECTION)) {
+        const holder = conversationOfTopic(row.topic);
+        if (!listed.has(holder)) continue;
+        const rows = byHolder.get(holder) ?? [];
+        rows.push(toBoardRow(conversationBoardRef(holder), holder, row.topic, row.clientData));
+        byHolder.set(holder, rows);
+      }
+      return [...byHolder].map(
+        ([holder, rows]) => [holder, { ok: true, value: { refs: [conversationBoardRef(holder)], rows } }] as const,
+      );
+    } catch (error) {
+      return [[carrier ?? CONVERSATION_BOARD_COLLECTION, { ok: false, failure: describeFailure(error) }] as const];
+    }
+  };
 
   /** Find the inventory through the first listed session whose flow declares it. */
   const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
@@ -846,12 +932,13 @@ export function createLabReader(clients: LabClients): LabReader {
 
     const [inventory, ownWorkers] = await Promise.all([readInventory(sessions), readOwnWorkers()]);
 
-    const [boardEntries, asks, resources, projects] = await Promise.all([
+    const [boardEntries, conversationBoards, asks, resources, projects] = await Promise.all([
       inventory.ok
         ? Promise.all(
             inventory.value.workstreams.map(async (w) => [w.id, await readWorkstreamBoards(w)] as const),
           )
         : Promise.resolve([] as Array<readonly [string, Section<WorkstreamBoards>]>),
+      readConversationBoards(sessions),
       (async (): Promise<Section<Ask[]>> => {
         if (!inventory.ok) {
           return { ok: false, failure: { message: `Asks are read from seat sessions, and the seat inventory did not load. ${inventory.failure.message}` } };
@@ -892,7 +979,7 @@ export function createLabReader(clients: LabClients): LabReader {
       orgId,
       inventory,
       projects,
-      boards: Object.fromEntries(boardEntries),
+      boards: Object.fromEntries([...boardEntries, ...conversationBoards]),
       asks,
       resources,
     };
