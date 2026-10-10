@@ -22,7 +22,7 @@ import { EmptyState, SectionFailure } from "../components/ui";
 import { readStatus } from "../lib/columns";
 import { asksOfTask } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Ask, type Failure } from "../lib/reads";
+import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { useFollowLatest } from "../lib/follow";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
@@ -133,7 +133,7 @@ function RunItems({ run }: { run: OpenRun }) {
   const { renderers } = useFlowContext();
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
-    const mine = taskItems(stored.items, task.boardRef, task.taskId);
+    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId);
     const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
     return { items, shared: mine.shared };
   }, [stored, task.boardRef, task.taskId, renderers]);

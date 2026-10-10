@@ -519,6 +519,15 @@ export function conversationBoardRef(sessionId: string): string {
 }
 
 /**
+ * The collection a board's tasks are stamped with on their runs' items (the
+ * `collectionId` of each `task-change`): a workstream board's ref, or, for a
+ * conversation's board, the one collection every conversation shares.
+ */
+export function collectionOfBoard(boardRef: string): string {
+  return boardRef.endsWith(`.${CONVERSATION_BOARD_COLLECTION}`) ? CONVERSATION_BOARD_COLLECTION : boardRef;
+}
+
+/**
  * The conversation a conversation-ledger row belongs to: its topic is
  * `<partition>/<taskId>`, the partition the conversation's `filingSessionId`
  * percent-encoded into one segment, whose session id is everything before its
