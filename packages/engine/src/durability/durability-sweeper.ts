@@ -129,6 +129,12 @@ export type CreateDurabilitySweeperOptions = {
 export type DurabilitySweeper = {
   /** Stop the periodic sweep. Idempotent. */
   dispose(): void;
+  /**
+   * Whether this sweeper times out overdue asks now: it runs (a positive
+   * interval, not disposed) and can resume a turn (`continueRequest`). A host
+   * that built it reads this as `RequestHost.hasAskSweeper`.
+   */
+  timesOutAsks(): boolean;
 };
 
 const DEFAULT_SWEEP_INTERVAL_MS = 600_000;
@@ -189,7 +195,7 @@ export function createDurabilitySweeper(
   const batchLimit = retention.batchLimit ?? DEFAULT_BATCH_LIMIT;
 
   if (!Number.isFinite(sweepIntervalMs) || sweepIntervalMs <= 0) {
-    return { dispose: () => {} };
+    return { dispose: () => {}, timesOutAsks: () => false };
   }
 
   let disposed = false;
@@ -292,6 +298,7 @@ export function createDurabilitySweeper(
         });
 
   return {
+    timesOutAsks: () => !disposed && continueRequest !== undefined,
     dispose(): void {
       if (disposed) return;
       disposed = true;

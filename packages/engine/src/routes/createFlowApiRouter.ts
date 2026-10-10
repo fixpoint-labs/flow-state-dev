@@ -504,7 +504,12 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           // through this router's host (FIX-1816).
           continueRequest: (opts) => handlers.host.continueRequest(opts)
         })
-      : { dispose: () => {} };
+      : { dispose: () => {}, timesOutAsks: () => false };
+  // Requests this router serves are offered an ask only while its own sweeper
+  // times asks out, whatever another host on the same provider runs.
+  if (runtimeConfig.requestHost !== undefined && durabilityProvider !== undefined) {
+    runtimeConfig.requestHost.askSweeper = () => durabilitySweeper.timesOutAsks();
+  }
 
   // Built-in HTTP adapter delegates to the canonical handler. The catch-all
   // route returned by the adapter doesn't need to be wired into a custom

@@ -202,6 +202,27 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   });
 });
 
+describe("ask on the board: the answer always comes back", () => {
+  it("a marker clear that fails after the answer still returns the answer; the next touch clears the marker", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model, { failClearOnce: true });
+    const state = runtimeFor(flow);
+    try {
+      const parked = await act(state, flow, "run");
+      await act(state, flow, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
+      // The touch resumes the turn; the asking call's own clear of the marker is the one that fails.
+      await act(state, flow, "touch");
+      await until(state, parked.requestId!, "completed");
+      expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
+      // The marker the failed clear left is cleared by the next touch, the gate already resolved.
+      await act(state, flow, "touch");
+      expect((await rows(state, flow))[0]).toMatchObject({ status: "completed", resumeOwed: false });
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
 describe("ask on the board: a host that can't bound the ask", () => {
   it("OFF STATE: durable execution with no durability sweeper refuses wait_unavailable, and files nothing (BR-5)", async () => {
     const { model, seen } = stepModel([askCall("c1"), finalAnswer]);

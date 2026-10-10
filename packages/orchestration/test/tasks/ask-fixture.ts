@@ -79,11 +79,24 @@ export type Settle =
  */
 export function askFlow(
   model: GeneratorModel,
-  options: { maxAttempts?: number; endsOnFiling?: unknown; failCancelOnce?: boolean } = {}
+  options: { maxAttempts?: number; endsOnFiling?: unknown; failCancelOnce?: boolean; failClearOnce?: boolean } = {}
 ): FlowInstance {
   let cancelFailed = false;
+  let clearFailed = false;
   const askBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
     const board = await boardOf(ctx);
+    if (options.failClearOnce === true) {
+      // The asking call's first clear of its row's marker fails, as a store blip would.
+      return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        clearResumeOwed: async (id: string) => {
+          if (!clearFailed) {
+            clearFailed = true;
+            throw new Error("store unavailable");
+          }
+          return board.clearResumeOwed!(id);
+        }
+      }) as TaskCollectionRef;
+    }
     if (options.failCancelOnce === true) {
       // The asking call's first cancel of its row fails, as a store blip would.
       return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {

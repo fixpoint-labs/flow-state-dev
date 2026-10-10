@@ -98,4 +98,47 @@ describe("RequestHost.hasAskSweeper", () => {
       (router as { dispose?: () => void }).dispose?.();
     }
   });
+
+  it("is false on a router whose own sweep is off, even beside another router on the same provider that sweeps", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      leases: stores.leases,
+      suspensions: stores.suspensions
+    } as never);
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const sweeping = createFlowApiRouter({ registry, stores, durabilityProvider: provider } as never);
+    const quiet = createFlowApiRouter({
+      registry,
+      stores,
+      runtimeConfig: { durabilityProvider: provider, durabilityRetention: { sweepIntervalMs: 0 } }
+    } as never);
+    try {
+      expect(await probeThrough(quiet, stores)).toEqual({ hasAskSweeper: false, resumeAsk: true });
+      expect(await probeThrough(sweeping, stores)).toEqual({ hasAskSweeper: true, resumeAsk: true });
+    } finally {
+      (sweeping as { dispose?: () => void }).dispose?.();
+      (quiet as { dispose?: () => void }).dispose?.();
+    }
+  });
 });
+
+/** Run the probe through `router`'s HTTP route and read what it saw. */
+async function probeThrough(router: { POST: (r: Request, c: unknown) => Promise<Response> }, stores: ReturnType<typeof createInMemoryStores>) {
+  const res = await router.POST(
+    new Request("http://localhost/api/flows/probe/s_1/actions/probe", {
+      method: "POST",
+      body: JSON.stringify({ userId: "u_1", input: {} })
+    }),
+    { params: { path: ["probe", "s_1", "actions", "probe"] } }
+  );
+  expect(res.status).toBe(202);
+  const { request } = (await res.json()) as { request: { id: string } };
+  for (let i = 0; i < 200; i += 1) {
+    const record = await stores.request.get(request.id);
+    if (record?.status === "completed") return (record as { result?: { output?: unknown } }).result?.output;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error("the probe never completed");
+}

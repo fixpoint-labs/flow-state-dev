@@ -40,9 +40,12 @@ export function hasAskSweeper(provider: DurabilityProvider): boolean {
 }
 
 /**
- * Install the fact on a host's request-host inputs, read as each request
- * starts (`RequestHost.hasAskSweeper`). The one installer both host paths use
- * (`createFlowState`, and a router built directly), so they can't drift.
+ * Install the provider-wide fact on a host's request-host inputs, read as each
+ * request starts (`RequestHost.hasAskSweeper`), unless one is installed. Used
+ * by `createFlowState` and a router's handlers alike. A router then replaces it
+ * on its own inputs with its own sweeper's answer (`createFlowApiRouter`), so a
+ * router whose sweep is off never offers an ask because another host on the
+ * same provider sweeps.
  */
 export function installAskSweeperFact(
   requestHost: { askSweeper?: () => boolean },

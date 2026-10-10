@@ -228,7 +228,17 @@ export async function addTaskAndWait(
     return { taskId, gateId, deadline };
   });
 
-  const clearMarker = (): Promise<unknown> => collection.clearResumeOwed!(filed.taskId);
+  // Never fails the call: the answer always comes back. A clear that fails
+  // leaves the marker, and the next touch clears it, the gate already resolved.
+  const clearMarker = async (): Promise<void> => {
+    try {
+      await collection.clearResumeOwed!(filed.taskId);
+    } catch (error) {
+      console.warn(
+        `[orchestration] ask "${filed.taskId}": its resume-owed marker was left for the next touch: ${(error as Error).message}`
+      );
+    }
+  };
   const park = {
     gateId: filed.gateId,
     binding: { board: collection.collectionId, taskId: filed.taskId },
