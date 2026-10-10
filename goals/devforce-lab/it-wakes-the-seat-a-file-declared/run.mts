@@ -79,6 +79,12 @@ interface Fixture {
    * the chief of staff runs the `coordinator` kind, which has no inspect entry.
    */
   orgSeats: Record<string, { kind: string }>;
+  /**
+   * The team workers on the `coordinator` kind (`teams/<team>/workers/`), by
+   * id. Hired with the others and, like the org seats, outside the per-seat
+   * legs: the kind has no inspect entry.
+   */
+  teamCoordinators: Record<string, { kind: string }>;
   documents: string[];
   mailboxes: string[];
   promptTokens: string[];
@@ -318,11 +324,15 @@ await runGoal(async (failures) => {
     // ---- (a) BR-1, BR-2 — the tree alone produced all of it ---------------
     {
       const seatIds = Object.keys(lab.seats).sort();
-      const wantedSeats = [...Object.keys(fixture.seats), ...Object.keys(fixture.orgSeats)];
+      const wantedSeats = [
+        ...Object.keys(fixture.seats),
+        ...Object.keys(fixture.orgSeats),
+        ...Object.keys(fixture.teamCoordinators),
+      ];
       if (!sameSet(seatIds, wantedSeats)) {
         note(`hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(wantedSeats)}`);
       }
-      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats })) {
+      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats, ...fixture.teamCoordinators })) {
         const seat = lab.seats[seatId] as { kind?: string } | undefined;
         if (seat === undefined) continue;
         if (seat.kind !== expected.kind) {

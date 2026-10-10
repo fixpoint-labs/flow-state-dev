@@ -25,7 +25,9 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
-   chief of staff on the `coordinator` kind its file names, two documents and one mailbox; a tree naming an unregistered kind refuses the **whole** roster by name, and its
+   chief of staff and project coordinator on `coordinator` and its workstream coordinator on `agent`,
+   the teams' two coordinator workers (`eng.triage`, `ops.oncall`) on `coordinator`, two documents
+   and two mailboxes (`eng.feature`, `ops.release`); a tree naming an unregistered kind refuses the **whole** roster by name, and its
    corrected twin hires cleanly *(BR-1, BR-2)*;
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
    running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
@@ -98,3 +100,4 @@ is the sibling goal.
 | 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `address-the-reviewer`: the drain dispatched to ["eng.reviewer"] and the coder's tokens missing. `no-commit` and `stopped-at-limit`: the row settled pending. `swap-documents`: eng.coder reads engineering-handbook. `drop-own-skill`: eng.coder holds only commit-style. |
 | 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The lab on one copy per worker flow (`em`, `coder`, `agent`): the EM's board handed the row to a session on `coder` naming `eng.coder`, graded on the dispatch record's `workerId`; the reviewer on the same flow never reached; each seat's own files in its prompt. A tree naming `codr` registered nothing. |
 | 2026-10-09 | fix/closure-children-one-copy (main 57d2c10e9) | n/a | PASS | The fixture's chief of staff is on `coordinator`, the flow its `WORKER.md` names since FIX-1791 P1. Before, it failed on "chief-of-staff was hired into kind `coordinator`, not `agent`". All five controls FAIL at their named legs. |
+| 2026-10-10 | 2a5e9b1b+uncommitted (FIX-1792 P3) | n/a | PASS | DevTeam's `eng.triage` and `ops.oncall` are `WORKER.md`s on `coordinator` (delegates [eng.em], routing everyone), no longer mailboxes. Before the fixture change the converted tree failed (a) on hired [... eng.triage, ops.oncall, project-coordinator, workstream-coordinator] and mailboxes [eng.feature, ops.release]; the two org coordinators were already missing from the fixture since FIX-1793 P3, so the fixture now lists them too. 8 seats, 2 mailboxes. All five controls FAIL at their named legs: `address-the-reviewer` dispatched to [eng.reviewer], coder tokens missing; `no-commit` and `stopped-at-limit` settled pending; `swap-documents` eng.coder reads engineering-handbook; `drop-own-skill` eng.coder holds only commit-style. |
