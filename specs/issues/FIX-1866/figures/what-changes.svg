@@ -1,0 +1,111 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Two panels. Today, on the left: the EM's feature board hands rows to the coder's one work door, which runs the supervised coding run and settles the row; a conversation's task for the coder is refused at filing, because the door reads only the feature board. After, on the right: the same door reads the feature board and any conversation's board. A task naming an issue and a phase goes to the run with a commit required, as today. Any other task goes to the same supervised run with an answer required, reading its board from the claim, in a checkout of the conversation's project or the project the task names; its answer, branch and commit count go back, and the conversation gets one line under eng.coder."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arr    { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr-x  { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .head   { fill:var(--ink-3); }
+    .t-x    { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+  <g id="today">
+    <text class="t-lbl" x="16" y="28">TODAY</text>
+    <rect class="n-box" x="16" y="44" width="190" height="60" rx="5"/>
+    <text class="t-lbl" x="28" y="61">FEATURE BOARD</text>
+    <text class="t-b" x="28" y="79">The EM's rows</text>
+    <text class="t-s" x="28" y="95">issue + phase</text>
+
+    <rect class="n-gone" x="16" y="214" width="190" height="60" rx="5"/>
+    <text class="t-lbl" x="28" y="231">A CONVERSATION</text>
+    <text class="t-b" x="28" y="249">addTask for eng.coder</text>
+    <text class="t-s" x="28" y="265">refused at filing</text>
+
+    <rect class="n-box" x="250" y="44" width="190" height="60" rx="5"/>
+    <text class="t-lbl" x="262" y="61">ENG.CODER</text>
+    <text class="t-b" x="262" y="79">One work door</text>
+    <text class="t-s" x="262" y="95">reads the feature board only</text>
+
+    <rect class="n-box" x="250" y="140" width="190" height="60" rx="5"/>
+    <text class="t-lbl" x="262" y="157">SUPERVISED RUN</text>
+    <text class="t-b" x="262" y="175">Commit required</text>
+    <text class="t-s" x="262" y="191">settles the row</text>
+
+    <path class="arr" d="M206,74 L246,74"/>
+    <path class="arr" d="M345,104 L345,136"/>
+    <path class="arr-x" d="M206,244 L228,244 L228,92 L246,92"/>
+    <text class="t-x" x="236" y="140">✕</text><text class="t-x" x="40" y="300">✕ the door takes no task</text>
+  </g>
+  <line class="row" x1="470" y1="20" x2="470" y2="360"/>
+  <g id="after">
+    <text class="t-lbl" x="490" y="28">AFTER</text>
+    <rect class="n-box" x="490" y="44" width="170" height="60" rx="5"/>
+    <text class="t-lbl" x="502" y="61">FEATURE BOARD</text>
+    <text class="t-b" x="502" y="79">The EM's rows</text>
+    <text class="t-s" x="502" y="95">unchanged</text>
+
+    <rect class="n-new" x="490" y="214" width="170" height="60" rx="5"/>
+    <text class="t-lbl" x="502" y="231">A CONVERSATION</text>
+    <text class="t-b" x="502" y="249">addTask for eng.coder</text>
+    <text class="t-s" x="502" y="265">its own board</text>
+
+    <rect class="n-new" x="700" y="128" width="224" height="60" rx="5"/>
+    <text class="t-lbl" x="712" y="145">ENG.CODER · ONE DOOR</text>
+    <text class="t-b" x="712" y="163">Reads both boards</text>
+    <text class="t-s" x="712" y="179">its board from the claim</text>
+
+    <rect class="n-box" x="700" y="44" width="224" height="60" rx="5"/>
+    <text class="t-lbl" x="712" y="61">SUPERVISED RUN · FEATURE</text>
+    <text class="t-b" x="712" y="79">Commit required</text>
+    <text class="t-s" x="712" y="95">tasks naming an issue and phase</text>
+
+    <rect class="n-new" x="700" y="214" width="224" height="60" rx="5"/>
+    <text class="t-lbl" x="712" y="231">SUPERVISED RUN · ANSWER</text>
+    <text class="t-b" x="712" y="249">In the project's checkout</text>
+    <text class="t-s" x="712" y="265">any other task · answer required</text>
+
+    <path class="arr" d="M660,74 L680,74 L680,150 L696,150"/>
+    <path class="arr" d="M660,244 L680,244 L680,170 L696,170"/>
+    <path class="arr" d="M812,128 L812,108"/>
+    <path class="arr" d="M812,188 L812,210"/>
+    <path class="arr" d="M812,274 L812,310 L575,310 L575,278"/>
+    <text class="t-s" x="590" y="330">answer · branch · commits → one line under eng.coder</text>
+    <polygon class="head" points="246,74 239,70 239,78"/>
+    <polygon class="head" points="345,136 341,129 349,129"/>
+    <polygon class="head" points="696,150 689,146 689,154"/>
+    <polygon class="head" points="696,170 689,166 689,174"/>
+    <polygon class="head" points="812,108 808,115 816,115"/>
+    <polygon class="head" points="812,210 808,203 816,203"/>
+    <polygon class="head" points="575,278 571,285 579,285"/>
+  </g>
+</svg>
