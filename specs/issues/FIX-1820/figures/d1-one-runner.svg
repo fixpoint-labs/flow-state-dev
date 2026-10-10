@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: how is the epic&#x27;s goal check built? Chosen: one runner over the two children&#x27;s checks as they are, plus the journeys neither walks. Instead of: one new fixture holding both legs, or a list of commands. It comes down to the first row, proof already earned: the runner reuses two checks that passed with their controls failing; a new fixture has to earn it again; a list reuses them too. Second row, one commit: the runner and a new fixture pin every part to one SHA; a list does not. Third row, the price: the runner depends on two directories it does not own; a new fixture is a rewrite; a list costs nothing. Locks in one directory that composes three checks. Flips if a child&#x27;s check cannot run on the assembled commit without edits." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 &#183; THE CALL</text>
+    <text class="t-q" x="32" y="52">How is the epic&#x27;s goal check built?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">One runner over both</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">One new fixture, both legs</text>
+    <rect class="lost" x="692" y="76" width="232" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">A list of commands</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">PROOF ALREADY</text>
+    <text class="t-lbl" x="32" y="169">EARNED</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">Both checks, as they are</text>
+    <text class="t-s" x="244" y="179">passed with controls failing</text>
+    <text class="mark minus" x="466" y="162">&#8722;</text>
+    <text class="t-b" x="484" y="161">Re-earned from scratch</text>
+    <text class="t-s" x="484" y="179">two checks that drift apart</text>
+    <text class="mark plus" x="706" y="162">+</text>
+    <text class="t-b" x="724" y="161">Both checks, as they are</text>
+    <text class="t-s" x="724" y="179">the same reuse</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="220">ONE</text>
+    <text class="t-lbl" x="32" y="233">COMMIT</text>
+    <text class="mark plus" x="226" y="226">+</text>
+    <text class="t-b" x="244" y="225">Pinned by the runner</text>
+    <text class="t-s" x="244" y="243">a dirty tree stops it</text>
+    <text class="mark plus" x="466" y="226">+</text>
+    <text class="t-b" x="484" y="225">Pinned by the fixture</text>
+    <text class="t-s" x="484" y="243">one process</text>
+    <text class="mark minus" x="706" y="226">&#8722;</text>
+    <text class="t-b" x="724" y="225">Whatever was checked out</text>
+    <text class="t-s" x="724" y="243">per command, by hand</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="278">WHAT IT</text>
+    <text class="t-lbl" x="32" y="291">COSTS</text>
+    <text class="mark minus" x="226" y="284">&#8722;</text>
+    <text class="t-b" x="244" y="283">Two directories it doesn&#x27;t own</text>
+    <text class="t-s" x="244" y="301">a rename breaks it, loudly</text>
+    <text class="mark minus" x="466" y="284">&#8722;</text>
+    <text class="t-b" x="484" y="283">A rewrite of two checks</text>
+    <text class="t-s" x="484" y="301">and their controls</text>
+    <text class="mark plus" x="706" y="284">+</text>
+    <text class="t-b" x="724" y="283">Nothing to write</text>
+    <text class="t-s" x="724" y="301">a report by hand</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">One closure directory that composes three checks</text>
+    <text class="t-s" x="32" y="389">leg a&#x27;s, leg b&#x27;s, and its own journeys</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A child&#x27;s check can&#x27;t run on the assembled commit</text>
+    <text class="t-s" x="494" y="389">without an edit; then it&#x27;s a finding first</text>
+  </g>
+</svg>
