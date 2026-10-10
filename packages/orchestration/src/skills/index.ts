@@ -108,6 +108,7 @@ export {
   // resolver reaches, which `createTaskToolsCapability` has no slot for.
   buildTaskToolsList,
   taskToolsForTurn,
+  type TaskToolsOptions,
   taskTools,
   defaultOwnStateResolver,
   DELEGATION_BOARD_FIELD,

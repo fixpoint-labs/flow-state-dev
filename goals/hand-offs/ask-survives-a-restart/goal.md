@@ -23,7 +23,7 @@
 
 **Controls:** each is a scratch patch to `packages/orchestration/src/tasks/helpers/wait-for-response.ts`, applied as the server loads it (`goals/lib/module-patch.mjs`), printed by the run, and refused when it never reached the code.
 
-- `GOAL_CONTROL=no-run-once`: the ask files its row without `runOnce`, so the replay after the resume reaches `addTask` and files again. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
+- `GOAL_CONTROL=no-run-once`: the ask records its row's id without `runOnce`, so the replay after the resume reaches `addTask` with a new id and files again. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
 - `GOAL_CONTROL=no-waker`: nothing resumes a waiting turn; a touch of the board finds no owed resume. Must fail **`a:completed`** (the request stays `suspended`). `a:word` goes red with it.
 
 **Before-state:** on `main` before FIX-1816 P3 the asker has no `waitForResponse`, so there is no ask to survive a restart.

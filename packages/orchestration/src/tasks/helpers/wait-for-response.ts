@@ -217,16 +217,18 @@ export async function addTaskAndWait(
     };
   }
 
-  // One row per call: the replay after the resume reaches this line again and
-  // reads the first filing back. Keyed on the call's logical id, which the
-  // replay shares; never on the attempt.
-  const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
+  // One row per call. The row's id and deadline are recorded first, in a step
+  // with no side effect, keyed on the call's logical id (which the replay
+  // shares; never on the attempt). Then the row is filed under that id unless
+  // it already is, so a replay after a crash between the row's commit and
+  // anything after it finds the first filing instead of making a second.
+  const filed = await ctx.runOnce(`fsd.ask.plan:${call.logicalId}`, async () => {
     const taskId = generateId("task");
-    const gateId = askGateId(collection.collectionId, taskId);
-    const deadline = Date.now() + timeoutMs;
-    await collection.addTask({ ...init, id: taskId, ask: { gateId, deadline } });
-    return { taskId, gateId, deadline };
+    return { taskId, gateId: askGateId(collection.collectionId, taskId), deadline: Date.now() + timeoutMs };
   });
+  if (collection.get(filed.taskId) === undefined) {
+    await collection.addTask({ ...init, id: filed.taskId, ask: { gateId: filed.gateId, deadline: filed.deadline } });
+  }
 
   // Never fails the call: the answer always comes back. A clear that fails
   // leaves the marker, and the next touch clears it, the gate already resolved.
@@ -340,8 +342,10 @@ async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reaso
   const row = collection.get(taskId);
   if (row === undefined || isTerminalStatus(row.status)) return false;
   try {
-    await collection.cancel(taskId, reason);
-    return true;
+    // A cancel that lost a race to the row's own ending declines (or, on a
+    // custom ref, throws): only one the backing recorded is this call's.
+    const outcome = await collection.cancel(taskId, reason);
+    return outcome == null || outcome.outcome === "recorded";
   } catch (error) {
     // The row ended between the read and the write: its ending stands.
     if (!(error instanceof IllegalTaskTransitionError)) throw error;

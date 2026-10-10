@@ -56,7 +56,7 @@ const CONTROLS: Record<string, Control> = {
         to: "const filed = await ((_key, fn) => fn())(",
       },
     ],
-    does: "the ask files its row without runOnce, so the replay after the resume reaches addTask and files again",
+    does: "the ask records its row's id without runOnce, so the replay after the resume reaches addTask with a new id and files again",
   },
   "no-waker": {
     name: "no-waker",

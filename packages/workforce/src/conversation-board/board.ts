@@ -366,7 +366,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    */
   // Chosen per turn: `addTask` waits for its answer only where the host can
   // hold an ask (FIX-1816).
-  const eight = taskToolsForTurn(resolver, roster);
+  // This board resumes asks: its notice entry and every run call
+  // `resumeOwedAsks`.
+  const eight = taskToolsForTurn(resolver, roster, { resumesAsks: true });
   const tools = defineCapability({
     name: "taskTools",
     resources: { ...conversationLedgerResources },

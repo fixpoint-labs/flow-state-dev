@@ -24,10 +24,11 @@ import {
   type TaskCollectionRef,
   type TaskEnding,
 } from "../../src/tasks";
+import { ASK_TIMED_OUT_REASON } from "../../src/tasks/helpers/wait-for-response";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 /** The reason `addTaskAndWait` cancels its row with when the ask times out. */
-const TIMEOUT_REASON = "The ask timed out before the task finished.";
+const TIMEOUT_REASON = ASK_TIMED_OUT_REASON;
 
 const NOW = 1_000_000;
 

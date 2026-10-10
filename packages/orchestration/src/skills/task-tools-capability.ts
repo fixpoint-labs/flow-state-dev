@@ -849,6 +849,8 @@ function buildTaskTools(
             status: z.string(),
             assignee: z.string().optional(),
             attempts: z.number(),
+            /** A turn is waiting on this task's answer (`addTask` with `waitForResponse`). */
+            asked: z.literal(true).optional(),
           }),
         ),
       }),
@@ -871,6 +873,7 @@ function buildTaskTools(
           status: t.status,
           ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
           attempts: t.attempts,
+          ...(t.ask != null ? { asked: true as const } : {}),
         })),
       };
     },
@@ -912,12 +915,15 @@ export function buildTaskToolsList(
  *   from the running context ({@link AssigneeRosterSource}). Supply it so a
  *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
  *   roster the executive is.
+ * @param options `resumesAsks: true` when the board has a waker, so `addTask`
+ *   may offer `waitForResponse` ({@link TaskToolsOptions}).
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
   roster?: AssigneeRosterSource,
+  options: TaskToolsOptions = {},
 ): DefinedCapability {
-  const forTurn = taskToolsForTurn(resolveCollection, roster);
+  const forTurn = taskToolsForTurn(resolveCollection, roster, options);
   return defineCapability({
     name: "taskTools",
     presets: {
@@ -935,10 +941,23 @@ export function createTaskToolsCapability(
   });
 }
 
+/** How a board's task tools are offered. */
+export interface TaskToolsOptions {
+  /**
+   * The board has a waker: whatever runs it calls `resumeOwedAsks` when it
+   * touches the board outside a turn (a board run, a task's notice), so a
+   * turn parked on an ask is resumed when its task ends. Only then may
+   * `addTask` offer `waitForResponse`. Default `false`: a board that nothing
+   * wakes would leave every ask to its timeout.
+   */
+  readonly resumesAsks?: boolean;
+}
+
 /**
  * The eight task tools as a turn gets them: two lists of the same eight
- * names, built once, and the one the turn's host can serve. `addTask` carries
- * `waitForResponse` and `timeoutMs` only where an ask can be held and bounded
+ * names, built once, and the one the turn can use. `addTask` carries
+ * `waitForResponse` and `timeoutMs` only on a board that resumes asks
+ * (`options.resumesAsks`) and a host that can hold and bound one
  * ({@link canHoldAsk}); anywhere else the list is {@link buildTaskToolsList}'s.
  *
  * For a composing layer that builds its own capability over a board (pass
@@ -947,8 +966,10 @@ export function createTaskToolsCapability(
 export function taskToolsForTurn(
   resolveCollection: TaskCollectionResolver,
   roster?: AssigneeRosterSource,
+  options: TaskToolsOptions = {},
 ): (ctx: object) => GeneratorTool[] {
   const plain = buildTaskTools(resolveCollection, roster);
+  if (options.resumesAsks !== true) return () => plain;
   const waiting = buildTaskTools(resolveCollection, roster, undefined, undefined, false, true);
   return (ctx) => (canHoldAsk(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
 }
