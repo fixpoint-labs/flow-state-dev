@@ -311,6 +311,29 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
   });
 });
 
+describe("a session that lost its grant still pays what its rows owe (BR-5)", () => {
+  it("replays a lost notice on its next touch, though its board answers no_delegation_board", async () => {
+    const h = host();
+    try {
+      const talk = await agentSession(h, "alice", "solo");
+      expect((await h.act("alice", talk, "addDelegate", { worker: "eng.tasker" }, "agent")).error).toBeUndefined();
+      const lost = await h.loseDispatches("onTaskSettled");
+      expect((await file(h, "alice", talk, { goal: "Count chairs", assignee: "eng.tasker" }, "agent")).ok).toBe(true);
+      await h.settled();
+      expect(lost.lost()).toBeGreaterThan(0);
+      lost.restore();
+      expect((await h.act("alice", talk, "removeDelegate", { worker: "eng.tasker" }, "agent")).error).toBeUndefined();
+
+      expect(await list(h, "alice", talk, "agent")).toMatchObject({ ok: false, error: "no_delegation_board" });
+      await h.settled();
+      const heard = (await h.requestsOf(talk)).filter((request) => request.actionName === "onTaskSettled");
+      expect(heard.map((request) => request.status)).toEqual(["completed"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
 describe("the grant is server-written, never input (BR-6)", () => {
   it("refuses an `agent` session create that seeds delegates, with 400 naming the field", async () => {
     const h = host();

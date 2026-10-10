@@ -309,17 +309,21 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /** Every action on the board, and the model's every tool call, reach it here. */
   const resolver: TaskCollectionResolver = async (ctx) => {
-    // No board while the session doesn't file: no task-taking delegate now,
-    // or a task session (FIX-1802 P2 lets it split).
-    if (!(await files(ctx))) return undefined;
+    // A task session keeps no board until FIX-1802 P2 lets it split.
+    if (isTaskSession(ctx)) return undefined;
     const ref = await ownConversationLedger(ctx);
     if (ref === undefined) return undefined;
     // The outbox, on every touch, a read included. A crash after an ending's
     // write and before its notice's send (BR-26a), or a wake lost after an add
     // or an assign (BR-10a), leaves the debt only on the row, and nothing
-    // sweeps for it: this touch is what pays it. Don't narrow it to writes.
+    // sweeps for it: this touch is what pays it. Don't narrow it to writes,
+    // or to a session that files now: rows filed before it lost its last
+    // task-taking delegate still run and are heard (FIX-1802 BR-5).
     if (hasStartable(ref)) await wake(ctx);
     await replayNotices(ctx, ref.list());
+    // No board to act on while the session doesn't file: none of its
+    // delegates takes a task now, so an action answers `no_delegation_board`.
+    if (!(await files(ctx))) return undefined;
     return guarded(ctx, ref);
   };
 
