@@ -82,7 +82,7 @@ import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { noteAskDeadline } from "../durability/ask-deadlines";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -1833,9 +1833,15 @@ async function runActionAttempt<
         // answer resume it. An ask's answer comes from its task settling, and
         // nobody sends it again: reopened, it would be lost and the ask would
         // time out. A person's approval is reopened, since they resubmit it.
+        // An approval that expired stays expired too (FIX-1846): nobody
+        // resubmits an expiry, and the sweep re-drives it. Only when this run
+        // owns the expiry, though: an `expired` read back under an accepted
+        // approve is a raced write, and keeping it would have the sweep
+        // re-drive the person's approval as a rejection.
         const keepsResolution =
           suspension !== null &&
           (suspension.status === "stopped" ||
+            (isExpiredApproval(suspension) && resumeContextRaw.resolution === "expired") ||
             (suspension.status === "submitted" && isAskGate(suspension)));
         if (suspension !== null && !keepsResolution) {
           await provider.suspend({
@@ -1868,10 +1874,6 @@ async function runActionAttempt<
   // from the replay log — so it can only ever resolve the gate this request
   // actually suspended at.
   let resumeContext: ResumeContext | undefined;
-  // How the gate being resumed was recorded resolved, read with it below. The
-  // audit item reports it: a stopped ask continues with a `submit` action,
-  // but was stopped (FIX-1816).
-  let resumedGateStatus: SuspensionRecord["status"] | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
   try {
@@ -1890,7 +1892,19 @@ async function runActionAttempt<
       // exactly that gate and re-suspends at any other.
       if (resumeContextRaw !== undefined) {
         const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-        resumeContext = { ...resumeContextRaw, pendingBlockLogicalId };
+        // How this resume resolves the gate, the one source the audit item and
+        // `ctx.suspend()` both read. An expiry is named only by the
+        // continuation that owns it (the sweep's re-drive, or a stop of a turn
+        // behind an expired approval), never read back from the gate, since an
+        // expiry write that raced a person's approve can leave `expired` on an
+        // approved gate (FIX-1846). Any other caller-supplied value is dropped;
+        // the gate's recorded status fills it in at the checkpoint read below.
+        const expiryOwned = resumeContextRaw.action === "reject" && resumeContextRaw.resolution === "expired";
+        resumeContext = {
+          ...resumeContextRaw,
+          pendingBlockLogicalId,
+          resolution: expiryOwned ? "expired" : undefined
+        };
       }
     }
 
@@ -1970,7 +1984,7 @@ async function runActionAttempt<
     // `isAbortRequested` read per run.
     await pollAbortIntent();
 
-    // Resume mode: load the suspension record + checkpoint to restore the durable
+    // Resume mode: the suspension record + checkpoint restore the durable
     // sequencer's accumulator state. Same-request replay (FIX-811) reads from
     // this request's own id. Step skipping is no longer positional — completed
     // blocks are injected per-logical-path via `ctx._replayLog` (set below in
@@ -1979,11 +1993,18 @@ async function runActionAttempt<
     if (resumeContext !== undefined) {
       const provider = options.runtimeConfig.durabilityProvider;
       if (provider !== undefined) {
-        const suspension = await provider.loadSuspension(
-          requestId,
-          resumeContext.suspensionId
-        );
-        if (suspension !== null && suspension.status !== "pending") resumedGateStatus = suspension.status;
+        const suspension = await provider.loadSuspension(requestId, resumeContext.suspensionId);
+        // The gate's recorded status names the resolution when the action
+        // can't (a stopped ask continues with a `submit`, FIX-1816). Never a
+        // raced `expired`: an approve stays recorded `approved`.
+        if (
+          resumeContext.resolution === undefined &&
+          suspension !== null &&
+          suspension.status !== "pending" &&
+          suspension.status !== "expired"
+        ) {
+          resumeContext.resolution = suspension.status;
+        }
         if (suspension !== null && suspension.stepIndex >= 0) {
           // The suspension's `blockInstanceId` is the durable sequencer's
           // checkpoint key. In replay mode the request id is unchanged, so the
@@ -2088,7 +2109,7 @@ async function runActionAttempt<
       type: "suspension_resume",
       status: "completed",
       suspensionId: resumeContext.suspensionId,
-      resolution: resumedGateStatus ?? RESUME_ACTION_STATUS[resumeContext.action],
+      resolution: resumeContext.resolution ?? RESUME_ACTION_STATUS[resumeContext.action],
       resolvedBy: resumeContext.resumedBy,
       resumeData: resumeContext.data,
       resolvedAt: Date.now(),

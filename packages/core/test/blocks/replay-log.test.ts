@@ -87,7 +87,7 @@ function suspensionResumeItem(
   path: string,
   suspensionId: string,
   itemIndex: number,
-  extra?: { resolution?: "approved" | "rejected"; resumeData?: unknown; resolvedBy?: string },
+  extra?: { resolution?: "approved" | "rejected" | "skipped" | "expired"; resumeData?: unknown; resolvedBy?: string },
 ): RuntimeItem {
   const blockInstanceId = `${REQ}:${path}:0`;
   return {
@@ -240,7 +240,7 @@ describe("buildReplayLog", () => {
         suspensionItem("root/step[3]", "susp_b", 2),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { observed: "In Spec Review" }, rejected: false, skipped: false, suspensionId: "susp_a", resolvedBy: undefined },
+        { data: { observed: "In Spec Review" }, rejected: false, expired: false, skipped: false, suspensionId: "susp_a", resolvedBy: undefined },
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[3]`)).toEqual([]);
     });
@@ -265,7 +265,22 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { note: "no" }, rejected: true, skipped: false, suspensionId: "susp_a", resolvedBy: "reviewer" },
+        { data: { note: "no" }, rejected: true, expired: false, skipped: false, suspensionId: "susp_a", resolvedBy: "reviewer" },
+      ]);
+    });
+
+    it("replays an approval that expired as a rejection marked expired, never as an answer (FIX-1846)", () => {
+      // The turn carried on past the expired gate; a later replay must read it
+      // as no longer valid again, not return its (empty) data as an approval.
+      const log = buildReplayLog([
+        suspensionItem("root/step[2]", "susp_a", 0),
+        suspensionResumeItem("root/step[2]", "susp_a", 1, {
+          resolution: "expired",
+          resolvedBy: "durability-sweeper",
+        }),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
+        { data: undefined, rejected: true, expired: true, skipped: false, suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
       ]);
     });
 

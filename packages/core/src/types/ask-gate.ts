@@ -35,6 +35,22 @@ export function isAskGate(suspension: { readonly reason: string }): boolean {
   return suspension.reason === ASK_GATE_REASON;
 }
 
+/**
+ * Whether a suspension is an approval that expired: not an ask, past its
+ * deadline (`expired`), and one a person could have rejected. Its turn carries
+ * on as if the approval were rejected, marked expired. A suspension that
+ * allows no `reject` (an input form) only expires. `allow` is absent on
+ * records written before it existed, which read as approve/reject.
+ */
+export function isExpiredApproval(suspension: {
+  readonly reason: string;
+  readonly status: string;
+  readonly allow?: readonly string[];
+}): boolean {
+  if (suspension.status !== "expired" || isAskGate(suspension)) return false;
+  return (suspension.allow ?? ["approve", "reject"]).includes("reject");
+}
+
 /** What the parked turn waits on: one row on one board. */
 export type AskGateBinding = {
   /** The board the asked row lives on. */
