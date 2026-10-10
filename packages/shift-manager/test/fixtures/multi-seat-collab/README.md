@@ -1,8 +1,8 @@
 # multi-seat-collab · the lab
 
-The hire behind the ER-Collab exit proof (FIX-1497): a planner and two worker seats, declared in
-Markdown, working one mailbox's board, served by the ordinary `fsdev dev` so the shipped DevTool can
-watch it. The graded check is
+The hire behind the ER-Collab exit proof (FIX-1497): a planner that files work for two workers on its
+own conversation's board, declared in Markdown, served by the ordinary `fsdev dev` so the shipped
+DevTool can watch it. The graded check is
 [`goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/`](../../../../../goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/goal.md).
 It lives here, among Shift Manager's test fixtures, because the package's own tests open it too;
 the goals reach in here, never the reverse.
@@ -18,60 +18,59 @@ pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/packages/shift-man
 
 ## How it is wired
 
-![How the lab is wired: the Markdown tree under lab/workforce/teams/eng on the left, the lab's code in the middle (host.mts, the planner and worker kinds under flows/workers, the driver), and what runs on the right (fsdev.config.mts with the app's desk-to-seat map, the shipped fsdev dev, the shipped DevTool). The person's answer enters only through the owning seat's own answer action.](figures/setup.svg)
+![How the lab is wired: the Markdown tree under lab/workforce/teams/eng on the left (a coordinator, the planner with its delegates, two workers), the lab's code in the middle (host.mts with the app's desk-to-delegate map, the planner and worker flows under flows/workers, the driver), and what runs on the right (fsdev.config.mts, the shipped fsdev dev, the shipped DevTool). The person's answer enters only through the planner's conversation's answerTask_tasks.](figures/setup.svg)
 
-Read it left to right: files on disk, code, what runs. The one arrow that crosses from the tree into
-routing goes through `ROUTES` in the config, never through a `WORKER.md` — each seat's `answersFor`
-is only what the checks grade against — and the person reaches the board by one door, the owning
-seat's `answer` action.
+Read it left to right: files on disk, code, what runs. No file declares a board. The planner's
+`WORKER.md` names the two workers as its `delegates:`, and because both take tasks, a conversation
+with the planner has the task actions. The one arrow that crosses from a desk to a worker goes
+through `ROUTES` in `host.mts`, which the filer reads to name a row's assignee, never through a
+`WORKER.md`: each worker's `answersFor` is only what the checks grade against. The person reaches
+the board by one door, the planner's conversation's `answerTask_tasks`.
 
 ## How a run moves
 
 ![How one run moves: four lanes against time (eng.planner, eng.builder, the person, eng.reviewer) with the check that grades each step, and below them the three DevTool screens that read it.](figures/flow.svg)
 
-The crossing from `eng.builder`'s lane to `eng.reviewer`'s is the handoff, a second row on the same
-board; each step carries the leg that grades it, and every screen below the fence is graded by VB
-against what the ledger holds.
+The crossing from `eng.builder`'s lane to `eng.reviewer`'s is the handoff: a second row on the same
+board, which the planner filed waiting on the first, run by the other worker. Each step carries the
+leg that grades it, and every screen below the fence is graded by VB against what the board holds.
+The figures' text was edited for the conversion; their layout still draws the old shape (the second
+row starting from `eng.builder`'s lane) and wants a redraw.
 
 ## What is here
 
 | File | What it is |
 |---|---|
-| `workforce/` | The scenario, whole: one `MAILBOX.md` declaring `boards: [work]`, `boardActions: true` and its three members, three `WORKER.md`. The two worker files name the `worker` kind and the desk each answers for (`build`, `review`) — spelled unlike any seat id, so a check that confused a routing key with a seat could not pass. **No file names the ledger the framework mints.** |
-| `host.mts` | Reads the tree, refuses it whole if anything did not load, and hires. Takes the desk → seat map as an argument and never reads one off the tree. `openLab` is the boot: it opens the mailbox and then the organization's inventory, in-process, as the inventory docs show any app doing it, and throws when the inventory reports a problem. |
-| `workforce/flows/workers/` | The two kinds, one file each, basename = the kind a `WORKER.md` names in its `flow:` line. `planner.mts` has one action, a dispatch into the mailbox's own `fileTask`. `worker.mts` has the mailbox's board with a desk-narrowed claim, a same-flow hand-off per desk, `onReview: "exit"`, a `drain` action, and the person's door: `answer`, over the board's unpark-and-drain step. The loader does not walk `flows/`. |
-| `workforce/flows/piece.mts` | The row's input contract, the one piece both kinds share. Beside the kinds rather than among them, since a file under `flows/workers/` reads as a kind. |
-| `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, the app's desk → seat map, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs it here; `no-inventory` skips the inventory half of the boot; `mailbox-actions-off` hires the mailbox as if it had not declared `boardActions`. |
-| `goals/multi-seat-collab/run-scenario.mts` | The driver the check uses, kept with the goals since it needs `goals/lib`: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), meets the mailbox the boot opened through `openMailboxes` over the HTTP session route, and files, drains and answers over the action route. Reports; grades nothing. |
+| `workforce/` | The scenario, whole: four `WORKER.md`. `eng.queue` is the team's coordinator, on Workforce's `coordinator` flow, delegating to the other three. The planner names the `planner` flow and `delegates: [eng.builder, eng.reviewer]`. The two worker files name the `worker` flow and the desk each answers for (`build`, `review`) — spelled unlike any worker id, so a check that confused a desk with a worker could not pass. **No file declares a board.** |
+| `host.mts` | Reads the tree, refuses it whole if anything did not load or it is not exactly one coordinator, one planner and two workers, and hires. Holds the app's desk → delegate map (`ROUTES`, and `routesFor` for the controls), which nothing reads off the tree. `openLab` is the boot: it opens the organization's inventory, in-process, as the inventory docs show any app doing it, on the lab's own `inventory-writer` flow, and throws when the inventory reports a problem. |
+| `workforce/flows/workers/` | The two flows, one file each, basename = the flow a `WORKER.md` names in its `flow:` line. `planner.mts` carries Workforce's filing kit (`defineSessionBoard`): the task actions on its conversation's own board, and the entries the board runs on. `worker.mts` takes tasks through `workerTaskEntry`; its turn parks on the row's question while the row has not been answered, and otherwise finishes. The loader does not walk `flows/`. |
+| `workforce/flows/piece.mts` | The row's input contract (the desk, the question, the row it follows), the one piece both flows share. Beside the flows rather than among them, since a file under `flows/workers/` reads as a flow. |
+| `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs the worker flow here (`ignore-the-answer`, `silent-park`); `no-inventory` skips the boot. |
+| `goals/multi-seat-collab/run-scenario.mts` | The driver the check uses, kept with the goals since it needs `goals/lib`: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), opens each worker's own session over the HTTP session route, files and answers through the planner's conversation's actions, and reads the board off the server's SQLite file. Reports; grades nothing. |
 
 ## What the lab owns rather than the framework
 
-- **The two kinds and their bodies.** The worker body parks while the row carries no answer, and
-  in finishing files the next desk's row naming the one it finished. A handoff here is that second
-  row — not a status and not a reassignment (the board freezes the assignee of a running row, and the body tries
-  once to move it so a board that ever allowed it would be caught).
-- **The desk → seat map.** The app's, written in the config. Each seat's own `answersFor` line is
+- **The two flows' bodies.** The worker body parks on the row's question while the row has not been
+  answered. The park is written the way the board's `parkOnQuestion` tool writes it, on the
+  conversation's own ledger under the claim the attempt holds, because the turn is not a model. A
+  handoff here is a second row the planner filed waiting on the first — not a status and not a
+  reassignment (the board freezes the assignee of a parked row, and the check tries once to move it
+  so a board that ever allowed it would be caught).
+- **The desk → delegate map.** The app's, in `host.mts`. Each worker's own `answersFor` line is
   what the check grades against, so the two sources can disagree — which is what `swapped-desks`
-  and `one-seat` make them do.
-- **The worker reaches its row through the board's own capability**, not through a reference it
-  builds over the raw ledger. A hand-built reference skips the board's frozen-assignee policy: an
-  early draft of this lab moved a handed-off row's assignee with it, and the move was accepted.
+  and `one-worker` make them do.
 
 ## What it works around
 
 - **The intent overrides.** The driver spawns the server through `goals/lib/env`'s
   `intentFreeEnv`, so an ambient `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*` cannot swap the models
   the lab resolves. A malformed value would fail every served request at setup.
-- **A refusal that never settles.** An action sent to a seat's session as a different user is
-  admitted (`202`) and then never advances — no items, nothing logged, still `in_progress`. It
-  does not land, which is all the proof asks, but it is the same silent shape as FIX-1511 with a
-  principal mismatch as the trigger. The check bounds its wait and says so in its notes.
-- **Three screens, not one.** A board's changes are emitted into the session that made them: the
-  claim into the seat's own session, the park and the finish into the child session the row ran
-  in. The seat's Tasks tab therefore shows the row as it was handed off, the child's shows why it
-  waited and what it was told, and the ledger collection in the Resources panel shows both rows
-  as they stand. The DevTool's dispatch-run link is the route between the first two. No
-  cross-session view is built here.
-- **The claiming drain says `handed-off`.** The seats hand rows off, so the drain that claims a
-  row returns as soon as it is running elsewhere, before the park. Whether a park holds a drain
-  open is asked of the next drain over the parked row, which returns `parked-for-review`.
+- **Two screens, not one.** A board's changes are emitted into the session that made them: the
+  filing, the claims and the answer into the planner's conversation, the park and the finish into
+  the task session the row ran in. The planner's Tasks tab therefore shows the row as filed, the
+  task session's shows why it waited and what it was told, and the ledger collection in the
+  Resources panel shows both rows as they stand.
+- **No run link on the planner's Tasks tab.** The DevTool links a task row to its run by decoding
+  the run's session key, and it decodes a mailbox board's key, not a conversation board's. The row
+  still names its run session (`run`), and the navigator lists that session under the worker's flow,
+  which is how the check opens it.
