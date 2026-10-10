@@ -12,11 +12,12 @@
  * that folder through the Vite its own install resolves; when it returns
  * nothing, or no Vite resolves there, the built pages are served.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CliError } from "./resolve-block";
+import { resolvePackageExport } from "./package-export";
 import { EXIT_CONFIG_ERROR } from "./exit-codes";
 
 /** How `--app`'s pages are served: its built pages, or its source through Vite. */
@@ -57,25 +58,12 @@ export async function resolveApp(
 
 /**
  * The file Node imports for `vite` as installed under `root`, or `undefined`
- * when none is. Found in the `node_modules` folders from `root` up, and read
- * from that package's own `exports`, so it is the app's Vite: never one on
- * `NODE_PATH`, which a package manager's bin shim may point at fsdev's
- * neighbours.
+ * when none is. Found in the `node_modules` folders from `root` up, so it is
+ * the app's Vite: never one on `NODE_PATH`, which a package manager's bin shim
+ * may point at fsdev's neighbours.
  */
 function resolveViteEntry(root: string): string | undefined {
-  let manifest: string | undefined;
-  for (let dir = resolve(root); manifest === undefined; dir = dirname(dir)) {
-    const candidate = join(dir, "node_modules", "vite", "package.json");
-    if (existsSync(candidate)) manifest = candidate;
-    else if (dirname(dir) === dir) return undefined;
-  }
-  type Target = string | { import?: Target; default?: Target } | undefined;
-  const pkg = JSON.parse(readFileSync(manifest, "utf8")) as { exports?: { "."?: Target } };
-  // `"."` is a path, or conditions where `import` (else `default`) may nest one more level.
-  const pick = (t: Target): string | undefined =>
-    typeof t === "string" ? t : t === undefined ? undefined : pick(t.import ?? t.default);
-  const relative = pick(pkg.exports?.["."]);
-  return relative === undefined ? undefined : join(dirname(manifest), relative);
+  return resolvePackageExport(root, "vite", ".");
 }
 
 /** Whether `--app` names a directory rather than a package (or a package's module file). */

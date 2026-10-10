@@ -15,3 +15,19 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * `@flow-state-dev/react`'s navigator and panels publish no class names; a
+ * host themes them through `--fsd-nav-*` and `--fsd-panel-*` on an ancestor.
+ * Set here the way a host would, from the same tokens, so their stories
+ * follow the Theme toolbar.
+ */
+:root {
+  --fsd-nav-fg: var(--color-foreground);
+  --fsd-nav-muted-fg: var(--color-muted-foreground);
+  --fsd-nav-selected-bg: var(--color-accent);
+  --fsd-nav-selected-fg: var(--color-accent-foreground);
+  --fsd-nav-guide: var(--color-border);
+  --fsd-panel-fg: var(--color-foreground);
+  --fsd-panel-muted-fg: var(--color-muted-foreground);
+}

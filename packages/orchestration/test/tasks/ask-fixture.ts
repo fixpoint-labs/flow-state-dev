@@ -79,11 +79,43 @@ export type Settle =
  */
 export function askFlow(
   model: GeneratorModel,
-  options: { maxAttempts?: number; endsOnFiling?: unknown; failCancelOnce?: boolean } = {}
+  options: { maxAttempts?: number; endsOnFiling?: unknown; failCancelOnce?: boolean; failClearOnce?: boolean; endsBeforePark?: unknown } = {}
 ): FlowInstance {
   let cancelFailed = false;
+  let clearFailed = false;
   const askBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
     const board = await boardOf(ctx);
+    if (options.endsBeforePark !== undefined) {
+      // The colleague finishes after the asking call checked the row and
+      // before its gate is written: the check still read it open.
+      let checked = false;
+      return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        addTask: async (init: Parameters<TaskCollectionRef["addTask"]>[0]) => {
+          const task = await board.addTask(init);
+          await board.claim("researcher-worker");
+          await board.complete(task.id, options.endsBeforePark);
+          return task;
+        },
+        get: (id: string) => {
+          const row = board.get(id);
+          if (checked || row === undefined) return row;
+          checked = true;
+          return { ...row, status: "in_progress" };
+        }
+      }) as TaskCollectionRef;
+    }
+    if (options.failClearOnce === true) {
+      // The asking call's first clear of its row's marker fails, as a store blip would.
+      return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        clearResumeOwed: async (id: string) => {
+          if (!clearFailed) {
+            clearFailed = true;
+            throw new Error("store unavailable");
+          }
+          return board.clearResumeOwed!(id);
+        }
+      }) as TaskCollectionRef;
+    }
     if (options.failCancelOnce === true) {
       // The asking call's first cancel of its row fails, as a store blip would.
       return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
@@ -187,8 +219,12 @@ export async function act(
   state: ReturnType<typeof runtimeFor>,
   flow: FlowInstance,
   actionName: string,
-  input: unknown = {}
+  input: unknown = {},
+  options: { sweeper?: boolean } = {}
 ) {
+  // The router builds the host's durability sweeper, which an ask needs: a
+  // host with none can't bound one, and refuses it (BR-5).
+  if (options.sweeper !== false) await state.getRouter();
   const runtime = await state.getRuntime();
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,

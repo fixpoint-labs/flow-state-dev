@@ -12,7 +12,7 @@
  * ## What a row owes, and how durably
  *
  * - **A notice** is a marker the ending's own write puts on the row: every
- *   ending written here goes through `recordEnding` (`./task-notice`), so the
+ *   ending written here goes through orchestration's `recordEnding` (its notice module), so the
  *   ending and the debt to tell the conversation land together or not at all.
  *   Only the notice's delivery clears it.
  * - **A start** is no marker at all: it is the row's own state. A row that is
@@ -30,11 +30,12 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
+  recordEnding,
   type TaskCollectionRef,
-  type TaskPartitionContext
+  type TaskPartitionContext,
+  withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
 import { filingSessionIdOf } from "./filing-session";
-import { recordEnding, withoutNoticeMarkers } from "./task-notice";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed

@@ -987,7 +987,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const usesEntries = [
     ...(options.uses ?? []),
     ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : []),
-    ...(board !== undefined ? [board.tools] : [])
+    ...(board !== undefined ? [board.tools, board.questions] : [])
   ];
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>

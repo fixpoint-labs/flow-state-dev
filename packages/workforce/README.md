@@ -721,6 +721,9 @@ workforce/
 `createWorkerInstallation`, `mailboxInstances`, a task board and a worker flow's tool catalog
 already take. The same file
 carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
+This package supplies the generator `fsdev gen` runs, through its `./fsdev-gen` export; the command
+finds it because your app depends on `@flow-state-dev/workforce`, and reads `workforce/` unless you
+pass `--root`.
 
 ```ts
 import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
@@ -1393,13 +1396,13 @@ tree. A typo does not fail: it resolves a second, empty ledger, and the only sig
 unattended-board warning below.
 
 `mailboxBoardTaskTools(board)` is the model's door onto one. Compose it in the seat kind's `uses`
-and the seat holds all eight task tools over that board, each name carrying the board's id —
+and the seat holds all nine task tools over that board, each name carrying the board's id —
 `addTask_engineering_incidents_followups` and so on for `assignTask`, `updateTask`, `listTasks`,
-`completeTask`, `failTask`, `blockTask` and `cancelTask`. Composing the capability also declares the
+`completeTask`, `failTask`, `blockTask`, `cancelTask` and `answerTask`. Composing the capability also declares the
 ledger, so the seat's flow does not declare it again. A seat's `tools:` list can neither grant these
 nor fence them out. A narrower set is a different capability.
 
-Compose it once per board; a seat holding two boards holds sixteen tools and the names say which
+Compose it once per board; a seat holding two boards holds eighteen tools and the names say which
 board each writes to. A mailbox board is org-scoped, so it cannot be declared by a block colocated
 in a seat's own folder; that refuses at `hireWorkforce`.
 
@@ -2311,7 +2314,7 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 same problems without throwing.
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
-Orchestration's eight task tools (`addTask`, `assignTask`, `listTasks` and the rest), and the
+Orchestration's task tools (`addTask`, `assignTask`, `listTasks`, `answerTask` and the rest), and the
 conversation's session takes them as actions named for the board: `addTask_tasks`,
 `listTasks_tasks` and so on.
 
@@ -2322,6 +2325,12 @@ answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 which belongs to you. Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. The
 conversation hears once when the task ends. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks).
+
+A worker on a task turn has `parkOnQuestion`: it parks the task on its question, and the
+conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
+the task picks up in its own session with the answer as its next message, without spending a
+retry. A task's session stays open after the task finishes: message its worker there, or file a
+follow-up with `addTask`'s `followUpOf`, which runs in the same session with the same worker.
 
 ## Importing from a browser component
 
@@ -2426,7 +2435,7 @@ the root exports, and reaches no Node built-in.
 | `readMailboxesDirectory(root)` | Read a `teams/<id>/mailboxes/<name>/` tree into one `MailboxManifest` per mailbox. Ships from the `./loader` subpath (Node only). |
 | `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |
 | `mailboxBoard(mailboxId, boardName)` | The one declaration for a mailbox's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `mailboxBoardTaskTools`. Throws when the name is not a plain local name. |
-| `mailboxBoardTaskTools(board)` | Capability granting a seat all eight task tools over one mailbox board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
+| `mailboxBoardTaskTools(board)` | Capability granting a seat all nine task tools over one mailbox board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
 | `mailboxBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `mailboxBoards` and `defineAgentWorkerFlow`'s `taskLists` take. |
 | `mailboxTaskLists(boardIds, { allowSessionState? })` | A `TaskBinding` for a task entry's `from`: the entry takes tasks from any of these mailbox boards, resolved in the running organization. A board id outside the list is refused `UnknownTaskLedgerError`. |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`; see [Handing a row to the worker it names](#handing-a-row-to-the-worker-it-names). |

@@ -119,7 +119,9 @@ export const taskSchema = z.object({
 
   /**
    * How many times this row re-entered after a person's turn stopped its
-   * worker (FIX-1690). Incremented by the `unpark` of a row parked for a turn;
+   * worker (FIX-1690), or after an answer to the question it parked on
+   * (`unpark(..., { answer: true })`, FIX-1817). Incremented by the `unpark`
+   * of a row parked for a turn, and by an answering one;
    * the claim that follows advances `attempts` as every claim does, and
    * `shouldRetryOnFail` discounts this beside `abandonments`, so a person
    * talking to a run never spends its retries. The board's `maxTotalRetries`
@@ -129,6 +131,40 @@ export const taskSchema = z.object({
    * **Absent reads as zero** (BP-030).
    */
   turnReentries: z.number().int().nonnegative().optional(),
+
+  /**
+   * The row's `feedback` is the answer to the question its worker parked on
+   * (FIX-1817). Set by the answering `unpark` (`{ answer: true }`), so the
+   * next attempt is handed it as its answer rather than the task again.
+   * Cleared by every other write of `feedback`: a park, a plain `unpark`, a
+   * failure that re-pends. It survives the claim, so an attempt recovered
+   * after its worker died is still handed the answer.
+   *
+   * Top level and server-written for `abandonments`' reason (BP-031).
+   * **Absent reads as false** (BP-030).
+   */
+  answered: z.boolean().optional(),
+
+  /**
+   * The row is parked on its worker's question (FIX-1817): set by the park
+   * `parkOnQuestion` writes (`awaitReview(..., { onQuestion: true })`),
+   * cleared by every other park and by `unpark`. Only such a row takes an
+   * answer, so a park for any other reason (a person's turn, a task waiting
+   * on its pieces) can't be answered as a question.
+   *
+   * Top level and server-written for `abandonments`' reason (BP-031): no
+   * caller-writable surface reaches it. **Absent reads as false** (BP-030).
+   */
+  parkedOnQuestion: z.boolean().optional(),
+
+  /**
+   * The finished task this one follows up (FIX-1817): its root, never another
+   * follow-up, so a chain of follow-ups names one task. A follow-up runs in
+   * that task's session, with its worker. Written once, by the add that files
+   * it, after the add checked it in the same partition; never patched.
+   * **Absent** on every task that is not a follow-up (BP-030).
+   */
+  followUpOf: z.string().optional(),
 
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),

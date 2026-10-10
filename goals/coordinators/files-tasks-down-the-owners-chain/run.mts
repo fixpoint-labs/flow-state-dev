@@ -84,7 +84,7 @@ const CONTROLS: Record<string, Control> = {
     assertions: ["a:one-notice", "e:one-notice"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/task-notice.ts",
+        module: "packages/orchestration/src/tasks/notice/task-notice.ts",
         from: String.raw`return policy === "judgment" \? \{ act: "wake-turn" \} : \{ act: "line" \};`,
         to: 'return { act: "none" };',
       },
@@ -335,7 +335,21 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
   const messages = items(store, E.conv, "message");
-  const firstFiled = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "addTask").map(toolOutput);
+  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "addTask");
+  // The leg proves a task that ends after its filing turn is heard (FIX-1794 BR-24). A filing that
+  // waits for its answer hears the ending as the tool's result instead, and never reaches a notice.
+  const waited = firstCalls.filter((i) => {
+    try {
+      return (JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown }).waitForResponse === true;
+    } catch {
+      return false;
+    }
+  });
+  if (waited.length > 0) {
+    r.failures.push(`e:filed-without-waiting — wanted the first turn to file with a plain addTask, so the ending arrives as a notice after the turn; ${waited.length} of its ${firstCalls.length} addTask calls set waitForResponse: ${show(waited.map((i) => i.toolCall?.arguments))}`);
+    return r;
+  }
+  const firstFiled = firstCalls.map(toolOutput);
   const filedIds = firstFiled.filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const task = rows.find((x) => filedIds.includes(x.id) && x.assignee === E.broken);
   const T = task?.id ?? "(none)";

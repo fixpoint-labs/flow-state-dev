@@ -5,9 +5,11 @@
  * Deduped by task, attempt and ending, which absorbs the replays the board's
  * outbox sends: a notice is acted on only while its row still owes it, and
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
- * attempt runs the board again with no turn; an ending lands as a line under
- * the delegate's name and, when the conversation routes by judgment, wakes
- * its coordinator's turn to read it and decide what to do.
+ * attempt runs the board again with no turn; an asked row's ending resumes
+ * the turn parked on it (`waitForResponse`), with no line and no turn woken;
+ * any other ending lands as a line under the delegate's name and, when its
+ * coordinator has a turn of its own (judgment or best-fit routing), wakes
+ * that turn to read it and decide what to do.
  *
  * A notice that arrives while the conversation is replying waits for the
  * reply to end, then runs (BR-27). It waits for the replies running when it
@@ -27,10 +29,7 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
-import { z } from "zod";
-import { isTaskSession, replayNotices } from "./board";
-import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
+import { resumeOwedAsks } from "@flow-state-dev/orchestration";
 import {
   clearNotice,
   decideNotice,
@@ -39,7 +38,11 @@ import {
   noticeText,
   type NoticePolicy,
   type TaskNotice
-} from "./task-notice";
+} from "@flow-state-dev/orchestration/tasks";
+import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
+import { z } from "zod";
+import { isTaskSession, replayNotices } from "./board";
+import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 
 /** A notice, as the entry takes it. */
 export const taskNoticeSchema = z
@@ -47,10 +50,11 @@ export const taskNoticeSchema = z
     boardId: z.string().min(1),
     taskId: z.string().min(1),
     attempt: z.number().int().nonnegative(),
-    ending: z.enum(["completed", "errored", "parked", "retried"]),
+    ending: z.enum(["completed", "errored", "parked", "retried", "cancelled"]),
     output: z.unknown().optional(),
     error: z.string().optional(),
-    question: z.string().optional()
+    question: z.string().optional(),
+    asked: z.literal(true).optional()
   })
   .strict();
 
@@ -66,7 +70,7 @@ export const conversationBoardStateShape = {
 } as const;
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask"]),
   text: z.string().optional(),
   worker: z.string().optional()
 });
@@ -79,7 +83,7 @@ export interface TaskSettledOptions {
   readonly runBoard: BlockDefinition<any, any>;
   /** The coordinator's turn, woken with the notice as its message. */
   readonly turn: BlockDefinition<any, any>;
-  /** How the running conversation routes: by its coordinator's judgment, or by a fixed policy. */
+  /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
 }
 
@@ -113,12 +117,18 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       if (ref === undefined) return { act: "none" };
       // Whatever this run does, the notices still owed go out again behind
       // it, but never this one: its marker is cleared below, or already was.
+      // Nor an asked row still owed its resume: its notice stays owed while
+      // the resume fails, so two such rows would send each other's forever.
+      // A touch of the board retries those, once per touch.
       const replayRest = () =>
         replayNotices(
           ctx as never,
-          ref.list().map((task) =>
-            task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
-          )
+          ref
+            .list()
+            .filter((task) => !(task.ask != null && task.resumeOwed === true))
+            .map((task) =>
+              task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
+            )
         );
       const row = ref.get(notice.taskId);
       // A notice its row doesn't owe was delivered already, or was never owed.
@@ -136,11 +146,29 @@ export function taskSettledEntry(options: TaskSettledOptions) {
           return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
         }
       );
+      const decision = decideNotice(notice, options.policy(ctx as never));
+      // An asked row's ending: resume the turn parked on it, with no line and
+      // no turn. Every copy tries: the gate admits one answer. The owed notice
+      // is what carries the resume across a touch, so it clears only once the
+      // row no longer owes it (the resume was accepted, or the gate had
+      // already been resolved). A resume turned away (`busy`) or thrown, or a
+      // process that dies first, leaves the notice owed, and the board's next
+      // touch sends it again (BR-11). The resolver never resumes itself: it
+      // runs inside a turn.
+      if (decision.act === "resume-ask") {
+        try {
+          await resumeOwedAsks(ctx as never, ref);
+        } catch {
+          // Still owed: the notice stays, for the next touch.
+        }
+        if (ref.get(row.id)?.resumeOwed !== true) await ref.patchMetadata(row.id, clearNotice(notice));
+        await replayRest();
+        return { act: first === true ? "resume-ask" : "none" };
+      }
       // Delivered: the marker clears whichever copy of the notice got here.
       await ref.patchMetadata(row.id, clearNotice(notice));
       await replayRest();
       if (first !== true) return { act: "none" };
-      const decision = decideNotice(notice, options.policy(ctx as never));
       return {
         act: decision.act,
         text: noticeText(notice, row),

@@ -41,7 +41,10 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
       const [row] = await rows(state, flow);
       expect(row).toMatchObject({ status: "pending", resumeOwed: false });
       expect(row!.ask?.gateId).toBe(askGateId(BOARD, row!.id));
-      expect(row!.ask!.deadline - Date.now()).toBeGreaterThan(9 * 60_000);
+      // The default bound: five minutes from filing (BR-14).
+      const left = row!.ask!.deadline - Date.now();
+      expect(left).toBeGreaterThan(4 * 60_000);
+      expect(left).toBeLessThanOrEqual(5 * 60_000);
 
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
       // The ending owes the turn its answer.
@@ -199,6 +202,45 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   });
 });
 
+describe("ask on the board: the answer always comes back", () => {
+  it("a marker clear that fails after the answer still returns the answer; the next touch clears the marker", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model, { failClearOnce: true });
+    const state = runtimeFor(flow);
+    try {
+      const parked = await act(state, flow, "run");
+      await act(state, flow, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
+      // The touch resumes the turn; the asking call's own clear of the marker is the one that fails.
+      await act(state, flow, "touch");
+      await until(state, parked.requestId!, "completed");
+      expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
+      // The marker the failed clear left is cleared by the next touch, the gate already resolved.
+      await act(state, flow, "touch");
+      expect((await rows(state, flow))[0]).toMatchObject({ status: "completed", resumeOwed: false });
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
+describe("ask on the board: a host that can't bound the ask", () => {
+  it("OFF STATE: durable execution with no durability sweeper refuses wait_unavailable, and files nothing (BR-5)", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model);
+    const state = runtimeFor(flow);
+    try {
+      // A direct caller of addTaskAndWait, on a host whose router (and so its sweeper) was never built.
+      const run = await act(state, flow, "run", {}, { sweeper: false });
+      expect(await statusOf(state, run.requestId!)).toBe("completed");
+      expect(toolResults(seen[1]!.messages)).toContain("wait_unavailable");
+      const runtime = await state.getRuntime();
+      expect(await runtime.stores.suspensions.list({ sessionId: SESSION })).toHaveLength(0);
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
 describe("ask on the board: the row ended first, and the deadline", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -220,6 +262,26 @@ describe("ask on the board: the row ended first, and the deadline", () => {
     }
   });
 
+  it("a row that ended between the check and the park, with no touch after, answers at the deadline, not wait_timed_out", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model, { endsBeforePark: "Yes, renewed 2026-08" });
+    const state = runtimeFor(flow, inMemoryStores(), true, 25);
+    try {
+      const parked = await act(state, flow, "run");
+      expect(await statusOf(state, parked.requestId!)).toBe("suspended");
+      // Nothing touches the board. Past the deadline, the sweep resumes the turn.
+      const real = Date.now.bind(Date);
+      vi.spyOn(Date, "now").mockImplementation(() => real() + 6 * 60_000);
+      await until(state, parked.requestId!, "completed");
+
+      expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
+      expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
+      expect((await rows(state, flow))[0]).toMatchObject({ status: "completed", resumeOwed: false });
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("an ask open past its deadline is resumed by a real sweep with wait_timed_out, and its row is cancelled (BR-14)", async () => {
     const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
     const flow = askFlow(model);
@@ -229,7 +291,7 @@ describe("ask on the board: the row ended first, and the deadline", () => {
       const parked = await act(state, flow, "run");
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
 
-      // Eleven minutes on.
+      // Past the five-minute default.
       const real = Date.now.bind(Date);
       vi.spyOn(Date, "now").mockImplementation(() => real() + 11 * 60_000);
       await until(state, parked.requestId!, "completed");

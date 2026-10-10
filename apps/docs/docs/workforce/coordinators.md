@@ -169,7 +169,7 @@ Each line starts with who wrote it:
 | A delegate, in an answer that landed | The delegate's worker id | `support.devices` |
 | The coordinator | The coordinator's worker id | `support.help` |
 
-A coordinator line appears only when the coordinator wrote something in the conversation itself: a reply from its own turn, which runs under `judgment` or when best fit hands it a post nobody else took, or a `Nobody took this post` message. The [routing record](#what-it-records) is never a line.
+A coordinator line appears only when the coordinator wrote something in the conversation itself: a reply from its own turn, which runs under `judgment`, when best fit hands it a post nobody else took, and when a task it filed ends under either policy, or a `Nobody took this post` message. The [routing record](#what-it-records) is never a line.
 
 What a delegate gets:
 
@@ -346,7 +346,7 @@ await help.sendAction(
 );
 ```
 
-These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same eight as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
 
 Either way, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
 
@@ -366,7 +366,7 @@ The conversation that filed a task hears once when it ends, in a line under the 
 Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
 ```
 
-It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. When the line arrives, a coordinator that routes by judgment takes a turn to read it and decide what to do next. One with a fixed routing policy shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word.
+It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word.
 
 ### Managing tasks
 
@@ -385,6 +385,54 @@ const run = await workforce.findWorkerSession({ worker: "licenses", taskId, fili
 ```
 
 Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a post to the same worker in this conversation still lands in the session where that delegate works your posts. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
+
+### When a task stops on a question
+
+A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It parks the task on its question instead of guessing. The conversation hears it, with the question, and nothing runs while it waits.
+
+Answer it from the conversation:
+
+```ts
+await help.sendAction(
+  "answerTask_tasks",
+  { taskId, answer: "Use eu-west." },
+  { sessionId: session.id },
+)
+```
+
+You can also just answer in chat: the coordinator passes your answer on with its `answerTask` tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
+
+An answer doesn't use up the task's retries, and the task can ask again. Until it picks up again, it can't be reassigned: `assignTask_tasks` answers `task_awaiting_answer`. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
+
+A task handed to a delegate by a coordinator that is waiting for it (`waitForResponse`) can't stop on a question. Its delegate answers with what it has, or fails.
+
+### After a task finishes
+
+A finished task's session stays open. To ask it about the work, send a message to its worker in that session:
+
+```ts
+const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
+const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl })
+await licenses.sendAction("run", { message: "Which licenses did you flag?" }, { sessionId: run.id })
+```
+
+It answers from what it did. The task itself doesn't change: a finished task stays finished.
+
+To build on the work, file a follow-up task that names it:
+
+```ts
+await help.sendAction(
+  "addTask_tasks",
+  { goal: "Now write it up for the team", followUpOf: taskId },
+  { sessionId: session.id },
+)
+```
+
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. `addTask` refuses the follow-up, filing nothing, if the task it names isn't finished or never ran, if that session still has an unfinished task, or if you pass an `assignee`:
+
+```json
+{ "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" is in_progress. A follow-up names a finished task. Nothing was filed." }
+```
 
 ## Making your own flow a delegate
 

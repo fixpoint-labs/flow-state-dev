@@ -74,6 +74,7 @@ import { createInstanceCallerResolver, type InstanceCallerResolver } from "./ins
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createAskResumeOperation } from "../context/ask-resume-operation";
+import { installAskSweeperFact } from "../durability/ask-deadlines";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 
 export type RequestContext = {
@@ -309,6 +310,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       stores,
       continueRequest: (opts) => host.continueRequest(opts)
     });
+  }
+  // And whether a sweeper bounds an ask here, so the turn is offered one.
+  if (runtimeConfig.requestHost !== undefined && runtimeConfig.durabilityProvider !== undefined) {
+    installAskSweeperFact(runtimeConfig.requestHost, runtimeConfig.durabilityProvider);
   }
   // How this router stops a parked request (FIX-1816), with durable
   // execution only: for the abort route, and, on the same last-resort terms,

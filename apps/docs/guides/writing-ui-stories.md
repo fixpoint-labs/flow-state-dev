@@ -79,6 +79,27 @@ Components that read `useFlowContext().renderers` (currently `RequestGroup` and 
 
 `<TaskPlan />` reads from `<SessionItemsProvider />` rather than `FlowProvider`. Wrap it manually in the story when you want to drive it from a fixture session — see `task-plan.stories.tsx` for the pattern.
 
+## Stories for `@flow-state-dev/react` components
+
+The react package's visual components (`FlowNavigator`, `Roster`, `BoardColumns` and `SeatDetail`) have their stories in the same Storybook, under `packages/ui/stories/react/`, in the `React` folder of the sidebar. The package has no Storybook of its own.
+
+These components fetch their own data, through a client they take as a prop: `resourceClient` on the panels, `client` and `sessionClient` on `FlowNavigator`. A story picks the state by passing a fake client from `packages/ui/stories/fixtures/workforce.ts`:
+
+```tsx
+import { Roster } from "@flow-state-dev/react";
+import { failingRowsSource, loadingRowsSource, rowsSource } from "../fixtures/workforce";
+
+export const Loading: Story = { args: { resourceClient: loadingRowsSource } };
+export const Empty: Story = { args: { resourceClient: rowsSource([]) } };
+export const Failed: Story = { args: { resourceClient: failingRowsSource("Failed to load the roster") } };
+```
+
+A fake that never answers shows the loading state, one that returns no rows shows the empty state, and one that throws shows the component's error message with its Retry button. There are matching factories for single-item reads (`itemSource`), the flow list (`flowsSource`) and session lists (`sessionsSource`).
+
+Create each fake client once, at module scope, as above. A client created inside a story's `render` function is a new object on every render, and the component restarts its fetch each time it sees a new client.
+
+These components ship no CSS. A host styles them through the `--fsd-nav-*` and `--fsd-panel-*` custom properties, and `.storybook/preview.css` sets those from the theme tokens, so these stories follow the Theme toolbar like the rest.
+
 ## Common variants worth writing
 
 There's no fixed rule, but these are the ones reviewers look for:
