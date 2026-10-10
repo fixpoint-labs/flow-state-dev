@@ -21,8 +21,13 @@
  *              specialist, and nobody else.
  *   lands      each of those, and the unclear post, gets exactly one line in
  *              the conversation, by the specialist that answered it.
+ *   followup   a follow-up after the account answer reaches the account
+ *              specialist, by an evaluation that saw that answer's line.
  *   held       a post sent while the specialist has not answered yet goes to
  *              it alone, with no evaluation.
+ *   context    "where can I buy it?" is answered, by a specialist that was
+ *              never sent the post naming "it", from that post's line; its
+ *              stored conversation keeps only its own posts and answers.
  *   fallback   a post the evaluation cannot place goes to the fallback alone.
  *   everyone   a post to the coordinator on `routing: everyone` reaches every
  *              agent once, and each answer lands there once.
@@ -39,6 +44,8 @@
  * Controls: GOAL_CONTROL=no-route     (the best-fit coordinator read as `routing: everyone`)
  *           GOAL_CONTROL=no-landing   (the agent flow replaced by one that answers a delegated post and hands nothing back)
  *           GOAL_CONTROL=no-org       (the host's resolvePrincipal left out)
+ *           GOAL_CONTROL=no-recent    (best fit's evaluation handed the post without the conversation's lines)
+ *           GOAL_CONTROL=no-context   (the agent flow replaced by one whose delegated post arrives without its lines)
  * Live:     GOAL_LIVE=1 (needs AI_GATEWAY_API_KEY)
  */
 import { randomUUID } from "node:crypto";
@@ -47,8 +54,10 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { createModelResolver, defineFlow, generator, handler } from "@flow-state-dev/core";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
+  delegatedPostEntry,
+  delegatedPostHistory,
   delegatedPostSchema,
   workerConfigOf,
   workerConfigSchema,
@@ -57,7 +66,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { gatewayModel, runGoal } from "../../lib/index.mts";
+import { gatewayModel, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 import type { HostSeams, RoutedHost } from "./host.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -68,12 +77,16 @@ const LIVE = process.env.GOAL_LIVE === "1";
 /** The legs each control must redden, and only those. Set from the runs logged in goal.md. */
 const EXPECTED: Record<string, string[]> = {
   // Every delegate hears every post, and each answers it: every best-fit leg.
-  "no-route": ["one", "lands", "held", "fallback"],
+  "no-route": ["one", "lands", "followup", "held", "context", "fallback"],
   // No answer ever lands, so the specialist on the first post holds every next
   // one: lands, every leg the hold then diverts, and the answers on everyone.
-  "no-landing": ["one", "lands", "fallback", "everyone"],
+  "no-landing": ["one", "lands", "followup", "context", "fallback", "everyone"],
   // No resolver names the org: every session lands in the development default.
-  "no-org": ["org"]
+  "no-org": ["org"],
+  // The evaluation cannot see the account answer, so the follow-up falls back.
+  "no-recent": ["followup"],
+  // The delegate's turn is shown no lines, so "it" has no referent.
+  "no-context": ["context"]
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -112,6 +125,43 @@ function quietAgentFlow(installation: WorkerInstallation) {
   } as never);
 }
 
+/**
+ * `no-context`'s agent flow: takes a delegated post through the published
+ * entry, answers it through `agent-answer` with `delegatedPostHistory`, and
+ * hands the answer back, as the built-in one does; but the post reaches the
+ * entry with its lines stripped, so the turn is shown none.
+ */
+function linelessAgentFlow(installation: WorkerInstallation) {
+  const run = generator({
+    name: "agent-answer",
+    inputSchema: z.object({ message: z.string() }),
+    model: "scripted/answer",
+    prompt: (_input: { message: string }, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
+    history: delegatedPostHistory,
+    user: (i: { message: string }) => i.message
+  });
+  const entry = delegatedPostEntry(run);
+  const loadWorker = handler({
+    name: "lineless-agent-load-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "agent")).id })
+  });
+  return defineFlow({
+    kind: "agent",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    request: { onStarted: loadWorker },
+    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
+    internal: {
+      actions: {
+        onDelegatedPost: { ...entry, block: entry.block.connectInput(({ recent: _recent, ...post }: DelegatedPost) => post) }
+      }
+    }
+  } as never);
+}
+
 /** The control's seams on the host, or none. */
 function controlSeams(): HostSeams {
   switch (CONTROL) {
@@ -124,6 +174,19 @@ function controlSeams(): HostSeams {
       return { agent: (installation: WorkerInstallation) => quietAgentFlow(installation) };
     case "no-org":
       return { omitPrincipal: true };
+    case "no-recent":
+      return {
+        adaptRoute: (model: EvaluationModel) =>
+          ({
+            ...model,
+            doEvaluate: (call: { state: { recent?: unknown } }) => {
+              const { recent: _recent, ...state } = call.state;
+              return (model as unknown as { doEvaluate: (c: unknown) => unknown }).doEvaluate({ ...call, state });
+            }
+          }) as unknown as EvaluationModel
+      };
+    case "no-context":
+      return { agent: (installation: WorkerInstallation) => linelessAgentFlow(installation) };
     default:
       return {};
   }
@@ -226,13 +289,16 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
   const io = reader(app, OWNER);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
   const tok = (n: number) => `tok-${run}p${n}`;
+  const item = `item-${run}`;
   const posts = {
     device: `[route:${s1}] ${tok(1)} My phone stopped charging, and it's a brand new cable.`,
     account: `[route:${s2}] ${tok(2)} Different thing: I was charged twice for my subscription this month.`,
+    followup: `[follow-up] ${tok(3)} It was the visa card.`,
     framework: `[route:${s3}] ${tok(4)} How do I make a generator return structured output?`,
     unclear: `${tok(5)} Who do I ask about getting a parking pass?`,
-    unanswered: `[route:${s1}] [answer:none] ${tok(6)} My laptop won't join the office wifi.`,
+    unanswered: `[route:${s1}] [answer:none] ${tok(6)} My laptop ${item} won't join the office wifi.`,
     held: `${tok(7)} It sees the network. It fails right after the password.`,
+    buyIt: `[route:${fallback}] [answer:from-context] ${tok(8)} Where can I buy it?`,
     lounge: `${tok(9)} Morning, all.`
   };
 
@@ -250,7 +316,7 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
     const callsFor = (token: string) =>
       app.routeCalls.filter((c) => (c.state as { post: { text: string } }).post.text.includes(token));
 
-    for (const body of [posts.device, posts.account, posts.framework, posts.unclear, posts.unanswered, posts.held]) {
+    for (const body of [posts.device, posts.account, posts.followup, posts.framework, posts.unclear, posts.unanswered, posts.held, posts.buyIt]) {
       await io.post(conversation, body);
       await quiet(app, 8_000);
     }
@@ -274,6 +340,16 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
       } else evidence.push(`${token}'s answer landed once, by ${want}`);
     }
 
+    // ---- followup: to the account specialist, by an evaluation that saw its line
+    {
+      const who = await heardBy(tok(3));
+      const calls = callsFor(tok(3));
+      const saw = calls.some((c) => ((c.state as { recent?: Array<{ from: string }> }).recent ?? []).some((l) => l.from === s2));
+      if (who.length !== 1 || who[0] !== s2) fail("followup", `${tok(3)} was heard by [${who.join(", ")}] (want [${s2}])`);
+      if (calls.length !== 1 || !saw) fail("followup", `${tok(3)}'s route made ${calls.length} evaluation call(s), ${saw ? "seeing" : "not seeing"} a line by ${s2} (want one, seeing it)`);
+      if (who.length === 1 && who[0] === s2 && calls.length === 1 && saw) evidence.push(`the follow-up reached ${s2} by one evaluation that saw its line`);
+    }
+
     // ---- held: sent before the specialist answered, so no evaluation --------
     {
       const unanswered = lines.filter((l) => l.author !== undefined && l.text.includes(tok(6)));
@@ -283,6 +359,30 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
       if (who.length !== 1 || who[0] !== s1) fail("held", `${tok(7)} was heard by [${who.join(", ")}] (want [${s1}])`);
       if (calls.length !== 0) fail("held", `${tok(7)}'s route made ${calls.length} evaluation call(s) (want 0)`);
       if (unanswered.length === 0 && who.length === 1 && who[0] === s1 && calls.length === 0) evidence.push(`${tok(7)} went to ${s1}, still on the last post, with no evaluation`);
+    }
+
+    // ---- context: answered from a line the answering delegate was never sent --
+    {
+      let ok = true;
+      const answer = lines.filter((l) => l.author === fallback && l.text.includes(tok(8)));
+      if (answer.length !== 1 || !answer[0]!.text.includes(item)) {
+        ok = false;
+        fail("context", `${fallback}'s answer to ${tok(8)} does not name ${item}: ${JSON.stringify(answer)}`);
+      }
+      // The post that named "it", as the conversation holds it: in no message the delegate kept.
+      const named = lines.find((l) => l.author === undefined && l.text.includes(tok(6)))?.text ?? posts.unanswered;
+      const kept = (await io.conversationsOf(fallback, conversation)).flat();
+      if (kept.some((m) => m.text.includes(named))) {
+        ok = false;
+        fail("context", `${fallback}'s stored conversation keeps the line it was shown as context`);
+      }
+      // Each kept message is about one post: its own. The lines it was shown are in none.
+      const crowded = kept.filter((m) => new Set(m.text.match(/tok-[a-z0-9]+/g) ?? []).size > 1);
+      if (crowded.length > 0) {
+        ok = false;
+        fail("context", `${fallback} kept message(s) carrying other posts' lines: ${JSON.stringify(crowded)}`);
+      }
+      if (ok) evidence.push(`${fallback}, never sent ${tok(6)}, answered "${answer[0]!.text}", and kept none of the lines it was shown`);
     }
 
     // ---- fallback: a post nobody could place goes to the fallback alone ------
@@ -344,6 +444,8 @@ async function liveLeg(fail: (leg: string, line: string) => void, evidence: stri
     fail("live", "GOAL_LIVE=1 needs AI_GATEWAY_API_KEY");
     return;
   }
+  // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the answers' model under the resolver.
+  stripIntentOverrides();
   // `goals/` cannot resolve the gateway package; kitchen-sink's node_modules can.
   const ksRequire = createRequire(new URL("../../../apps/kitchen-sink/package.json", import.meta.url));
   const { createGateway } = (await import(ksRequire.resolve("@ai-sdk/gateway"))) as {
@@ -364,8 +466,7 @@ async function liveLeg(fail: (leg: string, line: string) => void, evidence: stri
   const io = reader(app, OWNER);
   const posts: Array<{ body: string; want?: string }> = [
     { body: "Hi, my laptop won't join the office wifi since this morning.", want: devices },
-    // The follow-up names no subject; best fit routes it on its own words (goal.md, "Retired legs").
-    { body: "It sees it. It fails right after the password." },
+    { body: "It sees it. It fails right after the password.", want: devices },
     { body: "My phone stopped charging, and it's a brand new cable.", want: devices },
     { body: "Where can I buy it?" },
     { body: "Different thing: I was charged twice for my subscription this month.", want: accounts },

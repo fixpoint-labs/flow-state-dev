@@ -18,11 +18,15 @@
  * The scripts are the app's test doubles, and they answer from what they are
  * handed:
  *
- * - the route: a post naming `[route:<delegate>]` goes to that delegate;
- *   anything else fails the call, so the coordinator's fallback takes it.
+ * - the route: a post naming `[route:<delegate>]` goes to that delegate; one
+ *   marked `[follow-up]` goes to whoever last wrote in the recent lines it is
+ *   handed beside the post, other than the post's writer; anything else fails
+ *   the call, so the coordinator's fallback takes it.
  * - an answer: `[answer:none]` replies with nothing, which is a turn with no
- *   answer; anything else acknowledges the post's `tok-…`. Every reply carries
- *   {@link REPLY_MARKER}.
+ *   answer; `[answer:from-context]` names the `item-…` it finds in the
+ *   conversation's lines, the user-role message just before the post (never
+ *   the system text); anything else acknowledges the post's `tok-…`. Every
+ *   reply carries {@link REPLY_MARKER}.
  *
  * `seams` is the goal check's, for its controls and its live leg, and nothing
  * else. An app passes nothing.
@@ -62,6 +66,8 @@ export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
 export interface HostSeams {
   /** The worker files as the host reads them, before anything is built. */
   adaptWorkers?: (workers: WorkerManifest[]) => WorkerManifest[];
+  /** Best fit's scripted evaluation, wrapped before the host routes with it. */
+  adaptRoute?: (model: EvaluationModel) => EvaluationModel;
   /** The `agent` flow, replaced by one of the app's own built on the installation. */
   agent?: (installation: WorkerInstallation) => { kind: string };
   /** Real models: this resolver resolves the route's model and the delegates' answers. */
@@ -85,13 +91,20 @@ function textOf(content: unknown): string {
   return Array.isArray(content) ? content.map((part) => (part as { text?: string }).text ?? "").join("") : "";
 }
 
-/** Best fit's scripted evaluation. Reads the `{ post }` state the coordinator hands it. */
+/** Best fit's scripted evaluation. Reads the `{ recent, post }` state the coordinator hands it. */
 function scriptedRoute() {
   return mockEvaluationModel({
     answers: ({ state }) => {
-      const { post } = state as { post: { from: string; text: string } };
+      const { recent = [], post } = state as {
+        recent?: Array<{ from: string; text: string }>;
+        post: { from: string; text: string };
+      };
       const named = /\[route:([^\]\s]+)\]/.exec(post.text)?.[1];
       if (named !== undefined) return { member: { type: "choice", choice: named } };
+      if (post.text.includes("[follow-up]")) {
+        const last = [...recent].reverse().find((line) => line.from !== post.from);
+        if (last !== undefined) return { member: { type: "choice", choice: last.from } };
+      }
       throw new Error("the scripted route has no delegate for this post");
     }
   });
@@ -105,9 +118,17 @@ function scriptedAnswer(): MockGeneratorInstance {
     reset: () => {},
     next: (input: unknown): MockGeneratorScriptStep => {
       const messages = input as Array<{ role: string; content: unknown }>;
-      const turn = textOf([...messages].reverse().find((m) => m.role === "user")?.content);
+      const at = messages.map((m) => m.role).lastIndexOf("user");
+      const turn = textOf(messages[at]?.content);
       if (turn.includes("[answer:none]")) return { text: "" };
       const token = /tok-[a-z0-9]+/.exec(turn)?.[0] ?? "";
+      if (turn.includes("[answer:from-context]")) {
+        // The conversation's lines come as one user-role message just before the post.
+        const before = messages[at - 1];
+        const lines = before?.role === "user" ? textOf(before.content) : "";
+        const item = /item-[a-z0-9]+/.exec(lines)?.[0];
+        return { text: `${REPLY_MARKER} ${token} ${item === undefined ? "Buy what?" : `You can buy the ${item} at the shop.`}` };
+      }
       return { text: `${REPLY_MARKER} ${token} noted.` };
     }
   };
@@ -148,7 +169,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
       seams.live?.modelResolver ??
       createMockModelResolver({
         generators: { "agent-answer": scriptedAnswer() },
-        evaluators: { "coordinator-route": route as EvaluationModel },
+        evaluators: { "coordinator-route": seams.adaptRoute?.(route as EvaluationModel) ?? (route as EvaluationModel) },
         policy: "allow"
       })
   } as never);
