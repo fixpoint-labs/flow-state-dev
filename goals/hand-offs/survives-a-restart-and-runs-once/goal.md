@@ -1,0 +1,40 @@
+# hand-offs › it survives a restart and runs once
+
+**Issue:** FIX-1820, the closure of epic FIX-1815. Its spec's goal: `specs/issues/FIX-1820/SPEC.md` → "The goal, and how we'll know it's met"; the epic's: `specs/epics/FIX-1815/SPEC.md`.
+
+**Outcome:** on one `main` commit, with every other child of FIX-1815 merged, a worker can ask a colleague and continue the same turn with its real answer, or assign a task whose own session parks on a question, carries on when answered, and still answers and takes a follow-up once finished. A server restart during either wait loses nothing, and the work runs once.
+
+**Input:** one clean checkout. The runner composes checks it does not own, each run unchanged as its own process, plus one journey of its own:
+
+- **P1.a**, leg a: `goals/hand-offs/ask-survives-a-restart/` (Shift Manager's DevTeam install, SQLite, SIGKILL while the asker waits).
+- **P1.b**, leg b: `goals/coordinators/task-session-stays-open/` (its goal-local Lab, SQLite, a task that parks, is answered, asked again, followed up).
+- **P1.c**: `goals/coordinators/files-tasks-down-the-owners-chain/`. **P1.d**: `goals/coordinators/hands-each-post-to-its-delegates/` and `goals/coordinators/routes-a-follow-up-by-its-conversation/`. The neighbouring checks on the same board.
+- **J4** (`legs/parked.mts`): leg b's Lab and brief, read from leg b's own files, on a fresh SQLite store. Alice files the brief for `desk.ops`; while the task reads `parked`, the server and every process under it get SIGKILL; a new process starts on the same store. Held out, picked at run time: the region (one of leg b's six) and the ticket, which `drawTicket` draws.
+
+**Signal:** P1.a to P1.d: each check's own `goal.md` signals, its plain run PASS. J4, each failure tagged:
+
+- `kill:parked` the task read `parked`, with one `parked` notice, in the store the dead server left.
+- `j:answered` after the restart, `answerTask_tasks` answers `{ ok: true }`.
+- `j:completed` the task is `completed` within 90 s of the answer.
+- `j:same-session` it completed in the session that parked.
+- `j:names-ticket` · `j:names-region` its output names the ticket drawn before the kill, and the answered region.
+- `j:one-draw` · `j:one-completed` `drawTicket` ran once in total; one `completed` notice.
+- `j:second-answer` a second `answerTask_tasks` is declined (`ok: false`), and every task row is byte-for-byte as before it.
+- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked, and its `run` door answers "Which ticket did you draw?" with the ticket.
+- `j:row-unchanged` after that, the row is still `completed` with the same output.
+
+The runner prints one verdict per check, each with the commit's SHA, and exits non-zero when a plain check fails or a control doesn't fail as it must.
+
+**Anti-game:** the runner refuses a dirty tree and re-checks `HEAD` before every check, so no verdict comes from another commit. It writes no row, calls no waker and resumes no request; neither does J4, whose only touches after the restart are Alice's: answer, list the board's tasks every five seconds, answer again, find the task's session and ask it. J4 kills only after the store shows the park, grades the store file read-only, and reads the ticket from `drawTicket`'s own output, so the model can't pass by inventing one. No check is graded on a child's own unit tests.
+
+**Model:** real — openai/gpt-5.4-mini for legs a, b and J4 (through the AI Gateway, `AI_GATEWAY_API_KEY`); P1.c and P1.d run on the models their own `goal.md` names. Blocked, not failed, without a key.
+
+**Run:** `pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/run.mts` on a clean checkout. J4 alone: `pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/legs/parked.mts` (`GOAL_ATTEMPTS=<n>`, default 3; 1 under a control). On demand only, never a CI gate.
+
+**Controls:** the runner runs each child's controls with their own `GOAL_CONTROL` and passes only when each fails its named assertion: P1.a `no-run-once` → `one-row`, `no-waker` → `a:completed`; P1.b `new-session` → `a:names-ticket` and `c:names-ticket`, `drop-answer` → `a:names-region`. J4's own:
+
+- `GOAL_CONTROL=fresh-store`: the server restarts on a new, empty store file instead of the one the dead server left, as an in-memory store would. No product code changes; the run checks that the restarted server opened the new file. Must fail **`j:answered`** with `kill:parked` green. Everything after the answer goes red with it: there is no task to complete.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
