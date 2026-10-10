@@ -1,7 +1,8 @@
 ---
-description: The person's one point of contact, and the one seat that hires workers of their own.
+description: The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.
 flow: coordinator
-routing: judgment
+routing: best-fit
+minConfidence: 0.7
 delegates: [eng.em, eng.coder]
 model: anthropic/claude-haiku-5-5
 tools: [hire, fire, post-to-mailbox, createProject, setWorkstreams, setRepository, memory/recall]

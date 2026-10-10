@@ -75,7 +75,14 @@ import {
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { bestFitEvaluationFailed, needsBestFitCall, placeBestFit, type BestFitCase, type BestFitMiss } from "../best-fit";
+import {
+  bestFitEvaluationFailed,
+  needsBestFitCall,
+  placeBestFit,
+  type BestFitCase,
+  type BestFitMiss,
+  type BestFitPlacement
+} from "../best-fit";
 import {
   claimAnswer,
   delegateKey,
@@ -151,7 +158,13 @@ import {
   SET_FALLBACK
 } from "./coordinator-keys";
 import { conversationLineSchema, keepLanded, linesField, readRecentLines } from "./coordinator-lines";
-import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
+import {
+  bestFitWhySchema,
+  emitCoordinatorRoute,
+  routedDelegateSchema,
+  type BestFitWhy,
+  type RoutedDelegate
+} from "./coordinator-route";
 import {
   MAX_OPEN_ROUNDS,
   anyOverdue,
@@ -245,7 +258,9 @@ const postStateSchema = z.object({
   /** Who they never go back to: their author, under best fit and round robin. */
   exclude: deliveryDelegateSchema.optional(),
   /** Why this round's answers go no further, when it was refused at the cap on open rounds. */
-  note: z.string().optional()
+  note: z.string().optional(),
+  /** Why best fit handed this post to the judgment turn, when it did: the turn's record says it. */
+  fit: bestFitWhySchema.optional()
 });
 
 type PostState = z.infer<typeof postStateSchema>;
@@ -334,6 +349,41 @@ function missReason(miss: BestFitMiss): string {
       return `the evaluation failed: ${miss.message}`;
     case "not-an-option":
       return `the evaluation answered ${JSON.stringify(miss.choice)}, which is not a delegate`;
+    case "below-floor":
+      return `the evaluation picked "${miss.choice}" at confidence ${miss.confidence}, below the floor of ${miss.minConfidence}`;
+    case "no-confidence":
+      return `the evaluation picked "${miss.choice}" with no confidence, and the floor of ${miss.minConfidence} needs one`;
+  }
+}
+
+/**
+ * Why best fit didn't deliver to its pick, as the routing record's `fit`
+ * says it: the pick of the coordinator itself, or the miss. Nothing is
+ * filled in that the call didn't report.
+ */
+function fitOf(placed: Exclude<BestFitPlacement, { by: "held" | "evaluated" }>, minConfidence: number | undefined): BestFitWhy {
+  const floor = minConfidence === undefined ? {} : { minConfidence };
+  if (placed.by === "coordinator") {
+    return {
+      reason: "coordinator",
+      choice: placed.member,
+      ...(placed.confidence === undefined ? {} : { confidence: placed.confidence }),
+      ...floor
+    };
+  }
+  const { miss } = placed;
+  switch (miss.kind) {
+    case "none-reachable":
+    case "none-described":
+      return { reason: "no-delegates" };
+    case "evaluation-failed":
+      return { reason: "failed" };
+    case "not-an-option":
+      return { reason: "not-a-choice", ...(typeof miss.choice === "string" ? { choice: miss.choice } : {}) };
+    case "below-floor":
+      return { reason: "below-floor", choice: miss.choice, confidence: miss.confidence, ...floor };
+    case "no-confidence":
+      return { reason: "no-confidence", choice: miss.choice, ...floor };
   }
 }
 
@@ -906,7 +956,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         delegates: post.handOffs,
         ...(post.handOffs.some((handOff) => handOff.outcome === "delivered")
           ? {}
-          : { none: "the coordinator handed it to no delegate" })
+          : { none: "the coordinator handed it to no delegate" }),
+        ...(post.fit === undefined ? {} : { fit: post.fit })
       });
       return {};
     }
@@ -956,7 +1007,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       held: z.string().optional(),
       reachable: z.array(z.string()),
       options: z.record(z.string()),
-      fallback: z.string().optional()
+      fallback: z.string().optional(),
+      coordinator: z.string().optional(),
+      minConfidence: z.number().optional()
     }),
     /** Each reachable delegate, by its label, with the flow it runs on. */
     byLabel: z.record(z.object({ delegate: deliveryDelegateSchema, flow: z.string() })),
@@ -972,6 +1025,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * One roster read per post: every delegate checked now, the options, the
    * holder and the fallback. An answer going back out is never offered to its
    * own author, and holds nothing: the hold is about a person's posts.
+   *
+   * On a person's post, the coordinator is a choice too, keyed by its worker
+   * id and picked by its description, when it has one. Its floor, from its
+   * configuration, applies on every round. Both come from the worker and the
+   * roster, never from the post.
    */
   const readBestFitCase = handler({
     name: "coordinator-best-fit-case",
@@ -998,12 +1056,17 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           : null;
       const held = hold === null ? undefined : delegateLabel(hold.delegate);
       const fallback = listed.fallback === null ? undefined : delegateLabel(listed.fallback);
+      const { worker, config } = await coordinatorOf(ctx as never);
+      const offersSelf = post.round === 0 && worker.description !== null;
+      if (offersSelf) options[worker.id] = worker.description!;
       return {
         ladder: {
           ...(held !== undefined && reachable.includes(held) ? { held } : {}),
           reachable,
           options,
-          ...(fallback === undefined ? {} : { fallback })
+          ...(fallback === undefined ? {} : { fallback }),
+          ...(offersSelf ? { coordinator: worker.id } : {}),
+          ...(config.minConfidence === undefined ? {} : { minConfidence: config.minConfidence })
         },
         byLabel,
         skipped,
@@ -1033,7 +1096,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       place: z.literal("deliver"),
       by: z.enum(["held", "evaluated", "fallback", "round-robin", "everyone"]),
       picks: z.array(deliveryRequestSchema),
-      skipped: z.array(routedDelegateSchema)
+      skipped: z.array(routedDelegateSchema),
+      /** Under best fit, by the fallback: why best fit didn't deliver to its pick. */
+      fit: bestFitWhySchema.optional()
     }),
     z.object({ place: z.literal("judgment"), reason: z.string(), skipped: z.array(routedDelegateSchema) }),
     z.object({ place: z.literal("unplaced"), reason: z.string(), skipped: z.array(routedDelegateSchema) })
@@ -1041,7 +1106,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   type Placed = z.infer<typeof placedSchema>;
 
-  /** Place the post on best fit's ladder, and note who now holds the person's next post. */
+  /**
+   * Place the post on best fit's ladder, and note who now holds the person's
+   * next post. A post the judgment turn takes, picked for the coordinator or
+   * missed, carries why in request state, for the turn's record.
+   */
   const placeBestFitPost = handler({
     name: "coordinator-best-fit-place",
     inputSchema: z.unknown(),
@@ -1054,9 +1123,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const placed = placeBestFit(bestFit.ladder as BestFitCase, answer);
       // Only a person's post moves the hold.
       const holds = post.round === 0;
-      if (placed.by === "none") {
+      if (placed.by === "none" || placed.by === "coordinator") {
         if (holds) await ctx.session.patchState({ [HOLD_STATE]: null } as never);
-        const reason = missReason(placed.miss) + (placed.fallbackUnreachable ? "; the fallback delegate can't be reached" : "");
+        const fit = fitOf(placed, bestFit.ladder.minConfidence);
+        await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({ ...state, fit })) as never);
+        const reason =
+          placed.by === "coordinator"
+            ? "the evaluation picked the coordinator"
+            : missReason(placed.miss) + (placed.fallbackUnreachable ? "; the fallback delegate can't be reached" : "");
         return { place: "judgment", reason, skipped: bestFit.skipped };
       }
       const target = bestFit.byLabel[placed.member]!;
@@ -1067,7 +1141,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         place: "deliver",
         by: placed.by,
         picks: [deliveryOf(post, target.delegate, target.flow)],
-        skipped: bestFit.skipped
+        skipped: bestFit.skipped,
+        ...(placed.by === "fallback" ? { fit: fitOf(placed, bestFit.ladder.minConfidence) } : {})
       };
     }
   });
@@ -1094,7 +1169,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...recordOf(post),
         by: placed.place === "deliver" ? placed.by : "unplaced",
         delegates,
-        ...(delivered ? {} : { none: "no pick could be delivered" })
+        ...(delivered ? {} : { none: "no pick could be delivered" }),
+        ...(placed.place === "deliver" && placed.fit !== undefined ? { fit: placed.fit } : {})
       });
       return { routed: delegates };
     }

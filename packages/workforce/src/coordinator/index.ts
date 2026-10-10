@@ -37,6 +37,7 @@ export { delegateRecordSchema, type DelegateRecord } from "./coordinator-delegat
 export type { DelegateTakes } from "./coordinator-check";
 export {
   coordinatorRouteRecordSchema,
+  type BestFitWhy,
   type CoordinatorRouteRecord,
   type RoutedDelegate
 } from "./coordinator-route";

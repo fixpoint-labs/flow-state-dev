@@ -14,6 +14,12 @@
  * - `everyone`: each delegate that can be reached got it.
  * - `unplaced`: nobody took it. `none` says why.
  *
+ * A `fallback` or `judgment` record from best fit carries `fit`: why best fit
+ * didn't deliver to its pick (it picked the coordinator itself, or its pick
+ * was below the floor, had no confidence, failed, wasn't a choice, or there
+ * was nobody to pick), with the pick, its confidence and the floor where
+ * there are some.
+ *
  * Each delegate the decision touched is listed: delivered, skipped with why
  * (fired, its flow can't take a post, already handed this post), or failed
  * with why (the dispatch was refused).
@@ -33,6 +39,29 @@ export const coordinatorRouteBySchema = z.enum([
   "everyone",
   "unplaced"
 ]);
+
+/** Why best fit handed a post to the fallback or the coordinator's own turn. */
+export const bestFitReasonSchema = z.enum([
+  "coordinator",
+  "below-floor",
+  "no-confidence",
+  "failed",
+  "not-a-choice",
+  "no-delegates"
+]);
+
+/** Why best fit didn't deliver to its pick: the reason, and the pick, its confidence and the floor where there are some. */
+export const bestFitWhySchema = z.object({
+  reason: bestFitReasonSchema,
+  /** What the call picked. */
+  choice: z.string().optional(),
+  /** The confidence the model reported for the pick. */
+  confidence: z.number().optional(),
+  /** The coordinator's `minConfidence:`, when it sets one. */
+  minConfidence: z.number().optional()
+});
+
+export type BestFitWhy = z.infer<typeof bestFitWhySchema>;
 
 /** What became of one delegate in a decision. */
 export const routedDelegateSchema = deliveryDelegateSchema.extend({
@@ -55,6 +84,8 @@ export const coordinatorRouteRecordSchema = z.object({
   delegates: z.array(routedDelegateSchema),
   /** Why nobody was delivered to, when nobody was. */
   none: z.string().optional(),
+  /** On a `fallback` or `judgment` record from best fit: why best fit didn't deliver to its pick. */
+  fit: bestFitWhySchema.optional(),
   /**
    * What else this decision means for the post: that its answers go no
    * further, when the conversation already had the most rounds open.

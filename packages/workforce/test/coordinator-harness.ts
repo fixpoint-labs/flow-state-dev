@@ -18,8 +18,9 @@
  *
  * Models are scripted: the best-fit evaluator by block name
  * (`coordinator-route`), answering from the post's first `[route:<worker>]`
- * mark among the delegates it is offered, else its first mark, and failing a
- * post with none; the judgment turn by its generator's block name
+ * mark among the choices it is offered, else its first mark, and failing a
+ * post with none; a `[conf:<n>]` mark makes it report confidence `n`, and
+ * without one it reports none; the judgment turn by its generator's block name
  * (`coordinator-judgment`), from the script a test hands in.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -151,8 +152,9 @@ function taskingFlow(installation: WorkerInstallation, kind: "tasker" | "allroun
 
 /**
  * The scripted best-fit evaluation: the first `[route:<worker>]` mark naming a
- * delegate it is offered picks that one, else the first mark picks its worker,
- * `[route:none]` an off-list one; no mark fails.
+ * choice it is offered picks that one, else the first mark picks its worker,
+ * `[route:none]` an off-list one; no mark fails. A `[conf:<n>]` mark reports
+ * confidence `n`; without one, none is reported.
  */
 function scriptedRoute() {
   return mockEvaluationModel({
@@ -162,7 +164,14 @@ function scriptedRoute() {
       if (marks.length === 0) throw new Error("the scripted route has no answer for this post");
       const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
       const picked = marks.find((mark) => Object.hasOwn(offered, mark)) ?? marks[0]!;
-      return { member: { type: "choice", choice: picked === "none" ? "nobody.here" : picked } };
+      const confidence = /\[conf:([0-9.]+)\]/.exec(text)?.[1];
+      return {
+        member: {
+          type: "choice",
+          choice: picked === "none" ? "nobody.here" : picked,
+          ...(confidence === undefined ? {} : { confidence: Number(confidence) })
+        }
+      };
     }
   });
 }

@@ -1,16 +1,21 @@
 /**
  * The DevTeam's chief of staff as a coordinator (FIX-1791 S10), on the real
- * Lab: its file names `flow: coordinator`, `routing: judgment` and standard
- * workers as default delegates; its judgment is the agent's own turn, with its
- * hire and the delegate tools; and a post it hands off is answered in its
- * conversation under the delegate's name.
+ * Lab: its file names `flow: coordinator`, `routing: best-fit` with a floor,
+ * and standard workers as default delegates; best fit's one evaluation sends
+ * a plain ask straight to the EM, and anything else to its judgment, the
+ * agent's own turn, with its hire and the delegate tools; and a post it hands
+ * off is answered in its conversation under the delegate's name.
  *
- * The model is scripted by block: the chief of staff's judgment
- * (`coordinator-judgment`) makes the tool calls a test names, then stops; an
- * `agent` worker's turn (`agent-answer`) answers with a fixed line.
+ * The models are scripted by block: best fit's evaluation answers the route
+ * a test names (by default the chief of staff itself); the chief of staff's
+ * judgment (`coordinator-judgment`) makes the tool calls a test names, then
+ * stops; an `agent` worker's turn (`agent-answer`) answers with a fixed line.
  *
- * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`): BR-33 (the chief of
- * staff runs on the coordinator flow, routing by judgment), BR-34's
+ * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`, as amended by
+ * `specs/issues/FIX-1833/`): BR-33 (the chief of staff runs on the
+ * coordinator flow, routing by best fit), FIX-1833 BR-6, BR-7, BR-17, BR-19
+ * and BR-20 (a plain ask to the EM with no turn; its own job, a doubtful pick
+ * or a failed call to its turn, recorded with why), BR-34's
  * mechanism (hire, add, hand off), BR-10 (its delegate read is the
  * conversation's list, with what each takes), BR-9's record of a default that
  * can't take a post (the coder, which takes tasks), naming the delegate that
@@ -39,8 +44,39 @@ afterEach(async () => {
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
 
-/** The judgment's tool calls, one per step, then a closing line; an agent worker's turn answers with a fixed line. */
-function scripted(calls: ToolCall[]): ModelResolver {
+/** What best fit's one evaluation answers: a choice and the confidence it reports, or a failed call. */
+type Route = { choice: string; confidence?: number } | { fail: string };
+
+/** Every best-fit evaluation the chief of staff made: the choices it was offered. */
+let routeCalls: Array<Record<string, string>> = [];
+
+/** Best fit's evaluation model, answering `route` and recording the choices each call offered. */
+function scriptedRoute(route: Route) {
+  return {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test/route",
+    supportedQuestionTypes: ["choice", "score", "boolean"],
+    async doEvaluate(call: { questions: Record<string, { criteria?: Record<string, string> }> }) {
+      routeCalls.push(call.questions.member?.criteria ?? {});
+      if ("fail" in route) throw new Error(route.fail);
+      return {
+        answers: { member: { type: "choice", choice: route.choice } },
+        usage: { inputTokens: 1, outputTokens: 1 },
+        warnings: [],
+        providerMetadata: route.confidence === undefined ? undefined : { typesafe: { confidence: { member: route.confidence } } },
+      };
+    },
+  };
+}
+
+/**
+ * The judgment's tool calls, one per step, then a closing line; an agent
+ * worker's turn answers with a fixed line; best fit's evaluation answers
+ * `route`, by default the chief of staff itself, sure of it, so its own turn
+ * takes the post.
+ */
+function scripted(calls: ToolCall[], route: Route = { choice: COS, confidence: 0.95 }): ModelResolver {
   // One call per step, each after the last one's result: a later call depends on an earlier one.
   let step = 0;
   const judgment: GeneratorModel = {
@@ -66,6 +102,8 @@ function scripted(calls: ToolCall[]): ModelResolver {
   };
   return Object.assign((_id: string, block?: string) => (block?.startsWith("coordinator-judgment") ? judgment : helper), {
     resolveId: (id: string) => id,
+    resolveEvaluationModel: () => scriptedRoute(route),
+    judgmentSteps: () => step,
   }) as unknown as ModelResolver;
 }
 
@@ -73,8 +111,12 @@ let model: ModelResolver | undefined;
 
 async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()): Promise<Lab> {
   const harness = selectHarness();
+  routeCalls = [];
   opened = await openLab({
-    modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), { resolveId: (id: string) => id }),
+    modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), {
+      resolveId: (id: string) => id,
+      resolveEvaluationModel: (...args: unknown[]) => (model as any).resolveEvaluationModel(...args),
+    }),
     stores,
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
@@ -123,7 +165,26 @@ async function settledItems(lab: Lab, sessionId: string) {
 }
 
 describe("the chief of staff as a coordinator (S10)", () => {
-  it("runs on the coordinator flow, by judgment, its delegates starting from the standard workers its file names (BR-33, BR-10)", async () => {
+  for (const [why, route, reason] of [
+    ["its own job, at any confidence", { choice: COS, confidence: 0.4 }, "coordinator"],
+    ["a vague ask Jev isn't sure of", { choice: "eng.em", confidence: 0.36 }, "below-floor"],
+    ["an evaluation the gateway can't serve", { fail: "the gateway refused the call" }, "failed"],
+  ] as const) {
+    it(`runs its own turn on ${why}, recorded with why (FIX-1833 BR-7, BR-19, BR-20)`, async () => {
+      const lab = await open();
+      const id = await conversation(lab);
+      model = scripted([], route);
+      expect((await act(lab, id, "run", { message: "who works here?" })).error).toBeUndefined();
+      const items = await settledItems(lab, id);
+      expect(routeCalls).toHaveLength(1);
+      expect((model as any).judgmentSteps()).toBe(1);
+      const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
+      expect(record.data).toMatchObject({ by: "judgment", policy: "best-fit", delegates: [], fit: { reason } });
+      expect(textOf(items.filter((item) => item.type === "message" && item.role === "assistant").at(-1) ?? {})).toBe("Handed on.");
+    });
+  }
+
+  it("runs on the coordinator flow, its delegates starting from the standard workers its file names (BR-33, BR-10)", async () => {
     const lab = await open();
     const runtime = await lab.state.getRuntime();
     expect(runtime.registry.get("coordinator")).toBeDefined();
@@ -179,16 +240,25 @@ describe("the chief of staff as a coordinator (S10)", () => {
     ]);
   });
 
-  it("hands feature work to its EM delegate, which files the post's feature line and says so (BR-12, BR-20)", async () => {
+  it("sends a plain ask Jev is sure of straight to its EM delegate, with no turn of its own, and the EM files it (FIX-1833 BR-6, BR-17)", async () => {
     const lab = await open();
     const id = await conversation(lab);
     const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], { choice: "eng.em", confidence: 0.9 });
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
     expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
     const items = await settledItems(lab, id);
+    // One evaluation, over the EM (the coder takes tasks, not posts) and the chief of staff itself, by its description.
+    expect(routeCalls).toEqual([
+      {
+        "eng.em": "Files each feature on the team's board; never does the work itself.",
+        [COS]: "The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
+      },
+    ]);
+    expect((model as any).judgmentSteps()).toBe(0);
+    expect(items.filter((item) => item.type === "message" && item.role === "assistant").map((item) => item.agentName)).toEqual(["eng.em"]);
     const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-    expect(record.data).toMatchObject({ by: "judgment", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    expect(record.data).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }, { worker: "eng.coder", outcome: "skipped" }] });
     // The row the door would file for the line typed alone, on the EM's board.
     const taskId = harnessTaskId(issue, PHASE);
     expect((await lab.row(taskId))?.goal).toBe("show a badge on the cart");

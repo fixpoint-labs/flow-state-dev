@@ -52,7 +52,7 @@ To open another Lab from a checkout, pass its config:
 
 It's a software team. An EM worker files features as rows on the team's board, a coder worker runs each row as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with two projects you own: Storefront, which holds a workstream from each of the two teams, and Platform, which holds none yet. The EM answers every line posted in a project's room. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their rooms and your talk sessions survive a restart. Delete the file to start fresh.
 
-Its chief of staff has memory from `@flow-state-dev/memory` (working memory, a rolling digest across conversations, and the `memory/recall` tool). By default it reads memory but records nothing, so its memory stays empty. Set `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into it after each answer, which adds model calls every turn.
+Its chief of staff has memory from `@flow-state-dev/memory` (working memory, a rolling digest across conversations, and the `memory/recall` tool). By default it reads memory but records nothing, so its memory stays empty. Set `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into it after each answer, which adds model calls every turn. A request best fit sends straight to a delegate runs no chief-of-staff turn, so it isn't recorded on its own; it can still show up as earlier context when a later answer of the chief of staff's is recorded.
 
 ## Themes
 
@@ -195,13 +195,16 @@ To have it hand work to other workers, run it on Workforce's `coordinator` flow 
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
-description: The person's one point of contact.
+description: The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.
 flow: coordinator
-routing: judgment
+routing: best-fit
+minConfidence: 0.7
 delegates: [eng.em, eng.coder]
 model: anthropic/claude-haiku-5-5
 ---
 ```
+
+It routes by best fit with Jev, so a plain request goes straight to the delegate that does it, and hiring, firing, projects and questions about the team reach its own turn.
 
 A coordinator chief of staff gets a DELEGATES list in Shift Coordinator's right panel: the delegates of your conversation with it, a picker that adds one from your roster, and a remove beside each. A refused add shows the coordinator's reason. A delegate's answer appears in the conversation under the delegate's name, and each routing decision as a small note between the lines saying who the post went to and who was skipped. The chief of staff comes first in its Roster group.
 

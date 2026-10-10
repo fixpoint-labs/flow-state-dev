@@ -133,6 +133,8 @@ export interface Turn {
   status: string;
   tools: Array<{ name: string; args: string; output: any }>;
   reply: string;
+  /** Whether the chief of staff wrote a line of its own on the post. */
+  replied: boolean;
   providerRetry?: string;
 }
 
@@ -160,7 +162,7 @@ const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed
 async function talk(turns: Turn[], leg: string, who: Connected, session: SessionSummary, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
     const acted = await act(who, session.flowKind, session.id, "run", { message: words }, 240_000);
-    const turn: Turn = { leg, words, sessionId: session.id, requestId: acted.requestId, status: acted.status, tools: [], reply: "" };
+    const turn: Turn = { leg, words, sessionId: session.id, requestId: acted.requestId, status: acted.status, tools: [], reply: "", replied: false };
     if (acted.requestId === null) {
       turn.reply = `refused: ${acted.error ?? ""}`;
       return turn;
@@ -170,6 +172,7 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
       .filter((i) => i.type === "tool_output")
       .map((i) => ({ name: String(i.toolCall?.name ?? ""), args: String(i.toolCall?.arguments ?? "").slice(0, 300), output: parsed(i.output ?? i.error ?? null) }));
     const reply = mine.filter((i) => i.type === "message" && i.role === "assistant").at(-1);
+    turn.replied = reply !== undefined;
     turn.reply = reply !== undefined ? textOf(reply) : (acted.error ?? `no reply (${acted.status})`);
     return turn;
   };
@@ -186,14 +189,18 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
 type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; answered: boolean };
 
 /**
- * A conversation's session record (its delegates and its delivery ledger),
+ * A conversation's session record (its delegates, its delivery ledger and best fit's hold),
  * read from the SQLite file the install writes, from the row `who` owns. Not
  * through the session route: that sends a client only the state a flow
  * exposes, and the coordinator exposes neither field (its ledger carries
  * delivery tokens). A row is keyed by the session id, prefixed `<tenant>:`
  * when the session has a tenant. Read-only, and closed after each read.
  */
-async function recordOf(store: string, who: Connected, sessionId: string): Promise<{ delegates: Array<{ worker: string }> | null; ledger: Delivery[] }> {
+async function recordOf(
+  store: string,
+  who: Connected,
+  sessionId: string,
+): Promise<{ delegates: Array<{ worker: string }> | null; ledger: Delivery[]; hold: unknown }> {
   const db = new DatabaseSync(store, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000");
@@ -201,7 +208,7 @@ async function recordOf(store: string, who: Connected, sessionId: string): Promi
       .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
       .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
     const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[] };
+    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[], hold: state?.bestFitHold ?? null };
   } finally {
     db.close();
   }
@@ -216,9 +223,34 @@ async function routingOf(who: Connected, sessionId: string, postId: string | nul
     .filter((d) => d?.postId === postId);
 }
 
+/** The model the route evaluation's trace row says answered one post: its `model.actual`, if the post made a call. */
+async function routeModelOf(who: Connected, sessionId: string, postId: string | null): Promise<string | undefined> {
+  if (postId === null) return undefined;
+  const row = (await who.routes.items(sessionId, "block_trace")).find(
+    (i) => i.requestId === postId && (i as { blockName?: string }).blockName === "coordinator-route" && (i as { blockKind?: string }).blockKind === "evaluator",
+  ) as { model?: { actual?: string } } | undefined;
+  return row?.model?.actual;
+}
+
+/**
+ * Wait until nobody holds the person's next post in this conversation: the
+ * delegate best fit last delivered to has answered. A person asks the next
+ * thing once the answer is in; sent sooner, it goes to that delegate with no
+ * call (best fit's hold), which is not what the next leg asks about.
+ */
+async function holdCleared(store: string, who: Connected, sessionId: string, timeoutMs = 120_000): Promise<string | undefined> {
+  for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(1_000)) {
+    if ((await recordOf(store, who, sessionId)).hold === null) return undefined;
+  }
+  return `the conversation still held the next post for ${show((await recordOf(store, who, sessionId)).hold)} after ${timeoutMs / 1000} s`;
+}
+
 async function ownWorkers(who: Connected): Promise<string[]> {
   return (await who.workforce.roster()).filter((e) => !e.standard).map((e) => e.id).sort();
 }
+
+/** Whether a tool call's name is `tool`, bare or under a namespace. */
+const calls = (name: string, tool: string) => name === tool || [`/${tool}`, `.${tool}`, `_${tool}`].some((suffix) => name.endsWith(suffix));
 
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 400);
@@ -229,6 +261,16 @@ export interface LegResult {
   notes: string[];
   /** Set when the leg could not be run on this commit at all. */
   notRun?: string;
+}
+
+/** The asks, as `fixtures/asks.json` words them; `{…}` slots are filled at run time. */
+export interface Asks {
+  a: string;
+  c: string;
+  d: string;
+  f: string;
+  g: string;
+  h: { hire: string; fire: string; who: string; project: string; jobs: string[]; titles: string[] };
 }
 
 /** What {@link devteamLegs} needs. */
@@ -242,7 +284,9 @@ export interface DevteamOptions {
   /** The chief of staff's default delegates, read from its file on the commit. */
   defaults: string[];
   legs: ReadonlySet<string>;
-  asks: { a: string; c: string; d: string; f: string; g: string };
+  asks: Asks;
+  /** Filled in: the model each routed post's evaluation trace names, for the verdict. */
+  routeModels: string[];
   /** The mailboxes whose boards the EM files on, by id, read off the commit's tree. */
   boardMailboxes: string[];
   say: (line: string) => void;
@@ -323,8 +367,10 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
    * the turn as leg `name`: Alice's own workers are still `own0` (`no-hire`),
    * the post's one delivery goes to the EM (`one-delivery`), the EM's session
    * for this conversation holds the post, with the word, within 120 s
-   * (`session-120s`, `carries-word`), and one `by: judgment` record delivers
-   * to it (`judgment-record`). Returns the post's deliveries to the EM.
+   * (`session-120s`, `carries-word`), one `by: evaluated` record delivers to
+   * it, from a route evaluation the trace says Jev answered (`evaluated`),
+   * and the chief of staff wrote no line and called no tool on the post
+   * (`no-turn`). Returns the post's deliveries to the EM.
    */
   const askTheEm = async (name: string, cos: SessionSummary, ask: string, theWord: string, own0: string[]): Promise<Delivery[]> => {
     const r = leg(name);
@@ -359,9 +405,19 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     else if (!opened.holdsWord) r.failures.push(`${name}:carries-word — ${em}'s session opened, but holds no line with the word "${theWord}"`);
     else r.notes.push(`${em}'s session held the post, with the word, ${Math.round(opened.at / 1000)} s after it was sent`);
     const records = await routingOf(alice, cos.id, turn.requestId);
-    const judged = records.filter((d) => d.by === "judgment");
-    if (records.length !== 1 || judged.length !== 1 || !(judged[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
-      r.failures.push(`${name}:judgment-record — wanted one \`by: judgment\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
+    const evaluated = records.filter((d) => d.by === "evaluated");
+    if (records.length !== 1 || evaluated.length !== 1 || !(evaluated[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
+      r.failures.push(`${name}:evaluated — wanted one \`by: evaluated\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
+    }
+    // The model the route evaluation's trace says answered: the routing ran on Jev, or it doesn't count.
+    const answeredBy = await routeModelOf(alice, cos.id, turn.requestId);
+    o.routeModels.push(answeredBy ?? "none");
+    if (answeredBy === undefined || !/jev/i.test(answeredBy)) {
+      r.failures.push(`${name}:evaluated — the route evaluation's trace names ${answeredBy === undefined ? "no model" : `"${answeredBy}"`}, not Jev`);
+    } else r.notes.push(`the route evaluation answered from ${answeredBy}`);
+    // Read the way talk() reads the turn: the post's own tool outputs and assistant line.
+    if (turn.tools.length > 0 || turn.replied) {
+      r.failures.push(`${name}:no-turn — the chief of staff took a turn on the post: tools [${turn.tools.map((t) => t.name).join(", ")}], ${turn.replied ? `wrote "${turn.reply.slice(0, 200)}"` : "wrote nothing"}`);
     }
     return toEm;
   };
@@ -379,6 +435,9 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     for (const name of ["a", "b"] as const) {
       if (!o.legs.has(name) && !(name === "a" && o.legs.has("b"))) continue;
       const r = leg(name);
+      // The person asks again once the EM has answered the last ask, not while it still holds the conversation.
+      const waited = await holdCleared(o.store, alice, cos.id);
+      if (waited !== undefined) r.notes.push(`before the ask: ${waited}`);
       const toEm = await askTheEm(name, cos, askA, theWord, own0);
       // The real outcome of the hand-off: the EM filed the feature line, and
       // the row is on the team's board, read the way Shift Manager reads it.
@@ -401,6 +460,8 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
 
     if (o.legs.has("c")) {
       const r = leg("c");
+      const waited = await holdCleared(o.store, alice, cos.id);
+      if (waited !== undefined) r.notes.push(`before the ask: ${waited}`);
       const own1 = await ownWorkers(alice);
       o.say(`leg c: "${o.asks.c}"`);
       const first = await talk(turns, "c", alice, cos, o.asks.c);
@@ -546,6 +607,87 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
         r.failures.push(`f:create-refused — a create carrying delegates wasn't refused with 400 naming the field: ${created}${exists ? ", and the session exists" : ""}`);
       }
     }
+  }
+
+  // ---- h: the chief of staff's own jobs, in a new conversation ----------------
+  // A hire worded without "hire", a fire of the worker it hired, "who works
+  // here?", and a project: each reaches its own turn, recorded `by: judgment`
+  // with why best fit kept it, and none goes to a delegate. A fire and a
+  // project ask Alice first; she approves each, as her Inbox would, so the
+  // turn finishes and records.
+  if (o.legs.has("h")) {
+    const r = leg("h");
+    const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
+    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const session = { id: conv.id, flowKind: kind };
+    const pick = <T,>(list: readonly T[]) => list[randomBytes(1)[0]! % list.length]!;
+    const job = pick(o.asks.h.jobs);
+    const worker = `${pick(["aide", "keeper", "steward", "scout"])}-${hex()}`;
+    const title = `${pick(o.asks.h.titles)} ${hex()}`;
+
+    /** Approve every ask the post's turn raised, and wait for the turn to finish. */
+    const approveAll = async (turn: Turn): Promise<string[]> => {
+      const approved: string[] = [];
+      for (let round = 0; round < 3 && turn.requestId !== null; round += 1) {
+        const asks = (await alice.routes.items(session.id, "suspension,suspension_resume")).filter((i) => i.requestId === turn.requestId);
+        const resumed = new Set(asks.filter((i) => i.type === "suspension_resume").map((i) => i.suspensionId));
+        const open = asks.filter((i) => i.type === "suspension" && !resumed.has(i.suspensionId));
+        if (open.length === 0) break;
+        for (const ask of open) {
+          const res = await alice.routes.call("POST", `/${encodeURIComponent(kind)}/requests/${encodeURIComponent(turn.requestId)}/resume`, {
+            suspensionId: ask.suspensionId,
+            action: "approve",
+          });
+          approved.push(`${String((ask as { reason?: unknown }).reason ?? "ask")} → ${res.status}`);
+        }
+        turn.status = await alice.routes.settle(kind, turn.requestId, 240_000, true);
+      }
+      return approved;
+    };
+
+    /**
+     * Ask `words` as `tag`: the turn takes it, with no delivery and one `by:
+     * judgment` record carrying `fit`. `done` grades the job itself.
+     */
+    const ownJob = async (tag: string, words: string, done: (turn: Turn) => Promise<string | undefined>) => {
+      const waited = await holdCleared(o.store, alice, session.id);
+      if (waited !== undefined) r.notes.push(`before ${tag}: ${waited}`);
+      o.say(`leg h (${tag}): "${words}"`);
+      const turn = await talk(turns, "h", alice, session, words);
+      const approved = await approveAll(turn);
+      const records = await routingOf(alice, session.id, turn.requestId);
+      const deliveries = (await recordOf(o.store, alice, session.id)).ledger.filter((d) => d.postId === turn.requestId);
+      const after = await alice.routes.items(session.id, "tool_output");
+      const tools = after.filter((i) => i.requestId === turn.requestId).map((i) => String(i.toolCall?.name ?? ""));
+      r.notes.push(`${tag}: the turn ${turn.status}${approved.length === 0 ? "" : ` after approving ${approved.join(", ")}`}; tools [${tools.join(", ")}]; records ${show(records)}`);
+      const problems: string[] = [];
+      if (records.length !== 1 || records[0]!.by !== "judgment" || records[0]!.fit === undefined) {
+        problems.push(`wanted one \`by: judgment\` record with best fit's \`fit\`; the post has ${records.length === 0 ? "none" : show(records)}`);
+      }
+      if (deliveries.length > 0) problems.push(`it went to a delegate: the ledger holds ${show(deliveries)}`);
+      const job = await done({ ...turn, tools: tools.map((name) => ({ name, args: "", output: null })) });
+      if (job !== undefined) problems.push(job);
+      if (problems.length > 0) r.failures.push(`${tag} — ${problems.join("; ")}`);
+    };
+
+    const own0 = await ownWorkers(alice);
+    let hired: string | undefined;
+    await ownJob("h:hire-turn", o.asks.h.hire.replace("{job}", job).replace("{worker}", worker), async () => {
+      const own1 = await ownWorkers(alice);
+      const added = own1.filter((id) => !own0.includes(id));
+      hired = added[0];
+      return added.length === 1 ? undefined : `wanted one hire on Alice's roster; her own workers went from [${own0.join(", ")}] to [${own1.join(", ")}]`;
+    });
+    const firing = hired ?? worker;
+    await ownJob("h:fire-turn", o.asks.h.fire.replace("{worker}", firing), async (turn) => {
+      const own = await ownWorkers(alice);
+      if (!turn.tools.some((t) => calls(t.name, "fire"))) return `the turn never called fire`;
+      return own.includes(firing) ? `${firing} is still on Alice's roster after she approved the fire` : undefined;
+    });
+    await ownJob("h:who-turn", o.asks.h.who, async (turn) => (turn.replied ? undefined : "the turn wrote no answer"));
+    await ownJob("h:project-turn", o.asks.h.project.replace("{title}", title), async (turn) =>
+      turn.tools.some((t) => calls(t.name, "createProject")) ? undefined : "the turn never called createProject",
+    );
   }
 
   // ---- g: the plain ask, in a new conversation --------------------------------

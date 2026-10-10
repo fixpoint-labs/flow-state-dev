@@ -38,11 +38,14 @@ description: Phones, laptops, and anything else that won't turn on or charge.
 You answer device questions for the support team.
 ```
 
+Because `help` has a description, best fit can also pick `help` itself, for a question that is the desk's own rather than a specialist's. [When best fit isn't sure](#when-best-fit-isnt-sure) explains how.
+
 | Key | What it sets |
 | --- | --- |
 | `delegates` | The workers each new conversation starts with, by id. At most 25. |
 | `routing` | `judgment` (the default), `best-fit`, `round-robin` or `everyone`. See [Choosing how it routes](#choosing-how-it-routes). |
 | `fallback` | The delegate that takes a post `best-fit` can't place. It must be one of `delegates`. |
+| `minConfidence` | Under `best-fit`, the lowest confidence at which a delegate pick is used, from `0` to `1`. Left out, any pick is used. See [When best fit isn't sure](#when-best-fit-isnt-sure). |
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
 
 The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `handOff` come with the flow, whatever the coordinator's `tools:` line says.
@@ -82,11 +85,11 @@ flowRegistry.registerMany(hireWorkforce(installation));
 | --- | --- |
 | `installation` | The installation the coordinator and its delegates belong to. Required. |
 | `delegateFlows` | The flows a post can be delivered to. Each must declare the delegated-post entry: the built-in `agent` does, and a flow of your own does once you [add it](#making-your-own-flow-a-delegate). A flow without it throws here. Required. |
-| `routeModel` | The model behind `best-fit`'s evaluator call: a model id your resolver knows, or an evaluation model. Required, even when no coordinator routes by best fit. |
+| `routeModel` | The model behind `best-fit`'s evaluator call: a model id your resolver knows, or an evaluation model. Required, even when no coordinator routes by best fit. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`: it reports how sure it is, and the other evaluation models don't. |
 | `agent` | What the coordinator's own turn is built with: the options you'd give `defineAgentWorkerFlow`, such as `catalog` and `uses`. A coordinator's `tools:` line is read against this catalog. Left out, the built-in's defaults. |
 | `roundDeadlineMs` | How long a round waits for its answers. Five minutes by default. A value that isn't a positive whole number of milliseconds throws. |
 
-`hireWorkforce` refuses a coordinator file it can't run, naming the problem: a `rounds:` above 3 (`rounds can be at most 3`), a `routing:` it doesn't know, a `fallback:` that isn't one of its `delegates:`, or a delegate named twice. A coordinator declared in your files can name only workers declared in your files; `createWorkerInstallation` refuses one whose `delegates:` names anything else.
+`hireWorkforce` refuses a coordinator file it can't run, naming the problem: a `rounds:` above 3 (`rounds can be at most 3`), a `routing:` it doesn't know, a `fallback:` that isn't one of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that doesn't route by `best-fit`, or a delegate named twice. A coordinator declared in your files can name only workers declared in your files; `createWorkerInstallation` refuses one whose `delegates:` names anything else.
 
 ## Talking to it
 
@@ -112,19 +115,41 @@ A delegate's answer arrives in a request of its own once the delegate's turn end
 | `routing:` | Who gets a post |
 | --- | --- |
 | `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on with its `handOff` tool, to as many delegates as it likes, or answers itself. |
-| `best-fit` | One evaluator call picks the delegate whose note or, failing that, description fits the post best, reading the post with the conversation's [recent lines](#follow-ups-and-recent-lines). A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
+| `best-fit` | One evaluator call, reading the post with the conversation's [recent lines](#follow-ups-and-recent-lines), picks who takes it: one of the delegates, by its note or else its description, or the coordinator itself, by its own description. A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
 | `round-robin` | The next delegate in the list after the one your last post went to. |
 | `everyone` | Every delegate. |
 
 Each policy checks a delegate when the post arrives. One that can't take it, because it was fired or because its flow takes tasks but not posts, is skipped, and the [record](#what-it-records) says why.
 
-Under `best-fit`, a post the call can't place goes to the `fallback:` delegate. The call can't place a post when it fails, picks something that isn't a delegate, or has nobody to pick from. With no fallback, or one that can't be reached, the coordinator's own turn takes the post, as under `judgment`. If that turn fails too, nobody takes the post, and the conversation says so:
+### When best fit isn't sure
+
+Best fit asks its evaluation model one question: who should take this post? The choices are the delegates and, when the coordinator has a `description:`, the coordinator itself. Picking the coordinator means the post is the coordinator's own job, so its own turn takes it, as under `judgment`. That is how a coordinator that routes plain requests straight to a delegate still answers "who works here?" or hires someone itself. Write its description to say what it does itself:
+
+```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+---
+description: The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team.
+flow: coordinator
+routing: best-fit
+minConfidence: 0.7
+delegates: [eng.em, eng.coder]
+---
+```
+
+Some evaluation models also report a confidence with each answer, a number from 0 to 1 for how sure they are. Jev, `typesafe-ai/jev` through Vercel's AI Gateway, does ([Evaluation models](../fundamentals/models.md#evaluation-models)). Set `minConfidence:` and a delegate pick below it isn't used. Picking the coordinator is used at any confidence.
+
+Best fit can't place a post when the call fails, answers with something that isn't a choice, has nobody to pick from, picks a delegate below `minConfidence:`, or reports no confidence while `minConfidence:` is set. Such a post goes to the `fallback:` delegate. With no fallback, or one that can't be reached, the coordinator's own turn takes it. If that turn fails too, nobody takes the post, and the conversation says so:
 
 ```text
 Nobody took this post: best fit couldn't place it, and the coordinator's own turn failed: <error>.
 ```
 
 `round-robin` and `everyone` say the same when they find no delegate to reach: `Nobody took this post: no delegate in this conversation can be reached.`
+
+A few things to know before you set a floor:
+
+- **Only models that report confidence can pass it.** On a model that reports none, every delegate pick falls below the floor, and every post goes to the fallback or the coordinator's own turn. Leave `minConfidence:` out on those models.
+- **There's no default.** Without `minConfidence:`, best fit uses any delegate pick, however unsure. We picked 0.7 for a chief of staff after asking Jev about requests meant for it and for its delegates: the misplaced ones came back at 0.2 or lower, and the clear ones at 0.76 or higher. Check your own coordinator's requests before you copy the number.
+- **A request that is still with a delegate skips all of this.** Your next post goes to the delegate working your last one, with no call, until it answers. A request meant for the coordinator, sent in that window, goes to that delegate too.
 
 ### Follow-ups and recent lines
 
@@ -245,7 +270,7 @@ A round closes when every delivery in it has been answered or has failed, or at 
 
 A conversation keeps at most 50 rounds open. A post past that is still delivered, but its round isn't opened: its answers land and go no further, and its routing record carries a `note` saying so.
 
-**What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one evaluator call per round, plus a coordinator turn when it can't place a post and no fallback takes it.
+**What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one evaluator call per round, plus a coordinator turn for each post it picks the coordinator for or can't place, when no fallback takes it.
 
 ## What it records
 
@@ -269,10 +294,25 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 | `postId` | The post: the id of the request that carried the person's message. Answers going back out keep it. |
 | `round` | `0` for the person's post, one more each time answers go back out. |
 | `policy` | The conversation's `routing:`. |
-| `by` | How the delegates were found: `judgment` (the coordinator's own turn), `held` (best fit, still on your last post), `evaluated` (best fit's call), `fallback`, `round-robin`, `everyone`, or `unplaced` (nobody took it). |
+| `by` | How the delegates were found: `judgment` (the coordinator's own turn, chosen by `routing: judgment` or handed the post by best fit), `held` (best fit, still on your last post), `evaluated` (best fit's call), `fallback`, `round-robin`, `everyone`, or `unplaced` (nobody took it). |
 | `delegates` | Each delegate the decision touched: `worker`, `outcome` (`delivered`, `skipped` or `failed`), and `reason` when it wasn't delivered. |
 | `none` | Why nobody was delivered to, when nobody was. |
+| `fit` | When best fit didn't deliver to its pick and the fallback or the coordinator's own turn took the post, why: `reason` is `coordinator` (the call picked the coordinator), `below-floor`, `no-confidence`, `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the `minConfidence` in force where there are some. |
 | `note` | Why this round's answers go no further: the conversation already had 50 rounds open. |
+
+A post best fit gave to the coordinator's own turn because its pick was below the floor reads like this:
+
+```json
+{
+  "postId": "req_…",
+  "round": 0,
+  "policy": "best-fit",
+  "by": "judgment",
+  "delegates": [],
+  "none": "the coordinator handed it to no delegate",
+  "fit": { "reason": "below-floor", "choice": "eng.em", "confidence": 0.36, "minConfidence": 0.7 }
+}
+```
 
 A delegate answers each post once per round. A post handed to the same delegate twice in a round is skipped the second time, with the reason `it was already handed this post in this round`.
 

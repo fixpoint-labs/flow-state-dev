@@ -10,17 +10,21 @@
  * and `fixtures/` into that checkout's `goals/`, so every import resolves to
  * that commit's packages.
  *
- * The tree (`fixtures/workforce/`): three coordinators over the same two
+ * The tree (`fixtures/workforce/`): four coordinators over the same two
  * delegates, `desk.alpha` and `desk.beta`, on the goal's `helper` flow.
  *
- * - `desk.fit`, `best-fit` with `desk.beta` as its fallback;
+ * - `desk.fit`, `best-fit` with `desk.beta` as its fallback and no floor;
+ * - `desk.floor`, `best-fit` with `desk.beta` as its fallback and
+ *   `minConfidence: 0.7`;
  * - `desk.turns`, `round-robin`;
  * - `desk.all`, `everyone` with `rounds: 1`.
  *
  * Scripts, all marked in the post so a swapped post still drives them:
  *
- * - the evaluator picks the delegate a `[route:<worker>]` mark names, and
- *   fails a post with none (a failed call);
+ * - the evaluator picks the choice a `[route:<choice>]` mark names (a
+ *   delegate, or the coordinator itself), reports confidence `n` for a
+ *   `[conf:<n>]` mark and none without one, and fails a post with no mark it
+ *   is offered (a failed call);
  * - the judgment turn hands a `[judge]` post to `desk.alpha` twice (the second
  *   is a redelivery), answers anything else itself, and fails a
  *   `[judge-fail]` post;
@@ -100,16 +104,23 @@ const helper = core.defineFlow({
   internal: { actions: { onDelegatedPost: wf.delegatedPostEntry(door) } },
 } as never);
 
-/** Best fit's evaluator: the first `[route:<worker>]` mark it is offered, else a failed call. */
+/**
+ * Best fit's evaluator: the first `[route:<choice>]` mark it is offered, else a
+ * failed call. A `[conf:<n>]` mark reports confidence `n`, as Jev does; with
+ * none, it reports none.
+ */
 const route = mockEvaluationModel({
   answers: ({ state, questions }) => {
     const text = (state as { post: { text: string } }).post.text;
     const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
     const pick = [...text.matchAll(/\[route:([a-z.-]+)\]/g)].map((m) => m[1]!).find((mark) => Object.hasOwn(offered, mark));
     if (pick === undefined) throw new Error("the scripted evaluation has no pick for this post");
-    return { member: { type: "choice", choice: pick } };
+    const confidence = /\[conf:([0-9.]+)\]/.exec(text)?.[1];
+    return { member: { type: "choice", choice: pick, ...(confidence === undefined ? {} : { confidence: Number(confidence) }) } };
   },
 });
+/** The choices each evaluator call was offered, in order. */
+const offeredChoices = () => route.calls.map((call) => Object.keys((call.questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {}));
 
 /** The judgment turn: a `[judge]` post goes to `desk.alpha` twice; `[judge-fail]` fails; anything else it answers. */
 let judgmentTurns = 0;
@@ -228,15 +239,16 @@ async function conversation(worker: string) {
 // ---- the scenario -----------------------------------------------------------
 
 try {
-  const words = { p1: word(), p2: word(), p3: word(), p4: word(), p5: word(), q: [word(), word(), word()], r: word() };
+  const words = { p1: word(), p2: word(), p3: word(), p4: word(), p5: word(), q: [word(), word(), word()], r: word(), f: [word(), word(), word(), word()] };
 
-  // Best fit: a held follow-up, a failed call to the fallback, and, with the
-  // fallback removed, the judgment turn and then nobody.
+  // Best fit with no floor: a pick at a low confidence is used; then a held
+  // follow-up, a failed call to the fallback, and, with the fallback removed,
+  // the judgment turn and then nobody.
   const fit = await conversation("desk.fit");
   const calls = () => route.calls.length;
   const ladder: Record<string, unknown> = {};
   const c0 = calls();
-  const p1 = await fit.act("run", { message: `[route:desk.alpha] [slow:desk.alpha] ${words.p1} what ships in the alpha?` });
+  const p1 = await fit.act("run", { message: `[route:desk.alpha] [conf:0.2] [slow:desk.alpha] ${words.p1} what ships in the alpha?` });
   const c1 = calls();
   // Sent while desk.alpha is still holding its answer to p1.
   const p2 = await fit.act("run", { message: `${words.p2} and when does it ship?` });
@@ -264,6 +276,22 @@ try {
     graced: await fit.read(),
   });
 
+  // Best fit with a floor of 0.7 and a fallback: a pick below it, a pick with
+  // no confidence, a pick above it, and a pick of the coordinator itself.
+  const floor = await conversation("desk.floor");
+  const floorFirstCall = calls();
+  const floorPosts: Record<string, { requestId: string; status: string }> = {};
+  for (const [name, marks, w] of [
+    ["below", "[route:desk.alpha] [conf:0.4]", words.f[0]],
+    ["none", "[route:desk.alpha]", words.f[1]],
+    ["above", "[route:desk.alpha] [conf:0.9]", words.f[2]],
+    ["self", "[route:desk.floor] [conf:0.3]", words.f[3]],
+  ] as const) {
+    floorPosts[name] = await floor.act("run", { message: `${marks} ${w} what does the plan say?` });
+    await quiet();
+  }
+  const floored = { posts: floorPosts, offered: offeredChoices().slice(floorFirstCall), read: await floor.read() };
+
   // Round robin over three posts.
   const turns = await conversation("desk.turns");
   const rr: Array<{ requestId: string; status: string }> = [];
@@ -282,7 +310,7 @@ try {
   await quiet();
   const everyone = { post: r1, quiet: allQuiet, graced: await all.read() };
 
-  report({ ladder, roundRobin, everyone, judgmentTurns, graceMs: GRACE_MS, slowMs: SLOW_MS });
+  report({ ladder, floored, roundRobin, everyone, judgmentTurns, graceMs: GRACE_MS, slowMs: SLOW_MS });
 } catch (error) {
   report({ setup: `leg e's host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
 }

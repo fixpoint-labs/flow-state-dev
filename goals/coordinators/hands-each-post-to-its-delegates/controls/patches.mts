@@ -1,5 +1,5 @@
 /**
- * The goal's three controls, each one scratch patch to one Workforce module,
+ * The goal's six controls, each one scratch patch to one Workforce module,
  * applied as the process under test loads it (`module-patch.mjs`). Nothing is
  * written to the checkout, and nothing here is committed code.
  *
@@ -13,6 +13,14 @@
  * - `no-delegate-read`: the coordinator's delegate read answers from the
  *   worker's defaults, not the conversation's list. Leg d must fail on *the
  *   reply equals the list*.
+ * - `no-self-choice`: best fit never offers the coordinator itself. Leg h
+ *   must fail on *a hire reaches the chief of staff's own turn*: the EM, its
+ *   one choice, is picked at full confidence.
+ * - `no-floor`: a delegate pick below `minConfidence:` is used. Leg e must
+ *   fail on *a pick below the floor goes to the fallback*, and nothing else:
+ *   a pick with no confidence is still a miss.
+ * - `turn-after-route`: the coordinator's own turn also runs on a post best
+ *   fit placed. Leg a must fail on *no chief-of-staff turn on the post*.
  *
  * Each patch's anchor is a line that reads the same in the TypeScript source
  * and in tsx's JavaScript output; the hook throws when it matches nothing,
@@ -24,7 +32,14 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** The controls this goal understands. */
-export const CONTROL_NAMES = ["no-roster-check", "no-round-limit", "no-delegate-read"] as const;
+export const CONTROL_NAMES = [
+  "no-roster-check",
+  "no-round-limit",
+  "no-delegate-read",
+  "no-self-choice",
+  "no-floor",
+  "turn-after-route",
+] as const;
 
 export type ControlName = (typeof CONTROL_NAMES)[number];
 
@@ -32,7 +47,7 @@ export type ControlName = (typeof CONTROL_NAMES)[number];
 export interface Control {
   name: ControlName;
   /** The leg it runs and must fail. */
-  leg: "d" | "e" | "f";
+  leg: "a" | "d" | "e" | "f" | "h";
   /** The assertion, by name, that must go red. */
   assertion: string;
   /** The module, from the checkout root. */
@@ -70,6 +85,33 @@ export const CONTROLS: Record<ControlName, Control> = {
     from: String.raw`list: await readDelegates\(ctx\.session, defaults\)`,
     to: "list: { delegates: defaults.delegates.map((worker) => ({ worker })), fallback: defaults.fallback === undefined ? null : { worker: defaults.fallback } }",
     does: "the delegate read (the `listDelegates` action and tool) answers from the worker's defaults, not this conversation's list",
+  },
+  "no-self-choice": {
+    name: "no-self-choice",
+    leg: "h",
+    assertion: "h:hire-turn",
+    module: "packages/workforce/src/coordinator/coordinator-flow.ts",
+    from: String.raw`const offersSelf = post\.round === 0 && worker\.description !== null;`,
+    to: "const offersSelf = false;",
+    does: "best fit never offers the coordinator itself as a choice: its delegates are the only choices",
+  },
+  "no-floor": {
+    name: "no-floor",
+    leg: "e",
+    assertion: "e:below-floor",
+    module: "packages/workforce/src/best-fit.ts",
+    from: String.raw`outcome\.confidence < floor\)`,
+    to: "false)",
+    does: "a delegate pick below the coordinator's `minConfidence:` is used; a pick with no confidence is still a miss",
+  },
+  "turn-after-route": {
+    name: "turn-after-route",
+    leg: "a",
+    assertion: "a:no-turn",
+    module: "packages/workforce/src/coordinator/coordinator-flow.ts",
+    from: String.raw`\.step\(decideBestFit\)\s*\.step\(afterPlace\);`,
+    to: ".step(decideBestFit).step(afterPlace).step(judgmentAfterBestFit);",
+    does: "after best fit places a post, the coordinator's own turn runs on it too, as it did before best fit routed it",
   },
 };
 

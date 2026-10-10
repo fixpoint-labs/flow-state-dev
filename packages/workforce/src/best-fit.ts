@@ -8,19 +8,29 @@
  * 1. **Held.** The person's last post went to someone who hasn't answered
  *    since, and that someone can still be reached: this post goes there too,
  *    with no model call.
- * 2. **Evaluated.** The one call picked one of the options.
- * 3. **Fallback.** The call failed, or picked something that is not an option,
- *    or there was nothing to pick from: the fallback takes the post, when one
- *    is set and can be reached.
- * 4. **None.** Nobody takes it here. What happens next is the caller's: the
+ * 2. **Coordinator.** The one call picked the coordinator itself, when the
+ *    caller offered it: the post is the coordinator's own. Used at any
+ *    confidence, and never sent on to the fallback: it is an answer, not a
+ *    miss.
+ * 3. **Evaluated.** The one call picked one of the other options. Under a
+ *    floor (`minConfidence`), only at or above it, with a confidence the model
+ *    reported; a confidence is never made up.
+ * 4. **Fallback.** The call failed, picked something that is not an option,
+ *    picked a delegate below the floor or with no confidence under one, or
+ *    there was nothing to pick from: the fallback takes the post, when one is
+ *    set and can be reached.
+ * 5. **None.** Nobody takes it here. What happens next is the caller's: the
  *    mailbox records the route failed; the coordinator hands the post to its
  *    own judgment turn first.
+ *
+ * A caller that names no coordinator and no floor (the mailbox's route)
+ * places exactly as steps 1, 3, 4 and 5 always have.
  *
  * Each caller words its own reasons, so the ladder returns why a pick was not
  * used as a value ({@link BestFitMiss}), never a sentence.
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, ChoiceAnswer } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** What a best-fit post is placed from. */
@@ -33,6 +43,14 @@ export interface BestFitCase {
   options: Readonly<Record<string, string>>;
   /** Who takes a post the call can't place, when one is set. */
   fallback?: string;
+  /**
+   * The coordinator's own option, when it offers itself: its key in
+   * `options`. Not a candidate to reach, so never in `reachable`, and alone it
+   * is nothing to pick from.
+   */
+  coordinator?: string;
+  /** The lowest confidence, from 0 to 1, at which a pick other than the coordinator is used. */
+  minConfidence?: number;
 }
 
 /** Why the evaluator's pick was not used. */
@@ -44,11 +62,17 @@ export type BestFitMiss =
   /** The call itself failed. */
   | { readonly kind: "evaluation-failed"; readonly message: string }
   /** The call answered with something that is not one of the options. */
-  | { readonly kind: "not-an-option"; readonly choice: unknown };
+  | { readonly kind: "not-an-option"; readonly choice: unknown }
+  /** The call picked a delegate below the floor. */
+  | { readonly kind: "below-floor"; readonly choice: string; readonly confidence: number; readonly minConfidence: number }
+  /** A floor is set, and the call picked a delegate with no confidence reported. */
+  | { readonly kind: "no-confidence"; readonly choice: string; readonly minConfidence: number };
 
 /** Where the ladder put the post. */
 export type BestFitPlacement =
   | { readonly by: "held"; readonly member: string }
+  /** The call picked the coordinator: `member` is its option, `confidence` what the model reported, if anything. */
+  | { readonly by: "coordinator"; readonly member: string; readonly confidence?: number }
   | { readonly by: "evaluated"; readonly member: string }
   | { readonly by: "fallback"; readonly member: string; readonly miss: BestFitMiss }
   | { readonly by: "none"; readonly miss: BestFitMiss; readonly fallbackUnreachable: boolean };
@@ -56,26 +80,45 @@ export type BestFitPlacement =
 /** What a failed evaluator call leaves: the reason, as a value. */
 export const failedEvaluationSchema = z.object({ failed: z.string() });
 
-/** What an answered call leaves, as far as the ladder reads it: the `member` question's choice. */
-const answeredEvaluationSchema = z.object({ answers: z.object({ member: z.object({ choice: z.unknown() }) }) });
+/**
+ * What an answered call leaves, as far as the ladder reads it: the `member`
+ * question's {@link ChoiceAnswer}, its choice unchecked (anything; the ladder
+ * checks it against the options) and its confidence only when the model
+ * reported one.
+ */
+const answeredEvaluationSchema = z.object({
+  answers: z.object({
+    member: z.object({
+      choice: z.unknown(),
+      confidence: z.number().finite().optional()
+    } satisfies Record<keyof Pick<ChoiceAnswer, "choice" | "confidence">, z.ZodTypeAny>)
+  })
+});
+
+/** The options a post can go to: every option but the coordinator's own. */
+function delegateOptions(bestFit: BestFitCase): string[] {
+  return Object.keys(bestFit.options).filter((option) => option !== bestFit.coordinator);
+}
 
 /**
  * Whether the ladder needs the evaluator call at all: nothing is held, and
- * there is something to pick from.
+ * there is a delegate to pick. The coordinator alone is no choice.
  */
 export function needsBestFitCall(bestFit: BestFitCase): boolean {
-  return bestFit.held === undefined && Object.keys(bestFit.options).length > 0;
+  return bestFit.held === undefined && delegateOptions(bestFit).length > 0;
 }
 
 /**
  * What the evaluator step left, read one way: the call's own failure, or what
- * it chose for `member` (anything; {@link placeBestFit} checks it against the options).
+ * it chose for `member` and the confidence it reported, if any.
  */
-function evaluationOutcome(answer: unknown): { failed: string } | { choice: unknown } {
+function evaluationOutcome(answer: unknown): { failed: string } | { choice: unknown; confidence?: number } {
   const failed = failedEvaluationSchema.safeParse(answer);
   if (failed.success) return failed.data;
   const answered = answeredEvaluationSchema.safeParse(answer);
-  return { choice: answered.success ? answered.data.answers.member.choice : undefined };
+  if (!answered.success) return { choice: undefined };
+  const { choice, confidence } = answered.data.answers.member;
+  return confidence === undefined ? { choice } : { choice, confidence };
 }
 
 /**
@@ -91,16 +134,29 @@ export function placeBestFit(bestFit: BestFitCase, answer: unknown): BestFitPlac
   let miss: BestFitMiss;
   if (bestFit.reachable.length === 0) {
     miss = { kind: "none-reachable" };
-  } else if (Object.keys(bestFit.options).length === 0) {
+  } else if (delegateOptions(bestFit).length === 0) {
     miss = { kind: "none-described" };
   } else {
     const outcome = evaluationOutcome(answer);
+    const floor = bestFit.minConfidence;
     if ("failed" in outcome) {
       miss = { kind: "evaluation-failed", message: outcome.failed };
-    } else if (typeof outcome.choice === "string" && Object.hasOwn(bestFit.options, outcome.choice)) {
-      return { by: "evaluated", member: outcome.choice };
-    } else {
+    } else if (typeof outcome.choice !== "string" || !Object.hasOwn(bestFit.options, outcome.choice)) {
       miss = { kind: "not-an-option", choice: outcome.choice };
+    } else if (outcome.choice === bestFit.coordinator) {
+      return {
+        by: "coordinator",
+        member: outcome.choice,
+        ...(outcome.confidence === undefined ? {} : { confidence: outcome.confidence })
+      };
+    } else if (floor === undefined) {
+      return { by: "evaluated", member: outcome.choice };
+    } else if (outcome.confidence === undefined) {
+      miss = { kind: "no-confidence", choice: outcome.choice, minConfidence: floor };
+    } else if (outcome.confidence < floor) {
+      miss = { kind: "below-floor", choice: outcome.choice, confidence: outcome.confidence, minConfidence: floor };
+    } else {
+      return { by: "evaluated", member: outcome.choice };
     }
   }
 

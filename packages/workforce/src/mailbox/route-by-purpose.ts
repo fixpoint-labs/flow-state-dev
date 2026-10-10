@@ -245,6 +245,11 @@ function missReason(miss: BestFitMiss): string {
       return `the evaluation failed: ${miss.message}`;
     case "not-an-option":
       return `the evaluation answered ${JSON.stringify(miss.choice)}, which is not one of the options`;
+    // The mailbox sets no floor, so the ladder never misses these here.
+    case "below-floor":
+      return `the evaluation picked "${miss.choice}" at confidence ${miss.confidence}, below the floor of ${miss.minConfidence}`;
+    case "no-confidence":
+      return `the evaluation picked "${miss.choice}" with no confidence, and the floor of ${miss.minConfidence} needs one`;
   }
 }
 
@@ -255,6 +260,8 @@ function place(
 ): { by: MailboxRouteRecord["by"]; member?: string; reason?: string } {
   const placed = placeBestFit(ladderCase(routeCase), answer);
   if (placed.by === "held" || placed.by === "evaluated") return { by: placed.by, member: placed.member };
+  // The mailbox offers no coordinator, so the ladder never places a post with one.
+  if (placed.by === "coordinator") throw new Error("best fit placed a mailbox post with a coordinator the mailbox never offers");
   const reason = missReason(placed.miss);
   if (placed.by === "fallback") return { by: "fallback", member: placed.member, reason };
   return {

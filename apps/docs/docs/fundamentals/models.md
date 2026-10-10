@@ -453,6 +453,8 @@ The gateway serves Jev as an evaluation model, but not OpenAI's. Without `@ai-sd
 
 We recommend Jev through the gateway. It reports its confidence, which the other adapters don't, and routing code can use that to hand a doubtful case to a person.
 
+Workforce coordinators that route by best fit read it the same way: their `minConfidence:` sends a doubtful pick to the coordinator's own turn ([Coordinators](../workforce/coordinators.md#when-best-fit-isnt-sure)).
+
 If you have your own Jev key, install Jev's provider library yourself and pass its model:
 
 ```bash

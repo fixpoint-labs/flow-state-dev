@@ -25,6 +25,21 @@
  *   BR-27  an answer can't name its own round, author or post;
  *   BR-28  every decision is one `coordinator-route` record; BR-31: a delegate fired between pick and
  *          delivery is not delivered, refused by its create check.
+ *
+ * And best fit's own choice and floor (`specs/issues/FIX-1833/BUSINESS-RULES.md`, V3 and V4):
+ *   BR-1/2 the coordinator is a choice by its description, beside its delegates; with no description, or no
+ *          delegate to pick, it isn't, and best fit misses as before;
+ *   BR-4   a coordinator named in its own `delegates:` is a choice once, as itself;
+ *   BR-5   one delegate and the coordinator still make a call;
+ *   BR-7   a pick of the coordinator runs its own turn on the post, even with a fallback set; the hold clears;
+ *   BR-8/9 under `minConfidence:`, a delegate pick below it, or with no confidence, goes to the fallback, else the turn;
+ *   BR-10  with no floor, any delegate pick is used;
+ *   BR-11  a pick of the coordinator is used below the floor;
+ *   BR-12  a failed call, or an answer that isn't a choice, goes down the ladder, and the record says which;
+ *   BR-13  a held post makes no call, whatever it asks;
+ *   BR-14  a coordinator pick whose turn fails is unplaced, and said;
+ *   BR-22  a `by: fallback` or `by: judgment` record from best fit says why, in `fit`;
+ *   BR-23  the judgment policy's own record carries no `fit` (the judgment tests' exact records).
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
@@ -56,7 +71,9 @@ describe("best fit (V3)", () => {
       "eng.em": "Plans and staffs engineering work.",
       "eng.coder": "Writes code.",
       "support.general": "Anything that fits no one else.",
-      licenses: "Audits licenses."
+      licenses: "Audits licenses.",
+      // The coordinator itself, by its own description (FIX-1833 BR-1).
+      desk: "Ask the team anything."
     });
     expect(heardBy(host)).toEqual(["licenses"]);
     const { records } = await host.items(id);
@@ -140,6 +157,175 @@ describe("best fit (V3)", () => {
     const [record] = (await host.items(id)).records;
     expect(record.delegates).toContainEqual({ worker: "temp", outcome: "skipped", reason: 'No worker "temp" on your roster.' });
     expect((await host.sessionState(id)).delegates.map((d: any) => d.worker)).toContain("temp");
+  });
+});
+
+describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
+  /** A judgment turn that answers the post itself. */
+  const answersItself = () => mockGenerator({ script: [{ text: "That one is mine." }] });
+  /** The desk with a floor of 0.7. */
+  const floored = (over: Record<string, unknown> = {}) => standardWorkers({ desk: { minConfidence: 0.7, ...over } });
+
+  it("runs its own turn on a post the call gives the coordinator, skipping the fallback, at any confidence (BR-7, BR-11, BR-22)", async () => {
+    const judgment = answersItself();
+    const host = bootHost({ standard: floored(), judgment });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "who works here? [route:desk] [conf:0.31]");
+    expect(host.route.calls).toHaveLength(1);
+    expect(judgment.calls).toHaveLength(1);
+    // The turn reads the person's post as it was sent.
+    expect(JSON.stringify(judgment.calls[0]!.input)).toContain("who works here? [route:desk] [conf:0.31]");
+    expect(host.heard).toEqual([]);
+    const { records, messages } = await host.items(id);
+    expect(records).toEqual([
+      {
+        postId: expect.any(String),
+        round: 0,
+        policy: "best-fit",
+        by: "judgment",
+        delegates: [],
+        none: "the coordinator handed it to no delegate",
+        fit: { reason: "coordinator", choice: "desk", confidence: 0.31, minConfidence: 0.7 }
+      }
+    ]);
+    expect(messages.at(-1)!.text).toBe("That one is mine.");
+    expect((await host.sessionState(id)).bestFitHold).toBeNull();
+  });
+
+  it("clears the hold when the call gives the coordinator the post", async () => {
+    const judgment = answersItself();
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "desk");
+    // `[fail]` keeps eng.coder from answering, so it holds the person's next post...
+    await post(host, id, "the build is red [route:eng.coder] [fail]");
+    expect((await host.sessionState(id)).bestFitHold).toMatchObject({ delegate: { worker: "eng.coder" } });
+    // ...until it is removed, and the call gives the next post to the coordinator.
+    expect((await host.act("alice", id, "removeDelegate", { worker: "eng.coder" })).error).toBeUndefined();
+    await post(host, id, "who works here? [route:desk]");
+    expect(judgment.calls).toHaveLength(1);
+    expect((await host.sessionState(id)).bestFitHold).toBeNull();
+  });
+
+  it("delivers a delegate pick at or above the floor, recorded evaluated with no fit (BR-6)", async () => {
+    const host = bootHost({ standard: floored() });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "file this feature [route:eng.em] [conf:0.7]");
+    expect(heardBy(host)).toEqual(["eng.em"]);
+    const { records } = await host.items(id);
+    expect(records).toEqual([expect.objectContaining({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] })]);
+    expect(records[0].fit).toBeUndefined();
+  });
+
+  it("sends a delegate pick below the floor, or with no confidence, to the fallback, saying why (BR-8, BR-9, BR-22)", async () => {
+    const host = bootHost({ standard: floored() });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "can engineering pick this up? [route:eng.em] [conf:0.36]");
+    await post(host, id, "and this one? [route:eng.coder]");
+    expect(heardBy(host)).toEqual(["support.general", "support.general"]);
+    const { records } = await host.items(id);
+    expect(records).toEqual([
+      expect.objectContaining({
+        by: "fallback",
+        delegates: [{ worker: "support.general", outcome: "delivered" }],
+        fit: { reason: "below-floor", choice: "eng.em", confidence: 0.36, minConfidence: 0.7 }
+      }),
+      expect.objectContaining({ by: "fallback", fit: { reason: "no-confidence", choice: "eng.coder", minConfidence: 0.7 } })
+    ]);
+  });
+
+  it("with no fallback, hands a doubtful pick to the coordinator's turn, saying why (BR-8, BR-22)", async () => {
+    const judgment = answersItself();
+    const host = bootHost({ standard: floored({ fallback: undefined }), judgment });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "can engineering pick this up? [route:eng.em] [conf:0.2]");
+    expect(host.heard).toEqual([]);
+    expect(judgment.calls).toHaveLength(1);
+    expect((await host.items(id)).records).toEqual([
+      expect.objectContaining({ by: "judgment", fit: { reason: "below-floor", choice: "eng.em", confidence: 0.2, minConfidence: 0.7 } })
+    ]);
+  });
+
+  it("uses any delegate pick when no floor is set (BR-10)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "file this [route:eng.em] [conf:0.01]");
+    await post(host, id, "and this [route:eng.coder]");
+    expect(heardBy(host)).toEqual(["eng.em", "eng.coder"]);
+  });
+
+  // An answer that isn't a choice is refused by the evaluation SDK, so it reaches the ladder as a failed call;
+  // the ladder's own `not-a-choice` is covered in best-fit.test.ts.
+  it("says why a failed call went to the fallback or the turn (BR-12, BR-20, BR-22)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "no mark here");
+    await post(host, id, "pick nobody [route:none] [conf:0.9]");
+    const { records } = await host.items(id);
+    expect(records.map((record: any) => [record.by, record.fit])).toEqual([
+      ["fallback", { reason: "failed" }],
+      ["fallback", { reason: "failed" }]
+    ]);
+
+    const judgment = answersItself();
+    const noFallback = bootHost({ judgment });
+    const other = await noFallback.conversation("alice", "desk");
+    expect((await noFallback.act("alice", other, "setFallback", { worker: null })).error).toBeUndefined();
+    await post(noFallback, other, "the gateway is down, so no mark");
+    expect(judgment.calls).toHaveLength(1);
+    expect((await noFallback.items(other)).records).toEqual([expect.objectContaining({ by: "judgment", fit: { reason: "failed" } })]);
+  });
+
+  it("doesn't offer a coordinator with no description, and offers nothing when no delegate is a choice (BR-2)", async () => {
+    const host = bootHost({ standard: standardWorkers({ desk: { description: undefined } }) });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "file this [route:eng.em]");
+    expect(Object.keys((host.route.calls[0]!.questions as any).member.criteria)).toEqual(["eng.em", "eng.coder", "support.general"]);
+
+    // Only `silent`, with nothing to pick it by: no call, and today's miss.
+    const bare = bootHost({ standard: standardWorkers({ desk: { delegates: ["silent"], fallback: "silent" } }) });
+    const conv = await bare.conversation("alice", "desk");
+    await post(bare, conv, "who works here? [route:desk]");
+    expect(bare.route.calls).toHaveLength(0);
+    expect(heardBy(bare)).toEqual(["silent"]);
+    expect((await bare.items(conv)).records).toEqual([expect.objectContaining({ by: "fallback", fit: { reason: "no-delegates" } })]);
+  });
+
+  it("calls with one delegate and the coordinator: two choices (BR-5)", async () => {
+    const host = bootHost({ standard: standardWorkers({ desk: { delegates: ["eng.em"], fallback: undefined } }) });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "file this [route:eng.em]");
+    expect(host.route.calls).toHaveLength(1);
+    expect((host.route.calls[0]!.questions as any).member.criteria).toEqual({
+      "eng.em": "Plans and staffs engineering work.",
+      desk: "Ask the team anything."
+    });
+  });
+
+  it("offers a coordinator named in its own delegates once, as itself (BR-4)", async () => {
+    const host = bootHost({ standard: standardWorkers({ desk: { delegates: ["eng.em", "desk"], fallback: undefined } }) });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "file this [route:eng.em]");
+    expect(Object.keys((host.route.calls[0]!.questions as any).member.criteria)).toEqual(["eng.em", "desk"]);
+  });
+
+  it("holds a post for the delegate still on the last one with no call, even one meant for the coordinator (BR-13)", async () => {
+    const host = bootHost({ standard: floored() });
+    const id = await host.conversation("alice", "desk");
+    // `[fail]` keeps eng.coder from answering, so it is still on the post.
+    await post(host, id, "the build is red [route:eng.coder] [conf:0.9] [fail]");
+    await post(host, id, "who works here? [route:desk] [conf:1]");
+    expect(host.route.calls).toHaveLength(1);
+    expect(heardBy(host)).toEqual(["eng.coder", "eng.coder"]);
+    expect((await host.items(id)).records.map((record: any) => record.by)).toEqual(["evaluated", "held"]);
+  });
+
+  it("records a coordinator pick unplaced, and says so, when its turn fails (BR-14)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "who works here? [route:desk]");
+    const { records, messages } = await host.items(id);
+    expect(records).toEqual([expect.objectContaining({ by: "unplaced", delegates: [] })]);
+    expect(messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
   });
 });
 

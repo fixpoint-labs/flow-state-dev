@@ -4,20 +4,24 @@
  * the user, or the coordinator itself, changes the delegates mid-conversation;
  * each delegate answers each post once per round; answers go back out only
  * within a set number of rounds; every routing decision is recorded; and no
- * other user's worker is ever a delegate (FIX-1791). See goal.md.
+ * other user's worker is ever a delegate (FIX-1791). A plain ask to the
+ * DevTeam chief of staff reaches its delegate by one Jev call with no turn of
+ * its own, and its own jobs still reach its turn (FIX-1833). See goal.md.
  *
- * - Legs a to d, f and g (`devteam.mts`): Shift Manager's DevTeam install, served
+ * - Legs a to d, f, g and h (`devteam.mts`): Shift Manager's DevTeam install, served
  *   by its own command over a fresh store, with Alice and Bob through the
- *   shipped clients and the chief of staff on the real model its file names.
+ *   shipped clients, the chief of staff's turn on the real model its file
+ *   names, and best fit's route on Jev (`typesafe-ai/jev`), as the host names it.
  * - Leg e (`leg-e.mts`): a goal-local coordinator tree on the real engine and
  *   its HTTP router, with scripted delegates, evaluator and judgment, run as
  *   its own process.
  *
  * Run:      pnpm tsx goals/coordinators/hands-each-post-to-its-delegates/run.mts
- * Controls: GOAL_CONTROL=no-roster-check | no-round-limit | no-delegate-read
+ * Controls: GOAL_CONTROL=no-roster-check | no-round-limit | no-delegate-read |
+ *           no-self-choice | no-floor | turn-after-route
  *           (each runs the one leg it must fail, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- * Legs:     GOAL_LEGS=a,b,c,d,e,f,g (default: all)
+ * Legs:     GOAL_LEGS=a,b,c,d,e,f,g,h (default: all)
  * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for the model-backed legs, each running
  *           only the legs still red (default 3; 1 under a control)
  */
@@ -29,11 +33,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, runGoal } from "../../lib/index.mts";
 import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { CONTROL_NAMES, CONTROLS, controlEnv, describePatch, type Control } from "./controls/patches.mts";
-import { boardMailboxes, COS, cosDefaults, devteamLegs, loadShipped, type LegResult, type Person } from "./devteam.mts";
+import { boardMailboxes, COS, cosDefaults, devteamLegs, loadShipped, type Asks, type LegResult, type Person } from "./devteam.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("coordinators-delegates");
-const ALL_LEGS = ["a", "b", "c", "d", "e", "f", "g"] as const;
+const ALL_LEGS = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 const say = (s: string) => console.error(`[coordinators ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 const controlName = process.env.GOAL_CONTROL ?? "";
@@ -50,7 +54,7 @@ const legs = new Set(
 );
 for (const l of legs) if (!(ALL_LEGS as readonly string[]).includes(l)) throw new Error(`unknown leg "${l}" in GOAL_LEGS`);
 
-const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8")) as { a: string; c: string; d: string; f: string; g: string };
+const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8")) as Asks;
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
 function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
@@ -142,6 +146,40 @@ function gradeE(o: any): LegResult {
   }
   r.notes.push(`best fit: ${records.map((d) => `${d.by}→${(d.delegates as any[]).map((x) => `${x.worker}:${x.outcome}`).join("+") || "nobody"}`).join(", ")}; evaluator calls ${show(ladder.evaluatorCalls)}`);
 
+  // Best fit with a floor of 0.7 and a fallback (`desk.floor`).
+  const fl = o.floored;
+  if (fl === undefined) {
+    r.failures.push(`e:below-floor — leg e's host reported no \`desk.floor\` conversation`);
+  } else {
+    const flRecords = fl.read.records as Array<Record<string, any>>;
+    const flFor = (name: string) => flRecords.filter((d) => d.postId === fl.posts[name].requestId);
+    const fitIs = (d: Record<string, any> | undefined, want: Record<string, unknown>) =>
+      d?.fit !== undefined && Object.entries(want).every(([k, v]) => d.fit[k] === v);
+    const doubtful = (tag: string, name: string, want: Record<string, unknown>) => {
+      const found = flFor(name);
+      if (found.length !== 1 || found[0]!.by !== "fallback" || !delivered(found[0], "desk.beta") || delivered(found[0], "desk.alpha") || !fitIs(found[0], want)) {
+        r.failures.push(`${tag} — wanted one \`by: fallback\` record delivering to desk.beta, not to its pick desk.alpha, with \`fit\` ${show(want)}; the post has ${show(found)}`);
+      }
+    };
+    doubtful("e:below-floor", "below", { reason: "below-floor", choice: "desk.alpha", confidence: 0.4, minConfidence: 0.7 });
+    doubtful("e:no-confidence", "none", { reason: "no-confidence", choice: "desk.alpha", minConfidence: 0.7 });
+    const above = flFor("above");
+    if (above.length !== 1 || above[0]!.by !== "evaluated" || !delivered(above[0], "desk.alpha")) {
+      r.failures.push(`e:above-floor — a pick at 0.9 should be delivered to desk.alpha, \`by: evaluated\`; the post has ${show(above)}`);
+    }
+    const self = flFor("self");
+    const selfLine = (fl.read.lines as Array<{ agentName: string | null; text: string }>).some((l) => l.text === "I'll take this one myself.");
+    if (self.length !== 1 || self[0]!.by !== "judgment" || (self[0]!.delegates as any[]).some((x: any) => x.outcome === "delivered") || !fitIs(self[0], { reason: "coordinator", choice: "desk.floor", confidence: 0.3 }) || !selfLine) {
+      r.failures.push(`e:self — a pick of the coordinator at 0.3 should run its own turn, with nothing to the fallback, recorded \`by: judgment\` with \`fit.reason: coordinator\`; the post has ${show(self)}, and its turn's line ${selfLine ? "landed" : "never landed"}`);
+    }
+    // The coordinator is one of the choices: each call offered both delegates and itself.
+    const offered = (fl.offered as string[][]).map((keys) => [...keys].sort().join(","));
+    if (offered.length !== 4 || offered.some((keys) => keys !== "desk.alpha,desk.beta,desk.floor")) {
+      r.failures.push(`e:self — each of the four calls should offer desk.alpha, desk.beta and desk.floor; they offered ${show(fl.offered)}`);
+    }
+    r.notes.push(`best fit with a floor: ${flRecords.map((d) => `${d.by}${d.fit === undefined ? "" : `(${show(d.fit)})`}→${(d.delegates as any[]).map((x) => `${x.worker}:${x.outcome}`).join("+") || "nobody"}`).join(", ")}`);
+  }
+
   // Round robin.
   const rr = o.roundRobin;
   const rrRecords = rr.posts.map((p: { requestId: string }) => (rr.read.records as any[]).filter((d) => d.postId === p.requestId));
@@ -192,9 +230,15 @@ await runGoal(async () => {
 
   if (devLegs.length > 0) {
     const cosModel = devteamCosModel(checkout.root);
-    const modelKeys = keysServing(cosModel);
-    if (!modelKeys.some((k) => (process.env[k] ?? "") !== "")) {
-      return { failures: [`blocked: no key here serves the chief of staff's model, ${cosModel}; none of ${modelKeys.join(", ")} is set`], evidence: "" };
+    // Best fit's route model, as the commit's DevTeam host names it.
+    const routeModel =
+      /routeModel:\s*"([^"]+)"/.exec(readFileSync(join(checkout.root, "packages", "shift-manager", "teams", "devteam", "host.mts"), "utf8"))?.[1] ?? "none named";
+    const routeModels: string[] = [];
+    for (const [what, model] of [["the chief of staff's model", cosModel], ["best fit's route model", routeModel]] as const) {
+      const modelKeys = keysServing(model);
+      if (!modelKeys.some((k) => (process.env[k] ?? "") !== "")) {
+        return { failures: [`blocked: no key here serves ${what}, ${model}; none of ${modelKeys.join(", ")} is set`], evidence: "" };
+      }
     }
     const profile = join(checkout.root, "packages", "shift-manager", "teams", "devteam");
     const host = (await import(pathToFileURL(join(profile, "host.mts")).href)) as { LAB_USERS?: Record<string, { userId: string; bearer: string }> };
@@ -228,7 +272,7 @@ await runGoal(async () => {
       });
       try {
         say(`attempt ${attempt} of ${attempts}, legs ${pending.join(", ")}: DevTeam at ${served.origin}; the chief of staff's defaults: [${defaults.join(", ")}]`);
-        const ran = await devteamLegs({ origin: served.origin, store, shipped, alice, bob, defaults, legs: new Set(pending), asks, boardMailboxes: boardMailboxes(checkout.root), say });
+        const ran = await devteamLegs({ origin: served.origin, store, shipped, alice, bob, defaults, legs: new Set(pending), asks, boardMailboxes: boardMailboxes(checkout.root), routeModels, say });
         for (const t of ran.turns) say(`attempt ${attempt} turn (${t.leg}) ${t.status}: tools ${t.tools.map((x) => x.name).join(", ") || "none"}; reply: ${t.reply.slice(0, 240).replace(/\n/g, " ")}${t.providerRetry === undefined ? "" : ` (re-run after a provider error: ${t.providerRetry})`}`);
         for (const l of pending) {
           const r = ran.legs[l];
@@ -242,7 +286,10 @@ await runGoal(async () => {
         rmSync(storeDir, { recursive: true, force: true });
       }
     }
-    evidence.push(`DevTeam's chief of staff (${COS}) on ${checkout.describe}, Alice ${alice.userId} and Bob ${bob.userId}`);
+    evidence.push(
+      `DevTeam's chief of staff (${COS}) on ${checkout.describe}, its turn on ${cosModel}, Alice ${alice.userId} and Bob ${bob.userId}; ` +
+        `each routed post's evaluation trace named ${[...new Set(routeModels)].join(", ") || "no model (no post was routed)"}`,
+    );
   }
 
   if (legs.has("e")) {
