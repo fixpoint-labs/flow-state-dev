@@ -246,12 +246,12 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     return { id, name: id.split(".").at(-1)!, flow: String(worker.declared.flow) };
   });
   const flowsOfWorkers = [...new Set(workers.map((w) => w.flow))];
-  // The worker on a flow no other delegate shares, and the flow the others share.
+  if (flowsOfWorkers.includes(leadFlow)) throw new Error("the run-lab tree puts one of the lead's delegates on the lead's own flow");
+  // The worker on a flow no other delegate shares, and the flow the others
+  // share. The checked-in tree has both; a tree edited while the Lab is served
+  // (one worker moved onto another's flow) may have neither, and still opens.
   const ownWorker = workers.find((w) => workers.filter((o) => o.flow === w.flow).length === 1);
   const sharedFlow = flowsOfWorkers.find((flow) => workers.filter((w) => w.flow === flow).length > 1);
-  if (ownWorker === undefined || sharedFlow === undefined || flowsOfWorkers.includes(leadFlow)) {
-    throw new Error("the run-lab tree must put two of the lead's delegates on one flow and one on a flow of its own, none on the lead's");
-  }
 
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
@@ -289,7 +289,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   workerFlows = {
     [leadFlow]: leadKind,
     [COORDINATOR_KIND]: coordinator,
-    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerKind(kind, kind === ownWorker.flow)])),
+    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerKind(kind, kind === ownWorker?.flow)])),
   };
   const copies = hireWorkforce(installation);
   // The seat write takes caller-supplied rows, so it is internal only.
@@ -377,6 +377,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   }
   if (options.asking === true) {
     // One more task for the worker on a flow of its own, whose run stops to ask a person.
+    if (ownWorker === undefined) throw new Error("asking needs one of the lead's delegates on a flow of its own");
     filed.push({
       taskId: await file(ownWorker, `${ownWorker.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }),
       workerId: ownWorker.id,

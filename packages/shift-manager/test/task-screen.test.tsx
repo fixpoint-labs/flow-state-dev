@@ -58,7 +58,7 @@ async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
 
 /** A held row on the shared flow (or on a worker's flow of its own), once its run is linked. */
 async function heldRow(opened: Awaited<ReturnType<typeof openLab>>, own: boolean): Promise<BoardRow> {
-  const worker = opened.lab.workers.find((w) => (own ? w.id === opened.lab.ownWorker.id : w.flow === opened.lab.sharedFlow))!;
+  const worker = opened.lab.workers.find((w) => (own ? w.id === opened.lab.ownWorker!.id : w.flow === opened.lab.sharedFlow!))!;
   const filed = opened.lab.filed.find((f) => f.kind === "held" && f.workerId === worker.id)!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && r.run !== null), "the held run's link");
 }
@@ -387,7 +387,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const row = await heldRow(opened, true);
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
-    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(opened.lab.ownWorker.id);
+    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(opened.lab.ownWorker!.id);
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
     expect(within(inspector).getByTestId("inspector-harness-gap").textContent).toBe(GAPS.task.harness);
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });

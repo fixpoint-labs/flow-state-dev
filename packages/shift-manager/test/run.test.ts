@@ -37,7 +37,7 @@ async function rows(): Promise<BoardRow[]> {
 
 /** The row for a filed task, once its run has linked itself: held on the shared flow, or on a worker's own. */
 async function linked(kind: "held" | "short", workerFlow: "own" | "shared"): Promise<BoardRow> {
-  const worker = lab.workers.find((w) => (workerFlow === "own" ? w.id === lab.ownWorker.id : w.flow === lab.sharedFlow));
+  const worker = lab.workers.find((w) => (workerFlow === "own" ? w.id === lab.ownWorker!.id : w.flow === lab.sharedFlow!));
   const filed = lab.filed.find((f) => f.kind === kind && (kind === "short" || f.workerId === worker!.id))!;
   return eventually(async () => (await rows()).find((r) => r.id === filed.taskId && r.run !== null), `${filed.taskId}'s run link`);
 }
@@ -63,8 +63,8 @@ describe("finding the run (V1, D1)", () => {
       expect(await resolveRunFlow(clients, row.run!.sessionId)).toBe(stored?.flowId);
     }
     // The worker on a flow of its own runs on that flow, not the shared one.
-    expect(await resolveRunFlow(clients, own.run!.sessionId)).toBe(lab.ownWorker.flow);
-    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.sharedFlow);
+    expect(await resolveRunFlow(clients, own.run!.sessionId)).toBe(lab.ownWorker!.flow);
+    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.sharedFlow!);
   });
 
   it("opens the cross-flow run through its session's flow, and fails through the lead's", async () => {
