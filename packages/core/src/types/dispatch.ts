@@ -68,7 +68,8 @@ export type BlockDispatchType = "internal" | "task";
 /**
  * Which child session a `task` dispatch runs in, decided per row.
  *
- * - `"per-task"` — one child per row, keyed on the task id. Rows are
+ * - `"per-task"` — one child per row, keyed on the task id (a follow-up row,
+ *   whose payload names `followUpOf`, on the task it follows). Rows are
  *   independent: a checkout per issue.
  * - `"per-worker"` — one child per assignee, shared by every row routed to it.
  *   The worker remembers what it already did.
@@ -272,7 +273,11 @@ export function taskSessionKeyFor(
   ctx: BlockContext
 ): string {
   if (policy === "per-task") {
-    return `task|${framed(envelope.boardId)}|${framed(envelope.taskId)}`;
+    // A follow-up runs in the session of the task it follows: the board packs
+    // that task's id onto the payload from the row it claimed (server-derived).
+    const followUpOf = (envelope.payload as { followUpOf?: unknown } | undefined)?.followUpOf;
+    const sessionTask = typeof followUpOf === "string" && followUpOf.length > 0 ? followUpOf : envelope.taskId;
+    return `task|${framed(envelope.boardId)}|${framed(sessionTask)}`;
   }
   if (policy === "per-worker") {
     return `worker|${framed(envelope.boardId)}|${framed(envelope.seat)}`;

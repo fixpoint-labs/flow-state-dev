@@ -830,7 +830,7 @@ function buildTaskTools(
     // An answered task waits to run again in the session that asked, which
     // its assignee keys: moving it before that run would hand the answer to
     // a session that never saw the task or the question (FIX-1817).
-    if (options?.assignee !== undefined && current.answered === true && current.status === "pending") {
+    if (options?.assignee !== undefined && current.answered === true && current.status !== "in_progress" && !isTerminalStatus(current.status)) {
       return awaitingAnswerError(taskId);
     }
     // Read only when there is an assignee to check: a status change or a

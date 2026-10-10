@@ -174,14 +174,17 @@ export function unparkPatch(task: Task, feedback: string | undefined, answer = f
  * `undefined` when it isn't. Decided inside the atomic write, so an answer or
  * a claim landing between a caller's read and the write is honoured.
  *
- * - `awaiting-answer`: an answer re-queued the row and it hasn't run again;
- *   it must run in the session that asked, which its assignee keys.
+ * - `awaiting-answer`: an answer re-queued the row and it hasn't run again
+ *   (pending, or blocked since); it must run in the session that asked,
+ *   which its assignee keys.
  * - `follow-up`: a follow-up keeps the worker of the task it follows, whose
  *   session it runs in.
  */
 export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDeclineReason | undefined {
   if (task.assignee === assignee) return undefined;
-  if (task.answered === true && task.status === "pending") return "awaiting-answer";
+  // The answer is unconsumed until its re-entry is claimed: pending, or
+  // blocked on the way there. Terminal rows are refused before this.
+  if (task.answered === true && task.status !== "in_progress") return "awaiting-answer";
   if (task.followUpOf !== undefined) return "follow-up";
   return undefined;
 }

@@ -70,6 +70,11 @@ export const taskWorkerInputSchema = z.object({
    * worker reads its presence as "this turn is the answer".
    */
   answer: z.string().optional(),
+  /**
+   * The finished task this one follows up (`Task.followUpOf`), present only
+   * on a follow-up: a `per-task` hand-off runs it in that task's session.
+   */
+  followUpOf: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
   /**
    * Selected observations from prior tasks in this board run.

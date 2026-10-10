@@ -23,4 +23,10 @@ describe("the envelope's answer", () => {
     expect("answer" in input).toBe(false);
     expect(input.feedback).toBe("tests failed");
   });
+
+  it("carries the task a follow-up follows, which a per-task hand-off keys its session by", async () => {
+    const input = await packWorkerInput(row({ id: "root-f1", followUpOf: "root" }), board);
+    expect(input.followUpOf).toBe("root");
+    expect("followUpOf" in (await packWorkerInput(row({}), board))).toBe(false);
+  });
 });

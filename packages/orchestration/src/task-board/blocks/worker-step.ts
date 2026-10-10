@@ -143,6 +143,8 @@ export async function packWorkerInput(
     ...(task.feedback !== undefined ? { feedback: task.feedback } : {}),
     // Only to the attempt an answer re-queued (FIX-1817): a failure's feedback is not an answer.
     ...(task.answered === true && task.feedback !== undefined ? { answer: task.feedback } : {}),
+    // The task a follow-up follows: a `per-task` hand-off keys its session by it.
+    ...(task.followUpOf !== undefined ? { followUpOf: task.followUpOf } : {}),
     ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),
     ...(Object.keys(deps).length > 0 ? { deps } : {}),
     ...(priorWork !== undefined ? { priorWork } : {}),
