@@ -72,7 +72,8 @@ export {
   workerTaskEntry,
   type WorkerTaskBlockInput,
   type WorkerTaskClaim,
-  type WorkerTaskEntryOptions
+  type WorkerTaskEntryOptions,
+  type MailboxListDeclaration
 } from "./conversation-board/task-entry";
 export {
   createWorkerLookup,

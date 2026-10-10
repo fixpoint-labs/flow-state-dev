@@ -40,12 +40,16 @@ import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput 
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   clearNotice,
+  getOrCreateTaskCollection,
+  hasFrozenLedgerAssignee,
+  resolveResourceCollection,
+  type DefinedTaskCollection,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
+import { mailboxBoardLedger } from "../mailbox/mailbox-board";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
@@ -139,12 +143,23 @@ export interface WorkerTaskClaim {
 /** What a `block` entry's block is handed: the task as the board packed it, and the claim it runs under. */
 export type WorkerTaskBlockInput = TaskWorkerInput & { readonly claim: WorkerTaskClaim };
 
+/** A mailbox task list as its declaration: the id it is registered under, and the ledger itself. */
+export interface MailboxListDeclaration {
+  readonly id: string;
+  readonly collection: DefinedTaskCollection;
+}
+
 /** What a flow's `work` entry is built from: a `turn` or a `block`, exactly one. */
 export type WorkerTaskEntryOptions = {
   /** Names the entry's blocks. */
   readonly name: string;
-  /** Mailbox task lists the entry also takes tasks from, by minted id. */
-  readonly mailboxLists?: readonly string[];
+  /**
+   * Mailbox task lists the entry also takes tasks from: by minted id, or as
+   * the declaration itself (`{ id, collection }`) when the flow already holds
+   * the list under its own declaration, so the entry doesn't install a second
+   * one under the same key.
+   */
+  readonly mailboxLists?: readonly (string | MailboxListDeclaration)[];
 } & (
   | {
       /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
@@ -239,18 +254,31 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   if (options.turn === undefined && options.block === undefined) {
     throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, the block that does the task's work.`);
   }
-  const lists = new Set(options.mailboxLists ?? []);
-  const resources = {
-    ...conversationLedgerResources,
-    ...Object.fromEntries([...lists].map((id) => [id, mailboxBoardLedger(id)]))
-  };
+  // Each list's declaration, by id: the one the caller gave, or the mailbox board's own.
+  const lists = new Map<string, DefinedTaskCollection>(
+    (options.mailboxLists ?? []).map((list) =>
+      typeof list === "string" ? [list, mailboxBoardLedger(list)] : [list.id, list.collection]
+    )
+  );
+  const resources = { ...conversationLedgerResources, ...Object.fromEntries(lists) };
 
   // Marked, so the delegate check knows this entry takes a conversation's tasks.
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: async (ledgerId, ctx, partition) => {
       if (ledgerId === CONVERSATION_LEDGER_ID) return conversationLedgers(ledgerId, ctx, partition);
-      return lists.has(ledgerId) && partition === undefined ? resolveMailboxBoard(ctx, ledgerId) : undefined;
+      const declared = lists.get(ledgerId);
+      if (declared === undefined || partition !== undefined) return undefined;
+      const collection = resolveResourceCollection(ctx, ledgerId);
+      return collection === undefined
+        ? undefined
+        : getOrCreateTaskCollection({
+            ctx,
+            backing: "resource",
+            collectionId: ledgerId,
+            collection,
+            immutableAssignee: hasFrozenLedgerAssignee(declared)
+          });
     },
     uses: [defineCapability({ name: `${name}-ledgers`, resources })],
     // The turn keeps the worker's skill state on the session, the same shape
