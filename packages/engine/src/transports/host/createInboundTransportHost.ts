@@ -70,7 +70,7 @@ import {
   isDefaultBodyUserIdPrincipalResolver
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
-import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
+import type { FlowDispatcher, DispatchEnvelope, LeaseTurn } from "../dispatcher";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
   createInProcessDispatcher,
@@ -448,7 +448,9 @@ export function createInboundTransportHost(
   // dispatcher (BullMQ) runs in another process, so it is arbitrated only when
   // the arbiter's keys are shared with that process: the dispatch takes its
   // place here, the place rides the job, and the worker waits its turn and gives
-  // it back when the run ends (FIX-1634). Over a process-local arbiter it is not
+  // it back when the run ends (FIX-1634). A `hold` job's place has its turn at
+  // once, and a `defer` job takes no place here: its worker claims the key once
+  // it is free (`leaseTurn`, FIX-1836). Over a process-local arbiter it is not
   // arbitrated at all — releasing a key at enqueue would free a `reject` lease
   // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
@@ -763,18 +765,12 @@ export function createInboundTransportHost(
     // stand in line on, its key, where every process would honour the place.
     // That refusal, and the backend's own errors, arrive through `accepted`.
     //
-    // `hold` and `defer` are arbitrated in this process only. A job's worker
-    // waits for its place's turn, which is `queue`; it knows neither a place
-    // that must not wait nor a claim that waits for a free key. So an
-    // external dispatch under either runs as `allow`, today's behaviour.
-    const resolved =
+    // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
+    // it reaches its turn (`leaseTurn`), and its worker carries that out.
+    const decision =
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    const decision =
-      isExternalDispatcher && (resolved.policy === "hold" || resolved.policy === "defer")
-        ? { policy: "allow" as const, key: undefined }
-        : resolved;
     // `hold` and `defer` take their place only once ownership has passed, on
     // every backend. Neither is refused synchronously (a `defer` over its cap
     // is refused through the handle), so nothing is lost by waiting, and a
@@ -1276,12 +1272,24 @@ export function createInboundTransportHost(
           .then(async () => {
             entryOwned = true;
             const place = held?.place;
-            const handle = await effectiveDispatcher.dispatch(
-              place === undefined ? dispatchEnvelope : { ...dispatchEnvelope, leasePlace: place }
-            );
+            // A `hold` place has its turn already; a `defer` job holds no place
+            // yet and claims its key once the key is free.
+            const leaseTurn: LeaseTurn | undefined =
+              decision.key === undefined
+                ? undefined
+                : decision.policy === "hold"
+                  ? { kind: "now" }
+                  : decision.policy === "defer"
+                    ? { kind: "when-free", key: decision.key }
+                    : undefined;
+            const handle = await effectiveDispatcher.dispatch({
+              ...dispatchEnvelope,
+              ...(place !== undefined ? { leasePlace: place } : {}),
+              ...(leaseTurn !== undefined ? { leaseTurn } : {})
+            });
             // Enqueued: the place is the job's now, and its worker renews it.
             // Until here this process held it, and the admission renewed it.
-            held?.handOff();
+            held?.handOff(handle.finished);
             return handle;
           })
           // Materialization or the enqueue failed: the job is not running and

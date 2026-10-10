@@ -31,6 +31,7 @@ export { toJobOptions, resolveDlqName } from "./retry";
 export type {
   BullmqConnectionOptions,
   FlowJobData,
+  JobLeaseTurn,
   EnqueueOptions,
   RetryConfig,
 } from "./types";
