@@ -145,9 +145,16 @@ function helperFlow(installation: WorkerInstallation) {
   });
 }
 
+/** What the default judgment turn says: it reads what woke it and does nothing else. */
+export const QUIET_TURN = "Noted.";
+
 export type BoardHostOptions = {
   standard?: WorkerManifest[];
-  /** The judgment turn's scripted model. Omitted, a judgment turn has no script and fails. */
+  /**
+   * The judgment turn's scripted model. Omitted, every judgment turn answers
+   * {@link QUIET_TURN} and does nothing else, so a turn a task's ending wakes
+   * runs cleanly rather than failing unseen.
+   */
   judgment?: MockGeneratorInstance;
   /** The agent worker's scripted model. */
   agentAnswer?: MockGeneratorInstance;
@@ -246,7 +253,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const instances: Record<string, FlowInstance> = Object.fromEntries(
     hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy])
   );
-  const judgment = options.judgment ?? mockGenerator({ script: [] });
+  const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
   const models = createMockModelResolver({
     evaluators: {

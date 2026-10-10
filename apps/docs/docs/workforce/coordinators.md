@@ -169,7 +169,7 @@ Each line starts with who wrote it:
 | A delegate, in an answer that landed | The delegate's worker id | `support.devices` |
 | The coordinator | The coordinator's worker id | `support.help` |
 
-A coordinator line appears only when the coordinator wrote something in the conversation itself: a reply from its own turn, which runs under `judgment` or when best fit hands it a post nobody else took, or a `Nobody took this post` message. The [routing record](#what-it-records) is never a line.
+A coordinator line appears only when the coordinator wrote something in the conversation itself: a reply from its own turn, which runs under `judgment`, when best fit hands it a post nobody else took, and when a task it filed ends under either policy, or a `Nobody took this post` message. The [routing record](#what-it-records) is never a line.
 
 What a delegate gets:
 
