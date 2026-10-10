@@ -3,9 +3,10 @@
  * set on top of the settings of the turn it runs (the built-in agent's: its
  * model, tools, skills and capabilities).
  *
- * - `delegates`: the defaults each conversation starts from. Copied into the
- *   conversation the first time its delegates are read or changed; never
- *   written back.
+ * - `delegates`: the defaults each conversation starts from, the worker
+ *   contract's key (`workerConfigSchema()`), which any worker may list.
+ *   Copied into the conversation the first time its delegates are read or
+ *   changed; never written back.
  * - `routing`: how a post finds its delegates. `judgment` (the default) is the
  *   coordinator's own turn deciding; `best-fit` is one evaluator call;
  *   `round-robin` is the next delegate in list order; `everyone` is each
@@ -19,7 +20,7 @@
  */
 import { z } from "zod";
 import { workerConfigSchema } from "../worker-config";
-import { MAX_DELEGATES, MAX_ROUNDS } from "./coordinator-keys";
+import { MAX_ROUNDS } from "./coordinator-keys";
 
 /** The routing policies a coordinator can name. */
 export const COORDINATOR_ROUTING = ["judgment", "best-fit", "round-robin", "everyone"] as const;
@@ -36,10 +37,9 @@ export function coordinatorConfigSchema<TBase extends z.AnyZodObject>(base?: TBa
   return (base ?? workerConfigSchema().extend({ model: z.string().min(1).optional() })).extend(coordinatorShape());
 }
 
-/** The keys a coordinator adds to its turn's settings. */
+/** The keys a coordinator adds to its turn's settings. Its `delegates` are the worker contract's. */
 function coordinatorShape() {
   return {
-    delegates: z.array(z.string().min(1)).max(MAX_DELEGATES).default([]),
     routing: z.enum(COORDINATOR_ROUTING).default("judgment"),
     fallback: z.string().min(1).optional(),
     rounds: z
@@ -53,6 +53,7 @@ function coordinatorShape() {
 
 /** The keys every coordinator configuration carries, whatever its base. */
 export type CoordinatorConfig = z.infer<z.ZodObject<ReturnType<typeof coordinatorShape>>> & {
+  delegates: string[];
   model?: string;
   instructions?: string;
 };

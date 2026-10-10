@@ -80,9 +80,10 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { COORDINATOR_KIND, DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
 import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
 import { workerTaskEntry } from "./conversation-board/task-entry";
+import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import {
   mailboxNotifyInputSchema,
@@ -766,9 +767,9 @@ function catalogDeclaredResources(
  */
 export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
   const turn = agentWorkerTurn(given);
-  const { options, settings, inputSchema, run, bound, mintProblems } = turn;
+  const { options, settings, inputSchema, run, bound, mintProblems, board } = turn;
   const installation = options.installation;
-  return defineAgentFlowAround(options, settings, inputSchema, run, bound, mintProblems, installation);
+  return defineAgentFlowAround(options, settings, inputSchema, run, bound, mintProblems, installation, board);
 }
 
 /**
@@ -788,11 +789,13 @@ export interface AgentTurnShare {
    */
   readonly extraTools?: readonly GeneratorTool[];
   /**
-   * Capabilities the turn always composes, beside the app's own `uses`: the
-   * coordinator's task tools, for one. Composed once here, so a turn carries
-   * one instance of each, whatever skill is loaded.
+   * The session board the turn files through (FIX-1802 S1), when the sharing
+   * flow builds its own: the coordinator does, to name the flows its posts
+   * reach. Omitted, a turn on an installation builds one for its kind. Its
+   * task tools are composed once, here, so a turn carries one instance of
+   * each, whatever skill is loaded.
    */
-  readonly extraUses?: readonly CapabilityRef[];
+  readonly board?: SessionBoard;
 }
 
 const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer" };
@@ -967,10 +970,18 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       seatCapabilityCatalog,
       (seatConfigOf(ctx) as Partial<SeatConfig>).capabilities
     );
+  // The session's task board, on an installation: a worker whose session
+  // lists a delegate that takes a task files through it (FIX-1802 D1). Its
+  // tools are one capability instance on this turn, granted per call.
+  const board: SessionBoard | undefined =
+    share.board ??
+    (options.installation !== undefined
+      ? defineSessionBoard({ installation: options.installation, flowKind: share.kind })
+      : undefined);
   const usesEntries = [
     ...(options.uses ?? []),
     ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : []),
-    ...(share.extraUses ?? [])
+    ...(board !== undefined ? [board.tools] : [])
   ];
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
@@ -1226,8 +1237,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const bound: AgentTurnBinding =
     installation !== undefined
       ? {
-          session: installation.session(),
-          resources: { ...installation.resources, ...installation.documents },
+          // The session's delegates and its board's notices, server-written:
+          // a create that seeds either is refused.
+          session: {
+            ...installation.session(board?.sessionStateShape),
+            ...(board !== undefined ? { serverOwned: [...board.serverOwned] } : {})
+          },
+          resources: { ...installation.resources, ...installation.documents, ...(board?.resources ?? {}) },
           resourceVisibility: installation.resourceVisibility,
           request: { onStarted: resolveTurnWorker }
         }
@@ -1269,7 +1285,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     return problems.length > 0 ? problems.join(" ") : undefined;
   };
 
-  return { options, settings, inputSchema, run, bound, mintProblems, answerNames };
+  return { options, settings, inputSchema, run, bound, mintProblems, answerNames, board };
 }
 
 /** What a flow on an installation declares to run the agent's turn. */
@@ -1288,7 +1304,8 @@ function defineAgentFlowAround(
   run: ReturnType<typeof agentWorkerTurn>["run"],
   bound: AgentTurnBinding,
   mintProblems: ReturnType<typeof agentWorkerTurn>["mintProblems"],
-  installation: WorkerInstallation | undefined
+  installation: WorkerInstallation | undefined,
+  board: SessionBoard | undefined
 ) {
 
   /**
@@ -1400,7 +1417,6 @@ function defineAgentFlowAround(
   const taskEntry = workerTaskEntry({
     name: "agent-task-turn",
     turn: run,
-    noticeFlow: COORDINATOR_KIND,
     ...(options.taskLists !== undefined ? { mailboxLists: options.taskLists } : {})
   });
 
@@ -1423,7 +1439,11 @@ function defineAgentFlowAround(
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      run: { inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema, block: run, userMessage: (input) => input.message }
+      run: { inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema, block: run, userMessage: (input) => input.message },
+      // On an installation: the eight task actions (`addTask_tasks` and the
+      // rest) over this session's board, and the four delegate actions. A
+      // session whose delegates take no task answers `no_delegation_board`.
+      ...(board?.actions ?? {})
     },
     // A mailbox's notify block reaches a seat here: a dispatch resolves only
     // internal entries, so this is never caller-addressed. It runs `run`'s own
@@ -1445,7 +1465,10 @@ function defineAgentFlowAround(
         // A workstream's open: creates the lead's workstream session, linked
         // at create, and runs nothing. That is what lets an agent worker lead
         // a workstream.
-        [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry()
+        [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
+        // A filing's wake runs this session's board; a task it filed ended
+        // wakes this worker's turn with the notice (FIX-1802).
+        ...(board?.entries(run) ?? {})
       }
     },
     task: { actions: { [WORKER_TASK_ENTRY]: taskEntry } }

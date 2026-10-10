@@ -129,3 +129,9 @@ export * from "./inventory";
 export * from "./projects";
 export * from "./workers";
 export * from "./coordinator";
+export * from "./delegates";
+export {
+  defineSessionBoard,
+  type SessionBoard,
+  type SessionBoardOptions
+} from "./conversation-board/session-board";

@@ -160,7 +160,8 @@ describe("hireWorkforce", () => {
       desk: "front",
       seatSkills: [],
       seatTools: [],
-      seatId: "engineering.intake"
+      seatId: "engineering.intake",
+      delegates: []
     });
     expect(Object.hasOwn(thin.config, "model")).toBe(false);
   });
@@ -176,6 +177,7 @@ describe("hireWorkforce", () => {
       seatSkills: [],
       seatTools: [],
       seatId: "engineering.lead",
+      delegates: [],
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"]
     });
@@ -484,6 +486,7 @@ describe("hireWorkforce", () => {
         seatTools: z.array(z.any()).optional(),
         seatPackages: z.array(z.any()).optional(),
         seatId: z.string().optional(),
+        delegates: z.array(z.string()).optional(),
         retries: z.number().default(3)
       }),
       actions: { run: { inputSchema, block: work }, ...workerDoor }
