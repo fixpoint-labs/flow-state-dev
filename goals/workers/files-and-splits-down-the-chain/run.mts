@@ -15,7 +15,7 @@
  * - leg e (`real.mts`): `real.lead` on the real model DevTeam's chief of
  *   staff names, a fresh Lab per attempt.
  *
- * Every grade reads the store file the run wrote (`store.mts`), except what an
+ * Every grade reads the store file the run wrote (the coordinators goal's `store.mts`), except what an
  * action answered, which is what the person saw. Leg c's tool lists are what
  * each turn was handed, as the turn said it, never the prompt.
  *
@@ -36,7 +36,7 @@ import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../.
 import { ORG, PEOPLE } from "./lab/people.mts";
 import { legE, type LegE } from "./real.mts";
 import { capLeg, loadShipped, scriptedLegs } from "./scripted.mts";
-import { allTaskRows, items, sessions, taskRows, textOf, toolOutput, type StoredSession, type StoredTask } from "./store.mts";
+import { allTaskRows, items, sessions, taskRows, textOf, toolOutput, type StoredSession, type StoredTask } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("workers-split");

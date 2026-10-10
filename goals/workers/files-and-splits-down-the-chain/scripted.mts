@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ORG, PEOPLE } from "./lab/people.mts";
-import { requests, sessions } from "./store.mts";
+import { requests, sessions } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 
 /** The wait after things go quiet, before the run reports and the store is read again. */
 export const GRACE_MS = 5_000;
