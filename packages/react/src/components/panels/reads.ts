@@ -9,7 +9,12 @@
  * read would let a host mount it twice.
  */
 import { useMemo } from "react";
-import { compareItemOrder, type ClientFetch, type ResourceClient } from "@flow-state-dev/client";
+import {
+  compareItemOrder,
+  readEveryCollectionPage,
+  type ClientFetch,
+  type ResourceClient
+} from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { coalescedReads, followSession } from "../../internal/followSession";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
@@ -43,21 +48,6 @@ export type PanelRows<TClient = unknown> = {
 
 /** Stable empty list, so a stale hold hands back the same reference each render. */
 const EMPTY: PanelRow<never>[] = [];
-
-/**
- * A ceiling on pages read for ONE identity, not on rows.
- *
- * The panels are "a list a person scans" (see `usePanelRows`), not a feed
- * with an unbounded tail, so this is a guard against a misbehaving transport
- * handing back a `nextCursor` forever rather than a limit anyone is expected
- * to reach. At the route's largest page (`STATE_LIST_MAX_LIMIT`, 200 —
- * `packages/engine/src/routes/resource-routes.ts`) this still covers 200,000
- * rows, when the collection honours the requested page size (a projected
- * collection may treat `limit` as a hint and return smaller pages). Reaching it with a `nextCursor` still outstanding is a read failure,
- * not a result: the panel shows its error, never the pages it got as if they
- * were the whole list (BR-19, BR-21).
- */
-const MAX_PAGES = 1000;
 
 /** Where a live read hears about changes, and the transport the stream is sent with. */
 export type PanelLive = {
@@ -125,16 +115,19 @@ function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): 
 
 /**
  * Every row of a collection, for one session — traversing `nextCursor` until
- * the route stops returning one, for up to `MAX_PAGES` (1,000) pages.
+ * the route stops returning one, through the client's shared
+ * `readEveryCollectionPage` (up to `COLLECTION_READ_MAX_PAGES`, 1,000 pages).
  *
  * Deliberately no `loadMore`: the panels draw a standing list that a person
  * scans, not a feed they page through, and a cursor the host cannot see is
  * worse than none. `limit` sets the page **size** the read requests each
  * time, not a cap on what the panel shows — a collection larger than `limit`
  * is read in `limit`-sized fetches, because a panel that stopped at the first
- * page would truncate silently. A collection with pages left after
- * `MAX_PAGES` reads is an error (the panel's error line and Retry), never the
- * rows read so far.
+ * page would truncate silently. The ceiling is a guard against a transport
+ * that hands back a `nextCursor` forever, not a limit anyone is expected to
+ * reach. A collection with pages left after it, or a server that repeats a
+ * cursor, is an error (the panel's error line and Retry), never the rows read
+ * so far (BR-19, BR-21).
  *
  * With `live`, `ref` is a task board, and the rows are read again whenever
  * the session keeps a change to it (see `liveBoardDriver`). Without it they
@@ -164,23 +157,8 @@ export function usePanelRows<TClient = unknown>(
     EMPTY,
     failureMessage,
     async (stillCurrent) => {
-      const collected: PanelRow<TClient>[] = [];
-      let cursor: string | undefined;
-      for (let pageCount = 0; pageCount < MAX_PAGES; pageCount++) {
-        const page = await source.listCollectionItems(sessionId, ref, {
-          ...(limit === undefined ? {} : { limit }),
-          ...(cursor === undefined ? {} : { cursor })
-        });
-        if (!stillCurrent()) return collected;
-        for (const item of page.items) {
-          collected.push({ topic: item.topic, clientData: item.clientData as TClient });
-        }
-        if (page.nextCursor === undefined) return collected;
-        cursor = page.nextCursor;
-      }
-      throw new Error(
-        `Stopped after ${MAX_PAGES} pages with more still to read, rather than show part of the list as all of it.`
-      );
+      const items = await readEveryCollectionPage(source, sessionId, ref, { limit, keepReading: stillCurrent });
+      return items.map((item) => ({ topic: item.topic, clientData: item.clientData as TClient }));
     },
     { driver }
   );

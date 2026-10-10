@@ -245,6 +245,20 @@ describe("Roster", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
   });
 
+  it("errors after two pages rather than read to the ceiling when the server repeats its cursor", async () => {
+    // A transport that hands back the same cursor every time. Without the
+    // repeated-cursor check the panel asks 1,000 times before it errors.
+    const source = {
+      listCollectionItems: vi.fn(async () => ({ items: [seat("seat-0000")], nextCursor: "stuck" }))
+    };
+    render(createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByText(/same page cursor twice/)).toBeTruthy();
+    expect(document.querySelector("[data-roster-seats]")).toBeNull();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+  });
+
   it("renders a roster that ends exactly on the last page the ceiling allows", async () => {
     // The other side of the boundary: 1,000 pages whose last carries no
     // cursor is a complete read, not a truncated one.
