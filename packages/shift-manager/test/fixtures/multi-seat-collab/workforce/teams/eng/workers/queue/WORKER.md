@@ -1,8 +1,8 @@
 ---
 description: Where this team takes in work.
-members: [eng.planner, eng.builder, eng.reviewer]
-boards: [work]
-boardActions: true
+flow: coordinator
+delegates: [eng.planner, eng.builder, eng.reviewer]
+routing: everyone
 ---
 
 Work arrives here. The planner files a row and names the desk it is for; each

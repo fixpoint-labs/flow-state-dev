@@ -1,12 +1,14 @@
 /**
- * Row 5 of the checklist: the organization's registered seats, mailboxes and
- * memberships, read with nothing expanded from a mailbox's session in the
- * shipped DevTool, with the debug endpoints off. See goal.md for the contract.
+ * Row 5 of the checklist: the organization's registered workers, read with
+ * nothing expanded in the shipped DevTool's Inventory tab with the debug
+ * endpoints off, and a coordinator's delegates. See goal.md for the contract.
  *
  * The hire is `multi-seat-collab`'s, served by its own config, which opens the
- * inventory at boot exactly as the inventory docs show an app doing it. This
- * file stands nothing up: it plants another organization's rows, serves the
- * lab, and reads the store and the screen.
+ * inventory at boot exactly as the inventory docs show an app doing it. The
+ * lab declares no mailbox, so its inventory holds workers and nothing else,
+ * and who works with whom is the coordinator's `delegates:`. This file stands
+ * nothing up: it plants another organization's rows, serves the lab, and
+ * reads the store, the coordinator's delegates and the screen.
  *
  * Order of evidence, and why:
  *
@@ -16,9 +18,12 @@
  *  2. The lab is served with `FSDEV_DEBUG_ENDPOINTS=0`.
  *  3. The positive record: the store holds exactly the rows the TREE implies
  *     for the lab's organization, and a second boot over the same database
- *     changes none of them. Nothing on screen is judged until this holds.
- *  4. The screen: the mailbox's session, then the Inventory tab, rows read by
- *     id inside the tab with nothing expanded, graded against the store.
+ *     changes none of them; the coordinator's conversation lists exactly the
+ *     delegates its file names, each a registered worker. Nothing on screen
+ *     is judged until this holds.
+ *  4. The screen: the session the boot wrote the inventory through, then the
+ *     Inventory tab, rows read by id inside the tab with nothing expanded,
+ *     graded against the store.
  *  5. Each graded cell is in view on both axes.
  *  6. The network: the rows came through the production collection read, no
  *     debug read succeeded, and none was aimed at the inventory.
@@ -28,9 +33,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { MAILBOX_KIND } from "@flow-state-dev/workforce";
-import { LAB_DB_PATH, LAB_ORG_ID, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import { serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
+import { LAB_DB_PATH, LAB_ORG_ID, LAB_USER_ID, routesFor, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
 
 /** The three published key patterns, by the tab's section names. */
 const PATTERNS = {
@@ -66,16 +70,37 @@ async function readStore(dbFile: string, orgId: string): Promise<Stored> {
   }
 }
 
-/** The rows the tree implies: every hired seat, the one mailbox, and one membership per declared member. */
-function expectedFromTree(tree: LabTree): { keys: string[]; seatKinds: Map<string, string>; members: string[] } {
+/**
+ * The rows the tree implies: one seat row per hired worker, with the flow it
+ * was hired into. The tree declares no mailbox, so no mailbox or membership
+ * row.
+ */
+function expectedFromTree(tree: LabTree): { keys: string[]; seatKinds: Map<string, string> } {
   const seatKinds = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
-  const members = (tree.mailbox.declared.members as string[] | undefined) ?? [];
-  const keys = [
-    ...[...seatKinds.keys()].map((id) => `inventory/seats/${id}`),
-    `inventory/mailboxes/${tree.mailbox.id}`,
-    ...members.map((seat) => `inventory/members/${seat}/${tree.mailbox.id}`),
-  ].sort();
-  return { keys, seatKinds, members };
+  const keys = [...seatKinds.keys()].map((id) => `inventory/seats/${id}`).sort();
+  return { keys, seatKinds };
+}
+
+/** The delegates the coordinator's own `WORKER.md` names. */
+function coordinatorDelegates(tree: LabTree): string[] {
+  const declared = tree.roster.workers.find((worker) => worker.id === tree.coordinatorId)?.declared.delegates;
+  return Array.isArray(declared) ? (declared as string[]) : [];
+}
+
+/** The session the boot wrote the organization's inventory through: the person's own session whose flow declares all three collections. */
+async function inventorySession(origin: string): Promise<{ id: string; kind: string } | undefined> {
+  const listing = (await (await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent(LAB_USER_ID)}&limit=100`)).json()) as {
+    sessions?: Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
+  };
+  for (const session of listing.sessions ?? []) {
+    if (session.parentSessionId != null) continue;
+    const manifest = (await (await fetch(`${origin}/api/flows/sessions/${encodeURIComponent(session.id)}/manifest`)).json()) as {
+      resources?: Array<{ kind: string; pattern?: string }>;
+    };
+    const declared = new Set((manifest.resources ?? []).filter((r) => r.kind === "collection").map((r) => r.pattern));
+    if (SECTIONS.every((name) => declared.has(PATTERNS[name]))) return { id: session.id, kind: session.flowKind };
+  }
+  return undefined;
 }
 
 /**
@@ -95,11 +120,6 @@ function judgeStore(tree: LabTree, stored: Stored): string | undefined {
     const row = stored[`inventory/seats/${id}`]!;
     if (row.id !== id || row.kind !== kind) return `seat row ${id} holds ${JSON.stringify(row)}; the tree hired it as "${kind}"`;
   }
-  const mailbox = stored[`inventory/mailboxes/${tree.mailbox.id}`]!;
-  if (JSON.stringify(mailbox.members) !== JSON.stringify(expected.members)) {
-    return `mailbox row ${tree.mailbox.id} names members ${JSON.stringify(mailbox.members)}; the mailbox was opened with ${JSON.stringify(expected.members)}`;
-  }
-  if (typeof mailbox.openedAt !== "string") return `mailbox row ${tree.mailbox.id} carries no registration time`;
   return undefined;
 }
 
@@ -218,7 +238,7 @@ export async function gradeRow5(options: {
     seat: `foreign-${randomUUID().slice(0, 8)}.seat`,
     mailbox: `foreign-${randomUUID().slice(0, 8)}.room`,
   };
-  const treeIds = [...tree.roster.workers.map((w) => w.id), tree.mailbox.id];
+  const treeIds = tree.roster.workers.map((w) => w.id);
   if (treeIds.some((id) => id === foreign.seat || id === foreign.mailbox)) {
     throw new Error("a planted foreign id collides with the tree");
   }
@@ -253,15 +273,22 @@ export async function gradeRow5(options: {
       return { failures, notes, evidence: "" };
     }
 
+    // The session the boot wrote the rows through: the one the screen opens.
+    const host = await inventorySession(served.origin);
+    if (host === undefined) {
+      fail("step 3", "none of the person's sessions is on a flow that declares the inventory's three collections, so nothing can show them");
+      return { failures, notes, evidence: "" };
+    }
+
     // BR-19: the seat writer is not an HTTP door. The refusal must be the
     // server saying the public map has no such action — not any error — and
     // the store must not move.
     const fabricated = await fetch(
-      `${served.origin}/api/flows/${MAILBOX_KIND}/inventory-binder/actions/registerSeatsInInventory`,
+      `${served.origin}/api/flows/${encodeURIComponent(host.kind)}/${encodeURIComponent(host.id)}/actions/registerSeatsInInventory`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u_multi_seat_collab", input: { seats: [{ id: "fabricated.seat", kind: "worker" }] } }),
+        body: JSON.stringify({ userId: LAB_USER_ID, input: { seats: [{ id: "fabricated.seat", kind: "worker" }] } }),
       },
     );
     const refusal = await fabricated.text();
@@ -299,8 +326,29 @@ export async function gradeRow5(options: {
     const storedMailboxes = under("inventory/mailboxes/");
     const storedMemberships = under("inventory/members/");
 
-    // The refs, off the mailbox session's manifest — never hard-coded.
-    const manifest = (await (await fetch(`${served.origin}/api/flows/sessions/${encodeURIComponent(tree.mailbox.id)}/manifest`)).json()) as {
+    // Who works with whom: the coordinator's conversation lists exactly the
+    // delegates its own file names, through its own production action, and
+    // each is a registered worker.
+    const lab = new Scenario(served, tree, routesFor(""));
+    await lab.open();
+    const declaredDelegates = coordinatorDelegates(tree);
+    const listed = await lab.act(tree.seatFlows[tree.coordinatorId]!, lab.seatSession(tree.coordinatorId), "listDelegates", {});
+    const delegates = Array.isArray(listed.output?.delegates)
+      ? (listed.output.delegates as Array<{ worker?: string }>).map((d) => String(d.worker))
+      : undefined;
+    if (listed.status !== "completed" || delegates === undefined) {
+      fail("step 3", `the coordinator's listDelegates ended ${listed.status ?? listed.refusal}: ${JSON.stringify(listed.output)}`);
+      return { failures, notes, evidence: "" };
+    }
+    if (declaredDelegates.length === 0 || JSON.stringify([...delegates].sort()) !== JSON.stringify([...declaredDelegates].sort())) {
+      fail("step 3", `the coordinator ${tree.coordinatorId}'s conversation lists delegates ${JSON.stringify(delegates)}; its file names ${JSON.stringify(declaredDelegates)}`);
+    }
+    const unregistered = delegates.filter((id) => !storedSeats.some((seat) => seat.id === id));
+    if (unregistered.length > 0) fail("step 3", `the coordinator's delegates ${JSON.stringify(unregistered)} are not registered workers`);
+    notes.push(`row 5: the coordinator ${tree.coordinatorId}'s conversation lists its delegates ${delegates.join(", ")}, each a registered worker`);
+
+    // The refs, off the inventory session's manifest — never hard-coded.
+    const manifest = (await (await fetch(`${served.origin}/api/flows/sessions/${encodeURIComponent(host.id)}/manifest`)).json()) as {
       resources: Array<{ ref: string; pattern?: string }>;
     };
     const refs = Object.fromEntries(
@@ -315,12 +363,12 @@ export async function gradeRow5(options: {
     );
     try {
       await page.goto(served.origin, { waitUntil: "networkidle" });
-      await openSession(page, MAILBOX_KIND, tree.mailbox.id);
+      await openSession(page, host.kind, host.id);
       const tab = page.getByRole("tab", { name: "Inventory" });
       try {
         await tab.waitFor({ timeout: 10_000 });
       } catch {
-        fail("step 4", `the mailbox's session ${tree.mailbox.id} shows no Inventory tab (tabs: ${(await page.getByRole("tab").allTextContents()).join(", ")})`);
+        fail("step 4", `the inventory's session ${host.id} shows no Inventory tab (tabs: ${(await page.getByRole("tab").allTextContents()).join(", ")})`);
       }
       let screen: ScreenRead | undefined;
       if ((await tab.count()) > 0) {
@@ -400,7 +448,7 @@ export async function gradeRow5(options: {
       // ---- step 6: the production read, and not the debug one ------------
       const inventoryReads = network.filter((entry) => {
         const path = new URL(entry.url).pathname;
-        return path.startsWith(`/api/flows/sessions/${encodeURIComponent(tree.mailbox.id)}/resources/`);
+        return path.startsWith(`/api/flows/sessions/${encodeURIComponent(host.id)}/resources/`);
       });
       for (const name of SECTIONS) {
         if (screen?.sections[name]?.status !== "loaded" && screen !== undefined) continue;
@@ -415,9 +463,11 @@ export async function gradeRow5(options: {
       if (debugServed.length > 0) {
         fail("step 6", `a debug read was served with the debug endpoints off: ${debugServed.map((e) => `${e.status} ${e.url}`).join(", ")}`);
       }
-      const debugAimedAtInventory = debug.filter((entry) =>
-        [...Object.values(refs), "inventory"].some((ref) => ref !== undefined && entry.url.includes(encodeURIComponent(ref))),
-      );
+      // Matched past the session segment: the session's own id may spell "inventory".
+      const debugAimedAtInventory = debug.filter((entry) => {
+        const path = new URL(entry.url).pathname.replace(`/sessions/${encodeURIComponent(host.id)}/`, "/sessions/…/");
+        return [...Object.values(refs), "inventory"].some((ref) => ref !== undefined && path.includes(encodeURIComponent(ref)));
+      });
       if (debugAimedAtInventory.length > 0) {
         fail("step 6", `the page asked the debug endpoint for the inventory: ${debugAimedAtInventory.map((e) => `${e.status} ${e.url}`).join(", ")}`);
       }
@@ -432,11 +482,11 @@ export async function gradeRow5(options: {
           failures,
           notes,
           evidence:
-            `row 5 read on the multi-seat-collab hire with the debug endpoints off: the mailbox's session ${tree.mailbox.id}, ` +
-            `opened from the navigator, showed ${screen.sections.seats!.rows.length} registered seat(s) ` +
+            `row 5 read on the multi-seat-collab hire with the debug endpoints off: the inventory's session ${host.id} (${host.kind}), ` +
+            `opened from the navigator, showed ${screen.sections.seats!.rows.length} registered worker(s) ` +
             `(${screen.sections.seats!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind} in ${r.cells.Mailboxes}`).join("; ")}), ` +
-            `the mailbox ${tree.mailbox.id} with members ${screen.sections.mailboxes!.rows[0]?.cells.Members}, and ` +
-            `${screen.sections.memberships!.rows.length} membership(s), exactly as the store holds them, nothing expanded; ` +
+            `${screen.sections.mailboxes!.rows.length} mailbox(es) and ${screen.sections.memberships!.rows.length} membership(s), ` +
+            `exactly as the store holds them, nothing expanded; the coordinator ${tree.coordinatorId} delegates to ${delegates.join(", ")}; ` +
             `another organization's rows were stored and appeared nowhere; a second boot changed nothing`,
         };
       }

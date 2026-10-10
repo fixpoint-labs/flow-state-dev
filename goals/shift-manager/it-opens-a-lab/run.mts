@@ -19,11 +19,15 @@
  *   PROJECTS  the workstreams equal the store's mailboxes
  *   Board     each workstream's Board equals its board's stored rows (BR-13)
  *   Tasks     Tasks equals the stored rows that aren't done: the queued ones
- *             once the Queued toggle is on, which says how many it hides
+ *             once the Queued toggle is on, which says how many it hides.
+ *             A conversation's own board (multi-seat-collab's planner files
+ *             on one) is in no workstream, so its task level opens from here
  *   Inbox     Inbox equals the stored pending asks, or says nothing needs you
  *             with the runs still going and the workers on call
  *   reach     every level, tab and panel opens, and each empty one is named
- *   post      a composer post is drawn, and is in the stored transcript
+ *   post      a composer post is drawn, and is in the stored transcript: the
+ *             workstream's, or, in a tree with no workstream, the task
+ *             composer's on an open row, into the session it ran in
  *   answer    an ask approved in its workstream's Stream is no longer pending
  *             in the store, and Inbox no longer lists it
  *
@@ -55,7 +59,7 @@ import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../li
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
-import { readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks", "queued-shown"] as const;
@@ -226,7 +230,11 @@ async function readTree(root: string): Promise<Tree> {
 type Store = {
   seats: string[];
   mailboxes: Array<{ id: string; kind: string; members: string[] }>;
-  /** Mailbox id -> every stored row on its declared boards. */
+  /**
+   * Board holder -> every stored row on its boards: a mailbox's declared
+   * boards, or a conversation's own board (`<sessionId>.tasks`), keyed by
+   * the conversation that filed it.
+   */
   rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null; runSession: string | null }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
@@ -247,19 +255,85 @@ async function rosterSession(api: LabApi, userId: string): Promise<string | unde
   return held.get(userId);
 }
 
+/** The collection a conversation's own board keeps its rows in: Workforce's conversation ledger. */
+const CONVERSATION_LEDGER = "tasks";
+
+/** The resources a session's flow declares. */
+type Declared = Array<{ kind: string; ref: string; pattern: string; scope?: string; client?: { state?: { read?: boolean } } }>;
+const declaredBy = async (api: LabApi, sessionId: string): Promise<Declared> =>
+  (await api.get(`/sessions/${encodeURIComponent(sessionId)}/manifest`)).resources as Declared;
+
+/** The person's sessions that no other session opened: their own, not a task's. */
+async function topLevelSessions(api: LabApi, userId: string): Promise<string[]> {
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&limit=500`);
+  return ((listing.sessions ?? []) as Array<Record<string, any>>).filter((s) => s.parentSessionId == null).map((s) => String(s.id));
+}
+
+/**
+ * Every conversation's board, by conversation: the conversation ledger read
+ * through the first of the person's own sessions whose flow lets a browser
+ * read it, each row kept under the conversation its topic names
+ * (`<filingSessionId>/<taskId>`, the filing id being `<sessionId>~<n>`).
+ */
+async function conversationRows(api: LabApi, userId: string): Promise<Store["rows"]> {
+  const own = await topLevelSessions(api, userId);
+  let carrier: string | undefined;
+  for (const sessionId of own) {
+    if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.ref === CONVERSATION_LEDGER && r.client?.state?.read === true)) {
+      carrier = sessionId;
+      break;
+    }
+  }
+  const rows: Store["rows"] = {};
+  if (carrier === undefined) return rows;
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page += 1) {
+    const body = await api.get(
+      `/sessions/${encodeURIComponent(carrier)}/resources/${CONVERSATION_LEDGER}?limit=200${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+    );
+    for (const item of (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>) {
+      const filing = decodeURIComponent(item.topic.split("/")[0] ?? "");
+      const holder = filing.slice(0, filing.lastIndexOf("~"));
+      if (!own.includes(holder)) continue;
+      const row = item.clientData ?? {};
+      (rows[holder] ??= []).push({
+        ref: `${holder}.${CONVERSATION_LEDGER}`,
+        id: String(row.id),
+        status: String(row.status),
+        title: String(row.title ?? row.goal ?? row.id),
+        assignee: typeof row.assignee === "string" ? row.assignee : null,
+        runSession:
+          row.run != null && typeof row.run.sessionId === "string" && typeof row.run.requestId === "string" && typeof row.run.attempt === "number"
+            ? row.run.sessionId
+            : null,
+      });
+    }
+    if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
+    cursor = body.nextCursor;
+  }
+  return rows;
+}
+
 async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
-  // The inventory, through the first mailbox's session, by its published key patterns.
-  const host = tree.mailboxes[0]!.id;
-  const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
-  const refOf = (pattern: string) =>
-    (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-      (r) => r.kind === "collection" && r.pattern === pattern,
-    )?.ref;
+  // The inventory, by its published key patterns, through the first mailbox's
+  // session, or, in a tree that declares none, the first of the person's own
+  // sessions whose flow declares it.
+  let host = tree.mailboxes[0]?.id;
+  if (host === undefined) {
+    for (const sessionId of await topLevelSessions(api, userId)) {
+      if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/seats/*")) {
+        host = sessionId;
+        break;
+      }
+    }
+  }
+  const declared = host === undefined ? [] : await declaredBy(api, host);
+  const refOf = (pattern: string) => declared.find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
   const seatsRef = refOf("inventory/seats/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
-  const seats = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
+  const seats = seatsRef === undefined || host === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
   const mailboxes =
-    mailboxesRef === undefined
+    mailboxesRef === undefined || host === undefined
       ? []
       : (await api.collection(host, mailboxesRef)).map((r) => ({
           id: String(r.id),
@@ -287,6 +361,8 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
       }
     }
   }
+
+  Object.assign(rows, await conversationRows(api, userId));
 
   // Pending person-asks: a suspension with no resume, on a session that names a seat as its worker.
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
@@ -392,6 +468,17 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     const userId = injected?.userId;
     if (userId === undefined) throw new Error(`${name}: the page was handed no userId`);
     const api = labApi(served.origin, injected?.bearerToken);
+    /** The task frame a click just opened: titled as stored, with a panel slot, and every tab drawing. */
+    const reachTaskFrame = async (row: Store["rows"][string][number], titleLeg: string) => {
+      await page.getByTestId("task-frame").waitFor();
+      const title = await page.getByTestId("task-title").textContent();
+      if (title !== row.title) fail(titleLeg, `the task frame titles ${row.id} "${title}", stored "${row.title}"`);
+      if (!(await visible(page, "task-panel-slot"))) fail("reach", `the task frame for ${row.id} has no panel slot`);
+      for (const tab of ["session", "diff", "checks", "brief"]) {
+        await page.locator(`[role=tab][data-tab=${tab}]`).click();
+        if (!(await visible(page, "task-slot"))) fail("reach", `the task frame's ${tab} tab shows nothing`);
+      }
+    };
 
     // Put a row on the board, through the Lab's own actions.
     if (name === "multi-seat-collab") {
@@ -399,11 +486,15 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const scenario = new Scenario(
         { origin: served.origin, workDir: served.workDir, outbox, log: served.log, stop: () => served.child.kill("SIGTERM"), exited: () => served.exited } satisfies ServedLab,
         labTree,
+        // The app's own desk -> delegate map; this goal's controls are Shift Manager's, not the filer's.
+        routesFor(""),
       );
       await scenario.open();
       const filed = await scenario.file(fixture.multiSeatCollab);
-      if (filed.status !== "completed") throw new Error(`${name}: the planner's file ended ${filed.status ?? filed.refusal}`);
-      await scenario.drainAll();
+      if (filed.status !== "completed" || filed.output?.ok !== true) {
+        throw new Error(`${name}: the planner's filing ended ${filed.status ?? filed.refusal}: ${JSON.stringify(filed.output)}`);
+      }
+      // The planner's board hands the row to its worker at once, and the worker parks it on its question.
       if (!(await waitForRow(api, tree, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
     } else {
       const mailbox = boardMailbox(tree);
@@ -566,37 +657,68 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       if (first !== undefined) {
         await page.locator("[role=tab][data-tab=board]").click();
         await page.locator(`[data-testid=board-card][data-task-id="${first.id}"]`).click();
-        await page.getByTestId("task-frame").waitFor();
-        const title = await page.getByTestId("task-title").textContent();
-        if (title !== first.title) fail("Board equals the store's rows", `the task frame titles ${first.id} "${title}", stored "${first.title}"`);
-        if (!(await visible(page, "task-panel-slot"))) fail("reach", `the task frame for ${first.id} has no panel slot`);
-        for (const tab of ["session", "diff", "checks", "brief"]) {
-          await page.locator(`[role=tab][data-tab=${tab}]`).click();
-          if (!(await visible(page, "task-slot"))) fail("reach", `the task frame's ${tab} tab shows nothing`);
-        }
+        await reachTaskFrame(first, "Board equals the store's rows");
       }
     }
 
-    // ---- post: the composer, on the board-holding workstream ---------------
-    const mailbox = boardMailbox(tree);
-    const line = `${fixture.line} (${name} ${RUN_STAMP})`;
-    await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
-    await page.getByTestId("composer-input").fill(line);
-    await page.getByTestId("composer-send").click();
-    const drawn = page.getByTestId("transcript-line-body").filter({ hasText: line });
-    try {
-      await drawn.first().waitFor({ timeout: 30_000 });
-    } catch {
-      fail("the post appears on screen", `"${line}" was never drawn (${(await page.getByTestId("composer-status").textContent()) ?? ""})`);
+    // ---- each conversation's board: no workstream holds it, so its task level is reached from Tasks ----
+    const conversations = Object.keys(store.rows).filter((holder) => !tree.mailboxes.some((c) => c.id === holder));
+    for (const holder of conversations) {
+      const first = store.rows[holder]![0]!;
+      await open(page, served.origin, "/tasks");
+      await page.getByTestId("tasks-queued-toggle").click();
+      await page.locator(`[data-testid=task-row][data-board-ref="${first.ref}"][data-task-id="${first.id}"]`).click();
+      await reachTaskFrame(first, "Tasks equals the store's open rows");
     }
-    const kept = (await api.items(mailbox.id, ["component"])).filter(
-      (i) => i.component === "mailbox-post" && i.data?.body === line,
-    );
-    if (kept.length !== 1) fail("the post is in the stored transcript", `the mailbox's session holds ${kept.length} copies of "${line}"`);
-    // And it survives a reload, which only a stored line does.
-    await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
-    if (!(await visible(page, "transcript-line-body"))) fail("the post is in the stored transcript", "after a reload the transcript is empty");
-    else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
+
+    // ---- post: the composer, on the board-holding workstream ---------------
+    const line = `${fixture.line} (${name} ${RUN_STAMP})`;
+    let kept: number;
+    if (tree.mailboxes.some((c) => c.boardRefs.length > 0)) {
+      const mailbox = boardMailbox(tree);
+      await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
+      await page.getByTestId("composer-input").fill(line);
+      await page.getByTestId("composer-send").click();
+      const drawn = page.getByTestId("transcript-line-body").filter({ hasText: line });
+      try {
+        await drawn.first().waitFor({ timeout: 30_000 });
+      } catch {
+        fail("the post appears on screen", `"${line}" was never drawn (${(await page.getByTestId("composer-status").textContent()) ?? ""})`);
+      }
+      kept = (await api.items(mailbox.id, ["component"])).filter((i) => i.component === "mailbox-post" && i.data?.body === line).length;
+      if (kept !== 1) fail("the post is in the stored transcript", `the mailbox's session holds ${kept} copies of "${line}"`);
+      // And it survives a reload, which only a stored line does.
+      await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
+      if (!(await visible(page, "transcript-line-body"))) fail("the post is in the stored transcript", "after a reload the transcript is empty");
+      else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
+    } else {
+      // A tree with no workstream has no workstream composer: the post goes
+      // through the task composer on a conversation's open row, into the
+      // session the row names as its run. The composer saying *delivered* is
+      // what is drawn; one user line in that session is what is stored.
+      const target = Object.values(store.rows).flat().find((r) => !DONE.has(r.status) && r.runSession !== null);
+      if (target === undefined) throw new Error(`${name}: no open row names a run to post into`);
+      await open(page, served.origin, `/tasks/${encodeURIComponent(target.ref)}/${encodeURIComponent(target.id)}/session`);
+      const input = page.getByTestId("task-composer-input");
+      await input.waitFor();
+      const enabled = await page
+        .waitForFunction(() => !(document.querySelector("[data-testid=task-composer-input]") as HTMLTextAreaElement | null)?.disabled, undefined, { timeout: 20_000 })
+        .then(() => true, () => false);
+      if (!enabled) {
+        kept = 0;
+        fail("the post appears on screen", `the task composer for ${target.id} never opens: ${(await page.getByTestId("task-composer-blocked").textContent().catch(() => null)) ?? "no reason given"}`);
+      } else {
+        await input.fill(line);
+        await page.getByTestId("task-composer-send").click();
+        try {
+          await page.locator("[data-testid=task-composer-status][data-state=delivered]").waitFor({ timeout: 30_000 });
+        } catch {
+          fail("the post appears on screen", `the task composer never said "${line}" was delivered (${(await page.getByTestId("task-composer-status").textContent()) ?? ""})`);
+        }
+        kept = (await api.items(target.runSession!, ["message"])).filter((i) => i.role === "user" && JSON.stringify(i.content ?? i.text ?? i).includes(line)).length;
+        if (kept !== 1) fail("the post is in the stored transcript", `the run session ${target.runSession} holds ${kept} copies of "${line}"`);
+      }
+    }
 
     // ---- answer: an ask approved in its workstream's Stream is resumed in the store, and leaves Inbox ----
     // A pending ask sits in its mailbox's Stream, inline at its time (BR-16).
@@ -640,7 +762,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
 
     if (pageErrors.length > 0) fail("reach", `the page threw: ${pageErrors.join(" | ")}`);
     evidence.push(
-      `${name}: ${store.seats.length} seats, ${store.mailboxes.length} mailboxes, ${storedRows.length} row(s) [${storedRows.map((r) => r.status).join(", ")}], post kept ${kept.length}, ${answered}`,
+      `${name}: ${store.seats.length} seats, ${store.mailboxes.length} mailboxes, ${storedRows.length} row(s) [${storedRows.map((r) => r.status).join(", ")}], post kept ${kept}, ${answered}`,
     );
   } finally {
     await browser.close();

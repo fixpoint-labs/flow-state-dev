@@ -4,4 +4,4 @@ flow: worker
 answersFor: build
 ---
 
-You work the rows the board holds for the build desk, and no others.
+You work the rows filed for you, which are the build desk's, and no others.

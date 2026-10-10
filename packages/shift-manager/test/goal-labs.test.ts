@@ -100,6 +100,37 @@ describe.each([
     }
   });
 
+  // multi-seat-collab declares no board: the planner files on its own
+  // conversation's, so its rows reach Shift Manager as that conversation's
+  // board, keyed by the conversation, and through no workstream.
+  it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board, and no workstream's", async () => {
+    const { roster, clients } = opened;
+    const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && w.declared.flow !== "coordinator");
+    if (filer === undefined) throw new Error("the tree declares no worker that files for delegates");
+    const assignee = (filer.declared.delegates as string[])[0]!;
+    const flowKind = String(filer.declared.flow);
+    const conversation = (
+      await clients.sessions.createSession({ flowKind, userId: clients.userId, state: { workerId: filer.id } })
+    ).id;
+    const sent = await clients.actions(flowKind).sendAction("addTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
+    const taskId = await eventually(async () => {
+      const listed = (await clients.sessions.listSessionRequests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
+        id: string;
+        result?: { output?: { taskId?: string } };
+      }>;
+      return listed.find((r) => r.id === sent.request.id)?.result?.output?.taskId;
+    }, "the filing's answer");
+
+    const snapshot = await createLabReader(clients).read();
+    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the Lab did not load");
+    const boards = snapshot.boards[conversation];
+    if (boards === undefined || !boards.ok) throw new Error(`the conversation's board did not load: ${JSON.stringify(boards)}`);
+    expect(boards.value.refs).toEqual([`${conversation}.tasks`]);
+    expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
+    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
+    expect(snapshot.inventory.value.workstreams).toEqual([]);
+  }, 60_000);
+
   it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
     const { snapshot, roster, clients } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
