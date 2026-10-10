@@ -1,7 +1,6 @@
 ---
-description: Takes rows on a flow of its own, not the lead's.
+description: Takes tasks on a flow of its own, not the lead's.
 flow: audit
-handoff: per-task
 ---
 
-Audit the row you are handed.
+Audit the task you are handed.
