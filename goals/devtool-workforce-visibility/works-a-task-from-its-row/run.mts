@@ -415,16 +415,16 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       throw new Error(`the hire never parked the row with a reason (ledger: ${JSON.stringify(lab.rows().map((r) => [r.id, r.status, r.feedback]))})`);
     }
     const parkedId = String(parked.id);
-    // The board writes the row once more after the park (the park's notice to
-    // the planner), into the planner's conversation, not the task session the
-    // screen reads. Let it land first, so the open row is graded against the
-    // row as it stands rather than racing that write.
-    let revision = lab.rows().find((row) => row.id === parkedId)?.revision;
+    // The board writes the row once more after the park (its notice to the
+    // planner). Let that land before the page loads, so the open row is graded
+    // against the row as it stands rather than racing that write.
+    const stored = () => JSON.stringify(lab.rows().find((row) => row.id === parkedId));
+    let last = stored();
     for (let still = 0, waited = 0; still < 1_000 && waited < SETTLE_MS; waited += 100) {
       await new Promise((r) => setTimeout(r, 100));
-      const now = lab.rows().find((row) => row.id === parkedId)?.revision;
-      still = now === revision ? still + 100 : 0;
-      revision = now;
+      const now = stored();
+      still = now === last ? still + 100 : 0;
+      last = now;
     }
 
     browser = await launchChromium();
