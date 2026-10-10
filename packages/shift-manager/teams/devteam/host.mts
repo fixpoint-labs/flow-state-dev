@@ -934,13 +934,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // The chief of staff's flow. A delivery reaches a delegate on a flow that
     // takes a delegated post: here, `agent` and the EM's `em`, so the chief of
     // staff can hand feature work to its EM delegate. `coder` takes tasks, not
-    // posts. Best fit's evaluator runs on the Lab's small model; the chief of
-    // staff routes by judgment, so it calls it only for a coordinator that
-    // names `routing: best-fit`.
+    // posts. Best fit's evaluator runs on Jev, through the AI Gateway: it
+    // reports the confidence the chief of staff's `minConfidence:` reads.
     [COORDINATOR_KIND]: defineCoordinatorFlow({
       installation,
       delegateFlows: [agentKind, emKind as never],
-      routeModel: "openai/gpt-5.4-mini",
+      routeModel: "typesafe-ai/jev",
       agent: coordinatorMemory(agentTurn, {
         model: "openai/gpt-5.4-mini",
         capture: options.memoryCapture === true,

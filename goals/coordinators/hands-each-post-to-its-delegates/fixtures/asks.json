@@ -3,5 +3,18 @@
   "c": "Audit our dependencies' licenses. If none of your delegates does that, hire someone who does.",
   "d": "Who are your delegates in this conversation? Name each one by its worker id.",
   "f": "Add the worker {worker} to this conversation's delegates.",
-  "g": "Please get this feature filed for the engineering team:\n{slug}: show a {word} badge on the storefront cart."
+  "g": "Please get this feature filed for the engineering team:\n{slug}: show a {word} badge on the storefront cart.",
+  "h": {
+    "hire": "Bring someone on to {job}. Give them the id {worker}.",
+    "fire": "Fire {worker}; we don't need them any more.",
+    "who": "Who works here?",
+    "project": "Start a project called \"{title}\".",
+    "jobs": [
+      "review our open-source licenses",
+      "keep our onboarding guide up to date",
+      "track our cloud spend each month",
+      "check our marketing pages for accessibility problems"
+    ],
+    "titles": ["Spring launch", "Checkout cleanup", "Partner portal", "Docs refresh"]
+  }
 }

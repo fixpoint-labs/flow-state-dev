@@ -7,7 +7,7 @@ description: "An org-level worker that hires workers of your own and, as a coord
 
 # The chief of staff
 
-The chief of staff is an org-level worker a person talks to about the organization itself and about getting work done. Set up as below, it's a [coordinator](./coordinators.md) that routes by judgment: it decides who gets each thing you ask, and it can answer you itself.
+The chief of staff is an org-level worker a person talks to about the organization itself and about getting work done. Set up as below, it's a [coordinator](./coordinators.md) that routes by judgment: it decides who gets each thing you ask, and it can answer you itself. To send plain requests straight to the delegate that does them, route it by best fit instead, as [Sending plain requests straight to a delegate](#sending-plain-requests-straight-to-a-delegate) shows.
 
 With the instructions below, it:
 
@@ -155,7 +155,7 @@ const coordinator = defineCoordinatorFlow({
 export const flows = hireWorkforce(installation);
 ```
 
-`emFlow` is a worker flow of your own that takes a delegated post, as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so it goes in `delegateFlows`. `coderFlow` takes tasks, not posts: `eng.coder` works the rows on a board, which is enough to be listed as a delegate, but a post handed to it is skipped, and the [routing record](./coordinators.md#what-it-records) says why. `routeModel` is required even though the chief of staff routes by judgment; only a coordinator on `best-fit` calls it.
+`emFlow` is a worker flow of your own that takes a delegated post, as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so it goes in `delegateFlows`. `coderFlow` takes tasks, not posts: `eng.coder` works the rows on a board, which is enough to be listed as a delegate, but a post handed to it is skipped, and the [routing record](./coordinators.md#what-it-records) says why. `routeModel` is required even when the chief of staff routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
 
 The capabilities each add one part:
 
@@ -183,6 +183,33 @@ Putting the tools in the catalog doesn't hand them to every worker on either flo
 A post in a mailbox or a project's room doesn't wake a chief of staff on the `coordinator` flow, even when it is listed there: that flow doesn't hear mailbox posts, so [`wakeMemberSeats`](./mailboxes.md#waking-agent-seats) hands that delivery to the notify block you pass as its `fallback`, if you pass one. Listing it in a mailbox's `members:` lets it post there. To have a worker answer every post in a project's room, name one on the `agent` kind in the template's `seats`, as [Setting up the room](./projects.md#setting-up-the-room) shows.
 
 A hire is a row in the person's own data, so it is there after a restart on any store that keeps data. Every process sees it on the next turn.
+
+## Sending plain requests straight to a delegate
+
+Routed by judgment, the chief of staff runs a full model turn on everything you ask, even "file this feature for the storefront", which obviously belongs to one delegate. That turn reads its delegates, hands the request on, and writes a line before the delegate answers.
+
+Route it by best fit, with Jev (`typesafe-ai/jev` through Vercel's AI Gateway, an evaluation model that reports how sure it is; see [Evaluation models](../fundamentals/models.md#evaluation-models)) as the coordinator flow's `routeModel`, and one evaluator call decides instead. A plain request goes straight to the delegate, whose answer is the first thing you see. Hiring, firing, starting a project and questions about your team still reach the chief of staff's own turn, because best fit can pick the chief of staff itself:
+
+```diff
+  ---
+- description: Your one point of contact, and the one worker that changes your roster.
++ description: Your one point of contact. Hires and fires workers, starts projects, and answers questions about your team.
+  flow: coordinator
+- routing: judgment
++ routing: best-fit
++ minConfidence: 0.7
+  delegates: [eng.em, eng.coder]
+```
+
+```diff
+  const coordinator = defineCoordinatorFlow({
+    installation,
+    delegateFlows: [agent, emFlow],
+-   routeModel: "openai/gpt-5.4-mini",
++   routeModel: "typesafe-ai/jev",
+```
+
+The description is what best fit picks the chief of staff by, so name its jobs there. Anything Jev isn't sure of, below `minConfidence:`, also goes to its turn, which can still hand it on. The trade: a post that turns out to be the chief of staff's own job costs one evaluator call before the turn, and a request sent while a delegate is still working your last one goes to that delegate. [Picking the coordinator, and a confidence floor](./coordinators.md#picking-the-coordinator-and-a-confidence-floor) has the details.
 
 ## Starting projects
 

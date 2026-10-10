@@ -30,6 +30,7 @@ export {
 } from "./coordinator-keys";
 export {
   coordinatorRouteRecordSchema,
+  type BestFitWhy,
   type CoordinatorRouteRecord,
   type RoutedDelegate
 } from "./coordinator-route";
