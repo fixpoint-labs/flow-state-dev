@@ -4,10 +4,12 @@
  *
  * A coordinator whose own turn can file a task reads that task's ending in
  * that turn, so a failed task can be filed again and the person told: one
- * routing by judgment, and one routing by best fit that offers itself as a
- * choice (FIX-1833 D1). A coordinator with no turn of its own keeps the line:
- * round robin and everyone. Each leg files through the action, so the only
- * turn that can run is the one the ending wakes.
+ * routing by judgment, and every one routing by best fit. Best fit runs that
+ * turn on a post it picks the coordinator for (FIX-1833 D1) and on a miss
+ * with no fallback to take it (FIX-1791 D2), description or not. A
+ * coordinator with no turn of its own keeps the line: round robin and
+ * everyone. Each leg files through the action, so the only turn that can run
+ * is the one the ending wakes.
  */
 import { describe, expect, it } from "vitest";
 import type { WorkerManifest } from "../src";
@@ -26,7 +28,8 @@ const standard = [
   ...boardWorkers(),
   coordinator("judge", { routing: "judgment", description: "Files work." }),
   coordinator("fit-self", { routing: "best-fit", description: "Hires, fires and files work." }),
-  coordinator("fit-bare", { routing: "best-fit", fallback: "eng.tasker" }),
+  coordinator("fit-bare", { routing: "best-fit" }),
+  coordinator("fit-fallback", { routing: "best-fit", fallback: "eng.tasker" }),
   coordinator("rotor", { routing: "round-robin" }),
   coordinator("all", { routing: "everyone" })
 ];
@@ -62,7 +65,9 @@ async function heard(worker: string, ending: "completed" | "errored") {
 describe("a coordinator whose own turn can file hears its task end in that turn", () => {
   it.each([
     ["routing by judgment", "judge"],
-    ["routing by best fit, offering itself by its description", "fit-self"]
+    ["routing by best fit, offering itself by its description", "fit-self"],
+    ["routing by best fit with no description, whose misses go to its turn", "fit-bare"],
+    ["routing by best fit with no description and a fallback delegate", "fit-fallback"]
   ])("%s: the ending wakes its turn once, after the line", async (_label, worker) => {
     const { notices, turns, replies } = await heard(worker, "completed");
     expect(notices).toEqual([expect.stringContaining("completed by eng.tasker")]);

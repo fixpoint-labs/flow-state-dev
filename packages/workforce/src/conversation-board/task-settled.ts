@@ -7,9 +7,9 @@
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
  * attempt runs the board again with no turn; an asked row's ending resumes
  * the turn parked on it (`waitForResponse`), with no line and no turn woken;
- * any other ending lands as a line under the delegate's name and, when the
- * conversation routes by judgment, wakes its coordinator's turn to read it
- * and decide what to do.
+ * any other ending lands as a line under the delegate's name and, when its
+ * coordinator has a turn of its own (judgment or best-fit routing), wakes
+ * that turn to read it and decide what to do.
  *
  * A notice that arrives while the conversation is replying waits for the
  * reply to end, then runs (BR-27). It waits for the replies running when it
@@ -83,7 +83,7 @@ export interface TaskSettledOptions {
   readonly runBoard: BlockDefinition<any, any>;
   /** The coordinator's turn, woken with the notice as its message. */
   readonly turn: BlockDefinition<any, any>;
-  /** How the running conversation routes: by its coordinator's judgment, or by a fixed policy. */
+  /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
 }
 
