@@ -28,27 +28,37 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * The commits on `cwd`'s HEAD that `baseRef` does not have. The base is read
- * as the remote's copy first (`origin/<baseRef>`), then as a local branch.
- * No base, or no checkout git can read, answers none.
+ * The commits on `cwd`'s HEAD that `baseRef` does not have, in either copy:
+ * the remote's (`origin/<baseRef>`) or the local branch. A local checkout
+ * cuts the run's branch from the local branch and a clone from the remote's,
+ * and either copy can be ahead of the other, so a commit either one has is
+ * not the run's. No base, or no checkout git can read, answers none.
  */
 export async function readRunCommits(cwd: string, baseRef: string | null): Promise<RunCommits> {
   if (baseRef === null) return { count: 0, subjects: [] };
-  for (const base of [`refs/remotes/origin/${baseRef}`, baseRef]) {
+  const bases: string[] = [];
+  // In the run's own checkout, a bare `HEAD` is the run's branch, never its base.
+  const copies = baseRef === "HEAD" ? [`refs/remotes/origin/HEAD`] : [`refs/remotes/origin/${baseRef}`, baseRef];
+  for (const base of copies) {
     try {
       await git(cwd, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`]);
+      bases.push(base);
     } catch {
-      continue;
-    }
-    try {
-      const count = Number.parseInt((await git(cwd, ["rev-list", "--count", `${base}..HEAD`])).trim(), 10);
-      const subjects = (await git(cwd, ["log", `--max-count=${MAX_COMMIT_SUBJECTS}`, "--format=%s", `${base}..HEAD`]))
-        .split("\n")
-        .filter((line) => line.length > 0);
-      return { count: Number.isNaN(count) ? 0 : count, subjects };
-    } catch {
-      return { count: 0, subjects: [] };
+      // This copy of the base doesn't exist here.
     }
   }
-  return { count: 0, subjects: [] };
+  if (bases.length === 0) return { count: 0, subjects: [] };
+  try {
+    const count = Number.parseInt((await git(cwd, ["rev-list", "--count", "HEAD", "--not", ...bases])).trim(), 10);
+    const subjects = (await git(cwd, ["log", `--max-count=${MAX_COMMIT_SUBJECTS}`, "--format=%s", "HEAD", "--not", ...bases]))
+      .split("\n")
+      .filter((line) => line.length > 0);
+    return { count: Number.isNaN(count) ? 0 : count, subjects };
+  } catch (error) {
+    console.warn(
+      `[harness-manager] could not read the run's commits against ${bases.join(" and ")} in ${cwd} ` +
+        `(${error instanceof Error ? error.message : String(error)}); reporting none.`,
+    );
+    return { count: 0, subjects: [] };
+  }
 }

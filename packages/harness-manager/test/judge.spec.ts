@@ -102,6 +102,8 @@ describe("a judged run on a board read from the claim", () => {
   it.each([
     ["throws", new Error("the gateway is down")],
     ["answers something that is not a verdict", { thumbs: "up" }],
+    // Out of range would read as sure enough under any floor: not a verdict.
+    ["answers a not-done with a confidence over 1", verdict("not-done", 2, "very sure")],
   ])("settles on the phase's check alone when the judge %s", async (_how, answer) => {
     const { judge, read } = scriptedJudge([answer]);
     const lab = claimHost({ mode: "claim", script: [{ answer: "an answer" }], manager: { judge } });
@@ -112,6 +114,13 @@ describe("a judged run on a board read from the claim", () => {
     expect(read).toHaveLength(1);
     expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", output: { judged: false } });
   }, 60_000);
+});
+
+describe("the judge's floor", () => {
+  it.each([[-0.1], [1.5], [Number.NaN]])("is refused when the manager is built, at %s", (floor) => {
+    const { judge } = scriptedJudge([]);
+    expect(() => claimHost({ mode: "claim", manager: { judge: { ...judge, floor } } })).toThrow(/floor is a confidence, from 0 to 1/);
+  });
 });
 
 describe("a run the judge does not read", () => {
