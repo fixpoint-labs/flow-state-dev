@@ -7,7 +7,7 @@
  * server uses") so the epic's transport claims rest on the real item stream and
  * the real terminal-status vocabulary rather than on a mock's invented shapes.
  *
- * Run: pnpm vitest run spec-poc/epic-pi-harness/real-flow.test.ts
+ * Run: pnpm vitest run specs/epics/LAB-162/poc/omp-runtime-seams/real-flow.test.ts
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";

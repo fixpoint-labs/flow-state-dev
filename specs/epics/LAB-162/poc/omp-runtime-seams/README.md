@@ -1,6 +1,6 @@
 # POC evidence — OMP / pi runtime seams
 
-Throwaway, never merged. The [current epic](../../spec/_epics/pi-harness/SPEC.md) is
+Throwaway, never merged. The [current epic](../../SPEC.md) is
 OMP-only and harness-only. Its durable question and same-session continuation
 proof remains open. The earlier pi companion investigation below is historical, not
 the current design or acceptance claim.
@@ -37,7 +37,7 @@ These checks remove the need to assume a bespoke HTTP/file-mailbox live-answer
 transport. They do **not** prove tool interception, authorization, safe stop, durable
 parking, restart-resume, or the full FSD manager loop. Pinned source and the runtime
 comparison are in the epic's
-[DECISIONS.md](../../spec/_epics/pi-harness/DECISIONS.md); LAB-164 owns the remaining
+[DECISIONS.md](../../DECISIONS.md); LAB-164 owns the remaining
 full-path proof.
 
 ## Original question (superseded)
@@ -132,4 +132,4 @@ that a model-invoked `flow_ask` suspends the turn until the host answers.
   > `labs/conductor/src/manager.ts:1244`. That code has since been superseded by the published
   > `@flow-state-dev/harness-manager`, where the same ordering is a *stated invariant* at
   > `manager.ts:1498–1504`. The finding got stronger, not weaker — see the epic-spec's
-  > [DECISIONS.md](../../spec/_epics/pi-harness/DECISIONS.md).
+  > [DECISIONS.md](../../DECISIONS.md).

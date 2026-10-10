@@ -1,6 +1,6 @@
 # LAB-162 · Decisions
 
-[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
 The calls that sit above either issue: what was chosen, what lost, why, and what each locks in for
 LAB-163 and LAB-164. Three are the sign-off surface. The rest were settled in review and are
@@ -124,7 +124,7 @@ it is not a clean verdict on the current bytes. Completeness found the revised o
 
 **Built:** the original throwaway pi probes, plus a model-free RPC dialog probe run unchanged on
 installed pi 0.85.1 and OMP 18.1.14, and a separate OMP `rpc-ui` registration check.
-**See it:** [`spec-poc/epic-pi-harness/`](../../../spec-poc/epic-pi-harness/README.md) on this
+**See it:** [`poc/omp-runtime-seams/`](poc/omp-runtime-seams/README.md) on this
 branch, with its `runtime-check/` evidence files.
 **Showed:** both runtimes answered the same `extension_ui_request` confirmation over stdio, and
 OMP exposed native `ask` under `rpc-ui`. Post-stop filesystem checks found neither reported probe

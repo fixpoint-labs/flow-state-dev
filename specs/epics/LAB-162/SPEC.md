@@ -1,6 +1,6 @@
 # LAB-162 · OMP coding runs ask, park, and continue
 
-**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
 Epic · 2 issues · Development Workflow Orchestration · [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) · [#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612), never merged
 

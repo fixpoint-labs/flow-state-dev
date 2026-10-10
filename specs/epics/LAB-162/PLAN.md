@@ -1,6 +1,6 @@
 # LAB-162 · Plan
 
-[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan**
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md)
 
 An epic plan sequences the work and says what each piece entails. It does not say how to build any
 piece; that's each issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md) (D-n) and

@@ -1,6 +1,6 @@
 # LAB-162 · Rules every issue in the set obeys
 
-[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md)
 
 At epic altitude the rules aren't behaviours of one feature; they're the constraints both child
 specs and both implementations must satisfy, and the place a cross-spec review checks. Each says

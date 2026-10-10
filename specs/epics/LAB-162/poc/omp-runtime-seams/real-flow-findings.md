@@ -4,11 +4,11 @@ The first probe in this directory tested pi's half against a **mock FSD host**, 
 the actual integration untested at both ends and let the spec invent FSD shapes that do not
 exist. This runs a genuine flow through `runAction` — the same engine the server uses.
 
-Run (from `packages/testing`, which resolves the workspace deps; `spec-poc/` is not a
+Run (from `packages/testing`, which resolves the workspace deps; `specs/` is not a
 workspace member):
 
 ```bash
-cp real-flow.test.ts ../../packages/testing/test/tmp/ && cd ../../packages/testing
+cp real-flow.test.ts ../../../../../packages/testing/test/tmp/ && cd ../../../../../packages/testing
 npx vitest run test/tmp/real-flow.test.ts
 ```
 
