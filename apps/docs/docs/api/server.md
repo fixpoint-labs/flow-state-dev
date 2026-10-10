@@ -143,6 +143,17 @@ const router = createFlowApiRouter({
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
+Pass `maxRecordedValueBytes` to change the largest block output or tool result the runtime records in an item, in serialized bytes. The default is 256 KiB. Larger values are recorded as a placeholder; see [Values too large to record](../streaming/items.md#values-too-large-to-record).
+
+```ts
+const router = createFlowApiRouter({
+  registry,
+  maxRecordedValueBytes: 1024 * 1024, // 1 MiB
+});
+```
+
+Raising it keeps more in your store and in model history.
+
 ### `parseFlowRoute(method, path)`
 
 Parse a flow API path into its components (the addressed flow id, action, sessionId, and so on). The first segment of an action or stream route is an instance id, which for a singleton is its kind. See [Addressing an instance](../server/setup.md#addressing-an-instance).

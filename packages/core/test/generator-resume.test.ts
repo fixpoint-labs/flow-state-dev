@@ -176,6 +176,30 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     expect(() => run(items, gateLogical(1, "gate", "g"))).toThrow(/mapper broke/);
   });
 
+  it("refuses a finished tool call whose result was recorded as a placeholder, never sending it to the model", () => {
+    // The tool's result was over the record limit, so the log holds only its
+    // size and a preview. Resume cannot rebuild the result the model saw, and
+    // replaying the placeholder would hand the model text it never received.
+    const items = [
+      stepArtifact(0, [{ toolCallId: "a", toolName: "readFiles", alias: "readFiles" }]),
+      {
+        ...(toolOutput("a", "readFiles", "completed") as unknown as Record<string, unknown>),
+        output: undefined,
+        outputOmitted: { kind: "omitted", bytes: 1258291, preview: '{"files":[' },
+      } as unknown as RuntimeItem,
+      stepArtifact(1, [{ toolCallId: "g", toolName: "gate", alias: "gate" }]),
+      toolOutput("g", "gate", "failed", { errorCode: "SUSPENSION" }),
+    ];
+    let thrown: unknown;
+    try {
+      run(items, gateLogical(1, "gate", "g"));
+    } catch (error) {
+      thrown = error;
+    }
+    expect((thrown as { code?: string } | undefined)?.code).toBe("RECORDED_VALUE_OMITTED");
+    expect((thrown as Error).message).toContain("readFiles");
+  });
+
   it("classifies a step's failed tool_outputs three ways: pending / losing / ordinary", () => {
     const items = [
       stepArtifact(0, [

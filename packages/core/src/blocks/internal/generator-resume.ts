@@ -30,6 +30,7 @@ import type { RuntimeItem } from "../../items/internal";
 import type { GeneratorStepResult } from "../../types/model";
 import type { LLMMessage } from "../../types/scope";
 import { FlowError } from "../../errors/flow-error";
+import { RecordedValueOmittedError } from "../../errors/recorded-value-omitted-error";
 import {
   buildAssistantToolCallMessage,
   buildToolResultMessage,
@@ -300,6 +301,12 @@ export function reconstructGeneratorResume(params: {
         return { ...base, kind: "missing" as const };
       }
       if (to.status === "completed") {
+        // The result was over the record limit and only a placeholder was
+        // saved (FIX-1772). The model was shown the real result; resume cannot
+        // rebuild it, and must not send the placeholder in its place.
+        if (to.outputOmitted !== undefined) {
+          throw new RecordedValueOmittedError(c.toolName, to.outputOmitted);
+        }
         return {
           ...base,
           kind: "completed" as const,

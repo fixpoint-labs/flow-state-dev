@@ -75,7 +75,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 **`tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
 
-`tool_output` follows a lifecycle: the runtime emits an `in_progress` placeholder via `item.added` before the called block runs (args known, output empty), then patches it via `item.updated` once the block returns. The called block still gets its own `block_trace` row, decoupled from the `tool_output`, but its `output` is a `ref` to the `tool_output` so the result lives in one place. On failure, the patch sets `status: "failed"` and an `error` field; the called block's `block_trace.status` is also `failed`.
+`tool_output` follows a lifecycle: the runtime emits an `in_progress` placeholder via `item.added` before the called block runs (args known, output empty), then patches it via `item.updated` once the block returns. The called block still gets its own `block_trace` row, decoupled from the `tool_output`, but its `output` is a `ref` to the `tool_output` so the result lives in one place. On failure, the patch sets `status: "failed"` and an `error` field; the called block's `block_trace.status` is also `failed`. A result over the record limit (see `omitted` below) is recorded as `outputOmitted`, the same `omitted` object, with `output` and `modelOutput` absent. History replays it as one text line naming the tool and the size; generator resume refuses it with `RECORDED_VALUE_OMITTED`.
 
 ### Devtool-only items — what the devtool sees
 
@@ -93,11 +93,12 @@ Lifecycle: `item.added` (status `in_progress`, input filled in, output empty) �
 
 Because that row is mutated in place — one object reference, fields changed between phases — a store's incremental item persistence MUST diff by item **content**, not object reference. A reference-identity diff never observes the `in_progress → completed` field change and leaves the persisted row at `in_progress`, which defeats resume memoization (`getCompletedOutput` short-circuits a block only when its persisted trace is `completed`). "Last-write-wins per item id" is therefore by content. The cross-store conformance suite enforces this on every adapter (FIX-839).
 
-`block_trace.output` is a `BlockValue<T>` discriminated union with three cases:
+`block_trace.output` is a `BlockValue<T>` discriminated union with four cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
 - **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.sideChain`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `itemVisibility` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.stepAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
+- **`omitted`** — the value was over `maxRecordedValueBytes` (default 256 KiB) or could not be serialized (FIX-1772). Carries `bytes` (or `null`) and `preview`, the first 512 characters. The response emitter writes it on a copy; the live value is never replaced. Resume never hands it on: a replay that would inject it fails with `RECORDED_VALUE_OMITTED`. `resolveBlockValue` returns `undefined` for it.
 
 `block_trace.input.source` is a `BlockValue<T>` of the same shape, stamped at block start. Sequential steps stamp a `ref` to the upstream block's trace; aggregator branches share the same upstream ref; downstream consumers of an aggregator see a `structure` of branch refs; `forEach` per-iteration children see `inline` with the element value; the request entry point sees `inline` with the raw input.
 
