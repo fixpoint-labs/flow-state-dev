@@ -63,6 +63,21 @@ export const episodicMemoryStateSchema = z.object({
 /** The full episodic memory state. */
 export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
 
+/** Options the memory resource factories share. */
+export interface MemoryResourceOptions {
+  /**
+   * The resource's own `flowIsolation`. `true` keys the store per flow
+   * instance, `false` shares it across flows, and either wins over the flow's
+   * `isolateUserState` / `isolateOrgState` default. Omit it to take that default.
+   */
+  flowIsolation?: boolean
+}
+
+/** The `flowIsolation` entry a factory spreads into `defineResource`, empty when unset. */
+export function flowIsolationEntry(options?: MemoryResourceOptions): { flowIsolation?: boolean } {
+  return options?.flowIsolation === undefined ? {} : { flowIsolation: options.flowIsolation }
+}
+
 /**
  * Create an episodic memory resource definition at the given scope.
  *
@@ -74,12 +89,16 @@ export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
  * Blocks and capabilities install the returned definition via the unified
  * `resources: { episodicMemory: <created> }` map and access it through
  * `ctx.resources.get('episodicMemory')` regardless of scope.
+ *
+ * `options.flowIsolation` is the resource's own `flowIsolation`. Omit it to
+ * take the flow's `isolateUserState` / `isolateOrgState` default.
  */
-export function createEpisodicMemoryResource(scope: 'user' | 'org') {
+export function createEpisodicMemoryResource(scope: 'user' | 'org', options?: MemoryResourceOptions) {
   return defineResource({
     scope,
     stateSchema: episodicMemoryStateSchema,
     default: { episodes: [], totalEncoded: 0 },
     writable: true,
+    ...flowIsolationEntry(options),
   })
 }

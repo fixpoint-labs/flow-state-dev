@@ -33,6 +33,8 @@ import type {
 /** Concrete episodic config after defaulting. */
 export interface ResolvedEpisodicConfig {
   scope: 'user' | 'org'
+  /** The tier's own `flowIsolation`; undefined takes the flow's default. */
+  flowIsolation?: boolean
   significanceThreshold: number
   maxEpisodes: number
 }
@@ -54,6 +56,8 @@ export interface ResolvedRelationsConfig {
 /** Concrete semantic config after defaulting. */
 export interface ResolvedSemanticConfig {
   scope: 'user' | 'org'
+  /** The tier's own `flowIsolation`; undefined takes the flow's default. */
+  flowIsolation?: boolean
   consolidation: {
     episodicThreshold: number
     onEviction: boolean
@@ -67,6 +71,8 @@ export interface ResolvedSemanticConfig {
 /** Concrete digest config after defaulting. Scope is inherited from semantic. */
 export interface ResolvedDigestConfig {
   scope: 'user' | 'org'
+  /** Derived from the episodic and semantic tiers — see `digestFlowIsolation`. */
+  flowIsolation?: boolean
   maxTokens: number
   topN: { facts: number; episodes: number }
 }
@@ -106,6 +112,21 @@ function resolveRelationsConfig(
 }
 
 /**
+ * The digest's `flowIsolation`. A digest summarizes semantic facts and recent
+ * episodes, so a digest shared across flows would show one flow's episodes to
+ * another. It is isolated when either source is, shared only when both are,
+ * and takes the flow's default otherwise.
+ */
+function digestFlowIsolation(
+  episodic: boolean | undefined,
+  semantic: boolean | undefined,
+): boolean | undefined {
+  if (episodic === true || semantic === true) return true
+  if (episodic === false && semantic === false) return false
+  return undefined
+}
+
+/**
  * Resolve the tier configs, applying defaults for `true` and omitted fields.
  *
  * Does NOT validate tier dependencies (semantic→episodic, digest→semantic) —
@@ -133,6 +154,9 @@ export function resolveMemoryConfigs(config: MemoryTierOptions): ResolvedMemoryC
         scope: (config.episodic === true ? DEFAULT_EPISODIC_CONFIG.scope : config.episodic.scope) ?? DEFAULT_EPISODIC_CONFIG.scope,
         significanceThreshold: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.significanceThreshold : (config.episodic.significanceThreshold ?? DEFAULT_EPISODIC_CONFIG.significanceThreshold),
         maxEpisodes: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.maxEpisodes : (config.episodic.maxEpisodes ?? DEFAULT_EPISODIC_CONFIG.maxEpisodes),
+        ...(config.episodic !== true && config.episodic.flowIsolation !== undefined
+          ? { flowIsolation: config.episodic.flowIsolation }
+          : {}),
       }
     : undefined
 
@@ -148,12 +172,17 @@ export function resolveMemoryConfigs(config: MemoryTierOptions): ResolvedMemoryC
         },
         pruneThreshold: config.semantic === true ? DEFAULT_PRUNE_CONFIG.pruneThreshold : (config.semantic.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold),
         relations: resolveRelationsConfig(config.semantic === true ? undefined : config.semantic.relations),
+        ...(config.semantic !== true && config.semantic.flowIsolation !== undefined
+          ? { flowIsolation: config.semantic.flowIsolation }
+          : {}),
       }
     : undefined
 
+  const digestIsolation = digestFlowIsolation(episodicConfig?.flowIsolation, semanticConfig?.flowIsolation)
   const digestConfig: ResolvedDigestConfig | undefined = config.digest && semanticConfig
     ? {
         scope: semanticConfig.scope,
+        ...(digestIsolation !== undefined ? { flowIsolation: digestIsolation } : {}),
         maxTokens: config.digest === true
           ? DEFAULT_DIGEST_CONFIG.maxTokens
           : (config.digest.maxTokens ?? DEFAULT_DIGEST_CONFIG.maxTokens),

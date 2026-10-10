@@ -48,12 +48,12 @@ function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {
 }
 
 /** The write-side entry point — `createMemoryCapability` would be read-only. */
-function memory() {
+function memory(semantic: { flowIsolation?: boolean } | true = true) {
   return system({
     model: "openai/gpt-5.4-mini",
     working: { capacity: 7 },
     episodic: true,
-    semantic: true
+    semantic
   });
 }
 
@@ -372,6 +372,49 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     expect(await twoSeats(true)).not.toContain(FACT);
     // Control — without it, a harness that saw nothing either way would pass.
     expect(await twoSeats(false)).toContain(FACT);
+  });
+
+  // The tier mix on one isolated kind: each copy (here, one minted per worker)
+  // keeps its own episodes while all of them share one semantic store. The two
+  // tiers render the same fact differently, so each assertion names the tier
+  // it reads.
+  it("shares the semantic tier across copies while each keeps its own episodes", async () => {
+    const asFact = `[subject=user] ${FACT}`;
+    const asEpisode = new RegExp(`turn \\d+\\) ${FACT}`);
+
+    async function designerAfterLead(semantic: { flowIsolation?: boolean } | true): Promise<string> {
+      const mem = memory(semantic);
+      const [lead, designer] = hire(
+        [
+          record({ id: "engineering.lead", body: "Lead." }),
+          record({ id: "engineering.designer", body: "Designer." })
+        ],
+        { [AGENT_KIND]: rememberingKind(mem, true) }
+      );
+      const stores = createInMemoryStores();
+      await seedOwnedSession(stores, "sess-lead", lead!);
+      await seedOwnedSession(stores, "sess-lead-2", lead!);
+      await seedOwnedSession(stores, "sess-designer", designer!);
+
+      await turn(stores, lead!, "sess-lead", FACT);
+      // The lead's own next conversation reads both tiers back, which shows
+      // both were written: an absent episode below is isolation, not a
+      // capture that never ran.
+      const leadAgain = await turn(stores, lead!, "sess-lead-2", "what do you know?", "nothing in particular");
+      expect(leadAgain).toContain(asFact);
+      expect(leadAgain).toMatch(asEpisode);
+      return turn(stores, designer!, "sess-designer", "what do you know?", "nothing in particular");
+    }
+
+    const mixed = await designerAfterLead({ flowIsolation: false });
+    expect(mixed).toContain(asFact);
+    expect(mixed).not.toMatch(asEpisode);
+
+    // Control: the same roster with the semantic tier left on the flow's
+    // default sees neither tier.
+    const isolated = await designerAfterLead(true);
+    expect(isolated).not.toContain(asFact);
+    expect(isolated).not.toMatch(asEpisode);
   });
 
   it("keeps the skills library working alongside an attached memory capability", async () => {

@@ -1,6 +1,7 @@
 import { defineResource } from '@flow-state-dev/core'
 import type { EdgeSlotConfig } from '@flow-state-dev/core/graph'
 import { z } from 'zod'
+import { flowIsolationEntry, type MemoryResourceOptions } from './episodic-memory'
 
 /** Semantic fact categories. */
 export const semanticCategoryEnum = z.enum([
@@ -60,10 +61,14 @@ export type SemanticMemoryState = z.infer<typeof semanticMemoryStateSchema>
  * into the state and attaches the `ResourceEdgeApi` to the live ref. When it
  * is omitted, the resource carries no `edges` field and no edge API — the
  * chat-personalization path is byte-for-byte unchanged.
+ *
+ * `options.flowIsolation` is the resource's own `flowIsolation`. Omit it to
+ * take the flow's `isolateUserState` / `isolateOrgState` default.
  */
 export function createSemanticMemoryResource(
   scope: 'user' | 'org',
   relations?: EdgeSlotConfig,
+  options?: MemoryResourceOptions,
 ) {
   return defineResource({
     ref: 'semanticMemory',
@@ -72,5 +77,6 @@ export function createSemanticMemoryResource(
     default: { facts: [], totalExtracted: 0, totalConsolidations: 0 },
     writable: true,
     ...(relations ? { edges: relations } : {}),
+    ...flowIsolationEntry(options),
   })
 }
