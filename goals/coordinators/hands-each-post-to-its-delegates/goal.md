@@ -32,7 +32,7 @@
 
 **Run:** `pnpm tsx goals/coordinators/hands-each-post-to-its-delegates/run.mts`. `GOAL_LEGS=a,b,…` runs some legs; `GOAL_COMMIT=<sha>` serves another commit from its own tree and install (`git archive` plus `pnpm install`, kept under the system temp directory across runs). On demand only, never a CI gate.
 
-**Controls:** each is one scratch patch to one Workforce module, applied as the process under test loads it (`controls/module-patch.mjs` through `NODE_OPTIONS`; printed in full by the run, and refused when it never reached the code). A control runs the one leg it targets.
+**Controls:** each is one scratch patch to one Workforce module, applied as the process under test loads it (`goals/lib/module-patch.mjs` through `NODE_OPTIONS`; printed in full by the run, and refused when it never reached the code). A control runs the one leg it targets.
 
 - `GOAL_CONTROL=no-roster-check`: the delegate check takes a worker that isn't on the user's roster as if it were (`coordinator-check.ts`). Leg f must fail **`f:bobs-worker-refused`** (*Bob's worker is a delegate*). `f:missing-refused` and `f:tool-refused` go red with it: the same check answers all three, so none has a red state of its own. `f:create-refused` stays green: the create is refused before any check runs.
 - `GOAL_CONTROL=no-round-limit`: a coordinator whose `rounds:` is above 0 runs to the ceiling of 3 (`coordinator-flow.ts`, the worker's config read). Leg e must fail **`e:four-then-none`**, and nothing else: the patch leaves `rounds: 0` alone.
