@@ -22,6 +22,13 @@
  *   for the conversation's next touch of its board. A conversation whose
  *   worker was fired accepts the send and then refuses to run it: the notice
  *   stays owed, and this session never hears of that refusal.
+ * - **The split** (FIX-1802 S4). A turn that files pieces on the task
+ *   session's own board leaves its task parked on them after the turn, and
+ *   the task settles from them later (`./split`): the gate records nothing
+ *   on a parked row, and no notice goes for the park. A task that comes back
+ *   to a session whose board already holds its pieces runs no turn: it parks
+ *   on them again. The entry holds the session's reply line while it runs,
+ *   so a piece's notice waits for the turn, and the park, to end.
  */
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, DispatchRefusal } from "@flow-state-dev/core/types";
@@ -32,7 +39,9 @@ import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-boar
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
+import { hasPieces, parkOnPieces } from "./split";
 import { clearNotice } from "./task-notice";
+import { REPLY_CONCURRENCY } from "./task-settled";
 
 /**
  * A task as a worker reads it: the title when there is one, the goal, the
@@ -128,10 +137,13 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     allowSessionState: true
   });
 
-  const block = sequencer({ name, inputSchema: taskWorkerInputSchema }).step(
-    (task: TaskWorkerInput) => ({ message: taskMessage(task) }),
-    options.turn
-  );
+  const block = sequencer({ name, inputSchema: taskWorkerInputSchema })
+    .stepIf(
+      async (_task: TaskWorkerInput, ctx) => !(await hasPieces(ctx as never)),
+      (task: TaskWorkerInput) => ({ message: taskMessage(task) }),
+      options.turn
+    )
+    .step(parkOnPieces);
 
   /** Send what the session's task owes, to the conversation that filed it. */
   const tell = handler({
@@ -166,5 +178,5 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     });
   };
 
-  return { block, from, onCompleted: tell, onErrored: tell };
+  return { block, from, onCompleted: tell, onErrored: tell, concurrency: REPLY_CONCURRENCY };
 }

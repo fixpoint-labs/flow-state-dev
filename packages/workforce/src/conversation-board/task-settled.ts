@@ -29,8 +29,11 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { isTaskSession, replayNotices } from "./board";
+import { replayNotices } from "./board";
+import { deleteChain, taskChainOf, taskChainResources } from "./chain";
+import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
+import { PARENT_BINDING_STATE, settleSplitBlock, splitStateShape } from "./split";
 import {
   clearNotice,
   decideNotice,
@@ -62,8 +65,12 @@ const MAX_NOTICE_KEYS = 500;
 
 /** The session-state fields a flow that keeps a conversation's board declares, server-owned. */
 export const conversationBoardStateShape = {
-  [TASK_NOTICES_STATE]: z.array(z.string()).default([])
+  [TASK_NOTICES_STATE]: z.array(z.string()).default([]),
+  ...splitStateShape
 } as const;
+
+/** {@link conversationBoardStateShape}'s fields, for the flow's `session.serverOwned`: only the board writes them. */
+export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE, PARENT_BINDING_STATE];
 
 const settledSchema = z.object({
   act: z.enum(["none", "run-board", "wake-turn", "line"]),
@@ -93,6 +100,9 @@ const replyLine: ConcurrencyKey = (ctx) =>
 /** Set on each entry that runs the conversation's turn: a task's notice waits for it, within the bound above. */
 export const REPLY_CONCURRENCY = { policy: "hold", key: replyLine } as const satisfies ConcurrencyConfig;
 
+/** Set on each entry that waits for the conversation's turn: a task's notice, and a split task's settle and cancel (FIX-1802 S4). */
+export const AFTER_REPLY_CONCURRENCY = { policy: "defer", key: replyLine } as const satisfies ConcurrencyConfig;
+
 /**
  * Build the `onTaskSettled` internal entry: spread it as
  * `internal: { actions: { [TASK_SETTLED_ENTRY]: taskSettledEntry({ ... }) } }`.
@@ -107,10 +117,19 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     inputSchema: taskNoticeSchema,
     outputSchema: settledSchema,
     sessionStateSchema: z.object(conversationBoardStateShape),
+    resources: { ...taskChainResources },
     execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
-      if (notice.boardId !== CONVERSATION_LEDGER_ID || isTaskSession(ctx)) return { act: "none" };
+      if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
       const ref = await ownConversationLedger(ctx as never);
       if (ref === undefined) return { act: "none" };
+      // A top task that ended takes its chain's count with it (FIX-1802 S5):
+      // a task filed in a session that is no piece of a chain is a top.
+      if ((notice.ending === "completed" || notice.ending === "errored") && taskChainOf(ctx) === undefined) {
+        const ended = ref.get(notice.taskId);
+        if (ended !== undefined && (ended.status === "completed" || ended.status === "errored")) {
+          await deleteChain(ctx as never, { partition: await filingSessionIdOf(ctx.session), taskId: notice.taskId });
+        }
+      }
       // Whatever this run does, the notices still owed go out again behind
       // it, but never this one: its marker is cleared below, or already was.
       const replayRest = () =>
@@ -168,7 +187,11 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       (settled: Settled) => ({ message: settled.text ?? "" }),
       options.turn
     )
-    .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard);
+    .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard)
+    // In a task session whose task waits on its pieces: settle it once none
+    // is open, after any turn this notice woke, never inside it (FIX-1802
+    // S4). A turn that failed leaves it for the next touch.
+    .tap(settleSplitBlock);
 
-  return { inputSchema: taskNoticeSchema, block, concurrency: { policy: "defer", key: replyLine } as const satisfies ConcurrencyConfig };
+  return { inputSchema: taskNoticeSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
 }

@@ -34,7 +34,7 @@ import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { ROSTER_FLOW_KIND } from "../src/workers/keys";
-import { hireWorkforce } from "../src/workers/register";
+import { hireWorkforce, type HireWorkforceOptions } from "../src/workers/register";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 
 export const ORG = "acme";
@@ -165,6 +165,8 @@ export type BoardHostOptions = {
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
   generators?: Record<string, MockGeneratorInstance>;
+  /** What `hireWorkforce` is called with beside the installation. */
+  hire?: HireWorkforceOptions;
 };
 
 /**
@@ -223,7 +225,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   // One copy per worker flow, and the roster flow, as an app registers them.
   const instances: Record<string, FlowInstance> = Object.fromEntries(
-    hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy])
+    hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy])
   );
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });

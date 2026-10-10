@@ -21,7 +21,7 @@ import {
 } from "@flow-state-dev/testing";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
-import { DELEGATED_POST_ENTRY } from "../src/coordinator/coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "../src/worker-task-entry";
 import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
 

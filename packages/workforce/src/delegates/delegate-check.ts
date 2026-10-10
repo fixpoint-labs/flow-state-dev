@@ -24,7 +24,7 @@
 import type { FlowType } from "@flow-state-dev/core/types";
 import type { RosterWorker, WorkerInstallation, WorkerTurnContext } from "../workers/installation";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "../coordinator/coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
 
 /** What the check came to. */
 export type DelegateCheck =

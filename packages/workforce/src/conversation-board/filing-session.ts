@@ -36,3 +36,13 @@ export async function filingSessionIdOf(session: { identity: { id: string }; lin
   }
   return `${session.identity.id}~${await shortDigest(session.lineageId)}`;
 }
+
+/**
+ * The session id a `filingSessionId` was made from: everything before its
+ * last `~`. The value is server-written ({@link filingSessionIdOf}), so this
+ * reads no caller's input.
+ */
+export function sessionIdOfFiling(filingSessionId: string): string {
+  const at = filingSessionId.lastIndexOf("~");
+  return at < 0 ? filingSessionId : filingSessionId.slice(0, at);
+}

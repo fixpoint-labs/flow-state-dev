@@ -15,8 +15,9 @@
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
- *   (a run of the board) and its notices arrive on (`onTaskSettled`), and
- *   the session state they keep (`sessionStateShape`, `serverOwned`).
+ *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
+ *   split task settles and cancels its pieces on, and the session state they
+ *   keep (`sessionStateShape`, `serverOwned`).
  *
  * The built-in `agent` flow and the coordinator carry it through the agent's
  * shared worker turn. An app's own worker flow carries it the same way:
@@ -40,10 +41,18 @@ import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape } from "../delegates/delegate-list";
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
+import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
-import { RUN_BOARD_ENTRY, defineConversationBoard } from "./board";
+import { defineConversationBoard } from "./board";
+import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY } from "./board-entries";
 import { TASK_SETTLED_ENTRY } from "./notice-delivery";
-import { TASK_NOTICES_STATE, conversationBoardStateShape, taskSettledEntry } from "./task-settled";
+import { cancelPiecesBlock, settleSplitBlock } from "./split";
+import {
+  AFTER_REPLY_CONCURRENCY,
+  CONVERSATION_BOARD_SERVER_OWNED,
+  conversationBoardStateShape,
+  taskSettledEntry
+} from "./task-settled";
 import type { NoticePolicy } from "./task-notice";
 
 /** What a session board is built from. */
@@ -69,7 +78,11 @@ export interface SessionBoardOptions {
  */
 export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
-  const board = defineConversationBoard({ delegates: delegates.taskDelegates, flowKind: options.flowKind });
+  const board = defineConversationBoard({
+    delegates: delegates.taskDelegates,
+    flowKind: options.flowKind,
+    chainLimit: () => taskChainLimitOf(options.installation)
+  });
 
   return {
     /** The session's delegates: the one check, the list a task sees, the four actions and tools. */
@@ -78,7 +91,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     board,
     /** The model's eight task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
-    /** Whether the running session files now: one of its delegates takes a task, and it isn't a task session. */
+    /** Whether the running session files now: one of its delegates takes a task. A task session files its task's pieces. */
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
@@ -89,11 +102,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The session state the delegates and the board keep, for `installation.session(...)`. */
     sessionStateShape: { ...delegateStateShape, ...conversationBoardStateShape },
     /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
-    serverOwned: [...DELEGATE_SERVER_OWNED, TASK_NOTICES_STATE] as readonly string[],
+    serverOwned: [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED] as readonly string[],
     /**
      * The internal entries the board needs on its flow: a run of the board,
-     * and the notice of a task the session filed. Spread into
-     * `internal: { actions: ... }`.
+     * the notice of a task the session filed, and a split task's settle and
+     * the cancel of its pieces. Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
      *   with a notice as its message.
@@ -103,7 +116,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     entries(turn: BlockDefinition<any, any>, policy: (ctx: BlockContext) => NoticePolicy = () => "judgment") {
       return {
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard },
-        [TASK_SETTLED_ENTRY]: taskSettledEntry({ runBoard: board.runBoard, turn, policy })
+        [TASK_SETTLED_ENTRY]: taskSettledEntry({ runBoard: board.runBoard, turn, policy }),
+        [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
+        [CANCEL_PIECES_ENTRY]: { inputSchema: z.object({}).strict(), block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY }
       };
     }
   };
