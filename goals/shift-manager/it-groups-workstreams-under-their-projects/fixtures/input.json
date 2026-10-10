@@ -1,10 +1,18 @@
 {
-  "composerLine": "Project check: this line is posted from a project's Stream and should be kept by its room.",
-  "ownerLine": "Can someone confirm the release window for the storefront?",
-  "memberLine": "The release window is Thursday afternoon.",
-  "outsiderLine": "An outsider should never get a line into this room.",
-  "burst": { "perMember": 4, "body": "burst line" },
-  "joins": 4,
+  "privateProject": { "title": "Reading list", "brief": "Papers to read before the storefront launch, kept to myself." },
+  "opened": { "owner": "Checkout copy review", "member": "Release notes draft" },
+  "race": {
+    "id": "weekly-sync",
+    "title": "Weekly sync",
+    "opens": 8,
+    "copies": 3,
+    "changes": [
+      { "status": "blocked" },
+      { "due": "2026-12-01" },
+      { "title": "Weekly sync, renamed" },
+      { "objectives": [{ "text": "Agenda sent", "met": true }, { "text": "Notes filed", "met": false }] }
+    ]
+  },
   "cos": {
     "ask": "I need two new projects, please. Call the first one \"{first}\" and add {named} to it as a member. Call the second one \"{second}\", just for me.",
     "titles": ["Launch review", "Pricing research"]

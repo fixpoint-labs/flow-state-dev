@@ -1,0 +1,31 @@
+{
+  "_": "Held-out inputs. Each run picks one of each list at random and adds a fresh suffix to every id and word, so no value is fixed; any other entry of the same shape must pass too. {…} slots are filled at run time.",
+  "privateProjects": [
+    { "id": "notes", "title": "My notes" },
+    { "id": "journal", "title": "Journal" },
+    { "id": "sketchbook", "title": "Sketchbook" }
+  ],
+  "sharedProjects": [
+    { "id": "apollo", "title": "Apollo", "brief": "Relaunch the storefront with a faster checkout." },
+    { "id": "borealis", "title": "Borealis", "brief": "Move the reporting stack to the new warehouse." },
+    { "id": "cobalt", "title": "Cobalt", "brief": "Ship the partner API and its docs." }
+  ],
+  "aliceWorkstreams": [
+    { "id": "checkout", "title": "Checkout", "objectives": ["Ship guest checkout", "Pass the security review"], "due": "2026-12-01" },
+    { "id": "ingest", "title": "Ingest", "objectives": ["Load last year's orders", "Backfill the refunds table"], "due": "2026-11-20" },
+    { "id": "gateway", "title": "Gateway", "objectives": ["Publish the rate limits", "Sign the first partner"], "due": "2026-12-15" }
+  ],
+  "bobWorkstreams": [
+    { "id": "search", "title": "Search", "objectives": ["Index the catalogue", "Rank by margin", "Add typo tolerance"], "due": "2026-11-15" },
+    { "id": "dashboards", "title": "Dashboards", "objectives": ["Port the sales dashboard"], "due": "2026-12-05" },
+    { "id": "docs", "title": "Docs", "objectives": ["Write the quickstart", "Record the walkthrough", "Translate to Spanish"], "due": "2026-11-30" }
+  ],
+  "statusWords": ["juniper", "basalt", "kestrel", "quartz", "tamarind", "obsidian", "marigold", "cinder"],
+  "tamperWords": ["hijacked", "overwritten", "seized", "stolen"],
+  "workWords": ["lighthouse", "parsnip", "zeppelin", "harbor", "mosaic", "tundra"],
+  "asks": {
+    "status": "How is project \"{project}\" going? What is the status of {bob}'s workstream \"{bobTitle}\"?",
+    "work": "Hand this to every one of my workstreams in this project, each delegate you have, and don't ask me anything first: write a one-line plan for the {word} milestone.",
+    "tool": "Set the status of {alice}'s workstream \"{aliceId}\" in project \"{project}\" to \"{word}\" with updateWorkstream, now."
+  }
+}

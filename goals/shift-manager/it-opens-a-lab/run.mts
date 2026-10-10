@@ -234,6 +234,19 @@ type Store = {
   projects: Array<{ id: string; workstreams: string[] }>;
 };
 
+/** The person's `workforce-roster` session, opened once per API. */
+const rosters = new WeakMap<LabApi, Map<string, string>>();
+async function rosterSession(api: LabApi, userId: string): Promise<string | undefined> {
+  const held = rosters.get(api) ?? new Map<string, string>();
+  rosters.set(api, held);
+  if (!held.has(userId)) {
+    const opened = await api.call("POST", "/workforce-roster/sessions", { userId });
+    if (opened.status !== 201) return undefined;
+    held.set(userId, String(opened.body.session.id));
+  }
+  return held.get(userId);
+}
+
 async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
   // The inventory, through the first mailbox's session, by its published key patterns.
   const host = tree.mailboxes[0]!.id;
@@ -244,7 +257,6 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
     )?.ref;
   const seatsRef = refOf("inventory/seats/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
-  const projectsRef = refOf("projects/*");
   const seats = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
   const mailboxes =
     mailboxesRef === undefined
@@ -290,10 +302,16 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
       }
     }
   }
+  // Project rows, through the person's roster session at org scope (a mailbox session no longer publishes them).
+  const reader = await rosterSession(api, userId);
+  const readerManifest = reader === undefined ? undefined : await api.get(`/sessions/${encodeURIComponent(reader)}/manifest`);
+  const projectsRef = (readerManifest?.resources as Array<{ kind: string; ref: string; pattern: string; scope?: string }> | undefined)?.find(
+    (r) => r.kind === "collection" && r.pattern === "projects/*" && r.scope === "org",
+  )?.ref;
   const projects =
-    projectsRef === undefined
+    projectsRef === undefined || reader === undefined
       ? []
-      : (await api.collection(host, projectsRef)).map((r) => ({
+      : (await api.collection(reader, projectsRef)).map((r) => ({
           id: String(r.id),
           workstreams: Array.isArray(r.workstreams) ? (r.workstreams as string[]) : [],
         }));
@@ -475,8 +493,9 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (!(await visible(page, "cos-panel"))) fail("reach", "Chief of Staff has no right panel");
 
     // ---- Project level: PROJECTS' heading opens No project ------------------
-    // No project lists every workstream no project row names. It has no room
-    // and no brief, and says so; its Board draws a lane per board-holding one.
+    // No project lists every workstream no project row names. It has no
+    // project coordinator and no brief, and says so; its Board draws a lane per
+    // board-holding one.
     await page.getByTestId("projects-heading").click();
     const listed = new Set(store.projects.flatMap((p) => p.workstreams));
     const unlisted = store.mailboxes.map((c) => c.id).filter((id) => !listed.has(id));

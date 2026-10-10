@@ -19,7 +19,7 @@ The inventory keeps that record as data: three org-scoped resource collections t
 
 **A row means registered, not open.** It records that a seat or mailbox was registered in this organization. It says nothing about whether that seat is working or that mailbox is open now. Nothing deletes a row for going missing, so a seat or mailbox a later roster no longer names keeps its row. Label rows that way wherever you show them.
 
-The seats are the workers your files declare, the standard workers every user has. A user's own workers, hired or forked while the app runs, aren't listed: they are on that user's [roster](./durable-hire.md), which nobody else reads. One removal remains: when a `MAILBOX.md` becomes a project talk template (`mintFor: projects`), it is no longer a mailbox, so the next `openInventory` removes its mailbox row and membership rows through the `seatWriter`. Discovery never lists a template as a mailbox, even before that boot runs.
+The seats are the workers your files declare, the standard workers every user has. A user's own workers, hired or forked while the app runs, aren't listed: they are on that user's [roster](./durable-hire.md), which nobody else reads.
 
 ## When to use which source
 
@@ -188,8 +188,6 @@ const seatMailboxes = handler({
   openedAt: "2026-09-19T09:14:07.123Z"
 }
 ```
-
-A project's talk session is never a mailbox row. The mailbox rows are the mailboxes you declared, and nothing else.
 
 **Membership:**
 

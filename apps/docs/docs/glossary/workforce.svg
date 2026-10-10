@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 628" role="img" aria-labelledby="title desc">
   <title id="title">Workforce: what each term is made of</title>
-  <desc id="desc">Each Workforce term beside what it is made of. A worker from WORKER.md is a flow instance. A roster row is a row of an org resource collection. A mailbox from MAILBOX.md is a session on the one mailbox flow. A mailbox board is an orchestration task collection. The inventory is three org resource collections. A project is one row of the projects collection. A room is org rows plus one session per person. A workstream is a mailbox plus its boards.</desc>
+  <desc id="desc">Each Workforce term beside what it is made of. A worker from WORKER.md is a flow instance. A roster row is a row of an org resource collection. A mailbox from MAILBOX.md is a session on the one mailbox flow. A mailbox board is an orchestration task collection. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator’s user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, plus its lead’s workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person’s open workstreams.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -92,24 +92,24 @@
   <text x="42" y="454" class="code">a piece of work</text>
   <rect x="344" y="414" width="548" height="52" rx="10" class="card-sess"/>
   <text x="358" y="435" class="tag-sess">RESOURCE COLL.</text>
-  <text x="508" y="435" class="p">One row of projects/*: title, brief, owner, member</text>
-  <text x="508" y="453" class="p">people, and the workstreams it groups.</text>
+  <text x="508" y="435" class="p">One row of projects/*, shared with the org or private</text>
+  <text x="508" y="453" class="p">to its creator: title, brief, owner, members.</text>
   <path d="M296 440 L342 440" class="edge"/>
   <rect x="28" y="476" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="498" class="h">Room</text>
-  <text x="42" y="516" class="code">one per project</text>
+  <text x="42" y="498" class="h">Workstream</text>
+  <text x="42" y="516" class="code">one owner each</text>
   <rect x="344" y="476" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="497" class="tag-sess">ROWS + SESSIONS</text>
-  <text x="508" y="497" class="p">Lines kept as org rows. Each member person reads and</text>
-  <text x="508" y="515" class="p">posts through their own session on the mailbox flow.</text>
+  <text x="358" y="497" class="tag-sess">ENTRY + SESSION</text>
+  <text x="508" y="497" class="p">An entry everyone who reads the project reads and only</text>
+  <text x="508" y="515" class="p">its owner writes, and its lead’s workstream session.</text>
   <path d="M296 502 L342 502" class="edge"/>
   <rect x="28" y="538" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="560" class="h">Workstream</text>
-  <text x="42" y="578" class="code">grouped by a project</text>
+  <text x="42" y="560" class="h">Project coordinator</text>
+  <text x="42" y="578" class="code">one per person per project</text>
   <rect x="344" y="538" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="559" class="tag-org">MAILBOX + BOARDS</text>
-  <text x="508" y="559" class="p">A declared mailbox, by its full id, plus the boards</text>
-  <text x="508" y="577" class="p">it holds. In at most one project.</text>
+  <text x="358" y="559" class="tag-org">WORKER SESSION</text>
+  <text x="508" y="559" class="p">A coordinator worker’s session. Its delegates are</text>
+  <text x="508" y="577" class="p">that person’s open workstreams in the project.</text>
   <path d="M296 564 L342 564" class="edge"/>
   <text x="28" y="612" class="muted">Blue: Core. Purple: Orchestration. Green: made of the Workforce terms above it.</text>
 </svg>

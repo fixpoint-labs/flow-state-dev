@@ -43,3 +43,10 @@ The epic's "about 2,200 lines out" was an estimate; the whole-file removals are 
 lines, with the room branches of the mailbox flow, the DevTeam room parts and the room parts of
 the Shift Manager project view on top. Claims are not removed here
 ([decided, not asked](../../DECISIONS.md#decided-not-asked)).
+
+**V9, after P4 (2026-10-10, on `726955a5` plus P4):** **PASS**, 62 matching files, every one
+classified; all 15 whole-file removals reported deleted (the six room figures went in P4). Ten
+new matches since the first run were classified: eight unrelated uses of the word ("room for one
+more", a test collection named `rooms`, the concept-doc example describing the removal) and two
+that name `setWorkstreams`, which FIX-1792 removes. 49 classified paths no longer match at all,
+reported for re-checking: their room parts are gone. The control: **CONTROL PASS**.

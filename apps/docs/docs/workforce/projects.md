@@ -2,42 +2,49 @@
 title: Projects
 sidebar_position: 9
 sidebar_label: Projects
-description: "A project is a row your organization keeps: a title, a brief, an owner, its members, and the workstreams it groups. Each project has one room its members share, and only its members can read it."
+description: "A project is a body of work, private to one user or shared with the org. Each workstream in it has one owner, and each user talks to it through their own project coordinator."
 ---
 
 # Projects
 
-A workstream is a mailbox you declare in a `MAILBOX.md`, with the boards it holds. A **project** groups workstreams. It answers a question no single mailbox can: which pieces of work belong together, and who is working on them.
+A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row created while the app runs, by your own code or by a worker acting for a person.
 
-A project is data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
+The work inside a project is split into **workstreams**. Each workstream has one owner and a lead worker from that owner's roster. Everyone who can read the project can read every workstream's entry, so anyone can see how the project is going. Only the owner can change their workstream or hand it work.
 
-Each project also has a **room**: one conversation its members share. [The room and talk sessions](#the-room-and-talk-sessions) covers using it, [Setting up the room](#setting-up-the-room) covers which workers answer in it, and [A room or a mailbox](#a-room-or-a-mailbox) compares it with a mailbox.
+Each person talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that person's workstreams.
 
-## How it fits together
+![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each person's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
 
-The organization owns the projects. A project groups the workstreams that belong together and the people on it. Those members share one private room; anyone else in the org can see the project exists, but cannot read the conversation.
+## Private and shared
 
-![A project groups work and gives its people one private room](./project-overview.svg)
+You choose when you create a project.
+
+A **shared** project lives in the organization. Everyone in the org can list it and read its row, its repository included, and every workstream's entry. Its members are the people who may open workstreams in it.
+
+A **private** project lives with you. Nobody else can list, open or read it, its files included, and it shows only in the org you made it in. Its only member is you.
+
+Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
+
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
 | Field | What it holds |
 |-------|---------------|
-| `id` | The project's id, and its key: `projects/<id>`. One path segment. `unassigned` is reserved |
+| `id` | The project's id. One path segment. `unassigned` is reserved |
 | `title` | The project's name |
 | `brief` | What the project is for, or `null` |
 | `status` | A free label. New projects are `"active"` |
-| `ownerUserId` | The person who created it |
-| `members` | Who can read and post in the room. Always includes the owner |
-| `workstreams` | Full mailbox ids of the declared mailboxes it groups, such as `eng.feature` and `ops.release` |
+| `ownerUserId` | The user who created it |
+| `members` | On a shared project, who may open workstreams in it. Always includes the owner. A private project has only its owner |
+| `workstreams` | On a shared project, the declared mailboxes it lists, by full id. See [Mailboxes on a project](#mailboxes-on-a-project) |
 | `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
-| `sessions` | Each member's own talk session on the room, at most one per person |
 
-Everyone in the organization can list the rows. That a project exists isn't a secret. Its room is.
+Each workstream is its own entry, not part of the row, so two owners can update their workstreams at the same time.
 
-## Declaring the collection
+## Declaring the collections
 
-Declare the collection once, at the organization level, in `workforce/org/resources/projects.ts`:
+Declare the shared projects once, at the organization level, in `workforce/org/resources/projects.ts`:
 
 ```ts
 import { defineProjectsCollection } from "@flow-state-dev/workforce";
@@ -45,13 +52,11 @@ import { defineProjectsCollection } from "@flow-state-dev/workforce";
 export default defineProjectsCollection();
 ```
 
-You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
-
-Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [Setting up the room](#setting-up-the-room) covers it.
+`defineProjectsCollection()` is the org's `projects` collection. `definePrivateProjectsCollection()` is the same row at each user's own scope. The project and workstream blocks below declare both, so most apps never declare the private one themselves. You can call either function anywhere you need it: every call returns the same declaration, so they never conflict. Both are shared across flows and readable from the browser, where a user reads the org's shared projects and their own private ones.
 
 ## Creating a project
 
-`defineProjectBlocks()` gives you the project blocks, `createProject`, `setWorkstreams`, `setRepository` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
+`defineProjectBlocks()` gives you the project blocks, `createProject`, `setWorkstreams`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -59,63 +64,84 @@ import { defineProjectBlocks } from "@flow-state-dev/workforce";
 
 const projects = defineProjectBlocks();
 
-export const lab = defineFlow({
-  kind: "lab",
+export const projectsFlow = defineFlow({
+  kind: "projects",
   actions: { ...projects.actions },
 });
 ```
 
-Call `createProject` with an id, a title, and optionally a brief, the other members, the workstreams, and the [repository](#a-projects-code-and-files):
+Call `createProject` with an id, a title, and optionally a brief, a visibility, the other members and the [repository](#a-projects-code-and-files). With no visibility, the project is shared:
+
+```ts
+import { createClient } from "@flow-state-dev/client";
+
+const projects = createClient({ flowKind: "projects", userId });
+
+await projects.sendAction(
+  "createProject",
+  { id: "apollo", title: "Apollo", brief: "Ship the new checkout.", visibility: "shared", members: ["bob"] },
+  { sessionId }
+);
+
+await projects.sendAction("createProject", { id: "notes", title: "My notes", visibility: "private" }, { sessionId });
+```
+
+It returns the row, where it lives, and whether this call wrote it:
 
 ```ts
 {
-  id: "storefront",
-  title: "Storefront",
-  brief: "Ship the new checkout.",
-  members: ["bob"],
-  workstreams: ["eng.feature", "ops.release"],
-  repository: "https://github.com/acme/storefront.git",
+  project: { id: "apollo", title: "Apollo", ownerUserId: "alice", members: ["alice", "bob"], /* … */ },
+  visibility: "shared",
+  created: true,
 }
 ```
 
-The owner is whoever's session ran the call, as the server recorded it. Nothing in the input can name a different owner. The owner is always a member, and `members` lists who else they're letting in.
+The owner is whoever's session sent it, as the server recorded it, never a field you pass. The owner is always a member, and `members` lists who else they're letting in.
 
-The write is a `create`, never an overwrite. An id another owner holds is refused. If the same owner sends the same id again, they get the existing row back, unchanged, with `created: false`. That makes a retried create safe. Two creates of one id sent at the same moment don't share workstreams, so the slower one can be refused with `workstream-claimed`. Send it again and you get the row back.
+The write is a `create`, never an overwrite. If the same owner sends the same id again, they get the existing row back, unchanged, with `created: false`, so a retried create is safe. A refused create writes nothing, and the error is a `ProjectRefusedError` whose `reason` says why:
 
-`setWorkstreams` replaces a project's list of workstreams. Any member can call it.
+| `reason` | When |
+|----------|------|
+| `project-id-held` | Another owner's shared project holds the id |
+| `invalid-project-id` | The id is empty, `unassigned`, or not one path segment |
+| `private-has-members` | A private project names anyone besides its owner |
+| `private-has-workstreams` | A private project lists mailboxes in `workstreams` |
+| `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
 
 ### Default projects from app code
 
 If your app should start with some projects already there, create them from its own code at boot, through the same `createProject` action, when the rows are absent. A re-run finds the row it already made and hands it back, so a second boot changes nothing.
 
-### Giving the writes to a seat
+### Giving the writes to a worker
 
-A seat on the built-in `agent` kind can create projects for the person talking to it. Put the two blocks in the kind's tool catalog, under the names a seat's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
+A worker on the built-in `agent` kind can create projects and open workstreams for the person talking to it. Put the blocks in the kind's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
 
 ```ts
 import { defineAgentWorkerFlow, defineProjectBlocks } from "@flow-state-dev/workforce";
 
 const projects = defineProjectBlocks();
+// workstreams: from defineWorkstreamBlocks, below
 
 const agent = defineAgentWorkerFlow({
+  installation,
   catalog: {
     createProject: projects.createProject.as({
       name: "createProject",
       description: "Create a project for the person you're talking to. They own it; `members` adds the user ids they name.",
     }),
-    setWorkstreams: projects.setWorkstreams.as({
-      name: "setWorkstreams",
-      description: "Replace a project's workstreams with this list of full mailbox ids.",
+    openWorkstream: workstreams.openWorkstream.as({
+      name: "openWorkstream",
+      description: "Open a workstream the person owns in a project, led by a worker on their roster.",
     }),
   },
 });
 ```
 
-`.as()` only renames. If a write should wait for a person's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
+[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a person's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
 
-A seat calls them only when its own `tools:` names them. The owner is the person whose session the seat is answering in, so a project a seat creates belongs to whoever asked for it, and `members` adds the people they name. The talk session `createProject` gets ready is that person's.
+A worker calls them only when its own `tools:` names them. The owner is the person whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
 
-The writes read the organization's [mailbox inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesMailboxInventory` rather than a `defineMailboxInventoryCollection()` of its own:
+`createProject` and `setWorkstreams` read the organization's [mailbox inventory](./inventory.md) to check mailbox ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesMailboxInventory` rather than a `defineMailboxInventoryCollection()` of its own:
 
 ```ts
 import { defineCapability } from "@flow-state-dev/core";
@@ -133,15 +159,235 @@ A second declaration of the inventory beside the writes fails when the flow is b
 Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there. Its `inventory` capability in [Adding one](./chief-of-staff.md#adding-one) is this same declaration, so the setup works with or without the project tools.
+[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
 
-## One project per workstream
+## Workstreams
 
-A workstream belongs to at most one project. Each id must be a mailbox in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.
+A workstream is one area of a project with one owner. It's two things:
 
-A refused write leaves nothing behind. If one workstream is already claimed, the whole write fails, the refusal names that workstream, and any claims the write had already taken are released. Removing a workstream with `setWorkstreams` releases its claim.
+- An **entry** on the project: its title, owner, lead, status, due date, objectives and latest report.
+- Its **workstream session**: a lasting session of the lead worker, owned by the workstream's owner. The lead is usually a worker with delegates it files tasks for, and the session's board holds the workstream's tasks.
 
-A workstream no project lists isn't lost. A UI shows it under **No project**.
+`defineWorkstreamBlocks` builds the workstream writes from your [worker installation](./workers-on-disk.md) and the worker flows a lead can run on:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import {
+  AGENT_KIND,
+  defineProjectBlocks,
+  defineWorkstreamBlocks,
+  WORKSTREAM_OPENED_ENTRY,
+} from "@flow-state-dev/workforce";
+
+// Describes the built-in agent flow (see below).
+const agentLeads = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+
+const projects = defineProjectBlocks();
+const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentLeads] });
+
+export const projectsFlow = defineFlow({
+  kind: "projects",
+  actions: { ...projects.actions, ...workstreams.actions },
+});
+```
+
+It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, and `updateWorkstreamTool` for a lead.
+
+A lead flow must declare the internal entry `workstreamOpenedEntry()` returns, under `internal.actions[WORKSTREAM_OPENED_ENTRY]`. The built-in `agent` flow declares it, and a worker flow of your own spreads it in to let its workers lead. `leadFlows` reads only each flow's `kind` and that entry, so you can pass the flow itself or describe it, as above. A lead flow without the entry is refused when the blocks are built.
+
+### Opening one
+
+Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives:
+
+```ts
+const apollo = { visibility: "shared", id: "apollo" } as const;
+
+await projects.sendAction(
+  "openWorkstream",
+  {
+    project: apollo,
+    id: "checkout",
+    title: "Checkout",
+    lead: "eng-lead",
+    due: "2026-11-30",
+    objectives: ["Ship guest checkout"],
+  },
+  { sessionId }
+);
+```
+
+The entry is yours. Workforce starts the lead's workstream session, also yours, and records its id on the entry. The call returns the entry and whether this call made it:
+
+```ts
+{
+  workstream: {
+    project: { visibility: "shared", id: "apollo" },
+    id: "checkout",
+    owner: "alice",
+    title: "Checkout",
+    lead: "eng-lead",
+    sessionId: "…",
+    status: "on-track",
+    due: "2026-11-30",
+    objectives: [{ text: "Ship guest checkout", met: false, metAt: null, metBy: null }],
+    openedAt: "2026-10-10T09:00:00.000Z",
+    updatedAt: "2026-10-10T09:00:00.000Z",
+    writtenBy: { /* who wrote it last */ },
+  },
+  opened: true,
+}
+```
+
+A workstream id is unique within a project for each owner, so Alice's `checkout` and Bob's `checkout` are two workstreams. Opening your workstream again hands the entry back with `opened: false`, and finishes an earlier open that never got its session started. A refused open writes nothing:
+
+| `reason` | When |
+|----------|------|
+| `no-such-project` | The address names no project you can read |
+| `not-a-member` | On a shared project, you aren't one of its members |
+| `invalid-workstream-id` | The id is empty or holds a `/` |
+| `no-such-worker` | The lead isn't a worker on your roster. Another user's worker is refused the same way |
+| `cannot-lead` | The lead runs on a flow that isn't in `leadFlows` |
+| `lead-differs` | You already have this workstream open, with another lead. A workstream's lead doesn't change |
+| `too-many-workstreams` | You already have 25 open workstreams in the project. Mark one done first. Applies when your installation names a [project coordinator](#talking-to-a-project) |
+
+### Who sees what
+
+Everyone who can read the project reads every entry: its title, owner, lead, status, due date, objectives, latest report, and who last wrote it. Only the owner can change an entry, and only the owner can open the workstream session, its board and its tasks.
+
+Change an entry with `updateWorkstream`. Every field is optional, and what you leave out stays:
+
+```ts
+await projects.sendAction(
+  "updateWorkstream",
+  {
+    project: apollo,
+    id: "checkout",
+    status: "at-risk",
+    objectives: [{ text: "Ship guest checkout", met: false }],
+    report: "Payments sandbox is down.",
+  },
+  { sessionId }
+);
+```
+
+It returns `{ workstream }`, the entry as written.
+
+- **`status`** is a short label in the owner's own words, such as `"on-track"` or `"waiting on legal"`, up to 80 characters. One label has a meaning: `"done"` marks the workstream finished.
+- **`objectives`** is the whole list, each met or not. An objective that was already met keeps when and by whom. One met by this call is stamped now, as you.
+- **`report`** is the latest report. It replaces the previous one.
+
+The entries are an [owner-writes collection](../resources/collections.md#owner-writes-collections), so a write to someone else's entry throws "A row of an owner-writes collection is written only by the user it belongs to." and changes nothing, whichever flow sends it. A workstream you don't have is refused with `no-such-workstream`. A workstream is never deleted: mark it `done` and it stays listed.
+
+**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
+
+```ts
+const agent = defineAgentWorkerFlow({
+  installation,
+  catalog: { updateWorkstream: workstreams.updateWorkstreamTool },
+});
+```
+
+Run in a session that leads no workstream, it's refused with `not-a-workstream-session`.
+
+### Reading a project and its progress
+
+`readProject` takes a project's address and returns the row, every workstream's entry, oldest first, and the project's progress:
+
+```ts
+// input
+{ project: { visibility: "shared", id: "apollo" } }
+
+// output
+{
+  project: { id: "apollo", title: "Apollo", /* … */ },
+  visibility: "shared",
+  workstreams: [/* every entry, as openWorkstream returns one */],
+  progress: {
+    workstreams: 3,
+    byStatus: { "on-track": 1, "at-risk": 1, done: 1 },
+    objectives: { met: 2, total: 5 },
+    nextDue: "2026-11-30",
+    stale: [{ owner: "bob", id: "payments", updatedAt: "2026-09-28T16:02:11.000Z" }],
+  },
+}
+```
+
+Progress is worked out from the entries each time you read it, so it reflects the entries as they are when you read it.
+
+- `byStatus` counts every workstream under its status label, done ones included.
+- `nextDue` is the earliest due date of a workstream that isn't done, overdue ones included, or `null`.
+- `stale` lists the workstreams that aren't done and whose entry hasn't changed for seven days (`STALE_AFTER_MS`), oldest first.
+
+The entries `readProject` returns leave out the reports. A report is the entry's content: read it with the resource client's `getCollectionItemContent(sessionId, "workstreams", key)` (`"privateWorkstreams"` for a private project), where `key` is the entry's storage key.
+
+A browser can read the entries itself through the resource routes. Parse each with `parseWorkstreamEntry(path, state)`, and pass the parsed entries to `projectProgress(entries, Date.now())` for the same counts the server gives. Import all three, with `DONE_STATUS` and `STALE_AFTER_MS`, from `@flow-state-dev/workforce/browser`.
+
+## Talking to a project
+
+Each user talks to a project through their own **project coordinator**: a session of one standard coordinator worker your installation names, one per user per project.
+
+Name the worker when you build the installation. It must be a standard worker on the [`coordinator`](./coordinators.md) flow, or `createWorkerInstallation` throws:
+
+```ts
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => kinds,
+  projectCoordinator: "project-coordinator",
+});
+```
+
+Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
+
+```ts
+import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/workforce";
+
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: { catalog: { ...projectCoordinatorTools } },
+});
+```
+
+```md title="workforce/org/workers/project-coordinator/WORKER.md"
+---
+description: Your coordinator for one project. Says how its workstreams are going, and hands your asks to the workstreams you own there.
+flow: coordinator
+routing: judgment
+tools: [readProject]
+---
+
+When the person asks how the project is going, call `readProject` and answer
+from what it returns. When they ask for work, hand it to the delegate whose
+workstream it belongs to.
+```
+
+Find or start your coordinator for a project with `ensureWorkerSession`, naming the project:
+
+```ts
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+const workforce = createWorkforceClient({ userId });
+const session = await workforce.ensureWorkerSession({
+  worker: "project-coordinator",
+  projectId: { visibility: "shared", id: "apollo" },
+});
+```
+
+The first call starts the session, and every later one returns the same session. Starting one for a project you can't read is refused with a 404, so another user's private project stays invisible.
+
+Your coordinator reads every workstream's entry, so it can answer how the whole project is going. Its delegates are the workstreams you have open in the project: one per workstream, its lead with the workstream as the delegate's target. When you ask it for work, it hands the request to the lead of one of **your** workstreams, inside that workstream's session. It never hands work to another member's workstream. To get something from theirs, read their entry or ask them. If you have no open workstream in the project, it has no delegate to hand work to.
+
+### How its delegates follow your workstreams
+
+You never add or remove a project coordinator's workstream delegates yourself. They follow your workstreams:
+
+- **When you start your coordinator**, its delegates are the workstreams you have open in the project.
+- **When you open a workstream**, `openWorkstream` adds its delegate: the lead, with the workstream's address as the target. If you haven't started your coordinator yet, nothing changes now; it picks the workstream up when it starts.
+- **When you mark a workstream `done`**, `updateWorkstream` removes its delegate. Change the status from `done` to anything else and the delegate comes back. The lead's own `updateWorkstream` tool does the same.
+- **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the hand-off fails with that reason.
+
+A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
 
 ## A project's code and files
 
@@ -156,7 +402,9 @@ A project can name the repository its code lives in. It's a remote, the address 
 { project: { visibility: "shared", id: "storefront" }, repository: null }
 ```
 
-`setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an id no project holds with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+A private project's repository and files are its owner's alone. On a shared project, everyone in the org can read the row, and so the repository's address.
+
+`setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
 
 A value has to be a remote. Both writes refuse these with `invalid-repository`, and the refusal never repeats the value:
 
@@ -171,41 +419,37 @@ A value has to be a remote. Both writes refuse these with `invalid-repository`, 
 
 An SSH login name isn't a credential, so `git@github.com:acme/storefront.git` and `ssh://git@github.com/acme/storefront.git` are both accepted. So is `file:///srv/git/storefront.git`. Give the machine that clones the repository its credentials, rather than putting them in the address.
 
-Stored rows aren't re-parsed when they're read, so a row saved without a `repository` key reads without one. Treat a missing value as `null`, or read rows through `projectRowSchema.parse(row)`, which fills it in.
-
 ### Coding work in a project
 
-When a coding worker picks up work from one of the project's workstreams, it works in a fresh branch of the project's repository, as long as the host running the worker allows that remote. Nobody names a folder. Changing the repository applies to new work. Work already started stays where it began: on the repository it began with, or, if the project had none then, on the project's files.
+When a coding worker picks up work for one of the project's workstreams, it works in a fresh branch of the project's repository, as long as the host running the worker allows that remote. Nobody names a folder. Changing the repository applies to new work. Work already started stays where it began: on the repository it began with, or, if the project had none then, on the project's files.
 
 A project with no repository still runs coding work. The first run starts from an empty set of files, and everything it writes is saved to the [project's files](#the-projects-own-files). The next run starts from what the last one left. If two runs change the same file, the changes are merged; a real conflict is reported on the run instead of overwriting anyone's work. A run isn't marked done until what it wrote is saved: if the last save fails, the attempt fails and the retry saves it.
 
-To get this, build the coding worker's [harness manager](../orchestration/harness-manager.md) on a workspace host (from `@flow-state-dev/workspace`) whose source is `projectWorkspace`, given the same mailbox board the manager works:
+To get this, build the coding worker's [harness manager](../orchestration/harness-manager.md) on a workspace host (from `@flow-state-dev/workspace`) whose source is `projectWorkspace`:
 
 ```ts
 import { harnessManager } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
-import { mailboxBoard, projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
-
-const work = mailboxBoard("eng.feature", "work");
+import { projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
 
 harnessManager({
-  boardCollectionId: work.id,
-  boardCollection: work,
+  // ...the board it works and its other options, as usual
   workspace: localWorkspaceHost({
     root: "/var/fsd/runs",
     remotes: { allow: ["github.com"] },
-    source: projectWorkspace({ board: work }),
+    source: projectWorkspace(),
   }),
   uses: [projectWorkspaceCapability],
-  // ...
 });
 ```
 
-`projectWorkspace` finds the project that holds the board's workstream and reads its row, nothing else. It refuses a run before any file is read when the person the run belongs to isn't one of the project's members (`not-a-member`), or when no project holds the workstream (`no-project`). The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+A run in a workstream's session, or in a task session filed from one, works for that workstream's project. A run works for the workstream's owner: one whose owner is anyone else is refused with `not-the-owner`. For a [mailbox board](#mailboxes-on-a-project) a shared project lists, pass the board as `projectWorkspace({ board })`, and the run works in the project that lists the board's mailbox, for its members only (`not-a-member` otherwise).
+
+Every refusal comes before any file is read: `no-project` when the run's session leads no workstream and no project holds its board, `no-such-workstream` and `no-such-project` when what it names is gone. The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
 
 ### The project's own files
 
-Notes, memory and anything else kept for a project live in the organization's `project-files` collection, under the project's id: `project-files/<projectId>/<path>`. Declare it with `defineProjectFilesCollection()`. Like `defineProjectsCollection()`, every call returns the same declaration. It's org-scoped, shared across flows, and loaded only when read.
+Notes, memory and anything else kept for a project live under the project's id: `project-files/<projectId>/<path>`. A shared project's files are the organization's `project-files` collection, declared with `defineProjectFilesCollection()`. A private project's are the same keys in its owner's own scope, `definePrivateProjectFilesCollection()`. Like the project collections, every call returns the same declaration. Both are shared across flows and loaded only when read.
 
 Only the project's members can list the files, with `readProjectFiles`:
 
@@ -222,133 +466,24 @@ Only the project's members can list the files, with `readProjectFiles`:
 }
 ```
 
-It lists paths and sizes, not file contents. A block's output is recorded in the session log and can reach a model's context, so a listing stays small however large the files are.
+It lists paths and sizes, not file contents.
 
-It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown id with `no-such-project`. The collection has no browser read: a request for it through the collection route gets a 403.
+It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown address with `no-such-project`. Neither collection has a browser read: a request for one through the collection route gets a 403.
 
 In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
 
-## Setting up the room
+## Mailboxes on a project
 
-A room isn't a mailbox you declare. Every project's room is built from one **template**: the workers a post wakes and the charter they work under.
-
-The default template is declared once for the organization, beside the projects collection in `workforce/org/resources/projects.ts`:
+A shared project can also list declared [mailboxes](./mailboxes.md) as workstreams, in its row's `workstreams`, by full mailbox id such as `eng.feature`. Pass them to `createProject`, or replace the list with `setWorkstreams`:
 
 ```ts
-import { defineProjectsCollection } from "@flow-state-dev/workforce";
-
-export default defineProjectsCollection({
-  talk: {
-    seats: ["engineering.lead", "operations.lead"],
-    charter: "Plan the work, and say what is blocked.",
-  },
-});
+await projects.sendAction("setWorkstreams", { projectId: "storefront", workstreams: ["eng.feature", "ops.release"] }, { sessionId });
 ```
 
-A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes. `wakeMemberSeats`, below, wakes a chief of staff on the built-in `agent` flow, but not one on the [`coordinator`](./coordinators.md) flow, which doesn't hear mailbox posts.
+Only members can call `setWorkstreams`, and it works on shared projects only. Each id must be a mailbox in the organization's [inventory](./inventory.md) (`unknown-workstream` otherwise).
 
-Pass the organization's resource map to `mailboxInstances`, so `mailboxInstances` can find the template. `mailboxes` is your mailbox roster ([Opening it](./mailboxes.md#opening-it-and-why-an-unopened-id-is-not-a-mailbox)), and `kinds` carries the mailbox kind built with a notify block, described just below:
+A mailbox belongs to at most one project. If two projects claim the same mailbox at the same moment, exactly one of them gets it, and the other is refused with `workstream-claimed`, naming the mailbox and the project that holds it. A refused write leaves nothing behind. Removing a mailbox from the list frees it for another project.
 
-```ts
-import { mailboxInstances, splitResourceModules } from "@flow-state-dev/workforce";
+A listed mailbox isn't a workstream entry: `readProject`, the project's progress and the project coordinator leave it out.
 
-const { resources } = splitResourceModules(resourceModules);
-const instances = mailboxInstances(mailboxes, { kinds, resources });
-```
-
-An app that doesn't run `fsdev gen` imports the file's default export and passes it in `resources` under a key of its choosing. `fsdev gen` uses `projects`, the basename of `projects.ts`, and so does this example:
-
-```ts
-import projectsCollection from "./workforce/org/resources/projects";
-
-// mailboxes and kinds as in the snippet above
-const instances = mailboxInstances(mailboxes, {
-  kinds,
-  resources: { projects: projectsCollection },
-});
-```
-
-The other arguments are as in the snippet above. If you declare the template in a `MAILBOX.md` instead ([below](#a-template-in-a-mailboxmd)), its `mintFor:` must name the key you passed the collection under (`projects` here).
-
-Rooms run on the built-in mailbox kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
-
-`wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
-
-If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A seat on the built-in `agent` kind in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](./mailboxes.md#waking-agent-seats) shows which members the fallback gets.
-
-If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
-
-### A template in a `MAILBOX.md`
-
-A team can declare the template in a `MAILBOX.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
-
-```md
----
-description: The room every project gets.
-mintFor: projects
-members: [engineering.lead, operations.lead]
----
-
-Plan the work, and say what is blocked.
-```
-
-That file is a template, not a mailbox. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a mailbox, its old session is kept in the store, but every mailbox action on it, including inventory registration, is refused with `mailbox-is-a-template`.
-
-### What a template does
-
-- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the mailbox kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
-- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A member posts and reads through the one talk session the project lists for them, the one `join` returns; any other session is refused with `talk-session-not-listed`. A seat's reply wakes nobody.
-- **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
-- **Rooms aren't in the inventory.** The inventory lists the mailboxes you declared, and no talk session is ever one of its rows.
-
-`mailboxInstances` checks templates along with your mailboxes and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or names something other than the projects collection, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `MAILBOX.md`.
-
-## The room and talk sessions
-
-A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the mailbox kind that knows which project it's about. Every room call goes through one.
-
-A session, the room and a line are three separate things. The session is one person's, the room and its lines are the organization's, and none of them holds a copy of another.
-
-![A talk session holds only which project it is about and belongs to one person. The project row, the room counter and the room lines are organization data. A line stores its number, poster, optional seat author and body.](./project-room-parts.svg)
-
-Posts from every member's session land in the same ordered room.
-
-![Multiple talk sessions, one shared room](./project-room-sessions.svg)
-
-Each member has exactly one talk session on the project, however many windows they open. The row lists one session per person, and every session reaches the same room.
-
-![Alice, Bob and Cara each have one talk session. Alice's two windows share hers. The project row lists one session per person, and all three sessions reach the same single room.](./project-room-handles.svg)
-
-| Call | What it does |
-|------|--------------|
-| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared mailbox's own session can't become one: `join` from it is refused with `talk-on-a-mailbox` |
-| `post { body }` | Adds a line to the room, as you |
-| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
-
-`createProject` gets the creator's talk session ready for them. With a [talk template](#setting-up-the-room) in place, so does any other code that creates a project inside a flow turn, in the same turn. A row your code writes outside a turn gets none. Every other member joins.
-
-Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
-
-When several people post at once, every line lands, in one order everyone sees. A read never skips a line. A line still being written appears on a later read.
-
-### Members only
-
-Only a project's members can read or post in its room. A non-member's `join` is refused with `not-a-member`, binds nothing, and never adds them to `members`. Their `read` or `post` is refused too: with `talk-not-bound` when their session isn't bound to a project, and with `not-a-member` when its state names the project anyway.
-
-Access comes from the project row, never from the session. Every room call checks the caller against the row's `members`. Writing a project id into a session's state grants nothing.
-
-Everyone in the organization can see the row. Only the people in its `members` can get into the room, and `join` never changes who that is.
-
-![Everyone in the organization can list project rows. Only members can read or post in the room, through their own talk session, and every room call checks the session's server-recorded owner against members. Join binds the session and lists it on the row but never adds to members.](./project-room-membership.svg)
-
-Room lines aren't readable from the browser through the collection route. The only way to read them is `read` on a member's talk session.
-
-## A room or a mailbox
-
-![A mailbox and a room compared. Both usually run on the built-in mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot. The mailbox is one session on the mailbox kind, or on the kind its file names, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are workers named in the file, fixed for that mailbox; when the kind has a notify block, a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is never in the inventory. No session is the room: each member of the project has their own talk session on the built-in mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the workers in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them](./mailbox-or-room.svg)
-
-A room and a mailbox usually run on the same built-in mailbox kind, but a mailbox is one declared session that holds its own transcript, and a room is the project's lines in organization data, reached through each member's own talk session. Use a mailbox for a standing topic a team owns. Use the project's room when the people on a piece of work need to talk among themselves.
-
-![How a post travels through a mailbox and through a project's room, as swimlanes with time running left to right. A mailbox: Alice owns the session support.desk, a session on the mailbox kind that holds the transcript. Alice posts, the line is kept in that session, the notify block wakes the worker in its own session keyed mailbox:support.desk, the worker's answer line lands back in support.desk, and Alice reads the transcript. Bob, another user, posts to support.desk and is refused with the same 404 as an unknown session, because the session belongs to Alice. A room: Alice and Bob are members of a project and each has their own talk session. Alice posts from hers, and the line is written to room-lines, organization data that holds the room's transcript. The template worker is woken as Alice, in a conversation it keeps per person, and its answer comes back through Alice's session as the next line in room-lines. Bob reads from his own session and gets both lines. Carol is in the organization but not a member, and her join is refused with not-a-member. Why a session per member: a session acts for one user, and anyone else is refused as if it did not exist, so people share a conversation through a room, each posting from their own session into one organization resource. A mailbox is one session, so only its owner can post to it or read it; it is how workers and one user talk](./mailbox-room-flow.svg)
-
-Why a room needs a session per member: a session acts for one user, and a post from anyone else is refused as if the session did not exist. A mailbox is one session, so only the user who opened it, and the workers it wakes, can post to it. A room is how several people share one conversation.
+A mailbox no project lists isn't lost. Shift Manager shows it under **No project**.
