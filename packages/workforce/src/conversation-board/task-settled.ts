@@ -140,17 +140,28 @@ export function taskSettledEntry(options: TaskSettledOptions) {
           return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
         }
       );
+      const decision = decideNotice(notice, options.policy(ctx as never));
+      // An asked row's ending: resume the turn parked on it, with no line and
+      // no turn. Every copy tries: the gate admits one answer. The owed notice
+      // is what carries the resume across a touch, so it clears only once the
+      // row no longer owes it (the resume was accepted, or the gate had
+      // already been resolved). A resume turned away (`busy`) or thrown, or a
+      // process that dies first, leaves the notice owed, and the board's next
+      // touch sends it again (BR-11). The resolver never resumes itself: it
+      // runs inside a turn.
+      if (decision.act === "resume-ask") {
+        try {
+          await resumeOwedAsks(ctx as never, ref);
+        } catch {
+          // Still owed: the notice stays, for the next touch.
+        }
+        if (ref.get(row.id)?.resumeOwed !== true) await ref.patchMetadata(row.id, clearNotice(notice));
+        await replayRest();
+        return { act: first === true ? "resume-ask" : "none" };
+      }
       // Delivered: the marker clears whichever copy of the notice got here.
       await ref.patchMetadata(row.id, clearNotice(notice));
       await replayRest();
-      const decision = decideNotice(notice, options.policy(ctx as never));
-      // An asked row's ending: resume the turn parked on it. Every copy
-      // tries, since the gate admits one answer and a copy whose resume was
-      // turned away (`busy`) must not leave it owed; no line, no turn.
-      if (decision.act === "resume-ask") {
-        await resumeOwedAsks(ctx as never, ref);
-        return { act: first === true ? "resume-ask" : "none" };
-      }
       if (first !== true) return { act: "none" };
       return {
         act: decision.act,

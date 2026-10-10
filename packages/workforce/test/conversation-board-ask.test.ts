@@ -142,6 +142,49 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
     }
   });
 
+  for (const [label, failOnce] of [
+    ["throws", (): Promise<never> => Promise.reject(new Error("the store blinked"))],
+    ["is turned away as busy", () => Promise.resolve({ ok: false as const, refused: "busy" as const, detail: "another resume holds the turn" })]
+  ] as const) {
+    it(`a resume that ${label} on the notice is retried by the person's next touch, once (BR-11)`, async () => {
+      const judgment = askingJudgment("Count desks", (results) =>
+        results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
+      );
+      const host = await askingHost(judgment.model);
+      try {
+        // The host's ask resume fails the first time it is called, then works.
+        const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { askResume: (input: unknown) => Promise<unknown> };
+        const real = requestHost.askResume;
+        let calls = 0;
+        requestHost.askResume = (input) => (++calls === 1 ? failOnce() : real(input));
+
+        const conv = await host.conversation("alice", "lead");
+        const asked = await host.act("alice", conv, "run", { message: "how many desks?" });
+        expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
+        await host.settled();
+        expect(calls).toBeGreaterThanOrEqual(1);
+        expect(await statusOf(host, asked.requestId!)).toBe("suspended");
+        expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
+
+        // The person looks at the task list: a touch of the board, never a turn.
+        expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
+        expect(await until(async () => (await statusOf(host, asked.requestId!)) === "completed")).toBe(true);
+        await host.settled();
+        expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
+        await host.settled();
+
+        expect(judgment.seen).toHaveLength(2);
+        expect((await host.messages(conv)).filter((m) => m.text === "Thirty desks.")).toHaveLength(1);
+        const [row] = await host.rows("alice");
+        expect(row!.resumeOwed ?? false).toBe(false);
+        const owed = Object.entries(row!.metadata ?? {}).filter(([key, value]) => key.startsWith("noticeOwed:") && value !== null);
+        expect(owed).toEqual([]);
+      } finally {
+        await host.dispose();
+      }
+    });
+  }
+
   it("a task filed without waiting still wakes the judgment turn when it ends", async () => {
     const judgment = mockGenerator({
       script: [
