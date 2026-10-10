@@ -62,14 +62,6 @@ const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) 
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
 
-const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
-  for (const deadline = Date.now() + ms; Date.now() < deadline; ) {
-    if (await check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return check();
-};
-
 describe("V1 · the task session keeps its prompt (S5)", () => {
   it("F1 · a person's later question into a finished task's session is handed the task as filed", async () => {
     const h = host([

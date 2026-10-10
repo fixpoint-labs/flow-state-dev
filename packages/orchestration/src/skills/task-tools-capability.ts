@@ -499,6 +499,15 @@ function notParkedOnQuestion(task: Task) {
         `question. Its run picks up again through that turn. Nothing was written.`,
     };
   }
+  if (task.parkedOnQuestion !== true) {
+    return {
+      ok: false as const,
+      taskId: task.id,
+      error:
+        `not_parked_on_question: task "${task.id}" is parked, but not on its worker's ` +
+        `question (it may be waiting on its own sub-tasks). Nothing was written.`,
+    };
+  }
   return undefined;
 }
 
@@ -519,7 +528,7 @@ const followUpAssigneeError = (followUpOf: string) => ({
 function resolveFollowUp(
   collection: TaskCollectionRef,
   followUpOf: string,
-): { root: string; assignee: string | undefined } | { ok: false; error: string } {
+): { root: string; assignee: string | undefined; id: string } | { ok: false; error: string } {
   const named = collection.get(followUpOf);
   if (named === undefined) {
     return {
@@ -548,8 +557,33 @@ function resolveFollowUp(
         `finishes. Nothing was filed.`,
     };
   }
-  return { root, assignee: collection.get(root)?.assignee ?? named.assignee };
+  // The follow-up's id is the root's, numbered by how many follow-ups it has
+  // had. Two follow-ups filed at once both pass the scan above and pick the
+  // same number, and the ledger's insert takes one id once: the check and the
+  // insert are one atomic write, and the loser is refused naming the winner.
+  const number = collection.list().filter((task) => task.followUpOf === root).length + 1;
+  return { root, assignee: collection.get(root)?.assignee ?? named.assignee, id: `${root}-f${number}` };
 }
+
+/**
+ * Whether an add failed because its id is already on the board: the durable
+ * ledger's create refuses a live key (`resource_already_exists`), the state
+ * backing throws "already exists". Read structurally, so this module takes no
+ * engine dependency.
+ */
+function isTakenTaskId(err: unknown): boolean {
+  if ((err as { code?: unknown } | null)?.code === "resource_already_exists") return true;
+  return err instanceof Error && /already exists/.test(err.message);
+}
+
+/** `addTask`'s refusal for a follow-up whose session took another follow-up first. */
+const followUpBusyError = (id: string, followUpOf: string) => ({
+  ok: false as const,
+  error:
+    `session_has_unfinished_task: task "${id}" is still unfinished in the session ` +
+    `"${followUpOf}" ran in, and a session works one task at a time. Follow up once it ` +
+    `finishes. Nothing was filed.`,
+});
 
 /** Where `parkOnQuestion` reads the row a task turn holds. */
 export interface ParkOnQuestionOptions {
@@ -642,6 +676,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
       const outcome: TaskWriteOutcome | undefined = await ledger.awaitReview(claim.taskId, input.question, {
         claim,
         fromRunning: true,
+        onQuestion: true,
       });
       if (outcome == null || outcome.outcome === "declined") {
         const status = outcome?.status ?? ledger.get(claim.taskId)?.status ?? "unknown";
@@ -886,7 +921,7 @@ function buildTaskTools(
       if (!collection) return noBoardError;
       // The follow-up's checks run before anything is filed, in this board's
       // partition only, so a refusal stores nothing.
-      let followUp: { root: string; assignee: string | undefined } | undefined;
+      let followUp: { root: string; assignee: string | undefined; id: string } | undefined;
       if (input.followUpOf !== undefined) {
         const resolved = resolveFollowUp(collection, input.followUpOf);
         if ("error" in resolved) return resolved;
@@ -912,7 +947,7 @@ function buildTaskTools(
       const init = {
         goal: input.goal,
         ...(assignee !== undefined ? { assignee } : {}),
-        ...(followUp !== undefined ? { followUpOf: followUp.root } : {}),
+        ...(followUp !== undefined ? { id: followUp.id, followUpOf: followUp.root } : {}),
         ...(input.deps !== undefined ? { deps: input.deps } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
@@ -937,6 +972,9 @@ function buildTaskTools(
         // to free enqueue slots, or stop planning at the lifetime ceiling. Every
         // other throw still propagates.
         if (err instanceof TaskCapExceededError) return capError(err);
+        // A follow-up's id was taken by one filed at the same moment: that
+        // one holds the session now (see `resolveFollowUp`).
+        if (followUp !== undefined && isTakenTaskId(err)) return followUpBusyError(followUp.id, input.followUpOf!);
         throw err;
       }
     },
@@ -1126,15 +1164,36 @@ function buildTaskTools(
       if (!task) return taskNotFoundError(input.taskId);
       const refused = notParkedOnQuestion(task);
       if (refused !== undefined) return refused;
-      // No claim is presented: an answer is the board writer's move, never a
-      // worker's. The fenced `unpark` refuses a row that left `parked` since
-      // the read above, inside its own write.
+      // The question this answer is for is the park read above, on its
+      // attempt: the write is fenced by a ticket minted from that read, so an
+      // answer that arrives after the task was answered, ran again and parked
+      // on a newer question is refused inside the atomic write rather than
+      // taken as the newer question's answer. Server-derived: the row, never
+      // input. The fenced `unpark` also refuses a row that left `parked`.
       const outcome: TaskWriteOutcome | undefined = await collection.unpark(input.taskId, input.answer, {
         answer: true,
+        claim: ticketForClaim(collection.collectionId, task, collection.partition),
       });
       if (outcome != null && outcome.outcome === "declined") {
         if (outcome.reason === "terminal") return declinedWriteToolError(input.taskId, outcome, STATUS_CLAUSE);
-        return notParkedOnQuestion({ ...task, status: outcome.status, parkedForTurn: undefined })!;
+        if (outcome.status === "parked") {
+          return {
+            ok: false as const,
+            taskId: input.taskId,
+            error:
+              `not_parked_on_question: task "${input.taskId}" has moved on to a newer question ` +
+              `since this answer was given. Nothing was written.`,
+          };
+        }
+        return (
+          notParkedOnQuestion({ ...task, status: outcome.status }) ?? {
+            ok: false as const,
+            taskId: input.taskId,
+            error:
+              `task_write_declined: the answer to task "${input.taskId}" was refused ` +
+              `(${outcome.reason}); the task is ${outcome.status}. Nothing was written.`,
+          }
+        );
       }
       return { ok: true as const };
     },

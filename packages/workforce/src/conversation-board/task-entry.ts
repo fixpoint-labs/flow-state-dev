@@ -53,7 +53,8 @@ export function taskMessage(task: TaskWorkerInput): string {
  * What a task turn says (FIX-1817): the answer to the worker's question on
  * the attempt that answer re-queued, labelled as one, and the task as filed
  * on every other attempt. A retry after a failure is handed the task again,
- * never an answer.
+ * never an answer. Shares its invariant with `packWorkerInput`'s `answer`
+ * (orchestration `worker-step.ts`, `answer-envelope.test.ts`).
  */
 export function taskTurnMessage(task: TaskWorkerInput): string {
   if (task.answer !== undefined) return `Answer to your question:\n\n${task.answer}`;

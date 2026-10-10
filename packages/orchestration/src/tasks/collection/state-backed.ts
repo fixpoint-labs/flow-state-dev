@@ -700,7 +700,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "parked",
         "review_requested",
-        () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
+        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
         fenced ? { ...options, ifAllowed: true } : options,
         fenced ? "in_progress" : undefined
       );

@@ -112,7 +112,7 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
       const park = /\[park:([^\]]+)\]/.exec(message);
       if (park !== null && attempt === 1 && held !== undefined) {
-        await tasks!.awaitReview(taskId, park[1], { claim: ticketForClaim(tasks!.collectionId, held, partition) });
+        await tasks!.awaitReview(taskId, park[1], { claim: ticketForClaim(tasks!.collectionId, held, partition), onQuestion: true });
         return "parked";
       }
       return `${worker.id} did: ${message}`;

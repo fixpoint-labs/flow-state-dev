@@ -132,15 +132,21 @@ export function readTurnReentries(task: Task): number {
 
 /**
  * The fields `awaitReview` writes besides the status. `feedback` is written
- * unconditionally (a park with no reason clears the note), and the turn mark
- * is set only for a park a person's turn caused, so a question park never
- * inherits an earlier one.
+ * unconditionally (a park with no reason clears the note); the turn mark is
+ * set only for a park a person's turn caused, and the question mark only for
+ * a worker's question (FIX-1817), so no park inherits an earlier one's.
  */
 export function parkPatch(
   feedback: string | undefined,
-  forTurn: boolean | undefined
+  forTurn: boolean | undefined,
+  onQuestion?: boolean
 ): Partial<Task> {
-  return { feedback, parkedForTurn: forTurn === true ? true : undefined, answered: undefined };
+  return {
+    feedback,
+    parkedForTurn: forTurn === true ? true : undefined,
+    parkedOnQuestion: onQuestion === true ? true : undefined,
+    answered: undefined,
+  };
 }
 
 /**
@@ -156,6 +162,7 @@ export function unparkPatch(task: Task, feedback: string | undefined, answer = f
     leaseUntil: undefined,
     claimedBy: undefined,
     parkedForTurn: undefined,
+    parkedOnQuestion: undefined,
     answered: answer ? true : undefined,
     ...(task.parkedForTurn === true || answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
   };

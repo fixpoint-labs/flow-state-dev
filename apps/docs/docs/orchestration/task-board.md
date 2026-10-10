@@ -234,7 +234,7 @@ Whichever drain gets there first claims the task and runs it, exactly as if it h
 await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
-It moves the task back to `pending` with the answer, like `unparkAndDrain`, but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` declines a task that isn't parked, and one parked for a person's turn, writing nothing.
+It moves the task back to `pending` with the answer, like `unparkAndDrain`, but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, one parked for a person's turn or waiting on its own sub-tasks included, and an answer that arrives after the task has moved on to a newer question, writing nothing.
 
 The worker's side is `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
 

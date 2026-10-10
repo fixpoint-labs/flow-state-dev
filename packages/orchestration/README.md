@@ -768,8 +768,11 @@ rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
 the task goes back to `pending` with the answer, its next attempt gets it as
 `input.answer`, and the claim that follows isn't charged against `maxAttempts`.
-It declines a task that isn't parked (`not_parked_on_question: …`), one parked for
-a person's turn, and a finished one (`terminal_task_write_declined: …`). It
+It takes only a task its worker parked with `parkOnQuestion`, for the question it
+is waiting on now. It declines any other task, one parked for a person's turn or
+waiting on its own sub-tasks included, and a late answer to a question the task has
+moved past (`not_parked_on_question: …`), and a finished one
+(`terminal_task_write_declined: …`). It
 doesn't drain the board: on a Workforce conversation's board the task starts on
 its own; on your own board, drain it afterwards.
 

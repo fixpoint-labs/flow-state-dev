@@ -362,6 +362,11 @@ export interface AwaitReviewOptions extends TaskTransitionOptions {
    */
   fromRunning?: boolean;
   /**
+   * The park is the worker's question (FIX-1817, `parkOnQuestion`): marks the
+   * row `parkedOnQuestion`, the one kind of park `answerTask` answers.
+   */
+  onQuestion?: boolean;
+  /**
    * The holder parks the row for its own reasons, not to ask anyone anything
    * (FIX-1794 P2): a task waiting on pieces it handed out, say. A ledger's
    * ending recorder is told so (`TaskEnding`'s `quiet`), so a composing layer

@@ -17,7 +17,8 @@ import {
   taskToolsForTurn,
   DELEGATION_BOARD_FIELD,
 } from "../../src/skills/task-tools-capability";
-import { ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { createResourceBackedTaskCollection, ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { createCapturedChanges, createFakeResourceCollection } from "../helpers";
 import { buildDelegationCtx } from "./delegation-ctx";
 
 function toolNamed(tools: readonly unknown[], name: string): GeneratorTool {
@@ -43,11 +44,21 @@ async function board(tasks: Task[]) {
  * turn's session and request; answers the context of that task turn: a task
  * session (its server-set `taskId`) on that request.
  */
-async function claimAsGate(ref: TaskCollectionRef, id: string, base: object) {
+async function claimAsGate(ref: TaskCollectionRef, id: string, base: object, requestId = "r-turn") {
   const claimed = (await ref.claim("w", { eligibility: (t) => t.id === id }))!;
   const ticket = ticketForClaim(DELEGATION_BOARD_FIELD, claimed);
-  await ref.linkRun(id, { sessionId: "s-task", requestId: "r-turn", attempt: claimed.attempts }, { claim: ticket });
-  return turnCtx(base, "r-turn");
+  await ref.linkRun(id, { sessionId: "s-task", requestId, attempt: claimed.attempts }, { claim: ticket });
+  return turnCtx(base, requestId);
+}
+
+/**
+ * `answerTask` as a caller whose pre-read saw `asOf`: the tool runs with a
+ * board whose `get` answers that row, so its write is the late one.
+ */
+async function answerAsOf(b: Awaited<ReturnType<typeof board>>, asOf: Task, answer: string) {
+  const stale = { ...b.ref, get: (id: string) => (id === asOf.id ? asOf : b.ref.get(id)) } as TaskCollectionRef;
+  const tools = buildTaskToolsList(async () => stale);
+  return runForTest(toolNamed(tools, "answerTask"), { taskId: asOf.id, answer }, b.ctx) as Promise<any>;
 }
 
 /** `base` as a turn of the task session on request `requestId`. */
@@ -65,13 +76,13 @@ describe("answerTask (S2)", () => {
   });
 
   it("re-queues a task parked on a question with the answer, counted as a re-entry (BR-6, BR-8)", async () => {
-    const b = await board([row("t", { status: "parked", feedback: "Which region?", attempts: 1, maxAttempts: 1 })]);
+    const b = await board([row("t", { status: "parked", parkedOnQuestion: true, feedback: "Which region?", attempts: 1, maxAttempts: 1 })]);
     expect(await b.call("answerTask", { taskId: "t", answer: "eu-west" })).toEqual({ ok: true });
     expect(b.get("t")).toMatchObject({ status: "pending", feedback: "eu-west", answered: true, turnReentries: 1 });
   });
 
   it("declines a second answer, naming the status, and re-queues nothing (BR-9)", async () => {
-    const b = await board([row("t", { status: "parked", feedback: "Which region?", attempts: 1 })]);
+    const b = await board([row("t", { status: "parked", parkedOnQuestion: true, feedback: "Which region?", attempts: 1 })]);
     await b.call("answerTask", { taskId: "t", answer: "eu-west" });
     const second = await b.call("answerTask", { taskId: "t", answer: "us-east" });
     expect(second).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: .*pending/) });
@@ -106,6 +117,35 @@ describe("answerTask (S2)", () => {
       expect(b.get("t")!.status).toBe(status);
     }
   );
+
+  it("declines a quiet park, such as a task waiting on its pieces, as not_parked_on_question, writing nothing", async () => {
+    const b = await board([row("t", { assignee: "w" })]);
+    const claimed = (await b.ref.claim("w"))!;
+    await b.ref.awaitReview("t", undefined, { claim: ticketForClaim(DELEGATION_BOARD_FIELD, claimed), quiet: true });
+    const before = JSON.stringify(b.get("t"));
+    const out = await b.call("answerTask", { taskId: "t", answer: "eu-west" });
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: /) });
+    expect(JSON.stringify(b.get("t"))).toBe(before);
+  });
+
+  it("refuses a stale answer that arrives after the task re-parked on a newer question, leaving that question parked", async () => {
+    const park = createParkOnQuestion({ resolve: (ctx) => defaultOwnStateResolver(ctx) });
+    const b = await board([row("t", { assignee: "w", maxAttempts: 3 })]);
+    const first = await claimAsGate(b.ref, "t", b.ctx);
+    await runForTest(park.tool, { question: "Which region?" }, first as never);
+    // Two answers to "Which region?" leave together; the first lands.
+    const stale = b.get("t")!;
+    expect(await b.call("answerTask", { taskId: "t", answer: "eu-west" })).toEqual({ ok: true });
+    // The task runs again and parks on a newer question.
+    const second = await claimAsGate(b.ref, "t", b.ctx, "r-turn-2");
+    await runForTest(park.tool, { question: "Which account?" }, second as never);
+    expect(b.get("t")).toMatchObject({ status: "parked", feedback: "Which account?" });
+    expect(b.get("t")!.attempts).toBeGreaterThan(stale.attempts);
+    // The late answer to the first question, read against the row as it stood then.
+    const late = await answerAsOf(b, stale, "us-east");
+    expect(late).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: /) });
+    expect(b.get("t")).toMatchObject({ status: "parked", feedback: "Which account?" });
+  });
 
   it("answers an unknown task as not found: another board's rows are unknown here (BR-11)", async () => {
     const b = await board([]);
@@ -172,6 +212,26 @@ describe("addTask's followUpOf (S4)", () => {
     const assigned = (await runForTest(addTask, { goal: "next", followUpOf: "root", assignee: "x", waitForResponse: true }, ctx)) as any;
     expect(assigned).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee/) });
     expect(b.ref.list()).toHaveLength(1);
+  });
+
+  it("accepts one of two follow-ups filed at once, and refuses the other naming it (BR-25, concurrent)", async () => {
+    // A durable ledger: its insert takes an id once, as the stores do.
+    const ref = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: createFakeResourceCollection(),
+      onChange: createCapturedChanges().onChange
+    });
+    await ref.addTask({ id: "root", goal: "do root", status: "completed", assignee: "researcher" });
+    const tools = buildTaskToolsList(async () => ref);
+    const { ctx } = buildDelegationCtx({ self: false });
+    const file = (goal: string) => runForTest(toolNamed(tools, "addTask"), { goal, followUpOf: "root" }, ctx) as Promise<any>;
+    const [one, two] = await Promise.all([file("first"), file("second")]);
+    const accepted = [one, two].filter((r) => r.ok === true);
+    const refused = [one, two].filter((r) => r.ok === false);
+    expect(accepted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(refused[0].error).toMatch(new RegExp(`^session_has_unfinished_task: task "${accepted[0].taskId}"`));
+    expect(ref.list().filter((t) => t.followUpOf === "root")).toHaveLength(1);
   });
 
   it("refuses while the session has an unfinished task, naming it (BR-25)", async () => {

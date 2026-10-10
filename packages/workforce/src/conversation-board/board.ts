@@ -16,9 +16,9 @@
  *   one that takes a task now: the same list the roster reads, read on every
  *   call, server-side. A task session files nothing yet (FIX-1802 P2 lifts
  *   that with the split).
- * - **The tools and the actions.** Orchestration's eight task tools, on the
+ * - **The tools and the actions.** Orchestration's nine task tools, on the
  *   model's turn and as public actions, over one resolver and one roster. The
- *   tools are one capability whose eight are on a turn only while the session
+ *   tools are one capability whose nine are on a turn only while the session
  *   files, read per call. The resolver is the running session's own board,
  *   and none while it doesn't file, so an action answers
  *   `no_delegation_board`. The roster is the session's delegates that take a
@@ -382,8 +382,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     .tap(afterRun);
 
   /**
-   * The eight task tools for the model's turn: one capability instance, whose
-   * eight are on a turn only while the session files, read before each model
+   * The nine task tools for the model's turn: one capability instance, whose
+   * nine are on a turn only while the session files, read before each model
    * call. Orchestration's own tools over this board's resolver and roster;
    * `controlTools`, as Orchestration's capability carries them, so a worker's
    * `tools:` line doesn't fence them out.
@@ -407,7 +407,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     runBoard,
     files,
     tools,
-    /** The eight task tools as public actions, `<tool>_tasks`. */
+    /** The nine task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster),
     /** The ledger, for the flow's `resources`. */
     resources: conversationLedgerResources

@@ -146,6 +146,18 @@ export const taskSchema = z.object({
   answered: z.boolean().optional(),
 
   /**
+   * The row is parked on its worker's question (FIX-1817): set by the park
+   * `parkOnQuestion` writes (`awaitReview(..., { onQuestion: true })`),
+   * cleared by every other park and by `unpark`. Only such a row takes an
+   * answer, so a park for any other reason (a person's turn, a task waiting
+   * on its pieces) can't be answered as a question.
+   *
+   * Top level and server-written for `abandonments`' reason (BP-031): no
+   * caller-writable surface reaches it. **Absent reads as false** (BP-030).
+   */
+  parkedOnQuestion: z.boolean().optional(),
+
+  /**
    * The finished task this one follows up (FIX-1817): its root, never another
    * follow-up, so a chain of follow-ups names one task. A follow-up runs in
    * that task's session, with its worker. Written once, by the add that files
