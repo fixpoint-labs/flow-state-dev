@@ -215,6 +215,14 @@ export const runRecordStateSchema = z.object({
    * attempts. Never set while {@link place} is `null` (BR-27).
    */
   held: heldSchema.nullable().default(null),
+  /**
+   * The question the run last parked its row on, on a board read from the
+   * claim, where the row itself carries the question to the person and gives
+   * back only the answer. The next attempt pairs the answer with it in its
+   * prompt. Kept across attempts. Absent on a fixed board, whose questions are
+   * kept in its inbox, and on a record written before it existed (BP-030).
+   */
+  question: z.string().nullable().optional(),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */

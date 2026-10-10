@@ -583,6 +583,12 @@ const managerStateSchema = z.object({
    */
   previousSessionId: z.string().nullable().default(null),
   /**
+   * The question the run last parked its row on, read off its run record
+   * when the attempt opened. Only a board read from the claim keeps it there;
+   * it is what the person's answer is paired with in the prompt.
+   */
+  askedQuestion: z.string().nullable().default(null),
+  /**
    * The checkout lease this attempt holds, as a VALUE — see
    * `CheckoutLease.token`.
    *
@@ -1577,6 +1583,32 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   };
 
   /**
+   * Park the row on a question, on a board read from the claim: the board's
+   * own question park, under this attempt's claim, as a conversation's board
+   * parks any task's question. The conversation tells the person, and their
+   * answer re-queues the row with it (`input.answer` on the next attempt).
+   * The question is kept on the run record first, so the next attempt can
+   * pair the answer with it. No inbox row and no announcement: those are the
+   * fixed board's channel.
+   */
+  const parkOnBoardQuestion = async (ctx: BlockContext, identity: AttemptIdentity, question: string): Promise<void> => {
+    await fenced(writeRunRow(ctx, identity, { question }), "the run's question was recorded");
+    const board = await runBoard(ctx);
+    const row = board.get(identity.taskId);
+    const parked =
+      row === undefined
+        ? undefined
+        : await board.awaitReview(identity.taskId, question, {
+            claim: { ...ticketForClaim(board.collectionId, row, board.partition), attempt: identity.attempt },
+            fromRunning: true,
+            onQuestion: true,
+          });
+    if (parked == null || parked.outcome === "declined") {
+      throw new HarnessAttemptSuperseded("the run parked on its question");
+    }
+  };
+
+  /**
    * Park the row for the run's owner: its held work cannot be used here. The
    * place goes `lost`, the pack is marked so nothing ever drops it, the owner
    * is asked through the run's own inbox, and the operator's log names the run
@@ -1600,11 +1632,15 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     await ctx.sequencer!.patchState({ held });
 
     const question = mismatchQuestion(mismatch.field, state.held?.attempt ?? null);
-    const topicKey = questionTopic(state.issue!, state.phase!, identity.attempt, questionFingerprint(question));
-    await askQuestion(ctx, topicKey, { question, askedBy: identity.taskId, askedAt: Date.now() });
-    const board = await boardTasks(ctx);
-    await board.awaitReview(identity.taskId, question);
-    await announce({ question: topicKey });
+    if (state.claim !== null) {
+      await parkOnBoardQuestion(ctx, identity, question);
+    } else {
+      const topicKey = questionTopic(state.issue!, state.phase!, identity.attempt, questionFingerprint(question));
+      await askQuestion(ctx, topicKey, { question, askedBy: identity.taskId, askedAt: Date.now() });
+      const board = await boardTasks(ctx);
+      await board.awaitReview(identity.taskId, question);
+      await announce({ question: topicKey });
+    }
     console.warn(
       `[harness-manager] run ${identity.topic} (task ${identity.taskId}, attempt ${identity.attempt}): ` +
         `held work does not match its record (${mismatch.field}); parked for the run's owner.`,
@@ -1821,7 +1857,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // sent one the vendor could not honour — so this attempt starts fresh
       // rather than asking for a dead id again.
       const previousSessionId = recorded?.sessionId ?? null;
-      await ctx.sequencer!.patchState({ previousSessionId });
+      await ctx.sequencer!.patchState({ previousSessionId, askedQuestion: recorded?.question ?? null });
 
       // **Refusal stops the attempt.** The row can be reclaimed between the
       // runner's start gate and this call, and a discarded refusal let the
@@ -1896,9 +1932,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // Read here rather than inside the builder so the ORDER is the manager's:
       // a fold whose order depends on where a phase happens to sort is a prompt
       // that changes between replays.
+      //
+      // On a board read from the claim the answer comes back on the row: the
+      // attempt it re-queued is handed it as `answer` (and, by the board's
+      // packing, as `feedback` too, which is dropped here for the reason
+      // above). It is paired with the question the run record kept.
+      const boardAnswer = state.claim !== null ? input.answer : undefined;
       const answers =
         state.claim !== null
-          ? []
+          ? boardAnswer === undefined
+            ? []
+            : [{ question: state.askedQuestion ?? "(the question your last attempt asked)", answer: boardAnswer }]
           : (await listQuestions(ctx, state.issue!, state.phase!))
               .filter((row) => row.state.status === "answered" && row.state.answer !== null)
               .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
@@ -1910,7 +1954,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         attempt: input.attempts,
         workspacePath: state.workspacePath!,
         branch: state.branch!,
-        ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
+        ...(input.feedback !== undefined && boardAnswer === undefined ? { feedback: input.feedback } : {}),
         ctx,
         task: {
           goal: input.goal,
@@ -2186,8 +2230,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // file is still on disk, and a fixed path makes an attempt that quietly
       // did nothing look exactly like an attempt that asked.
       const question = await readAskMarker(state.workspacePath!, identity.attempt);
+      // The inbox is the fixed board's: a board read from the claim keeps no
+      // inbox row, so there is nothing to create here or to withdraw in arm 3.
       const questionTopicKey =
-        question === undefined
+        question === undefined || state.claim !== null
           ? undefined
           : questionTopic(
               state.issue!,
@@ -2213,6 +2259,14 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       };
 
       // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
+      if (succeeded && question !== undefined && state.claim !== null) {
+        await parkOnBoardQuestion(ctx, identity, question);
+        return {
+          issue: state.issue!,
+          phase: state.phase!,
+          sessionId: handle.sessionId,
+        };
+      }
       if (succeeded && question !== undefined && questionTopicKey !== undefined) {
         const board = await boardTasks(ctx);
         // The substrate's own transition, never a status this lab writes by
