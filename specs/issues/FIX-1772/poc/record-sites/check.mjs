@@ -42,6 +42,7 @@ const READERS = {
   "packages/contracts/src/items/canonical-log.ts": "dedupe: chooses which copy survives; reads ids and status, not output",
   "packages/core/src/blocks/internal/find-block-trace.ts": "ids only: builds ref descriptors",
   "packages/engine/src/context/createExecutionContext.ts": "usage only: reads modelUsage",
+  "packages/engine/src/streaming/recorded-value.ts": "the record limit: picks which live item types carry a recorded value; reads no saved item",
 };
 
 const WRITER_RE = /type:\s*"tool_output"(\s+as\s+const)?\s*,/;

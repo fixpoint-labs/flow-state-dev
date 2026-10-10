@@ -730,6 +730,9 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     // The turn ended without its gate resolving (a stop that ended it before
     // its replay reached the ask).
     await h.stores.request.setFieldsIfStatus(requestId, { status: "aborted" }, ["suspended"], Date.now());
+    // A deadline already past still gives the gate 1 ms to run, so a tick in
+    // the same millisecond would find it not yet due.
+    await new Promise((resolve) => setTimeout(resolve, 5));
 
     const pending = await runTick(tickArgs(h));
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
