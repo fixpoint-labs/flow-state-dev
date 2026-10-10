@@ -635,6 +635,12 @@ export interface OpenLabOptions {
    * missing the goal doesn't close as completed".
    */
   withoutJudge?: boolean;
+  /**
+   * Give the coder its `work` entry as it was before it took a conversation's
+   * tasks: rows from the feature board only. The red state of "a
+   * conversation's task for the coder runs, and the conversation hears it".
+   */
+  featureDoorOnly?: boolean;
 }
 
 /** A workspace host for the lab to build: where its places live, and which remotes it may reach. */
@@ -924,6 +930,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     answerWorkspace: answerHost,
     answerPhase: defineAnswerPhase({ seatOf: coderSeatOf }),
     ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
+    ...(options.featureDoorOnly === true ? { featureDoorOnly: true } : {}),
     ...(emRecords[0] === undefined ? {} : { coordinatorFlow: EM_KIND }),
     // What a files run starts on, kept so its done-condition asks for a change.
     harness: (feeds) =>

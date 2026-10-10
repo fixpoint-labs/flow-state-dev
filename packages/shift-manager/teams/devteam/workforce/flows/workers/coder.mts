@@ -44,7 +44,7 @@
  * through the installation, never `ctx.flow.config`.
  */
 
-import { defineFlow, router } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, router } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import {
@@ -56,7 +56,7 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { assertHandOffBlockSupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { assertHandOffBlockSupported, taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
@@ -136,6 +136,12 @@ export interface CoderWorkerFlowOptions {
    * nothing would re-run its board.
    */
   coordinatorFlow?: string;
+  /**
+   * A goal control's seam: the `work` entry as it was before this kind took a
+   * conversation's tasks, taking rows from the feature board only. Never set
+   * by a host that serves people.
+   */
+  featureDoorOnly?: boolean;
 }
 
 /** True when a task names feature work's `issue` or `phase`. */
@@ -248,6 +254,17 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     },
   });
 
+  // The control's entry: the implement manager behind a door that resolves the
+  // feature board's id and nothing else, so a conversation's task never reaches it.
+  const featureDoorOnly = () => ({
+    block: implement,
+    from: taskLedgers({
+      name: `${CODER_KIND}-feature-door`,
+      resolve: async (id, ctx) => (id === ledger.id ? featureTasks(ctx as BlockContext) : undefined),
+      uses: [defineCapability({ name: `${CODER_KIND}-feature-ledger`, resources: { [ledger.id]: ledger.collection } })],
+    }),
+  });
+
   return defineFlow({
     kind: CODER_KIND,
     // Registered once, at its kind, which is what the coordinator's
@@ -272,11 +289,14 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // id, and any conversation's tasks, handed over under its board's.
     task: {
       actions: {
-        [WORK_ENTRY]: workerTaskEntry({
-          name: `${CODER_KIND}-${WORK_ENTRY}`,
-          block: byTask,
-          mailboxLists: [ledger],
-        }),
+        [WORK_ENTRY]:
+          options.featureDoorOnly === true
+            ? featureDoorOnly()
+            : workerTaskEntry({
+                name: `${CODER_KIND}-${WORK_ENTRY}`,
+                block: byTask,
+                mailboxLists: [ledger],
+              }),
       },
     },
   } as never);
