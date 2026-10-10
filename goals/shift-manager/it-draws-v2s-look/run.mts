@@ -651,22 +651,30 @@ const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
 async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
-  const host = roster.mailboxes[0]!.id;
-  const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
-  const seatsRef = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-    (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
-  )?.ref;
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
+  // The inventory, read through the first of the person's sessions whose flow declares it.
+  let seatsAt: { host: string; ref: string } | undefined;
+  for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
+    if (session.parentSessionId != null) continue;
+    const manifest = await api.get(`/sessions/${encodeURIComponent(String(session.id))}/manifest`);
+    const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
+      (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+    )?.ref;
+    if (ref !== undefined) {
+      seatsAt = { host: String(session.id), ref };
+      break;
+    }
+  }
   // A seat's name is its address after the team: `<team>.<name>` (the tree's convention).
   const seats =
-    seatsRef === undefined
+    seatsAt === undefined
       ? []
-      : (await api.collection(host, seatsRef)).map((r) => {
+      : (await api.collection(seatsAt.host, seatsAt.ref)).map((r) => {
           const id = String(r.id);
           return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
   // The person's pending asks on the seats' sessions, by seat ("" for a session naming none).
   // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
-  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const asks = new Map<string, number>();
   for (const ask of await pendingSeatAsks(api, listing.sessions ?? [], seats)) asks.set(ask.seatId ?? "", (asks.get(ask.seatId ?? "") ?? 0) + 1);
   const mailboxes: Store["mailboxes"] = {};
@@ -830,7 +838,8 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     if (injected?.userId === undefined) throw new Error(`${lab}: the page was handed no userId`);
     const api = labApi(served.origin, injected.bearerToken);
     const roster = await readDeclaredRoster(LABS[lab].tree);
-    const mailbox = roster.mailboxes[0]!.id;
+    // The desk declares no mailbox, so has no workstream, and opens no workstream screen.
+    const mailbox = roster.mailboxes[0]?.id ?? "";
 
     let taskId: string | null = null;
     let screens: readonly Screen[];

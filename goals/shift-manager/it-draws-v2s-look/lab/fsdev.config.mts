@@ -1,33 +1,36 @@
 /**
  * The look check's desk Lab, as Shift Manager's command loads it: one
- * team, `desk`, whose one worker, `chief-of-staff`, runs on the one copy of
- * the built-in `agent` flow the installation registers (its WORKER.md names
+ * team, `desk`, whose worker `chief-of-staff` runs on the one copy of the
+ * built-in `agent` flow the installation registers (its WORKER.md names
  * `flow: agent`), with no flow of its own: its sessions are on that copy and
- * name it in their state. One mailbox with one board, and the organization's
- * inventory open so the seat's row names its door. In-memory stores and no
- * credential, so every start is fresh.
+ * name it in their state. Beside it, `desk.front`, a worker on Workforce's
+ * `coordinator` flow whose one delegate is the chief of staff. The
+ * organization's inventory is open, written from a small `inventory-writer`
+ * flow, so each worker's row names its door. In-memory stores and no
+ * credential, so every start is fresh. Nothing files a task, so no
+ * conversation board holds a row.
  *
- * No model key: the seat's model is `@flow-state-dev/testing`'s mock resolver
- * with one scripted reply, read from the check's fixture. The check sends one
- * line through the seat's door and reads the screen once the reply is stored;
- * a second generator call has no script and fails rather than inventing one.
+ * No model key: the worker's model is `@flow-state-dev/testing`'s mock
+ * resolver with one scripted reply, read from the check's fixture. The check
+ * sends one line through the chief of staff's door and reads the screen once
+ * the reply is stored; a second generator call has no script and fails
+ * rather than inventing one.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { defineFlow, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
-  MAILBOX_KIND,
-  mailboxBoardIds,
-  mailboxInstances,
-  defineMailboxFlow,
+  AGENT_KIND,
+  COORDINATOR_KIND,
+  defineAgentWorkerFlow,
+  defineCoordinatorFlow,
   inventorySeats,
-  openMailboxes,
+  inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
-  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { installWorkers } from "../../../lib/workers.mts";
@@ -35,21 +38,40 @@ import { installWorkers } from "../../../lib/workers.mts";
 /** The one person this Lab runs as. */
 export const USER_ID = "u_look_goal";
 
+/**
+ * The model best fit's one evaluator call would run on. `desk.front` routes
+ * to everyone and never makes that call, but the flow names no default.
+ */
+const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+
+/** The flow the inventory's worker rows are written from. */
+const INVENTORY_WRITER_KIND = "inventory-writer";
+
 const fixture = JSON.parse(readFileSync(fileURLToPath(new URL("../fixtures/input.json", import.meta.url)), "utf8")) as {
   desk: { reply: string };
 };
 
 const tree = await readDeclaredRoster(fileURLToPath(new URL("./workforce", import.meta.url)));
 if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
-// The seat's model, as its WORKER.md names it: the one id the mock answers for.
+// The chief of staff's model, as its WORKER.md names it: the one id the mock answers for.
 const modelId = tree.workers.map((w) => w.declared.model).find((m): m is string => typeof m === "string");
 if (modelId === undefined) throw new Error("the desk tree's chief of staff names no model");
 
-const { installation, copies } = installWorkers(tree.workers, () => ({}), { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
-const mailboxKind = defineMailboxFlow({ inventory: true });
+const { installation, copies } = installWorkers(tree.workers, (installation) => {
+  const agent = defineAgentWorkerFlow({ installation });
+  return {
+    [AGENT_KIND]: agent,
+    [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
+  };
+});
+// The worker-row write takes caller-supplied rows, so it is internal only.
+const writer = defineFlow({
+  kind: INVENTORY_WRITER_KIND,
+  internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+} as never) as unknown as FlowInstance;
 const flows: Record<string, FlowInstance> = {
-  ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
   ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  [INVENTORY_WRITER_KIND]: writer,
 };
 const flowState = createFlowState({
   flows,
@@ -61,39 +83,9 @@ const flowState = createFlowState({
   devtool: { userId: USER_ID },
 } as never);
 
-const router = (await flowState.getRouter()) as Record<string, (r: Request, c: unknown) => Promise<Response>>;
-const call = async (method: "GET" | "POST" | "DELETE", path: string[], body?: unknown) => {
-  const response = await router[method]!(
-    new Request(`http://look-goal.local/api/flows/${path.map(encodeURIComponent).join("/")}`, {
-      method,
-      headers: { "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-    { params: { path } },
-  );
-  const text = await response.text();
-  return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
-};
-const client: OpenMailboxesOptions["client"] = {
-  createSession: async (create) => {
-    const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
-    if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
-    return body;
-  },
-  getSession: async (sessionId) => {
-    const { status, body } = await call("GET", ["sessions", sessionId]);
-    if (status >= 400) throw new Error(`read session ${sessionId}: ${status}`);
-    return body?.session ?? body;
-  },
-  deleteSession: async (sessionId) => {
-    await call("DELETE", ["sessions", sessionId]);
-  },
-};
-await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
-
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
+  { seats: inventorySeats(installation), mailboxes: [] },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({
@@ -110,7 +102,7 @@ const opened = await openInventory(
       if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
       return result;
     },
-    seatWriter: { flowKind: MAILBOX_KIND },
+    seatWriter: { flowKind: INVENTORY_WRITER_KIND },
     userId: USER_ID,
     orgId: DEFAULT_ORG_ID,
   },
