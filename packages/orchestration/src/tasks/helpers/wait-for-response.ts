@@ -298,7 +298,7 @@ export async function addTaskAndWait(
     await clearMarker();
     if (recorded === undefined) return answerOf(filed.taskId, outcomeOf(row));
     if (!recorded.answered && recorded.error.code === "wait_timed_out") {
-      return row.status === "cancelled" ? answerOf(filed.taskId, recorded) : answerOf(filed.taskId, outcomeOf(row));
+      return endedInTime(row, filed.deadline) ? answerOf(filed.taskId, outcomeOf(row)) : answerOf(filed.taskId, recorded);
     }
     return answerOf(filed.taskId, recorded);
   }
@@ -321,7 +321,7 @@ export async function addTaskAndWait(
       // A row cancelled (by anyone) is not such an ending: the gate recorded a
       // timeout, and a timeout it stays.
       const ended = cancelled ? undefined : collection.get(filed.taskId);
-      if (ended !== undefined && isTerminalStatus(ended.status) && ended.status !== "cancelled") {
+      if (ended !== undefined && endedInTime(ended, filed.deadline)) {
         await clearMarker();
         return answerOf(filed.taskId, outcomeOf(ended));
       }
@@ -329,6 +329,17 @@ export async function addTaskAndWait(
     await clearMarker();
     return { ok: false, error: error.code, taskId: filed.taskId, message: error.message };
   }
+}
+
+/**
+ * Whether a timed-out ask's row ended on its own in time to answer instead:
+ * completed or failed (a cancel, by anyone, leaves the timeout standing), at
+ * or before the ask's deadline by the row's own ending time. A row with no
+ * ending time leaves the timeout standing too.
+ */
+function endedInTime(row: Pick<Task, "status" | "completedAt">, deadline: number): boolean {
+  if (row.status !== "completed" && row.status !== "errored") return false;
+  return row.completedAt != null && row.completedAt <= deadline;
 }
 
 /** The reason an ask's own timeout cancels its row with. A record for people, never read back. */

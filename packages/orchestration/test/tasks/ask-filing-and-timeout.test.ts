@@ -24,6 +24,10 @@ function boardCtx(): BlockContext {
   } as unknown as BlockContext;
 }
 
+/** The boards' clock: real time, moved on by `lateBy` where a test needs the colleague to finish late. */
+let lateBy = 0;
+const boardClock = () => Date.now() + lateBy;
+
 const BACKINGS: Record<string, () => Promise<TaskCollectionRef>> = {
   resource: async () => {
     const declared = defineTaskCollection({ id: "asks", scope: "user" });
@@ -32,7 +36,8 @@ const BACKINGS: Record<string, () => Promise<TaskCollectionRef>> = {
       ctx: boardCtx(),
       backing: "resource",
       collectionId: "asks",
-      collection: store as ResourceCollectionRef<JsonObject>
+      collection: store as ResourceCollectionRef<JsonObject>,
+      now: boardClock
     });
   },
   state: async () =>
@@ -40,7 +45,8 @@ const BACKINGS: Record<string, () => Promise<TaskCollectionRef>> = {
       ctx: boardCtx(),
       backing: "state",
       state: createFakeSequencerState<Record<string, unknown>>({ tasks: {} }),
-      collectionId: "asks"
+      collectionId: "asks",
+      now: boardClock
     })
 };
 
@@ -164,6 +170,32 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
       expect(result).toMatchObject({ ok: true, answer: "Yes, renewed 2026-08" });
       expect(board.list()[0]).toMatchObject({ status: "completed" });
+    });
+
+    it("an ask whose row completed after its deadline, just before the timeout's cancel, stays wait_timed_out", async () => {
+      const board = await build();
+      let reads = 0;
+      const racing = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        addTask: async (row: Parameters<TaskCollectionRef["addTask"]>[0]) => {
+          const added = await board.addTask(row);
+          await board.claim("researcher-worker");
+          // The colleague finishes ten minutes on, past the five-minute deadline.
+          lateBy = 10 * 60_000;
+          await board.complete(added.id, "too late");
+          return added;
+        },
+        get: (id: string) => {
+          const row = board.get(id);
+          reads += 1;
+          return reads <= 2 && row !== undefined ? { ...row, status: "in_progress" } : row;
+        }
+      }) as TaskCollectionRef;
+      try {
+        const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
+        expect(result).toMatchObject({ ok: false, error: "wait_timed_out" });
+      } finally {
+        lateBy = 0;
+      }
     });
   });
 }

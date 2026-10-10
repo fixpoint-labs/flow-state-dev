@@ -272,6 +272,33 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
   });
 
+  for (const [label, offset, expected] of [
+    ["after the deadline: the recorded timeout stands", 6 * 60_000, "wait_timed_out"],
+    ["before the deadline: its answer comes back late", 0, "the late answer"]
+  ] as const) {
+    it(`a timed-out ask whose row then completed ${label}, after a re-drive`, async () => {
+      const seen: GeneratorModelCallOptions[] = [];
+      const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+      // The sweep timed the ask out; the colleague's row completed (when, varies); the process died.
+      await provider.suspend({
+        ...gate,
+        status: "submitted",
+        resolvedAt: Date.now(),
+        resolvedBy: "sweep",
+        resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+      });
+      const real = Date.now.bind(Date);
+      vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
+      await act(before, flowBefore, "settle", { outcome: { kind: "complete", output: "the late answer" } });
+      vi.restoreAllMocks();
+      await before.dispose();
+
+      const { after } = await restart(filename, seen);
+      await until(after, requestId, "completed");
+      expect(toolResults(seen[1]!.messages)).toContain(expected);
+    });
+  }
+
   it("an answered ask killed before its turn continued is driven on to completion, once (V9)", async () => {
     const seen: GeneratorModelCallOptions[] = [];
     const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
