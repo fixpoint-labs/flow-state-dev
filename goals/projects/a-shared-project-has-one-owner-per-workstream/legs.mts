@@ -410,22 +410,34 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   writes.push(`the app's updateWorkstream: ${viaAction.status}, ${viaAction.error?.slice(0, 160) ?? "no error"}`);
   if (viaAction.status === "completed" || !refusedBy(viaAction.error, OWNER_RULE)) landed.push(`the app's updateWorkstream ${viaAction.status} (${viaAction.error ?? "no refusal"})`);
 
-  // (2) A registered flow's code writing the row.
-  const viaFlow = await act(bob, ENTRY_WRITER_KIND, `goal-entry-writer-${bob.person.userId}`, ENTRY_WRITER_ACTION, {
-    project: shared,
-    owner: alice.person.userId,
-    id: d.aliceWs.id,
-    status: d.tamperWord,
-    report: `Bob wrote this: ${d.tamperWord}`,
-  });
+  // (2) A registered flow's code writing the rows. Alice first plants a sacrificial row under her own key,
+  // so Bob's delete has a real row to remove; she takes it back out after.
+  const writer = (who: Connected, mode: "plant" | "tamper" | "unplant") =>
+    act(who, ENTRY_WRITER_KIND, `goal-entry-writer-${who.person.userId}`, ENTRY_WRITER_ACTION, {
+      project: shared,
+      owner: alice.person.userId,
+      id: d.aliceWs.id,
+      status: d.tamperWord,
+      report: `Bob wrote this: ${d.tamperWord}`,
+      mode,
+    });
+  const plantedId = `${d.aliceWs.id}-planted`;
+  const hasPlanted = async () => (await entriesOf(alice, reader.alice, S.id)).some((e) => e.owner === alice.person.userId && e.id === plantedId);
+  const plant = await writer(alice, "plant");
+  if (plant.status !== "completed" || plant.output?.plant !== "landed" || !(await hasPlanted())) {
+    throw new Error(`setup: Alice couldn't plant "${plantedId}" under her own key: ${plant.status} ${show(plant.output ?? plant.error)}`);
+  }
+  const viaFlow = await writer(bob, "tamper");
   writes.push(`goal-entry-writer: ${viaFlow.status}, ${show(viaFlow.output ?? viaFlow.error)}`);
   if (viaFlow.status !== "completed") throw new Error(`setup: the registered goal-entry-writer flow didn't run: ${viaFlow.status} ${viaFlow.error}`);
-  for (const path of ["status", "report", "createUnderOwner"] as const) {
+  for (const path of ["status", "report", "deletePlanted", "createUnderOwner"] as const) {
     const said = String(viaFlow.output?.[path] ?? "missing");
     if (!refusedBy(said, OWNER_RULE)) landed.push(`goal-entry-writer's ${path} write: ${said.slice(0, 160)}`);
   }
-  // A delete of the planted row only counts when its create landed: with nothing there, a delete changes nothing.
-  if (viaFlow.output?.createUnderOwner === "landed" && viaFlow.output?.deleteUnderOwner === "landed") landed.push("goal-entry-writer's create-then-delete under her key");
+  // The delete is graded on the row too: her planted row must still be there.
+  if (!(await hasPlanted())) landed.push(`Bob's delete removed Alice's planted row "${plantedId}"`);
+  const unplant = await writer(alice, "unplant");
+  if (await hasPlanted()) throw new Error(`setup: Alice couldn't remove her planted row "${plantedId}": ${show(unplant.output ?? unplant.error)}`);
 
   // (3) A worker's tool: Bob's own lead, asked to change her workstream. Its tool writes the workstream its session leads.
   const toolAsk = fill(d.asks.tool, { alice: alice.person.userId, aliceId: d.aliceWs.id, project: S.id, word: d.tamperWord });

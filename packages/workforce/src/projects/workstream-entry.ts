@@ -53,7 +53,7 @@ export const workstreamEntryShape = {
   /** The lead's workstream session, the owner's. `null` until the open that made the entry has made it. */
   sessionId: z.string().nullable().default(null),
   /** A label in the owner's words; `"done"` marks it finished. Stored trimmed. */
-  status: z.string().min(1).max(WORKSTREAM_STATUS_MAX_LENGTH).default("on-track"),
+  status: workstreamStatusSchema.default("on-track"),
   due: workstreamDueSchema.nullable().default(null),
   objectives: z.array(workstreamObjectiveSchema).default([]),
   /** When it was opened, by the server's clock. */

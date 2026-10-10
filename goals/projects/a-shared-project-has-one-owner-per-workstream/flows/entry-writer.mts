@@ -6,13 +6,19 @@
  * with Workforce's own declaration (`WORKSTREAM_RESOURCES`), and is reached
  * over HTTP as the caller, like every other flow there.
  *
- * Its one action, `writeEntry`, tries each write a flow can make to the entry
- * at `{ project, owner, id }` and reports, per write, `landed` or
- * `refused: <message>`. None is destructive to an entry that already exists:
- * a status change, a report, and a create of a second entry under the same
- * owner's key that the same call then deletes. So a write the store lets
- * through (as under `GOAL_CONTROL=no-owner-rule`) changes the owner's entry
- * visibly and leaves the project's count as it was.
+ * Its action, `writeEntry`, runs in one of three modes and reports, per
+ * write, `landed` or `refused: <message>`:
+ *
+ * - `plant`: the owner makes a sacrificial row, `<id>-planted`, under their
+ *   own key, so a cross-owner delete has a real row to remove.
+ * - `tamper`: each write a flow can make to another owner's rows: a status
+ *   change and a report on the entry at `{ project, owner, id }`, a delete of
+ *   the planted row, and a create of a second row under the owner's key that
+ *   the same call then deletes. None touches the entry itself destructively,
+ *   so a write the store lets through (as under `GOAL_CONTROL=no-owner-rule`)
+ *   changes the owner's entry visibly and leaves the rest of the leg readable.
+ * - `unplant`: the owner removes the planted row, so the project's count is
+ *   back to its opened workstreams.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -31,10 +37,11 @@ const inputSchema = z.object({
   id: z.string().min(1),
   status: z.string().min(1),
   report: z.string().min(1),
+  mode: z.enum(["plant", "tamper", "unplant"]),
 });
 
-/** What each write came to, by name. */
-export type EntryWrites = { status: string; report: string; createUnderOwner: string; deleteUnderOwner: string };
+/** What each write came to, by name; only the mode's own writes are present. */
+export type EntryWrites = Partial<Record<"plant" | "unplant" | "status" | "report" | "deletePlanted" | "createUnderOwner", string>>;
 
 const writeEntry = handler({
   name: "goal-write-entry",
@@ -46,6 +53,7 @@ const writeEntry = handler({
     const entries = (ctx.resources as Record<string, unknown>)[name] as ResourceCollectionRef;
     const key = workstreamEntryKey(input.project.id, input.owner, input.id);
     const planted = workstreamEntryKey(input.project.id, input.owner, `${input.id}-planted`);
+    const created = workstreamEntryKey(input.project.id, input.owner, `${input.id}-created`);
     const attempt = async (run: () => Promise<unknown>) => {
       try {
         await run();
@@ -56,14 +64,18 @@ const writeEntry = handler({
     };
     const at = new Date().toISOString();
     const signed = { writtenBy: { userId: ctx.session.identity.userId ?? "" } };
-    return {
+    const row = (title: string) => ({ title, lead: "nobody", sessionId: null, openedAt: at, updatedAt: at, ...signed }) as never;
+    if (input.mode === "plant") return { plant: await attempt(() => entries.create(planted, row("planted"))) };
+    if (input.mode === "unplant") return { unplant: await attempt(() => entries.delete(planted)) };
+    const writes: EntryWrites = {
       status: await attempt(async () => (await entries.get(key)).updateState((s: any) => ({ ...s, status: input.status, ...signed }))),
       report: await attempt(async () => (await entries.get(key)).writeContent(input.report)),
-      createUnderOwner: await attempt(() =>
-        entries.create(planted, { title: "planted", lead: "nobody", sessionId: null, openedAt: at, updatedAt: at, ...signed } as never),
-      ),
-      deleteUnderOwner: await attempt(() => entries.delete(planted)),
+      deletePlanted: await attempt(() => entries.delete(planted)),
+      createUnderOwner: await attempt(() => entries.create(created, row("created"))),
     };
+    // Whatever landed is taken back out, so the project's count stays the opened workstreams.
+    if (writes.createUnderOwner === "landed") await attempt(() => entries.delete(created));
+    return writes;
   },
 });
 
