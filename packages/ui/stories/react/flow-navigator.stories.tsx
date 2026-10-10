@@ -14,7 +14,7 @@ import {
 
 /*
  * The tree the rail-layout fix was found on: three collection kinds, a
- * singleton whose one session is a channel, and engine-minted session ids with
+ * singleton with one session, and engine-minted session ids with
  * no title. The `long` copy and its session have labels too long for a narrow
  * rail.
  */
@@ -117,7 +117,7 @@ export const Failed: Story = {
 };
 
 /**
- * Kinds with their copies, and a singleton whose session is a channel, with a
+ * Kinds with their copies, and a singleton with one session, with a
  * host's copy, refresh and new-session buttons in the slots. Open rows to
  * list their sessions; `support.otto` has none yet.
  */
