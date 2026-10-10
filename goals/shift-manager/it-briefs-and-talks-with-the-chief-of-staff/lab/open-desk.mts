@@ -1,33 +1,39 @@
 /**
  * The goal's fixture Labs, opened the way Shift Manager's command loads
- * one: a tree with one team, `desk`, whose seats run the turn goal's `asker`
- * kind or the built-in `agent` kind with a real model, in one mailbox with one
- * board. Each kind is one registered copy that every seat naming it runs on,
- * and a seat's sessions name it in their state. The organization's inventory
- * is open, so each seat's row names its door. In-memory stores and no credential, so every start is fresh. The check
- * raises the asks itself, through the Lab's own action route, so the Lab
- * reopens them when they are answered.
+ * one: a tree with one team, `desk`, whose workers run the turn goal's `asker`
+ * kind or the built-in `agent` kind with a real model, beside one coordinator,
+ * `desk.front`, on Workforce's `coordinator` flow, whose delegates are the
+ * desk's other workers. Each kind is one registered copy that every worker
+ * naming it runs on, and a worker's sessions name it in their state. The
+ * organization's inventory is open, written from a small `inventory-writer`
+ * flow, so each worker's row names its door. In-memory stores and no
+ * credential, so every start is fresh. The check raises the asks itself,
+ * through the Lab's own action route, so the Lab reopens them when they are
+ * answered.
+ *
+ * Nothing here files a task: the asker takes no posts and no tasks, and the
+ * check posts nothing to `desk.front`. A post to it would reach the chief of
+ * staff, whose `agent` flow takes delegated posts.
  *
  * Two configs open it: `lab/fsdev.config.mts` over the desk with its
- * `chief-of-staff` seat, and `lab-no-cos/fsdev.config.mts` over a desk that
+ * `chief-of-staff` worker, and `lab-no-cos/fsdev.config.mts` over a desk that
  * declares none.
  *
  * The model is resolved by the framework's resolver from the environment
  * (`AI_GATEWAY_API_KEY` routes `openai/gpt-5.4-mini` through the gateway).
  */
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createModelResolver, DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { createModelResolver, defineFlow, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  MAILBOX_KIND,
-  mailboxBoardIds,
-  mailboxInstances,
-  defineMailboxFlow,
+  AGENT_KIND,
+  COORDINATOR_KIND,
+  defineAgentWorkerFlow,
+  defineCoordinatorFlow,
   inventorySeats,
-  openMailboxes,
+  inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
-  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { installWorkers } from "../../../lib/workers.mts";
@@ -35,6 +41,15 @@ import { ASKER_KIND, defineAskerFlow } from "../../it-sends-a-turn-into-a-seat-s
 
 /** The one person this Lab runs as. */
 export const USER_ID = "u_cos_goal";
+
+/**
+ * The model best fit's one evaluator call would run on. `desk.front` routes
+ * to everyone and never makes that call, but the flow names no default.
+ */
+const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+
+/** The flow the inventory's worker rows are written from. */
+const INVENTORY_WRITER_KIND = "inventory-writer";
 
 /**
  * Open the desk Lab over the tree at `root`.
@@ -46,13 +61,22 @@ export async function openDesk(root: string) {
   const tree = await readDeclaredRoster(root);
   if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
 
-  const { installation, copies } = installWorkers(tree.workers, (installation) => ({ [ASKER_KIND]: defineAskerFlow(installation) }), {
-    mailboxBoards: mailboxBoardIds(tree.mailboxes),
+  const { installation, copies } = installWorkers(tree.workers, (installation) => {
+    const agent = defineAgentWorkerFlow({ installation });
+    return {
+      [ASKER_KIND]: defineAskerFlow(installation),
+      [AGENT_KIND]: agent,
+      [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
+    };
   });
-  const mailboxKind = defineMailboxFlow({ inventory: true });
+  // The worker-row write takes caller-supplied rows, so it is internal only.
+  const writer = defineFlow({
+    kind: INVENTORY_WRITER_KIND,
+    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+  } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
-    ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    [INVENTORY_WRITER_KIND]: writer,
   };
   const flowState = createFlowState({
     flows,
@@ -62,39 +86,9 @@ export async function openDesk(root: string) {
     devtool: { userId: USER_ID },
   } as never);
 
-  const router = (await flowState.getRouter()) as Record<string, (r: Request, c: unknown) => Promise<Response>>;
-  const call = async (method: "GET" | "POST" | "DELETE", path: string[], body?: unknown) => {
-    const response = await router[method]!(
-      new Request(`http://cos-goal.local/api/flows/${path.map(encodeURIComponent).join("/")}`, {
-        method,
-        headers: { "content-type": "application/json" },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      }),
-      { params: { path } },
-    );
-    const text = await response.text();
-    return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
-  };
-  const client: OpenMailboxesOptions["client"] = {
-    createSession: async (create) => {
-      const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
-      if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
-      return body;
-    },
-    getSession: async (sessionId) => {
-      const { status, body } = await call("GET", ["sessions", sessionId]);
-      if (status >= 400) throw new Error(`read session ${sessionId}: ${status}`);
-      return body?.session ?? body;
-    },
-    deleteSession: async (sessionId) => {
-      await call("DELETE", ["sessions", sessionId]);
-    },
-  };
-  await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
-
   const runtime = await flowState.getRuntime();
   const opened = await openInventory(
-    { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
+    { seats: inventorySeats(installation), mailboxes: [] },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({
@@ -111,7 +105,7 @@ export async function openDesk(root: string) {
         if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
         return result;
       },
-      seatWriter: { flowKind: MAILBOX_KIND },
+      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
     },

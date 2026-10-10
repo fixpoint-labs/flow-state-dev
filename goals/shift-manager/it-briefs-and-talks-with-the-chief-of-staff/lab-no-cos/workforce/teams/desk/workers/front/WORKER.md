@@ -1,7 +1,8 @@
 ---
 description: Where the desk takes requests.
-members: [desk.chief-of-staff]
-boards: [work]
+flow: coordinator
+delegates: [desk.asker]
+routing: everyone
 ---
 
 Requests land here.
