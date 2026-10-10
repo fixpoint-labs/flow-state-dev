@@ -38,3 +38,15 @@ export function noteAskDeadline(provider: DurabilityProvider, deadline: number):
 export function hasAskSweeper(provider: DurabilityProvider): boolean {
   return (listeners.get(provider)?.size ?? 0) > 0;
 }
+
+/**
+ * Install the fact on a host's request-host inputs, read as each request
+ * starts (`RequestHost.hasAskSweeper`). The one installer both host paths use
+ * (`createFlowState`, and a router built directly), so they can't drift.
+ */
+export function installAskSweeperFact(
+  requestHost: { askSweeper?: () => boolean },
+  provider: DurabilityProvider
+): void {
+  requestHost.askSweeper ??= () => hasAskSweeper(provider);
+}

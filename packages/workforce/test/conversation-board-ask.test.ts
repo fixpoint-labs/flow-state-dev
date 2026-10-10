@@ -12,7 +12,8 @@
 import { describe, expect, it } from "vitest";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
-import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { runAction } from "@flow-state-dev/engine";
+import { bootBoardHost, messageOf, ORG, type BoardHost } from "./conversation-board-harness";
 
 /** What each tool call returned, in the messages a model call is handed. */
 function toolResults(messages: unknown): string {
@@ -184,6 +185,56 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
       }
     });
   }
+
+  it("a board run whose resume throws still delivers another row's owed notice", async () => {
+    const judgment = askingJudgment("Count chairs", () => "unused");
+    const host = await askingHost(judgment.model);
+    try {
+      // Every resume fails: the asked row keeps owing its turn.
+      const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { askResume: (input: unknown) => Promise<unknown> };
+      requestHost.askResume = () => Promise.reject(new Error("the store blinked"));
+
+      const conv = await host.conversation("alice", "lead");
+      await host.act("alice", conv, "run", { message: "how many chairs?" });
+      expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
+      await host.settled();
+      expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
+
+      // A second task, filed without waiting, whose notice is lost on the way: it is owed only on its row.
+      const lost = await host.loseDispatches("onTaskSettled");
+      const filed = await host.act("alice", conv, "addTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      const tables = (filed.output as { taskId: string }).taskId;
+      expect(await until(async () => (await host.rows("alice")).find((r) => r.id === tables)?.status === "completed")).toBe(true);
+      await host.settled();
+      lost.restore();
+      const owedOn = async (id: string) =>
+        Object.entries((await host.rows("alice")).find((r) => r.id === id)!.metadata ?? {}).filter(
+          ([key, value]) => key.startsWith("noticeOwed:") && value !== null
+        );
+      expect(await owedOn(tables)).toHaveLength(1);
+
+      // A run of the board, with no touch before it: its after-run step resumes, which throws, and then replays.
+      const runtime = await host.state.getRuntime();
+      const run = await runAction({
+        flow: host.instances.coordinator!,
+        actionName: "runTaskBoard",
+        input: {},
+        userId: "alice",
+        orgId: ORG,
+        sessionId: conv,
+        source: "internal",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      } as never);
+      expect(run.error, messageOf(run.error)).toBeUndefined();
+      await host.settled();
+      expect(await owedOn(tables)).toEqual([]);
+      expect((await host.rows("alice")).find((r) => r.id !== tables)!.resumeOwed).toBe(true);
+    } finally {
+      await host.dispose();
+    }
+  });
 
   it("a task filed without waiting still wakes the judgment turn when it ends", async () => {
     const judgment = mockGenerator({

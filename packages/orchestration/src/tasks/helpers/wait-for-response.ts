@@ -322,7 +322,8 @@ export type ResumeOwedReport = {
  * and stops at once when there are none. For each owed row it resumes the turn with the row's ending, through
  * the request host, which only reaches this conversation's own gates. The
  * marker clears when the resume is accepted, or refused because the gate was
- * already resolved. It stays when the gate cannot be found (the turn has not
+ * already resolved. It stays when the resume throws (never rethrown, so one
+ * row can't stop a touch), when the gate cannot be found (the turn has not
  * parked yet, and clears it itself on reaching the ended row) or another
  * resume holds the turn (`busy`); the next touch tries again.
  */
@@ -340,7 +341,16 @@ export async function resumeOwedAsks(
       stillOwed.push(row.id);
       continue;
     }
-    const result = await host.resumeAsk({ gateId: row.ask.gateId, outcome: outcomeOf(row) });
+    let result: Awaited<ReturnType<NonNullable<typeof host.resumeAsk>>>;
+    try {
+      result = await host.resumeAsk({ gateId: row.ask.gateId, outcome: outcomeOf(row) });
+    } catch {
+      // One row's failed resume stays owed for the next touch, and never
+      // stops the rest of the touch: the other rows, or the notices a board
+      // run sends after it.
+      stillOwed.push(row.id);
+      continue;
+    }
     if (result.ok || result.refused === "already-resolved") {
       await collection.clearResumeOwed(row.id);
       if (result.ok) resumed.push(row.id);

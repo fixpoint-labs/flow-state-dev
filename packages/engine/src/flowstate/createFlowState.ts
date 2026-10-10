@@ -53,7 +53,7 @@ import {
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
-import { hasAskSweeper } from "../durability/ask-deadlines";
+import { installAskSweeperFact } from "../durability/ask-deadlines";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1091,7 +1091,7 @@ class InternalFlowState<TSettings extends object>
     // host, the same terms.
     // Whether an ask parked under this host is bounded: a durability sweeper
     // listens on this provider in this process (the router builds it).
-    requestHost.askSweeper ??= () => hasAskSweeper(provider);
+    installAskSweeperFact(requestHost, provider);
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,

@@ -7,7 +7,8 @@
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createFlowState, inMemoryStores, runAction } from "../src";
+import { createFlowApiRouter, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
+import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 const probe = handler({
   name: "probe",
@@ -64,5 +65,37 @@ describe("RequestHost.hasAskSweeper", () => {
 
   it("is false without durable execution", async () => {
     expect(await probeWith({ durable: false, router: true })).toEqual({ hasAskSweeper: false, resumeAsk: false });
+  });
+
+  it("is true on a router built directly with durable execution, whose sweeper runs: no FlowState in between", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      leases: stores.leases,
+      suspensions: stores.suspensions
+    } as never);
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const router = createFlowApiRouter({ registry, stores, durabilityProvider: provider } as never);
+    try {
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/probe/s_1/actions/probe", {
+          method: "POST",
+          body: JSON.stringify({ userId: "u_1", input: {} })
+        }),
+        { params: { path: ["probe", "s_1", "actions", "probe"] } }
+      );
+      expect(res.status).toBe(202);
+      const { request } = (await res.json()) as { request: { id: string } };
+      let output: unknown;
+      for (let i = 0; i < 200 && output === undefined; i += 1) {
+        const record = await stores.request.get(request.id);
+        if (record?.status === "completed") output = (record as { result?: { output?: unknown } }).result?.output;
+        else await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(output).toEqual({ hasAskSweeper: true, resumeAsk: true });
+    } finally {
+      (router as { dispose?: () => void }).dispose?.();
+    }
   });
 });

@@ -117,12 +117,18 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       if (ref === undefined) return { act: "none" };
       // Whatever this run does, the notices still owed go out again behind
       // it, but never this one: its marker is cleared below, or already was.
+      // Nor an asked row still owed its resume: its notice stays owed while
+      // the resume fails, so two such rows would send each other's forever.
+      // A touch of the board retries those, once per touch.
       const replayRest = () =>
         replayNotices(
           ctx as never,
-          ref.list().map((task) =>
-            task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
-          )
+          ref
+            .list()
+            .filter((task) => !(task.ask != null && task.resumeOwed === true))
+            .map((task) =>
+              task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
+            )
         );
       const row = ref.get(notice.taskId);
       // A notice its row doesn't owe was delivered already, or was never owed.
