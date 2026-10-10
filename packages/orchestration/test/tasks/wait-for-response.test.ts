@@ -262,6 +262,26 @@ describe("ask on the board: the row ended first, and the deadline", () => {
     }
   });
 
+  it("a row that ended between the check and the park, with no touch after, answers at the deadline, not wait_timed_out", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model, { endsBeforePark: "Yes, renewed 2026-08" });
+    const state = runtimeFor(flow, inMemoryStores(), true, 25);
+    try {
+      const parked = await act(state, flow, "run");
+      expect(await statusOf(state, parked.requestId!)).toBe("suspended");
+      // Nothing touches the board. Past the deadline, the sweep resumes the turn.
+      const real = Date.now.bind(Date);
+      vi.spyOn(Date, "now").mockImplementation(() => real() + 6 * 60_000);
+      await until(state, parked.requestId!, "completed");
+
+      expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
+      expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
+      expect((await rows(state, flow))[0]).toMatchObject({ status: "completed", resumeOwed: false });
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("an ask open past its deadline is resumed by a real sweep with wait_timed_out, and its row is cancelled (BR-14)", async () => {
     const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
     const flow = askFlow(model);

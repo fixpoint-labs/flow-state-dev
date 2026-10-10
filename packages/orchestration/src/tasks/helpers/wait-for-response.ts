@@ -290,25 +290,44 @@ export async function addTaskAndWait(
     if (!(error instanceof AskEndedError)) throw error;
     if (error.code === "wait_timed_out") {
       // The ask is over: end the row too, so its later ending is dropped.
-      await cancelIfOpen(collection, filed.taskId, "The ask timed out before the task finished.");
+      const cancelled = await cancelIfOpen(collection, filed.taskId, TIMED_OUT_REASON);
+      // Unless it had already ended on its own: one that ended after this call
+      // read it open and before the gate was written found no gate to resume,
+      // and nothing may have touched the board since. Its answer stands; it is
+      // late, never later than the deadline, but not lost.
+      // A row this ask's own timeout cancelled before a crash, read again on
+      // the re-drive, is not such an ending.
+      const ended = cancelled ? undefined : collection.get(filed.taskId);
+      if (ended !== undefined && isTerminalStatus(ended.status) && ended.error !== TIMED_OUT_REASON) {
+        await clearMarker();
+        return answerOf(filed.taskId, outcomeOf(ended));
+      }
     }
     await clearMarker();
     return { ok: false, error: error.code, taskId: filed.taskId, message: error.message };
   }
 }
 
+/** The reason an ask's own timeout cancels its row with, so a re-drive knows its own cancel. */
+const TIMED_OUT_REASON = "The ask timed out before the task finished.";
+
 /**
  * Cancel the asked row unless it already ended. Idempotent: a replay after a
  * crash cancels again harmlessly, and an ending that won a race stands.
+ *
+ * @returns Whether this call's cancel ended the row; `false` when the row had
+ *   already ended (or is gone), by its own ending or an earlier cancel.
  */
-async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reason: string): Promise<void> {
+async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reason: string): Promise<boolean> {
   const row = collection.get(taskId);
-  if (row === undefined || isTerminalStatus(row.status)) return;
+  if (row === undefined || isTerminalStatus(row.status)) return false;
   try {
     await collection.cancel(taskId, reason);
+    return true;
   } catch (error) {
     // The row ended between the read and the write: its ending stands.
     if (!(error instanceof IllegalTaskTransitionError)) throw error;
+    return false;
   }
 }
 
