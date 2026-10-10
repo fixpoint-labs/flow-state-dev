@@ -109,7 +109,7 @@ On the React side, `useSuspensions(session)` derives pending and resolved suspen
 | `message` | `string` | Human-readable description, emitted in the `SuspensionItem` |
 | `data` | `Record<string, unknown>` | Arbitrary metadata attached to the suspension record |
 | `resumeSchema` | `Record<string, unknown>` | JSON Schema describing the expected resume payload shape |
-| `timeoutMs` | `number` | Optional expiry. After this duration the suspension transitions to `timed_out`. |
+| `timeoutMs` | `number` | Optional expiry. Once this duration passes unanswered, the sweeper marks the suspension `expired`. If the suspension allows `reject` (an approval), the request then carries on as if it had been rejected: see [Retention and cleanup](#retention-and-cleanup). |
 | `render` | `{ component: string; props?: Record<string, unknown> }` | Hint for client-side rendering of the approval UI |
 | `allow` | `ResumeAction[]` | Which resolution actions this suspension permits. Omit to take the reason-based default: `human_input` → `["submit"]`; everything else (including `human_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step optional. The resume route returns `409` for an action outside this set. |
 
@@ -226,11 +226,11 @@ A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `s
 
 ## Error handling
 
-Three errors are relevant to durable execution:
+Two errors are relevant to durable execution:
 
 **`SuspensionError`** — Thrown by `ctx.suspend()` as a control-flow signal. The sequencer catches it; rescue handlers do not. You cannot catch this yourself. It is not a block failure.
 
-**`SuspensionRejectedError`** — Thrown when the suspension is resolved with `action: "reject"`. This one is catchable in a rescue handler:
+**`SuspensionRejectedError`** — Thrown when the suspension is resolved with `action: "reject"`, or when an approval expired before anyone answered it. In the second case its `expired` field is `true` and its message says the approval is no longer valid. This one is catchable in a rescue handler:
 
 ```ts
 import { SuspensionRejectedError } from "@flow-state-dev/core";
@@ -246,7 +246,7 @@ const reviewSequencer = sequencer({ name: "review", durable: true })
   ]);
 ```
 
-**`SuspensionTimeoutError`** — Thrown when a suspension with `timeoutMs` expires before it is resolved. Also catchable in rescue.
+**When `timeoutMs` elapses.** What happens to an unanswered gate depends on what it waits for. An approval resolves as a rejection with `expired: true`, so the `SuspensionRejectedError` rescue above catches it, and a gated tool call returns a result saying the approval is no longer valid. Any other gate is marked `expired`, and the resume endpoint refuses it from then on.
 
 ## DurabilityProvider interface
 
@@ -317,8 +317,8 @@ Every field has a default, so `durabilityRetention: {}` is enough to turn prunin
 
 What each tick does:
 
-- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval gate instead of letting it hang forever. A request waiting on another agent's answer is the exception: past its deadline it is resumed with a timeout error instead, because nothing else may resume it.
-- **Finishes what a crash interrupted.** A request still `suspended` (or `interrupted`) behind a gate that was already resolved, because the process died between the gate's write and the request moving on, is driven on with the recorded outcome: an answer continues it, a stop ends it `aborted`. It runs under the request's lease, so it never races a resume in progress.
+- **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval instead of letting it hang forever. The request behind an expired approval doesn't stay paused: the sweeper continues it, in the same tick, as if the approval had been rejected. `ctx.suspend()` throws a `SuspensionRejectedError` with `expired: true`. When the approval guarded a tool call, the tool does not run, and the model gets a tool result saying the approval expired and is no longer valid, then carries on with its turn. The `suspension_resume` item records `expired`. A suspension that allows no `reject` (an input form) is only marked `expired`. A request waiting on another agent's answer is the other exception: past its deadline it is resumed with a timeout error instead, because nothing else may resume it.
+- **Finishes what a crash interrupted.** A request still `suspended` (or `interrupted`) behind a gate that was already resolved, because the process died between the gate's write and the request moving on, is driven on with the recorded outcome: an answer continues it, an expired approval continues it as no longer valid, a stop ends it `aborted`. It runs under the request's lease, so it never races a resume in progress.
 - **Prunes resolved suspensions** older than `suspensionTerminalMaxAgeMs` (measured from when they were resolved). The window exists so you can still inspect recent approval decisions; after it, they're removed.
 - **Prunes expired leases.**
 - **Prunes orphaned checkpoints.** Checkpoints of completed, failed, or aborted runs are dropped once they pass `checkpointMaxAgeMs`. An interrupted run keeps its checkpoints until `orphanCheckpointThresholdMs` passes, since you might still resume it.

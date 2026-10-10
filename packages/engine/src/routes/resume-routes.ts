@@ -11,7 +11,7 @@ import type { InboundTransportHost, ResolvedPrincipal } from "../transports/type
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
 import { isAskGate } from "@flow-state-dev/core/types";
-import { resumeUnderLease } from "../durability/resume-under-lease";
+import { expireUnderLease, resumeUnderLease } from "../durability/resume-under-lease";
 import {
   callerReachesRequest,
   jsonResponse,
@@ -174,13 +174,12 @@ export async function handleResumeSuspension(
   // (each short-circuiting before this check). The sweeper flips pending ->
   // expired only every sweepIntervalMs (and only when retention is configured),
   // so without this an expired gate stays approvable between ticks — or forever
-  // if retention is off. Mark it expired now and reject.
+  // if retention is off. Mark it expired now and reject. Fenced like every
+  // expiry write: the gate read above may be stale, and another caller's
+  // accepted resume, written under the turn's lease, must not be overwritten
+  // with `expired` (the sweep would then re-drive it as a rejection).
   if (suspension.expiresAt != null && suspension.expiresAt <= Date.now()) {
-    await provider.suspend({
-      ...suspension,
-      status: "expired",
-      resolvedAt: Date.now()
-    });
+    await expireUnderLease(provider, suspension);
     return jsonResponse(410, {
       error: `Suspension "${suspensionId}" expired at ${suspension.expiresAt}`
     });

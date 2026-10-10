@@ -45,6 +45,7 @@ export {
   AskEndedError,
   AskStoppedError,
   isAskGate,
+  isExpiredApproval,
   parkOnAsk,
   parseAskOutcome,
   recordedAskOutcome

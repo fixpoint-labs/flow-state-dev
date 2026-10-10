@@ -1,40 +1,28 @@
 /**
- * A conversation's delegates: the records in its server-written session
- * state, and the one way they change.
+ * A session's delegates: the records in its server-written session state,
+ * and the one way they change. Any worker whose file lists `delegates:` has
+ * them, on any flow that carries this list (FIX-1802 D1); a coordinator routes
+ * its posts to them, and any worker files tasks for the ones that take one.
  *
  * A delegate record is a worker, an optional note on what it's good at, and an
  * optional target a caller resolves (FIX-1793's workstream address). Records
  * are told apart by worker and target together, so one worker with two
  * targets is two delegates; uniqueness and the cap go by the record.
  *
- * The list is `null` until the conversation's delegates are first read or
- * changed, and is then a copy of the coordinator's defaults. The defaults are
- * never written back, so a change stays in the conversation it was made in.
+ * The list is `null` until the session's delegates are first read or
+ * changed, and is then a copy of the worker's defaults. The defaults are
+ * never written back, so a change stays in the session it was made in.
  *
  * Every change is one versioned write that recomputes on retry: two changes
- * arriving together both land, and neither is lost.
- *
- * The same server-written state holds what routing keeps per conversation:
- * best fit's hold, round robin's turn, the delivery ledger, the rounds still
- * open and the answers that landed last. Only this module, the delivery code,
- * the rounds and the answer's claim write these fields. The flow declares them
- * `serverOwned`, so a session create can't seed them.
+ * arriving together both land, and neither is lost. Only this module writes
+ * the list; a flow declares its fields `serverOwned`, so a session create
+ * can't seed them.
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { delegateKey, deliveryDelegateSchema, deliveryLedgerSchema, type DeliveryDelegate } from "../delivery-ledger";
-import {
-  DELEGATES_STATE,
-  DELIVERIES_STATE,
-  FALLBACK_STATE,
-  HOLD_STATE,
-  LANDED_STATE,
-  MAX_DELEGATES,
-  ROUND_ROBIN_STATE,
-  ROUNDS_STATE
-} from "./coordinator-keys";
-import { landedAnswersSchema } from "./coordinator-lines";
+import { delegateKey, deliveryDelegateSchema, type DeliveryDelegate } from "../delivery-ledger";
+import { DELEGATES_STATE, FALLBACK_STATE, MAX_DELEGATES } from "./delegate-keys";
 
 /** One delegate record. */
 export const delegateRecordSchema = deliveryDelegateSchema.extend({
@@ -44,67 +32,22 @@ export const delegateRecordSchema = deliveryDelegateSchema.extend({
 
 export type DelegateRecord = z.infer<typeof delegateRecordSchema>;
 
-/** Who best fit holds the person's next post for: the delegate the last one went to. */
-export const bestFitHoldSchema = z.object({ postId: z.string(), delegate: deliveryDelegateSchema });
-
 /**
- * Where round robin's turn stands: the delegate the person's last post went
- * to, and where it stood in the list then, so the turn goes on from the same
- * place when that delegate has since been removed.
+ * A session's delegate list, as a flow spreads it into its session
+ * `stateSchema`: server-written, and declared `serverOwned`
+ * ({@link DELEGATE_SERVER_OWNED}) so a session create can't seed it.
  */
-export const roundRobinCursorSchema = z.object({ delegate: deliveryDelegateSchema, index: z.number().int().min(0) });
-
-export type RoundRobinCursor = z.infer<typeof roundRobinCursorSchema>;
-
-/** An answer that landed in an open round: its author and what it said. */
-export const roundAnswerSchema = deliveryDelegateSchema.extend({ body: z.string() });
-
-export type RoundAnswer = z.infer<typeof roundAnswerSchema>;
-
-/** A round still open: below the coordinator's limit, and waiting for its answers (`coordinator-rounds.ts`). */
-export const openRoundSchema = z.object({
-  postId: z.string(),
-  round: z.number().int().min(0),
-  /** Routings still adding deliveries to it. It doesn't close on its answers while one runs. */
-  opening: z.number().int().min(0),
-  /** When it closes without what is still out. Set by its first delivery. */
-  deadlineAt: z.number().optional(),
-  /** The answers that landed in it, in the order they landed. */
-  answers: z.array(roundAnswerSchema)
-});
-
-export type OpenRound = z.infer<typeof openRoundSchema>;
-
-/**
- * The coordinator's server-written session state, as a flow spreads it into
- * its session `stateSchema`.
- */
-export const coordinatorStateShape = {
+export const delegateStateShape = {
   [DELEGATES_STATE]: z.array(delegateRecordSchema).nullable().default(null),
-  [FALLBACK_STATE]: deliveryDelegateSchema.nullable().default(null),
-  [HOLD_STATE]: bestFitHoldSchema.nullable().default(null),
-  [DELIVERIES_STATE]: deliveryLedgerSchema.default([]),
-  [ROUND_ROBIN_STATE]: roundRobinCursorSchema.nullable().default(null),
-  [ROUNDS_STATE]: z.array(openRoundSchema).default([]),
-  [LANDED_STATE]: landedAnswersSchema.default([])
+  [FALLBACK_STATE]: deliveryDelegateSchema.nullable().default(null)
 } as const;
 
-/** The fields only the flow's own code writes. */
-export const COORDINATOR_SERVER_OWNED: readonly string[] = [
-  DELEGATES_STATE,
-  FALLBACK_STATE,
-  HOLD_STATE,
-  DELIVERIES_STATE,
-  ROUND_ROBIN_STATE,
-  ROUNDS_STATE,
-  LANDED_STATE
-];
+/** The delegate list's fields: only this module writes them. */
+export const DELEGATE_SERVER_OWNED: readonly string[] = [DELEGATES_STATE, FALLBACK_STATE];
 
-export const coordinatorSessionStateSchema = z.object(coordinatorStateShape);
+export const delegateSessionStateSchema = z.object(delegateStateShape);
 
-export type CoordinatorSessionState = z.infer<typeof coordinatorSessionStateSchema>;
-
-/** A coordinator's defaults: the worker ids its configuration lists, and its fallback. */
+/** A worker's defaults: the worker ids its configuration lists, and its fallback. */
 export type DelegateDefaults = { delegates: readonly string[]; fallback?: string };
 
 /** The conversation's delegates and fallback, seeded from the defaults when never set. */
@@ -120,26 +63,9 @@ export function sameDelegate(a: DeliveryDelegate, b: DeliveryDelegate): boolean 
   return delegateKey(a) === delegateKey(b);
 }
 
-/**
- * The list in round robin's order: starting right after `after`, or at the
- * place it stood when it has since been removed, and going round once.
- *
- * @param list The conversation's delegates, in list order.
- * @param after Who had the last turn, or `null` to start at the top.
- */
-export function turnOrder<T extends DeliveryDelegate>(list: readonly T[], after: RoundRobinCursor | null): T[] {
-  if (list.length === 0) return [];
-  let start = 0;
-  if (after !== null) {
-    const at = list.findIndex((record) => sameDelegate(record, after.delegate));
-    start = (at >= 0 ? at + 1 : after.index) % list.length;
-  }
-  return [...list.slice(start), ...list.slice(0, start)];
-}
-
 /** The conversation's list as it stands, or the defaults when it was never set. */
 export function currentDelegates(state: Readonly<Record<string, unknown>>, defaults: DelegateDefaults): DelegateList {
-  const parsed = coordinatorSessionStateSchema.partial().safeParse(state);
+  const parsed = delegateSessionStateSchema.partial().safeParse(state);
   const stored = parsed.success ? parsed.data : {};
   if (stored[DELEGATES_STATE] === null || stored[DELEGATES_STATE] === undefined) {
     return {
@@ -206,7 +132,7 @@ export function applyDelegateChange(list: DelegateList, change: DelegateChange):
 }
 
 /** The session-state patch that writes a list. */
-function listPatch(list: DelegateList): Partial<CoordinatorSessionState> {
+function listPatch(list: DelegateList): Partial<z.infer<typeof delegateSessionStateSchema>> {
   return { [DELEGATES_STATE]: list.delegates, [FALLBACK_STATE]: list.fallback };
 }
 

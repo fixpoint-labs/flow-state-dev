@@ -46,6 +46,40 @@ export function latestGateIdOf(record: { readonly items?: readonly unknown[] }):
 /** How long a resume holds the request's lease before the run takes over. */
 export const RESUME_LEASE_MS = 60_000;
 
+/**
+ * Write a pending gate `expired`, fenced under its request's lease: the one
+ * way every expiry writer (the durability sweep, the resume route) records an
+ * expiry (FIX-1846). Every other resolution of a gate (a person's resume, an
+ * ask's answer, a stop) is written under that lease, so the gate re-read while
+ * holding it is current: a resolution that landed after the caller's own read
+ * is never overwritten. `gate` names the gate; its fields are not written.
+ * A lease held elsewhere (a resume, or its run) writes nothing: `busy`.
+ */
+export async function expireUnderLease(
+  provider: DurabilityProvider,
+  gate: Pick<SuspensionRecord, "requestId" | "suspensionId">,
+  resolvedBy?: string
+): Promise<"expired" | "already-resolved" | "busy"> {
+  const lease = await provider.acquireLease(gate.requestId, {
+    holder: generateId("expire"),
+    durationMs: RESUME_LEASE_MS
+  });
+  if (lease === null) return "busy";
+  try {
+    const current = await provider.loadSuspension(gate.requestId, gate.suspensionId);
+    if (current === null || current.status !== "pending") return "already-resolved";
+    await provider.suspend({
+      ...current,
+      status: "expired",
+      resolvedAt: Date.now(),
+      ...(resolvedBy !== undefined ? { resolvedBy } : {})
+    });
+    return "expired";
+  } finally {
+    await provider.releaseLease(gate.requestId, lease.leaseId);
+  }
+}
+
 /** What a resume needs from the host. */
 export type ResumeDeps = {
   provider: DurabilityProvider;

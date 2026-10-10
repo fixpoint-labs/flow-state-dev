@@ -24,7 +24,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { coordinatorConfigSchema } from "../src/coordinator/coordinator-config";
-import { applyDelegateChange } from "../src/coordinator/coordinator-delegates";
+import { applyDelegateChange } from "../src/delegates/delegate-list";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 

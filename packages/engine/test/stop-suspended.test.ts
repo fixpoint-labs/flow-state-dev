@@ -6,13 +6,14 @@
  * SQLite cold restarts) lives with the ask's own tests in orchestration.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, generator, handler, parkOnAsk, sequencer } from "@flow-state-dev/core";
-import type { AskOutcome, FlowInstance } from "@flow-state-dev/core/types";
+import { buildReplayLog, DEFAULT_ORG_ID, defineFlow, generator, handler, parkOnAsk, sequencer } from "@flow-state-dev/core";
+import type { AskOutcome, FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createDurabilitySweeper, runTick } from "../src/durability/durability-sweeper";
 import { resumeAskGate } from "../src/durability/resume-ask-gate";
+import { resumeUnderLease } from "../src/durability/resume-under-lease";
 import { handleAbortRequest } from "../src/routes/abort-routes";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import type { RuntimeConfig } from "../src/runtime-config";
@@ -747,6 +748,427 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(0);
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+});
+
+/**
+ * A flow whose `approve` turn asks a model, and the model's one tool call
+ * parks on a person's approval with a deadline. `toolRuns` counts the times
+ * the gated tool's side effect ran; `calls` holds every model call's input.
+ */
+function approvalToolFlow(state: { calls: unknown[]; toolRuns: number }): FlowInstance {
+  const gated = handler({
+    name: "approve_transfer",
+    inputSchema: z.object({ amount: z.number() }),
+    outputSchema: z.any(),
+    execute: async (input, ctx) => {
+      await ctx.suspend!({ reason: "approval", message: `Approve $${input.amount}?`, timeoutMs: 60_000 });
+      state.toolRuns += 1;
+      return { confirmed: true };
+    }
+  });
+  const script = [
+    () => ({ toolCalls: [{ toolCallId: "c1", toolName: "approve_transfer", args: { amount: 100 } }], finishReason: "tool-calls" }),
+    () => ({ text: "The approval lapsed, so nothing was transferred.", finishReason: "stop" })
+  ];
+  const model = {
+    modelId: "step-model",
+    async generate() {
+      throw new Error("legacy generate must not be called");
+    },
+    async generateStep(options: unknown) {
+      state.calls.push(options);
+      return script[state.calls.length - 1]!();
+    }
+  };
+  return defineFlow({
+    kind: "parking",
+    actions: {
+      approve: {
+        block: sequencer({ name: "seq", durable: true }).step(
+          generator({ name: "agent", model: model as never, prompt: "p", tools: [gated] })
+        )
+      }
+    }
+  })({ id: "parking" });
+}
+
+/** A flow whose `approve` turn parks on one approval and then on a second. */
+function twoApprovalFlow(seen: string[]): FlowInstance {
+  const first = handler({
+    name: "first-approval",
+    inputSchema: z.any(),
+    outputSchema: z.any(),
+    execute: async (_i, ctx) => {
+      await ctx.suspend!({ reason: "approval", message: "First?", timeoutMs: 60_000 });
+      seen.push("first:approved");
+      return {};
+    }
+  });
+  const second = handler({
+    name: "second-approval",
+    inputSchema: z.any(),
+    outputSchema: z.any(),
+    execute: async (_i, ctx) => {
+      await ctx.suspend!({ reason: "approval", message: "Second?" });
+      seen.push("second:approved");
+      return {};
+    }
+  });
+  return defineFlow({
+    kind: "parking",
+    actions: { approve: { block: sequencer({ name: "seq", durable: true }).step(first).step(second) } }
+  })({ id: "parking" });
+}
+
+/** The tool result a model call was given for `toolCallId`. */
+function toolResultOf(call: unknown, toolCallId: string): unknown {
+  const messages = (call as { messages: Array<{ role: string; content: unknown }> }).messages;
+  for (const message of messages) {
+    if (message.role !== "tool" || !Array.isArray(message.content)) continue;
+    for (const part of message.content as Array<{ toolCallId?: string; output?: { value?: unknown } }>) {
+      if (part.toolCallId === toolCallId) return part.output?.value;
+    }
+  }
+  return undefined;
+}
+
+/** Move a parked gate's deadline into the past, as if the person never answered. */
+async function lapse(h: ReturnType<typeof harness>, gate: SuspensionRecord): Promise<void> {
+  await h.provider.suspend({ ...gate, expiresAt: Date.now() - 1 });
+}
+
+/** The `suspension_resume` items on a request's log. */
+async function resumeItemsOf(h: ReturnType<typeof harness>, requestId: string) {
+  const record = await h.stores.request.get(requestId);
+  return (record?.items ?? []).filter((item) => (item as { type?: string }).type === "suspension_resume") as Array<{
+    suspensionId: string;
+    resolution: string;
+  }>;
+}
+
+describe("an approval past its deadline: the turn carries on as if it is no longer valid (FIX-1846)", () => {
+  it("the sweep continues the turn: the tool never runs, the model is told the approval expired, and the turn completes", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    expect(state.calls).toHaveLength(1);
+    await lapse(h, gate);
+
+    await runTick(tickArgs(h));
+    await drain(h);
+
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    // The person never approved, so the transfer must not happen.
+    expect(state.toolRuns).toBe(0);
+    // One model call to carry on, after the expired result; none before it.
+    expect(state.calls).toHaveLength(2);
+    expect(toolResultOf(state.calls[1], "c1")).toEqual({
+      denied: true,
+      expired: true,
+      reason: "The approval for this tool call expired and is no longer valid. The tool was not run."
+    });
+    // The audit item says the gate expired, not that a person rejected it.
+    expect(await resumeItemsOf(h, requestId)).toEqual([
+      expect.objectContaining({ suspensionId: gate.suspensionId, resolution: "expired" })
+    ]);
+
+    // Nothing is owed any more: a second sweep continues nothing.
+    const continued = h.finished.length;
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(continued);
+  });
+
+  it("a crash before the continuation ran leaves the turn parked behind the expired gate; the next sweep finishes it", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await lapse(h, gate);
+    // The continued run dies in setup, before the turn leaves `suspended`.
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("crash before continuing"));
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect(state.calls).toHaveLength(1);
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(state.toolRuns).toBe(0);
+    expect(state.calls).toHaveLength(2);
+    expect(toolResultOf(state.calls[1], "c1")).toEqual({
+      denied: true,
+      expired: true,
+      reason: "The approval for this tool call expired and is no longer valid. The tool was not run."
+    });
+  });
+
+  it("a stop recorded on a turn parked behind an expiring approval still ends it aborted, with no further model call", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await lapse(h, gate);
+    // The stop was recorded on the turn, and the sweep reaches it in the same
+    // tick that expires its gate: the stop wins over carrying on.
+    await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["suspended"], Date.now());
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(state.calls).toHaveLength(1);
+    expect(state.toolRuns).toBe(0);
+  });
+
+  it("a stop on a turn whose approval already expired ends it aborted, and a later sweep does not revive it", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...gate, status: "expired", resolvedAt: Date.now() });
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(state.calls).toHaveLength(1);
+    expect(state.toolRuns).toBe(0);
+  });
+
+  it("an approval accepted just before the deadline is not overwritten by a sweep that read the gate pending", async () => {
+    const seen: string[] = [];
+    const flow = twoApprovalFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // The person's approve passed the deadline check a moment before the
+    // deadline; the sweep listed and read the gate while it was still pending.
+    const stale = { ...gate, expiresAt: Date.now() - 1 };
+    await h.provider.suspend(stale);
+    const approved = await resumeUnderLease(h.parked, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: stale }),
+      action: "approve",
+      data: { ok: true },
+      resumedBy: USER
+    });
+    expect(approved.ok).toBe(true);
+    await drain(h);
+    expect(seen).toEqual(["first:approved"]);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
+
+    // The sweep's list, read while the gate was still pending.
+    vi.spyOn(h.provider, "listSuspended").mockResolvedValueOnce([stale]);
+    const continued = h.finished.length;
+    await runTick(tickArgs(h));
+    await drain(h);
+
+    // The accepted action stands: the gate stays approved, and nothing is re-driven.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
+    expect(h.finished).toHaveLength(continued);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
+  it("an approval whose gate a racing write labels expired is still recorded approved, so a replay reads it approved", async () => {
+    const seen: string[] = [];
+    const flow = twoApprovalFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // An unfenced expiry write lands between the approve's write and its run
+    // reading the gate back.
+    const racing = {
+      ...h.parked,
+      continueRequest: async (opts: Parameters<typeof h.cont>[0]) => {
+        const current = (await h.provider.loadSuspension(requestId, gate.suspensionId))!;
+        await h.provider.suspend({ ...current, status: "expired", resolvedAt: Date.now() });
+        return h.cont(opts);
+      }
+    };
+    const approved = await resumeUnderLease(racing, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: gate }),
+      action: "approve",
+      data: { ok: true },
+      resumedBy: USER
+    });
+    expect(approved.ok).toBe(true);
+    await drain(h);
+    expect(seen).toEqual(["first:approved"]);
+
+    const items = (await h.stores.request.get(requestId))?.items ?? [];
+    const resume = items.find(
+      (i) => (i as { type?: string; suspensionId?: string }).type === "suspension_resume" &&
+        (i as { suspensionId?: string }).suspensionId === gate.suspensionId
+    ) as { resolution?: string } | undefined;
+    expect(resume?.resolution).toBe("approved");
+    const suspensionItem = items.find(
+      (i) => (i as { type?: string; suspensionId?: string }).type === "suspension" &&
+        (i as { suspensionId?: string }).suspensionId === gate.suspensionId
+    ) as { blockInstanceId: string };
+    const logicalId = suspensionItem.blockInstanceId.slice(0, suspensionItem.blockInstanceId.lastIndexOf(":"));
+    const [replayed] = buildReplayLog(items as never).resolvedResumes(logicalId);
+    expect(replayed).toMatchObject({ suspensionId: gate.suspensionId, rejected: false, expired: false });
+  });
+
+  it("an approval whose gate a racing write labels expired, and whose run then fails setup, is reopened rather than re-driven as a rejection", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    const racing = {
+      ...h.parked,
+      continueRequest: async (opts: Parameters<typeof h.cont>[0]) => {
+        const current = (await h.provider.loadSuspension(requestId, gate.suspensionId))!;
+        await h.provider.suspend({ ...current, status: "expired", resolvedAt: Date.now() });
+        return h.cont(opts);
+      }
+    };
+    // The approved run dies in setup, before the turn leaves `suspended`.
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("crash before continuing"));
+    await resumeUnderLease(racing, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: gate }),
+      action: "approve",
+      data: { ok: true },
+      resumedBy: USER
+    });
+    await drain(h);
+
+    // The person approved, so the gate goes back to waiting for their answer,
+    // not on to the sweep as an expiry it would re-drive as a rejection.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect(state.calls).toHaveLength(1);
+    expect(state.toolRuns).toBe(0);
+  });
+
+  it("a resume route caller cannot label its own rejection expired: it is recorded rejected", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+
+    const res = await handleResumeSuspension(
+      new Request(`https://x/api/flows/parking/requests/${requestId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: gate.suspensionId, action: "reject", resolution: "expired" })
+      }),
+      { kind: "resume_suspension", flowKind: "parking", requestId },
+      {
+        host: { continueRequest: h.cont } as never,
+        registry: h.registry,
+        stores: h.stores,
+        durabilityProvider: h.provider,
+        seams: {} as never,
+        requestContext: {} as never
+      }
+    );
+    expect(res.status).toBe(202);
+    await drain(h);
+
+    expect((await resumeItemsOf(h, requestId)).map((i) => i.resolution)).toEqual(["rejected"]);
+    expect(toolResultOf(state.calls[1], "c1")).toEqual({
+      denied: true,
+      reason: `Suspension ${gate.suspensionId} was rejected`
+    });
+    expect(state.toolRuns).toBe(0);
+  });
+
+  it("a route expiry that read the gate before an approve landed does not turn a crashed approval into a rejection", async () => {
+    const seen: string[] = [];
+    const flow = twoApprovalFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    const stale = { ...gate, expiresAt: Date.now() - 1 };
+    await h.provider.suspend(stale);
+
+    // One caller's approve, accepted before the deadline, records `approved`
+    // under the turn's lease; the process dies before its run starts, so the
+    // lease is still held and the turn still `suspended`.
+    const crashed = {
+      ...h.parked,
+      continueRequest: async () => ({ requestId }) as never
+    };
+    const approved = await resumeUnderLease(crashed, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: stale }),
+      action: "approve",
+      data: { ok: true },
+      resumedBy: USER
+    });
+    expect(approved.ok).toBe(true);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
+
+    // A second caller, past the deadline, read the gate while it was pending.
+    vi.spyOn(h.provider, "loadSuspension").mockResolvedValueOnce(stale);
+    const late = await handleResumeSuspension(
+      new Request(`https://x/api/flows/parking/requests/${requestId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: gate.suspensionId, action: "approve" })
+      }),
+      { kind: "resume_suspension", flowKind: "parking", requestId },
+      {
+        host: { continueRequest: h.cont } as never,
+        registry: h.registry,
+        stores: h.stores,
+        durabilityProvider: h.provider,
+        seams: {} as never,
+        requestContext: {} as never
+      }
+    );
+    expect(late.status).toBe(410);
+    // The accepted approval stands.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
+
+    // The dead run's lease runs out; the sweep must not reject the approval.
+    const lease = await h.stores.leases.get(requestId);
+    await h.stores.leases.release(requestId, lease!.leaseId);
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
+    // Nothing continued it as a rejection.
+    expect(h.finished).toHaveLength(0);
+    expect(await resumeItemsOf(h, requestId)).toEqual([]);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
+  it("an expired gate that is not an approval (it allows no reject) is only marked expired, as before", async () => {
+    const h = harness(parkingFlow([]));
+    const requestId = "req_input";
+    await h.stores.request.set(requestId, { id: requestId, status: "suspended", userId: USER } as never, "any");
+    await h.provider.suspend({
+      suspensionId: "s_input",
+      requestId,
+      flowKind: "parking",
+      actionName: "approve",
+      userId: USER,
+      reason: "human_input",
+      message: "Fill this in",
+      allow: ["submit"],
+      status: "pending",
+      blockInstanceId: "b",
+      stepIndex: 0,
+      createdAt: Date.now() - 10,
+      expiresAt: Date.now() - 1
+    });
+
+    await runTick(tickArgs(h));
+    expect((await h.provider.loadSuspension(requestId, "s_input"))?.status).toBe("expired");
+    expect(h.finished).toHaveLength(0);
   });
 });
 

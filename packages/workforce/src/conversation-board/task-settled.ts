@@ -170,5 +170,5 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     )
     .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard);
 
-  return { inputSchema: taskNoticeSchema, block, concurrency: { policy: "defer", key: replyLine } };
+  return { inputSchema: taskNoticeSchema, block, concurrency: { policy: "defer", key: replyLine } as const satisfies ConcurrencyConfig };
 }

@@ -14,10 +14,15 @@
  *      with `wait_timed_out` instead (FIX-1816), because an `expired` ask gate
  *      would strand its turn: nothing else may resume it.
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
- *      is already resolved (an ask's answer, failure, timeout or stop, or any
- *      gate stopped), under the request's lease, with the recorded outcome;
- *      and stop a parked request whose stop was recorded while it was still
- *      running (`abortRequested`), as a stop of a parked turn does.
+ *      is already resolved (an ask's answer, failure, timeout or stop, any
+ *      gate stopped, or an approval that expired), under the request's lease,
+ *      with the recorded outcome; and stop a parked request whose stop was
+ *      recorded while it was still running (`abortRequested`), as a stop of a
+ *      parked turn does. An approval step 2 just expired is continued here in
+ *      the same tick (FIX-1846): the gated call does not run, it returns a
+ *      result saying the approval is no longer valid, and the turn carries on.
+ *      The `expired` record is the obligation, so a crash before the
+ *      continuation runs is finished by the next sweep.
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -61,11 +66,11 @@ import {
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
 import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
-import { latestGateIdOf } from "./resume-under-lease";
+import { expireUnderLease, latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -105,8 +110,10 @@ export type CreateDurabilitySweeperOptions = {
   logger?: RuntimeLogger;
   /**
    * Continues a suspended request, so an overdue ask can be resumed with
-   * `wait_timed_out`. Absent → overdue ask gates are left pending (never
-   * marked expired, which would strand the turn).
+   * `wait_timed_out`, and the turn of an expired approval carries on.
+   * Absent → overdue ask gates are left pending (never marked expired, which
+   * would strand the turn), and expired approvals wait for a sweeper that has
+   * one.
    */
   continueRequest?: ResumeDeps["continueRequest"];
   /**
@@ -361,7 +368,8 @@ export async function runTick(rawArgs: RunTickArgs): Promise<SuspensionRecord[] 
 
 /**
  * Step 2: re-set every `pending` suspension past its `expiresAt` to `expired`.
- * Closes the gate so the resume endpoint rejects it.
+ * Closes the gate so the resume endpoint rejects it; an approval's turn is
+ * then continued by step 2b.
  */
 async function enforceSuspensionExpiry(
   args: ResolvedTickArgs,
@@ -402,18 +410,11 @@ async function enforceSuspensionExpiry(
         if (after?.status === "pending") stillPending.push(after);
         continue;
       }
-      // Re-load immediately before writing: an operator may have approved or
-      // rejected this suspension via the resume endpoint between the list read
-      // above and this write. Skipping unless it is still `pending` shrinks the
-      // clobber window from the whole iteration to a single roundtrip, so the
-      // sweeper can't overwrite a just-resolved audit record with `expired`.
-      // (A full fix needs a store-level CAS the SuspensionStore API lacks.)
-      const current = await provider.loadSuspension(
-        record.requestId,
-        record.suspensionId
-      );
-      if (current === null || current.status !== "pending") continue;
-      await provider.suspend({ ...current, status: "expired", resolvedAt: now });
+      // Fenced: the gate is re-read under its request's lease, so a resume that
+      // resolved it after the list above is never overwritten; a lease held
+      // elsewhere leaves it for the next tick. Step 2b continues the turn of an
+      // approval expired here (FIX-1846).
+      await expireUnderLease(provider, record, "durability-sweeper");
     }
     if (askGatesSkipped > 0) {
       logRuntimeEvent(
@@ -455,9 +456,12 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   const redriveOne = async (requestId: string, suspensionId: string): Promise<void> => {
     try {
       const gate = await provider.loadSuspension(requestId, suspensionId);
-      // Owed a re-drive: an ask's answer or ending, or any gate stopped.
+      // Owed a re-drive: an ask's answer or ending, any gate stopped, or an
+      // approval that expired.
       if (gate === null) return;
-      if (gate.status !== "stopped" && !(gate.status === "submitted" && isAskGate(gate))) return;
+      const owed =
+        gate.status === "stopped" || (gate.status === "submitted" && isAskGate(gate)) || isExpiredApproval(gate);
+      if (!owed) return;
       const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
       if (result === "redriven") {
         logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {

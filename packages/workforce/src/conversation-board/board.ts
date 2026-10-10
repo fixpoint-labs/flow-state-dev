@@ -1,20 +1,28 @@
 /**
- * A conversation's task board (FIX-1794 S3 to S5): where a session files
- * tasks for its delegates, who takes each one, and how a filing starts it.
+ * A session's task board (FIX-1794 S3 to S5, FIX-1802 S1 and S2): where a
+ * session files tasks for its delegates, who takes each one, and how a filing
+ * starts it.
  *
  * - **The board.** One `taskBoard` over the conversation ledger
- *   (`./ledger`), run only in its own conversation, as its owner. Its one
+ *   (`./ledger`), run only in its own session, as its owner. Its one
  *   assignee, the default one, hands every row to the `work` entry on the flow
- *   its delegate runs on, in a task session: a new child of the conversation,
- *   keyed by the task and the worker, named for both and for the conversation
- *   (`filingSessionId`). A second attempt re-enters it; a reassign opens
- *   another. The hand-over re-runs the delegate check, so a delegate fired
- *   since the filing doesn't run.
+ *   its delegate runs on, in a task session: a new child of the filing
+ *   session, keyed by the task and the worker, named for both, for the filing
+ *   session (`filingSessionId`) and for the flow it runs on (`filingFlow`). A
+ *   second attempt re-enters it; a reassign opens another. The hand-over
+ *   re-runs the delegate check, so a delegate fired since the filing doesn't
+ *   run.
+ * - **The grant** (FIX-1802 D1). A session files when its delegate list holds
+ *   one that takes a task now: the same list the roster reads, read on every
+ *   call, server-side. A task session files nothing yet (FIX-1802 P2 lifts
+ *   that with the split).
  * - **The tools and the actions.** Orchestration's eight task tools, on the
  *   model's turn and as public actions, over one resolver and one roster. The
- *   resolver is the running session's own board, and none for a task session
- *   (a task session can't file yet: FIX-1802 swaps in its rule). The roster is
- *   the session's delegates that take a task, read on every call.
+ *   tools are one capability whose eight are on a turn only while the session
+ *   files, read per call. The resolver is the running session's own board,
+ *   and none while it doesn't file, so an action answers
+ *   `no_delegation_board`. The roster is the session's delegates that take a
+ *   task, read on every call.
  * - **The start.** A filing or an assign dispatches a run of the board into
  *   the conversation as a request of its own, and returns without waiting for
  *   it. The start it owes is the row's own state, pending and assigned
@@ -24,7 +32,7 @@
  *   notices its rows still owe into the conversation (`./task-notice`).
  */
 import {
-  createTaskToolsCapability,
+  buildTaskToolsList,
   taskToolActions,
   type TaskCollectionResolver,
   type AssigneeRoster,
@@ -38,12 +46,18 @@ import {
   type TaskDispatcher,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
-import { handler, sequencer } from "@flow-state-dev/core";
+import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
-import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import type { TaskDelegates } from "../delegates/worker-delegates";
+import {
+  FILING_FLOW_STATE_KEY,
+  FILING_SESSION_STATE_KEY,
+  TASK_ID_STATE_KEY,
+  WORKER_ID_STATE_KEY
+} from "../workers/keys";
 import { filingSessionIdOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
@@ -65,21 +79,19 @@ export const RUN_BOARD_ENTRY = "runTaskBoard";
  */
 export const TASK_ATTEMPTS = 2;
 
-/** The running session's delegates as a task sees them: who takes one now, and why the rest can't. */
-export interface TaskDelegates {
-  /** Each delegate that takes a task now, by worker id, with the flow it runs on. */
-  readonly available: ReadonlyMap<string, string>;
-  /** Each delegate on the list that can't take a task now, by worker id, with why. */
-  readonly unavailable: ReadonlyMap<string, string>;
-}
-
-/** What a conversation's board is built from. */
+/** What a session's board is built from. */
 export interface ConversationBoardOptions {
   /**
    * The running session's delegates, read now: the one check FIX-1791's
-   * delegates pass, for a task. Read at filing and again at hand-over.
+   * delegates pass, for a task. Read at filing and again at hand-over, and
+   * for the grant on every call.
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
+  /**
+   * The kind of the flow the board's sessions run on: where each task it
+   * hands over sends its notice back, as the task session's `filingFlow`.
+   */
+  flowKind: string;
 }
 
 /** Whether the running session is a task session: one a conversation's board opened to work a task. */
@@ -172,6 +184,17 @@ export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): P
 export function defineConversationBoard(options: ConversationBoardOptions) {
   const roster: AssigneeRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
 
+  /**
+   * Whether the running session files now (FIX-1802 D1): one of its
+   * delegates takes a task, read from its list as it stands, and it isn't a
+   * task session. Server-side only: the list is server-written state, never
+   * input.
+   */
+  const files = async (ctx: BlockContext): Promise<boolean> => {
+    if (isTaskSession(ctx)) return false;
+    return (await options.delegates(ctx)).available.size > 0;
+  };
+
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than
   // through `dispatcher()`, whose per-task target is held to a "per-task"
@@ -204,12 +227,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const why = delegates.unavailable.get(task.assignee) ?? "it isn't one of this conversation's delegates";
       throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
     },
-    // The task session is born naming its worker, the task and the
-    // conversation that filed it, each a readonly field the worker flow's
-    // create check confirms; all from server-written data.
+    // The task session is born naming its worker, the task, the session
+    // that filed it and the flow that session runs on, each a readonly field
+    // the worker flow's create check confirms; all from server-written data.
     state: async (task, ctx) => ({
       [WORKER_ID_STATE_KEY]: task.assignee,
       [FILING_SESSION_STATE_KEY]: await filingSessionIdOf(ctx.session),
+      [FILING_FLOW_STATE_KEY]: options.flowKind,
       [TASK_ID_STATE_KEY]: task.taskId
     })
   };
@@ -285,16 +309,21 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /** Every action on the board, and the model's every tool call, reach it here. */
   const resolver: TaskCollectionResolver = async (ctx) => {
-    // A task session keeps no board until FIX-1802's rule lets it file.
+    // A task session keeps no board until FIX-1802 P2 lets it split.
     if (isTaskSession(ctx)) return undefined;
     const ref = await ownConversationLedger(ctx);
     if (ref === undefined) return undefined;
     // The outbox, on every touch, a read included. A crash after an ending's
     // write and before its notice's send (BR-26a), or a wake lost after an add
     // or an assign (BR-10a), leaves the debt only on the row, and nothing
-    // sweeps for it: this touch is what pays it. Don't narrow it to writes.
+    // sweeps for it: this touch is what pays it. Don't narrow it to writes,
+    // or to a session that files now: rows filed before it lost its last
+    // task-taking delegate still run and are heard (FIX-1802 BR-5).
     if (hasStartable(ref)) await wake(ctx);
     await replayNotices(ctx, ref.list());
+    // No board to act on while the session doesn't file: none of its
+    // delegates takes a task now, so an action answers `no_delegation_board`.
+    if (!(await files(ctx))) return undefined;
     return guarded(ctx, ref);
   };
 
@@ -319,13 +348,30 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     .step(board.drain)
     .tap(afterRun);
 
+  /**
+   * The eight task tools for the model's turn: one capability instance, whose
+   * eight are on a turn only while the session files, read before each model
+   * call. Orchestration's own tools over this board's resolver and roster;
+   * `controlTools`, as Orchestration's capability carries them, so a worker's
+   * `tools:` line doesn't fence them out.
+   */
+  const eight = buildTaskToolsList(resolver, roster);
+  const tools = defineCapability({
+    name: "taskTools",
+    resources: { ...conversationLedgerResources },
+    presets: {
+      tools: { controlTools: async (ctx) => ((await files(ctx as never)) ? eight : []) },
+      default: ["tools"]
+    }
+  });
+
   return {
     board,
     roster,
     resolver,
     runBoard,
-    /** The eight task tools for the model's turn: one capability instance. */
-    tools: createTaskToolsCapability(resolver, roster),
+    files,
+    tools,
     /** The eight task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster),
     /** The ledger, for the flow's `resources`. */
