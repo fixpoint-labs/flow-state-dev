@@ -289,6 +289,8 @@ For production use with crash recovery as a goal, you want SQLite at minimum and
 
 A suspended run can be stopped as well. `session.abortRequest()` on a request paused at `ctx.suspend()` resolves the gate it waits on and ends the request `aborted`; a later approve for that gate is refused with `409`. The record keeps the gate's status as `stopped`. If the process dies after the stop is recorded and before the request is written `aborted`, the retention sweeper below finishes it.
 
+A request parked on an ask (see [the task board](/docs/orchestration/task-board#asking-and-waiting-for-the-answer)) also cancels the task it was waiting on. A run that has already started on that task is not interrupted; its result is discarded.
+
 A run started in the background, dispatched to a separate process with no browser attached, can be cancelled from any process. `session.abortRequest()` stops it within one `heartbeatIntervalMs` tick (10s by default), provided the interval is nonzero. It also needs a request store shared across processes, the same SQLite-or-Postgres requirement as above. See [Connection Resilience — stopping a request that runs on another server](/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server).
 
 ## Retention and cleanup

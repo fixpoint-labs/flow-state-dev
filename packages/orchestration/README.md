@@ -718,6 +718,15 @@ while it is in use. `taskToolActions` exposes the same eight as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
+`addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
+then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
+minutes by default). The option is in the schema only where the host can hold an ask: durable
+execution and a running durability sweeper (`canHoldAsk(ctx)`); a composing layer that builds
+its own capability gets the same per-turn list from `taskToolsForTurn(resolver, roster)`. An
+ask is refused on a task turn, as `isTaskTurn(ctx)` tells it, the one test of a turn the
+receiving gate serves. `addTaskAndWait` and `resumeOwedAsks` are the mechanism under it. See
+the task board page for limits and errors.
+
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
 > surface on its own. Wiring the
