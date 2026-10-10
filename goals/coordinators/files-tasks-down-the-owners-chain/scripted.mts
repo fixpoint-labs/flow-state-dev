@@ -139,8 +139,8 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
   const bob = connect(PEOPLE.bob);
   const out: Record<string, any> = { org: ORG, people: PEOPLE, holdMs: HOLD_MS, slowMs: SLOW_MS, graceMs: GRACE_MS };
 
-  // a: Alice's coordinator files a task for her `agent` delegate, and the
-  // interim rule: a delegate's task session that tries to file is refused.
+  // a: Alice's coordinator files a task for her `agent` delegate, and a
+  // delegate's task session splits its own task (FIX-1802 P2).
   if (o.legs.has("a")) {
     const conv = await conversation(alice, "desk.lead");
     const w = word();
@@ -151,9 +151,9 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const filingSessionId = await filingOf(alice, conv);
     const found = taskId === null ? null : await find(alice, { worker: "desk.alpha", taskId, filingSessionId });
 
-    // The interim rule: desk.sub's task session tries to file a piece, by its own tool and by the app.
+    // The split: desk.sub's task session files a piece for its own delegate, by its own tool and by the app.
     const w2 = word();
-    const splitting = await act(alice, "coordinator", conv, "run", { message: `[file:desk.sub] [split:desk.beta] Plan the ${w2} rollout` });
+    const splitting = await act(alice, "coordinator", conv, "run", { message: `[file:desk.sub] [split:desk.alpha] Plan the ${w2} rollout` });
     const subFiled = await toolOutputs(alice, conv, splitting.requestId);
     const subTaskId = subFiled.filter((t) => t.name === "addTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     await quiet();
