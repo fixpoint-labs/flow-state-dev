@@ -19,6 +19,8 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
+ * - `harnessMessageDoor`, the message door for a flow whose runs come from
+ *   more than one board.
  * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
@@ -71,6 +73,21 @@ export {
   type QuestionAnnouncement,
   type RequestIdentityContext,
 } from "./manager";
+
+// ── A person's message into a run, for a host whose runs span boards ────────
+export {
+  harnessMessageDoor,
+  messageDoorInputSchema,
+  messageDoorOutputSchema,
+  TurnRefused,
+  type HarnessMessageDoorOptions,
+  type MessageDoorAction,
+  type MessageDoorBoard,
+  type MessageDoorOptions,
+  type MessageDoorOutput,
+  type DoorRunIdentity,
+  type TurnRefusalReason,
+} from "./door";
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {

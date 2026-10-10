@@ -1235,8 +1235,8 @@ export type HarnessManager = TaskWorker & {
  *
  * Only a manager with a fixed board has a message door: the door reads that
  * board's rows. A manager given only {@link ManagerOptions.ledgers} is a plain
- * task worker, and its host builds the door over the run records, which key
- * each claim's board as the run does (`runBoardSegment`).
+ * task worker, and its host builds the door with `harnessMessageDoor`, naming
+ * the boards a session's run may be on.
  */
 export function harnessManager(
   options: ManagerOptions & { boardCollectionId: string; boardCollection: DefinedTaskCollection },
@@ -2722,11 +2722,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
 
   worker.validate();
 
-  // The door reads one board's rows, so only a fixed board has one.
+  // This door reads one board's rows, so only a fixed board has one. A host
+  // whose runs come from more than one board builds `harnessMessageDoor`.
   if (boardCollectionId === undefined || boardCollection === undefined) return worker;
   const messageDoor = createMessageDoor({
     name,
-    boardCollectionId,
     boardCollection,
     capability: managerCapability as unknown as DefinedCapability,
     boardTasks,
