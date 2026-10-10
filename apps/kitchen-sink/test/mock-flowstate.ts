@@ -22,7 +22,7 @@ import {
   autoTitleMock,
   sideChainBriefMock,
   agentSeatMock,
-  mailboxRouteMock,
+  coordinatorRouteMock,
 } from "@/lib/e2e-mock-script";
 
 /** Build the mocked model resolver used in `KITCHEN_SINK_TEST_MODE`. */
@@ -37,8 +37,8 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
       "agent-answer": agentSeatMock,
       "agent-answer-with-activate-tool": agentSeatMock,
     },
-    // A routed mailbox's one evaluation, by its evaluator's block name.
-    evaluators: { "mailbox-route": mailboxRouteMock },
+    // A best-fit coordinator's one evaluation, by its evaluator's block name.
+    evaluators: { "coordinator-route": coordinatorRouteMock },
     policy: "allow",
   });
   const held = ((modelId, blockName, options) => {
@@ -65,7 +65,7 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
     };
   }) as ModelResolver;
   held.resolveId = scripted.resolveId;
-  // Evaluators resolve through the same resolver: a routed mailbox's route.
+  // Evaluators resolve through the same resolver: a best-fit coordinator's pick.
   held.resolveEvaluationModel = scripted.resolveEvaluationModel;
   return held;
 }

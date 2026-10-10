@@ -25,13 +25,13 @@ export const KITCHEN_SINK_MODELS = [
 ] as const;
 
 /**
- * The model `support.help`'s route asks which specialist answers a post.
+ * The model `support.help`'s best fit asks which specialist answers a post.
  *
- * An evaluation model, not a chat model: the route's one call is an
+ * An evaluation model, not a chat model: best fit's one call is an
  * evaluator, and a chat model named here is refused when the call resolves.
  * Being an evaluation model it is also untouched by the dev override that
  * forces every generator onto the cheap model. Test mode scripts the call by
- * its block name, `mailbox-route`, and never reaches this model.
+ * its block name, `coordinator-route`, and never reaches this model.
  */
 export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
 

@@ -67,7 +67,26 @@ export interface DispatchEnvelope {
    * backend.
    */
   leasePlace?: LeasePlace | null;
+  /**
+   * How the job reaches its turn, when not by waiting in line for
+   * `leasePlace` (FIX-1836). Set by the host from the entry's policy:
+   *
+   *   - `{ kind: "now" }` — `hold`: `leasePlace` has its turn already. The
+   *     worker runs the job at once, renews the place while it runs, and gives
+   *     it back when the job is done for good.
+   *   - `{ kind: "when-free", key }` — `defer`: no place yet. The worker claims
+   *     `key` only once nothing holds or waits on it, yielding to newer runs
+   *     for at most the patience `planDeferWait` sets, then lining up behind
+   *     the places on the key.
+   *
+   * `== null` → `leasePlace`, if any, waits its turn in line (`queue`,
+   * `reject`), as a job from a release before this field does.
+   */
+  leaseTurn?: LeaseTurn | null;
 }
+
+/** How a queued job reaches its turn on its concurrency key; see `DispatchEnvelope.leaseTurn`. */
+export type LeaseTurn = { kind: "now" } | { kind: "when-free"; key: string };
 
 /**
  * Handle returned by FlowDispatcher.dispatch(). Exposes the request id

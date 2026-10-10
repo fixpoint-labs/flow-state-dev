@@ -11,7 +11,7 @@
 import { isAskGate, parseAskOutcome } from "@flow-state-dev/core/types";
 import type { AskOutcome, ResumeAskResult, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
-import { resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
+import { latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
 
 /** What {@link resumeAskGate} needs from the host. */
 export type AskResumeDeps = ResumeDeps & {
@@ -23,7 +23,7 @@ export type AskResumeDeps = ResumeDeps & {
  *
  * The caller has already decided this gate is theirs to resume. This checks
  * only what makes a resume safe, under the request's lease: the gate is an ask,
- * it is still pending, and the request is suspended. A gate that is no longer
+ * it is still pending, and the request is parked on it. A gate that is no longer
  * pending is `already-resolved`, so a second resume (a notice delivered twice,
  * a marker replayed after the turn resumed) resumes nothing.
  */
@@ -62,12 +62,27 @@ export async function resumeAskGate(
         };
       }
       const request = await deps.stores.request.get(gate.requestId);
-      if (request === undefined || request.status !== "suspended") {
+      // Interrupted before its log held the gate (the process died between
+      // writing the gate and its log item): a continuation could not replay
+      // this outcome onto the gate, and would park on it again. Not resolved,
+      // only not yet resumable, so refused as retryable: the outcome's sender
+      // keeps it and tries again once the turn has parked again.
+      if (request?.status === "interrupted" && latestGateIdOf(request) !== gate.suspensionId) {
+        return {
+          refusal: {
+            ok: false,
+            refused: "busy",
+            detail: `the turn parked on ask gate "${gate.suspensionId}" was interrupted before it parked; try again once it has`
+          }
+        };
+      }
+      // Parked on it: `suspended`, or `interrupted` with the gate on its log.
+      if (request === undefined || (request.status !== "suspended" && request.status !== "interrupted")) {
         return {
           refusal: {
             ok: false,
             refused: "already-resolved",
-            detail: `the turn parked on ask gate "${gate.suspensionId}" is "${request?.status ?? "gone"}", not suspended`
+            detail: `the turn parked on ask gate "${gate.suspensionId}" is "${request?.status ?? "gone"}", not parked`
           }
         };
       }
@@ -75,7 +90,9 @@ export async function resumeAskGate(
     },
     action: "submit",
     data: parsed,
-    resumedBy
+    resumedBy,
+    // A stop is recorded as one, so the re-drive and any later reader know it.
+    ...("stopped" in parsed ? { status: "stopped" as const } : {})
   });
 
   if (resumed.ok) return { ok: true };

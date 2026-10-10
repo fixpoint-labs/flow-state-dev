@@ -49,6 +49,23 @@ describe("createWorkerDispatcher", () => {
     );
   });
 
+  it("carries how the job reaches its turn, so its worker applies hold and defer", async () => {
+    const { bridge } = makeBridge();
+    const add = vi.fn(async (_name: string, data: unknown) => ({ data }));
+    const dispatcher = createWorkerDispatcher({ queue: { add } as unknown as Queue, bridge });
+
+    await dispatcher.dispatch({ ...envelope, leaseTurn: { kind: "now" } });
+    await dispatcher.dispatch({
+      ...envelope,
+      leasePlace: undefined,
+      leaseTurn: { kind: "when-free", key: "s_1" },
+    });
+
+    expect(add.mock.calls[0]![1]).toMatchObject({ leasePlace: place, leaseTurn: { kind: "now" } });
+    expect(add.mock.calls[1]![1]).toMatchObject({ leaseTurn: { kind: "when-free", key: "s_1" } });
+    expect(add.mock.calls[1]![1]).not.toHaveProperty("leasePlace");
+  });
+
   it("refuses a dispatch whose job id BullMQ already had, rather than losing the request", async () => {
     // BullMQ answers an `add` under an existing id with the existing job and
     // writes nothing. A backend that reused a ticket would otherwise drop the

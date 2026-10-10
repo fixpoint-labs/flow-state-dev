@@ -1,7 +1,7 @@
 /**
  * Server-internal retention sweeper for durable-execution artifacts.
  *
- * Runs on a fixed interval and, on each tick, performs five independent
+ * Runs on a re-armed timer and, on each tick, performs six independent
  * maintenance steps against the durability stores:
  *
  *   1. Acquire a single-holder sentinel lease so only one host sweeps at a
@@ -13,6 +13,11 @@
  *      reject stale gates). An **ask gate** is the exception: it is resumed
  *      with `wait_timed_out` instead (FIX-1816), because an `expired` ask gate
  *      would strand its turn: nothing else may resume it.
+ *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
+ *      is already resolved (an ask's answer, failure, timeout or stop, or any
+ *      gate stopped), under the request's lease, with the recorded outcome;
+ *      and stop a parked request whose stop was recorded while it was still
+ *      running (`abortRequested`), as a stop of a parked turn does.
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -28,12 +33,27 @@
  * skip the others, and a tick failure is logged but NEVER thrown (it would
  * surface as an unhandled rejection from the interval callback).
  *
- * Mirrors `execution/stale-request-sweeper.ts` for the timer mechanics:
- * `setInterval` + `unref()`, an `inFlight` re-entrancy guard, an idempotent
- * `dispose()`, and a no-op handle when the interval is disabled.
+ * Scheduling is deadline-aware, and derived from the store. After every tick,
+ * whatever it came to, the timer is re-armed from the pending ask gates: those
+ * step 2 read and left pending when the tick ran, or a fresh read when it did
+ * not (the sweep lease held by another host, or a failure). It is re-armed for
+ * the earlier of `sweepIntervalMs` and the earliest deadline among them, never
+ * sooner than `MIN_TICK_DELAY_MS`. An ask still pending past its deadline (its
+ * turn was busy, still being written parked, or the resume failed) is retried
+ * after `OVERDUE_ASK_RETRY_MS`, for up to one interval past its deadline; an
+ * idle host keeps its interval. A turn that parks on an ask in this process
+ * also notes its deadline (`ask-deadlines.ts`, keyed on the durability
+ * provider), and the `onAskDeadline` listener brings the armed tick forward:
+ * an optimization the re-arm does not depend on. One timer per host, never one
+ * per ask.
+ *
+ * Otherwise mirrors `execution/stale-request-sweeper.ts`: `unref()` on the
+ * timer, an `inFlight` re-entrancy guard (a tick due while one runs is pushed
+ * back by the floor), an idempotent `dispose()` that also stops listening, and
+ * a no-op handle when the interval is disabled.
  */
 
-import type { StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { RequestStatus, SuspensionRecord } from "@flow-state-dev/core/types";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -43,6 +63,9 @@ import {
 import type { DurabilityProvider } from "./types";
 import { isAskGate } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
+import { onAskDeadline } from "./ask-deadlines";
+import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
+import { latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -86,6 +109,13 @@ export type CreateDurabilitySweeperOptions = {
    * marked expired, which would strand the turn).
    */
   continueRequest?: ResumeDeps["continueRequest"];
+  /**
+   * Whether the retention steps (3 to 5: pruning) run. Default true. A host
+   * with durable execution but no retention policy sweeps with this off: its
+   * gates are still kept (expiry, ask timeouts, re-drive, stop carry), and
+   * nothing is pruned.
+   */
+  prune?: boolean;
 };
 
 /** Handle returned by {@link createDurabilitySweeper}. */
@@ -111,6 +141,9 @@ function defaultHolder(): string {
   return `durability-sweeper-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Request statuses a turn has ended in: nothing it parked on is waited on. */
+const ENDED_STATUSES: RequestStatus[] = ["completed", "failed", "incomplete", "aborted"];
+
 /** Terminal request statuses whose checkpoints are backstop-prunable by age. */
 const PRUNABLE_TERMINAL_STATUSES: RequestStatus[] = ["completed", "failed", "aborted"];
 
@@ -123,8 +156,8 @@ const MAX_SCAN_PAGES = 1000;
 
 /**
  * Build a durability retention sweeper. Returns a handle whose `dispose`
- * clears the underlying interval — call it on router teardown to avoid
- * leaking a timer. When `sweepIntervalMs <= 0` (or non-finite) the returned
+ * clears the underlying timer and its deadline listener — call it on router
+ * teardown to avoid leaking a timer. When `sweepIntervalMs <= 0` (or non-finite) the returned
  * handle is a no-op with no timer.
  */
 export function createDurabilitySweeper(
@@ -136,7 +169,8 @@ export function createDurabilitySweeper(
     retention = {},
     holder = defaultHolder(),
     logger = DEFAULT_RUNTIME_LOGGER,
-    continueRequest
+    continueRequest,
+    prune = true
   } = options;
 
   const sweepIntervalMs = retention.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
@@ -153,9 +187,59 @@ export function createDurabilitySweeper(
 
   let disposed = false;
   let inFlight = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  /** When the armed timer fires (epoch ms); infinite while none is armed. */
+  let nextAt = Number.POSITIVE_INFINITY;
+
+  // The next tick is the earlier of the interval and the earliest pending ask
+  // deadline, so an ask times out within about a second of its deadline on a
+  // long-lived host rather than up to an interval late. Floored, never a busy
+  // loop; an idle host keeps its interval.
+  const arm = (delayMs: number): void => {
+    if (disposed) return;
+    const delay = Math.min(sweepIntervalMs, Math.max(MIN_TICK_DELAY_MS, delayMs));
+    // Never push back a tick already armed sooner.
+    if (Date.now() + delay >= nextAt) return;
+    if (timer !== undefined) clearTimeout(timer);
+    nextAt = Date.now() + delay;
+    timer = setTimeout(tick, delay);
+    // Don't keep a Node process alive solely for the sweeper.
+    if (typeof (timer as unknown as { unref?: () => void }).unref === "function") {
+      (timer as unknown as { unref: () => void }).unref();
+    }
+  };
+
+  // When the next tick is due, from the pending ask gates (the tick's own, or
+  // read here when it has none): the earliest deadline, an overdue one retried
+  // shortly, else the interval.
+  const nextDelay = async (tickPending: SuspensionRecord[] | undefined): Promise<number> => {
+    if (continueRequest === undefined) return sweepIntervalMs;
+    try {
+      const pending = tickPending ?? (await provider.listSuspended({ status: "pending" }));
+      const now = Date.now();
+      let due = Number.POSITIVE_INFINITY;
+      for (const gate of pending) {
+        if (!isAskGate(gate) || gate.expiresAt == null) continue;
+        if (gate.expiresAt > now) due = Math.min(due, gate.expiresAt);
+        else if (now - gate.expiresAt < sweepIntervalMs) due = Math.min(due, now + OVERDUE_ASK_RETRY_MS);
+      }
+      return due === Number.POSITIVE_INFINITY ? sweepIntervalMs : due - now;
+    } catch (err) {
+      logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: next tick read failed", {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return sweepIntervalMs;
+    }
+  };
 
   const tick = (): void => {
-    if (disposed || inFlight) return;
+    if (disposed) return;
+    timer = undefined;
+    nextAt = Number.POSITIVE_INFINITY;
+    if (inFlight) {
+      arm(MIN_TICK_DELAY_MS);
+      return;
+    }
     inFlight = true;
     void runTick({
       provider,
@@ -167,9 +251,10 @@ export function createDurabilitySweeper(
       suspensionTerminalMaxAgeMs,
       orphanCheckpointThresholdMs,
       batchLimit,
-      continueRequest
+      continueRequest,
+      prune
     })
-      .catch((err) => {
+      .catch((err): undefined => {
         // A failure that escapes the per-step guards is still never thrown
         // out of the interval callback — log and continue next tick.
         logRuntimeEvent(
@@ -178,26 +263,37 @@ export function createDurabilitySweeper(
           "[flow-state] durability sweeper iteration failed",
           { error: err instanceof Error ? err.message : String(err) }
         );
+        return undefined;
       })
-      .finally(() => {
+      .then(nextDelay)
+      .then((delay) => {
         inFlight = false;
+        arm(delay);
       });
   };
 
-  const timer = setInterval(tick, sweepIntervalMs);
-  // Don't keep a Node process alive solely for the sweeper.
-  if (typeof (timer as unknown as { unref?: () => void }).unref === "function") {
-    (timer as unknown as { unref: () => void }).unref();
-  }
+  arm(sweepIntervalMs);
+
+  // An ask parked in this process brings the armed tick forward.
+  const stopListening = onAskDeadline(provider, (deadline) => {
+    arm(deadline - Date.now());
+  });
 
   return {
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      clearInterval(timer);
+      stopListening();
+      if (timer !== undefined) clearTimeout(timer);
     }
   };
 }
+
+/** The soonest a tick runs after the last one, or after a deadline is noted. */
+const MIN_TICK_DELAY_MS = 1_000;
+
+/** How soon an ask still pending past its deadline is tried again. */
+const OVERDUE_ASK_RETRY_MS = 5_000;
 
 type RunTickArgs = {
   provider: DurabilityProvider;
@@ -212,6 +308,8 @@ type RunTickArgs = {
   batchLimit: number;
   /** See {@link CreateDurabilitySweeperOptions.continueRequest}. */
   continueRequest?: ResumeDeps["continueRequest"];
+  /** See {@link CreateDurabilitySweeperOptions.prune}. Default true. */
+  prune?: boolean;
 };
 
 /** {@link RunTickArgs} with the logger resolved to a concrete sink. */
@@ -225,7 +323,7 @@ type ResolvedTickArgs = RunTickArgs & { logger: RuntimeLogger };
  * Exported for direct invocation in tests (a single deterministic sweep
  * without driving the interval timer).
  */
-export async function runTick(rawArgs: RunTickArgs): Promise<void> {
+export async function runTick(rawArgs: RunTickArgs): Promise<SuspensionRecord[] | undefined> {
   // Normalize the logger once so each step's defensive logging has a sink.
   const args: ResolvedTickArgs = {
     ...rawArgs,
@@ -239,13 +337,17 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
     durationMs: sweepIntervalMs
   });
   // Another host holds the sweep lease — skip the entire tick.
-  if (lease === null) return;
+  if (lease === null) return undefined;
 
   try {
-    await enforceSuspensionExpiry(args, now);
-    await pruneTerminalSuspensions(args, now);
-    await pruneExpiredLeases(args);
-    await pruneOrphanCheckpoints(args, now);
+    const pending = await enforceSuspensionExpiry(args, now);
+    await redriveResolvedGates(args);
+    if (args.prune !== false) {
+      await pruneTerminalSuspensions(args, now);
+      await pruneExpiredLeases(args);
+      await pruneOrphanCheckpoints(args, now);
+    }
+    return pending;
   } finally {
     await provider
       .releaseLease(SWEEPER_LEASE_KEY, lease.leaseId)
@@ -261,7 +363,10 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
  * Step 2: re-set every `pending` suspension past its `expiresAt` to `expired`.
  * Closes the gate so the resume endpoint rejects it.
  */
-async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Promise<void> {
+async function enforceSuspensionExpiry(
+  args: ResolvedTickArgs,
+  now: number
+): Promise<SuspensionRecord[] | undefined> {
   const { provider, logger } = args;
   try {
     // List ALL pending suspensions — deliberately unbounded. `listSuspended`
@@ -273,15 +378,28 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     // of them each tick is cheap. (A store-level `expiresBefore` predicate could
     // make this bounded-and-correct if pending volume ever grows.)
     const pending = await provider.listSuspended({ status: "pending" });
+    // The ask gates still pending after this step, which the next tick is
+    // scheduled from: those not yet due, and any overdue one its resume left
+    // pending (re-read, so a resumed gate does not count).
+    const stillPending: SuspensionRecord[] = [];
     let askGatesSkipped = 0;
     for (const record of pending) {
-      if (record.expiresAt == null || record.expiresAt > now) continue;
+      if (record.expiresAt == null) continue;
+      if (record.expiresAt > now) {
+        if (isAskGate(record)) stillPending.push(record);
+        continue;
+      }
       if (isAskGate(record)) {
         // Never `expired`: nothing else may resume an ask gate, so that would
         // strand its turn. Without a way to continue a request, leave it
         // pending for a sweeper that has one.
-        if (args.continueRequest === undefined) askGatesSkipped += 1;
-        else await resumeOverdueAsk(args, record);
+        if (args.continueRequest === undefined) {
+          askGatesSkipped += 1;
+          continue;
+        }
+        await resumeOverdueAsk(args, record);
+        const after = await provider.loadSuspension(record.requestId, record.suspensionId);
+        if (after?.status === "pending") stillPending.push(after);
         continue;
       }
       // Re-load immediately before writing: an operator may have approved or
@@ -305,8 +423,102 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
         { count: askGatesSkipped }
       );
     }
+    return stillPending;
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: expiry enforcement failed", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Step 2b: re-drive a request left parked behind a gate that is already
+ * resolved (FIX-1816, BR-11a, BR-16c). An ask gate answered, failed, timed out
+ * or stopped, or any gate stopped, whose request is still `suspended` or
+ * `interrupted`: the process died after the gate's write and before the turn
+ * moved on. It is driven on under its lease with the recorded outcome, never a
+ * new one. A live resume holds that lease, so it is never raced.
+ *
+ * Read from the parked requests, not the resolved gates: each `suspended` or
+ * `interrupted` request is read with its item log, and the last gate it parked
+ * on is loaded by id. Only that gate can be owed, so an older gate of the
+ * request never stands in for it, and the work is bounded by how many
+ * requests are parked rather than by how many gates were resolved within
+ * retention. The parked set is read in full before any is driven, since a
+ * re-drive moves its request out of it; paged by start time, which a request
+ * never changes, up to {@link MAX_SCAN_PAGES} pages.
+ */
+async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
+  const { provider, stores, logger, continueRequest, batchLimit } = args;
+  if (continueRequest === undefined) return;
+  const redriveOne = async (requestId: string, suspensionId: string): Promise<void> => {
+    try {
+      const gate = await provider.loadSuspension(requestId, suspensionId);
+      // Owed a re-drive: an ask's answer or ending, or any gate stopped.
+      if (gate === null) return;
+      if (gate.status !== "stopped" && !(gate.status === "submitted" && isAskGate(gate))) return;
+      const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
+      if (result === "redriven") {
+        logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {
+          requestId: gate.requestId,
+          suspensionId: gate.suspensionId,
+          status: gate.status
+        });
+      }
+    } catch (err) {
+      logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive failed", {
+        requestId,
+        suspensionId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  };
+  try {
+    const parked: { requestId: string; suspensionId: string }[] = [];
+    // Parked with a stop recorded while the turn still ran (it was accepted
+    // as the turn was being written parked, and the parking run did not carry
+    // it onto the gate). Owed the stop.
+    const stopOwed: RequestRecord[] = [];
+    for (let page = 0; page < MAX_SCAN_PAGES; page++) {
+      const batch = await stores.request.list({
+        status: PARKED,
+        orderBy: "startedAtMs",
+        limit: batchLimit,
+        offset: page * batchLimit,
+        withItems: true
+      });
+      for (const record of batch) {
+        if (record.abortRequested === true) {
+          stopOwed.push(record);
+          continue;
+        }
+        const suspensionId = latestGateIdOf(record);
+        if (suspensionId !== undefined) parked.push({ requestId: record.id, suspensionId });
+      }
+      if (batch.length < batchLimit) break;
+    }
+    for (const record of stopOwed) {
+      try {
+        // Through the gate's single pending state: if the parking run's own
+        // carry, or an answer, got there first, this finds no pending gate and
+        // does nothing.
+        if ((await stopSuspendedRequest({ provider, stores, continueRequest }, record)) === "stopped") continue;
+      } catch (err) {
+        logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: carrying a recorded stop failed", {
+          requestId: record.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        continue;
+      }
+      // Its gate was already resolved: a stop the carry recorded but did not
+      // finish is re-driven like any other.
+      const suspensionId = latestGateIdOf(record);
+      if (suspensionId !== undefined) parked.push({ requestId: record.id, suspensionId });
+    }
+    for (const { requestId, suspensionId } of parked) await redriveOne(requestId, suspensionId);
+  } catch (err) {
+    logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive listing failed", {
       error: err instanceof Error ? err.message : String(err)
     });
   }
@@ -316,8 +528,9 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
  * The ask branch of step 2: resume an overdue ask gate with `wait_timed_out`,
  * through the same resume every ask takes (fenced on the gate still being
  * pending, under the request's lease). The resumed call ends the asked task.
- * Per-gate failures are logged and the sweep moves on; a refused resume (the
- * answer won the race, or another resume holds the lease) needs nothing more.
+ * Per-gate failures are logged and the sweep moves on. A gate this leaves
+ * pending (the turn busy, not yet written parked, or the resume failed) is
+ * retried by the next tick, which is scheduled from the pending gates.
  */
 async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<void> {
   const { provider, stores, logger, continueRequest } = args;
@@ -337,6 +550,17 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
     );
     if (result.ok) return;
     if (result.refused === "already-resolved") {
+      // Its turn has ended (a stop that ended it before its replay reached
+      // the ask): nothing waits on the gate, so it is expired rather than
+      // retried every tick.
+      const request = await stores.request.get(record.requestId);
+      if (request !== undefined && ENDED_STATUSES.includes(request.status)) {
+        const current = await provider.loadSuspension(record.requestId, record.suspensionId);
+        if (current?.status === "pending") {
+          await provider.suspend({ ...current, status: "expired", resolvedAt: Date.now() });
+        }
+        return;
+      }
       // The gate was listed pending this tick, yet the resume found it (or its
       // turn) already past waiting: the answer won the race, or the record and
       // its request disagree. Nothing to change; worth seeing if it recurs.

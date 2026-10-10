@@ -21,12 +21,27 @@
 import {
   RESUME_ACTION_STATUS,
   type ResumeAction,
-  type SuspensionRecord
+  type ResumeContext,
+  type SuspensionRecord,
+  type SuspensionStatus
 } from "@flow-state-dev/core/types";
 import type { ContinueRequestResult } from "../execution/request-continuation";
 import type { HostContinueRequestOptions } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import type { DurabilityProvider } from "./types";
+
+/**
+ * The last gate the request's item log parked on, if it has one: the gate a
+ * continuation's replay can resolve.
+ */
+export function latestGateIdOf(record: { readonly items?: readonly unknown[] }): string | undefined {
+  const items = record.items ?? [];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i] as { type?: string; suspensionId?: string };
+    if (item.type === "suspension") return item.suspensionId;
+  }
+  return undefined;
+}
 
 /** How long a resume holds the request's lease before the run takes over. */
 export const RESUME_LEASE_MS = 60_000;
@@ -55,6 +70,8 @@ export async function resumeUnderLease<TRefusal>(
     action: ResumeAction;
     data?: unknown;
     resumedBy?: string;
+    /** The status the gate is recorded with, when it is not the action's own (a stop). */
+    status?: SuspensionStatus;
   }
 ): Promise<LeasedResume<TRefusal>> {
   const { provider } = deps;
@@ -80,7 +97,7 @@ export async function resumeUnderLease<TRefusal>(
   try {
     await provider.suspend({
       ...suspension,
-      status: RESUME_ACTION_STATUS[args.action],
+      status: args.status ?? RESUME_ACTION_STATUS[args.action],
       resolvedAt: Date.now(),
       resolvedBy: args.resumedBy,
       resumeData: args.data
@@ -97,6 +114,49 @@ export async function resumeUnderLease<TRefusal>(
     return { ok: true, handle };
   } catch (error) {
     await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
+    await provider.releaseLease(args.requestId, lease.leaseId).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Continue a request whose gate is already resolved, under the request's
+ * lease: the re-drive (BR-11a). The gate's recorded resolution is the record
+ * of what is owed, so nothing is written to it; the caller admits the request
+ * under the lease and names the resolution to replay. A live resume holds the
+ * lease, so this never races one. If setup fails before the run starts, the
+ * lease is released and the gate keeps its resolution for the next sweep: here
+ * the error is rethrown; after the handle is returned, `runAction`'s
+ * pre-transition recovery leaves the gates a re-drive continues (an answered
+ * ask, a stop) resolved.
+ */
+export async function continueUnderLease<TRefusal>(
+  deps: ResumeDeps,
+  args: {
+    requestId: string;
+    holder: string;
+    /** The resolution to replay; absent → continued as crash recovery continues it. */
+    admit: () => Promise<{ resumeContext: ResumeContext | undefined } | { refusal: TRefusal }>;
+  }
+): Promise<LeasedResume<TRefusal>> {
+  const { provider } = deps;
+  const lease = await provider.acquireLease(args.requestId, {
+    holder: generateId(args.holder),
+    durationMs: RESUME_LEASE_MS
+  });
+  if (lease === null) return { ok: false, busy: true };
+  try {
+    const admitted = await args.admit();
+    if ("refusal" in admitted) {
+      await provider.releaseLease(args.requestId, lease.leaseId);
+      return { ok: false, refusal: admitted.refusal };
+    }
+    const handle = await deps.continueRequest({
+      requestId: args.requestId,
+      ...(admitted.resumeContext !== undefined ? { resumeContext: admitted.resumeContext } : {})
+    });
+    return { ok: true, handle };
+  } catch (error) {
     await provider.releaseLease(args.requestId, lease.leaseId).catch(() => {});
     throw error;
   }

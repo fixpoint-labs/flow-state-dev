@@ -2762,11 +2762,12 @@ export async function createExecutionContext<
           return "not-in-this-session";
         }
         // The abort route's own write (`recordRequestStop`), not a copy of it.
-        const stop = await recordRequestStop(stores.request, target);
+        const stop = await recordRequestStop(stores.request, target, options.requestHost?.parkedStop);
         // Gone between the read and the write: answered like an unknown id,
         // as the abort route answers it 404.
         if (stop.kind === "gone") return "not-in-this-session";
         if (stop.kind === "finished") return "already-finished";
+        if (stop.kind === "already-resolved") return "already-resolved";
         return "stopped";
       },
       ...sessionOpsEmitting

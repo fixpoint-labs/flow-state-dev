@@ -45,6 +45,16 @@ export const LLM_AUDIENCE_TYPES = new Set([
 ]);
 
 /**
+ * The one line a later turn sees for a tool result the record left out
+ * (FIX-1772): the tool and the size, never the placeholder object, so the model
+ * doesn't mistake a preview for the result.
+ */
+function omittedToolResultText(toolName: string, bytes: number | null): string {
+  const size = bytes === null ? "a value that could not be serialized" : `${bytes} bytes`;
+  return `[The result of ${toolName} (${size}) was too large to keep in the conversation history.]`;
+}
+
+/**
  * Converts a persisted OutputItem into an LLM-ready message.
  *
  * Items with `history: false` (resolved via `resolveItemVisibility`) are
@@ -89,9 +99,11 @@ export function itemToLLMMessages(item: OutputItem | BlockTraceItem, allItems: r
     const bto = item as ToolOutputItem;
     const resultText = bto.status === "failed" && bto.error
       ? failedToolResultText(bto.toolCall.name, bto.error.message)
-      : typeof bto.output === "string"
-        ? bto.output
-        : JSON.stringify(bto.output);
+      : bto.outputOmitted !== undefined
+        ? omittedToolResultText(bto.toolCall.name, bto.outputOmitted.bytes)
+        : typeof bto.output === "string"
+          ? bto.output
+          : JSON.stringify(bto.output);
 
     let input: Record<string, unknown> = {};
     try { input = JSON.parse(bto.toolCall.arguments); } catch { /* use empty */ }

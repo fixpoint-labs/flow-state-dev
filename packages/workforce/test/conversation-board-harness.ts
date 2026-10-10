@@ -244,14 +244,19 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   const router = async () => (await state.getRouter()) as any;
 
-  /** POST a session create as `userId`. */
-  const create = async (userId: string, flow: string, body: Record<string, unknown>) => {
-    const request = new Request(`http://localhost/api/flows/${flow}/sessions`, {
+  /** One POST, shared by session create, action dispatch, and abort. */
+  const postJson = async (userId: string, path: string[], body: unknown): Promise<Response> => {
+    const request = new Request(`http://localhost/api/flows/${path.join("/")}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-user": userId },
-      body: JSON.stringify({ userId, ...body })
+      body: JSON.stringify(body)
     });
-    const res: Response = await (await router()).POST(request, { params: { path: [flow, "sessions"] } });
+    return (await router()).POST(request, { params: { path } });
+  };
+
+  /** POST a session create as `userId`. */
+  const create = async (userId: string, flow: string, body: Record<string, unknown>) => {
+    const res = await postJson(userId, [flow, "sessions"], { userId, ...body });
     return { status: res.status, body: (await res.json()) as { session?: { id: string }; error?: string } };
   };
 
@@ -265,6 +270,20 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       throw new Error(`creating a ${worker} conversation failed (${created.status}): ${JSON.stringify(created.body)}`);
     }
     return created.body.session!.id;
+  };
+
+  /** POST an action through the host's dispatch, so its concurrency policy applies. The accepted request's id. */
+  const post = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+    const res = await postJson(userId, [flow, sessionId, "actions", actionName], { userId, input });
+    const body = (await res.json()) as { request?: { id: string }; error?: unknown };
+    if (res.status !== 202) throw new Error(`POST ${actionName} was refused (${res.status}): ${JSON.stringify(body)}`);
+    return body.request!.id;
+  };
+
+  /** Cancel a request as `userId`. */
+  const abort = async (userId: string, requestId: string, flow = "coordinator") => {
+    const res = await postJson(userId, [flow, "requests", requestId, "abort"], { userId });
+    if (res.status >= 300) throw new Error(`aborting ${requestId} was refused (${res.status}): ${await res.text()}`);
   };
 
   /** Run an action on `flow` as `userId`, in process. */
@@ -396,6 +415,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     agentAnswer,
     create,
     conversation,
+    post,
+    abort,
     act,
     settled,
     rows,

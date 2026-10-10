@@ -18,7 +18,13 @@
  * re-entry from the persisted items and assigns it to `ctx._replayLog`; the
  * core executor only reads this interface.
  */
-import type { BlockTraceItem, BlockValueInternal, RouterDecisionItem } from "../../items/types";
+import type {
+  BlockTraceItem,
+  BlockValueInternal,
+  OmittedValue,
+  RouterDecisionItem,
+  ToolOutputItem
+} from "../../items/types";
 import type { RuntimeItem } from "../../items/internal";
 import { parseBlockInstanceId } from "./block-instance-id";
 import { buildItemLookup, resolveBlockValueInternal } from "../../items/resolve-value";
@@ -51,7 +57,9 @@ export interface ReplayLog {
    * (`${requestId}:${path}`), or `undefined` when no committed `completed`
    * trace exists for it (→ the block must execute). The returned BlockValue is
    * fully materialised to `inline` so callers never receive a `ref` into a
-   * shadowed run-1 partial.
+   * shadowed run-1 partial — except when the record left the value out
+   * (FIX-1772): then it is the `omitted` placeholder, which the replay site
+   * must refuse, never inject.
    */
   getCompletedOutput(blockLogicalId: string): BlockValueInternal<unknown> | undefined;
   /**
@@ -99,6 +107,36 @@ export interface ReplayLog {
   items(): readonly RuntimeItem[];
 }
 
+/**
+ * The placeholder a recorded block value stands on, if any: an `omitted` value
+ * itself, one inside a structure, or one on the item a ref points at (a
+ * `block_trace` output, or a `tool_output` recorded as `outputOmitted`).
+ */
+function findOmitted(
+  value: BlockValueInternal<unknown>,
+  lookup: ReturnType<typeof buildItemLookup>,
+  hops = 0
+): OmittedValue | undefined {
+  if (value.kind === "omitted") return value;
+  if (value.kind === "structure") {
+    const entries = value.shape.container === "array" ? value.shape.entries : Object.values(value.shape.entries);
+    for (const entry of entries) {
+      const found = findOmitted(entry, lookup, hops);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (value.kind === "ref" && hops < 2) {
+    const target = lookup(value.sourceItemId);
+    if (target?.type === "block_trace") {
+      const output = (target as BlockTraceItem).output;
+      return output === undefined ? undefined : findOmitted(output, lookup, hops + 1);
+    }
+    if (target?.type === "tool_output") return (target as ToolOutputItem).outputOmitted;
+  }
+  return undefined;
+}
+
 /** Strip the trailing `:${attempt}` from a blockInstanceId, yielding its logical id. */
 function logicalIdOf(blockInstanceId: string): string | undefined {
   const parsed = parseBlockInstanceId(blockInstanceId);
@@ -140,6 +178,14 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       if (logicalId === undefined) continue;
       const prior = completed.get(logicalId);
       if (prior !== undefined && trace.itemIndex < prior.itemIndex) continue;
+      // A value the record left out (FIX-1772) is carried as the placeholder,
+      // never materialised: there is nothing to hand on, and the replay site
+      // refuses it rather than inject `undefined`.
+      const omitted = trace.output === undefined ? undefined : findOmitted(trace.output, lookup);
+      if (omitted !== undefined) {
+        completed.set(logicalId, { itemIndex: trace.itemIndex, output: omitted, traceId: trace.id });
+        continue;
+      }
       const resolved =
         trace.output === undefined
           ? undefined

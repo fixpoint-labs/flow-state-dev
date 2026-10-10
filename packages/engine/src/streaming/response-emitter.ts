@@ -35,6 +35,11 @@ import {
   type InternalStreamingSeams
 } from "./internal/seams";
 import { createStreamEnvelope } from "./types";
+import {
+  carriesRecordedValue,
+  DEFAULT_MAX_RECORDED_VALUE_BYTES,
+  RecordedValueLimiter
+} from "./recorded-value";
 
 export type RequestStreamEventWithId = RequestStreamEvent & {
   id: string;
@@ -60,6 +65,13 @@ export type CreateResponseEmitterOptions = {
    */
   startItemIndex?: number;
   maxBufferSize?: number;
+  /**
+   * Largest block output or tool result, in serialized UTF-8 bytes, that the
+   * emitter records whole (FIX-1772). Larger values are recorded as an
+   * `omitted` placeholder; the producer keeps the real value. Defaults to
+   * 256 KiB, so an emitter built without the option is still limited.
+   */
+  maxRecordedValueBytes?: number;
   now?: () => number;
   onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
 };
@@ -190,6 +202,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
   private readonly internalSeams: InternalStreamingSeams;
   private readonly maxBufferSize: number;
+  private readonly recordLimiter: RecordedValueLimiter;
+  /** `${itemId}:${slot}` pairs already warned about, so a value warns once. */
+  private readonly omittedWarned = new Set<string>();
   private sequenceNumber: number;
   private readonly baseItemIndex: number;
   private readonly events: RequestStreamEventWithId[] = [];
@@ -212,6 +227,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.sequenceNumber = Math.max(0, options.startSequenceNumber ?? 0);
     this.baseItemIndex = Math.max(0, options.startItemIndex ?? 0);
     this.maxBufferSize = Math.max(1, options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE);
+    this.recordLimiter = new RecordedValueLimiter(
+      Math.max(0, options.maxRecordedValueBytes ?? DEFAULT_MAX_RECORDED_VALUE_BYTES)
+    );
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
     this.internalSeams = options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS;
@@ -394,10 +412,8 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * Emits an item-added event and tracks the item for later item views.
    */
   async emitItemAdded(item: OutputItem): Promise<RequestStreamEventWithId> {
-    const interceptedItem = applyItemSeam(
-      this.internalSeams,
-      item,
-      "item.added"
+    const interceptedItem = this.limitRecordedItem(
+      applyItemSeam(this.internalSeams, item, "item.added")
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
     this.fanoutItemEvent(interceptedItem, "added");
@@ -424,10 +440,8 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * Emits an item-done event and updates tracked item state.
    */
   async emitItemDone(item: OutputItem): Promise<RequestStreamEventWithId> {
-    const interceptedItem = applyItemSeam(
-      this.internalSeams,
-      item,
-      "item.done"
+    const interceptedItem = this.limitRecordedItem(
+      applyItemSeam(this.internalSeams, item, "item.done")
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
     this.fanoutItemEvent(interceptedItem, "done");
@@ -462,7 +476,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       return undefined;
     }
 
-    const sanitized = stripInvariantKeys(patch);
+    const sanitized = this.limitRecordedFields(existing, stripInvariantKeys(patch));
     const merged = { ...existing, ...sanitized } as OutputItem;
     this.itemsById.set(itemId, merged);
     this.fanoutItemEvent(merged, "updated");
@@ -500,19 +514,15 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     addedEvent: RequestStreamEventWithId;
     doneEvent: RequestStreamEventWithId;
   }> {
-    const interceptedAdded = applyItemSeam(
-      this.internalSeams,
-      item,
-      "item.added"
+    const interceptedAdded = this.limitRecordedItem(
+      applyItemSeam(this.internalSeams, item, "item.added")
     );
     const addedEvent = await this.appendEvent<ItemAddedEvent>({
       type: "item.added",
       item: interceptedAdded
     });
-    const interceptedDone = applyItemSeam(
-      this.internalSeams,
-      interceptedAdded,
-      "item.done"
+    const interceptedDone = this.limitRecordedItem(
+      applyItemSeam(this.internalSeams, interceptedAdded, "item.done")
     );
     const doneEvent = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
@@ -895,6 +905,43 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     }
     this.itemHooks?.onItemUpdate?.(item);
     this.fanoutItemEvent(item, "updated");
+  }
+
+  /**
+   * The record limit (FIX-1772), for a whole item: a copy with any block output
+   * or tool result over `maxRecordedValueBytes` replaced by an `omitted`
+   * placeholder, or the same item when nothing is over. Never mutates the
+   * caller's object: producers keep references to the items they emit, and the
+   * run must keep the real value.
+   */
+  private limitRecordedItem<TItem extends OutputItem>(item: TItem): TItem {
+    if (!carriesRecordedValue(item)) return item;
+    return this.limitRecordedFields(item, item as unknown as Record<string, unknown>) as unknown as TItem;
+  }
+
+  /**
+   * The record limit for the recorded fields an item or an `item.updated`
+   * patch carries. A patch that touches no recorded field is returned as is
+   * and measures nothing.
+   */
+  private limitRecordedFields(
+    item: Pick<OutputItem, "id" | "type">,
+    fields: Record<string, unknown>
+  ): Record<string, unknown> {
+    if (!carriesRecordedValue(item)) return fields;
+    return this.recordLimiter.limitFields(item.type, fields, (slot, omitted) => {
+      const key = `${item.id}:${slot}`;
+      if (this.omittedWarned.has(key)) return;
+      this.omittedWarned.add(key);
+      this.onLogEvent?.("item.value_omitted", {
+        itemId: item.id,
+        itemType: item.type,
+        blockName: (item as { blockName?: string }).blockName,
+        slot,
+        bytes: omitted.bytes,
+        limit: this.recordLimiter.limit
+      });
+    });
   }
 
   private enforceBufferLimit(): void {

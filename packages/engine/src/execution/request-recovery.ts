@@ -276,7 +276,10 @@ export async function retryRequest(
     flow.voice?.provider ?? runtimeConfig.voiceProvider;
 
   const newRequestId = generateId("req");
-  const liveStream = createLiveRequestStream({ requestId: newRequestId });
+  const liveStream = createLiveRequestStream({
+    requestId: newRequestId,
+    maxRecordedValueBytes: runtimeConfig.maxRecordedValueBytes
+  });
 
   // Preserve the original request's transport provenance on retry so the
   // RequestRecord chain is consistent. Falls back to "http" for records

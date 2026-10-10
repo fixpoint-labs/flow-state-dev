@@ -1,29 +1,31 @@
 # kitchen-sink-talk › a post runs each member agent once
 
-**Issue:** FIX-1590 (VG of the spec's PLAN; the epic FIX-1592's leg b); re-pointed by FIX-1611
+**Issue:** FIX-1590 (VG of the spec's PLAN; the epic FIX-1592's leg b); re-pointed by FIX-1611; converted by FIX-1792 P1
 
-**Outcome:** When a person posts to `support.help` from the kitchen-sink page, the one specialist the mailbox's route picks runs once on the post and no other member runs, and that run is there in the specialist's conversation after a reload.
+**Outcome:** When a person posts to `support.help` from the kitchen-sink page, the one specialist the coordinator's best fit picks runs once on the post and no other delegate runs, and that run is there in the specialist's session after a reload.
 
-**Re-pointed (FIX-1611).** The folder name is kept so its verdict history stays in one place. Until FIX-1611 this read `support.desk`, where every agent member ran on each post. The team now has one routed mailbox, so the check asks the question that roster answers: the picked specialist once, nobody else.
+**Re-pointed (FIX-1611).** The folder name is kept so its verdict history stays in one place. Until FIX-1611 this read `support.desk`, where every agent member ran on each post. The team now has one routed help desk, so the check asks the question that roster answers: the picked specialist once, nobody else.
 
-**Input:** `fixtures/input.json`: the mailbox, the specialist a post routes to (`support.accounts`), the three members it passes over (`support.devices`, `support.fsd`, `support.general`), the `[route:<member>]` tag the scripted route reads, the scenario marker the scripted model keys on and the reply marker it writes. Held-out: each post carries a fresh token per run, and only that token is graded, so a conversation another run left behind can never be the one that passes. A second post, with different text, must land in the same conversation and pass too.
+**Converted (FIX-1792 P1).** `support.help` is a coordinator worker file on `routing: best-fit`, no longer a mailbox. A post is delivered into the picked specialist's own session for the person's conversation (a session on the `agent` flow, naming the specialist, listed in the rail as a run of the conversation). Since FIX-1788 the rail lists every worker's sessions under the `agent` flow's one copy, not a row per specialist, so which sessions are a specialist's is read from the server by the session's `workerId`, as an index; what each holds is still read off the page. The controls follow the coordinator: `name-only-notify` and `no-author-filter` had no coordinator counterpart and go; `no-delivery` and `answers-go-on` take their places.
 
-**Signal:** one real browser against kitchen-sink's **production build** (built by the run, never assumed), served by `next start` on the scripted model, the in-memory store and **no model key**. Everything graded is read off the page **after a reload**, by opening every conversation the seat lists in the rail.
+**Input:** `fixtures/input.json`: the coordinator, the specialist a post routes to (`support.accounts`), the three delegates it passes over (`support.devices`, `support.fsd`, `support.general`), the `[route:<worker>]` tag the scripted evaluation reads, the scenario marker the scripted model keys on and the reply marker it writes. Held-out: each post carries a fresh token per run, and only that token is graded, so a session another run left behind can never be the one that passes. A second post, with different text, must land in the same session and pass too.
 
-- **support.accounts**: exactly one listed conversation holds the first post's token; it holds the post once, as the seat's `user` turn, with an `assistant` reply carrying `[reply:wake]` right under it. After a second post and a reload, that same conversation holds the second post the same way, and still holds the first.
-- **others**: none of `support.devices`', `support.fsd`'s or `support.general`'s conversations holds either token.
+**Signal:** one real browser against kitchen-sink's **production build** (built by the run, never assumed), served by `next start` on the scripted model, the in-memory store and **no model key**. Everything graded is read off the page **after a reload**, by opening every session the specialist has from the worker copy in the rail.
 
-**Anti-game:** no assertion on the reply's words past its marker, on the route's output, on the fan-out's output, on a dispatch handle, on the transient name-only line, on a package test or on a CLI run. The seats' conversations are read off the page as drawn, after a reload, so a streamed copy cannot pass. Before each reload the run polls the server until the answer lands; that wait is not graded.
+- **support.accounts**: exactly one of its sessions holds the first post's token; it holds the post once, as the specialist's `user` turn, with an `assistant` reply carrying `[reply:wake]` right under it. After a second post and a reload, that same session holds the second post the same way, and still holds the first.
+- **others**: none of `support.devices`', `support.fsd`'s or `support.general`'s sessions holds either token.
 
-**Model:** n/a. kitchen-sink's scripted model answers the seats and picks the route (epic FIX-1592 D3). The goal is who ran, not what they said. Keyless: the server runs with `AI_GATEWAY_API_KEY` empty.
+**Anti-game:** no assertion on the reply's words past its marker, on the routing record, on a dispatch handle, on a package test or on a CLI run. The specialists' sessions are read off the page as drawn, after a reload, so a streamed copy cannot pass. Before each reload the run polls the server until the answer lands; that wait is not graded.
+
+**Model:** n/a. kitchen-sink's scripted model answers the specialists and scripts best fit's evaluation (epic FIX-1592 D3). The goal is who ran, not what they said. Keyless: the server runs with `AI_GATEWAY_API_KEY` empty.
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/run.mts`
 
-**Controls:** on the same command. The app honours each only under `KITCHEN_SINK_TEST_MODE=1`.
+**Controls:** on the same command. The app honours each only under `KITCHEN_SINK_TEST_MODE=1` (`apps/kitchen-sink/lib/coordinator-control.ts`).
 
-- `GOAL_CONTROL=name-only-notify`: the wake replaced by a line naming each member, and no seat run. Must FAIL at **support.accounts**, and at nothing else.
-- `GOAL_CONTROL=no-route`: the mailbox's `routing:` lines taken off before the mailbox is bound, so every member hears every post. It is the **others** leg's control, which a fresh server could otherwise pass on empty lists. Must FAIL at **others**, and at nothing else.
-- `GOAL_CONTROL=no-author-filter`: the wake's author filter dropped, so a post a seat wrote wakes the members too. It is leg c's control (FIX-1594); a post from the page carries no author, so here it must leave **every** leg green. The members the route passed over do run under it, on the specialist's answer landing as a line, but that line carries no token, and grading it is leg c's job: its red is `goals/kitchen-sink-talk/agent-replies-in-the-mailbox/`'s **woken-once** and `apps/kitchen-sink/test/mailbox-wake.test.ts`.
+- `GOAL_CONTROL=no-delivery`: the coordinator registered with no flow that takes a delegated post, so nobody runs. Must FAIL at **support.accounts**, and at nothing else.
+- `GOAL_CONTROL=no-route`: `support.help`'s best fit read as `everyone`, so every delegate hears every post. It is the **others** leg's control, which a fresh server could otherwise pass on empty lists. Must FAIL at **others**, and at nothing else.
+- `GOAL_CONTROL=answers-go-on`: the coordinator read with `rounds: 1`, so an answer goes back out to the delegates. It is `agent-replies-in-the-mailbox`'s **woken-once** control; the answers carry no token here, so it must leave **every** leg green.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -38,3 +40,8 @@
 | 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | FAIL (control) | **Re-pointed.** `GOAL_CONTROL=no-route`, new with the re-point: the **others** leg's own control, in place of the temporary `desk-clerk` wake the FIX-1590 blast-radius row used. Failed at **others** only: `support.devices`, `support.fsd` and `support.general` each held 1 conversation with the posts' tokens. **support.accounts** green. |
 | 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | **PASS** (control) | **Re-pointed.** `GOAL_CONTROL=no-author-filter`: every leg green, as it must be. The three passed-over members each list 1 conversation under it, holding neither token: they ran on `support.accounts`' answer line, which is leg c's to grade. |
 | 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | **PASS** | **Re-pointed.** Fresh production build, keyless. After a reload `support.accounts` lists one run of `support.help` holding both posts (`devuser in support.help: [route:support.accounts] [scenario:wake] wake-token-a… can someone look at the refund queue?` then the routed-turn line) with a `[reply:wake]` reply under each; `support.devices`, `support.fsd` and `support.general` list 0 conversations. |
+| 2026-10-09 | `main` at 57d2c10e9 | scripted | FAIL | **Taken first, on clean `main`, before the conversion.** The previous check fails at setup: it waits for a rail row named `support.accounts`, and since FIX-1788 P4 the rail lists one `agent` copy and no row per worker. |
+| 2026-10-09 | `fix/FIX-1792-p1` on 54fcd1b15, uncommitted | scripted | **PASS** | **Converted.** Fresh production build, keyless. After a reload, one session of `support.accounts` (`dsx_…`, listed in the rail as a run of the person's conversation with `support.help`) holds both posts as its turns, *devuser, through support.help: [route:support.accounts] [scenario:wake] wake-token-…*, a `[reply:wake]` reply under each; `support.devices`, `support.fsd` and `support.general` hold no session with either token. |
+| 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-delivery`: **support.accounts** only — *0 of support.accounts's 0 sessions hold the first post*, and the second. **others** green. |
+| 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-route`: **others** only — `support.devices`, `support.fsd` and `support.general` each hold 1 session with the posts' tokens. **support.accounts** green. |
+| 2026-10-09 | same | scripted | PASS (expected) | `GOAL_CONTROL=answers-go-on`: every leg green, as the control's row says. |

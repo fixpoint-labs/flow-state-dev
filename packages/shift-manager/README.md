@@ -208,6 +208,8 @@ It routes by best fit with Jev (`typesafe-ai/jev`, an evaluation model that repo
 
 A coordinator chief of staff gets a DELEGATES list in Shift Coordinator's right panel: the delegates of your conversation with it, a picker that adds one from your roster, and a remove beside each. A refused add shows the coordinator's reason. A delegate's answer appears in the conversation under the delegate's name, and each routing decision as a small note between the lines saying who the post went to and who was skipped. The chief of staff comes first in its Roster group.
 
+Below DELEGATES, TASKS lists the tasks your conversation filed for its delegates, each with its goal, status and delegate. It is the conversation's own `listTasks`, so it shows that conversation's tasks and no other's. It is read again after each line you send, and every few seconds while a task is open. When a task ends, the conversation says so under the delegate's name, and the whole Lab is read again.
+
 A Lab with no chief of staff needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `chief-of-staff` seat. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.

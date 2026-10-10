@@ -2310,6 +2310,19 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 `best-fit`, or a delegate named twice. `installation.standardWorkerProblems()` returns the
 same problems without throwing.
 
+A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
+Orchestration's eight task tools (`addTask`, `assignTask`, `listTasks` and the rest), and the
+conversation's session takes them as actions named for the board: `addTask_tasks`,
+`listTasks_tasks` and so on.
+
+An assignee must be one of the conversation's delegates whose flow takes tasks. Any other is
+answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
+
+`addTask` returns once the task is stored, and the task starts by itself in its task session,
+which belongs to you. Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. The
+conversation hears once when the task ends. See
+[Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks).
+
 ## Importing from a browser component
 
 The package root is server code. The mailbox floor reaches the task board, which imports

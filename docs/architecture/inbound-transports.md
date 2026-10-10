@@ -289,10 +289,15 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
 - The policy is read only from the flow's declaration (the entry's
   `concurrency`, else `request.concurrency`), found through the trusted
   `source`. Nothing in the body, `metadata` or headers selects it (BP-031).
-- `hold` and `defer` are arbitrated in process only. A BullMQ worker waits
-  for a place's turn, which is `queue`; it has no form for a place that must
-  not wait or a claim that waits for a free key. An external dispatch under
-  either policy therefore resolves to `allow`.
+- `hold` and `defer` cross the queue over a shared backend (FIX-1836). The job
+  carries `DispatchEnvelope.leaseTurn`: `{ kind: "now" }` with a `hold` place,
+  which the worker runs at once; `{ kind: "when-free", key }` and no place for
+  a `defer`, whose worker claims the key with `take({ ifEmpty: true })` and
+  requeues on `planDeferWait`'s schedule until it is free, lining up behind
+  the key's places once its patience is spent. The same `planDeferWait` drives
+  the arbiter's in-process wait. The dispatching process counts a handed-off
+  `defer` against its cap until the job's `finished` settles
+  (`ConcurrencyAdmission.handOff(jobEnded)`).
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
   or a custom key returning `undefined`) are passthroughs.
 

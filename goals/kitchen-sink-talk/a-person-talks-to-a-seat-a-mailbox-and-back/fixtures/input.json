@@ -1,7 +1,7 @@
 {
   "port": 3043,
   "person": "devuser",
-  "mailbox": { "kind": "mailbox", "id": "support.help", "board": "escalations" },
+  "coordinator": { "kind": "coordinator", "id": "support.help" },
   "seats": {
     "devices": { "kind": "agent", "id": "support.devices" },
     "accounts": { "kind": "agent", "id": "support.accounts" },
@@ -9,7 +9,6 @@
     "general": { "kind": "agent", "id": "support.general" }
   },
   "fallback": "general",
-  "escalatesTo": "accounts",
   "markers": {
     "route": "[route:{seat}]",
     "textAnswer": "[scenario:wake-after-a-hold]",
@@ -19,9 +18,7 @@
     "talk": "[scenario:talk-to-seat]",
     "talkReply": "[reply:talk-to-seat]",
     "recall": "[scenario:recall]",
-    "recallReply": "[reply:recall]",
-    "needsAPerson": "[scenario:needs-a-person]",
-    "filedReply": "[reply:escalated]"
+    "recallReply": "[reply:recall]"
   },
   "lineWithinMs": 15000,
   "providerKeys": [
@@ -36,12 +33,7 @@
     "withinMs": 120000,
     "posts": [
       { "text": "Hi, my laptop won't join the office wifi since this morning.", "want": "devices" },
-      {
-        "text": "It sees it. It fails right after the password.",
-        "want": "devices",
-        "followUpOf": 0,
-        "subject": ["wifi", "wi-fi", "network", "password", "laptop", "ssid"]
-      },
+      { "text": "It sees it. It fails right after the password." },
       { "text": "My phone stopped charging, and it's a brand new cable.", "want": "devices" },
       { "text": "Different thing: I was charged twice for my subscription this month.", "want": "accounts" },
       { "text": "How do I make a generator return structured output in flow-state-dev?", "want": "fsd" },

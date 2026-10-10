@@ -1,9 +1,9 @@
 /**
- * Closure goal check for the epic FIX-1592 (FIX-1601): a person asks the
- * support mailbox a question and, without reloading, sees the one specialist
- * whose purpose fits start work and then answer; each specialist keeps only
- * its own cases; a direct conversation remembers its own turns and stays out
- * of the mailbox; a case that needs a person is filed.
+ * Closure goal check for the epic FIX-1592 (FIX-1601), on the coordinator
+ * (FIX-1792): a person asks the support desk's coordinator a question and,
+ * without reloading, sees the one specialist whose purpose fits start work and
+ * then answer; each specialist keeps only its own cases; a direct conversation
+ * remembers its own turns and stays out of the coordinator's conversation.
  *
  * Real path, scripted model, keyless, out of CI. See goal.md for the contract.
  *
@@ -12,25 +12,26 @@
  * end, then reads again. Everything graded is read off the page, by this run's
  * tokens:
  *
- *   a    `[route:<devices>]`, a text answer that never calls the post tool,
- *        token A: `<devices> is working`, then one line by it under the post
- *        within 15 s, and the row clears. Nobody else works or answers.
+ *   a    `[route:<devices>]`, a text answer, token A: `<devices> is working`,
+ *        then one line by it under the post within 15 s, and the row clears.
+ *        Nobody else works or answers.
  *   b    three posts, each after the previous answer: B1 to devices, B2 to
- *        accounts, B3 unmarked for the fallback, each answered through the post
- *        tool: the right seat works, then one line each, by it, and its row
- *        clears before the next post goes; nobody else works. Each seat's
- *        conversation in the mailbox holds only its own posts.
- *   c1   "New conversation" on devices, token C1: the person's turn
+ *        accounts, B3 unmarked for the fallback: the right seat works, then one
+ *        line each, by it, and its row clears before the next post goes;
+ *        nobody else works. Each seat's session for the conversation holds
+ *        only its own posts.
+ *   c1   "Talk" on devices in the roster, token C1: the person's turn
  *        (`c1:turn`), a reply under it (`c1:reply`).
  *   c2   there, the recall scenario, token C2: the person's turn (`c2:turn`),
  *        and a reply naming C1 and no token from a or b (`c2:recall`). The
- *        mailbox shows none of it (`c2:mailbox`).
- *   seg  (part 4) devices' conversation in the mailbox holds nothing of C1.
- *   e    (part 2) a needs-a-person post, token E: the specialist's line says
- *        it filed (`e:line`); the team panel's escalations list shows one
- *        row carrying E on the open page within 15 s of that line
- *        (`e:row-open`) and after the reload (`e:row`); the boot still warns
- *        that nothing drains escalations (`e:warning`).
+ *        conversation with the coordinator shows none of it
+ *        (`c2:coordinator`).
+ *   seg  (part 4) devices' session for the conversation holds nothing of C1.
+ *
+ * Which of a specialist's sessions are its runs for the conversation is read
+ * from the server, by the session's `workerId`, as an index; the page must
+ * list each as a run of the conversation, and what each holds is read off the
+ * page.
  *
  * With no GOAL_CONTROL the run takes the plain journey, then each control on a
  * fresh server and a fresh browser context, all on the one build. Each control
@@ -39,7 +40,6 @@
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back/run.mts
  * One:      GOAL_CONTROL=<name> on the same command runs that control alone
- * Main:     GOAL_CONTROL=main, from a checkout of today's `main` with this directory copied in
  * Smoke:    GOAL_LIVE=1 with AI_GATEWAY_API_KEY: the real-model smoke, out of test mode
  */
 import { execFileSync } from "node:child_process";
@@ -49,13 +49,16 @@ import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
   conversation,
-  newConversation,
-  open,
+  coordinatorConversation,
+  openWorkerCopy,
   panel,
   rail,
   readUntil,
-  row,
+  showCoordinator,
   startKitchenSink,
+  talkTo,
+  workerSessions,
+  WORKER_FLOW,
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -69,24 +72,18 @@ interface Seat {
 
 interface SmokePost {
   text: string;
-  /** The specialist whose purpose the post names. */
+  /** The specialist whose purpose the post names; none for a post any specialist may take. */
   want?: Role;
-  /** For a follow-up: the index of the post it leans on. */
-  followUpOf?: number;
-  /** Words any one of which the follow-up's answer names its subject by. */
-  subject?: string[];
 }
 
 interface Fixture {
   port: number;
   /** How the page labels the person's own lines. */
   person: string;
-  mailbox: Seat & { board: string };
+  coordinator: Seat;
   seats: Record<Role, Seat>;
-  /** The mailbox's `routing: fallback:`, as a role. */
+  /** The coordinator's `fallback:`, as a role. */
   fallback: Role;
-  /** Who part 2's case is routed to. */
-  escalatesTo: Role;
   markers: {
     /** `{seat}` is replaced by the seat's id. */
     route: string;
@@ -98,8 +95,6 @@ interface Fixture {
     talkReply: string;
     recall: string;
     recallReply: string;
-    needsAPerson: string;
-    filedReply: string;
   };
   lineWithinMs: number;
   providerKeys: string[];
@@ -108,47 +103,44 @@ interface Fixture {
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const LIVE = process.env.GOAL_LIVE === "1";
-// Names are inputs: today's `main` runs on its own roster.
-const fixture = loadFixture<Fixture>(import.meta.url, CONTROL === "main" ? "today-main.json" : "input.json");
+const fixture = loadFixture<Fixture>(import.meta.url);
 const M = fixture.markers;
 const SEATS = fixture.seats;
 const ROLES = Object.keys(SEATS) as Role[];
-const MAILBOX = fixture.mailbox.id;
+const COORDINATOR = fixture.coordinator.id;
 
 /** A post's route marker for one specialist. */
 const route = (role: Role) => M.route.replace("{seat}", SEATS[role].id);
 
 /**
- * The controls, as PLAN → Controls has them. `fail` names the assertions that
- * are each control's own signal, every one of which it must redden; `green`
- * names the legs it must leave wholly green. Any other red assertion in a leg
- * `fail` touches is reported, not counted, and so is a leg in neither list.
- * `how` is where the control acts: the server (`GOAL_CONTROL` on `next start`,
- * honoured only in test mode), the page (`?goalControl=`), the page's network
- * (this run), or a separate checkout.
+ * The controls. `fail` names the assertions that are each control's own
+ * signal, every one of which it must redden; `green` names the legs it must
+ * leave wholly green. Any other red assertion in a leg `fail` touches is
+ * reported, not counted, and so is a leg in neither list. `how` is where the
+ * control acts: the server (`GOAL_CONTROL` on `next start`, honoured only in
+ * test mode), the page (`?goalControl=`), or the page's network (this run).
  */
-const CONTROLS: Record<string, { how: "server" | "page" | "network" | "checkout"; fail: string[]; green: string[] }> = {
-  // The live view and the route: nobody shows as working, a's answer never shows unreloaded, B2 and B3 reach the wrong seat.
-  main: { how: "checkout", fail: ["a:working", "a:line", "b:line"], green: ["c1"] },
-  // No live view: no answer and no filed row until a reload. Not the working rows: the page still re-reads its
-  // runs when the person posts, so whether a row shows (and then never clears) depends on which read wins.
-  "no-live": { how: "page", fail: ["a:line", "b:line", "e:row-open"], green: ["c1", "c2", "seg"] },
-  // A text answer never lands without a post-tool call.
-  "no-landing": { how: "server", fail: ["a:line", "e:line"], green: ["b", "c1", "c2", "seg"] },
-  // Every member wakes: others work, and the one-line answers and the one filed row multiply or never land.
-  "no-route": { how: "server", fail: ["a:line", "a:alone", "b:line", "b:alone", "e:line", "e:row-open"], green: ["c1", "c2", "seg"] },
-  // The page never gets the person's turns.
-  "drop-user-message": { how: "network", fail: ["c1:turn", "c2:turn"], green: ["a", "b", "seg", "e"] },
+const CONTROLS: Record<string, { how: "server" | "page" | "network"; fail: string[]; green: string[] }> = {
+  // No live view: no answer until a reload. Not the working rows: the page still re-reads its runs when the
+  // person posts, so whether a row shows (and then never clears) depends on which read wins.
+  "no-live": { how: "page", fail: ["a:line", "b:line"], green: ["c1", "c2", "seg"] },
+  // The specialist answers in its own session and the answer never comes back to the conversation.
+  "no-landing": { how: "server", fail: ["a:line", "b:line"], green: ["c1", "c2", "seg"] },
+  // Best fit read as `everyone`: every delegate works on every post and each lands a line.
+  "no-route": { how: "server", fail: ["a:line", "a:alone", "b:line", "b:alone"], green: ["c1", "c2", "seg"] },
+  // The page never gets the person's turns in the direct conversation.
+  "drop-user-message": { how: "network", fail: ["c1:turn", "c2:turn"], green: ["a", "b", "seg"] },
   // The seat is sent no earlier turn, so the recall cannot name C1.
-  "no-history": { how: "server", fail: ["c2:recall"], green: ["a", "b", "c1", "seg", "e"] },
-  // Nothing is filed, so no row, open or after the reload.
-  "no-filing": { how: "server", fail: ["e:row-open", "e:row"], green: ["a", "b", "c1", "c2", "seg"] },
+  "no-history": { how: "server", fail: ["c2:recall"], green: ["a", "b", "c1", "seg"] },
 };
 /** Every leg a control's lists can name. */
-const LEGS = ["a", "b", "c1", "c2", "seg", "e"];
+const LEGS = ["a", "b", "c1", "c2", "seg"];
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);
 }
+
+/** The origin of the journey in progress, for the server's index. */
+let ORIGIN = "";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const secs = (from: number, to: number | undefined) => (to === undefined ? "never" : `+${((to - from) / 1000).toFixed(1)}s`);
@@ -166,7 +158,8 @@ const DROP_KEY = "goal-drop-user-message";
  * the action streams that talk to it, and the live session stream, which
  * Playwright's routing cannot filter because it never ends. What the page sees
  * when the server keeps no person turn. Scoped to leg c's conversation: a
- * seat hears a mailbox post as a `user` turn too.
+ * seat hears a delegated post as a `user` turn too, and the person's posts to
+ * the coordinator are `user` messages.
  *
  * Plain JavaScript in a string: a function handed to Playwright is compiled
  * by tsx first, which adds helpers the page does not have.
@@ -242,12 +235,8 @@ async function reload(page: Page): Promise<void> {
   await ready(page);
 }
 
-/** Show the mailbox's panel, from the rail, without leaving the page. */
-async function showMailbox(page: Page): Promise<void> {
-  await open(page, fixture.mailbox.kind);
-  await row(page, MAILBOX).click();
-  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
-}
+/** Show the person's conversation with the coordinator, from the rail, without leaving the page. */
+const showHelpDesk = (page: Page) => showCoordinator(page, COORDINATOR);
 
 interface Line {
   label: string;
@@ -261,15 +250,15 @@ interface Reading {
   lines: Line[];
 }
 
-/** The mailbox's panel as drawn: its working rows and every line. */
-async function readMailbox(page: Page): Promise<Reading> {
+/** The conversation's panel as drawn: its working rows and every line. */
+async function readHelpDesk(page: Page): Promise<Reading> {
   const drawn = panel(page);
   const [working, lines] = await Promise.all([
     drawn.getByTestId("working-row").allTextContents(),
-    drawn.getByTestId("mailbox-line").evaluateAll((els) =>
+    drawn.getByTestId("coordinator-line").evaluateAll((els) =>
       els.map((el) => ({
-        label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
-        body: el.querySelector('[data-testid="mailbox-line-body"]')?.textContent ?? "",
+        label: el.querySelector('[data-testid="coordinator-line-label"]')?.textContent ?? "",
+        body: el.querySelector('[data-testid="coordinator-line-body"]')?.textContent ?? "",
       })),
     ),
   ]);
@@ -296,9 +285,9 @@ function answersTo(lines: Line[], token: string): Line[] | undefined {
   return next === -1 ? rest : rest.slice(0, next);
 }
 
-/** Post a line from the mailbox's panel once its composer is free. Returns when Send was pressed. */
+/** Post a line from the conversation's panel once its composer is free. Returns when Send was pressed. */
 async function postLine(page: Page, text: string): Promise<number> {
-  const box = panel(page).getByLabel("Post to this mailbox");
+  const box = panel(page).getByLabel("Post to this coordinator");
   await readUntil(async () => (await box.isEnabled()) && (await box.inputValue()) === "", (free) => free, 30_000);
   await box.fill(text);
   await panel(page).getByRole("button", { name: "Send" }).click();
@@ -314,7 +303,7 @@ interface Followed {
 }
 
 /**
- * Read the mailbox's panel from Send until `answered`, or the time is up;
+ * Read the conversation's panel from Send until `answered`, or the time is up;
  * then until no working row is left, for at most `clearMs`. Every reading is
  * kept, so who showed as working, and when, is graded off them.
  */
@@ -322,7 +311,7 @@ async function follow(page: Page, sentAt: number, answered: (r: Reading) => bool
   const readings: Reading[] = [];
   let lineAt: number | undefined;
   while (Date.now() < sentAt + withinMs) {
-    const r = await readMailbox(page);
+    const r = await readHelpDesk(page);
     readings.push(r);
     if (answered(r)) {
       lineAt = r.at;
@@ -333,7 +322,7 @@ async function follow(page: Page, sentAt: number, answered: (r: Reading) => bool
   let clearedAt: number | undefined;
   if (lineAt !== undefined) {
     for (const until = Date.now() + clearMs; Date.now() < until; await sleep(100)) {
-      const r = await readMailbox(page);
+      const r = await readHelpDesk(page);
       readings.push(r);
       if (r.working.length === 0) {
         clearedAt = r.at;
@@ -355,48 +344,62 @@ function othersWorking(readings: Reading[], seat: string): string[] {
 
 type Message = { role: string; text: string };
 
-/** The seat's leaf in the rail, re-read now: closed if open, then opened. */
-async function freshLeaf(page: Page, seat: Seat) {
-  await open(page, seat.kind);
-  const seatRow = row(page, seat.id);
-  await seatRow.waitFor({ timeout: 15_000 });
-  if ((await seatRow.getAttribute("aria-expanded")) === "true") await seatRow.click();
-  await open(page, seat.id);
-  const leaf = rail(page).locator(`ul[data-leaf="${seat.id}"]`);
-  await leaf.waitFor({ timeout: 15_000 });
-  await readUntil(
-    async () => (await leaf.locator("[data-session-id]").count()) + (await leaf.getByText("No sessions yet").count()),
-    (n) => n > 0,
-    10_000,
-  );
-  return leaf;
+/** The worker copy's leaf in the rail, re-read now: closed if open, then opened. */
+async function freshCopy(page: Page) {
+  // The flow's kind and its one copy share the name `agent`, so each is found by its own attribute.
+  const kind = rail(page).locator(`button[data-kind="${WORKER_FLOW}"]`);
+  await kind.waitFor({ timeout: 15_000 });
+  if ((await kind.getAttribute("aria-expanded")) !== "true") await kind.click();
+  const copy = rail(page).locator(`button[data-instance-id="${WORKER_FLOW}"]`);
+  await copy.waitFor({ timeout: 15_000 });
+  if ((await copy.getAttribute("aria-expanded")) === "true") await copy.click();
+  return await openWorkerCopy(page);
 }
 
-let lastDrawn = "";
+/** A session's kept message texts, in order, as the server holds them. An index for waiting, never graded. */
+async function keptTexts(page: Page, sessionId: string): Promise<string[]> {
+  const res = await page.request.get(`${ORIGIN}/api/flows/sessions/${sessionId}/state?include_items=true&item_types=message&limit=1000`);
+  const items = ((await res.json()) as { items?: Array<{ content?: Array<{ text?: string }> }> }).items ?? [];
+  return items.map((item) => (item.content ?? []).map((part) => part.text ?? "").join("").trim());
+}
 
-/** Open one of a seat's listed conversations and read it as drawn, once the panel holds it. */
-async function readConversation(page: Page, seat: Seat, sessionId: string): Promise<Message[]> {
-  const button = rail(page).locator(`ul[data-leaf="${seat.id}"] [data-session-id="${sessionId}"]`);
+/**
+ * Open one of the listed sessions and read it as drawn, once the panel holds it.
+ *
+ * The panel keeps the last session's items until this one's load, and a seat
+ * panel draws a coordinator conversation's messages as turns too, so "the
+ * panel changed" is not enough. It waits until what is drawn is this
+ * session's, by the server's own read of it (not graded); a page that never
+ * draws it is graded on whatever it drew last.
+ */
+async function readConversation(page: Page, sessionId: string, runOf?: string): Promise<Message[]> {
+  const button = rail(page).locator(
+    `ul[data-leaf="${WORKER_FLOW}"] [data-session-id="${sessionId}"]${runOf === undefined ? "" : `[data-dispatch-run-of="${runOf}"]`}`,
+  );
+  await button.waitFor({ timeout: 10_000 });
   await button.click();
   await readUntil(() => button.getAttribute("aria-current"), (v) => v === "true", 5_000);
-  // The panel keeps the last conversation until this one replaces it.
-  const messages = await readUntil(
+  const kept = await keptTexts(page, sessionId);
+  return await readUntil(
     () => conversation(page),
-    (ms) => ms.length > 0 && JSON.stringify(ms) !== lastDrawn,
+    (ms) => ms.length === kept.length && kept.every((text, i) => ms[i]!.text.includes(text)),
     8_000,
   );
-  lastDrawn = JSON.stringify(messages);
-  return messages;
 }
 
-/** A seat's conversations in the mailbox (its dispatch runs of it), each read as drawn. */
+/**
+ * A seat's sessions for the person's conversation with the coordinator, each
+ * read as drawn. Which they are is the server's index by worker; each must be
+ * listed in the rail as a run of the conversation.
+ */
 async function runsOf(page: Page, seat: Seat): Promise<Array<{ sessionId: string; messages: Message[] }>> {
-  const leaf = await freshLeaf(page, seat);
-  const ids = await leaf
-    .locator(`[data-dispatch-run-of="${MAILBOX}"]`)
-    .evaluateAll((buttons) => buttons.map((b) => b.getAttribute("data-session-id") ?? ""));
+  const parent = await coordinatorConversation(page, ORIGIN, COORDINATOR);
+  const ids = (await workerSessions(page, ORIGIN, seat.id, { runs: true }))
+    .filter((session) => parent !== undefined && session.parentSessionId === parent)
+    .map((session) => session.id);
+  await freshCopy(page);
   const out: Array<{ sessionId: string; messages: Message[] }> = [];
-  for (const id of ids) out.push({ sessionId: id, messages: await readConversation(page, seat, id) });
+  for (const id of ids) out.push({ sessionId: id, messages: await readConversation(page, id, parent) });
   return out;
 }
 
@@ -408,13 +411,6 @@ function replyTo(messages: Message[], token: string): Message | undefined {
   const next = rest.findIndex((m) => m.role === "user");
   return (next === -1 ? rest : rest.slice(0, next)).find((m) => m.role === "assistant");
 }
-
-/** The rows the team panel draws on the mailbox's board: each row's text. */
-const boardRows = (page: Page) =>
-  page
-    .getByTestId(`board-${MAILBOX}.${fixture.mailbox.board}`)
-    .locator("li[data-task-id]")
-    .evaluateAll((rows) => rows.map((r) => r.textContent ?? ""));
 
 // ---------------------------------------------------------------------------
 // The legs
@@ -430,13 +426,12 @@ interface Tokens {
   b: [string, string, string];
   c1: string;
   c2: string;
-  e: string;
 }
 
-/** Leg a, ask `support`: the routed specialist works, then answers under its name, and nobody else. */
+/** Leg a, ask the coordinator: the routed specialist works, then answers under its name, and nobody else. */
 async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Promise<void> {
   const seat = SEATS.devices.id;
-  await showMailbox(page);
+  await showHelpDesk(page);
   const sentAt = await postLine(page, `${route("devices")} ${M.textAnswer} ${t.a} is my laptop covered for a cracked screen?`);
   const f = await follow(page, sentAt, (r) => (answersTo(r.lines, t.a)?.length ?? 0) > 0, fixture.lineWithinMs);
   const workingAt = f.readings.find(
@@ -463,9 +458,9 @@ async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   }
 
   await reload(page);
-  await showMailbox(page);
+  await showHelpDesk(page);
   const after = await readUntil(
-    () => readMailbox(page),
+    () => readHelpDesk(page),
     (r) => postsOf(r.lines, t.a).length > 0 && (answersTo(r.lines, t.a)?.length ?? 0) > 0,
     10_000,
   );
@@ -484,14 +479,14 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     { token: t.b[1], role: "accounts", marked: true, ask: "why was I billed twice?" },
     { token: t.b[2], role: fixture.fallback, marked: false, ask: "where do I leave feedback about the office?" },
   ];
-  await showMailbox(page);
+  await showHelpDesk(page);
   let previous = `A (${t.a})`;
   for (const post of plan) {
     const seat = SEATS[post.role].id;
     const name = `${post.token} (${post.marked ? route(post.role) : "unmarked, the fallback"})`;
     // The last post's row is gone before this one goes. One that stays is that post's, and it is
     // kept in this post's readings, so an overlap still shows.
-    const idle = await readUntil(() => readMailbox(page), (r) => r.working.length === 0, 5_000);
+    const idle = await readUntil(() => readHelpDesk(page), (r) => r.working.length === 0, 5_000);
     if (idle.working.length > 0) {
       fail("b:clears", `${previous}: ${JSON.stringify(idle.working)} still showed when ${post.token} was to be sent`);
     }
@@ -532,9 +527,9 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   await gradeConversations(page, "open page", expected, every, fail, evidence);
 
   await reload(page);
-  await showMailbox(page);
+  await showHelpDesk(page);
   const after = await readUntil(
-    () => readMailbox(page),
+    () => readHelpDesk(page),
     (r) => plan.every((p) => repliesOf(r.lines, p.token).length > 0),
     10_000,
   );
@@ -548,7 +543,7 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   await gradeConversations(page, "after the reload", expected, every, fail, evidence);
 }
 
-/** Each seat's conversation in the mailbox holds its own posts once, each answered, and nobody else's. */
+/** Each seat's session for the conversation holds its own posts once, each answered, and nobody else's. */
 async function gradeConversations(
   page: Page,
   when: string,
@@ -570,44 +565,40 @@ async function gradeConversations(
     const foreign = every.filter((token) => !mine.includes(token));
     const text = runs.flatMap((r) => r.messages).map((m) => m.text).join("\n");
     const leaked = foreign.filter((token) => text.includes(token));
-    if (leaked.length > 0) fail("b:only-its-own", `${when}: ${seat.id}'s conversation in ${MAILBOX} holds ${leaked.join(", ")}, posts it was not routed`);
+    if (leaked.length > 0) fail("b:only-its-own", `${when}: ${seat.id}'s session for the conversation with ${COORDINATOR} holds ${leaked.join(", ")}, posts it was not routed`);
     if (mine.length === 0) {
-      held.push(`${seat.id} none (${runs.length} conversations)`);
+      held.push(`${seat.id} none (${runs.length} sessions)`);
       continue;
     }
     if (runs.length !== 1) {
-      fail("b:only-its-own", `${when}: ${seat.id} lists ${runs.length} conversations in ${MAILBOX} (want 1)`);
+      fail("b:only-its-own", `${when}: ${seat.id} has ${runs.length} sessions for the conversation with ${COORDINATOR} (want 1)`);
       continue;
     }
     const messages = runs[0]!.messages;
     for (const token of mine) {
       const heard = messages.filter((m) => m.role === "user" && m.text.includes(token)).length;
-      if (heard !== 1) fail("b:only-its-own", `${when}: ${seat.id}'s conversation in ${MAILBOX} holds ${token} as a heard turn ${heard} times (want once)`);
+      if (heard !== 1) fail("b:only-its-own", `${when}: ${seat.id}'s session for the conversation holds ${token} as a heard turn ${heard} times (want once)`);
       else if (replyTo(messages, token) === undefined) fail("b:only-its-own", `${when}: ${seat.id} heard ${token} and no reply sits under it`);
     }
     held.push(`${seat.id} ${mine.join(" ")}`);
   }
-  if (red === 0) evidence.push(`b: ${when}, each conversation in ${MAILBOX} holds: ${held.join("; ")}`);
+  if (red === 0) evidence.push(`b: ${when}, each specialist's session for the conversation with ${COORDINATOR} holds: ${held.join("; ")}`);
 }
 
 /** Leg c, direct talk, and the segmentation row of part 4. */
 async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, evidence: string[]): Promise<void> {
   const seat = SEATS.devices;
-  await freshLeaf(page, seat);
-  await newConversation(page, seat.id);
+  // From the coordinator's panel, which has no seat composer, so the composer
+  // below is the one "Talk" opens and not the last seat session leg b read.
+  await showHelpDesk(page);
+  await talkTo(page, seat.id);
   const box = panel(page).getByLabel("Message this seat");
   await box.waitFor({ timeout: 15_000 });
-  const current = await readUntil(
-    () =>
-      rail(page)
-        .locator(`ul[data-leaf="${seat.id}"] [aria-current="true"]`)
-        .evaluateAll((els) => els.map((el) => el.getAttribute("data-session-id") ?? "")),
-    (ids) => ids.length > 0,
-    10_000,
-  );
-  const sessionId = current[0];
+  // Which session "Talk" opened, from the server's index by worker: the person's own, not a run. Not graded.
+  const started = await readUntil(() => workerSessions(page, ORIGIN, seat.id), (listed) => listed.length > 0, 10_000);
+  const sessionId = started.length === 1 ? started[0]!.id : undefined;
   if (sessionId === undefined) {
-    fail("c1:setup", `"New conversation" on ${seat.id} opened no conversation in the rail`);
+    fail("c1:setup", `"Talk" on ${seat.id} left the person ${started.length} conversations with it (want 1)`);
     return;
   }
   if (dropUser) {
@@ -652,25 +643,25 @@ async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, eviden
   // ---- c2: recall, answered from the earlier turn and nothing else ---------
   const two = await talk(`${M.recall} ${t.c2} what did I tell you before this?`, t.c2, M.recallReply);
   gradeC2(two.messages, two.most, t, "open page", fail, evidence, `${secs(two.sentAt, two.heardAt)}${two.note}`);
-  await showMailbox(page);
-  gradeMailboxQuiet((await loaded(page, t)).lines, t, "open page", fail, evidence);
+  await showHelpDesk(page);
+  gradeDeskQuiet((await loaded(page, t)).lines, t, "open page", fail, evidence);
 
   // ---- the reload at the leg's end ----------------------------------------
   await reload(page);
-  await freshLeaf(page, seat);
-  const kept = await readConversation(page, seat, sessionId);
+  await freshCopy(page);
+  const kept = await readConversation(page, sessionId);
   gradeC1(kept, kept.filter((m) => m.role === "user" && m.text.includes(t.c1)).length, t, "after the reload", fail, evidence, "");
   gradeC2(kept, kept.filter((m) => m.role === "user" && m.text.includes(t.c2)).length, t, "after the reload", fail, evidence, "");
-  await showMailbox(page);
-  gradeMailboxQuiet((await loaded(page, t)).lines, t, "after the reload", fail, evidence);
+  await showHelpDesk(page);
+  gradeDeskQuiet((await loaded(page, t)).lines, t, "after the reload", fail, evidence);
 
-  // ---- seg (part 4): the mailbox conversation holds nothing of the direct talk
+  // ---- seg (part 4): the specialist's session for the conversation holds nothing of the direct talk
   const runs = await runsOf(page, seat);
   const text = runs.flatMap((r) => r.messages).map((m) => m.text).join("\n");
   if (text.includes(t.c1) || text.includes(t.c2)) {
-    fail("seg", `${seat.id}'s conversation in ${MAILBOX} holds the direct talk (${[t.c1, t.c2].filter((x) => text.includes(x)).join(", ")})`);
+    fail("seg", `${seat.id}'s session for the conversation with ${COORDINATOR} holds the direct talk (${[t.c1, t.c2].filter((x) => text.includes(x)).join(", ")})`);
   } else {
-    evidence.push(`seg: ${seat.id}'s conversation in ${MAILBOX} (${runs.length} run) holds nothing of ${t.c1} or ${t.c2}`);
+    evidence.push(`seg: ${seat.id}'s session for the conversation with ${COORDINATOR} (${runs.length} run) holds nothing of ${t.c1} or ${t.c2}`);
   }
 }
 
@@ -697,90 +688,24 @@ function gradeC2(messages: Message[], most: number, t: Tokens, when: string, fai
   } else if (!reply.text.includes(t.c1)) {
     fail("c2:recall", `${when}: the recall reply ${JSON.stringify(reply.text)} does not name ${t.c1}, the conversation's earlier turn`);
   } else if (earlier.length > 0) {
-    fail("c2:recall", `${when}: the recall reply names ${earlier.join(", ")}, from the mailbox: ${JSON.stringify(reply.text)}`);
+    fail("c2:recall", `${when}: the recall reply names ${earlier.join(", ")}, from the conversation with ${COORDINATOR}: ${JSON.stringify(reply.text)}`);
   } else {
     evidence.push(`c2: ${when}, ${t.c2} is the person's turn${timing === "" ? "" : ` (${timing})`}, ${JSON.stringify(reply.text)} under it`);
   }
 }
 
 /**
- * The mailbox's panel once its lines have loaded: once the person's posts
+ * The conversation's panel once its lines have loaded: once the person's posts
  * from legs a and b are drawn. Waiting only; what it shows is graded by the caller.
  */
 const loaded = (page: Page, t: Tokens) =>
-  readUntil(() => readMailbox(page), (r) => [t.a, ...t.b].every((token) => postsOf(r.lines, token).length > 0), 10_000);
+  readUntil(() => readHelpDesk(page), (r) => [t.a, ...t.b].every((token) => postsOf(r.lines, token).length > 0), 10_000);
 
-/** `support` shows nothing of the direct talk. */
-function gradeMailboxQuiet(lines: Line[], t: Tokens, when: string, fail: Fail, evidence: string[]): void {
+/** The conversation with the coordinator shows nothing of the direct talk. */
+function gradeDeskQuiet(lines: Line[], t: Tokens, when: string, fail: Fail, evidence: string[]): void {
   const leaks = lines.filter((l) => [t.c1, t.c2, M.talkReply, M.recallReply].some((x) => l.body.includes(x)));
-  if (leaks.length > 0) fail("c2:mailbox", `${when}: ${MAILBOX} shows the direct talk: ${JSON.stringify(leaks.map((l) => `${l.label}: ${l.body}`))}`);
-  else evidence.push(`c2: ${when}, ${MAILBOX} shows nothing of it (${lines.length} lines)`);
-}
-
-/** Part 2, the escalation: the specialist files the case onto the board and says so. */
-async function partTwo(page: Page, origin: string, t: Tokens, fail: Fail, evidence: string[]): Promise<void> {
-  const seat = SEATS[fixture.escalatesTo].id;
-  const board = fixture.mailbox.board;
-  await showMailbox(page);
-  const rowsBefore = (await boardRows(page)).length;
-  const sentAt = await postLine(
-    page,
-    `${route(fixture.escalatesTo)} ${M.needsAPerson} ${t.e} I was charged three times this month and need a person to reverse it`,
-  );
-  const f = await follow(page, sentAt, (r) => (answersTo(r.lines, t.e)?.length ?? 0) > 0, fixture.lineWithinMs);
-  const answers = answersTo(f.readings.at(-1)!.lines, t.e) ?? [];
-  if (answers.length !== 1 || answers[0]!.label !== seat || !answers[0]!.body.includes(M.filedReply)) {
-    fail("e:line", `open page: the lines answering ${t.e} are ${JSON.stringify(answers.map((l) => `${l.label}: ${l.body}`))} (want one, by ${seat}, carrying ${M.filedReply}), line ${secs(sentAt, f.lineAt)}`);
-  } else {
-    evidence.push(`e: open page, ${seat}'s line ${secs(sentAt, f.lineAt)}: ${JSON.stringify(answers[0]!.body)}`);
-  }
-  // The row, on the open page: the list shows it without a reload, within 15 s
-  // of the line, counted from the reading that first showed the line (or from
-  // when the line was due, if none did), not from when `follow` stopped.
-  const rowFrom = f.lineAt ?? sentAt + fixture.lineWithinMs;
-  let openRows: string[] = [];
-  let rowAt: number | undefined;
-  while (Date.now() <= rowFrom + fixture.lineWithinMs) {
-    const at = Date.now();
-    openRows = await boardRows(page);
-    if (openRows.some((r) => r.includes(t.e))) {
-      rowAt = at;
-      break;
-    }
-    await sleep(250);
-  }
-  const openMine = rowAt === undefined ? [] : openRows.filter((r) => r.includes(t.e));
-  if (openMine.length !== 1) {
-    fail("e:row-open", `open page: the team panel's ${board} list holds ${openMine.length} rows carrying ${t.e} within ${fixture.lineWithinMs / 1000}s of its line, with no reload (want 1); it shows ${openRows.length} rows, ${rowsBefore} when the leg began`);
-  } else {
-    evidence.push(`e: open page, the ${board} list shows ${JSON.stringify(openMine[0])} ${secs(rowFrom, rowAt)} after its line`);
-  }
-  // The row is written by the mailbox's own request, a moment after the
-  // dispatch. Let it land before the reload; nothing here is graded.
-  await readUntil(
-    async () => (await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/resources/${MAILBOX}.${board}`)).text(),
-    (body) => body.includes(t.e),
-    10_000,
-  );
-
-  await reload(page);
-  await showMailbox(page);
-  const after = await readUntil(
-    () => readMailbox(page),
-    (r) => (answersTo(r.lines, t.e)?.length ?? 0) > 0,
-    10_000,
-  );
-  const kept = answersTo(after.lines, t.e) ?? [];
-  if (kept.length !== 1 || kept[0]!.label !== seat || !kept[0]!.body.includes(M.filedReply)) {
-    fail("e:line", `after the reload, the lines answering ${t.e} are ${JSON.stringify(kept.map((l) => `${l.label}: ${l.body}`))} (want one, by ${seat}, carrying ${M.filedReply})`);
-  }
-  const rows = await readUntil(() => boardRows(page), (rs) => rs.some((r) => r.includes(t.e)), 10_000);
-  const mine = rows.filter((r) => r.includes(t.e));
-  if (mine.length !== 1) {
-    fail("e:row", `after the reload, the team panel's ${board} list holds ${mine.length} rows carrying ${t.e} (want 1); it shows ${rows.length} rows`);
-  } else {
-    evidence.push(`e: after the reload, the ${board} list shows ${JSON.stringify(mine[0])}`);
-  }
+  if (leaks.length > 0) fail("c2:coordinator", `${when}: the conversation with ${COORDINATOR} shows the direct talk: ${JSON.stringify(leaks.map((l) => `${l.label}: ${l.body}`))}`);
+  else evidence.push(`c2: ${when}, the conversation with ${COORDINATOR} shows nothing of it (${lines.length} lines)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -825,7 +750,6 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
     b: [`reply-token-b1${run}`, `reply-token-b2${run}`, `reply-token-b3${run}`],
     c1: `talk-token-c${run}`,
     c2: `recall-token-c${run}`,
-    e: `case-token-e${run}`,
   };
   const failures: string[] = [];
   failuresSoFar = failures;
@@ -837,15 +761,14 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
     AI_GATEWAY_API_KEY: "",
     GOAL_CONTROL: spec?.how === "server" ? control : "",
   });
+  ORIGIN = server.origin;
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   if (spec?.how === "network") await context.addInitScript({ content: DROP_USER_MESSAGES });
   const page = await context.newPage();
-  lastDrawn = "";
   const legs: Array<[string, () => Promise<void>]> = [
     ["a", () => legA(page, t, fail, evidence)],
     ["b", () => legB(page, t, fail, evidence)],
     ["c1", () => legC(page, t, spec?.how === "network", fail, evidence)],
-    ["e", () => partTwo(page, server.origin, t, fail, evidence)],
   ];
   try {
     await page.goto(`${server.origin}/${spec?.how === "page" ? `?goalControl=${control}` : ""}`);
@@ -865,13 +788,6 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
     await stop(server);
   }
 
-  // Nobody drains escalations: the boot still warns about it, and about no other board.
-  const unattended = [...new Set([...server.log().matchAll(/mailbox "([^"]+)" holds board "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`))];
-  if (JSON.stringify(unattended) !== JSON.stringify([`${MAILBOX}.${fixture.mailbox.board}`])) {
-    fail("e:warning", `the boot warns these boards are unattended: ${JSON.stringify(unattended)} (want only ${MAILBOX}.${fixture.mailbox.board})`);
-  } else {
-    evidence.push(`e: the boot still warns that ${MAILBOX}.${fixture.mailbox.board} is unattended, and no other board`);
-  }
   // A leg that could not be walked is a finding only with its cause, and the server's output is the one place it shows.
   if (failures.some((f) => assertionOf(f).endsWith(":setup"))) {
     const tail = server.log().trimEnd().split("\n").slice(-40).map((line) => `    ${line}`).join("\n");
@@ -880,7 +796,7 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
   return { name: control === "" ? "plain" : control, failures, evidence };
 }
 
-/** The leg a failure names: `c2` for `c2:recall`, `b`, `e` for `e:row`. */
+/** The leg a failure names: `c2` for `c2:recall`, `b` for `b:line`. */
 const legOf = (failure: string) => (/^\[([^\]:]+)/.exec(failure)?.[1] ?? "");
 
 /** Print a journey's verdict per leg, as it ran. */
@@ -890,7 +806,7 @@ function report(j: Journey): void {
   for (const line of j.failures) console.log(`  FAIL  ${line}`);
 }
 
-/** The assertion a failure names: `a:working`, `c2:recall`, `e:row`, `b:setup`. */
+/** The assertion a failure names: `a:working`, `c2:recall`, `b:setup`. */
 const assertionOf = (failure: string) => (/^\[([^\]]+)\]/.exec(failure)?.[1] ?? "");
 
 /**
@@ -946,6 +862,7 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
   }
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
   const server = await startKitchenSink(fixture.port, { KITCHEN_SINK_TEST_MODE: "", GOAL_CONTROL: "" });
+  ORIGIN = server.origin;
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   const posts = fixture.smoke.posts.map((p, i) => ({ ...p, mark: `(ref smoke-token-${i}${run})` }));
@@ -953,12 +870,12 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
   try {
     await page.goto(`${server.origin}/`);
     await ready(page);
-    await showMailbox(page);
+    await showHelpDesk(page);
     const within = `${fixture.smoke.withinMs / 1000}s`;
     for (const [i, post] of posts.entries()) {
       const want = post.want === undefined ? undefined : SEATS[post.want].id;
       // No post goes while a run is working: every answer then belongs to the post it follows.
-      const idle = await readUntil(() => readMailbox(page), (r) => r.working.length === 0, fixture.smoke.withinMs);
+      const idle = await readUntil(() => readHelpDesk(page), (r) => r.working.length === 0, fixture.smoke.withinMs);
       if (idle.working.length > 0) {
         fail("smoke", `before post ${i + 1}: ${JSON.stringify(idle.working)} still showed after ${within}, so the smoke stops here and post ${i + 1} is not sent`);
         break;
@@ -974,19 +891,10 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
       evidence.push(said);
       if (f.lineAt === undefined) fail("smoke", `post ${i + 1}: no answer within ${fixture.smoke.withinMs / 1000}s of Send, with no reload`);
       else if (answers.length !== 1) fail("smoke", `post ${i + 1}: ${answers.length} answer lines (want exactly one)`);
+      else if (!ROLES.some((role) => SEATS[role].id === answers[0]!.label)) fail("smoke", `post ${i + 1} was answered by ${answers[0]!.label}, not a specialist`);
       else if (want !== undefined && answers[0]!.label !== want) fail("smoke", `post ${i + 1} ${JSON.stringify(post.text)} was answered by ${answers[0]!.label} (want ${want})`);
       if (worked.filter((s) => s !== undefined && s !== answers[0]?.label).length > 0) {
         fail("smoke", `post ${i + 1}: the panel showed ${worked.join(", ")} working (want the answering specialist alone)`);
-      }
-      if (post.followUpOf !== undefined && answers.length === 1) {
-        const antecedent = posts[post.followUpOf]!;
-        const theirs = answeredBy[post.followUpOf];
-        const subject = (post.subject ?? []).filter((word) => answers[0]!.body.toLowerCase().includes(word));
-        evidence.push(`follow-up: ${JSON.stringify(antecedent.text)} answered by ${theirs?.label ?? "nobody"}: ${JSON.stringify(theirs?.body ?? "")}; ${JSON.stringify(post.text)} answered by ${answers[0]!.label}: ${JSON.stringify(answers[0]!.body)}`);
-        if (theirs === undefined || answers[0]!.label !== theirs.label) {
-          fail("smoke", `the follow-up was answered by ${answers[0]!.label}, not ${theirs?.label ?? "its antecedent's specialist"}`);
-        }
-        if (subject.length === 0) fail("smoke", `the follow-up's answer names none of ${JSON.stringify(post.subject)}: ${JSON.stringify(answers[0]!.body)}`);
       }
       // A run still working (or no answer to wait out) means the next post could draw this one's answer.
       if (f.clearedAt === undefined) {
@@ -1003,9 +911,9 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
     // Only the posts that went.
     const sent = posts.slice(0, answeredBy.length);
     await reload(page);
-    await showMailbox(page);
+    await showHelpDesk(page);
     const after = await readUntil(
-      () => readMailbox(page),
+      () => readHelpDesk(page),
       (r) => sent.every((p) => postsOf(r.lines, p.mark).length > 0),
       15_000,
     );
@@ -1039,7 +947,7 @@ await runGoal(async (failures) => {
       await smoke(browser, failures, evidence);
       return { failures, evidence: evidence.join("; ") };
     }
-    const names = CONTROL !== "" ? [CONTROL] : ["", ...Object.keys(CONTROLS).filter((n) => CONTROLS[n]!.how !== "checkout")];
+    const names = CONTROL !== "" ? [CONTROL] : ["", ...Object.keys(CONTROLS)];
     let plain: Journey | undefined;
     for (const name of names) {
       const j = await journey(browser, name);

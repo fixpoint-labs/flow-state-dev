@@ -50,12 +50,13 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, type RuntimeLogger } from "../
 import { ConcurrencyDeferLimitError, ConcurrencyRejectedError } from "../errors";
 import type { DispatchEnvelope } from "../dispatcher";
 import {
+  DEFER_PATIENCE_MS,
   QUEUE_WAIT_TIMEOUT_MS,
   createInMemoryLeaseBackend,
   holdLeasePlace,
   inMemoryInternalsOf,
+  planDeferWait,
   planQueueWait,
-  recheckDelayMs,
   type ConcurrencyLeaseBackend,
   type LeasePlace,
   type LeasePlaceHold,
@@ -125,9 +126,14 @@ export interface ConcurrencyAdmission {
   /**
    * Stop holding the place in this process without giving it back: it now
    * belongs to a job another process will run, which renews and gives it
-   * back. Call once the job is enqueued.
+   * back. Call once the job is enqueued, with the promise that settles when
+   * the job ends.
+   *
+   * A `defer` admission holds no place: its job claims the key itself. It
+   * keeps counting against the key's `maxDeferredPerKey` in this process until
+   * `jobEnded` settles, since this process cannot see when the job starts.
    */
-  handOff(): void;
+  handOff(jobEnded: Promise<unknown>): void;
 }
 
 export interface ConcurrencyArbiter {
@@ -359,7 +365,7 @@ export function createConcurrencyArbiter(
   const inMemory = inMemoryInternalsOf(backend);
   const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
   const maxDeferredPerKey = options.maxDeferredPerKey ?? MAX_DEFERRED_PER_KEY;
-  const deferPatienceMs = options.deferPatienceMs ?? QUEUE_WAIT_TIMEOUT_MS;
+  const deferPatienceMs = options.deferPatienceMs ?? DEFER_PATIENCE_MS;
   // `defer` requests admitted and not yet running, per key, in this process.
   const deferredWaiting = new Map<string, number>();
 
@@ -404,10 +410,7 @@ export function createConcurrencyArbiter(
       if (myTurn === true && (attempt === 0 || waitedMs < budgetMs)) return;
       // A wait with no budget (a `defer` that ran out of patience) backs off
       // the same way and never times out.
-      const step =
-        budgetMs === UNBOUNDED_TURN_BUDGET
-          ? { kind: "wait" as const, delayMs: recheckDelayMs(attempt) }
-          : planQueueWait({ key: place.key, waitedMs, attempt });
+      const step = planQueueWait({ key: place.key, waitedMs, attempt, budgetMs });
       if (step.kind === "timeout") throw step.error;
       await sleep(step.delayMs, signal);
     }
@@ -570,14 +573,13 @@ export function createConcurrencyArbiter(
    */
   const untilKeyMayBeFree = (
     key: string,
-    attempt: number,
-    patienceLeftMs: number,
+    step: { retryInMs: number; patienceLeftMs: number },
     signal?: AbortSignal
   ): Promise<void> => {
-    if (inMemory === undefined) return sleep(Math.min(recheckDelayMs(attempt), patienceLeftMs), signal);
+    if (inMemory === undefined) return sleep(step.retryInMs, signal);
     // Woken when the key empties, or when patience runs out, whichever is first.
     const patience = new AbortController();
-    const timer = setTimeout(() => patience.abort(), Math.max(0, patienceLeftMs));
+    const timer = setTimeout(() => patience.abort(), Math.max(0, step.patienceLeftMs));
     (timer as { unref?: () => void }).unref?.();
     const stop = signal === undefined ? patience.signal : AbortSignal.any([signal, patience.signal]);
     return inMemory.whenFree(key, stop).finally(() => clearTimeout(timer));
@@ -629,8 +631,8 @@ export function createConcurrencyArbiter(
         if (signal?.aborted) {
           throw new Error(`A deferred run on "${key}" was withdrawn before the key came free`);
         }
-        const patienceLeftMs = deferPatienceMs - (Date.now() - since);
-        if (patienceLeftMs <= 0) {
+        const step = planDeferWait({ waitedMs: Date.now() - since, attempt, patienceMs: deferPatienceMs });
+        if (step.kind === "line-up") {
           // Out of patience: line up behind what holds the key now. Newer
           // `hold` runs join behind this place, so they no longer delay it.
           const behind = inMemory !== undefined ? inMemory.take({ key, requestId }) : await backend.take({ key, requestId });
@@ -640,7 +642,7 @@ export function createConcurrencyArbiter(
         const result = inMemory !== undefined ? inMemory.take(free) : await backend.take(free);
         // Claimed only because the key was free: it is this place's turn already.
         if ("place" in result) return admissionFor({ kind: "has-turn" }, requestId, result.place);
-        await untilKeyMayBeFree(key, attempt, patienceLeftMs, signal);
+        await untilKeyMayBeFree(key, step, signal);
       }
     };
     return {
@@ -669,7 +671,11 @@ export function createConcurrencyArbiter(
       release: async () => {
         if (!running) leaveWaiting();
       },
-      handOff: () => {}
+      // Its job, in another process, claims the key. It counts here until
+      // that job ends, however it ends.
+      handOff: (jobEnded) => {
+        jobEnded.then(leaveWaiting, leaveWaiting);
+      }
     };
   };
 

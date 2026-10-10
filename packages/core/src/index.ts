@@ -146,9 +146,11 @@ export type {
 export {
   ASK_GATE_REASON,
   AskEndedError,
+  AskStoppedError,
   isAskGate,
   parkOnAsk,
-  parseAskOutcome
+  parseAskOutcome,
+  recordedAskOutcome
 } from "./types/ask-gate";
 export type {
   AskEndingErrorCode,
@@ -533,6 +535,8 @@ export {
   SuspensionRejectedError,
   SuspensionTimeoutError,
   RouteUnavailableError,
+  RecordedValueOmittedError,
+  RECORDED_VALUE_OMITTED,
   rootCause,
   isAbortLike,
   serializeError,
@@ -543,6 +547,7 @@ export type {
   FlowErrorScope,
   OutputValidationDetails,
   RouteUnavailableDetails,
+  RecordedValueOmittedDetails,
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails,
   SuspendOptions,

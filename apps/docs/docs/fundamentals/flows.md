@@ -253,10 +253,10 @@ A block can also stop another request running in its own session, the way the ab
 
 ```ts
 const outcome = await ctx.session.stopRequest(requestId);
-// "stopped" | "already-finished" | "not-in-this-session"
+// "stopped" | "already-finished" | "already-resolved" | "not-in-this-session"
 ```
 
-The stop is recorded on the request, so it reaches a request running in another process on that process's next heartbeat, exactly like an abort. `"not-in-this-session"` is the answer for any id outside the session, including one that doesn't exist, so the call can't be used to learn about other sessions' requests.
+The stop is recorded on the request, so it reaches a request running in another process on that process's next heartbeat, exactly like an abort. A request paused at `ctx.suspend()` can be stopped too, on a runtime with durable execution: it ends `aborted`. `"already-resolved"` means it was paused, but something resumed it before the stop arrived, so it is running again; stop it again to stop the running request. `"not-in-this-session"` is the answer for any id outside the session, including one that doesn't exist, so the call can't be used to learn about other sessions' requests.
 
 See [Actions](/docs/fundamentals/actions) for the full picture.
 
