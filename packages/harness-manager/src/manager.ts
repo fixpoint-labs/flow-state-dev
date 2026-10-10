@@ -42,6 +42,7 @@ import type { HarnessRunOutcome } from "@flow-state-dev/core/types";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
+  BlockDefinition,
   DeclaredResourceEntry,
   HarnessBlock,
   HarnessResolver,
@@ -95,6 +96,7 @@ import {
   withHoldRetries,
 } from "./held";
 import { askMarkerPath, readAskMarker } from "./ask";
+import { readRunCommits, type RunCommits } from "./commits";
 import {
   HARNESS_RUN_OWNER_KEY,
   foreignRunMessage,
@@ -261,6 +263,12 @@ export interface CompletionRunContext extends PhaseRunContext {
    * including on a run that committed half the job and ran out of road.
    */
   stopReport: HarnessRunOutcome | (string & {}) | null;
+  /**
+   * The run's final message, as it reported it; `null` when it reported
+   * none. A phase whose work is an answer rather than a change reads it: a
+   * run that ended with nothing to say has not answered.
+   */
+  answer: string | null;
 }
 
 /** Everything that makes one phase a phase. Three values, passed in. */
@@ -337,6 +345,48 @@ export type HarnessLedgers = (
   partition: string | undefined,
 ) => Promise<TaskCollectionRef | undefined>;
 
+/** What a {@link HarnessJudge}'s block is handed: the task, the run's answer, and its commits. */
+export const harnessJudgeInputSchema = z.object({
+  /** The task's goal, as filed. */
+  goal: z.string(),
+  /** The run's final message, as its output carries it. */
+  answer: z.string().nullable(),
+  /** The commits the run made: how many, and their subjects, newest first (at most 20). */
+  commits: z.object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()) }),
+});
+export type HarnessJudgeInput = z.infer<typeof harnessJudgeInputSchema>;
+
+/**
+ * What a {@link HarnessJudge}'s block answers. `done` closes the task;
+ * `not-done` fails the attempt with `reason` as the next attempt's feedback;
+ * `ask` parks the row with `reason` as its question. A `not-done` or `ask`
+ * under the judge's floor counts as `done`.
+ */
+export const harnessJudgeVerdictSchema = z.object({
+  verdict: z.enum(["done", "not-done", "ask"]),
+  /** How sure the judge is, from 0 to 1. Read against {@link HarnessJudge.floor}. */
+  confidence: z.number(),
+  /** Why: the next attempt's feedback on `not-done`, the question on `ask`. */
+  reason: z.string(),
+});
+export type HarnessJudgeVerdict = z.infer<typeof harnessJudgeVerdictSchema>;
+
+/**
+ * A second reading of a run that passed the phase's own check, on a board
+ * read from the claim: did the answer meet the task's goal?
+ *
+ * The block is the host's, typically an evaluator; the manager names no
+ * model. It runs after `isDone` passes, for a row with a goal, and its
+ * output is read through {@link harnessJudgeVerdictSchema}. A judge that
+ * throws, times out or answers something else is not a verdict: the task
+ * settles on the phase's check alone, with `judged: false` in the output.
+ */
+export interface HarnessJudge {
+  block: BlockDefinition<any, any, HarnessJudgeInput, unknown>;
+  /** The confidence a `not-done` or `ask` must reach to count. Below it, the run is done. */
+  floor: number;
+}
+
 /** How the manager is wired to its board and its host. */
 export interface ManagerOptions {
   /**
@@ -378,6 +428,13 @@ export interface ManagerOptions {
    * {@link judge} may read the answer.
    */
   ledgers?: HarnessLedgers;
+  /**
+   * Read a run that passed the phase's check once more, against its task's
+   * goal, before the row closes (see {@link HarnessJudge}). Only on a board
+   * read from the claim: a fixed board's rows never reach it. Size a host's
+   * shutdown with `harnessDrainBudgetMs({ ..., judge: true })` when given.
+   */
+  judge?: HarnessJudge;
   /**
    * The tenant this conductor serves — the same value that partitions the
    * board's collection identity. Every request must resolve to it.
@@ -588,6 +645,18 @@ const managerStateSchema = z.object({
    * it is what the person's answer is paired with in the prompt.
    */
   askedQuestion: z.string().nullable().default(null),
+  /** The task's goal, as handed to this attempt: what a judge reads the answer against. */
+  goal: z.string().nullable().default(null),
+  /**
+   * What `decide` decided, for the step that settles it once a judge (if
+   * any) has read the run: the output to return, and whether the row parked
+   * (nothing left to settle) or passed its check (to complete, or not, on the
+   * judge's verdict).
+   */
+  decided: z
+    .lazy(() => z.object({ settle: z.enum(["parked", "complete"]), output: managerOutputSchema }))
+    .nullable()
+    .default(null),
   /**
    * The checkout lease this attempt holds, as a VALUE — see
    * `CheckoutLease.token`.
@@ -631,12 +700,31 @@ const managerStateSchema = z.object({
   held: heldSchema.nullable().default(null),
 });
 
+/** The most of a run's final message its output carries. */
+export const MAX_ANSWER_CHARS = 8_000;
+
 /** The manager's own result. Two outcomes; there is deliberately no third. */
 const managerOutputSchema = z.object({
   issue: z.string(),
   phase: z.string(),
   sessionId: z.string().nullable(),
+  /** The run's final message, cut at {@link MAX_ANSWER_CHARS}; `null` when it reported none. */
+  answer: z.string().nullable(),
+  /** The run's branch; `null` for a run with no repository, only kept files. */
+  branch: z.string().nullable(),
+  /** How many commits the run's branch has that its base does not. */
+  commits: z.number().int().nonnegative(),
+  /** Whether the host's judge read the run before it settled. */
+  judged: z.boolean(),
 });
+type ManagerOutput = z.infer<typeof managerOutputSchema>;
+
+/** What `decide` hands the steps after it: the output, and what a judge (if one runs) is given. */
+const decisionSchema = z.object({
+  output: managerOutputSchema,
+  judge: harnessJudgeInputSchema.nullable(),
+});
+type Decision = z.infer<typeof decisionSchema>;
 
 /**
  * An attempt failed. Carries only a message — the board captures it as
@@ -889,6 +977,8 @@ export function harnessDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownershipWaitMs: number;
+  /** The manager was given a judge, which runs after the completion check, bounded the same way. */
+  judge?: boolean | undefined;
 }): number {
   const work =
     options.ownershipWaitMs +
@@ -897,7 +987,8 @@ export function harnessDrainBudgetMs(options: {
     // The completion check AND the prompt builder. Both are public hooks, both
     // are bounded by this constant, and the budget has to reserve time for each
     // — a bound the budget does not account for is as wrong as no bound.
-    NETWORK_CALL_TIMEOUT_MS * 2;
+    NETWORK_CALL_TIMEOUT_MS * 2 +
+    (options.judge === true ? NETWORK_CALL_TIMEOUT_MS : 0);
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
   // small absolute cap that binds instead on tiny budgets.
@@ -1129,6 +1220,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     boardCollectionId,
     boardCollection,
     ledgers,
+    judge,
     tenant,
     phase: callerPhase,
     workspace,
@@ -1693,7 +1785,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       const epic = claim === null ? boardCollectionId! : runBoardSegment(claim.collectionId, claim.partition ?? undefined);
       // On state before anything can refuse, so a refusal settles under this
       // attempt's own claim.
-      await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts });
+      await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts, goal: input.goal, decided: null });
 
       // A row naming no issue and phase (a task a conversation filed) runs as
       // this manager's phase, with its task id standing in for the issue.
@@ -2179,7 +2271,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         .object({ usd: z.number(), basis: z.string() })
         .nullable(),
     }),
-    outputSchema: managerOutputSchema,
+    outputSchema: decisionSchema,
     sequencerStateSchema: managerStateSchema,
     // The done-condition runs in here, and it sees a phase's collections too.
     uses: [managerCapability, ...(guardedUses ?? [])],
@@ -2194,6 +2286,33 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
+
+      /**
+       * What this attempt hands back, kept on state for `settle`: the run's
+       * answer (cut), its branch (none for a run with only kept files) and
+       * the commits it made. `judged` is the settle step's to set.
+       */
+      const decided = async (
+        settle: "parked" | "complete",
+        commits: RunCommits,
+        judgeInput: HarnessJudgeInput | null = null,
+      ): Promise<Decision> => {
+        const output: ManagerOutput = {
+          issue: state.issue!,
+          phase: state.phase!,
+          sessionId: handle.sessionId,
+          answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
+          branch: state.filesOnly === true ? null : state.branch!,
+          commits: commits.count,
+          judged: false,
+        };
+        await ctx.sequencer!.patchState({ decided: { settle, output } });
+        return { output, judge: judgeInput };
+      };
+      const commitsOf = (): Promise<RunCommits> =>
+        state.filesOnly === true
+          ? Promise.resolve({ count: 0, subjects: [] })
+          : readRunCommits(state.workspacePath!, state.baseRef);
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -2261,11 +2380,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
       if (succeeded && question !== undefined && state.claim !== null) {
         await parkOnBoardQuestion(ctx, identity, question);
-        return {
-          issue: state.issue!,
-          phase: state.phase!,
-          sessionId: handle.sessionId,
-        };
+        return decided("parked", await commitsOf());
       }
       if (succeeded && question !== undefined && questionTopicKey !== undefined) {
         const board = await boardTasks(ctx);
@@ -2283,11 +2398,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         // Returning normally is the point: the child session's request ends and the
         // row stays parked, because both recorders decline a row the worker
         // parked for review.
-        return {
-          issue: state.issue!,
-          phase: state.phase!,
-          sessionId: handle.sessionId,
-        };
+        return decided("parked", await commitsOf());
       }
 
       // ── Arm 2: succeeded AND done ──────────────────────────────────────────
@@ -2316,6 +2427,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
               // silent partial success back, one layer down. `null` stays
               // `null`: "reported nothing" is its own fact.
               stopReport: handle.outcome,
+              answer: handle.finalMessage,
               ctx,
             }),
           NETWORK_CALL_TIMEOUT_MS,
@@ -2341,16 +2453,19 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
           }
           // No question to withdraw: arm 1 returned on every attempt that asked
           // one, so reaching here with a succeeded verdict means the marker was
-          // empty.
-          await fenced(
-            writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
-            "the row was completed",
-          );
-          return {
-            issue: state.issue!,
-            phase: state.phase!,
-            sessionId: handle.sessionId,
-          };
+          // empty. The row is completed by `settle`, once the judge (when this
+          // run gets one) has read it: only a board read from the claim, and
+          // only a task with a goal to read the answer against.
+          const commits = await commitsOf();
+          const judgeInput =
+            judge !== undefined && state.claim !== null && (state.goal ?? "").trim() !== ""
+              ? {
+                  goal: state.goal!,
+                  answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
+                  commits,
+                }
+              : null;
+          return decided("complete", commits, judgeInput);
         }
       }
 
@@ -2524,7 +2639,74 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     },
   });
 
-  const worker = sequencer({
+  /**
+   * **The judge, as a step, never failing the run by failing itself.** Its
+   * output is read through the verdict schema; a throw, a timeout or an
+   * answer of another shape becomes "no verdict", and the run settles on the
+   * phase's check alone (`judged: false`). Absent when no judge was given, so
+   * a manager without one runs the chain it always ran.
+   */
+  const judgeStep =
+    judge === undefined
+      ? undefined
+      : judge.block
+          .connectOutput((verdict: unknown) => ({ verdict: harnessJudgeVerdictSchema.parse(verdict) }))
+          .rescue([
+            {
+              block: handler({
+                name: "harness-manager-judge-unavailable",
+                inputSchema: z.unknown(),
+                outputSchema: z.object({ verdict: z.null() }),
+                execute: (error: unknown) => {
+                  console.warn(
+                    `[harness-manager] the judge gave no verdict (${error instanceof Error ? error.message : String(error)}); ` +
+                      `settling on the phase's check alone.`,
+                  );
+                  return { verdict: null };
+                },
+              }),
+            },
+          ]);
+
+  /**
+   * Settle what `decide` decided. A park has nothing left to settle. A run
+   * that passed its check completes, unless a judge read it and, at or over
+   * its floor, said `not-done` (the attempt fails with its reason, which is
+   * the next attempt's feedback) or `ask` (the row parks on its reason, the
+   * question path every board-read run takes).
+   */
+  const settle = handler({
+    name: "harness-manager-settle",
+    // `decide`'s output when no judge ran, the judge step's when one did.
+    inputSchema: z.unknown(),
+    outputSchema: managerOutputSchema,
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (input: unknown, ctx: BlockContext) => {
+      const state = managerState(harnessCtxState(ctx));
+      const decision = state.decided!;
+      if (decision.settle === "parked") return decision.output;
+      const read =
+        typeof input === "object" && input !== null && "verdict" in input
+          ? (input as { verdict: HarnessJudgeVerdict | null }).verdict
+          : null;
+      const identity = identityOf(ctx, state);
+      if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
+        if (read.verdict === "not-done") {
+          throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
+        }
+        await parkOnBoardQuestion(ctx, identity, read.reason);
+        return { ...decision.output, judged: true };
+      }
+      await fenced(
+        writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
+        "the row was completed",
+      );
+      return { ...decision.output, judged: read !== null };
+    },
+  });
+
+  const decided = sequencer({
     name,
     inputSchema: harnessManagerInputSchema,
     outputSchema: managerOutputSchema,
@@ -2545,7 +2727,20 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         onSettled: (ctx) => releaseLeaseFromState(ctx),
       },
     )
-    .step(decide)
+    .step(decide);
+  const worker = (
+    judgeStep === undefined
+      ? decided
+      : decided.stepIf(
+          (decision: Decision) => decision.judge !== null,
+          (decision: Decision) => decision.judge!,
+          judgeStep,
+          // Bounded like the phase's own hooks, and reserved for by
+          // `harnessDrainBudgetMs({ judge: true })`.
+          { abortSignal: () => AbortSignal.timeout(NETWORK_CALL_TIMEOUT_MS) },
+        )
+  )
+    .step(settle)
     .rescue([{ block: recordFailure }]);
 
   worker.validate();
