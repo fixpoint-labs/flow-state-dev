@@ -172,3 +172,9 @@ anything rests on.
   against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): in b5, Alice
   opens `feature` herself with the EM as lead, and the result is graded at the EM's workstream
   session and its update to the entry, not at the coordinator conversation.
+- **Amended after merge (FIX-1866, 2026-10-10)** — Jake reported the coder never answering a
+  task its coordinator filed (FIX-1842: the task hung in progress). FIX-1842 made the delegate
+  check honest; [FIX-1866](../FIX-1866/SPEC.md) makes the coder take a conversation's task as a
+  supervised coding run and answer in the conversation. Nothing else in this closure runs that
+  path end to end (b5 grades the EM's workstream, not an ask from a coordinator conversation), so
+  its goal check joins part 3 as a required row, P3.11, with its three controls.
