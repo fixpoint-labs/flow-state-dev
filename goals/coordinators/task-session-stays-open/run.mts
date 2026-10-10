@@ -46,6 +46,8 @@ const BRIEF =
   "ask the person who assigned this which region to deploy to, with parkOnQuestion, and stop there. " +
   "Once you have the answer, finish with one line that names the ticket you drew and the region.";
 const LEG_B = "Which ticket did you draw?";
+/** What `drop-answer` hands the re-entered turn in place of the app's answer: not one of `REGIONS`, nor contains one. */
+const DECOY_REGION = "me-central";
 
 // ---- controls -------------------------------------------------------------------------
 
@@ -75,11 +77,14 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
+        // The answer's place is kept, so the turn reads an answered question and finishes as the plain run
+        // does; only what it was answered differs. Handed nothing, or the brief again, the model either gave
+        // up or asked again, and asking again reddened most of the check (FIX-1867).
         from: String.raw`if \(task\.answer !== (?:undefined|void 0)\) return`,
-        to: "if (false) return",
+        to: String.raw`if (task.answer !== undefined) return "Answer to your question:\n\nUse ${DECOY_REGION}."; if (false) return`,
       },
     ],
-    does: "the answer re-queues the task in its session, but the re-entered turn is handed the task again, not the answer",
+    does: `the answer re-queues the task in its session, but the re-entered turn is handed an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,
   },
 };
 
