@@ -1185,6 +1185,9 @@ function buildTaskTools(
             status: z.string(),
             assignee: z.string().optional(),
             attempts: z.number(),
+            // The run working the task, or the one that last worked it: a
+            // reader opens it from here (FIX-1668). Absent until a run starts.
+            run: taskSchema.shape.run,
           }),
         ),
       }),
@@ -1207,6 +1210,7 @@ function buildTaskTools(
           status: t.status,
           ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
           attempts: t.attempts,
+          ...(t.run != null ? { run: t.run } : {}),
         })),
       };
     },
