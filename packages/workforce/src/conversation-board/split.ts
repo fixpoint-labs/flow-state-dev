@@ -261,7 +261,9 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
   if (pieces.some(isOpen)) return false;
   const above = await conversationLedgerAt(ctx, binding.partition);
   if (above !== undefined && above.get(binding.taskId) !== undefined) {
-    // A failure filed again no longer counts: its retry is judged in its place.
+    // A failure filed again no longer counts: its retry is judged in its place,
+    // as any piece is (an open one holds the settle above; a cancelled one
+    // fails nothing). Every piece the woken turn filed retries it.
     const retried = new Set(pieces.map(retryOf).filter((id): id is string => id !== undefined));
     const failed = pieces.filter((row) => row.status === "errored" && !retried.has(row.id));
     const guards = { ifAllowed: true, claim: binding.ticket } as const;
