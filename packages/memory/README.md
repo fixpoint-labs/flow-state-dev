@@ -89,6 +89,8 @@ Rule of thumb: if your flow never calls into the capture pipeline, reach for `cr
 | Digest | user | Summarized rollups across many sessions |
 | Hygiene | session | Time-based confidence decay and episodic TTL maintenance |
 
+Episodic, semantic and digest follow the flow's `isolateUserState` / `isolateOrgState` by default. Set `flowIsolation: true` or `false` on the `episodic` or `semantic` config to keep that tier per flow copy or share it across flows regardless. Semantic doesn't inherit episodic's setting. The digest is isolated when either source is `true`, or when episodic sits at a different scope and sets nothing; it is shared only when both are `false`. Working memory is per session. See [Sharing a tier across flows](https://flow-state.dev/docs/memory/configuration#sharing-a-tier-across-flows).
+
 Two entry points: `createMemoryCapability()` builds the read-side capability; `system()` builds the same capability plus the auto-capture and lifecycle pipeline.
 
 ## Subject attribution
@@ -134,7 +136,7 @@ When relations is enabled, three read paths open up (all no-ops or absent when i
 
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
-**Key exports:** `system`, `captureEvaluator`, `captureQuestions`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createConnectTool`, `edgeToMemoryItem`, `graphExpandCandidates`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
+**Key exports:** `system`, `captureEvaluator`, `captureQuestions`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `MemoryResourceOptions`, `createRecallTool`, `createConnectTool`, `edgeToMemoryItem`, `graphExpandCandidates`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
 
 ## Skipping turns with an evaluator
 

@@ -12,10 +12,9 @@ import { handler } from '@flow-state-dev/core'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory'
 import { memorySystemResource } from './memory-system'
-import { createEpisodicMemoryResource } from './episodic-memory'
-import { createSemanticMemoryResource } from './semantic-memory'
 import { cullByEffectiveConfidence, knownSubjects } from './semantic-memory-helpers'
 import { edgesOf } from './internal/helpers'
+import { episodicResourceOf, semanticResourceOf } from './internal/tier-resources'
 import { cullByTTL, markStale } from './episodic-memory-helpers'
 import type { EpisodicTTLConfig } from './episodic-memory-helpers'
 import { janitorResource } from './janitor'
@@ -54,12 +53,8 @@ export interface ResolvedHygieneConfig {
 export function memorySystemJanitor(
   config: MemorySystemBlocksConfig & { hygiene: ResolvedHygieneConfig },
 ) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
+  const semanticResource = semanticResourceOf(config)
+  const episodicResource = episodicResourceOf(config)
 
   const hygiene = config.hygiene
 

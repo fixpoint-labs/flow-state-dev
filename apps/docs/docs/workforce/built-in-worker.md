@@ -296,6 +296,12 @@ Every worker on `agent` runs on one shared copy, so what a worker remembers depe
 `isolateUserState: true` keeps the `agent` flow's user-scoped storage apart from every other
 flow's. It doesn't separate workers on `agent`: they share the one copy it keys on.
 
+A memory tier can override that with its own `flowIsolation`, set on `episodic` or `semantic` in
+`system()`. The `agent` flow can, for example, keep its episodes apart from the person's other
+flows while sharing semantic facts with them. Per-tier isolation doesn't separate workers on
+`agent` from each other either. See
+[Sharing a tier across flows](../memory/configuration.md#sharing-a-tier-across-flows).
+
 ## Related pages
 
 - [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.

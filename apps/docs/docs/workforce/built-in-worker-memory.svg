@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 478" role="img" aria-labelledby="title desc">
   <title id="title">What a built-in worker keeps, and who shares it</title>
-  <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per person and per worker, so two workers never read each other's and two people do not share them. Memory is off until you add it; when on, it is kept per person and shared by the workers serving that person unless isolateUserState gives each worker its own.</desc>
+  <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per person and per worker, so two workers never read each other's and two people do not share them. Memory is off until you add it; when on, it is kept per person and shared by the workers serving that person. isolateUserState keeps it apart from other flows, not from other workers on the same flow.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
@@ -63,13 +63,13 @@
   <text x="628" y="208" class="muted">Default: one store, shared by the</text>
   <text x="628" y="224" class="muted">workers serving that person</text>
   <text x="628" y="256" class="code">isolateUserState: true</text>
-  <text x="628" y="274" class="muted">Each worker gets its own, keyed on</text>
-  <text x="628" y="290" class="muted">its id. Renaming it starts fresh.</text>
+  <text x="628" y="274" class="muted">Kept apart from other flows. Workers</text>
+  <text x="628" y="290" class="muted">on the same flow share it.</text>
 
   <!-- Not a copy -->
   <rect x="28" y="354" width="864" height="104" rx="12" class="box"/>
   <text x="44" y="378" class="h">Not a copy</text>
   <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per person.</text>
   <text x="44" y="422" class="p">Memory is about a person, not a conversation. A new conversation starts with no turns but the same memory.</text>
-  <text x="44" y="444" class="muted">isolateUserState is set once for the whole kind: a roster is all shared or all separate.</text>
+  <text x="44" y="444" class="muted">isolateUserState is set once for the whole kind. A memory tier can set its own flowIsolation to differ from it.</text>
 </svg>

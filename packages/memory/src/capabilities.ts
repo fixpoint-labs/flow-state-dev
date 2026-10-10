@@ -28,6 +28,7 @@ import {
 import type { WorkingMemoryHelperConfig, AddEntryInput } from './working-memory-helpers'
 
 import { createEpisodicMemoryResource, type EpisodicMemoryState } from './episodic-memory'
+import type { MemoryResourceOptions } from './resource-options'
 import { encode, recent, markConsolidated } from './episodic-memory-helpers'
 import type { EncodeEpisodeInput } from './episodic-memory-helpers'
 
@@ -96,7 +97,7 @@ export const workingMemoryCapability = createWorkingMemoryCapability()
 // ---------------------------------------------------------------------------
 
 /** Config for episodic memory capability. */
-export interface EpisodicMemoryCapabilityConfig {
+export interface EpisodicMemoryCapabilityConfig extends MemoryResourceOptions {
   /** Resource scope. Default: 'user'. */
   scope?: 'user' | 'org'
   /** Max episodes to retain. Default: 200. */
@@ -113,7 +114,7 @@ export function createEpisodicMemoryCapability(config?: EpisodicMemoryCapability
   const scope = config?.scope ?? 'user'
   const maxEpisodes = config?.maxEpisodes ?? 200
 
-  const resource = createEpisodicMemoryResource(scope)
+  const resource = createEpisodicMemoryResource(scope, { flowIsolation: config?.flowIsolation })
 
   return defineCapability({
     name: 'episodicMemory' as const,
@@ -140,7 +141,7 @@ export const episodicMemoryCapability = createEpisodicMemoryCapability()
 // ---------------------------------------------------------------------------
 
 /** Config for semantic memory capability. */
-export interface SemanticMemoryCapabilityConfig {
+export interface SemanticMemoryCapabilityConfig extends MemoryResourceOptions {
   /** Resource scope. Default: 'user'. */
   scope?: 'user' | 'org'
   /**
@@ -166,7 +167,7 @@ export type AddSemanticFactInput = Omit<
 export function createSemanticMemoryCapability(config?: SemanticMemoryCapabilityConfig) {
   const scope = config?.scope ?? 'user'
 
-  const resource = createSemanticMemoryResource(scope, config?.edges)
+  const resource = createSemanticMemoryResource(scope, config?.edges, { flowIsolation: config?.flowIsolation })
 
   return defineCapability({
     name: 'semanticMemory' as const,
@@ -200,8 +201,12 @@ export const semanticMemoryCapability = createSemanticMemoryCapability()
 // Digest Memory Capability
 // ---------------------------------------------------------------------------
 
-/** Config for digest memory capability. */
-export interface DigestMemoryCapabilityConfig {
+/**
+ * Config for digest memory capability. `system()` derives `flowIsolation` from
+ * the episodic and semantic tiers; a caller composing tiers by hand sets it to
+ * `true` whenever either source is isolated.
+ */
+export interface DigestMemoryCapabilityConfig extends MemoryResourceOptions {
   /** Resource scope. Default: 'user'. Should mirror semantic memory's scope. */
   scope?: 'user' | 'org'
 }
@@ -216,7 +221,7 @@ export interface DigestMemoryCapabilityConfig {
  */
 export function createDigestMemoryCapability(config?: DigestMemoryCapabilityConfig) {
   const scope = config?.scope ?? 'user'
-  const resource = createDigestMemoryResource(scope)
+  const resource = createDigestMemoryResource(scope, { flowIsolation: config?.flowIsolation })
 
   return defineCapability({
     name: 'digestMemory' as const,
