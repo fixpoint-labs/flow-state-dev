@@ -73,6 +73,16 @@ describe("a manager reading its board from the claim", () => {
   }, 60_000);
 });
 
+describe("the message door belongs to a fixed board", () => {
+  it("is absent from a manager with no fixed board, and present on one with a board", () => {
+    // The door reads one board's rows. A manager reading its board from the
+    // claim has none to read, so a host that wires a door onto it must build
+    // its own over the run records, and the type says so before it runs.
+    expect("messageDoor" in claimHost({ mode: "claim" }).manager).toBe(false);
+    expect(typeof (claimHost({ mode: "fixed" }).manager as { messageDoor?: unknown }).messageDoor).toBe("function");
+  });
+});
+
 describe("the claim on the manager's input is checked, never trusted", () => {
   it("refuses a claim naming another conversation's row, and runs nothing", async () => {
     const lab = claimHost({ mode: "claim" });
