@@ -59,6 +59,22 @@ It comes down to a worker that splits at every level: capped per board, it reach
 **What would change my mind:** most real chains needing more than 100 pieces. Then the default
 rises, and the docs state the cost per piece.
 
+<a name="d3"></a>
+## D3 · answered · A split task whose failed piece was filed again, and whose retry worked, completes
+
+**The product owner's call, 2026-10-10** (asked on the epic's thread). When a piece fails for good,
+its notice wakes the task session's turn, which may file the work again. If that retry completes,
+the parent task completes.
+
+| | |
+|---|---|
+| **Instead of** | BR-16 as first written: the parent fails whenever any piece failed for good, naming it, even when the turn the failure woke filed the work again and the retry completed |
+| **Because** | The person asked for the work and the work got done; reporting failure misleads them and the coordinator above, which may file the whole task again |
+| **Locks in** | A piece filed in the turn a piece's failure for good woke is that piece's retry, written by the board on the row (never input). Only that turn: a piece filed in a later turn, even after the failure, is no retry, so a failure the turn chose to leave stands. A retry that fails for good fails the parent in its place, unless it is filed again in turn |
+
+**What would change my mind:** workers filing unrelated work in the turn a failure woke, so a
+failure reads as forgiven when it wasn't retried. Then the retry is named explicitly on the filing.
+
 ## Decided, not asked
 
 - **The tools are Orchestration's existing eight, wired by FIX-1794** (the product owner's
@@ -143,5 +159,9 @@ rises, and the docs state the cost per piece.
   ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)). S1 composes the tools through the shared
   worker turn, one instance; V1 gains the must-test; P1 waits on FIX-1814; the page is "Delegating
   work". ([EVOLUTION.md](EVOLUTION.md#amendment-handoff))
+
+- **Amended after merge (split retries, 2026-10-10)** — D3: a failed piece filed again in the turn
+  its failure woke is its retry, and the parent completes once the retry does (BR-16a).
+  ([EVOLUTION.md](EVOLUTION.md#amendment-retries))
 
 **Open: none.**

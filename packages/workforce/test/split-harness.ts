@@ -7,7 +7,8 @@
  * - on a message that isn't a notice, it files the worker's `plans` entry,
  *   one row per piece, and records any refusal by its error's name;
  * - on a notice, it throws when the worker is in `failNoticeTurn`, and files
- *   the worker's `onErrored` piece once when the notice is a failure for good.
+ *   the worker's `onErrored` piece once when the notice is a failure for good,
+ *   and its `onCompleted` piece once when the notice is a completion.
  *
  * Every turn is recorded (worker, session, message).
  */
@@ -28,6 +29,7 @@ export type SplitControls = {
   plans: Record<string, Piece[]>;
   failNoticeTurn: Set<string>;
   onErrored: Record<string, Piece>;
+  onCompleted: Record<string, Piece>;
   refusals: Array<{ worker: string; error: string }>;
   turns: Array<{ worker: string; sessionId: string; message: string }>;
 };
@@ -52,6 +54,10 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
       if (notice && input.message.includes("failed for good") && controls.onErrored[worker] !== undefined) {
         pieces.push(controls.onErrored[worker]!);
         delete controls.onErrored[worker];
+      }
+      if (notice && input.message.includes(" completed by ") && controls.onCompleted[worker] !== undefined) {
+        pieces.push(controls.onCompleted[worker]!);
+        delete controls.onCompleted[worker];
       }
       if (pieces.length === 0) return `${worker} heard: ${input.message}`;
       const ref = await board.board.resolver(ctx as never);
@@ -112,7 +118,7 @@ export function splitWorkers(): WorkerManifest[] {
 
 /** A board host with the splitter flow registered, and its controls. */
 export function bootSplitHost(options: BoardHostOptions = {}) {
-  const controls: SplitControls = { plans: {}, failNoticeTurn: new Set(), onErrored: {}, refusals: [], turns: [] };
+  const controls: SplitControls = { plans: {}, failNoticeTurn: new Set(), onErrored: {}, onCompleted: {}, refusals: [], turns: [] };
   const host = bootBoardHost({
     standard: splitWorkers(),
     flows: (installation) => ({ splitter: splitterFlow(installation, controls) }),

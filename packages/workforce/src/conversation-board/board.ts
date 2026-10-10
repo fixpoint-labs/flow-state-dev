@@ -71,7 +71,7 @@ import {
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { PIECE_OF, RUN_BOARD_ENTRY } from "./board-entries";
+import { PIECE_OF, RETRY_OF, RUN_BOARD_ENTRY } from "./board-entries";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -92,7 +92,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
-import { cascadeIfSplit, pieceOwnerOf, replaySplits, settleIfOwedLater } from "./split";
+import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -345,10 +345,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (delegates.available.size === 1) assignee = [...delegates.available.keys()][0]!;
       }
       // In a task session, the row is a piece of the task it was filed for:
-      // server-written, so its settle reads only its own pieces.
+      // server-written, so its settle reads only its own pieces. Filed in the
+      // turn a piece's failure woke, it is that piece's retry.
       const owner = await pieceOwnerOf(ctx);
+      const retrying = owner === undefined ? undefined : retryingPiece(ctx);
       const given = callerMetadata(init.metadata);
-      const metadata = owner === undefined ? given : { ...(given ?? {}), [PIECE_OF]: owner };
+      const metadata =
+        owner === undefined
+          ? given
+          : { ...(given ?? {}), [PIECE_OF]: owner, ...(retrying !== undefined ? { [RETRY_OF]: retrying } : {}) };
       const added = await ref.addTask({
         ...init,
         id,
@@ -429,11 +434,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // or to a session that files now: rows filed before it lost its last
     // task-taking delegate still run and are heard (FIX-1802 BR-5).
     if (hasStartable(ref)) await wake(ctx);
-    await replayNotices(ctx, ref.list());
+    const rows = ref.list();
+    await replayNotices(ctx, rows);
     // And the settles owed down the chain: each parked split row's session
     // settles its task once its pieces are done, this one's included, behind
     // any turn it is running (FIX-1802 BR-17).
-    await replaySplits(ctx, ref.list());
+    await replaySplits(ctx, rows);
     await settleIfOwedLater(ctx);
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
