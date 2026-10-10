@@ -3509,7 +3509,9 @@ export async function createExecutionContext<
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
             const entry = resolved[consumed];
             if (entry.rejected) {
-              throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data);
+              throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data, {
+                expired: entry.expired
+              });
             }
             // A skipped gate replays as the sentinel, never the persisted data,
             // so `if (r === SUSPENSION_SKIPPED)` holds identically across a
@@ -3535,7 +3537,11 @@ export async function createExecutionContext<
 
           if (isResolvingGate) {
             if (resumeCtx.action === "reject") {
-              throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
+              // An approval that expired continues as a rejection marked
+              // expired, so the caller can say it is no longer valid.
+              throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data, {
+                expired: resumeCtx.resolution === "expired"
+              });
             }
             // A skip is non-throwing control flow: return the sentinel so the
             // author's optional-step branch fires instead of receiving a payload.

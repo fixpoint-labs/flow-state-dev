@@ -123,13 +123,29 @@ export class SuspensionRejectedError extends Error {
   readonly suspensionId: string;
   readonly rejectedBy?: string;
   readonly rejectionData?: unknown;
+  /**
+   * True when nobody rejected the suspension: it passed its `expiresAt`
+   * unanswered, and the run continues as if it were no longer valid.
+   */
+  readonly expired: boolean;
 
-  constructor(suspensionId: string, rejectedBy?: string, rejectionData?: unknown) {
-    super(`Suspension ${suspensionId} was rejected`);
+  constructor(
+    suspensionId: string,
+    rejectedBy?: string,
+    rejectionData?: unknown,
+    options?: { expired?: boolean }
+  ) {
+    const expired = options?.expired === true;
+    super(
+      expired
+        ? `Suspension ${suspensionId} expired and is no longer valid`
+        : `Suspension ${suspensionId} was rejected`
+    );
     this.name = "SuspensionRejectedError";
     this.suspensionId = suspensionId;
     this.rejectedBy = rejectedBy;
     this.rejectionData = rejectionData;
+    this.expired = expired;
   }
 }
 

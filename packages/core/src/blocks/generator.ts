@@ -1640,7 +1640,15 @@ async function runResumeStep(
             // Denial: emit a COMPLETED tool_output so later cycles treat it as
             // resolved (not a re-enterable failed gate), and surface the denial
             // to the model.
-            const denial = { denied: true, reason: err.message };
+            // An approval that expired was never answered: tell the model it
+            // is no longer valid rather than that a person said no.
+            const denial = err.expired
+              ? {
+                  denied: true,
+                  expired: true,
+                  reason: "The approval for this tool call expired and is no longer valid. The tool was not run."
+                }
+              : { denied: true, reason: err.message };
             await emitToolOutputAround(
               entry.block,
               ctx,

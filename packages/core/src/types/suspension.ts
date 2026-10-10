@@ -154,6 +154,14 @@ export interface ResumeContext {
    * resolution without it matches no gate.
    */
   pendingBlockLogicalId?: string;
+  /**
+   * How the gate being resolved was recorded, when that is not the action's
+   * own status: `expired` for an approval that passed its `expiresAt` and is
+   * continued as a rejection, so `ctx.suspend()` throws a
+   * `SuspensionRejectedError` marked `expired`. Set by the server at re-entry
+   * from the stored gate, overwriting any supplied value.
+   */
+  resolution?: SuspensionStatus;
 }
 
 export interface SuspensionFilter {

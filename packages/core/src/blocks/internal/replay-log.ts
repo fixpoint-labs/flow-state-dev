@@ -27,8 +27,13 @@ import { buildItemLookup, resolveBlockValueInternal } from "../../items/resolve-
 export interface ResolvedResume {
   /** The payload the resolving caller passed back (`ctx.suspend()`'s return). */
   data: unknown;
-  /** True when the resolution was a rejection (re-throw `SuspensionRejectedError`). */
+  /**
+   * True when the resolution was a rejection (re-throw `SuspensionRejectedError`).
+   * An approval that expired is read as one: it continued as no longer valid.
+   */
   rejected: boolean;
+  /** True when the rejection was an expiry, not a person's answer. */
+  expired: boolean;
   /**
    * True when the resolution was a skip — `ctx.suspend()` must return the
    * `SUSPENSION_SKIPPED` sentinel on replay, not the persisted `data`, so a
@@ -129,7 +134,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
   /** Resolution payloads keyed by the suspension id they resolved. */
   const resumeBySuspension = new Map<
     string,
-    { data: unknown; rejected: boolean; skipped: boolean; resolvedBy: string | undefined }
+    { data: unknown; rejected: boolean; expired: boolean; skipped: boolean; resolvedBy: string | undefined }
   >();
 
   for (const item of items) {
@@ -180,7 +185,8 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       resumedIds.add(resume.suspensionId);
       resumeBySuspension.set(resume.suspensionId, {
         data: resume.resumeData,
-        rejected: resume.resolution === "rejected",
+        rejected: resume.resolution === "rejected" || resume.resolution === "expired",
+        expired: resume.resolution === "expired",
         skipped: resume.resolution === "skipped",
         resolvedBy: resume.resolvedBy,
       });
@@ -212,6 +218,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
     list.push({
       data: resume.data,
       rejected: resume.rejected,
+      expired: resume.expired,
       skipped: resume.skipped,
       suspensionId: s.suspensionId,
       resolvedBy: resume.resolvedBy,

@@ -24,6 +24,12 @@
  * The gate's resolved record, `stopped`, is the obligation. If the process dies
  * before the turn leaves `suspended`, the durability sweep's re-drive finishes
  * it ({@link redriveResolvedGate}).
+ *
+ * The same re-drive carries an approval that expired (FIX-1846): the turn
+ * continues with the gate read as a rejection marked expired, so the gated
+ * call does not run and the model is told the approval is no longer valid.
+ * A stop of a turn parked behind one still ends it `aborted`: the stop is
+ * recorded on the turn, which its first abort poll reads before anything runs.
  */
 import { isAskGate } from "@flow-state-dev/core/types";
 import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
@@ -115,6 +121,18 @@ export async function stopSuspendedRequest(
   return ended ? "stopped" : "already-resolved";
 }
 
+/**
+ * Whether `gate` is an approval that expired: a non-ask gate a person could
+ * have rejected, past its deadline. Its turn is owed a continuation that reads
+ * it as no longer valid (FIX-1846). A gate that allows no rejection (an input
+ * form) only expires, as before.
+ */
+export function isExpiredApproval(gate: SuspensionRecord): boolean {
+  if (gate.status !== "expired" || isAskGate(gate)) return false;
+  // Absent on records written before `allow` existed: binary, as the resume route reads it.
+  return (gate.allow ?? ["approve", "reject"]).includes("reject");
+}
+
 /** The turn's last logged gate, when it expired: the turn waits on nothing now. */
 async function expiredLatestGate(
   deps: SuspendedStopDeps,
@@ -201,7 +219,9 @@ export type RedriveRefusal = "not-parked" | "superseded";
  * re-drive (BR-11a, BR-16c). Any ask outcome continues the turn with the
  * recorded outcome, never a new one; a non-ask gate resolved `stopped`
  * continues it with the stop recorded on it, so it ends `aborted` through its
- * own lifecycle. Under the request's lease, so a live resume is never raced.
+ * own lifecycle; an approval that expired continues it with a rejection that
+ * `runAction` marks expired from the gate (FIX-1846). Under the request's
+ * lease, so a live resume is never raced.
  *
  * `gate` must be the request's latest gate; a request that has since parked
  * on a newer one is left alone (`superseded`).
@@ -210,7 +230,7 @@ export async function redriveResolvedGate(
   deps: SuspendedStopDeps,
   gate: SuspensionRecord
 ): Promise<"redriven" | "busy" | RedriveRefusal> {
-  if (!isAskGate(gate) && gate.status !== "stopped") return "not-parked";
+  if (!isAskGate(gate) && gate.status !== "stopped" && !isExpiredApproval(gate)) return "not-parked";
 
   const result = await continueUnderLease<RedriveRefusal>(deps, {
     requestId: gate.requestId,
@@ -221,6 +241,13 @@ export async function redriveResolvedGate(
       if (!isLatestGate(record, gate.suspensionId)) return { refusal: "superseded" };
       const current = await deps.provider.loadSuspension(gate.requestId, gate.suspensionId);
       if (current === null || current.status === "pending") return { refusal: "superseded" };
+      if (isExpiredApproval(current)) {
+        // No longer valid: the gated call reads a rejection marked expired,
+        // and the turn carries on.
+        return {
+          resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy }
+        };
+      }
       if (!isAskGate(current)) {
         // A stopped approval: the stop recorded on the turn ends it.
         if (!(await recordStop(deps, record))) return { refusal: "not-parked" };
