@@ -2217,10 +2217,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   fails, answers with something that isn't a choice, has no one to pick, or picks a delegate
   below `minConfidence:` (or with no confidence while it is set). That post goes to the
   fallback, else the judgment turn. If that turn fails too, nobody takes the post, and the
-  conversation says so. The judgment turn's model reads each delegate's answer in the
-  conversation as a line from that delegate (`<worker id>, a delegate in this conversation,
-  answered:`), never as a reply of its own, and each post the routing handed straight to
-  delegates followed by a note of where it went, so it doesn't take that post up again.
+  conversation says so. The judgment turn's model sees each delegate's answer prefixed
+  `<worker id>, a delegate in this conversation, answered:`, and each post the routing
+  handed to delegates followed by a note of where it went.
   `round-robin` sends each post to the next delegate in list order, skipping one that can't be
   reached. `everyone` sends it to each delegate that can be reached. When no delegate can be
   reached, nobody takes the post, and the conversation says so.
