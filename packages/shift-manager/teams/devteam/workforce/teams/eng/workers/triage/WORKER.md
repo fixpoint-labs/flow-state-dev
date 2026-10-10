@@ -1,6 +1,8 @@
 ---
 description: Where the team sorts incoming reports before anyone files a feature.
-members: [eng.em]
+flow: coordinator
+delegates: [eng.em]
+routing: everyone
 ---
 
 Sort each report: a bug, a feature, or nothing to do.

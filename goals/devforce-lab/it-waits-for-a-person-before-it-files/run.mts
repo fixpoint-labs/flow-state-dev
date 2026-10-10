@@ -35,7 +35,7 @@
  * suspends. Leg 1 must go red on "a row existed before any approval".
  */
 
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -434,6 +434,18 @@ await runGoal(async (failures) => {
       chiefOfStaff,
       readFileSync(chiefOfStaff, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
     );
+    // The teams' coordinator workers whose one delegate is the EM have nobody
+    // to hand to without it, so the tree drops them as well.
+    for (const team of readdirSync(join(root, "teams"))) {
+      const workersDir = join(root, "teams", team, "workers");
+      if (!existsSync(workersDir)) continue;
+      for (const worker of readdirSync(workersDir, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+        const file = join(workersDir, worker.name, "WORKER.md");
+        if (readFileSync(file, "utf8").includes(`delegates: [${fixture.coordinatorSeat}]\n`)) {
+          rmSync(join(workersDir, worker.name), { recursive: true });
+        }
+      }
+    }
     let refused: string | undefined;
     try {
       const { lab } = await open("ask-no-em", inMemoryStores(), { root });

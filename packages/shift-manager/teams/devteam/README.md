@@ -50,14 +50,14 @@ workforce/
       resources/feature-brief.md                   the working seat's brief
       skills/commit-style/SKILL.md                 every eng seat holds it
       mailboxes/feature/MAILBOX.md                  holds the board, `boards: [work]`; driven by the third check
-      mailboxes/triage/MAILBOX.md                   no board, in no default project
       workers/em/WORKER.md                         flow: em      — names no harness
       workers/coder/WORKER.md                      flow: coder
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
       workers/reviewer/WORKER.md                   flow: coder   — declared, never woken
+      workers/triage/WORKER.md                     flow: coordinator — hands every post to eng.em
     ops/
       mailboxes/release/MAILBOX.md                  no board; the cross-team workstream of Shift Manager's Storefront project
-      mailboxes/oncall/MAILBOX.md                   no board, in no default project
+      workers/oncall/WORKER.md                     flow: coordinator — hands every post to eng.em
 ```
 
 Eleven Markdown files, and **none of them is named anywhere in this directory's

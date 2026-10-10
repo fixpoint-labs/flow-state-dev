@@ -39,6 +39,20 @@
   "orgSeats": {
     "chief-of-staff": {
       "kind": "coordinator"
+    },
+    "project-coordinator": {
+      "kind": "coordinator"
+    },
+    "workstream-coordinator": {
+      "kind": "agent"
+    }
+  },
+  "teamCoordinators": {
+    "eng.triage": {
+      "kind": "coordinator"
+    },
+    "ops.oncall": {
+      "kind": "coordinator"
     }
   },
   "documents": [
@@ -47,8 +61,6 @@
   ],
   "mailboxes": [
     "eng.feature",
-    "eng.triage",
-    "ops.oncall",
     "ops.release"
   ],
   "promptTokens": [
