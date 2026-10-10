@@ -165,104 +165,177 @@ export interface ReadSeatSkillsResult {
  */
 export async function readSeatSkills(
   root: string,
-  { team, worker }: ReadSeatSkillsOptions,
+  options: ReadSeatSkillsOptions,
 ): Promise<ReadSeatSkillsResult> {
-  // Both arguments become path segments, so they are held to the same rules as
-  // the folders they name. Thrown rather than collected: a segment that breaks
-  // them names no seat, so there is no seat to report against — and one
-  // carrying `..` would read a folder the caller never configured.
-  if (team !== undefined) validateSegment(team, "Team");
-  validateSegment(worker, "Worker");
+  return createSeatSkillsReader(root)(options);
+}
 
-  // The levels below are each allowed to be absent, so nothing further down
-  // can tell a missing root from a tree that simply keeps no skills. Opened
-  // here, once, through the shared primitive — which is also what refuses a
-  // symlinked root, the one level this reader's own ancestor check never
-  // reaches.
-  await openRoot(root);
+/**
+ * A {@link readSeatSkills} for many seats under one root, reading each level
+ * once.
+ *
+ * The org's `skills/` folder is a level every seat sees, and a team's is one
+ * every seat on that team sees. Read per seat, a roster pays for those folders
+ * once per worker rather than once per tree. This reader keeps what one level
+ * yielded — its skills and its reports, in order — and hands the same answer to
+ * every seat that reaches it, so each result is exactly what
+ * `readSeatSkills` returns for that seat on its own: the same skills, the same
+ * reports in the same order, a shared level's failure still listed under each
+ * seat it cost.
+ *
+ * What stays per seat is what differs between seats: the segment checks, the
+ * symlink walk down to each level, and the duplicate-name refusal, which is a
+ * property of the union rather than of any one level.
+ *
+ * Only for one pass over a tree that is not changing underneath it — a level
+ * is read the first time a seat reaches it and never again, so a folder edited
+ * mid-pass is not seen by the seats after. The root is checked once, on first
+ * use.
+ */
+export function createSeatSkillsReader(
+  root: string,
+): (options: ReadSeatSkillsOptions) => Promise<ReadSeatSkillsResult> {
+  let rootOpened: Promise<void> | undefined;
+  const levelReads = new Map<string, Promise<LevelRead>>();
 
-  const errors: SeatSkillError[] = [];
-  // Structural folders already refused, so a shared one — `teams`, the team's
-  // own folder — is reported once rather than once per level beneath it.
-  const refused = new Set<string>();
-  // Where each name came from, in read order, so a contested one can name every
-  // file in play rather than just the two the author happened to write first.
-  const sources = new Map<string, { paths: string[]; skills: InitialSkill[] }>();
+  return async ({ team, worker }) => {
+    // Both arguments become path segments, so they are held to the same rules as
+    // the folders they name. Thrown rather than collected: a segment that breaks
+    // them names no seat, so there is no seat to report against — and one
+    // carrying `..` would read a folder the caller never configured.
+    if (team !== undefined) validateSegment(team, "Team");
+    validateSegment(worker, "Worker");
 
-  const levels =
-    team === undefined
-      ? ["org/skills", `org/workers/${worker}/skills`]
-      : ["org/skills", `teams/${team}/skills`, `teams/${team}/workers/${worker}/skills`];
-  for (const level of levels) {
-    const dir = path.join(root, ...level.split("/"));
-    // The level is jumped to rather than walked down to, so every folder above
-    // it has to be classified here — `lstat` answers for the final component
-    // alone, and the OS quietly resolves the rest. Without this a symlinked
-    // `teams/` is followed and the level loads from outside the root.
-    if (await refusedOnTheWay(root, level, errors, refused)) continue;
+    // The levels below are each allowed to be absent, so nothing further down
+    // can tell a missing root from a tree that simply keeps no skills. Opened
+    // here, once, through the shared primitive — which is also what refuses a
+    // symlinked root, the one level this reader's own ancestor check never
+    // reaches.
+    rootOpened ??= openRoot(root);
+    await rootOpened;
 
-    // Gate the level through the shared primitive: it is what keeps an absent
-    // folder silent, a symlinked one refused, and an unreadable one reported.
-    const opened = await openStructuralDirectory(dir, level);
-    if (opened.refusal !== undefined) {
-      errors.push({
-        kind:
-          opened.refusal.reason === "symlink"
-            ? "refused-symlinked-level"
-            : "unlistable-level",
-        path: level,
-        error: opened.refusal.error,
-      });
+    const errors: SeatSkillError[] = [];
+    // Structural folders already refused, so a shared one — `teams`, the team's
+    // own folder — is reported once rather than once per level beneath it.
+    const refused = new Set<string>();
+    // Where each name came from, in read order, so a contested one can name every
+    // file in play rather than just the two the author happened to write first.
+    const sources = new Map<string, { paths: string[]; skills: InitialSkill[] }>();
+
+    const levels =
+      team === undefined
+        ? ["org/skills", `org/workers/${worker}/skills`]
+        : ["org/skills", `teams/${team}/skills`, `teams/${team}/workers/${worker}/skills`];
+    for (const level of levels) {
+      // The level is jumped to rather than walked down to, so every folder above
+      // it has to be classified here — `lstat` answers for the final component
+      // alone, and the OS quietly resolves the rest. Without this a symlinked
+      // `teams/` is followed and the level loads from outside the root.
+      if (await refusedOnTheWay(root, level, errors, refused)) continue;
+
+      let read = levelReads.get(level);
+      if (read === undefined) {
+        read = readLevel(root, level);
+        levelReads.set(level, read);
+      }
+      const { reports, skills } = await read;
+
+      // Copied per seat, so one seat's list is never another's to mutate.
+      for (const report of reports) errors.push({ ...report });
+
+      for (const { skill, where } of skills) {
+        const seen = sources.get(skill.name);
+        if (seen === undefined) {
+          sources.set(skill.name, { paths: [where], skills: [skill] });
+        } else {
+          seen.paths.push(where);
+          seen.skills.push(skill);
+        }
+      }
     }
-    if (opened.entries === undefined) continue;
 
-    const { skills, errors: perSkill } = await readSkillsDirectory(dir);
-
-    for (const { name, error } of perSkill) {
-      // The shared reader reports one failure per skill folder without saying
-      // which — a symlinked folder and a malformed `SKILL.md` arrive the same
-      // way — so they land here under one kind rather than being told apart by
-      // re-reading the message this change exists to stop callers parsing.
-      errors.push({ kind: "skill-load-failed", path: `${level}/${name}`, error });
-    }
-
-    for (const skill of skills) {
-      const where = `${level}/${skill.name}`;
-      if (declaresScope(skill)) {
-        errors.push({
-          kind: "refused-scope-key",
-          path: where,
-          error: new Error(`SKILL.md in "${where}/" ${REFUSED_SKILL_SCOPE_KEY_MESSAGE}`),
-        });
+    const assembled: InitialSkill[] = [];
+    for (const [name, { paths, skills }] of sources) {
+      if (paths.length === 1) {
+        // Cloned per seat, like the reports: the cached record is every seat's,
+        // and one caller editing its copy must not edit the others'.
+        assembled.push(structuredClone(skills[0]!));
         continue;
       }
-      const seen = sources.get(skill.name);
-      if (seen === undefined) {
-        sources.set(skill.name, { paths: [where], skills: [skill] });
-      } else {
-        seen.paths.push(where);
-        seen.skills.push(skill);
-      }
+      errors.push({
+        kind: "duplicate-skill-name",
+        // Keyed by where the name was first seen, like every other report here.
+        // Every copy is in `paths`, and not one of them is the copy that won.
+        path: paths[0]!,
+        paths: [...paths],
+        error: new Error(duplicateSkillNameMessage(name, worker, paths)),
+      });
     }
-  }
 
-  const assembled: InitialSkill[] = [];
-  for (const [name, { paths, skills }] of sources) {
-    if (paths.length === 1) {
-      assembled.push(skills[0]!);
-      continue;
-    }
-    errors.push({
-      kind: "duplicate-skill-name",
-      // Keyed by where the name was first seen, like every other report here.
-      // Every copy is in `paths`, and not one of them is the copy that won.
-      path: paths[0]!,
-      paths: [...paths],
-      error: new Error(duplicateSkillNameMessage(name, worker, paths)),
+    return { skills: assembled, errors };
+  };
+}
+
+/**
+ * What one level yields, whichever seat reads it: the reports it produced in
+ * the order it produced them, and the skills that loaded, each with the path it
+ * would be reported under.
+ */
+interface LevelRead {
+  reports: Array<PathReport<Exclude<SeatSkillErrorKind, "duplicate-skill-name">>>;
+  skills: Array<{ skill: InitialSkill; where: string }>;
+}
+
+/**
+ * Read one level's `skills/` folder, once its ancestors have been cleared.
+ *
+ * Nothing here depends on which seat is asking, which is what lets
+ * {@link createSeatSkillsReader} hand one answer to every seat that reaches it.
+ */
+async function readLevel(root: string, level: string): Promise<LevelRead> {
+  const dir = path.join(root, ...level.split("/"));
+  const reports: LevelRead["reports"] = [];
+  const skills: LevelRead["skills"] = [];
+
+  // Gate the level through the shared primitive: it is what keeps an absent
+  // folder silent, a symlinked one refused, and an unreadable one reported.
+  const opened = await openStructuralDirectory(dir, level);
+  if (opened.refusal !== undefined) {
+    reports.push({
+      kind:
+        opened.refusal.reason === "symlink"
+          ? "refused-symlinked-level"
+          : "unlistable-level",
+      path: level,
+      error: opened.refusal.error,
     });
   }
+  if (opened.entries === undefined) return { reports, skills };
 
-  return { skills: assembled, errors };
+  const { skills: loaded, errors: perSkill } = await readSkillsDirectory(dir);
+
+  for (const { name, error } of perSkill) {
+    // The shared reader reports one failure per skill folder without saying
+    // which — a symlinked folder and a malformed `SKILL.md` arrive the same
+    // way — so they land here under one kind rather than being told apart by
+    // re-reading the message this change exists to stop callers parsing.
+    reports.push({ kind: "skill-load-failed", path: `${level}/${name}`, error });
+  }
+
+  for (const skill of loaded) {
+    const where = `${level}/${skill.name}`;
+    if (declaresScope(skill)) {
+      reports.push({
+        kind: "refused-scope-key",
+        path: where,
+        error: new Error(`SKILL.md in "${where}/" ${REFUSED_SKILL_SCOPE_KEY_MESSAGE}`),
+      });
+      continue;
+    }
+    skills.push({ skill, where });
+  }
+
+  return { reports, skills };
 }
 
 /**
