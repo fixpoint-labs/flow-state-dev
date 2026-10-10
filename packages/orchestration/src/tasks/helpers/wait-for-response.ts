@@ -216,40 +216,36 @@ export async function addTaskAndWait(
     };
   }
 
-  // One row per call. The row's ids are recorded first, in a step with no
-  // side effect, keyed on the call's logical id (which the replay shares;
-  // never on the attempt). Then the row is filed under that id unless it
-  // already is, so a replay after a crash between the row's commit and
-  // anything after it finds the first filing instead of making a second.
-  // An ask parked before that step existed recorded its whole filing under
-  // `fsd.ask.file`; its replay reads that instead (BP-030). Reading it records
-  // `null` there for an ask that never had one, which nothing else reads.
-  const legacy = await ctx.runOnce<{ taskId: string; gateId: string } | null>(
-    `fsd.ask.file:${call.logicalId}`,
-    async () => null
-  );
-  const planned =
-    legacy ??
-    (await ctx.runOnce(`fsd.ask.plan:${call.logicalId}`, async () => {
+  // One row per call. The filing is recorded under `fsd.ask.file`, keyed on
+  // the call's logical id (which the replay shares; never on the attempt), in
+  // the shape every version reads back: `{ taskId, gateId, deadline }`. An ask
+  // filed by earlier code finds its filing there and goes no further (BP-030),
+  // and a process still on earlier code, mid-rollout, reads a filing it knows.
+  // Inside it, the row's ids are recorded first, in a step with no side
+  // effect, then the row is written under that id unless it already is, so a
+  // crash between the row's commit and the filing's record replays into the
+  // same row. The deadline is counted from the row's write, and read back from
+  // the row on that replay, never from ids a crash outlived.
+  const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
+    const planned = await ctx.runOnce!(`fsd.ask.plan:${call.logicalId}`, async () => {
       // Unique across processes: a row that already holds this id is this
       // ask's own filing, never another's that happened to mint the same id.
       const taskId = `task_${crypto.randomUUID()}`;
       return { taskId, gateId: askGateId(collection.collectionId, taskId) };
-    }));
-  // The deadline is the filing's: counted from when the row is written, and
-  // read back from the row on a replay, never from a plan a crash outlived.
-  const existing = collection.get(planned.taskId);
-  if (existing !== undefined && existing.ask?.gateId !== planned.gateId) {
-    throw new Error(
-      `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
-    );
-  }
-  let deadline = existing?.ask?.deadline;
-  if (deadline === undefined) {
-    deadline = Date.now() + timeoutMs;
-    await collection.addTask({ ...init, id: planned.taskId, ask: { gateId: planned.gateId, deadline } });
-  }
-  const filed = { taskId: planned.taskId, gateId: planned.gateId, deadline };
+    });
+    const existing = collection.get(planned.taskId);
+    if (existing !== undefined && existing.ask?.gateId !== planned.gateId) {
+      throw new Error(
+        `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
+      );
+    }
+    let deadline = existing?.ask?.deadline;
+    if (deadline === undefined) {
+      deadline = Date.now() + timeoutMs;
+      await collection.addTask({ ...init, id: planned.taskId, ask: { gateId: planned.gateId, deadline } });
+    }
+    return { taskId: planned.taskId, gateId: planned.gateId, deadline };
+  });
 
   // Never fails the call: the answer always comes back. A clear that fails
   // leaves the marker, and the next touch clears it, the gate already resolved.
@@ -325,8 +321,8 @@ export async function addTaskAndWait(
       // read it open and before the gate was written found no gate to resume,
       // and nothing may have touched the board since. Its answer stands; it is
       // late, never later than the deadline, but not lost.
-      // A row cancelled (by anyone) is not such an ending: the gate recorded a
-      // timeout, and a timeout it stays.
+      // By its own ending time: one that ended after the deadline (the ask's
+      // own timeout cancel among them) leaves the timeout standing.
       const ended = cancelled ? undefined : collection.get(filed.taskId);
       if (ended !== undefined && endedInTime(ended, filed.deadline)) {
         await clearMarker();
@@ -339,14 +335,19 @@ export async function addTaskAndWait(
 }
 
 /**
- * Whether a timed-out ask's row ended on its own in time to answer instead:
- * completed or failed (a cancel, by anyone, leaves the timeout standing), at
- * or before the ask's deadline by the row's own ending time. A row with no
- * ending time leaves the timeout standing too.
+ * Whether a timed-out ask's row ended on its own in time to answer instead,
+ * by the row's own ending time: completed or failed at or before the ask's
+ * deadline, or cancelled strictly before it (by someone else; the ask's own
+ * timeout cancel lands at or after the deadline). A row with no ending time
+ * leaves the timeout standing.
  */
 function endedInTime(row: Pick<Task, "status" | "completedAt">, deadline: number): boolean {
-  if (row.status !== "completed" && row.status !== "errored") return false;
-  return row.completedAt != null && row.completedAt <= deadline;
+  if (row.completedAt == null) return false;
+  if (row.status === "completed" || row.status === "errored") return row.completedAt <= deadline;
+  // A cancel strictly before the deadline was someone else's: the ask's own
+  // timeout cancel lands at or after it.
+  if (row.status === "cancelled") return row.completedAt < deadline;
+  return false;
 }
 
 /** The reason an ask's own timeout cancels its row with. A record for people, never read back. */

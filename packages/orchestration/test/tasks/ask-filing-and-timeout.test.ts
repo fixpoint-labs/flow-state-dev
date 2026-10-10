@@ -112,13 +112,23 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       // Someone else's task under the id this call planned (a collision).
       await board.addTask({ id: "task_taken", goal: "someone else's task" });
       const memo = new Map<string, unknown>([
-        [`fsd.ask.file:${LOGICAL_ID}`, null],
         [`fsd.ask.plan:${LOGICAL_ID}`, { taskId: "task_taken", gateId: "ask:asks:task_taken" }]
       ]);
       await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow(/isn't this ask's/);
       const [row] = board.list();
       expect(row).toMatchObject({ id: "task_taken", goal: "someone else's task" });
       expect(row!.ask).toBeUndefined();
+    });
+
+    it("leaves the shipped shape under the old filing key, so a process on the earlier code resolves the same ask", async () => {
+      const board = await build();
+      const memo = new Map<string, unknown>();
+      await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
+      const [row] = board.list();
+      // What the earlier code reads back on its replay: the filing, whole.
+      const shipped = memo.get(`fsd.ask.file:${LOGICAL_ID}`) as { taskId: string; gateId: string; deadline: number };
+      expect(shipped).toEqual({ taskId: row!.id, gateId: row!.ask!.gateId, deadline: row!.ask!.deadline });
+      expect(board.get(shipped.taskId)?.ask?.gateId).toBe(shipped.gateId);
     });
 
     it("mints a cross-process-unique id for a new ask", async () => {

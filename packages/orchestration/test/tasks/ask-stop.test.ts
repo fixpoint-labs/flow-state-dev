@@ -238,7 +238,11 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
       resolvedBy: "sweep",
       resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
     });
+    // The timeout's cancel lands after the deadline, as the sweep fires it.
+    const real = Date.now.bind(Date);
+    vi.spyOn(Date, "now").mockImplementation(() => real() + 6 * 60_000);
     await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "The ask timed out before the task finished." } });
+    vi.restoreAllMocks();
     await before.dispose();
 
     const { flow, after } = await restart(filename, seen);
@@ -298,6 +302,27 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
       expect(toolResults(seen[1]!.messages)).toContain(expected);
     });
   }
+
+  it("a task cancelled by someone else before the deadline keeps its cancel, though the sweep then timed the ask out", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
+    // A colleague cancels the task in time; its resume is lost to a crash; the
+    // sweep later times the gate out; the process dies before the turn moves on.
+    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "no longer needed" } });
+    await provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resolvedBy: "sweep",
+      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+    });
+    await before.dispose();
+
+    const { after } = await restart(filename, seen);
+    await until(after, requestId, "completed");
+    expect(toolResults(seen[1]!.messages)).toContain("wait_task_cancelled");
+    expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
+  });
 
   it("an answered ask killed before its turn continued is driven on to completion, once (V9)", async () => {
     const seen: GeneratorModelCallOptions[] = [];
