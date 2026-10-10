@@ -174,3 +174,95 @@ describe("the project a task is filed from", () => {
     expect(JSON.stringify(forged.json)).toContain("filingProjectId");
   });
 });
+
+describe("projectWorkspace for a task a conversation filed", () => {
+  it("works in the project of the conversation that filed it, with nothing named (BR-5)", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    const run = await h.file("alice", await h.projectConversation("alice", storefront));
+    expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+  });
+
+  it("works in the project the task names, from a conversation with no project, for a member (BR-6)", async () => {
+    const h = await boot();
+    await h.createProject("bob", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO, members: ["alice"] });
+    const run = await h.file("alice", await h.plainConversation("alice"), { input: { project: storefront } });
+    expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+  });
+
+  it("works on the named project's files when it has no repository (BR-10)", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "sandbox", title: "Sandbox" });
+    const run = await h.file("alice", await h.plainConversation("alice"), { input: { project: { visibility: "shared", id: "sandbox" } } });
+    expect(run.answer).toEqual({ kind: "files", projectId: "sandbox" });
+  });
+
+  it("refuses a named project the run's own user isn't a member of, whatever else the task says (BR-7)", async () => {
+    const h = await boot();
+    await h.createProject("bob", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    // The task can say anything about who it's for; membership is read off the run's user.
+    const run = await h.file("alice", await h.plainConversation("alice"), {
+      input: { project: storefront, userId: "bob", members: ["alice"] }
+    });
+    expect(run.answer).toMatchObject({ kind: "refused", reason: "not-a-member" });
+    expect((run.answer as { message: string }).message).toContain('"alice"');
+  });
+
+  it("refuses a named project that doesn't exist as no-project (BR-7)", async () => {
+    const h = await boot();
+    const run = await h.file("alice", await h.plainConversation("alice"), { input: { project: { visibility: "shared", id: "nope" } } });
+    expect(run.answer).toMatchObject({ kind: "refused", reason: "no-project" });
+    expect((run.answer as { message: string }).message).toContain('"nope"');
+  });
+
+  it("refuses a task that names no project, from a conversation with none, saying the task can name one (BR-8)", async () => {
+    const h = await boot();
+    const run = await h.file("alice", await h.plainConversation("alice"));
+    expect(run.answer).toMatchObject({ kind: "refused", reason: "no-project" });
+    expect((run.answer as { message: string }).message).toContain("input.project");
+  });
+
+  it("refuses a named project other than the project conversation's, naming both (BR-9)", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    await h.createProject("alice", { id: "billing", title: "Billing" });
+    const run = await h.file("alice", await h.projectConversation("alice", storefront), {
+      input: { project: { visibility: "shared", id: "billing" } }
+    });
+    expect(run.answer).toMatchObject({ kind: "refused", reason: "other-project" });
+    const message = (run.answer as { message: string }).message;
+    expect(message).toContain('"billing"');
+    expect(message).toContain('"storefront"');
+
+    // Naming the conversation's own project is no conflict.
+    h.asked.length = 0;
+    const same = await h.file("alice", await h.projectConversation("alice", storefront), { input: { project: storefront } });
+    expect(same.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+  });
+
+  it("refuses a named project other than the workstream's it was filed from (BR-9)", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    await h.createProject("alice", { id: "billing", title: "Billing" });
+    const session = await h.workstreamConversation("alice", storefront, "checkout");
+    const run = await h.file("alice", session, { input: { project: { visibility: "shared", id: "billing" } } }, "filer");
+    expect(run.answer).toMatchObject({ kind: "refused", reason: "other-project" });
+    expect((run.answer as { message: string }).message).toContain('"billing"');
+  });
+
+  it("works in the one named by visibility and id when a private and a shared project share an id, and refuses an id alone (BR-9a)", async () => {
+    const h = await boot();
+    await h.createProject("bob", { id: "storefront", title: "The org's", repository: STOREFRONT_REPO, members: ["alice"] });
+    await h.createProject("alice", { id: "storefront", title: "Mine", visibility: "private" });
+
+    const mine = await h.file("alice", await h.plainConversation("alice"), {
+      input: { project: { visibility: "private", id: "storefront" } }
+    });
+    expect(mine.answer).toEqual({ kind: "files", projectId: "storefront" });
+
+    h.asked.length = 0;
+    const bare = await h.file("alice", await h.plainConversation("alice"), { input: { project: "storefront" } });
+    expect(bare.answer).toMatchObject({ kind: "refused", reason: "no-project" });
+    expect((bare.answer as { message: string }).message).toMatch(/visibility and (its )?id/);
+  });
+});

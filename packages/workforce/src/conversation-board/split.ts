@@ -148,7 +148,7 @@ function piecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
  * minted, before the turn ran). A task session runs a task and its
  * follow-ups one at a time, so this is the one running now.
  */
-async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
+export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
   const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
   if (partition === undefined || stringAt(ctx, TASK_ID_STATE_KEY) === undefined) return undefined;
   const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
