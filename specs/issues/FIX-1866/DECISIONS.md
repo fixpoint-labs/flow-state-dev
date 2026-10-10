@@ -59,7 +59,7 @@ should say what it expects, and a change task should need a commit.
 |---|---|
 | **Instead of** | A default repository the host configures (in DevTeam, Storefront's) |
 | **Because** | Jake's Shift Coordinator conversation belongs to no project. A default would quietly run his ask in Storefront in an org with three projects, and code in the wrong repository is worse than a refusal. DevTeam's coder does exactly that today: its run source falls back to the feature board's workstream, which is Storefront's. The coordinator knows the projects and can ask the person which one. The task's project is input, read off the claimed row, which the project lookup has refused to do until now; that is safe only because the run checks the person is a member, from the run's own identity (BP-031) |
-| **Locks in** | A task for the coder from a conversation with no project carries `input.project`, and coordinators that file for coders learn to name one. A conversation's own project always wins: a task naming a different one is refused, not followed |
+| **Locks in** | A task for the coder from a conversation with no project carries `input.project`, the project's address (`{ visibility, id }`, since a private and a shared project can share an id), and coordinators that file for coders learn to name one. A conversation's own project always wins: a task naming a different one is refused, not followed |
 
 ![D3: which repository a conversation's task works in. Chosen: the conversation's project, else the one the task names, else refuse. Instead of: a host default repository. Decides it: a conversation with no project in an org with several, where a default codes in the wrong repository. Price: the coordinator has to name a project. Flips if every org that runs coders has exactly one repository](figures/d3-which-repo.svg)
 
@@ -119,3 +119,8 @@ It comes down to an org with several projects: a default codes, silently, in the
   work, told apart by the task rather than the board; the project comes from the conversation
   or the task; three PRs. Before publishing, validation moved the phase choice from the board to
   the task, and added the refused-run and question paths a conversation board needs.
+- **Review round 1** (Cursor, Codex) — folded: the task names its project by visibility and id,
+  since a private and a shared project can share an id (BR-9a); a task naming only one of issue
+  and phase is refused rather than answered (BR-13b); the claim premise moves ahead of P1 as a
+  spike, and P1 builds in two milestones; the message door's shape and the shared resolver are
+  named in the plan; changesets are `patch`. No decision changed.

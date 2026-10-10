@@ -25,6 +25,7 @@ coordinator session with its own task board ([FIX-1794](../FIX-1794/BUSINESS-RUL
 | BR-7 | The task names a project Alice isn't a member of, or that doesn't exist | The run is refused `not-a-member` or `no-project`, after the claim. The row fails for good, `errored`, never `cancelled`, with one notice naming why. No checkout taken | CI |
 | BR-8 | The conversation has no project and the task names none | Refused `no-project` the same way, and the notice says the task can name one | CI · VG c |
 | BR-9 | The conversation has a project and the task names a different one | Refused, naming both. The conversation's project is never overridden | CI |
+| BR-9a | Alice has a private `storefront` and can open a shared `storefront`, and the task names one by its visibility and id | The run works in the one named. A task naming a project by id alone is refused `no-project`, saying a project is named by its visibility and id; the coder never guesses between them | CI |
 | BR-10 | The project has no repository | The run works on the project's files, and what it keeps is saved back to the project | CI · VG b |
 | BR-11 | The project's remote isn't one the host allows | Refused by name, as today, after the claim: `errored` for good, one notice. (On the feature board a refused run stays cancelled, as today) | CI |
 
@@ -35,6 +36,7 @@ coordinator session with its own task board ([FIX-1794](../FIX-1794/BUSINESS-RUL
 | BR-12 | A conversation's task is claimed | One coding run, in a checkout of its own, keyed by this board, this conversation and this task. Two conversations filing for the coder never share a checkout, branch or run record | CI |
 | BR-13 | The task carries no `issue` or `phase` | Accepted as an answer task (D2): the task's id stands in for the issue. The canonical-id check still holds for tasks that name both | CI |
 | BR-13a | A task on a conversation board names an `issue` and a `phase` | Feature work: the implement phase, a commit required, its id checked as on the feature board | CI |
+| BR-13b | The task names an `issue` but no `phase`, or a `phase` but no `issue` | Refused after the claim: the row is `errored` for good with one notice saying feature work names both. It never runs as an answer task | CI |
 | BR-14 | The run ends normally with a non-empty last message | `completed`. Output: the answer (cut at 8,000 characters), the branch, and how many commits it made, zero included | CI · VG a |
 | BR-15 | The run stops at its limit, ends with no answer, or throws | A failed attempt with the reason. The second failure is `errored` with the error | CI · VG c |
 | BR-16 | The run asks a question | The row parks the way the conversation board parks any task, and the conversation gets a `parked` line with the question (FIX-1794 BR-25). The person's answer comes back as the task's answer, and the next attempt's prompt carries it, in the same harness session | CI |

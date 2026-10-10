@@ -68,13 +68,13 @@ Replace the paragraph after the example with:
 >
 > 1. The workstream the task came from, when it was filed from one.
 > 2. The project the task came from, when it was filed from a project's conversation.
-> 3. The project the task names in `input.project`, when it came from a conversation that
+> 3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that
 >    belongs to no project, such as the person's own coordinator.
 > 4. The project holding the board's workstream, when you built it with `board`, as above.
 >
 > A task that names a project other than the one its conversation belongs to is refused.
 > The run is also refused before any file is read when the person it belongs to isn't one of
-> the project's members (`not-a-member`), or when none of the three finds a project
+> the project's members (`not-a-member`), or when none of the four finds a project
 > (`no-project`). The host refuses a remote its `remotes.allow` doesn't list, naming it, before
 > anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried, and
 > the conversation that filed the task hears why.
@@ -82,7 +82,7 @@ Replace the paragraph after the example with:
 > A coordinator filing for a coding worker from a conversation with no project names one:
 >
 > ```json
-> { "goal": "Take a look at our repo and tell me what the checkout flow does", "assignee": "eng.coder", "input": { "project": "storefront" } }
+> { "goal": "Take a look at our repo and tell me what the checkout flow does", "assignee": "eng.coder", "input": { "project": { "visibility": "shared", "id": "storefront" } } }
 > ```
 
 ## UPDATE · `packages/harness-manager/README.md` · after "Running a mailbox's board"

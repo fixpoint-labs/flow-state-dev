@@ -66,7 +66,7 @@ same door opens for a conversation's board, and both kinds of work go through on
   addTask({
     goal: "Take a look at our repo and tell me what the checkout flow does",
     assignee: "eng.coder",
-+   input: { project: "storefront" },
++   input: { project: { visibility: "shared", id: "storefront" } },
   })
 ```
 
@@ -93,7 +93,8 @@ flowchart LR
 The run reads its board from the task's claim, so the same supervised run serves the feature
 board and any conversation. A task naming an issue and a phase is feature work and needs a
 commit; any other task needs an answer. The project comes from the conversation, or from the
-task when the conversation has none.
+task when the conversation has none. "One run" means one code path: the coder holds two
+manager blocks over it, one per phase, and sends each task to one of them.
 
 ## What stays as it is
 
