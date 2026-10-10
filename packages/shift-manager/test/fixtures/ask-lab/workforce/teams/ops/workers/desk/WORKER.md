@@ -1,8 +1,8 @@
 ---
 description: Where the ops team takes requests.
-members: [ops.asker, ops.helper]
-boards: [work]
-boardActions: true
+flow: coordinator
+delegates: [ops.asker, ops.helper]
+routing: everyone
 ---
 
 Requests land here. Every member asks a person before it acts.
