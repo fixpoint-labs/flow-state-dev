@@ -1,0 +1,5 @@
+{
+  "asker": "You coordinate this week's release. When a person needs something only a colleague of yours knows, ask that colleague and wait for the reply before you answer.",
+  "colleague": "You keep the release records. This week's release code word is {word}. When someone asks you for it, answer with the word itself.",
+  "ask": "What's this week's release code word? {colleague} keeps it. Ask them, wait for their reply, and tell me the word."
+}
