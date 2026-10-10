@@ -1,5 +1,76 @@
 # @flow-state-dev/tools
 
+## 0.2.0
+
+### Minor Changes
+
+- 7725f5c: The `local` bash provider no longer passes the server's full environment to commands: they get `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR` and `TZ`, plus anything named in the new `env` option. That stops commands inheriting the server's secrets by accident; it is not an isolation boundary, since commands still run as the server's user. Use the `moat` provider or a container for untrusted commands. Commands now stop after 60 seconds (configurable with `execTimeoutMs`): the command's process group is killed (a process that detaches into its own session, such as a daemon, can survive) and the result reports `exitCode: 124`. `exitCode` is now always a number — a command killed by a signal reports `128 + signal` instead of `0` (FIX-1709).
+- 02ee032: Remove backward-compatibility paths (FIX-1804, FIX-850): stores read only the current on-disk and table layouts with no migration of older data, `@flow-state-dev/claude-code` drops its package-root entry and deprecated handle aliases, `@flow-state-dev/patterns` drops `legacyWorkerAdapter` and `executableTaskSchema`, and removed options such as `clientData`, `requireOrg`, `presets`, `preset/*` model strings, `prefer` and `fileFilter`/`syncMode` are no longer refused by name.
+- 9510a03: Requests now carry `ctx.request.incarnation`, a token that stays the same across a request's retries and resumes and that request-scoped workspace keys and local `scope: "run"` bash directories now include, so a request reusing a deleted request's id starts empty; existing run workspaces move once on upgrade, and a run in flight at deploy continues in an empty directory (FIX-1286).
+
+### Patch Changes
+
+- d5f5bba: The MOAT bash sandbox now keeps file reads and writes inside the workspace bind mount. A path under the mount whose `..` segments climb out of it is now rejected, and a symlink in the mount that points outside it is resolved inside the container rather than followed on the host. The `bashWriteFile` tool, which writes to the bind mount without booting the container, now rejects both cases with `MoatPathEscapeError` (FIX-1708).
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [5181ddb]
+- Updated dependencies [8628a54]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [423a405]
+- Updated dependencies [ba74f01]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b808784]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [db7df1c]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+- Updated dependencies [57a859d]
+- Updated dependencies [707b340]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/workspace@0.2.0
+
 ## 0.1.3
 
 ### Patch Changes

@@ -1,5 +1,133 @@
 # @flow-state-dev/store-sqlite
 
+## 0.3.0
+
+### Minor Changes
+
+- 02ee032: Remove backward-compatibility paths (FIX-1804, FIX-850): stores read only the current on-disk and table layouts with no migration of older data, `@flow-state-dev/claude-code` drops its package-root entry and deprecated handle aliases, `@flow-state-dev/patterns` drops `legacyWorkerAdapter` and `executableTaskSchema`, and removed options such as `clientData`, `requireOrg`, `presets`, `preset/*` model strings, `prefer` and `fileFilter`/`syncMode` are no longer refused by name.
+- 8195995: Schedule index rows are now identified by the storage cell the schedule lives in plus its key, so a person's same-named schedules in two hired seats (or a seat and their app-wide flow) are two rows and turning one off no longer stops the other (FIX-1546). `ScheduleIndexRow` gains a required `cell`, `ScheduleIndex.remove` takes `{ cell, key }` instead of `(userId, key)`, and `CollectionHookContext` gains `cell`, the storage key the instance is persisted under. A custom `ScheduleIndex` must key its storage on `(cell, key)` and store `cell`; the conformance suite covers it. The SQLite and Postgres `schedule_index` tables are re-keyed on `(cell, key)` automatically at schema init, adopting every existing row as its person's own cell; with `skipSchemaInit: true`, apply the upgrade SQL in the schedule index reference. BullMQ scheduler ids are built from the cell and key; an app-wide schedule for an ordinary user id keeps its existing scheduler id.
+- 97894aa: A flow can check every new session's initial state with `session.createCheck`, refuse caller-seeded fields with `session.serverOwned`, and fix a field for a session's life by declaring it `.readonly()` in its session `stateSchema`; `listSessions({ state })` and the list route's `state.<field>` filter select sessions by a readonly field. On a flow that binds its sessions this way (a readonly field or a create check), an initial state that fails the `stateSchema` is refused on every path that creates a session; other flows keep it as sent. A dispatcher's `session: { key, state }` and a task dispatcher's `state` create the child session with that state. `ensureSessionRecord` now takes the create request beside the record it builds (FIX-1788).
+
+### Patch Changes
+
+- 283fb2a: Cancelling a request now only ever cancels the request whose owner was checked, and `RequestStore.setFieldsIfStatus`'s fifth argument is now that request's expected incarnation, which custom stores must honor (FIX-1654).
+- 5a55080: `incState` now refuses a field that holds something other than a number (a string, boolean, object or array): the call throws and the stored value is left as it was, instead of being silently replaced by the delta. An absent or `null` field still starts from `0`. Custom stores implementing `incField` should throw the same way (FIX-1273).
+- 2d2518b: Postgres lease acquire is now exclusive on every executor, so two instances can no longer both take the lease for the same request; lease ids are now UUIDs on every store, and custom `LeaseStore`s can run the shared `createLeaseStoreConformanceTests` from `@flow-state-dev/engine/testing` (FIX-1712).
+- 47a02d0: Retry, continue, resume and abort now answer a request that belongs to another user or tenant with the same `404 Request "<id>" not found` as an id nobody has used, and abort only stops the request it checked (FIX-1021).
+- e0f10e2: Deleting a request (including through session retention) now also removes its events and runOnce results once its run has finished, and custom `RequestStore`s must persist `finalizedAtMs`/`heartbeatsUntilFinalized`, honor `setFieldsIfStatus`'s new `expectedIncarnation` argument, and call `isStillAuthorized` in live tails (FIX-1647).
+- 0935a47: The SQLite and Postgres request stores now write a settling record's `items` in the same transaction as its status, and read a record's row and items in one snapshot, so a reader never sees a final status without its items or one request's row paired with another's items after a request id is reused (FIX-1750, FIX-1619). A custom `RequestStore` must land the `items` a terminal `set` carries in that same write; the runtime no longer persists them separately before settling.
+- 9f32967: A session stream now opens on a session with many child runs in a fixed number of request reads instead of two per run, so on the filesystem store a hundred runs open in well under a second rather than several. `RequestListOptions.sessionId` now also accepts an array, matched by set membership (an empty array matches nothing), which custom request stores must honor (FIX-1702).
+- b7c523b: Add two indexes that serve the session stream's repeated reads: `idx_requests_session_tenant_owner_updated` on `requests(session_id, tenant_id, user_id, org_id, updated_at)` for one session's requests, and `idx_sessions_parent_tenant_owner_updated` on `sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)` for one parent's runs, each newest-updated first. Each read now walks what changed in the session it follows, rather than sorting the session's history or walking rows another owner or organization keeps under the same id. Created with `IF NOT EXISTS` on the next open; no data changes (FIX-1609).
+- 2c43888: The stale-request sweep no longer marks a request `interrupted` when it finished while the sweep was running, and `RequestStore.setFieldsIfStatus` can now move a record's status together with its result, which custom request stores must support (FIX-1128).
+- Updated dependencies [920adc3]
+- Updated dependencies [283fb2a]
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [9f06d39]
+- Updated dependencies [452b702]
+- Updated dependencies [53b50f0]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [3b5266a]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [25ac53a]
+- Updated dependencies [456fe85]
+- Updated dependencies [6453d2c]
+- Updated dependencies [62133c4]
+- Updated dependencies [f282bcb]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [55c62a6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [85b2965]
+- Updated dependencies [1355483]
+- Updated dependencies [7d4158f]
+- Updated dependencies [099906a]
+- Updated dependencies [5902deb]
+- Updated dependencies [211679a]
+- Updated dependencies [5181ddb]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [423a405]
+- Updated dependencies [7da156e]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [21ffcbb]
+- Updated dependencies [5a55080]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [2d2518b]
+- Updated dependencies [c57890d]
+- Updated dependencies [b808784]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [a64132b]
+- Updated dependencies [db7df1c]
+- Updated dependencies [0abbcd9]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [c6b2db9]
+- Updated dependencies [839e915]
+- Updated dependencies [72c5b17]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [65ddb90]
+- Updated dependencies [47a02d0]
+- Updated dependencies [e0f10e2]
+- Updated dependencies [9083569]
+- Updated dependencies [9510a03]
+- Updated dependencies [0935a47]
+- Updated dependencies [d2f77fc]
+- Updated dependencies [0995afe]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [229de7a]
+- Updated dependencies [4ca0e99]
+- Updated dependencies [385d01e]
+- Updated dependencies [83cd9c2]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [637b6d5]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [71b0174]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [97894aa]
+- Updated dependencies [3c2ab06]
+- Updated dependencies [334c1e3]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [92a8b49]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [9f32967]
+- Updated dependencies [b7c523b]
+- Updated dependencies [6bf61dc]
+- Updated dependencies [a021cd1]
+- Updated dependencies [8f5277e]
+- Updated dependencies [1f2dadd]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [2c43888]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [a26e426]
+- Updated dependencies [69ba29c]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/engine@0.3.0
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/scheduled@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

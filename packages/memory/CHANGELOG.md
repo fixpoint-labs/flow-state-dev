@@ -1,5 +1,70 @@
 # @flow-state-dev/memory
 
+## 0.2.0
+
+### Minor Changes
+
+- b183d33: Capture with an `evaluator` now marks read only the messages it judged, so a turn whose evaluator call fails while another turn of the same session is being judged is no longer lost, and the exported `MemorySystemState` gains a required `readMessages` field (FIX-1555).
+
+### Patch Changes
+
+- 63762a8: `system()` takes an optional `evaluator` that decides, before the observer runs, whether a turn is worth remembering: `remember` observes it as before, `skip` writes nothing and marks it read. `captureEvaluator(model)` builds that block on the app's model, and `captureQuestions` is its question for apps that build their own. Without an evaluator, capture is unchanged (FIX-1555).
+- 470b49e: When memory consolidation or prune output can't be recovered, the step now fails with an output validation error on the trace instead of returning an empty result that looked like "nothing to record"; a genuine empty result still succeeds, and the turn it runs beside is unaffected (FIX-1326).
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [5181ddb]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [423a405]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b808784]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [db7df1c]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes

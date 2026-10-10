@@ -1,5 +1,91 @@
 # @flow-state-dev/devtool
 
+## 0.3.0
+
+### Minor Changes
+
+- a3bfbc2: An Inventory tab on any session whose flow declares a readable inventory collection: the organization's registered seats (with their kind and mailboxes), mailboxes (with their members and registration time) and memberships, read through the production collection route with the configured bearer token, so it works with the debug endpoints off. A collection the flow does not declare reads "not installed on this flow", and a refused read names its status (FIX-1502).
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+- 02ee032: Remove backward-compatibility paths (FIX-1804, FIX-850): stores read only the current on-disk and table layouts with no migration of older data, `@flow-state-dev/claude-code` drops its package-root entry and deprecated handle aliases, `@flow-state-dev/patterns` drops `legacyWorkerAdapter` and `executableTaskSchema`, and removed options such as `clientData`, `requireOrg`, `presets`, `preset/*` model strings, `prefer` and `fileFilter`/`syncMode` are no longer refused by name.
+
+### Patch Changes
+
+- f469423: The DevTool opens a session from its address: `?session=<id>` on the page opens that session under the flow that owns it, or says why it can't. The link takes precedence over the session last open under that flow, and a read that fails for a reason that may pass is tried again when the flow list reloads. `DevToolPanel` takes the same as an `openSessionId` prop, and `readSessionAddress()` reads it off the page (FIX-1691).
+- bb1c224: `FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row, showing both row slots only when the row is hovered or focused (always on touch screens), so give them icon buttons with an `aria-label`, it adds dashed tree lines you can colour with `--fsd-nav-guide` and a `leafDetail` slot for content that sits on its own lines under an open leaf's row, and untitled session rows show a shortened id with the full id on hover (FIX-1561).
+- b808784: Channels are now mailboxes everywhere (`MAILBOX.md` under `teams/<team>/mailboxes/`, the `mailbox` kind, `mailbox-post` items, the `post-to-mailbox` tool, the `mailboxes` discovery domain, and every export, such as `mailboxFlow`), and the old names are not read, so an old file is reported by name and a store written before this release does not open: start from an empty store (FIX-1748).
+- 6a3ecf5: `@flow-state-dev/client` exports `readEveryCollectionPage`, one collection read with a single 1,000-page ceiling that fails when the server repeats a cursor, and the workforce panels, the DevTool Inventory tab, the Shift Manager and the workforce roster read now use it, so a repeated cursor ends a read with an error instead of 1,000 wasted page reads, a partial list shown as whole, or a read that never stops (FIX-1674).
+- 65ddb90: Each request's record now stores its action result (`output` as JSON, and/or `error`) with its final status, `listSessionRequests` returns it (the output with `includeResultOutput`), the DevTool task row reads it instead of reconstructing it from traces, and a run a completion hook failed after the action answered now reports that answer as `output` (including `fsdev run`'s result, where it was `null`) (FIX-1661).
+- cd180d7: Stopping a paused request now ends it `aborted` and records its gate with the new `stopped` suspension status, a turn paused on an ask cancels the asked task instead of waiting for it, and a durable host now runs the durability sweeper even without `durabilityRetention`, so a paused request past its `expiresAt` expires and an ask past its deadline times out, while pruning still waits for a retention policy (FIX-1816).
+- 912ae98: A durable task board's task tools can now run as flow actions (`taskToolActions(board)`, or `boardActions: true` in a `MAILBOX.md`), and the DevTool's Tasks tab opens a task's full record and runs those actions from the row, showing a refusal as a refusal (FIX-1629).
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [58ffc93]
+- Updated dependencies [91a5afd]
+- Updated dependencies [397cfa7]
+- Updated dependencies [53b50f0]
+- Updated dependencies [585b75b]
+- Updated dependencies [49852d9]
+- Updated dependencies [698e06b]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [5181ddb]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [49d6397]
+- Updated dependencies [bb1c224]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [423a405]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b808784]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [931fdf9]
+- Updated dependencies [736e719]
+- Updated dependencies [db7df1c]
+- Updated dependencies [6a3ecf5]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [65ddb90]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [0e7e07e]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [b7c523b]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [b7c523b]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/react@0.3.0
+  - @flow-state-dev/client@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

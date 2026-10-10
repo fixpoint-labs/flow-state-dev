@@ -1,5 +1,95 @@
 # @flow-state-dev/vercel
 
+## 0.2.0
+
+### Minor Changes
+
+- 8195995: Schedule index rows are now identified by the storage cell the schedule lives in plus its key, so a person's same-named schedules in two hired seats (or a seat and their app-wide flow) are two rows and turning one off no longer stops the other (FIX-1546). `ScheduleIndexRow` gains a required `cell`, `ScheduleIndex.remove` takes `{ cell, key }` instead of `(userId, key)`, and `CollectionHookContext` gains `cell`, the storage key the instance is persisted under. A custom `ScheduleIndex` must key its storage on `(cell, key)` and store `cell`; the conformance suite covers it. The SQLite and Postgres `schedule_index` tables are re-keyed on `(cell, key)` automatically at schema init, adopting every existing row as its person's own cell; with `skipSchemaInit: true`, apply the upgrade SQL in the schedule index reference. BullMQ scheduler ids are built from the cell and key; an app-wide schedule for an ordinary user id keeps its existing scheduler id.
+- 69ba29c: Every flow now keeps a user's data per organization, so `resolveUserStorageKey(userId, orgId, flow)` takes the organization and throws without one, a dynamic schedule's dispatch id is `<orgId>/<userId>/<key>` (built by the new `formatScheduleId`), and the test harness seeds user data in the run's organization (FIX-1790).
+
+### Patch Changes
+
+- 7da156e: Organization ids are now validated as well-formed, non-blank Unicode everywhere (resolver, `runAction`, dispatch, BullMQ jobs, schedules, `fsdev run --org`) and seat addresses escape any such id, while route segments are decoded exactly once on every host (`parseFlowRoute` now takes decoded segments, built from a raw URL by the new `decodePathSegments`), so escaped seat ids resolve on Next and Vercel and stored rows or queued jobs with a lone-surrogate org id are now refused (FIX-1757).
+- Updated dependencies [920adc3]
+- Updated dependencies [283fb2a]
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [397cfa7]
+- Updated dependencies [9f06d39]
+- Updated dependencies [452b702]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [3b5266a]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [25ac53a]
+- Updated dependencies [6453d2c]
+- Updated dependencies [62133c4]
+- Updated dependencies [f282bcb]
+- Updated dependencies [55c62a6]
+- Updated dependencies [85b2965]
+- Updated dependencies [1355483]
+- Updated dependencies [099906a]
+- Updated dependencies [5902deb]
+- Updated dependencies [211679a]
+- Updated dependencies [5181ddb]
+- Updated dependencies [7da156e]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [21ffcbb]
+- Updated dependencies [5a55080]
+- Updated dependencies [2d2518b]
+- Updated dependencies [c57890d]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [a64132b]
+- Updated dependencies [0abbcd9]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [c6b2db9]
+- Updated dependencies [839e915]
+- Updated dependencies [72c5b17]
+- Updated dependencies [02ee032]
+- Updated dependencies [65ddb90]
+- Updated dependencies [47a02d0]
+- Updated dependencies [e0f10e2]
+- Updated dependencies [9083569]
+- Updated dependencies [9510a03]
+- Updated dependencies [0935a47]
+- Updated dependencies [d2f77fc]
+- Updated dependencies [0995afe]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [229de7a]
+- Updated dependencies [4ca0e99]
+- Updated dependencies [83cd9c2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [637b6d5]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [71b0174]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [97894aa]
+- Updated dependencies [3c2ab06]
+- Updated dependencies [334c1e3]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [92a8b49]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [9f32967]
+- Updated dependencies [b7c523b]
+- Updated dependencies [b7c523b]
+- Updated dependencies [6bf61dc]
+- Updated dependencies [8f5277e]
+- Updated dependencies [1f2dadd]
+- Updated dependencies [cd180d7]
+- Updated dependencies [2c43888]
+- Updated dependencies [a26e426]
+- Updated dependencies [69ba29c]
+  - @flow-state-dev/engine@0.3.0
+  - @flow-state-dev/store-postgres@0.3.0
+  - @flow-state-dev/scheduled@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes
