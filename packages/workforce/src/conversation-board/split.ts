@@ -53,6 +53,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_FLOW_STATE_KEY, T
 import { CANCEL_PIECES_ENTRY, PIECE_OF, RETRY_OF, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY, SPLIT_MARKER } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
+import { heldTask } from "./held-task";
 import { sendOwedNotices } from "./notice-delivery";
 
 /** Server-written session state: the parked task this task session settles, once its pieces are done. */
@@ -140,22 +141,6 @@ export function retryingPiece(ctx: BlockContext): string | undefined {
 /** The rows on `ref` that are pieces of `taskId`. */
 function piecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
   return ref.list().filter((row) => pieceOf(row) === taskId);
-}
-
-/**
- * The task on the board above that the running request holds: the row whose
- * run link names this request (the gate wrote it, fenced by the ticket it
- * minted, before the turn ran). A task session runs a task and its
- * follow-ups one at a time, so this is the one running now.
- */
-export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
-  const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
-  if (partition === undefined || stringAt(ctx, TASK_ID_STATE_KEY) === undefined) return undefined;
-  const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
-  if (requestId === undefined) return undefined;
-  const ref = await conversationLedgerAt(ctx, partition);
-  const row = ref?.list().find((task) => task.run?.requestId === requestId && task.status === "in_progress");
-  return ref === undefined || row === undefined ? undefined : { ref, row, partition };
 }
 
 /**

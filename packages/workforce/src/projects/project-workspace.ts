@@ -82,7 +82,7 @@ import {
 } from "@flow-state-dev/workspace";
 import { filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
 import { conversationLedgerResources } from "../conversation-board/ledger";
-import { heldTask } from "../conversation-board/split";
+import { heldTask } from "../conversation-board/held-task";
 import {
   defineProjectFilesCollection,
   definePrivateProjectFilesCollection,
