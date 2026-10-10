@@ -122,6 +122,61 @@ manager.** The manager's own refusal keeps the run from being split between two 
 the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
 the board's own readiness and order, so it takes the place of any other dispatcher on that board.
 
+## Running a conversation's tasks
+
+A worker can also take tasks a coordinator files in a conversation. Each conversation keeps its
+own board, so there is no single board to name. Give the manager `ledgers` instead: a function
+that finds a board by the ledger id and partition the task's claim names, and returns
+`undefined` for any board the worker shouldn't read. It has the same shape as orchestration's
+`taskLedgers` resolver, so one function can serve both.
+
+```ts
+import { harnessManager, type HarnessLedgers } from "@flow-state-dev/harness-manager";
+
+const ledgers: HarnessLedgers = async (ledgerId, ctx, partition) =>
+  ledgerId === "tasks" && partition !== undefined ? conversationBoard(ctx, partition) : undefined;
+
+const manager = harnessManager({
+  ledgers,
+  judge: { block: answerJudge, floor: 0.6 }, // optional, see below
+  // ...the rest as above
+});
+```
+
+The task's entry hands the manager the claim on its input, as `claim: { collectionId,
+partition, incarnationId }`. The manager never trusts it by itself: the row at that ledger and
+partition must be this task, on this attempt, still running, before anything runs, and every
+later write is checked against it again. Each run's checkout, branch and run record are kept
+apart by board and partition (`runBoardSegment`), so two conversations that file the same task
+id never share a tree. Pass `boardCollectionId` and `boardCollection` too and that board's rows
+run exactly as before.
+
+On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
+task id in their place, and a task naming only one of the two is refused. A fixed board still
+runs feature rows only.
+
+A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
+the run's `branch` (`null` for a run with only kept files), how many `commits` it made, and
+`judged`. A feature row's output gains the same fields.
+
+On a board read from the claim:
+
+- **A refused run fails the task for good** (`errored`, never retried), so the conversation
+  hears why. On a fixed board it is cancelled, as before.
+- **A question parks the task on the board**, the way the conversation parks any task. The
+  person answers there, and the next attempt gets the answer in its prompt, in the same
+  checkout and agent session.
+- **A judge, when you give one, reads the run** after the phase's own check passes, for a task
+  with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
+  count, subjects } }` and answering `{ verdict: "done" | "not-done" | "ask", confidence,
+  reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* parks
+  the task with the reason as its question. A verdict under `floor` counts as done. A judge
+  that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
+  your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
+
+See [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager) for the whole
+picture.
+
 ## The slot
 
 The manager calls your factory once, with three feeds:

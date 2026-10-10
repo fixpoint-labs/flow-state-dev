@@ -136,6 +136,8 @@ const EDIT = {
 /** Matches another issue removes, named so the sweep knows. */
 const ELSEWHERE = {
   "apps/docs/docs/workforce/mailboxes.md": "FIX-1792 removes the page",
+  ".changeset/workforce-projects.md": "names `setWorkstreams`, which FIX-1792 removes",
+  "packages/shift-manager/test/devteam-cos-tool-names.test.ts": "`setWorkstreams` as a tool, which FIX-1792 removes",
 };
 
 /** The word used for something else. Listed so a new hit is still a decision, not a pass. */
@@ -177,6 +179,14 @@ const UNRELATED = {
   "packages/workforce/test/cross-org-collection-read.test.ts": "mailbox ids",
   "packages/workforce/test/symlink-containment-matrix.test.ts": "a mailbox file name",
   "packages/workforce/test/wake-member-seats.test.ts": "mailbox ids",
+  ".agents/skills/concept-doc/example/CONCEPT.md": "a worked example of a concept doc; it describes rooms being removed",
+  "packages/engine/src/streaming/recorded-value.ts": "a local variable",
+  "packages/engine/test/session-birth.test.ts": "a test collection named for rooms, not a project's",
+  "packages/engine/test/transports/external-hold-defer.test.ts": "\"room for one more\"",
+  "packages/workforce/src/conversation-board/task-settled.ts": "\"has room in the line\"",
+  "packages/workforce/test/any-worker-files.test.ts": "a task goal, \"Book the room\"",
+  "packages/workforce/test/conversation-board-notice-bounds.test.ts": "\"once it has room\"",
+  "packages/workforce/test/project-coordinator.test.ts": "\"makes room\"",
 };
 
 const CLASSIFIED = { ...REMOVE, ...EDIT, ...ELSEWHERE, ...UNRELATED };

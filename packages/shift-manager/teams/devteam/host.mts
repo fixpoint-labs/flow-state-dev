@@ -81,8 +81,6 @@ import {
   createProjectOutputSchema,
   defineProjectBlocks,
   defineWorkstreamBlocks,
-  openWorkstreamInputSchema,
-  openWorkstreamOutputSchema,
   projectCoordinatorTools,
   projectWorkspace,
   projectWritesMailboxInventory,
@@ -314,8 +312,9 @@ const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams"
  * The project writes as the chief of staff's tools, `createProject`,
  * `setWorkstreams`, `setRepository` and `openWorkstream`: the same blocks the
  * Lab's own projects flow runs, under the names its `tools:` line spells. A
- * catalog key must be the tool's own name, so `setWorkstreams` is the block
- * under `.as()`; the others are sequencers named for the tool.
+ * catalog key must be the tool's own name, so `setWorkstreams` and
+ * `openWorkstream` are the blocks under `.as()`; the others are sequencers
+ * named for the tool, since each waits for an approval first.
  *
  * `openWorkstream` names its lead: the person's own worker. Shift Manager's
  * open forks a coordinator of the workstream's own instead; giving this tool
@@ -334,15 +333,13 @@ const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams"
  */
 export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
   return {
-    openWorkstream: sequencer({
+    openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
       description:
         "Open a workstream for the person you are talking to, in a project, by the project's address " +
         "(`visibility` and `id`): a short lowercase `id`, its `title`, and its `lead`, a worker on their " +
         "roster that leads it. They own it, and nobody else can change it. On a shared project, members only.",
-      inputSchema: openWorkstreamInputSchema,
-      outputSchema: openWorkstreamOutputSchema,
-    }).step(workstreams.openWorkstream),
+    }),
     createProject: sequencer({
       name: "createProject",
       description:

@@ -6,8 +6,8 @@
  * (`swap-loader.mjs`), so the profile's `sqliteStores({ filename })` hands back
  * stores that live only as long as the process. Everything else the module
  * exports is the real one, for the other importers in the process. Everything
- * before the restart passes; after it, the projects, their talk links and the
- * rooms' lines are gone.
+ * before the restart passes; after it, the projects and their workstream
+ * entries are gone.
  */
 import { inMemoryStores } from "@flow-state-dev/engine";
 

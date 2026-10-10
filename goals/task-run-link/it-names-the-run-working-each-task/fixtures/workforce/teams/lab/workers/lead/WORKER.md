@@ -1,6 +1,7 @@
 ---
-description: Drains the mailbox's board and hands each row to the seat it names.
+description: Files the lab's work for the workers who take it.
 flow: lead
+delegates: [lab.coder, lab.reviewer, lab.auditor]
 ---
 
-Hand each row to its seat. You run none of them yourself.
+File each piece of work for the worker it names. You run none of it yourself.

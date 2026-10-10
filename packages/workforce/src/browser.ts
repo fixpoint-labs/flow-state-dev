@@ -11,6 +11,9 @@
  * `test/browser-subpath-safe.test.ts` walks this entry's import graph, through
  * the workspace packages it reaches, and fails on any Node built-in.
  *
+ * `parseWorkstreamEntry` comes from the entry's leaf module: a browser read of
+ * a project's entries parses them with the same schema `readProject` does.
+ *
  * The coordinator's names come from its leaf keys module: an app tells a
  * coordinator's conversation, its routing records and its own turn apart by them.
  */
@@ -51,4 +54,9 @@ export {
   type ProgressEntry,
   type ProjectProgress
 } from "./projects/project-progress";
+export {
+  parseWorkstreamEntry,
+  type ParsedWorkstreamEntry,
+  type WorkstreamEntry
+} from "./projects/workstream-entry";
 export { COORDINATOR_JUDGMENT, COORDINATOR_KIND, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";

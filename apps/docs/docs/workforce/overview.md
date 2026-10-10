@@ -100,9 +100,9 @@ Pass a flow under a key that is not its own `kind` and it is refused. [Workers o
 
 ## Projects and the chief of staff
 
-A **workstream** is a mailbox and the boards it holds: one place for the conversation about a piece of work, and the tasks people take to do it. You declare it in a `MAILBOX.md`, like any mailbox.
+A **project** is a body of work, private to you or shared with your organization. It's a row your app creates while it runs, not a file.
 
-A **project** groups workstreams. It is a row your organization keeps, not a file: a title, an owner, its members, and the workstreams it groups. Everyone in the organization can see that a project exists. Only its members can read or post in its room, the one conversation they share with the workers your app puts there. See [Projects](./projects).
+A **workstream** is one area of a project with one owner: an entry on the project that everyone who reads the project can see, and a lasting session of one of the owner's workers that does the work. Each person talks to a project through their own project coordinator, which hands work only to their own workstreams. See [Projects](./projects).
 
 The **chief of staff** is an org-level worker a person asks about the organization: who works here, who is in a mailbox. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the person who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
 
@@ -131,7 +131,7 @@ The name reaches the workers your files declare. A mailbox's board is the organi
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
 - [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
-- [Projects](./projects) — a row that groups workstreams, with one room its members share.
+- [Projects](./projects) — private or shared, with workstreams that each have one owner.
 - [Inventory](./inventory) — a record of every seat and mailbox registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
 - [The chief of staff](./chief-of-staff) — the one worker a person asks to hire or fire workers of their own, with a fire waiting for their approval.

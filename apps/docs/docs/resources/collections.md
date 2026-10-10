@@ -176,7 +176,7 @@ await ctx.resources.drafts.create({ owner: ownerSegment(userId), id: "q3-plan" }
 
 `ownerSegment(userId)` turns a user id into one key segment that starts with `~`. The collection serves a row only to the user its owner segment names. For everyone else the row is not there: lists and counts leave it out, `getOptional` returns nothing, and `get` or any write throws "A row of an owner-private collection is readable only by the user it belongs to."
 
-**No other collection can reach those rows.** A key segment starting with `~` is reserved for owner-private collections in every app. A wider collection such as `[tenant]/**` lists without them, and a write to one through it is refused. That holds in any process over the same store, including a worker that never loaded the owner-private collection.
+**No other collection can reach those rows.** A key segment starting with `~` is reserved for owner-private and [owner-writes](#owner-writes-collections) collections in every app. A wider collection such as `[tenant]/**` lists without them, and a write to one through it is refused. That holds in any process over the same store, including a worker that never loaded the owner-private collection.
 
 **Overlaps fail at startup.** Once a flow declaring an owner-private collection is registered, the app refuses to start if any flow declares a collection in the same scope whose pattern could reach its keys, whichever registers first:
 
@@ -188,6 +188,33 @@ Collection pattern "[tenant]/**" can reach the rows of owner-private collection
 Declaring the same owner-private collection on several flows is fine, and so is a collection in another scope, which can't reach these rows.
 
 **Limits.** The pattern must declare the named parameter exactly once and must not use `**`. An owner-private collection has no browser read: `client.state.read`, `client.content.read` and `client.content.prefetch` are each refused when it is defined, so the browser routes never return its rows. A key's first segment starting with `~` is its owner, so no segment before the owner parameter may start with `~`; segments after it may. Don't use `~` at the start of a key segment anywhere else. A single resource whose `ref`, or accessor name when it has no `ref`, has such a segment is refused when its flow registers, in every app.
+
+## Owner-writes collections
+
+Some rows belong to one person but are meant to be read by everyone, such as the status each person keeps on a shared plan. Declare the collection with `ownerWrites` and name the parameter that holds the owner:
+
+```ts
+import { defineResourceCollection, ownerSegment } from "@flow-state-dev/core";
+
+const statuses = defineResourceCollection({
+  pattern: "statuses/[plan]/[owner]/[id]",
+  ownerWrites: { param: "owner" },
+  scope: "org",
+  stateSchema: statusSchema,
+  client: { state: { read: true } },
+});
+
+// in a block
+const userId = ctx.session.identity.userId;
+if (!userId) throw new Error("This request has no user.");
+await ctx.resources.statuses.create({ plan: "q3", owner: ownerSegment(userId), id: "checkout" }, state);
+```
+
+The key names the owner, as for an [owner-private collection](#owner-private-collections). Everyone the scope serves can read, list and count the rows, from the server or the browser. Only the user the owner segment names can create, update or delete one. Anyone else's write throws "A row of an owner-writes collection is written only by the user it belongs to." and changes nothing, whether it comes through the collection, a ref they read, or the browser's update and delete routes, and whichever flow sends it.
+
+The rest works as it does for owner-private collections: no other collection reaches the rows, and an overlapping collection in the same scope stops the app at startup. Declaring one pattern `ownerPrivate` on one flow and `ownerWrites` on another is refused the same way.
+
+**Limits.** The same key rules as owner-private collections apply, except that a browser read is allowed. A collection can't declare both `ownerPrivate` and `ownerWrites`, and an owner-writes collection can't set an `eviction` policy other than `"none"`. Each is refused when the collection is defined.
 
 ## Eviction
 

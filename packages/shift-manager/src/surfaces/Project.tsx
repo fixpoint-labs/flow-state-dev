@@ -44,7 +44,6 @@ import { ActionRefused } from "../lib/action";
 import { projectsOf, seatStates, shiftCounts, teamsOf, type ListedWorkstream, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import {
-  isStale,
   openWorkstreamWithCoordinator,
   projectReaderOf,
   readEntryReport,
@@ -185,7 +184,9 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
 /**
  * The project's own read, row and entries (BR-18), when the view opens and
  * each time the Lab is read again (`readAt`); `reread` reads it now, as after
- * an open. A read again keeps the last one on screen until it lands.
+ * an open. A read again keeps the last one on screen until it lands. No read
+ * while `readerSessionId` is `null`: the person holds no reader session yet,
+ * or the tab on screen draws no entries.
  */
 function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
   const { clients } = useLab();
@@ -245,7 +246,9 @@ function ProjectBody({
 }) {
   const { refresh } = useLab();
   const reader = projectReaderOf(snapshot.sessions);
-  const { read, reread } = useProjectRead(address, reader, snapshot.readAt);
+  // Only Board and Workstreams draw entries; Stream and Brief never pay for the read.
+  const needsEntries = route.tab === "board" || route.tab === "workstreams";
+  const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
   const { setup, retry: retrySetup } = useProjectSetup();
   const roster = useRoster(snapshot.readAt);
   const { seats } = withRoster(snapshot, roster);
@@ -442,7 +445,7 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
           data-testid="project-entry"
           data-owner={entry.owner}
           data-workstream-id={entry.id}
-          data-stale={isStale(entry) ? "true" : undefined}
+          data-stale={entry.stale ? "true" : undefined}
         >
           <button
             type="button"
@@ -452,7 +455,7 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
             <span className="truncate">{entry.title}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
               {entry.owner} · {entry.status}
-              {isStale(entry) ? " · gone quiet" : ""}
+              {entry.stale ? " · gone quiet" : ""}
             </span>
           </button>
         </li>
@@ -568,7 +571,7 @@ function EntryDetails({
       <p className="text-muted-foreground">
         {entry.owner}'s · led by {entry.lead} · {entry.status}
         {entry.due === null ? "" : ` · due ${entry.due}`}
-        {isStale(entry) ? " · gone quiet" : ""}
+        {entry.stale ? " · gone quiet" : ""}
       </p>
       {entry.objectives.length === 0 ? null : (
         <ul className="list-inside list-disc" data-testid="project-entry-objectives">

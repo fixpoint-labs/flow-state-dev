@@ -1,75 +1,63 @@
 /**
- * Goal check — a team declared entirely in files has work filed onto its
- * mailbox's board by one seat and run to completion by another, which claimed
- * it rather than being handed it.
+ * Goal check — a team declared entirely in files has work filed by one worker
+ * and run to completion by another, with nothing in a file declaring a board.
  *
- * **Model-free on purpose.** Nothing here is a judgment call: a row is filed,
- * a board drains it, a side effect happens or it does not. Putting a model in
+ * **Model-free on purpose.** Nothing here is a judgment call: a task is filed,
+ * a board runs it, a side effect happens or it does not. Putting a model in
  * the loop would add a way to fail that has nothing to do with the claim.
  *
- * What the tree contributes, and the code does not: the mailbox's id, the
- * board's local name, the members, and which seat runs which kind. The ledger
- * id is never written anywhere — it is minted from where the mailbox folder
- * sits, which is why leg 0 greps the whole tree for it and fails if it is
- * there.
- *
- * The tree holds more than this check reads: a second board nobody drains, a
- * third member whose seat hears posts, and a mailbox on a kind of its own.
- * `workforce-conventions/a-mailbox-holds-the-work-a-seat-drains` reads those;
- * here they only have to leave the row's path alone.
+ * What the tree contributes, and the code does not: who files (the worker
+ * whose file names `delegates:`), whom it files for, and which flow each runs
+ * on. No file declares a board, and none names where the work is kept: the
+ * board is the filer's own conversation's, at a partition the server mints,
+ * which is why leg 0 greps the whole tree for it and fails if it is there.
  *
  * Legs:
- *   0  the tree declares a local name and never an id
- *   a  the tree alone produces the roster, the instances and the seats
- *   b  the mailbox's own read lists the board it holds, by name
- *   c  one seat files one row through the mailbox — no board in its own code
- *   d  the other seat's board CLAIMS it and runs it, and the work really ran
- *   e  the row is completed on the minted ledger, read straight out of storage
+ *   0  the tree declares no board, and never names where the work is kept
+ *   a  the tree alone produces the roster and the workers' flows
+ *   b  the filer's conversation lists its delegate as taking a task
+ *   c  the filer files one task through its own conversation's action
+ *   d  the conversation's board hands it to the delegate, whose run really ran
+ *   e  the task is completed in the filer's own store, at its conversation's
+ *      partition, read straight out of storage, and nowhere at org scope
+ *
+ * Controls (GOAL_CONTROL=...), each perturbing THIS FILE, never the tree:
+ *   no-delegates  the filer's file is read without its `delegates:` line.
+ *                 Must FAIL at leg (b) and (c): nothing grants it the task
+ *                 tools, so its filing is refused; (d) and (e) follow.
+ *   hollow-run    the delegate's run writes nothing outside the board. Must
+ *                 FAIL at leg (d) only: the board still reports the task done.
  *
  * Run: pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
  */
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores, runAction, ensureSessionRecord } from "@flow-state-dev/engine";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { Task, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { encodeUserSegment } from "@flow-state-dev/core/types";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  MAILBOX_KIND,
-  mailboxBoard,
-  mailboxBoardIds,
-  mailboxInstances,
-  createWorkerInstallation, hireWorkforce,
-  openMailboxes,
+  createWorkerInstallation,
+  defineSessionBoard,
+  hireWorkforce,
   workerConfigSchema,
-  type MailboxManifest,
+  workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, runGoal, workerDoor } from "../../lib/index.mts";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { goalTmpDir, httpActions, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_mailbox_boards";
 const ORG_ID = "org_mailbox_boards";
-
-/** Where the drained worker leaves its proof. A real file, not a counter. */
-const OUTBOX = join(goalTmpDir("mailbox-boards"), "ran.txt");
-
-/**
- * Controls perturb THIS FILE, never the fixture tree — leg 0 reads the tree, so
- * a fixture edit would die there and prove only that leg 0 works.
- *
- *   by-name  the coder seat resolves the board under a DIFFERENT mailbox that
- *            declares the same local name. Everything still compiles and every
- *            id is well-formed; only the mint differs. Must fail at leg (d)/(e),
- *            which is what makes those legs a test of the minted identity rather
- *            than of the local name.
- */
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
-/** Every file in the tree, so leg 0 can look for a minted id in all of them. */
+/** Where the delegate's run leaves its proof. A real file, not a counter. */
+const OUTBOX = join(goalTmpDir("mailbox-boards"), "ran.txt");
+
+/** Every file in the tree, so leg 0 can look for what no file may say. */
 function treeFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
@@ -83,267 +71,139 @@ await runGoal(async (failures) => {
 
   // ---- a. the tree alone produces the roster --------------------------------
   const roster = await readWorkforce(TREE);
-  const read = await readMailboxesDirectory(TREE);
-  if (roster.errors.length > 0 || read.errors.length > 0) {
-    return { failures: ["the tree did not load cleanly"], evidence: "" };
-  }
+  if (roster.errors.length > 0) return { failures: [`a: the tree did not load cleanly: ${JSON.stringify(roster.errors)}`], evidence: "" };
+  const workers: WorkerManifest[] =
+    CONTROL === "no-delegates"
+      ? roster.workers.map((w) => {
+          const { delegates: _dropped, ...declared } = w.declared as Record<string, unknown>;
+          return { ...w, declared };
+        })
+      : roster.workers;
+  // Read off the FILES, never hardcoded: the filer is the worker whose file
+  // names delegates, and its first delegate is the one it files for.
+  const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && (w.declared.delegates as unknown[]).length > 0);
+  if (filer === undefined) return { failures: ["a: no worker file in the tree names delegates"], evidence: "" };
+  const delegate = roster.workers.find((w) => w.id === (filer.declared.delegates as string[])[0]);
+  if (delegate === undefined) return { failures: ["a: the filer's delegate is declared by no file"], evidence: "" };
+  const filerKind = String(filer.declared.flow);
+  const delegateKind = String(delegate.declared.flow);
 
-  const workers: WorkerManifest[] = roster.workers;
-  const mailboxes: MailboxManifest[] = read.mailboxes;
-  // The mailbox that holds boards. The tree's other mailbox runs a kind of its
-  // own, which holds none.
-  const mailbox = mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (mailbox === undefined) return { failures: ["the tree declared no mailbox holding a board"], evidence: "" };
-
-  // Read off the FILE, never hardcoded — swap the folder names and a correct
-  // implementation still passes. The first board the file declares is the one
-  // the coder drains.
-  const boardNames = mailbox.declared.boards as string[];
-  const boardName = boardNames[0]!;
-  const triage = mailboxBoard(mailbox.id, boardName);
-  const boardId = triage.id;
-  if (!mailboxBoardIds(mailboxes).includes(boardId)) {
-    return { failures: [`the roster mints no ledger "${boardId}" for the board the file declares`], evidence: "" };
-  }
-
-  // ---- 0. the tree names a board and never an id ----------------------------
+  // ---- 0. no file declares a board ------------------------------------------
   for (const path of treeFiles(TREE)) {
-    if (readFileSync(path, "utf8").includes(boardId)) {
-      failures.push(`${path} writes the minted ledger id "${boardId}"; a file declares a name`);
-    }
+    const text = readFileSync(path, "utf8");
+    if (/^(boards|boardActions|filing):/m.test(text)) failures.push(`0: ${path} declares a board or a grant; a worker files through its delegates`);
   }
 
-  // ---- the two kinds, each one copy for its workers. Neither writes a ledger id.
+  // ---- the two flows. Neither names a ledger, a board or a partition. -------
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
-  const emKind = defineFlow({
-    kind: "em",
-    cardinality: "collection",
+  const doorInput = z.object({ message: z.string() });
+
+  const board = defineSessionBoard({ installation, flowKind: filerKind });
+  const filerTurn = handler({ name: "row-goal-filer-turn", inputSchema: doorInput, execute: async () => "Noted." });
+  const filerFlow = defineFlow({
+    kind: filerKind,
+    configSchema: workerConfigSchema(),
+    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+    resources: { ...installation.resources, ...board.resources },
+    actions: {
+      run: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+      ...board.actions
+    },
+    internal: { actions: board.entries(filerTurn, () => "fixed") }
+  } as never);
+
+  const delegateTurn = handler({
+    name: "row-goal-delegate-turn",
+    inputSchema: doorInput,
+    execute: async (input) => {
+      // A real side effect: proving "it ran" by a file rather than by the
+      // board's own report, which the board would produce either way.
+      if (CONTROL !== "hollow-run") writeFileSync(OUTBOX, `${input.message}\n`, { flag: "a" });
+      return `done: ${input.message}`;
+    }
+  });
+  const delegateFlow = defineFlow({
+    kind: delegateKind,
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { ...workerDoor,
-      file: {
-        // The EM has no board, no collection and no drain — the one line that
-        // reaches the work is a dispatch into the mailbox's own session.
-        block: dispatcher({
-          name: "em-file-row",
-          flowKind: MAILBOX_KIND,
-          action: "fileTask",
-          inputSchema: z.object({ goal: z.string() }),
-          session: { id: () => mailbox.id },
-          payload: (input: { goal: string }) => ({
-            board: boardName,
-            goal: input.goal,
-            assignee: "coder",
-            author: "eng.em"
-          })
-        })
-      }
-    }
+    actions: { run: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
+    task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
   } as never);
 
-  const ran = handler({
-    name: "coder-run-row",
-    inputSchema: taskWorkerInputSchema,
-    outputSchema: z.object({ did: z.string() }),
-    execute: async (input: TaskWorkerInput) => {
-      // A real side effect: proving "it ran" by a file rather than by the
-      // board's own report, which the board would produce either way.
-      writeFileSync(OUTBOX, `${input.goal}\n`, { flag: "a" });
-      return { did: input.goal };
-    }
-  });
-
-  // What the SEAT reaches for. On the passing path it is the same mint the
-  // mailbox made; under `by-name` it is another mailbox's board of the same
-  // name, so "the names match" stops being enough.
-  const seatBoard = CONTROL === "by-name" ? mailboxBoard("other.team", boardName) : triage;
-
-  const board = taskBoard({
-    name: "mailbox-triage",
-    boardId: "mailbox-triage",
-    collection: seatBoard,
-    concurrency: 1,
-    workers: { coder: ran }
-  });
-
-  const coderKind = defineFlow({
-    kind: "coder",
-    cardinality: "collection",
-    configSchema: workerConfigSchema(),
-    session: installation.session(),
-    // The whole of what a seat declares to reach the mailbox's ledger, beside the installation's.
-    resources: { [seatBoard.id]: seatBoard, ...installation.resources },
-    actions: { ...workerDoor, drain: { block: board.drain } }
-  } as never);
-
-  // The generated module carries the tree's own mailbox kind, which the other
-  // mailbox names.
-  const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
-    mailboxKinds: Record<string, never>;
-  };
-  const instances = mailboxInstances(mailboxes, { kinds: generated.mailboxKinds });
-  workerFlows = { em: emKind, coder: coderKind };
-  const seats = hireWorkforce(installation, {
-    // One warning on stderr is expected, naming the board nobody drains. A
-    // warning naming the coder's board would mean its declaration missed.
-    mailboxBoards: mailboxBoardIds(mailboxes)
-  });
-
+  workerFlows = { [filerKind]: filerFlow, [delegateKind]: delegateFlow };
+  const hired = hireWorkforce(installation);
   const state = createFlowState({
-    flows: {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...Object.fromEntries(seats.map((seat) => [seat.id, seat]))
-    },
-    stores: { default: { primary: inMemoryStores() } }
+    flows: Object.fromEntries(hired.map((copy) => [copy.id, copy])),
+    stores: { default: { primary: inMemoryStores() } },
+    logger: silentLogger,
+    resolvePrincipal: (context: any) => {
+      const user = context.request?.headers.get("x-user");
+      return typeof user === "string" ? { userId: user, orgId: ORG_ID } : null;
+    }
   } as never);
 
   try {
     const runtime = await state.getRuntime();
-    await openMailboxes(mailboxes, {
-      client: {
-        createSession: async (options: {
-          flowKind: string;
-          userId: string;
-          sessionId?: string;
-          orgId?: string;
-          description?: string;
-          state?: Record<string, unknown>;
-        }) => {
-          const id = String(options.sessionId);
-          if ((await runtime.stores.session.get(id)) !== undefined) {
-            throw Object.assign(new Error(`Session "${id}" exists`), { status: 409 });
-          }
-          const now = Date.now();
-          await runtime.stores.session.set(
-            id,
-            {
-              id,
-              flowKind: options.flowKind,
-              flowId: options.flowKind,
-              userId: options.userId,
-              // `openMailboxes` no longer names an org (FIX-1442); this
-              // stand-in for the session route binds what the real route binds.
-              orgId: options.orgId ?? ORG_ID,
-              description: options.description,
-              state: options.state ?? {},
-              lineageId: `lin_${id}`,
-              version: 0,
-              createdAt: now,
-              updatedAt: now,
-              journal: []
-            } as never,
-            "absent"
-          );
-          return { id };
-        },
-        getSession: async (sessionId: string) => {
-          const found = (await runtime.stores.session.get(sessionId)) as
-            | { flowKind: string; flowId?: string; userId: string; orgId?: string; state?: Record<string, unknown> }
-            | undefined;
-          return {
-            flowKind: String(found?.flowKind),
-            flowId: found?.flowId,
-            userId: String(found?.userId),
-            orgId: found?.orgId,
-            state: found?.state
-          };
-        },
-        deleteSession: async (sessionId: string) => {
-          await runtime.stores.session.delete(sessionId);
-        }
-      },
-      userId: USER_ID,
-    });
+    const { act, open } = httpActions(await state.getRouter(), USER_ID);
+    const conversation = await open(filerKind, { workerId: filer.id });
 
-    const act = async (flow: unknown, sessionId: string, actionName: string, input: unknown) =>
-      (await runAction({
-        flow,
-        actionName,
-        input,
-        userId: USER_ID,
-        orgId: ORG_ID,
-        sessionId,
-        stores: runtime.stores,
-        runtimeConfig: { ...runtime.runtimeConfig }
-      } as never)) as { output?: unknown; error?: unknown };
-
-    const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND)!;
-    const em = seats.find((seat) => seat.kind === "em")!;
-    const coder = seats.find((seat) => seat.kind === "coder")!;
-    /** A worker's own session on its flow's one copy, created naming it. */
-    const seatSession = async (flow: { id: string; kind: string }) => {
-      const worker = workers.find((w) => w.declared.flow === flow.kind)!.id;
-      const sessionId = `s_${worker}`;
-      const now = Date.now();
-      await ensureSessionRecord(
-        runtime.stores,
-        sessionId,
-        { flow: flow as never, sessionId, principal: { userId: USER_ID, orgId: ORG_ID }, state: { workerId: worker }, fromCaller: true, via: "create" },
-        () => ({ id: sessionId, flowKind: flow.kind, flowId: flow.id, userId: USER_ID, orgId: ORG_ID, version: 0, createdAt: now, updatedAt: now, journal: [] }) as never
-      );
-      return sessionId;
-    };
-
-    // ---- b. the mailbox says what it holds, by name -------------------------
-    const view = await act(mailboxInstance, mailbox.id, "read", {});
-    const held = (view.output as { boards?: string[] } | undefined)?.boards;
-    // Sorted on both sides: the framework sorts the ledgers a kind is built with.
-    if (JSON.stringify(held) !== JSON.stringify([...boardNames].sort())) {
-      failures.push(`the mailbox read listed ${JSON.stringify(held)}, not ${JSON.stringify([...boardNames].sort())}`);
+    // ---- b. the conversation lists its delegate as taking a task ------------
+    const listed = await act(filerKind, conversation, "listDelegates", {});
+    const partition = listed?.filingSessionId as string | undefined;
+    const entry = ((listed?.delegates ?? []) as Array<{ worker: string; takes: string }>).find((d) => d.worker === delegate.id);
+    if (entry === undefined || (entry.takes !== "tasks" && entry.takes !== "both")) {
+      failures.push(`b: the conversation lists ${delegate.id} as ${entry === undefined ? "absent" : `taking ${entry.takes}`}, not as taking a task`);
     }
 
-    // ---- c. one seat files one row, through the mailbox ---------------------
-    const goal = `wire the ${boardName} board end to end`;
-    const filed = await act(em, await seatSession(em), "file", { goal });
-    if (filed.error !== undefined) {
-      failures.push(`the EM seat could not file a row: ${String(filed.error)}`);
-    }
+    // ---- c. the filer files one task, through its own conversation ----------
+    const goal = `wire the ${delegate.id} feature end to end`;
+    const filed = await act(filerKind, conversation, "addTask_tasks", { goal, assignee: delegate.id });
+    if (filed?.ok !== true) failures.push(`c: ${filer.id}'s conversation could not file a task: ${JSON.stringify(filed)}`);
+    await untilIdle(runtime.stores);
 
-    // ---- d. the OTHER seat's board claims it and runs it --------------------
-    // Nothing here names the row, the assignee or the worker: the drain is
-    // handed nothing but a request to run.
-    const drained = await act(coder, await seatSession(coder), "drain", {});
-    if (drained.error !== undefined) {
-      failures.push(`the coder seat's board could not drain: ${String(drained.error)}`);
-    }
-
+    // ---- d. the board handed it over, and the work really ran ----------------
+    // Nothing here names the task, the assignee or the worker to a board run:
+    // the filing started it.
     const outbox = readFileSync(OUTBOX, "utf8").trim();
-    if (outbox !== goal) {
-      failures.push(`the work did not run: the outbox holds ${JSON.stringify(outbox)}`);
-    }
+    if (!outbox.includes(goal)) failures.push(`d: the work did not run: the outbox holds ${JSON.stringify(outbox)}`);
 
-    // ---- e. the row itself, read out of storage -----------------------------
-    // Read from the ledger rather than from the drain's report, which would
-    // say "1 task completed" whatever it actually wrote.
-    const rows: Task[] = [];
-    const boardRead = await act(mailboxInstance, mailbox.id, "readBoard", { board: boardName });
-    for (const row of (boardRead.output as { tasks?: Task[] } | undefined)?.tasks ?? []) {
-      rows.push(row);
+    // ---- e. the task itself, read out of storage ----------------------------
+    // Read from the store rather than from the board's report, which would say
+    // "completed" whatever it actually wrote.
+    const userScope = `${USER_ID}:~org:${ORG_ID}`;
+    const stored = Object.entries(await runtime.stores.resourceState.getByPrefix("user", userScope, "tasks/"));
+    const rows = stored.map(([key, value]) => ({ key, row: value.state as Task }));
+    if (rows.length !== 1) failures.push(`e: expected exactly one task in ${USER_ID}'s store, found ${rows.length}`);
+    const only = rows[0];
+    if (only !== undefined) {
+      if (only.row.status !== "completed") failures.push(`e: the task is ${only.row.status}, not completed`);
+      if (only.row.goal !== goal) failures.push(`e: the task's goal is ${JSON.stringify(only.row.goal)}`);
+      if (only.row.assignee !== delegate.id) failures.push(`e: the task names ${only.row.assignee}, not ${delegate.id}`);
+      if (partition === undefined || only.key !== `tasks/${encodeUserSegment(partition)}/${only.row.id}`) {
+        failures.push(`e: the task is kept at ${only.key}, not at the conversation's partition ${partition}`);
+      }
     }
-    if (rows.length !== 1) {
-      failures.push(`expected exactly one row on the board, found ${rows.length}`);
-    }
-    const row = rows[0];
-    if (row !== undefined) {
-      if (row.status !== "completed") failures.push(`the row is ${row.status}, not completed`);
-      if (row.goal !== goal) failures.push(`the row's goal is ${JSON.stringify(row.goal)}`);
-      const stored = await runtime.stores.resourceState.get("org", ORG_ID, `${boardId}/${row.id}`);
-      if (stored === undefined) {
-        failures.push(`the row is not on the minted ledger "${boardId}"`);
+    const atOrg = await runtime.stores.resourceState.getByPrefix("org", ORG_ID, "");
+    if (Object.keys(atOrg).some((key) => key.includes(only?.row.id ?? "\u0000"))) failures.push("e: the task is also kept at org scope");
+
+    // ---- 0, again: no file names where the work is kept ----------------------
+    if (partition !== undefined) {
+      for (const path of treeFiles(TREE)) {
+        if (readFileSync(path, "utf8").includes(partition)) failures.push(`0: ${path} names the conversation's partition "${partition}"`);
       }
     }
 
     return {
       failures,
       evidence:
-        `one tree at ${TREE}: mailbox "${mailbox.id}" declared board "${boardName}"; the ` +
-        `framework minted "${boardId}", which appears in no file. The "em" seat filed one row ` +
-        `through the mailbox's own action, the "coder" seat's board claimed and ran it — proved ` +
-        `by ${OUTBOX}, a real side effect the board could not have produced by reporting — and ` +
-        `the row reads completed out of org-scoped storage under the minted id. Nothing was ` +
-        `dispatched by hand.`
+        `one tree at ${TREE}: ${filer.id} (flow ${filerKind}) names ${delegate.id} (flow ${delegateKind}) as its ` +
+        `delegate, and no file declares a board. Its conversation listed ${delegate.id} as taking ${entry?.takes}, ` +
+        `filed one task through its own addTask_tasks, and the board handed it to ${delegate.id}'s task entry, ` +
+        `which ran it: proved by ${OUTBOX}, a side effect the board could not have produced by reporting. The task ` +
+        `reads ${only?.row.status} out of ${USER_ID}'s own store at ${only?.key}, the conversation's partition, ` +
+        `which no file names, and nothing of it is at org scope.`
     };
   } finally {
     await state.dispose();
