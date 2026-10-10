@@ -57,6 +57,17 @@ export function askGateId(collectionId: string, taskId: string): string {
   return `ask:${collectionId}:${taskId}`;
 }
 
+/**
+ * Whether the running turn's host can hold an ask (FIX-1816 BR-5): durable
+ * execution (the ask resume is wired) and a durability sweeper that bounds
+ * every ask (`RequestHost.hasAskSweeper`). Read off the server's request
+ * host, never from input.
+ */
+export function canHoldAsk(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
+  const host = ctx.requestHost;
+  return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
+}
+
 /** What {@link addTaskAndWait} returns. */
 export type WaitForResponseResult =
   | { readonly ok: true; readonly taskId: string; readonly answer: unknown }
@@ -177,18 +188,21 @@ export async function addTaskAndWait(
     };
   }
   const call = toolCallOf(ctx);
-  const host = ctx.requestHost;
+  // A host that can't bound the ask (no durable execution, or no sweeper to
+  // time it out) is refused, so no direct caller parks a turn forever.
   if (
     call === undefined ||
     ctx.runOnce === undefined ||
     ctx.suspend === undefined ||
-    host?.resumeAsk === undefined ||
+    !canHoldAsk(ctx) ||
     collection.clearResumeOwed === undefined
   ) {
     return {
       ok: false,
       error: "wait_unavailable",
-      message: "Waiting for a task's answer needs durable execution and a board that keeps one."
+      message:
+        "Waiting for a task's answer needs durable execution, a durability sweeper that times asks out, " +
+        "and a board that keeps the ask. Nothing was filed."
     };
   }
 

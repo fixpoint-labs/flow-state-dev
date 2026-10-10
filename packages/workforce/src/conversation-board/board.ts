@@ -343,6 +343,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     execute: async (_input, ctx) => {
       const ref = await ownConversationLedger(ctx as never);
       if (ref === undefined) return { replayed: 0 };
+      // One of two resume touches, with the notice entry's (`./task-settled`),
+      // which is the fast path and keeps the notice owed until the resume
+      // lands. Neither has to win: the gate admits one answer and refuses the
+      // other `already-resolved`, and either outcome clears `resumeOwed`.
       await resumeOwedAsks(ctx as never, ref);
       return { replayed: await replayNotices(ctx as never, ref.list()) };
     }

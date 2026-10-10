@@ -124,7 +124,7 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
       const flow = toolFlow(model);
       const state = await host(flow, options);
       try {
-        await act(state as never, flow, "run");
+        await act(state as never, flow, "run", {}, { sweeper: options.router });
         const names = seen[0]!.tools!.map((t) => t.name).sort();
         // D1: waiting adds no tool.
         expect(names).toEqual([

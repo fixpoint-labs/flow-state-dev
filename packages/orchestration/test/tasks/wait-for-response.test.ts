@@ -202,6 +202,24 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   });
 });
 
+describe("ask on the board: a host that can't bound the ask", () => {
+  it("OFF STATE: durable execution with no durability sweeper refuses wait_unavailable, and files nothing (BR-5)", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model);
+    const state = runtimeFor(flow);
+    try {
+      // A direct caller of addTaskAndWait, on a host whose router (and so its sweeper) was never built.
+      const run = await act(state, flow, "run", {}, { sweeper: false });
+      expect(await statusOf(state, run.requestId!)).toBe("completed");
+      expect(toolResults(seen[1]!.messages)).toContain("wait_unavailable");
+      const runtime = await state.getRuntime();
+      expect(await runtime.stores.suspensions.list({ sessionId: SESSION })).toHaveLength(0);
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
 describe("ask on the board: the row ended first, and the deadline", () => {
   afterEach(() => {
     vi.restoreAllMocks();

@@ -721,17 +721,20 @@ actions. With no board resolvable, a call returns
 `addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
 then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
 minutes by default). The option is in the schema only where the host can hold an ask: durable
-execution and a running durability sweeper (`canHoldAsk(ctx)`); a composing layer that builds
-its own capability gets the same per-turn list from `taskToolsForTurn(resolver, roster)`. An ask
-is refused on a turn that is itself working a task; `isTaskTurn(ctx)` returns true for those
-turns. See the task board page for limits and errors.
+execution and a running durability sweeper. A composing layer that builds its own capability
+gets the same per-turn list from `taskToolsForTurn(resolver, roster)`. An ask is refused on a
+turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. See the
+task board page for limits and errors.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `addTaskAndWait(ctx, collection, init, { timeoutMs? })` files `init` as an ask from inside a
-  generator's tool call and waits for its answer. Call it from your own tool when you don't use
-  the task tools' `addTask`. Before filing it refuses an out-of-range `timeoutMs`, a task turn
-  and a second wait in one step; check the assignee yourself first.
+- `addTaskAndWait(ctx, collection, init, { timeoutMs? })`, from
+  `@flow-state-dev/orchestration/task-board`, files `init` as an ask from inside a generator's
+  tool call and waits for its answer. Call it from your own tool when you don't use the task
+  tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
+  on the same subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in
+  one step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
+  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too.
 - `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
   it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
   answer whose resume was lost to a crash is still delivered. It returns at once when nothing

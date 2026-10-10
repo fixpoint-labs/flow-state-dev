@@ -187,8 +187,12 @@ export async function act(
   state: ReturnType<typeof runtimeFor>,
   flow: FlowInstance,
   actionName: string,
-  input: unknown = {}
+  input: unknown = {},
+  options: { sweeper?: boolean } = {}
 ) {
+  // The router builds the host's durability sweeper, which an ask needs: a
+  // host with none can't bound one, and refuses it (BR-5).
+  if (options.sweeper !== false) await state.getRouter();
   const runtime = await state.getRuntime();
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,

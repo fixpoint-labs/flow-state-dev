@@ -77,7 +77,7 @@ import { boardResolverOf } from "../task-board/board-resolver";
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
 import { shouldRetryOnFail } from "../tasks/collection/internal";
-import { addTaskAndWait, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS } from "../tasks/helpers/wait-for-response";
+import { addTaskAndWait, canHoldAsk, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS } from "../tasks/helpers/wait-for-response";
 
 /**
  * Own-state field the default resolver's board lives on. A host generator that
@@ -951,17 +951,6 @@ export function taskToolsForTurn(
   const plain = buildTaskTools(resolveCollection, roster);
   const waiting = buildTaskTools(resolveCollection, roster, undefined, undefined, false, true);
   return (ctx) => (canHoldAsk(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
-}
-
-/**
- * Whether the running turn's host can hold an ask (FIX-1816 BR-5): durable
- * execution (the ask resume is wired) and a durability sweeper that bounds
- * every ask (`RequestHost.hasAskSweeper`). Read off the server's request
- * host, never from input.
- */
-export function canHoldAsk(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
-  const host = ctx.requestHost;
-  return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
 }
 
 /**
