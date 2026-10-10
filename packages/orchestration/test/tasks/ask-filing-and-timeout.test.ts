@@ -107,6 +107,26 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       expect(board.list()).toHaveLength(1);
     });
 
+    it("a row that already holds the planned id but isn't this ask's filing is never adopted", async () => {
+      const board = await build();
+      // Someone else's task under the id this call planned (a collision).
+      await board.addTask({ id: "task_taken", goal: "someone else's task" });
+      const memo = new Map<string, unknown>([
+        [`fsd.ask.file:${LOGICAL_ID}`, null],
+        [`fsd.ask.plan:${LOGICAL_ID}`, { taskId: "task_taken", gateId: "ask:asks:task_taken" }]
+      ]);
+      await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow(/isn't this ask's/);
+      const [row] = board.list();
+      expect(row).toMatchObject({ id: "task_taken", goal: "someone else's task" });
+      expect(row!.ask).toBeUndefined();
+    });
+
+    it("mints a cross-process-unique id for a new ask", async () => {
+      const board = await build();
+      await expect(addTaskAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
+      expect(board.list()[0]!.id).toMatch(/^task_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    });
+
     it("a replay of an ask filed before the id step existed finds that filing, under its old key", async () => {
       const board = await build();
       const taskId = "task_legacy";
@@ -161,15 +181,45 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
           return added;
         },
         get: (id: string) => {
+          // The first two reads of the filed row (the open check, and the
+          // cancel's own) still see it running; later ones see its ending.
           const row = board.get(id);
+          if (row === undefined) return row;
           reads += 1;
-          return reads <= 2 && row !== undefined ? { ...row, status: "in_progress" } : row;
+          return reads <= 2 ? { ...row, status: "in_progress" } : row;
         }
       }) as TaskCollectionRef;
 
       const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
       expect(result).toMatchObject({ ok: true, answer: "Yes, renewed 2026-08" });
       expect(board.list()[0]).toMatchObject({ status: "completed" });
+    });
+
+    it("on a ref whose cancel reports nothing, a row that completed in time still answers", async () => {
+      const board = await build();
+      let reads = 0;
+      // A ref written before cancels reported an outcome: its cancel resolves
+      // to nothing, and here the row had already completed, so nothing changed.
+      const legacy = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        addTask: async (row: Parameters<TaskCollectionRef["addTask"]>[0]) => {
+          const added = await board.addTask(row);
+          await board.claim("researcher-worker");
+          await board.complete(added.id, "Yes, renewed 2026-08");
+          return added;
+        },
+        cancel: async () => undefined,
+        get: (id: string) => {
+          // The first two reads of the filed row (the open check, and the
+          // cancel's own) still see it running; later ones see its ending.
+          const row = board.get(id);
+          if (row === undefined) return row;
+          reads += 1;
+          return reads <= 2 ? { ...row, status: "in_progress" } : row;
+        }
+      }) as TaskCollectionRef;
+
+      const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), legacy, init);
+      expect(result).toMatchObject({ ok: true, answer: "Yes, renewed 2026-08" });
     });
 
     it("an ask whose row completed after its deadline, just before the timeout's cancel, stays wait_timed_out", async () => {
@@ -185,9 +235,12 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
           return added;
         },
         get: (id: string) => {
+          // The first two reads of the filed row (the open check, and the
+          // cancel's own) still see it running; later ones see its ending.
           const row = board.get(id);
+          if (row === undefined) return row;
           reads += 1;
-          return reads <= 2 && row !== undefined ? { ...row, status: "in_progress" } : row;
+          return reads <= 2 ? { ...row, status: "in_progress" } : row;
         }
       }) as TaskCollectionRef;
       try {

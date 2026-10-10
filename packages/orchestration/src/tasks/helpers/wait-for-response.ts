@@ -38,7 +38,6 @@ import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-sta
 import type { Task } from "../schema/task";
 import type { TaskInit } from "../schema/task-init";
 import type { TaskCollectionRef } from "../collection/types";
-import { generateId } from "../generate-id";
 // The one task-turn test (BR-5a). Reached by path, not through the task-board
 // barrel, which imports this module's neighbours.
 import { isTaskTurn } from "../../task-board/task-turn";
@@ -232,12 +231,20 @@ export async function addTaskAndWait(
   const planned =
     legacy ??
     (await ctx.runOnce(`fsd.ask.plan:${call.logicalId}`, async () => {
-      const taskId = generateId("task");
+      // Unique across processes: a row that already holds this id is this
+      // ask's own filing, never another's that happened to mint the same id.
+      const taskId = `task_${crypto.randomUUID()}`;
       return { taskId, gateId: askGateId(collection.collectionId, taskId) };
     }));
   // The deadline is the filing's: counted from when the row is written, and
   // read back from the row on a replay, never from a plan a crash outlived.
-  let deadline = collection.get(planned.taskId)?.ask?.deadline;
+  const existing = collection.get(planned.taskId);
+  if (existing !== undefined && existing.ask?.gateId !== planned.gateId) {
+    throw new Error(
+      `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
+    );
+  }
+  let deadline = existing?.ask?.deadline;
   if (deadline === undefined) {
     deadline = Date.now() + timeoutMs;
     await collection.addTask({ ...init, id: planned.taskId, ask: { gateId: planned.gateId, deadline } });
@@ -359,7 +366,10 @@ async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reaso
     // A cancel that lost a race to the row's own ending declines (or, on a
     // custom ref, throws): only one the backing recorded is this call's.
     const outcome = await collection.cancel(taskId, reason);
-    return outcome == null || outcome.outcome === "recorded";
+    // A ref written before cancels reported an outcome resolves to nothing:
+    // read the row to learn whether the cancel took or the row had ended.
+    if (outcome == null) return collection.get(taskId)?.status === "cancelled";
+    return outcome.outcome === "recorded";
   } catch (error) {
     // The row ended between the read and the write: its ending stands.
     if (!(error instanceof IllegalTaskTransitionError)) throw error;
