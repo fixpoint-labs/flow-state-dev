@@ -2,10 +2,10 @@
  * A client component takes workforce names from `@flow-state-dev/workforce/browser`,
  * never from the package root.
  *
- * The root carries the mailbox floor, which reaches the orchestration task
+ * The root carries the server-side flows, which reach the orchestration task
  * board and `node:async_hooks`. A dev bundler that keeps a module a client
  * component names fails the page on that import: `GET /` answered 500 when the
- * picked-mailbox panel took `MAILBOX_POST_COMPONENT` from the root. The
+ * picked session's panel took a component name from the root. The
  * subpath's own import graph is held Node-free by
  * `packages/workforce/test/browser-subpath-safe.test.ts`; this holds the app to
  * using it.

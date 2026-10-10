@@ -1,6 +1,6 @@
 {
   "port": 3039,
-  "mailbox": { "kind": "mailbox", "id": "support.help" },
+  "coordinator": { "kind": "coordinator", "id": "support.help" },
   "agents": [{ "kind": "agent", "id": "support.accounts" }],
   "others": [
     { "kind": "agent", "id": "support.devices" },

@@ -1,6 +1,6 @@
 /**
  * The names the shell and its flow agree on — which kinds the rail groups,
- * what a worker's composer sends, and which boards the right panel reads.
+ * which coordinators it lists, and what a worker's composer sends.
  *
  * A leaf module on purpose (BP-019): the page is a client bundle and the flow
  * is server code, and both import these. Nothing here imports anything, so the
@@ -10,39 +10,42 @@
  * roster through Workforce's client (`@flow-state-dev/workforce/browser`),
  * which answers with each worker's flow and description.
  *
- * The kind names and board ids are written down rather than derived, because
- * the only place that knows them at run time is the server-side tree under
- * `workforce/`, which a browser cannot read. `test/workforce-shell.test.ts`
- * holds them to that tree and fails when a kind or a board changes there and
- * not here.
+ * The kind names and coordinator ids are written down rather than derived,
+ * because the only place that knows them at run time is the server-side tree
+ * under `workforce/`, which a browser cannot read. `test/workforce-shell.test.ts`
+ * holds them to that tree and fails when a kind or a coordinator changes there
+ * and not here.
  */
 
 /** The flow the stream talks to. */
 export const SHELL_FLOW_KIND = "chat-agent";
 
 /**
- * The mailbox kinds: the framework's own `mailbox`, plus every kind under
- * `workforce/flows/mailboxes/`, of which this app has none.
+ * The coordinator flow's kind: a worker whose `flow:` names it hands each post
+ * to its delegates. Its panel shows the conversation's lines, each under who
+ * wrote it, rather than a conversation with one worker.
  */
-export const MAILBOX_KINDS = ["mailbox"] as const;
+export const COORDINATOR_KINDS = ["coordinator"] as const;
 
-/** Whether a picked flow kind is a mailbox kind, whose panel shows a transcript rather than a conversation. */
-export function isMailboxKind(kind: string): boolean {
-  return (MAILBOX_KINDS as readonly string[]).includes(kind);
+/** Whether a picked flow kind is a coordinator's, whose panel shows lines under their writers' names. */
+export function isCoordinatorKind(kind: string): boolean {
+  return (COORDINATOR_KINDS as readonly string[]).includes(kind);
 }
 
 /**
- * The mailboxes the tree declares, each with the kind its `MAILBOX.md` selects:
- * what the rail lists under that kind. A store kept across an upgrade can still
- * hold the sessions of mailboxes the tree no longer declares, so the rail reads
- * these by id rather than listing the kind (`lib/rail-sessions.ts`).
+ * The coordinators the tree declares, by worker id: what the rail lists under
+ * the coordinator kind. Each is the person's own conversation with that
+ * coordinator, found or started by its id (`lib/rail-sessions.ts`).
  */
-export const SHELL_MAILBOXES = [{ id: "support.help", kind: "mailbox" }] as const;
+export const SHELL_COORDINATORS = ["support.help"] as const;
+
+/** What a coordinator's composer sends: the person's post, through the flow's door. */
+export const COORDINATOR_ASK = { action: "run", field: "message" } as const;
 
 /**
- * The worker flows: the built-in `agent`, plus every flow under
- * `workforce/flows/workers/`, of which this app has none. Each runs as one
- * copy, holding every worker's conversations on it.
+ * The worker flows a person talks to one worker on: the built-in `agent`, plus
+ * every flow under `workforce/flows/workers/`, of which this app has none. Each
+ * runs as one copy, holding every worker's conversations on it.
  */
 export const SEAT_KINDS = ["agent"] as const;
 
@@ -66,14 +69,21 @@ export const SEAT_ASKS = {
 } as const satisfies Record<(typeof SEAT_KINDS)[number], SeatAsk>;
 
 /**
- * The worker a mailbox woke, read off the run's `topic`: the key Workforce's
- * wake derives each worker's conversation from, `mailbox:<mailbox>:<worker>`.
- * Every worker on a flow shares its copy, so the run's `flowId` names the
- * flow (`agent`), not the worker. `undefined` for any other run.
+ * The delegate a coordinator handed a post to, read off the run's `topic`: the
+ * key Workforce's coordinator derives each delegate's session from,
+ * `delegate:<[worker, target]>`. Every worker on a flow shares its copy, so
+ * the run's `flowId` names the flow (`agent`), not the worker. `undefined` for
+ * any other run.
  */
-export function wokenWorkerOf(run: { readonly topic?: string }): string | undefined {
-  const match = /^mailbox:[^:]+:(.+)$/.exec(run.topic ?? "");
-  return match?.[1];
+export function delegateOfRun(run: { readonly topic?: string }): string | undefined {
+  const match = /^delegate:(.+)$/.exec(run.topic ?? "");
+  if (match === null) return undefined;
+  try {
+    const key = JSON.parse(match[1]!) as unknown;
+    return Array.isArray(key) && typeof key[0] === "string" ? key[0] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A seat kind's answer, or `undefined` for a kind the shell does not know. */
@@ -101,15 +111,3 @@ export function defaultConversation<T extends { readonly tags?: readonly string[
 ): T | undefined {
   return sessions.find((session) => !(session.tags?.includes(LEGACY_SEAT_HIRES_TAG) ?? false));
 }
-
-/**
- * The boards the right panel draws, one per `boards:` entry in the tree's
- * `MAILBOX.md` files.
- *
- * `ref` is the ledger id the workforce package mints for that pair. The panel
- * reads each board through its mailbox's session, whose flow declares it under
- * that id, and the test checks the two agree.
- */
-export const SHELL_BOARDS = [
-  { mailboxId: "support.help", board: "escalations", ref: "support.help.escalations" },
-] as const;

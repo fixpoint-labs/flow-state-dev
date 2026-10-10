@@ -169,3 +169,7 @@ Retired by FIX-1788, when workers became data on one copy per worker flow. Hirin
 - `mailbox-boards/it-hands-a-task-to-a-fresh-hire`: a task on a board names a standard worker, and its session is opened naming that worker (BR-18). A user's own worker isn't handed board tasks.
 - `workforce-seats/two-seats-run-their-own-configuration`: a worker is no copy addressable by its own id; each flow is registered once and a session names its worker (BR-26). That each worker's turn runs on its own record's settings and none of its sibling's is proven by `workforce-seats/a-callers-own-agent-wins-every-seat` (b) and `workforce-seats/a-non-agent-seat-receives-its-skills` (b) and (c), and the admission control pair by the latter's (d) and (e).
 - `workforce-conventions/durable-hire-survives-redeploy`: a hire is a row every turn reads, on any process, so there is nothing to restore after a redeploy (BR-1, BR-20), proven by `workers-as-resources/keeps-each-users-workers-their-own` leg a's second host.
+
+Retired by FIX-1792, when a mailbox became a coordinator worker file:
+
+- `kitchen-sink-talk/lists-a-filed-case-without-a-reload`: the escalation feature is removed, not replaced (FIX-1792 BR-14; product owner, 2026-10-06), so nothing files a case and there is no list to show one (BR-24). It last passed on `main` at 57d2c10e9.
