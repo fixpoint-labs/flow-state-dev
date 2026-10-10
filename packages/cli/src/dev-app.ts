@@ -14,7 +14,7 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CliError } from "./resolve-block";
 import { resolvePackageExport } from "./package-export";
