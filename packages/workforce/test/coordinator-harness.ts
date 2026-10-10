@@ -35,6 +35,7 @@ import {
 import { z } from "zod";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
 import { delegatedPostEntry, delegatedPostOnFinished } from "../src/coordinator/delegated-post";
+import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
@@ -138,7 +139,6 @@ function quietFlow(installation: WorkerInstallation) {
 /** A flow that takes tasks: `tasker` and nothing else, `allround` posts too. */
 function taskingFlow(installation: WorkerInstallation, kind: "tasker" | "allround") {
   const door = handler({ name: `${kind}-run`, inputSchema: doorInput, execute: () => `${kind} heard it` });
-  const work = handler({ name: `${kind}-work`, execute: () => ({}) });
   return defineFlow({
     kind,
     configSchema: workerConfigSchema(),
@@ -146,7 +146,8 @@ function taskingFlow(installation: WorkerInstallation, kind: "tasker" | "allroun
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     ...(kind === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
-    task: { actions: { work: { block: work, from: { boardId: "board", gate: (entry) => entry } } } }
+    // Takes a conversation's tasks, as the delegate check requires (FIX-1842).
+    task: { actions: { work: workerTaskEntry({ name: `${kind}-task`, turn: door }) } }
   });
 }
 

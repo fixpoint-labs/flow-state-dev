@@ -18,7 +18,7 @@
  * or a failed call to its turn, recorded with why), BR-34's
  * mechanism (hire, add, hand off), BR-10 (its delegate read is the
  * conversation's list, with what each takes), BR-9's record of a default that
- * can't take a post (the coder, which takes tasks), naming the delegate that
+ * can't take a post (the coder, which takes only its own board's rows), naming the delegate that
  * can, and the EM as a delegate that takes posts: it
  * files the feature line a handed-on post carries, or says it filed nothing.
  */
@@ -191,11 +191,12 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const id = await conversation(lab);
     const listed = await act(lab, id, "listDelegates", {});
     expect(listed.error).toBeUndefined();
-    // What each one does (its WORKER.md description) and takes: the EM's flow takes posts and the
-    // coder's only tasks. What the chief of staff picks a hand-off by.
+    // What each one does (its WORKER.md description) and takes: the EM's flow takes posts. The
+    // coder's takes only its own board's rows, never a conversation's task, so it takes nothing
+    // here (FIX-1842; FIX-1866 gives it conversation tasks). What the chief of staff picks a hand-off by.
     expect(listed.output.delegates).toEqual([
       { worker: "eng.em", description: "Files each feature on the team's board; never does the work itself.", takes: "posts" },
-      { worker: "eng.coder", description: "Does the work a filed row names, in a checkout of its own.", takes: "tasks" },
+      { worker: "eng.coder", description: null, takes: "nothing" },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
     const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: COS } } });
@@ -248,7 +249,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
     expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
     const items = await settledItems(lab, id);
-    // One evaluation, over the EM (the coder takes tasks, not posts) and the chief of staff itself, by its description.
+    // One evaluation, over the EM (the coder takes no post) and the chief of staff itself, by its description.
     expect(routeCalls).toEqual([
       {
         "eng.em": "Files each feature on the team's board; never does the work itself.",

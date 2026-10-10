@@ -46,6 +46,7 @@ import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResourc
 import { sendOwedNotices } from "./notice-delivery";
 import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
+import { markConversationTaskDoor } from "../worker-task-entry";
 
 /**
  * A task as a worker reads it: the title when there is one, the goal, the
@@ -137,7 +138,8 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     ...Object.fromEntries([...lists].map((id) => [id, mailboxBoardLedger(id)]))
   };
 
-  const from = taskLedgers({
+  // Marked, so the delegate check knows this entry takes a conversation's tasks.
+  const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: async (ledgerId, ctx, partition) => {
       if (ledgerId === CONVERSATION_LEDGER_ID) {
@@ -151,7 +153,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     // The turn keeps the worker's skill state on the session, the same shape
     // for every task, and each task runs in a session of its own.
     allowSessionState: true
-  });
+  }));
 
   // A task whose pieces its session already filed (a retry, or a takeover
   // after a crash) runs no turn: it parks on them again. An answer to the

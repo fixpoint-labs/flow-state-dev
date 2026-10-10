@@ -41,12 +41,15 @@ afterEach(async () => {
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
 
+/** Ends the turn it falls in, so the calls after it run in the next turn. */
+const END_TURN = null;
+
 /**
  * The judgment's tool calls, one per step, then a closing line; it records
- * the tool names each step was handed. An `agent` worker's turn answers with
+ * the tool names each step was handed, and what it was handed in `inputs`. An `agent` worker's turn answers with
  * a fixed line.
  */
-function scripted(calls: ToolCall[], seen: string[][] = []): ModelResolver {
+function scripted(calls: Array<ToolCall | typeof END_TURN>, seen: string[][] = [], inputs: unknown[] = []): ModelResolver {
   let step = 0;
   const judgment: GeneratorModel = {
     modelId: "test/judgment",
@@ -55,9 +58,10 @@ function scripted(calls: ToolCall[], seen: string[][] = []): ModelResolver {
     },
     async generateStep(options: { tools?: Array<{ name: string }> }) {
       seen.push((options.tools ?? []).map((tool) => tool.name));
+      inputs.push(options);
       const call = calls[step];
       step += 1;
-      if (call === undefined) return { text: "Noted.", finishReason: "stop" };
+      if (call === undefined || call === END_TURN) return { text: "Noted.", finishReason: "stop" };
       return { toolCalls: [{ toolCallId: `t${step}`, ...call }], finishReason: "tool-calls" };
     },
   };
@@ -155,11 +159,21 @@ function taskToolNames(): string[] {
   return names;
 }
 
+/** Hire an agent worker, which takes a conversation's task, and add it as a delegate. */
+const hireTaskTaker: ToolCall[] = [
+  { toolName: "hire", args: { id: "licenses", flow: "agent", description: "Audits dependency licenses." } },
+  { toolName: "addDelegate", args: { worker: "licenses" } },
+];
+
 describe("the chief of staff files tasks (FIX-1794 S11)", () => {
   it("carries each of the task tools exactly once on its turn", async () => {
     const seen: string[][] = [];
-    const lab = await open(scripted([], seen));
+    // A delegate that takes a task first: a conversation with none files nothing (FIX-1802 D1),
+    // and neither of the DevTeam's defaults takes a conversation's task (FIX-1842).
+    const lab = await open(scripted([...hireTaskTaker, END_TURN], seen));
     const id = await conversation(lab);
+    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
+    seen.length = 0;
     expect((await act(lab, id, "run", { message: "what's on my board?" })).error).toBeUndefined();
     expect(seen).toHaveLength(1);
     const [names] = seen as [string[]];
@@ -171,14 +185,10 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
 
   it("files a task for an agent delegate, which runs it in a task session of the person's, and hears it complete once", async () => {
     const goal = `audit the licenses of ${globalThis.crypto.randomUUID().slice(0, 8)}`;
-    const lab = await open(
-      scripted([
-        { toolName: "hire", args: { id: "licenses", flow: "agent", description: "Audits dependency licenses." } },
-        { toolName: "addDelegate", args: { worker: "licenses" } },
-        { toolName: "addTask", args: { goal, assignee: "licenses" } },
-      ]),
-    );
+    // The task tools come with a delegate that takes a task, so the filing is the next turn's (FIX-1802 D1).
+    const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "addTask", args: { goal, assignee: "licenses" } }]));
     const id = await conversation(lab);
+    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
     expect((await act(lab, id, "run", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
 
     // The conversation's own read, the one Shift Manager's TASKS panel makes: the task, completed by its delegate.
@@ -206,6 +216,25 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
     // The conversation heard it once, under the delegate's name, with what came back.
     const heard = (await messages(lab, id)).filter((m) => m.text.includes(`(${taskId}) completed by licenses`));
     expect(heard).toEqual([{ agentName: "licenses", text: expect.stringContaining(DELEGATE_ANSWER) }]);
+  });
+});
+
+describe("a task for the coder, whose work entry takes only its own board's rows (FIX-1842)", () => {
+  it("is refused at filing, naming why, so nothing sits in progress with no word", async () => {
+    const inputs: unknown[] = [];
+    const lab = await open(
+      scripted([...hireTaskTaker, END_TURN, { toolName: "addTask", args: { goal: "take a look at our repo", assignee: "eng.coder" } }], [], inputs),
+    );
+    const id = await conversation(lab);
+    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
+    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    await quiet(lab);
+
+    // The tool's answer, as the model read it back: refused, naming the coder's flow.
+    const answered = JSON.stringify(inputs.at(-1)).replaceAll("\\", "");
+    expect(answered).toContain('Worker "eng.coder" runs on flow "coder", which takes no task.');
+    // Nothing filed, so nothing waits on a delegate that never starts.
+    expect(((await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: unknown[] }).tasks).toEqual([]);
   });
 });
 
