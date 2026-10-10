@@ -23,7 +23,7 @@
 - `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked, and its `run` request ends `completed` and answers "Which ticket did you draw?" with the ticket.
 - `j:row-unchanged` after that, the row is still `completed` with the same output.
 
-The runner prints one verdict per check, each with the commit's SHA. It exits non-zero when a plain check fails, or when a control's red tags are not exactly its allowed set (see **Controls**).
+The runner prints one verdict per check, each with the commit's SHA. It exits non-zero when a plain check fails, or when a control's red tags are not exactly its expected set (see **Controls**).
 
 **Anti-game:** the runner refuses a dirty tree and re-checks `HEAD` before every check, so no verdict comes from another commit. It writes no row, calls no waker and resumes no request; neither does J4, whose only touches after the restart are Alice's: answer, list the board's tasks every five seconds, answer again, find the task's session and ask it. J4 kills only after the store shows the park, grades the store file read-only, and reads the ticket from `drawTicket`'s own output, so the model can't pass by inventing one. No check is graded on a child's own unit tests.
 
@@ -31,9 +31,9 @@ The runner prints one verdict per check, each with the commit's SHA. It exits no
 
 **Run:** `pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/run.mts` on a clean checkout. J4 alone: `pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/legs/parked.mts` (`GOAL_ATTEMPTS=<n>`, default 3; 1 under a control). On demand only, never a CI gate.
 
-**Controls:** the runner runs each child's controls with their own `GOAL_CONTROL`. A control passes only when its tags that went red are exactly its must-fail tags plus the co-failures its check documents, nothing else: any other red tag, a setup failure or a throw is a finding (QR-12).
+**Controls:** the runner runs each child's controls with their own `GOAL_CONTROL`. A control passes only when the tags that went red equal its must-fail tags plus the co-failures its check documents, no more and no fewer: a co-failure that stays green, any other red tag, a setup failure or a throw is a finding (QR-12).
 
-| Control | Must fail | Allowed to go red with it |
+| Control | Must fail | Must go red with it |
 |---|---|---|
 | P1.a `no-run-once` | `one-row` | `b:once` |
 | P1.a `no-waker` | `a:completed` | `a:word` |

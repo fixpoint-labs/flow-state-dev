@@ -19,9 +19,10 @@
  * It refuses a dirty tree, records `HEAD`, re-checks both before each check,
  * and runs each check as its own process with its own `GOAL_CONTROL`, one
  * after another. A plain check passes on exit 0. A control passes only when
- * its FAIL verdict lists every tag it must fail, and nothing outside those and
- * the co-failures its check documents: a setup failure, a throw or any other
- * red tag is a finding (QR-12). A check that cannot start (blocked) stops the run.
+ * the tags its FAIL verdict lists are exactly the tags it must fail plus the
+ * co-failures its check documents, no more and no fewer: a missing co-failure,
+ * a setup failure, a throw or any other red tag is a finding (QR-12). A check
+ * that cannot start (blocked) stops the run.
  * It writes nothing to any store, and each check's full output is kept in a
  * log file it names.
  *
@@ -32,18 +33,28 @@ import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 
-interface Check {
+/** A check run as it is: it passes on exit 0. */
+interface PlainCheck {
   id: string;
   script: string;
-  control?: string;
-  /** For a control: the assertions it must fail, by name. */
-  mustFail?: string[];
-  /**
-   * For a control: the co-failures its check's `goal.md` documents, and the only other tags
-   * allowed to go red. Anything red outside `mustFail` and these is a finding (QR-12).
-   */
-  alsoRed?: string[];
+  control?: undefined;
 }
+
+/** A check run under one of its controls: graded on the exact set of tags that go red. */
+interface ControlCheck {
+  id: string;
+  script: string;
+  control: string;
+  /** The assertions it must fail, by name. */
+  mustFail: string[];
+  /**
+   * The co-failures its check documents. Required: the tags that go red must equal
+   * `mustFail` ∪ `alsoRed`, no more and no fewer, or it is a finding (QR-12).
+   */
+  alsoRed: string[];
+}
+
+type Check = PlainCheck | ControlCheck;
 
 /** J4's tags after the answer: with no answer accepted there is no task to finish, so all of them go red with `j:answered`. */
 const AFTER_THE_ANSWER = ["j:completed", "j:same-session", "j:names-ticket", "j:names-region", "j:one-draw", "j:one-completed", "j:second-answer", "j:still-answers", "j:row-unchanged"];
@@ -138,19 +149,18 @@ await runGoal(async (failures) => {
       verdict = code === 0 ? "PASS" : `FAIL (${[...failed.tags, ...failed.untagged.map((u) => u.slice(0, 80))].join(", ")})`;
       if (code !== 0) failures.push(`${name}: FAIL — a finding (${log})`);
     } else {
-      // Exact, per QR-12: every must-fail tag red, and nothing red outside must-fail plus the documented co-failures.
-      const must = check.mustFail ?? [];
-      const allowed = new Set([...must, ...(check.alsoRed ?? [])]);
-      const missed = must.filter((tag) => !failed.tags.includes(tag));
-      const unexpected = [...failed.tags.filter((tag) => !allowed.has(tag)), ...failed.untagged.map((u) => u.slice(0, 120))];
+      // Exact, per QR-12: the red tags equal must-fail ∪ the documented co-failures, no more and no fewer.
+      const expected = new Set([...check.mustFail, ...check.alsoRed]);
+      const missed = [...expected].filter((tag) => !failed.tags.includes(tag));
+      const unexpected = [...failed.tags.filter((tag) => !expected.has(tag)), ...failed.untagged.map((u) => u.slice(0, 120))];
       const problems = [
         code === 0 ? "it passed" : "",
-        missed.length > 0 ? `${missed.join(", ")} stayed green` : "",
-        unexpected.length > 0 ? `red outside its allowed set: ${unexpected.join(", ")}` : "",
+        missed.length > 0 ? `expected red but green: ${missed.join(", ")}` : "",
+        unexpected.length > 0 ? `red outside its expected set: ${unexpected.join(", ")}` : "",
       ].filter((p) => p !== "");
       verdict =
         problems.length === 0
-          ? `FAIL as it must at ${must.join(", ")}; red exactly ${failed.tags.join(", ")} (allowed: ${[...allowed].join(", ")})`
+          ? `FAIL as it must at ${check.mustFail.join(", ")}; red exactly its expected set: ${failed.tags.join(", ")}`
           : `control did not fail as it must: ${problems.join("; ")}`;
       if (problems.length > 0) failures.push(`${name}: ${verdict} — a finding (${log})`);
     }
