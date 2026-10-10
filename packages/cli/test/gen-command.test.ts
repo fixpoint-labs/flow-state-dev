@@ -1,14 +1,14 @@
 /**
- * Specs for `fsdev gen` — the two things the command owns that the convention
- * does not.
+ * Specs for `fsdev gen` — what the command owns that a generator does not:
+ * finding the generator among the app's dependencies, and the file it WRITES.
  *
- * The walk's own rules live with the walk, in `@flow-state-dev/workforce`.
- * What is left here is the file this command WRITES: that it refuses to follow
- * a symlinked target, and that it compares on content rather than on bytes so
- * a checkout's line endings cannot report a clean tree as stale.
+ * The generator here is a stand-in package installed into a temp app, so the
+ * command is exercised the way an app runs it: resolved from the app's own
+ * `package.json`, with no knowledge of any one convention. The real one is
+ * tested where it lives, in its own package.
  *
- * Real temp directories through the real function — both behaviours are
- * filesystem behaviours, and a mock would only restate the implementation.
+ * Real temp directories through the real function — these are filesystem
+ * behaviours, and a mock would only restate the implementation.
  */
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeGenCommand, registerGenCommand } from "../src/commands/gen";
-import { EXIT_EXECUTION_ERROR, EXIT_SUCCESS } from "../src/exit-codes";
+import { EXIT_CONFIG_ERROR, EXIT_EXECUTION_ERROR, EXIT_SUCCESS } from "../src/exit-codes";
 
 const roots: string[] = [];
 let cwd: string;
@@ -33,15 +33,128 @@ afterEach(() => {
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** An app directory holding a `workforce/` tree with one block in it. */
-function app(): string {
+/**
+ * A stand-in generator: lists `blocks/*.ts` under the root into `out.gen.ts`,
+ * and refuses a file named `bad.ts` the way a real one refuses: an error with
+ * a `problems` list.
+ */
+const GENERATOR_SOURCE = `
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+export const generator = {
+  defaultRoot: "code",
+  async generate(root) {
+    const names = readdirSync(join(root, "blocks")).filter((f) => f.endsWith(".ts")).sort();
+    if (names.includes("bad.ts")) {
+      throw Object.assign(new Error("Refused bad.ts"), { problems: ["blocks/bad.ts"] });
+    }
+    return {
+      file: "out.gen.ts",
+      content: "export const blocks = " + JSON.stringify(names) + ";\\n",
+      searched: ["blocks/"],
+      entries: names.map((n) => "blocks/" + n + " -> " + n.slice(0, -3)),
+      paths: names.map((n) => "blocks/" + n),
+      summary: names.length + " block(s)",
+    };
+  },
+};
+`;
+
+/** Install a package named `name` into `dir`, exporting `exports`. */
+function installPackage(dir: string, name: string, exports: Record<string, unknown>, files: Record<string, string>): void {
+  const pkg = join(dir, "node_modules", name);
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name, type: "module", exports }));
+  for (const [file, source] of Object.entries(files)) writeFileSync(join(pkg, file), source);
+}
+
+/**
+ * An app directory depending on a generator package (and on one plain package
+ * beside it), holding a `code/` tree with one block in it.
+ */
+function app(generators: string[] = ["fake-gen"]): string {
   const dir = mkdtempSync(join(tmpdir(), "fsdev-gen-"));
   roots.push(dir);
-  mkdirSync(join(dir, "workforce/blocks"), { recursive: true });
-  writeFileSync(join(dir, "workforce/blocks/triage.ts"), "export default {};");
+  const dependencies: Record<string, string> = { plain: "1.0.0" };
+  installPackage(dir, "plain", { ".": "./index.mjs" }, { "index.mjs": "export {};" });
+  for (const name of generators) {
+    dependencies[name] = "1.0.0";
+    installPackage(dir, name, { "./fsdev-gen": "./gen.mjs" }, { "gen.mjs": GENERATOR_SOURCE });
+  }
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "app", dependencies }));
+  mkdirSync(join(dir, "code/blocks"), { recursive: true });
+  writeFileSync(join(dir, "code/blocks/triage.ts"), "export default {};");
   process.chdir(dir);
   return dir;
 }
+
+/** Run the registered command, returning what it printed to stderr. */
+async function run(args: string[]): Promise<string> {
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (message: string) => errors.push(message);
+  try {
+    const program = new Command();
+    registerGenCommand(program);
+    await program.parseAsync(["node", "fsdev", "gen", ...args]);
+  } finally {
+    console.error = original;
+  }
+  return errors.join("\n");
+}
+
+describe("finding the generator", () => {
+  it("runs the generator a dependency exports, on its own default root", async () => {
+    const dir = app();
+    const result = await executeGenCommand({});
+    expect(result.generator).toBe("fake-gen");
+    expect(result.file).toBe(join(dir, "code/out.gen.ts"));
+    expect(readFileSync(result.file, "utf-8")).toContain(`"triage.ts"`);
+  });
+
+  it("finds a generator exported only under the import condition, at its import target", async () => {
+    // Resolving with `require` conditions would miss this export entirely and
+    // report that no dependency supplies a generator; where the two targets
+    // differ it would load the wrong file.
+    const dir = mkdtempSync(join(tmpdir(), "fsdev-gen-"));
+    roots.push(dir);
+    installPackage(
+      dir,
+      "esm-gen",
+      { "./fsdev-gen": { import: "./gen.mjs", require: "./missing.cjs" } },
+      { "gen.mjs": GENERATOR_SOURCE },
+    );
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ dependencies: { "esm-gen": "1.0.0" } }));
+    mkdirSync(join(dir, "code/blocks"), { recursive: true });
+    process.chdir(dir);
+    expect(await executeGenCommand({})).toMatchObject({ generator: "esm-gen" });
+  });
+
+  it("reads --root instead of the generator's default", async () => {
+    const dir = app();
+    mkdirSync(join(dir, "elsewhere/blocks"), { recursive: true });
+    writeFileSync(join(dir, "elsewhere/blocks/other.ts"), "export default {};");
+    const result = await executeGenCommand({ root: "elsewhere" });
+    expect(readFileSync(result.file, "utf-8")).toContain(`"other.ts"`);
+  });
+
+  it("exits 3 naming the subpath when no dependency supplies a generator", async () => {
+    // The app depends only on a package with no `./fsdev-gen` export. A
+    // command that fell back to some built-in convention here would be the
+    // layer line crossed again.
+    app([]);
+    const stderr = await run([]);
+    expect(process.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(stderr).toMatch(/No dependency .* exports a generator on "\.\/fsdev-gen"/);
+  });
+
+  it("refuses to pick between two generators", async () => {
+    app(["gen-a", "gen-b"]);
+    const stderr = await run([]);
+    expect(process.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(stderr).toContain("gen-a, gen-b");
+  });
+});
 
 describe("the file the command writes", () => {
   it("refuses a symlinked generated file rather than writing through it", async () => {
@@ -53,10 +166,10 @@ describe("the file the command writes", () => {
     roots.push(outside);
     const victim = join(outside, "important.ts");
     writeFileSync(victim, "PRECIOUS");
-    symlinkSync(victim, join(dir, "workforce/workforce.gen.ts"));
+    symlinkSync(victim, join(dir, "code/out.gen.ts"));
 
-    await expect(executeGenCommand({ root: "workforce" })).rejects.toThrow(
-      /Symlinked generated file "workforce\.gen\.ts" — refused for safety/,
+    await expect(executeGenCommand({})).rejects.toThrow(
+      /Symlinked generated file "out\.gen\.ts" — refused for safety/,
     );
     expect(readFileSync(victim, "utf-8")).toBe("PRECIOUS");
   });
@@ -68,18 +181,18 @@ describe("the file the command writes", () => {
     const outside = mkdtempSync(join(tmpdir(), "fsdev-gen-outside-"));
     roots.push(outside);
     writeFileSync(join(outside, "important.ts"), "PRECIOUS");
-    symlinkSync(join(outside, "important.ts"), join(dir, "workforce/workforce.gen.ts"));
+    symlinkSync(join(outside, "important.ts"), join(dir, "code/out.gen.ts"));
 
-    await expect(executeGenCommand({ root: "workforce", check: true })).rejects.toThrow(
+    await expect(executeGenCommand({ check: true })).rejects.toThrow(
       /Symlinked generated file/,
     );
   });
 
   it("reads a CRLF checkout as up to date, and still writes LF", async () => {
     const dir = app();
-    const file = join(dir, "workforce/workforce.gen.ts");
+    const file = join(dir, "code/out.gen.ts");
 
-    const written = await executeGenCommand({ root: "workforce" });
+    const written = await executeGenCommand({});
     expect(written.upToDate).toBe(false);
     const lf = readFileSync(file, "utf-8");
 
@@ -87,7 +200,7 @@ describe("the file the command writes", () => {
     // differ; the content does not, and the difference is git's rather than
     // the author's — so reporting it as stale would fail CI on a clean tree.
     writeFileSync(file, lf.replace(/\n/g, "\r\n"));
-    expect(await executeGenCommand({ root: "workforce", check: true })).toMatchObject({
+    expect(await executeGenCommand({ check: true })).toMatchObject({
       upToDate: true,
     });
 
@@ -95,7 +208,7 @@ describe("the file the command writes", () => {
     // LF, so nothing here quietly adopts the checkout's line endings.
     expect(readFileSync(file, "utf-8")).toContain("\r\n");
     rmSync(file);
-    await executeGenCommand({ root: "workforce" });
+    await executeGenCommand({});
     expect(readFileSync(file, "utf-8")).not.toContain("\r\n");
   });
 
@@ -108,8 +221,8 @@ describe("the file the command writes", () => {
     // The assertion is that control comes BACK from the action: with the exit
     // call in place, this command would take the test runner down with it.
     const dir = app();
-    await executeGenCommand({ root: "workforce" });
-    writeFileSync(join(dir, "workforce/blocks/second.ts"), "export default {};");
+    await executeGenCommand({});
+    writeFileSync(join(dir, "code/blocks/second.ts"), "export default {};");
 
     const program = new Command();
     registerGenCommand(program);
@@ -131,126 +244,46 @@ describe("the file the command writes", () => {
     await program.parseAsync(["node", "fsdev", "gen"]);
 
     expect(process.exitCode).toBe(EXIT_SUCCESS);
-    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toContain("triage");
+    expect(readFileSync(join(dir, "code/out.gen.ts"), "utf-8")).toContain("triage");
   });
 
   it("still reports a genuinely stale file", async () => {
     // The guard against the fix above: normalising newlines must not soften
     // the staleness check itself.
     const dir = app();
-    await executeGenCommand({ root: "workforce" });
-    writeFileSync(join(dir, "workforce/blocks/second.ts"), "export default {};");
+    await executeGenCommand({});
+    writeFileSync(join(dir, "code/blocks/second.ts"), "export default {};");
 
-    expect(await executeGenCommand({ root: "workforce", check: true })).toMatchObject({
+    expect(await executeGenCommand({ check: true })).toMatchObject({
       upToDate: false,
     });
   });
 });
 
-describe("a package block the tree gained", () => {
-  // The same bargain for a package's tools: a block added to a package and
-  // not generated is a tool its holders are quietly short of.
-  it("is caught by --check, named in the result, and green again once the command has run", async () => {
+describe("a refusal from the generator", () => {
+  it("writes nothing and exits 1, with the generator's own message", async () => {
+    // Nothing is generated when the generator refuses, so a tree is never left
+    // half registered, and the refusal an author sees is the generator's, with
+    // this command adding only the exit code.
     const dir = app();
-    await executeGenCommand({ root: "workforce" });
+    await executeGenCommand({});
+    const before = readFileSync(join(dir, "code/out.gen.ts"), "utf-8");
+    writeFileSync(join(dir, "code/blocks/bad.ts"), "export default {};");
 
-    const pkg = "workforce/teams/support/workers/clerk/packages/refunds";
-    mkdirSync(join(dir, pkg, "blocks"), { recursive: true });
-    writeFileSync(join(dir, pkg, "PACKAGE.md"), "---\ndescription: Refunds\n---\nRefund.\n");
-    writeFileSync(join(dir, pkg, "blocks/issue-refund.ts"), "export default {};");
-
-    const stale = await executeGenCommand({ root: "workforce", check: true });
-    expect(stale.upToDate).toBe(false);
-    expect(stale.packageBlocks.map((entry) => entry.path)).toEqual([
-      "teams/support/workers/clerk/packages/refunds/blocks/issue-refund.ts",
-    ]);
-
-    await executeGenCommand({ root: "workforce" });
-    expect(await executeGenCommand({ root: "workforce", check: true })).toMatchObject({
-      upToDate: true,
-    });
-    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toContain(
-      `"teams/support/workers/clerk/packages/refunds": {`,
-    );
-  });
-
-  it("names the package block in the stale report", async () => {
-    const dir = app();
-    await executeGenCommand({ root: "workforce" });
-    const pkg = "workforce/teams/support/packages/escalation";
-    mkdirSync(join(dir, pkg, "blocks"), { recursive: true });
-    writeFileSync(join(dir, pkg, "PACKAGE.md"), "---\ndescription: Escalation\n---\n");
-    writeFileSync(join(dir, pkg, "blocks/page-oncall.ts"), "export default {};");
-
-    const errors: string[] = [];
-    const original = console.error;
-    console.error = (message: string) => errors.push(message);
-    try {
-      const program = new Command();
-      registerGenCommand(program);
-      await program.parseAsync(["node", "fsdev", "gen", "--check"]);
-    } finally {
-      console.error = original;
-    }
+    const stderr = await run([]);
     expect(process.exitCode).toBe(EXIT_EXECUTION_ERROR);
-    expect(errors.join("\n")).toContain("teams/support/packages/escalation/blocks/page-oncall.ts");
-    expect(errors.join("\n")).toContain("1 package block(s)");
-  });
-});
-
-describe("a resource module the tree gained", () => {
-  // `--check` is the whole guard on the two-step bargain: a team that writes a
-  // file and forgets the command gets a seat that is quietly short, and this is
-  // the only thing that catches it. So the rule the command owns is that the
-  // new family is covered by the same check, with no special case.
-
-  it("is caught by --check, and green again once the command has run", async () => {
-    const dir = app();
-    await executeGenCommand({ root: "workforce" });
-
-    mkdirSync(join(dir, "workforce/teams/engineering/resources"), { recursive: true });
-    writeFileSync(
-      join(dir, "workforce/teams/engineering/resources/research.ts"),
-      "export default {};",
-    );
-
-    // Red on the tree as it stands — the committed file knows nothing about
-    // the module — and the report names the file that disagrees, not just that
-    // something does.
-    const stale = await executeGenCommand({ root: "workforce", check: true });
-    expect(stale.upToDate).toBe(false);
-    expect(stale.resourceModules.map((module) => module.path)).toEqual([
-      "teams/engineering/resources/research.ts",
-    ]);
-
-    await executeGenCommand({ root: "workforce" });
-
-    expect(await executeGenCommand({ root: "workforce", check: true })).toMatchObject({
-      upToDate: true,
-    });
-    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toContain(
-      `"teams/engineering/research": resource_teams__engineering__research,`,
-    );
+    expect(stderr).toContain("Refused bad.ts");
+    expect(readFileSync(join(dir, "code/out.gen.ts"), "utf-8")).toBe(before);
   });
 
-  it("stops the command from writing anything when the tree is refused", async () => {
-    // Nothing is generated when the walk refuses, so a tree is never left half
-    // registered — and the refusal an author sees comes from the convention,
-    // with this command adding only the exit code.
+  it("names what the tree holds in the stale report", async () => {
     const dir = app();
-    await executeGenCommand({ root: "workforce" });
-    const before = readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8");
+    await executeGenCommand({});
+    writeFileSync(join(dir, "code/blocks/second.ts"), "export default {};");
 
-    mkdirSync(join(dir, "workforce/teams/engineering/resources"), { recursive: true });
-    writeFileSync(join(dir, "workforce/teams/engineering/resources/research.md"), "---\n---\n");
-    writeFileSync(
-      join(dir, "workforce/teams/engineering/resources/research.ts"),
-      "export default {};",
-    );
-
-    await expect(executeGenCommand({ root: "workforce" })).rejects.toThrow(
-      /a document and a module cannot share a ref/,
-    );
-    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toBe(before);
+    const stderr = await run(["--check"]);
+    expect(process.exitCode).toBe(EXIT_EXECUTION_ERROR);
+    expect(stderr).toContain("2 block(s)");
+    expect(stderr).toContain("  - blocks/second.ts");
   });
 });

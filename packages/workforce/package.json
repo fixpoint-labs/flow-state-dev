@@ -41,6 +41,10 @@
     "./codegen": {
       "types": "./dist/codegen/index.d.ts",
       "default": "./src/codegen/index.ts"
+    },
+    "./fsdev-gen": {
+      "types": "./dist/codegen/fsdev-gen.d.ts",
+      "default": "./src/codegen/fsdev-gen.ts"
     }
   },
   "license": "MIT",
@@ -68,6 +72,10 @@
       "./codegen": {
         "types": "./dist/codegen/index.d.ts",
         "default": "./dist/codegen/index.js"
+      },
+      "./fsdev-gen": {
+        "types": "./dist/codegen/fsdev-gen.d.ts",
+        "default": "./dist/codegen/fsdev-gen.js"
       }
     }
   },
