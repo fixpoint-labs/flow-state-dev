@@ -30,7 +30,7 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
-import { goalTmpDir, runGoal } from "../../lib/index.mts";
+import { goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
 import { openLab, LAB_TREE, NOTE_TOOL, messageOf, type Lab, type OpenLabOptions } from "../lab/host.mts";
 import { QUEUE_COLUMNS, queueView } from "../lab/queue.mts";
 
@@ -58,9 +58,6 @@ const TASK_TOOLS = [
 
 /** Frontmatter keys that would declare a board or grant the task tools. None may appear. */
 const BOARD_KEYS = /^(boards|boardActions|filing|mailboxes|members)\s*:/m;
-
-/** Silence the engine's own logging; a gate's output is its verdict. */
-const silent = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 
 /** Every file under a directory. */
 function treeFiles(dir: string): string[] {
@@ -101,7 +98,7 @@ await runGoal(async (failures) => {
     writeFileSync(path, "", "utf8");
     return path;
   };
-  const base = (name: string): OpenLabOptions => ({ stores: inMemoryStores(), outbox: fresh(name), logger: silent });
+  const base = (name: string): OpenLabOptions => ({ stores: inMemoryStores(), outbox: fresh(name), logger: silentLogger });
 
   const lab = await openLab(base("work"));
   let evidence = "";

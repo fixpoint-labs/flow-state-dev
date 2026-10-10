@@ -34,7 +34,7 @@
  * against the stub.
  */
 
-import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   FILING_SESSION_STATE_KEY,
@@ -154,7 +154,6 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
           from: taskLedgers({
             name: "builder-elsewhere",
             resolve: async () => undefined,
-            uses: [defineCapability({ name: "builder-elsewhere-ledger", resources: {} })],
           }),
         }
       : workerTaskEntry({ name: "builder-task", turn });
