@@ -27,7 +27,8 @@ import {
 } from './working-memory-helpers'
 import type { WorkingMemoryHelperConfig, AddEntryInput } from './working-memory-helpers'
 
-import { createEpisodicMemoryResource, type EpisodicMemoryState, type MemoryResourceOptions } from './episodic-memory'
+import { createEpisodicMemoryResource, type EpisodicMemoryState } from './episodic-memory'
+import type { MemoryResourceOptions } from './resource-options'
 import { encode, recent, markConsolidated } from './episodic-memory-helpers'
 import type { EncodeEpisodeInput } from './episodic-memory-helpers'
 

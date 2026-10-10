@@ -1,5 +1,6 @@
 import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
+import { flowIsolationEntry, type MemoryResourceOptions } from './resource-options'
 
 /** Schema for a single episodic memory record. */
 export const episodeSchema = z.object({
@@ -62,21 +63,6 @@ export const episodicMemoryStateSchema = z.object({
 
 /** The full episodic memory state. */
 export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
-
-/** Options the memory resource factories share. */
-export interface MemoryResourceOptions {
-  /**
-   * The resource's own `flowIsolation`. `true` keys the store per flow
-   * instance, `false` shares it across flows, and either wins over the flow's
-   * `isolateUserState` / `isolateOrgState` default. Omit it to take that default.
-   */
-  flowIsolation?: boolean
-}
-
-/** The `flowIsolation` entry a factory spreads into `defineResource`, empty when unset. */
-export function flowIsolationEntry(options?: MemoryResourceOptions): { flowIsolation?: boolean } {
-  return options?.flowIsolation === undefined ? {} : { flowIsolation: options.flowIsolation }
-}
 
 /**
  * Create an episodic memory resource definition at the given scope.

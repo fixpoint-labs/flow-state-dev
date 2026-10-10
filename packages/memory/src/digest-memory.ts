@@ -10,7 +10,7 @@
 
 import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { flowIsolationEntry, type MemoryResourceOptions } from './episodic-memory'
+import { flowIsolationEntry, type MemoryResourceOptions } from './resource-options'
 
 /**
  * Signature of the source stores at the moment a digest was generated.

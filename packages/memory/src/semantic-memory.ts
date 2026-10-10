@@ -1,7 +1,7 @@
 import { defineResource } from '@flow-state-dev/core'
 import type { EdgeSlotConfig } from '@flow-state-dev/core/graph'
 import { z } from 'zod'
-import { flowIsolationEntry, type MemoryResourceOptions } from './episodic-memory'
+import { flowIsolationEntry, type MemoryResourceOptions } from './resource-options'
 
 /** Semantic fact categories. */
 export const semanticCategoryEnum = z.enum([

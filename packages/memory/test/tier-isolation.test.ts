@@ -9,6 +9,10 @@
  */
 import { describe, it, expect } from 'vitest'
 import { system } from '../src/memory-system'
+import { memorySystemJanitor } from '../src/janitor-blocks'
+import { digestRegenerateGuard } from '../src/digest-blocks'
+import { resolveMemoryConfigs } from '../src/internal/config'
+import { resolveHygieneConfig } from '../src/internal/hygiene-config'
 import {
   createEpisodicMemoryResource,
   createSemanticMemoryResource,
@@ -67,6 +71,38 @@ describe('per-tier flowIsolation', () => {
     const declared = mem.capture.declaredResources ?? {}
     expect(declared.semanticMemory).toBe(mem.capability.userResources.semanticMemory)
     expect(declared.episodicMemory).toBe(mem.capability.userResources.episodicMemory)
+  })
+})
+
+describe('a block built without the shared resources', () => {
+  // A block takes the capability's resources from `system()`. Built on its
+  // own, it builds them from its tier config, and they must key where the
+  // capability's do or the block works on an empty store.
+  const resolved = resolveMemoryConfigs({
+    working: true,
+    episodic: { flowIsolation: true },
+    semantic: { flowIsolation: false },
+    digest: true,
+  })
+  const config = {
+    model: MODEL,
+    working: resolved.resolvedWorking,
+    episodic: resolved.episodicConfig,
+    semantic: resolved.semanticConfig,
+    digest: resolved.digestConfig,
+  }
+
+  it('keeps each tier\'s flowIsolation', () => {
+    const hygiene = resolveHygieneConfig(true)
+    if (!hygiene) throw new Error('hygiene resolved to off')
+    const declared = memorySystemJanitor({ ...config, hygiene }).declaredResources ?? {}
+    expect(declared.episodicMemory?.flowIsolation).toBe(true)
+    expect(declared.semanticMemory?.flowIsolation).toBe(false)
+  })
+
+  it('keeps the digest\'s derived flowIsolation', () => {
+    const declared = digestRegenerateGuard({ ...config, digest: resolved.digestConfig! }).declaredResources ?? {}
+    expect(declared.digestMemory?.flowIsolation).toBe(true)
   })
 })
 

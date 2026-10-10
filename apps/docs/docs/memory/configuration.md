@@ -244,7 +244,7 @@ defineFlow({
 
 The reverse works too: leave the flow shared and set `episodic: { flowIsolation: true }` to keep one flow's episodes out of the others. Each tier is set on its own, so `semantic` doesn't pick up the `flowIsolation` you give `episodic`. Working memory is per session and has no `flowIsolation`.
 
-The per-tier capability factories take the same field, as in `createEpisodicMemoryCapability({ scope: "user", flowIsolation: true })`, and so do `createSemanticMemoryCapability` and `createDigestMemoryCapability`. The resource factories take it in an options argument (`MemoryResourceOptions`): `createEpisodicMemoryResource("user", { flowIsolation: true })`, the same for `createDigestMemoryResource`, and as the third argument of `createSemanticMemoryResource(scope, relations, options)`.
+The per-tier capability factories take the same field, as in `createEpisodicMemoryCapability({ scope: "user", flowIsolation: true })`, and so do `createSemanticMemoryCapability` and `createDigestMemoryCapability`. The resource factories take it in an options argument (`MemoryResourceOptions`): `createEpisodicMemoryResource("user", { flowIsolation: true })`, the same for `createDigestMemoryResource`, and as the third argument of `createSemanticMemoryResource(scope, relations, options)`. Composing tiers by hand this way skips the digest rule above, so give the digest `flowIsolation: true` whenever either source is isolated.
 
 ## Capability presets
 
