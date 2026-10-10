@@ -818,6 +818,18 @@ function twoApprovalFlow(seen: string[]): FlowInstance {
   })({ id: "parking" });
 }
 
+/** The tool result a model call was given for `toolCallId`. */
+function toolResultOf(call: unknown, toolCallId: string): unknown {
+  const messages = (call as { messages: Array<{ role: string; content: unknown }> }).messages;
+  for (const message of messages) {
+    if (message.role !== "tool" || !Array.isArray(message.content)) continue;
+    for (const part of message.content as Array<{ toolCallId?: string; output?: { value?: unknown } }>) {
+      if (part.toolCallId === toolCallId) return part.output?.value;
+    }
+  }
+  return undefined;
+}
+
 /** Move a parked gate's deadline into the past, as if the person never answered. */
 async function lapse(h: ReturnType<typeof harness>, gate: SuspensionRecord): Promise<void> {
   await h.provider.suspend({ ...gate, expiresAt: Date.now() - 1 });
@@ -849,7 +861,11 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     expect(state.toolRuns).toBe(0);
     // One model call to carry on, after the expired result; none before it.
     expect(state.calls).toHaveLength(2);
-    expect(JSON.stringify(state.calls[1])).toContain("expired and is no longer valid");
+    expect(toolResultOf(state.calls[1], "c1")).toEqual({
+      denied: true,
+      expired: true,
+      reason: "The approval for this tool call expired and is no longer valid. The tool was not run."
+    });
     // The audit item says the gate expired, not that a person rejected it.
     expect(await resumeItemsOf(h, requestId)).toEqual([
       expect.objectContaining({ suspensionId: gate.suspensionId, resolution: "expired" })
@@ -881,7 +897,11 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     expect((await h.stores.request.get(requestId))?.status).toBe("completed");
     expect(state.toolRuns).toBe(0);
     expect(state.calls).toHaveLength(2);
-    expect(JSON.stringify(state.calls[1])).toContain("expired and is no longer valid");
+    expect(toolResultOf(state.calls[1], "c1")).toEqual({
+      denied: true,
+      expired: true,
+      reason: "The approval for this tool call expired and is no longer valid. The tool was not run."
+    });
   });
 
   it("a stop recorded on a turn parked behind an expiring approval still ends it aborted, with no further model call", async () => {
@@ -993,6 +1013,39 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     const logicalId = suspensionItem.blockInstanceId.slice(0, suspensionItem.blockInstanceId.lastIndexOf(":"));
     const [replayed] = buildReplayLog(items as never).resolvedResumes(logicalId);
     expect(replayed).toMatchObject({ suspensionId: gate.suspensionId, rejected: false, expired: false });
+  });
+
+  it("a resume route caller cannot label its own rejection expired: it is recorded rejected", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+
+    const res = await handleResumeSuspension(
+      new Request(`https://x/api/flows/parking/requests/${requestId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: gate.suspensionId, action: "reject", resolution: "expired" })
+      }),
+      { kind: "resume_suspension", flowKind: "parking", requestId },
+      {
+        host: { continueRequest: h.cont } as never,
+        registry: h.registry,
+        stores: h.stores,
+        durabilityProvider: h.provider,
+        seams: {} as never,
+        requestContext: {} as never
+      }
+    );
+    expect(res.status).toBe(202);
+    await drain(h);
+
+    expect((await resumeItemsOf(h, requestId)).map((i) => i.resolution)).toEqual(["rejected"]);
+    expect(toolResultOf(state.calls[1], "c1")).toEqual({
+      denied: true,
+      reason: `Suspension ${gate.suspensionId} was rejected`
+    });
+    expect(state.toolRuns).toBe(0);
   });
 
   it("an expired gate that is not an approval (it allows no reject) is only marked expired, as before", async () => {
