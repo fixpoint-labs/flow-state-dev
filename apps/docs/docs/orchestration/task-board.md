@@ -848,6 +848,8 @@ The board needs a collection that outlives a request, built with `defineTaskColl
 
 These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers the ones that take a `taskId` on each row.
 
+Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
+
 ## Collection backing
 
 A board stores its tasks in one of four places. You choose once; nothing downstream restates it.

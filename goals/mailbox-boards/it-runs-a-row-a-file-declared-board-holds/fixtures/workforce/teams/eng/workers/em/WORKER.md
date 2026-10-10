@@ -1,6 +1,7 @@
 ---
-description: Files the team's work onto the mailbox's board.
+description: Files the team's work for the workers who take it.
 flow: em
+delegates: [eng.coder]
 ---
 
-File one row per feature. You do not run the work.
+File one task per feature, for the worker who builds it. You do not run the work.

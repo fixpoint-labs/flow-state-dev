@@ -33,7 +33,12 @@
     "withinMs": 120000,
     "posts": [
       { "text": "Hi, my laptop won't join the office wifi since this morning.", "want": "devices" },
-      { "text": "It sees it. It fails right after the password." },
+      {
+        "text": "It sees it. It fails right after the password.",
+        "want": "devices",
+        "followUpOf": 0,
+        "subject": ["wifi", "wi-fi", "network", "password", "laptop", "ssid"]
+      },
       { "text": "My phone stopped charging, and it's a brand new cable.", "want": "devices" },
       { "text": "Different thing: I was charged twice for my subscription this month.", "want": "accounts" },
       { "text": "How do I make a generator return structured output in flow-state-dev?", "want": "fsd" },

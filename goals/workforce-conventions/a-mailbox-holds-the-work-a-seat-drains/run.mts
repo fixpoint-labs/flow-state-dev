@@ -13,8 +13,8 @@
  *   expect it. Legs V2, V5, V6, V9 (the warning), V10 to V13, and V14's writer
  *   half.
  *
- *   **The fixture host**: the tree `goals/mailbox-boards/
- *   it-runs-a-row-a-file-declared-board-holds/` runs, which carries a board
+ *   **The fixture host**: this goal's own `fixtures/workforce/` (until
+ *   FIX-1792 P2, the tree `mailbox-boards/it-runs-a-row-…` ran), which carries a board
  *   the seat drains, a board nobody does, a member whose seat hears posts,
  *   and a mailbox on a kind of its own. Run in process here. Legs V1, V3, V4,
  *   V8, V9's attended half and V14's non-hearing half. V7 — a row claimed,
@@ -59,8 +59,8 @@ const HIRE = join(WORKFORCE, "hire.ts");
 const CONFIG = join(KITCHEN_SINK, "fsdev.config.ts");
 const MAILBOXES = join(WORKFORCE, "teams", "support", "mailboxes");
 const PUBLISHED = repoPath("apps", "docs", "docs", "workforce", "mailboxes.md");
-/** The fixture host's tree, which `mailbox-boards/it-runs-a-row-a-file-declared-board-holds` also runs. */
-const FIXTURE = repoPath("goals", "mailbox-boards", "it-runs-a-row-a-file-declared-board-holds", "fixtures", "workforce");
+/** The fixture host's tree. It moved here from `mailbox-boards/it-runs-a-row-a-file-declared-board-holds` when that goal left the mailbox (FIX-1792 P2). */
+const FIXTURE = repoPath("goals", "workforce-conventions", "a-mailbox-holds-the-work-a-seat-drains", "fixtures", "workforce");
 
 /**
  * The words the vocabulary table refuses — the "is not" column of

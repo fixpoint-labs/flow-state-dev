@@ -21,7 +21,7 @@ import {
   openMailboxes,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import digest from "../../mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/flows/mailboxes/digest.ts";
+import digest from "../../workforce-conventions/a-mailbox-holds-the-work-a-seat-drains/fixtures/workforce/flows/mailboxes/digest.ts";
 
 /** Who the Lab opens its mailboxes as. */
 export const LAB_USER = "u_pre_rename";

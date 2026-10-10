@@ -159,6 +159,21 @@ describe("taskTools — happy paths (own-state board)", () => {
     expect((result as { tasks: Array<{ id: string }> }).tasks.map((t) => t.id)).toEqual(["a"]);
   });
 
+  it("listTasks names the run working each task, so a reader can open it, and nothing on a task no run has started", async () => {
+    const run = { sessionId: "s-run", requestId: "r-run", attempt: 1 };
+    const { ctx } = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "running", status: "in_progress", attempts: 1, run, createdAt: Date.now(), updatedAt: Date.now() },
+        b: { id: "b", goal: "waiting", status: "pending", attempts: 0, createdAt: Date.now(), updatedAt: Date.now() },
+      },
+    });
+    const result = (await runForTest(findTool("listTasks"), {}, ctx)) as {
+      tasks: Array<{ id: string; run?: unknown }>;
+    };
+    expect(result.tasks.find((t) => t.id === "a")?.run).toEqual(run);
+    expect(result.tasks.find((t) => t.id === "b")).not.toHaveProperty("run");
+  });
+
   // Named for what it seeds. It has always seeded `in_progress`; the old name
   // said `pending`, which is the one status completeTask is REFUSED from.
   it("completeTask transitions an in_progress task to completed", async () => {

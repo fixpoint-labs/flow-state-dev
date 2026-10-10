@@ -730,6 +730,10 @@ list from `taskToolsForTurn(resolver, roster, { resumesAsks })`. `listTasks` mar
 `asked: true`. An ask is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
 returns true for those turns. See the task board page for limits and errors.
 
+Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
+working the task or the one that last did. A row has none until a run starts on it, and a new
+claim clears it until the next run starts.
+
 Two functions sit under the option, for a layer that builds its own board surface:
 
 - `addTaskAndWait(ctx, collection, init, { timeoutMs? })`, from

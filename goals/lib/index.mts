@@ -25,3 +25,4 @@ export * from "./server.mts";
 export * from "./module-patch.mts";
 export * from "./worker-door.mts";
 export * from "./workers.mts";
+export * from "./http-actions.mts";
