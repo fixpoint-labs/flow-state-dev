@@ -17,7 +17,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const config: StorybookConfig = {
   framework: "@storybook/react-vite",
-  stories: ["../registry/components/**/*.stories.@(ts|tsx)"],
+  stories: [
+    "../registry/components/**/*.stories.@(ts|tsx)",
+    "../stories/**/*.stories.@(ts|tsx)",
+  ],
   addons: [],
   typescript: { check: false },
   async viteFinal(viteConfig) {
