@@ -43,6 +43,7 @@ import { DELEGATE_SERVER_OWNED, delegateStateShape } from "../delegates/delegate
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
 import type { WorkerInstallation } from "../workers/installation";
 import { RUN_BOARD_ENTRY, defineConversationBoard } from "./board";
+import { questionPark } from "./question-park";
 import { TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { TASK_NOTICES_STATE, conversationBoardStateShape, taskSettledEntry } from "./task-settled";
 
@@ -78,6 +79,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     board,
     /** The model's eight task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
+    /**
+     * `parkOnQuestion`, on a task turn that may park its row on a question
+     * (FIX-1817): one entry for the model block's `uses`, beside `tools`.
+     */
+    questions: questionPark,
     /** Whether the running session files now: one of its delegates takes a task, and it isn't a task session. */
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */

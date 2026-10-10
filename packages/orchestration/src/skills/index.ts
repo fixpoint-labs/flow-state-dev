@@ -103,7 +103,7 @@ export {
 
 export {
   createTaskToolsCapability,
-  // The eight handlers on their own, for a consumer that composes its own
+  // The task tools on their own, for a consumer that composes its own
   // capability around them — one that also has to declare the ledger the
   // resolver reaches, which `createTaskToolsCapability` has no slot for.
   buildTaskToolsList,
@@ -118,10 +118,13 @@ export {
   type AssigneeRoster,
   // A roster fixed, or read per call from the running context (FIX-1794 T1).
   type AssigneeRosterSource,
-  // The eight tools as flow actions, and the board qualifier they are named by.
+  // The task tools as flow actions, and the board qualifier they are named by.
   taskToolActions,
   taskToolSuffix,
   type TaskToolActionsBoard,
+  // A task turn's question park and the rule for offering it (FIX-1817).
+  createParkOnQuestion,
+  type ParkOnQuestionOptions,
 } from "./task-tools-capability";
 
 export {

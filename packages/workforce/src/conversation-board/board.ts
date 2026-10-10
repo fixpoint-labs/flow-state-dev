@@ -118,11 +118,23 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
 /**
  * The task session's key: one per task and worker, so a retry re-enters the
  * session it ran in and a reassign opens a new one, beside the old one's
- * history. A child of the conversation, so two conversations filing one task
+ * history. A follow-up is keyed by the task it follows (its root), so it runs
+ * in that task's session. A child of the conversation, so two conversations filing one task
  * id for one worker get two sessions.
  */
 function taskSessionKey(taskId: string, worker: string): string {
   return `task:${JSON.stringify([taskId, worker])}`;
+}
+
+/**
+ * The claim the board's hand-off holds while it addresses a task: on its
+ * worker body's state, or in the claimed worker's async scope. Server-derived:
+ * minted from the row the board just claimed.
+ */
+function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } | undefined {
+  const onState = (ctx.sequencer?.state as { currentClaim?: { assignee?: string; followUpOf?: string } } | undefined)
+    ?.currentClaim;
+  return onState ?? currentWorkerClaim();
 }
 
 /** Claims only rows that name a delegate: an unassigned row waits on the board until it is assigned. */
@@ -211,12 +223,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // still on its worker body's state: the assignee is the one the row was
       // claimed with, which the board freezes while an attempt holds it.
       key: (payload: TaskWorkerInput, ctx: BlockContext) => {
-        const claim = (ctx.sequencer?.state as { currentClaim?: { assignee?: string } } | undefined)?.currentClaim;
-        const worker = claim?.assignee ?? currentWorkerClaim()?.assignee;
+        const claim = claimOf(ctx);
+        const worker = claim?.assignee;
         if (worker === undefined) {
           throw new Error(`Task "${payload.taskId}" names no delegate, so it has no session to run in.`);
         }
-        return taskSessionKey(payload.taskId, worker);
+        // A follow-up runs in the session of the task it follows (FIX-1817):
+        // keyed by that root task, from the claim, never from input.
+        return taskSessionKey(claim?.followUpOf ?? payload.taskId, worker);
       }
     },
     // Re-run the delegate check at hand-over: a delegate fired, removed or
@@ -236,7 +250,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       [WORKER_ID_STATE_KEY]: task.assignee,
       [FILING_SESSION_STATE_KEY]: await filingSessionIdOf(ctx.session),
       [FILING_FLOW_STATE_KEY]: options.flowKind,
-      [TASK_ID_STATE_KEY]: task.taskId
+      // The session's task: a follow-up's root, though the root's own
+      // hand-over has already opened it, so this is only ever the root.
+      [TASK_ID_STATE_KEY]: claimOf(ctx)?.followUpOf ?? task.taskId
     })
   };
   const handOffToDelegate = markDispatcher(
@@ -267,7 +283,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   /**
    * The ledger the tools and actions write through: the running session's
    * own board, guarded. A filing or an assign that leaves a row startable
-   * wakes the board, and a retried one wakes it again. No caller write
+   * wakes the board, and a retried one wakes it again; so does an answer. No caller write
    * reaches a notice marker.
    */
   const guarded = (ctx: BlockContext, ref: TaskCollectionRef): TaskCollectionRef => {
@@ -300,6 +316,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       async setAssignee(id, assignee) {
         const outcome = await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        return outcome;
+      },
+      // An answer re-queues the row assigned and pending, which is its start
+      // owed, in the unpark's own write (FIX-1817); then it starts the board,
+      // as a filing does. A lost wake leaves the row startable for the next touch.
+      async unpark(id, feedback, unparkOptions) {
+        const outcome = await ref.unpark(id, feedback, unparkOptions);
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
         return outcome;
       },

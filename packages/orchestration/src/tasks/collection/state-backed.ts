@@ -632,6 +632,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               kind: "retried" as const,
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
+                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -694,13 +695,14 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // being parked behind the attempt that already ended it. `ifAllowed` is
       // forced on that path only, the way `unpark` forces its own fence.
       const forTurn = options?.forTurn === true;
+      const fenced = forTurn || options?.fromRunning === true;
       return transitionTo(
         id,
         "parked",
         "review_requested",
         () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
-        forTurn ? { ...options, ifAllowed: true } : options,
-        forTurn ? "in_progress" : undefined
+        fenced ? { ...options, ifAllowed: true } : options,
+        fenced ? "in_progress" : undefined
       );
     },
 
@@ -716,7 +718,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "pending",
         "resumed",
-        (task) => unparkPatch(task as Task, feedback) as Partial<Task<TInput, TOutput>>,
+        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
       );

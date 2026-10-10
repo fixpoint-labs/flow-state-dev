@@ -63,6 +63,13 @@ export const taskWorkerInputSchema = z.object({
   deps: z.record(z.unknown()).optional(),
   attempts: z.number().int().nonnegative(),
   feedback: z.string().optional(),
+  /**
+   * The answer to the question this task's worker parked on, present only on
+   * the attempt that answer re-queued (FIX-1817): `feedback` as the answer
+   * left it. Absent on a first attempt and on a retry after a failure, so a
+   * worker reads its presence as "this turn is the answer".
+   */
+  answer: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
   /**
    * Selected observations from prior tasks in this board run.

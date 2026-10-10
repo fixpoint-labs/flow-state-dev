@@ -9,12 +9,16 @@
  *   it names. Every check a board's gate runs (row, attempt, identity,
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
  *   A task session takes tasks only from the conversation it was opened for.
+ * - **The message** (FIX-1817). The task as filed is the turn's user item,
+ *   so it is part of the session's history; on the attempt an answer to the
+ *   worker's question re-queued, the answer is, labelled as one.
  * - **The ending.** The gate settles the row through the ledger, whose ending
  *   recorder marks the notice owed in that same write (orchestration's notice
  *   module).
  * - **The notice.** After the gate, on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
- *   birth; a task session is one task) goes to the session that dispatched
+ *   birth, and the follow-ups that run after it in the same session, one at
+ *   a time) goes to the session that dispatched
  *   this request, its stamped sender (`{ from: true }`), on the flow the
  *   hand-over named at the session's birth (`filingFlow`), never an address
  *   from the row or the task. Delivery clears the marker in the conversation. A refusal (the
@@ -25,7 +29,7 @@
  *   stays owed, and this session never hears of that refusal.
  */
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, DispatchRefusal } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { clearNotice, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -43,6 +47,17 @@ export function taskMessage(task: TaskWorkerInput): string {
   if (task.context !== undefined && task.context.trim().length > 0) lines.push(`Context:\n${task.context}`);
   if (hasInput(task.input)) lines.push(`Input:\n${JSON.stringify(task.input, null, 2)}`);
   return lines.join("\n\n");
+}
+
+/**
+ * What a task turn says (FIX-1817): the answer to the worker's question on
+ * the attempt that answer re-queued, labelled as one, and the task as filed
+ * on every other attempt. A retry after a failure is handed the task again,
+ * never an answer.
+ */
+export function taskTurnMessage(task: TaskWorkerInput): string {
+  if (task.answer !== undefined) return `Answer to your question:\n\n${task.answer}`;
+  return taskMessage(task);
 }
 
 /** True for a task input worth showing: present, and not an empty object. */
@@ -129,9 +144,18 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   });
 
   const block = sequencer({ name, inputSchema: taskWorkerInputSchema }).step(
-    (task: TaskWorkerInput) => ({ message: taskMessage(task) }),
+    (task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }),
     options.turn
   );
+
+  /**
+   * The turn's message as the session's user item, so the task as filed (or
+   * the answer that re-queued it) is part of the session's history: a later
+   * turn in the session is handed what it was asked. The entry is reached
+   * through the board's claim gate, so its input is the dispatch envelope and
+   * the task is its payload.
+   */
+  const userMessage = (dispatch: TaskDispatchInput) => taskTurnMessage(dispatch.payload as TaskWorkerInput);
 
   /** Send what the session's task owes, to the conversation that filed it. */
   const tell = handler({
@@ -150,21 +174,26 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     // its session names no filing session.
     if (taskId === undefined || partition === undefined || flowKind === undefined) return 0;
     const ref = await conversationLedgerAt(ctx, partition);
-    const row = ref?.get(taskId);
-    if (ref === undefined || row === undefined) return 0;
+    if (ref === undefined) return 0;
     const address = { session: { from: true }, flowKind, from: `${name}-tell` } as const;
-    return sendOwedNotices(ctx, row, address, async (notice, refusal) => {
-      // Any other refusal (the host turned it away, the store was down) may
-      // pass: the marker stays for the conversation's next touch.
-      if (!CONVERSATION_GONE.has(refusal.refused)) return;
-      // The conversation can't be told (it was deleted): the notice is
-      // dropped and said here. The task's ending stands.
-      await ref.patchMetadata(row.id, clearNotice(notice));
-      ctx.emit.message(
-        `The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${refusal.detail}`
-      );
-    });
+    // The session's task and its follow-ups (FIX-1817): each runs here, so
+    // each ending this session recorded is told from here.
+    let sent = 0;
+    for (const row of ref.list().filter((task) => (task.followUpOf ?? task.id) === taskId)) {
+      sent += await sendOwedNotices(ctx, row, address, async (notice, refusal) => {
+        // Any other refusal (the host turned it away, the store was down) may
+        // pass: the marker stays for the conversation's next touch.
+        if (!CONVERSATION_GONE.has(refusal.refused)) return;
+        // The conversation can't be told (it was deleted): the notice is
+        // dropped and said here. The task's ending stands.
+        await ref.patchMetadata(row.id, clearNotice(notice));
+        ctx.emit.message(
+          `The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${refusal.detail}`
+        );
+      });
+    }
+    return sent;
   };
 
-  return { block, from, onCompleted: tell, onErrored: tell };
+  return { block, from, userMessage, onCompleted: tell, onErrored: tell };
 }

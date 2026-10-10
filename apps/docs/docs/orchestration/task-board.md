@@ -226,6 +226,18 @@ A refused answer writes nothing. One park takes one answer: the first accepted a
 
 Whichever drain gets there first claims the task and runs it, exactly as if it had been queued that moment. If another drain claims the task before the one `unparkAndDrain` starts, that drain finds nothing to claim and returns.
 
+### Answering through the task tools
+
+The task tools carry a ninth verb, `answerTask`, also sent as the `answerTask_<board>` action. Whoever can write the board answers a parked task with it:
+
+```ts
+await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+```
+
+It moves the task back to `pending` with the answer, like `unparkAndDrain`, with two differences. It doesn't drain the board in your request: on a Workforce conversation's board the answer starts the board in a request of its own, and on a board of your own you drain it afterwards. And the claim that follows isn't charged against the task's `maxAttempts`. The next attempt gets the answer as `input.answer`, which a retry after a failure never has. `answerTask` declines a task that isn't parked, and one parked for a person's turn, writing nothing.
+
+The worker's side is `parkOnQuestion({ question })`. It parks the task the worker's own turn is running, never one named on input, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
+
 ### What the mode requires
 
 Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws, naming the problem and the change to make:
@@ -401,6 +413,8 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 ```
 
 The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
+
+A task keeps its session for its whole life. If its worker parks it on a question, the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there. On a Workforce conversation's board you can also file a follow-up task with `followUpOf`, which runs in the same session. The finished task itself never changes.
 
 ### Sending a task to a flow chosen per task
 
@@ -802,7 +816,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 ## Changing tasks from outside a run
 
-Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the eight task tools a model can hold, as actions any caller of the flow can run:
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the nine task tools a model can hold, as actions any caller of the flow can run:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";

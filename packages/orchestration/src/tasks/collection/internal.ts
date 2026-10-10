@@ -98,6 +98,7 @@ export function buildInitialTask<TInput, TOutput>(
     input: init.input,
     labels: init.labels,
     metadata: init.metadata,
+    ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
     ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
@@ -123,7 +124,7 @@ export function readAbandonments(task: Task): number {
 
 /**
  * How many times this row re-entered after a person's turn stopped its worker
- * (FIX-1690). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
+ * (FIX-1690), or after an answer to its question (FIX-1817). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
  */
 export function readTurnReentries(task: Task): number {
   return task.turnReentries ?? 0;
@@ -139,21 +140,24 @@ export function parkPatch(
   feedback: string | undefined,
   forTurn: boolean | undefined
 ): Partial<Task> {
-  return { feedback, parkedForTurn: forTurn === true ? true : undefined };
+  return { feedback, parkedForTurn: forTurn === true ? true : undefined, answered: undefined };
 }
 
 /**
  * The fields `unpark` writes besides the status. Clears the lease, the claim
- * coordinate and the turn mark; a row that was parked for a turn counts one
- * more turn re-entry, so the claim that follows is not charged (FIX-1690).
+ * coordinate and the turn mark. A row that was parked for a turn (FIX-1690),
+ * or one re-queued by an answer to its question (`answer`, FIX-1817), counts
+ * one more turn re-entry, so the claim that follows is not charged; an answer
+ * also marks `feedback` as the answer (`answered`) for the next attempt.
  */
-export function unparkPatch(task: Task, feedback: string | undefined): Partial<Task> {
+export function unparkPatch(task: Task, feedback: string | undefined, answer = false): Partial<Task> {
   return {
     feedback: feedback ?? undefined,
     leaseUntil: undefined,
     claimedBy: undefined,
     parkedForTurn: undefined,
-    ...(task.parkedForTurn === true ? { turnReentries: readTurnReentries(task) + 1 } : {}),
+    answered: answer ? true : undefined,
+    ...(task.parkedForTurn === true || answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
   };
 }
 

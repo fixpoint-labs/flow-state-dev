@@ -346,7 +346,7 @@ await help.sendAction(
 );
 ```
 
-These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same eight as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
 
 Either way, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
 
@@ -385,6 +385,49 @@ const run = await workforce.findWorkerSession({ worker: "licenses", taskId, fili
 ```
 
 Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a post to the same worker in this conversation still lands in the session where that delegate works your posts. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
+
+### When a task stops on a question
+
+A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It parks the task on its question instead of guessing. The conversation hears it, with the question, and nothing runs while it waits.
+
+Answer it from the conversation:
+
+```ts
+await coordinator.sendAction(
+  "answerTask_tasks",
+  { taskId, answer: "Use eu-west." },
+  { sessionId: session.id },
+)
+```
+
+The coordinator has the same verb as its `answerTask` tool, so when you answer it in chat it passes the answer on. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
+
+An answer doesn't use up the task's retries, and the task can ask again. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one.
+
+A task handed to a delegate by a coordinator that is waiting for it (`waitForResponse`) can't stop on a question. Its delegate answers with what it has, or fails.
+
+### After a task finishes
+
+A finished task's session stays open. To ask it about the work, send a message to its worker in that session:
+
+```ts
+const run = await workforce.findWorkerSession({ worker: "researcher", taskId, filingSessionId })
+await researcher.sendAction("run", { message: "Which sources did you rule out?" }, { sessionId: run.id })
+```
+
+It answers from what it did. The task itself doesn't change: a finished task stays finished.
+
+To build on the work, file a follow-up task that names it:
+
+```ts
+await coordinator.sendAction(
+  "addTask_tasks",
+  { goal: "Now write it up for the team", followUpOf: taskId },
+  { sessionId: session.id },
+)
+```
+
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. The task it names has to be finished, its session works one task at a time, and a follow-up doesn't take an assignee.
 
 ## Making your own flow a delegate
 

@@ -10,7 +10,7 @@ build on each other:
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
 - **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
-  plus `taskTools`, the eight tools a model uses to plan on a task board.
+  plus `taskTools`, the nine tools a model uses to plan on a task board.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -377,7 +377,7 @@ failure retries the board may authorize across every task). The creation caps ta
 positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
 
-`taskToolActions(board)` returns the eight task tools over `board` as a flow `actions`
+`taskToolActions(board)` returns the nine task tools over `board` as a flow `actions`
 map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
 character outside `[a-zA-Z0-9_-]` into `_` (`cancelTask_todos`). Spread it into
 `defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
@@ -708,13 +708,13 @@ refused when it loads; give the work to workers on a task board instead.
 
 ### Task tools
 
-`taskTools` are the eight tools a model uses to plan on a task board: `addTask`,
+`taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-and `listTasks`. `createTaskToolsCapability(resolver, roster?)` points them at a
+`listTasks`, and `answerTask`. `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
 context, read on each call that checks an assignee, for a board whose team changes
-while it is in use. `taskToolActions` exposes the same eight as flow
+while it is in use. `taskToolActions` exposes the same nine as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
@@ -758,10 +758,31 @@ task's current status does not permit is a recoverable tool result too, not a
 throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
-the eight tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
-`illegal_status_transition`, and `terminal_task_write_declined` — a coordinator
+`illegal_status_transition`, `terminal_task_write_declined`, and the question
+and follow-up refusals above — a coordinator
 rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+
+`answerTask({ taskId, answer })` answers a task parked on its worker's question:
+the task goes back to `pending` with the answer, its next attempt gets it as
+`input.answer`, and the claim that follows isn't charged against `maxAttempts`.
+It declines a task that isn't parked (`not_parked_on_question: …`), one parked for
+a person's turn, and a finished one (`terminal_task_write_declined: …`). It
+doesn't drain the board; the board's own ref decides what starts it.
+
+`addTask` takes `followUpOf` to file new work on a finished task: the follow-up
+is a new row naming that task's root, with its worker, so a hand-off can run it in
+the same session. It refuses an `assignee` beside it
+(`follow_up_takes_no_assignee`), a task that hasn't finished
+(`follow_up_of_unfinished`), and a session that still has an unfinished task
+(`session_has_unfinished_task`), all before anything is filed.
+
+A handed-off worker gets `parkOnQuestion({ question })` from
+`createParkOnQuestion({ resolve })`: it parks the row the running task turn
+holds (its claim, or the row whose run link names this session and request),
+never one named on input, and `offered(ctx)` says whether the turn gets the
+tool (a task turn on a running row that wasn't filed with `waitForResponse`).
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`

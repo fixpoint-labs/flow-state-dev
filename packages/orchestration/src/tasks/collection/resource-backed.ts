@@ -799,6 +799,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
               return {
                 feedback: error,
+                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -858,6 +859,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // being parked behind the attempt that already ended it. `ifAllowed` is
       // forced on that path only, the way `unpark` forces its own fence.
       const forTurn = options?.forTurn === true;
+      const fenced = forTurn || options?.fromRunning === true;
       // A park its holder marks `quiet` asks nobody anything: the ending
       // recorders are told so. A park for a person's turn is quiet on its own.
       return transitionRef(
@@ -865,8 +867,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "parked",
         "review_requested",
         () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
-        forTurn ? { ...options, ifAllowed: true } : options,
-        forTurn ? "in_progress" : undefined,
+        fenced ? { ...options, ifAllowed: true } : options,
+        fenced ? "in_progress" : undefined,
         options?.quiet === true
       );
     },
@@ -883,7 +885,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "pending",
         "resumed",
-        (task) => unparkPatch(task as Task, feedback) as Partial<Task<TInput, TOutput>>,
+        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
       );

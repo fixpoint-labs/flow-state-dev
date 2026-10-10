@@ -119,7 +119,7 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
     ["a durable host with no sweeper", { durable: true, router: false }, false],
     ["a host with no durable execution", { durable: false, router: true }, false]
   ] as const) {
-    it(`${offered ? "offers" : "does not offer"} it on ${label}; the eight tools are the eight either way`, async () => {
+    it(`${offered ? "offers" : "does not offer"} it on ${label}; the task tools are the same either way`, async () => {
       const { model, seen } = stepModel([finalAnswer]);
       const flow = toolFlow(model);
       const state = await host(flow, options);
@@ -129,6 +129,7 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
         // D1: waiting adds no tool.
         expect(names).toEqual([
           "addTask",
+          "answerTask",
           "assignTask",
           "blockTask",
           "cancelTask",
@@ -137,7 +138,7 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
           "listTasks",
           "updateTask"
         ]);
-        const base = ["assignee", "deps", "goal", "input", "metadata", "priority"];
+        const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority"];
         expect(addTaskFields(seen)).toEqual(offered ? [...base, "timeoutMs", "waitForResponse"].sort() : base);
       } finally {
         await state.dispose();
