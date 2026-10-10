@@ -297,7 +297,10 @@ async function loadDom() {
 describe("a project view (V8: BR-12, BR-18)", () => {
   beforeAll(async () => {
     const env = await builtinEnvironments["happy-dom"].setup(globalThis, {});
-    dom = { ...(await loadDom()), teardown: () => env.teardown(globalThis) };
+    dom = { ...(await loadDom()), teardown: async () => {
+        await env.teardown(globalThis);
+      },
+    };
   });
   afterAll(async () => {
     await dom?.teardown();

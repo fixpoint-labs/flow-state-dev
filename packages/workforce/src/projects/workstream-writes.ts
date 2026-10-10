@@ -41,6 +41,7 @@
  */
 
 import { dispatcher, dispatchHandleSchema, handler, router, sequencer } from "@flow-state-dev/core";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { DispatchRefusedError, type ActionConfig, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { MAX_DELEGATES } from "../delegates/delegate-keys";
@@ -620,22 +621,24 @@ async function updateEntry(
     );
   }
   const { report, objectives, ...fields } = changes;
-  // The status the write that landed replaced: each retry recomputes from the
-  // state it is handed, so the last one read is the one written over.
-  let before = entry.state.status;
-  await retryOnConflict(() =>
-    entry.updateState((state) => {
-      before = state.status;
-      const at = nowIso();
-      const signed = withWrittenBy(ctx, {});
-      return withWrittenBy(ctx, {
-        ...state,
-        ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
-        ...(objectives === undefined ? {} : { objectives: nextObjectives(state.objectives, objectives, at, signed.writtenBy) }),
-        updatedAt: at
-      });
-    })
-  );
+  // The status the write that landed replaced, as that write's own outcome:
+  // each retry recomputes from the state it is handed.
+  const before =
+    (await retryOnConflict(() =>
+      updateStateWith(entry, (state) => {
+        const at = nowIso();
+        const signed = withWrittenBy(ctx, {});
+        return {
+          state: withWrittenBy(ctx, {
+            ...state,
+            ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
+            ...(objectives === undefined ? {} : { objectives: nextObjectives(state.objectives, objectives, at, signed.writtenBy) }),
+            updatedAt: at
+          }),
+          result: state.status
+        };
+      })
+    )) ?? entry.state.status;
   if (report !== undefined) await entry.writeContent(report);
   return { workstream: viewOf(address, owner, entry.state), before };
 }
