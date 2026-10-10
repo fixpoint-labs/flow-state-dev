@@ -257,7 +257,9 @@ export function createSeatSkillsReader(
     const assembled: InitialSkill[] = [];
     for (const [name, { paths, skills }] of sources) {
       if (paths.length === 1) {
-        assembled.push(skills[0]!);
+        // Cloned per seat, like the reports: the cached record is every seat's,
+        // and one caller editing its copy must not edit the others'.
+        assembled.push(structuredClone(skills[0]!));
         continue;
       }
       errors.push({

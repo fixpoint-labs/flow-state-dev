@@ -113,15 +113,20 @@ describe("readWorkforce — shared skill levels", () => {
     expect(reportedUnder("org/skills/review")).toEqual(["qa.tester"]);
   });
 
-  it("gives each worker its own error entries, so one worker's list is not another's", async () => {
+  it("gives each worker its own records, so editing one worker's never edits another's", async () => {
+    await writeSkill("org/skills", "house-style");
     await writeSkill("org/skills", "picky", "description: picks its own scope\nscope: team");
     await writeWorker("teams/qa/workers/a");
     await writeWorker("teams/qa/workers/b");
 
-    const { skillErrors } = await readWorkforce(root);
+    const { workers, skillErrors } = await readWorkforce(root);
 
     const [first, second] = skillErrors.map((e) => e.errors[0]!);
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
+
+    const [a, b] = workers.map((w) => w.skills![0]!);
+    a.skillMd = "edited by one caller";
+    expect(b.skillMd).toMatch(/Do the house-style thing/);
   });
 });
