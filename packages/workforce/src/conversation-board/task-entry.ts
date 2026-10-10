@@ -38,7 +38,12 @@
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import { clearNotice, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import {
+  clearNotice,
+  type TaskClaimTicket,
+  type TaskCollectionRef,
+  type TaskWorkerInput
+} from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
@@ -116,14 +121,81 @@ function filingFlowOf(ctx: BlockContext): string | undefined {
  */
 const CONVERSATION_GONE: ReadonlySet<DispatchRefusal> = new Set(["session-not-found", "session-not-addressable"]);
 
-/** What a flow's `work` entry is built from. */
-export interface WorkerTaskEntryOptions {
+/**
+ * The claim the gate verified for the task a `block` entry runs: the ledger
+ * the row was read from, and its partition (a conversation's
+ * `filingSessionId`; absent on an unpartitioned list). Server-supplied, from
+ * the ticket the gate minted off the verified row, never from the dispatch or
+ * the task's input.
+ */
+export interface WorkerTaskClaim {
+  readonly collectionId: string;
+  readonly partition?: string;
+}
+
+/** What a `block` entry's block is handed: the task as the board packed it, and the claim it runs under. */
+export type WorkerTaskBlockInput = TaskWorkerInput & { readonly claim: WorkerTaskClaim };
+
+/** What a flow's `work` entry is built from: a `turn` or a `block`, exactly one. */
+export type WorkerTaskEntryOptions = {
   /** Names the entry's blocks. */
   readonly name: string;
-  /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
-  readonly turn: BlockDefinition<any, any>;
   /** Mailbox task lists the entry also takes tasks from, by minted id. */
   readonly mailboxLists?: readonly string[];
+} & (
+  | {
+      /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
+      readonly turn: BlockDefinition<any, any>;
+      readonly block?: never;
+    }
+  | {
+      /**
+       * A block that takes the task itself ({@link WorkerTaskBlockInput}), for
+       * a flow whose work isn't one message in and one answer out, such as a
+       * coding run. Its output is the task's result.
+       */
+      readonly block: BlockDefinition<any, any>;
+      readonly turn?: never;
+    }
+);
+
+/**
+ * The ledger resolver a `work` entry's gate uses for a conversation's board,
+ * and the one a harness manager takes for boards it resolves per claim: the
+ * conversation ledger at `partition`, at the running user's scope, and only
+ * for the conversation the running task session was opened for. `undefined`
+ * for any other ledger, a missing partition, or another conversation's.
+ *
+ * @param ledgerId The ledger the claim names.
+ * @param ctx The running block's context. Its flow must declare the
+ *   conversation ledger (`workerTaskEntry` installs it).
+ * @param partition The partition the claim names.
+ */
+export async function conversationLedgers(
+  ledgerId: string,
+  ctx: BlockContext,
+  partition: string | undefined
+): Promise<TaskCollectionRef | undefined> {
+  if (ledgerId !== CONVERSATION_LEDGER_ID) return undefined;
+  // A task session works only the conversation it was opened for.
+  if (partition === undefined || filingPartitionOf(ctx) !== partition) return undefined;
+  return conversationLedgerAt(ctx, partition);
+}
+
+/**
+ * The claim the gate put on its state, as a `block` entry hands it on. The
+ * entry's block runs in the gate's step and declares no state of its own, so
+ * the nearest stateful sequencer is the gate.
+ */
+function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
+  const ticket = ctx.sequencer?.state?.currentClaim as TaskClaimTicket | undefined;
+  if (ticket === undefined) {
+    throw new Error(`"${entry}" runs only behind its claim gate, and found no claim the gate verified.`);
+  }
+  return {
+    collectionId: ticket.collectionId,
+    ...(ticket.partition === undefined ? {} : { partition: ticket.partition })
+  };
 }
 
 /**
@@ -132,6 +204,12 @@ export interface WorkerTaskEntryOptions {
  */
 export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const { name } = options;
+  if (options.turn !== undefined && options.block !== undefined) {
+    throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, not both.`);
+  }
+  if (options.turn === undefined && options.block === undefined) {
+    throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, the block that does the task's work.`);
+  }
   const lists = new Set(options.mailboxLists ?? []);
   const resources = {
     ...conversationLedgerResources,
@@ -142,11 +220,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: async (ledgerId, ctx, partition) => {
-      if (ledgerId === CONVERSATION_LEDGER_ID) {
-        // A task session works only the conversation it was opened for.
-        if (partition === undefined || filingPartitionOf(ctx) !== partition) return undefined;
-        return conversationLedgerAt(ctx, partition);
-      }
+      if (ledgerId === CONVERSATION_LEDGER_ID) return conversationLedgers(ledgerId, ctx, partition);
       return lists.has(ledgerId) && partition === undefined ? resolveMailboxBoard(ctx, ledgerId) : undefined;
     },
     uses: [defineCapability({ name: `${name}-ledgers`, resources })],
@@ -157,14 +231,20 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
 
   // A task whose pieces its session already filed (a retry, or a takeover
   // after a crash) runs no turn: it parks on them again. An answer to the
-  // worker's question always runs the turn (FIX-1817).
-  const block = sequencer({ name, inputSchema: taskWorkerInputSchema })
-    .stepIf(
-      async (task: TaskWorkerInput, ctx) => task.answer !== undefined || !(await hasPieces(ctx as never, task.taskId)),
-      (task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }),
-      options.turn
-    )
-    .step(parkOnPieces);
+  // worker's question always runs the turn (FIX-1817). A `block` is handed
+  // the task and the claim the gate verified; a `turn`, the task's message.
+  const runs = async (task: TaskWorkerInput, ctx: unknown) =>
+    task.answer !== undefined || !(await hasPieces(ctx as never, task.taskId));
+  const base = sequencer({ name, inputSchema: taskWorkerInputSchema });
+  const block = (
+    options.block !== undefined
+      ? base.stepIf(
+          runs,
+          (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx as never, name) }),
+          options.block
+        )
+      : base.stepIf(runs, (task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!)
+  ).step(parkOnPieces);
 
   /**
    * The turn's message as the session's user item, so the task as filed (or
