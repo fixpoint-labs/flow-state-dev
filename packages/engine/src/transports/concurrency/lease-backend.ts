@@ -23,10 +23,12 @@
  * pushed wake is worth having there, it belongs on the public contract.
  *
  * `planQueueWait` is the arbiter's answer to "not my turn, now what?" for a
- * backend with no in-process wake, and `holdLeasePlace` is how a process keeps
- * a place it holds. Both are exported for an adapter's worker, which waits by
- * requeueing its job rather than holding a slot and renews the place of the
- * job it runs, and must reach the same decisions the engine would.
+ * backend with no in-process wake, `planDeferWait` its answer to "the key is
+ * not free, now what?" for a `defer` run, and `holdLeasePlace` is how a
+ * process keeps a place it holds. All three are exported for an adapter's
+ * worker, which waits by requeueing its job rather than holding a slot and
+ * renews the place of the job it runs, and must reach the same decisions the
+ * engine would.
  */
 
 import { ConcurrencyLeaseLostError, ConcurrencyQueueTimeoutError } from "../errors";
@@ -209,23 +211,85 @@ export type QueueWaitStep =
  * check — a caller that restarts it keeps the backoff at its base. A worker
  * that waits by requeueing its job carries both on the job. `random` defaults
  * to `Math.random`.
+ *
+ * `budgetMs` defaults to the `queue` budget. `Infinity` is the wait of a
+ * `defer` run that ran out of patience and lined up behind the runs on its
+ * key: it backs off the same way and never times out.
  */
 export function planQueueWait(input: {
   key: string;
   waitedMs: number;
   attempt: number;
+  budgetMs?: number;
   random?: () => number;
 }): QueueWaitStep {
-  const remaining = QUEUE_WAIT_TIMEOUT_MS - input.waitedMs;
+  const budgetMs = input.budgetMs ?? QUEUE_WAIT_TIMEOUT_MS;
+  const remaining = budgetMs - input.waitedMs;
   if (remaining <= 0) {
     return {
       kind: "timeout",
-      error: new ConcurrencyQueueTimeoutError(input.key, QUEUE_WAIT_TIMEOUT_MS)
+      error: new ConcurrencyQueueTimeoutError(input.key, budgetMs)
     };
   }
-  const ceiling = Math.min(QUEUE_WAIT_CAP_MS, QUEUE_WAIT_BASE_MS * 2 ** Math.min(input.attempt, 20));
-  const jittered = Math.max(QUEUE_WAIT_MIN_MS, (input.random ?? Math.random)() * ceiling);
-  return { kind: "wait", delayMs: Math.min(Math.round(jittered), remaining) };
+  return { kind: "wait", delayMs: Math.min(recheckDelayMs(input.attempt, input.random), remaining) };
+}
+
+/**
+ * How long a waiting `defer` run yields to `hold` runs that start after it,
+ * by default: the `queue` wait budget. See `planDeferWait`.
+ */
+export const DEFER_PATIENCE_MS = QUEUE_WAIT_TIMEOUT_MS;
+
+/** One step of a `defer` run that has not claimed its key yet. */
+export type DeferWaitStep =
+  /**
+   * Claim the key if nothing holds or waits on it (`take` with `ifEmpty`).
+   * If something does, check again in `retryInMs`, or sooner when a wake
+   * says the key emptied, but not past `patienceLeftMs`.
+   */
+  | { kind: "claim-if-free"; retryInMs: number; patienceLeftMs: number }
+  /**
+   * Out of patience: take a place at the back of the key's line and wait for
+   * its turn with no budget (`planQueueWait` with `budgetMs: Infinity`), so
+   * newer `hold` runs no longer delay it.
+   */
+  | { kind: "line-up" };
+
+/**
+ * Decide what a `defer` run that has not claimed its key does next. The one
+ * definition of the `defer` wait: the engine's arbiter waits by it in
+ * process, and a queue worker that waits by requeueing its job reaches the
+ * same decisions from the wait it carries on the job.
+ *
+ * `waitedMs` counts from the run's first claim attempt, and `attempt` counts
+ * attempts made so far, from 0, as in `planQueueWait`. `patienceMs` defaults
+ * to {@link DEFER_PATIENCE_MS}.
+ */
+export function planDeferWait(input: {
+  waitedMs: number;
+  attempt: number;
+  patienceMs?: number;
+  random?: () => number;
+}): DeferWaitStep {
+  const patienceLeftMs = (input.patienceMs ?? DEFER_PATIENCE_MS) - input.waitedMs;
+  if (patienceLeftMs <= 0) return { kind: "line-up" };
+  return {
+    kind: "claim-if-free",
+    retryInMs: Math.min(recheckDelayMs(input.attempt, input.random), patienceLeftMs),
+    patienceLeftMs
+  };
+}
+
+/**
+ * How long a waiter on a backend with no in-process wake sleeps before its
+ * next check: exponential backoff from a short base to a cap of a few
+ * seconds, with full jitter. `attempt` counts checks made so far, from 0.
+ * `planQueueWait` clamps this to its budget; a `defer` wait, which has none,
+ * uses it as is.
+ */
+export function recheckDelayMs(attempt: number, random: () => number = Math.random): number {
+  const ceiling = Math.min(QUEUE_WAIT_CAP_MS, QUEUE_WAIT_BASE_MS * 2 ** Math.min(attempt, 20));
+  return Math.round(Math.max(QUEUE_WAIT_MIN_MS, random() * ceiling));
 }
 
 /** A place in the in-memory line, with the waiter to wake when it reaches the front. */
@@ -251,6 +315,12 @@ export interface InMemoryLeaseInternals {
    * place back.
    */
   waitForTurn(place: LeasePlace, timeoutMs: number): Promise<void>;
+  /**
+   * Resolve once `key` has no places, at once when it has none now, or when
+   * `signal` fires. The caller re-checks: another request may take the key
+   * between the wake and its next call.
+   */
+  whenFree(key: string, signal?: AbortSignal): Promise<void>;
 }
 
 const inMemoryInternals = new WeakMap<ConcurrencyLeaseBackend, InMemoryLeaseInternals>();
@@ -277,6 +347,8 @@ export function inMemoryInternalsOf(
  */
 export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
   const lines = new Map<string, InMemoryPlace[]>();
+  // Waiters for a key to empty, woken when its last place is given back.
+  const freeWaiters = new Map<string, Set<() => void>>();
   let nextTicket = 0;
 
   const internals: InMemoryLeaseInternals = {
@@ -299,6 +371,9 @@ export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
       line.splice(index, 1);
       if (line.length === 0) {
         lines.delete(key);
+        const waiters = freeWaiters.get(key);
+        freeWaiters.delete(key);
+        waiters?.forEach((wake) => wake());
         return;
       }
       // The front changed: hand the turn straight to whoever now holds it.
@@ -326,6 +401,23 @@ export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
           // Don't keep the event loop alive solely for a queued wait.
           (timer as { unref?: () => void }).unref?.();
         }
+      });
+    },
+
+    whenFree(key, signal) {
+      if (!lines.has(key) || signal?.aborted) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        const wake = (): void => {
+          const waiters = freeWaiters.get(key);
+          waiters?.delete(wake);
+          if (waiters?.size === 0) freeWaiters.delete(key);
+          signal?.removeEventListener("abort", wake);
+          resolve();
+        };
+        let waiters = freeWaiters.get(key);
+        if (waiters === undefined) freeWaiters.set(key, (waiters = new Set()));
+        waiters.add(wake);
+        signal?.addEventListener("abort", wake, { once: true });
       });
     }
   };

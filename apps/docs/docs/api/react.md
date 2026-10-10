@@ -281,7 +281,7 @@ Each `SuspensionView` has:
 ```ts
 interface SuspensionView {
   item: SuspensionItem;
-  status: SuspensionStatus;   // "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired"
+  status: SuspensionStatus;   // "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired" | "stopped"
   pending: boolean;
   resumeData?: unknown;
   resolvedBy?: string;

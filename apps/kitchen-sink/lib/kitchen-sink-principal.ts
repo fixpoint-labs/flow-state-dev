@@ -8,8 +8,9 @@
  * real organization instead, and `fsdev.config.ts` hands
  * {@link resolveKitchenSinkPrincipal} to `createFlowState` as the host-level
  * fallback. Every flow that declares no resolver of its own resolves through
- * it: the assistant's flow, every seat and every mailbox. That is what makes a
- * hire and the read that follows it land in the same organization.
+ * it: the assistant's flow and every worker flow, the coordinator among them.
+ * That is what makes a hire and the read that follows it land in the same
+ * organization.
  *
  * Two flows keep a resolver of their own. `workforce-admin` authenticates an
  * operator by bearer token, and every token must name
@@ -32,7 +33,7 @@ import type { ResolvePrincipalFn } from "@flow-state-dev/core/types";
 /** The one organization this app runs as. The only one `WORKFORCE_ADMIN_TOKENS` may name. */
 export const KITCHEN_SINK_ORG_ID = "kitchen-sink";
 
-/** The one user every caller of this app is, including the boot that opens the mailboxes. */
+/** The one user every caller of this app is. */
 export const KITCHEN_SINK_USER_ID = "devuser";
 
 /**

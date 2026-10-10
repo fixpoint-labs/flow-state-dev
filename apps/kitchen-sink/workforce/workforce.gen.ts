@@ -8,16 +8,11 @@
 // this file and the tree disagree. Committed on purpose — a fresh clone has to
 // typecheck before anything has been generated.
 
-import type { BlockDefinition } from "@flow-state-dev/core";
-import block_escalate from "./blocks/escalate";
-
 export const kinds = {};
 
 export const mailboxKinds = {};
 
-export const blocks = {
-  "escalate": block_escalate,
-} satisfies Record<string, BlockDefinition>;
+export const blocks = {};
 
 export const resourceModules = {};
 

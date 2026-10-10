@@ -80,6 +80,9 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
+import { noteAskDeadline } from "../durability/ask-deadlines";
+import { stopSuspendedRequest } from "../durability/stop-suspended";
+import { isAskGate } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -1698,6 +1701,11 @@ async function runActionAttempt<
   const keepHandoff =
     handoff !== undefined &&
     !(handoff.incarnation !== runIncarnation && wasFiredOnlyFenced(handoff.controller));
+  // A handed-over controller this run does not keep leaves the registry, so it
+  // is not left beside the run's own as a second attempt's.
+  if (handoff !== undefined && !keepHandoff) {
+    deregisterAbortController(requestId, handoff.controller);
+  }
   let registered = registerAbortController(
     requestId,
     runIncarnation,
@@ -1797,7 +1805,9 @@ async function runActionAttempt<
   // `interrupted`, never `failed`, since we never crossed the point of no return):
   //
   //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
-  //      the resume stays re-attemptable (its guard requires `pending`).
+  //      the resume stays re-attemptable (its guard requires `pending`). A
+  //      `stopped` gate, or an answered (`submitted`) ask, is never reverted:
+  //      the sweep's re-drive finishes it from the recorded resolution.
   //   2. Both paths: release the continuation lease keyed on this request id —
   //      otherwise it lingers until its 60s TTL and the next resume/continue
   //      attempt 409s even though the request is back to a retryable state.
@@ -1817,7 +1827,17 @@ async function runActionAttempt<
           requestId,
           resumeContextRaw.suspensionId
         );
-        if (suspension !== null) {
+        // Two resolutions stay resolved, and the sweep's re-drive finishes
+        // them (FIX-1816, BR-11a). A stop is terminal (BR-16): whoever stopped
+        // the turn was told it stopped, and reopening it would let a later
+        // answer resume it. An ask's answer comes from its task settling, and
+        // nobody sends it again: reopened, it would be lost and the ask would
+        // time out. A person's approval is reopened, since they resubmit it.
+        const keepsResolution =
+          suspension !== null &&
+          (suspension.status === "stopped" ||
+            (suspension.status === "submitted" && isAskGate(suspension)));
+        if (suspension !== null && !keepsResolution) {
           await provider.suspend({
             ...suspension,
             status: "pending",
@@ -1848,6 +1868,10 @@ async function runActionAttempt<
   // from the replay log — so it can only ever resolve the gate this request
   // actually suspended at.
   let resumeContext: ResumeContext | undefined;
+  // How the gate being resumed was recorded resolved, read with it below. The
+  // audit item reports it: a stopped ask continues with a `submit` action,
+  // but was stopped (FIX-1816).
+  let resumedGateStatus: SuspensionRecord["status"] | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
   try {
@@ -1959,6 +1983,7 @@ async function runActionAttempt<
           requestId,
           resumeContext.suspensionId
         );
+        if (suspension !== null && suspension.status !== "pending") resumedGateStatus = suspension.status;
         if (suspension !== null && suspension.stepIndex >= 0) {
           // The suspension's `blockInstanceId` is the durable sequencer's
           // checkpoint key. In replay mode the request id is unchanged, so the
@@ -2006,7 +2031,7 @@ async function runActionAttempt<
     // rather than leave a client polling forever (FIX-1511). Then clean up
     // the abort controller / heartbeat and rethrow so `finished` rejects.
     await recoverFromPreTransitionFailure();
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     if (!isReplayMode) {
       // The failed record is this run's terminal write; the run's exit
@@ -2063,7 +2088,7 @@ async function runActionAttempt<
       type: "suspension_resume",
       status: "completed",
       suspensionId: resumeContext.suspensionId,
-      resolution: RESUME_ACTION_STATUS[resumeContext.action],
+      resolution: resumedGateStatus ?? RESUME_ACTION_STATUS[resumeContext.action],
       resolvedBy: resumeContext.resumedBy,
       resumeData: resumeContext.data,
       resolvedAt: Date.now(),
@@ -2129,7 +2154,7 @@ async function runActionAttempt<
     }, ctx, { internalSeams, logger });
   } catch (startupError) {
     stopHeartbeatTimer();
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     throw startupError;
   }
 
@@ -2207,6 +2232,10 @@ async function runActionAttempt<
               : undefined
           };
           await provider.suspend(record);
+          // An ask's deadline can bring this host's sweep forward (FIX-1816).
+          if (isAskGate(record) && record.expiresAt !== undefined) {
+            noteAskDeadline(provider, record.expiresAt);
+          }
         }
 
         const suspItem: SuspensionItem = {
@@ -2258,7 +2287,7 @@ async function runActionAttempt<
           durationMs: Date.now() - startedAt
         });
 
-        deregisterAbortController(requestId);
+        deregisterAbortController(requestId, registered);
         // Another run of this request still live in this process keeps the
         // shared registry entry; it deregisters when it ends.
         if (attempt.end()) await registry.deregister(requestId).catch(() => {});
@@ -2281,6 +2310,28 @@ async function runActionAttempt<
           } catch (err) {
             logRuntimeEvent(logger, "warn", "[flow-state] lease release failed on re-suspend", {
               requestId, leaseKey: reSuspendLeaseKey, error: String(err)
+            });
+          }
+        }
+
+        // A stop accepted while this turn was being written parked found it
+        // still running, so it only recorded its intent, and nothing runs now
+        // to read it (FIX-1816). Carry it onto the gate, as a stop of a parked
+        // turn does. After the lease release, which the stop takes.
+        const parkedStop = options.runtimeConfig.requestHost?.parkedStop;
+        if (parkedStop !== undefined) {
+          try {
+            const parked = await options.stores.request.get(requestId);
+            if (
+              parked?.status === "suspended" &&
+              parked.abortRequested === true &&
+              resolveRequestIncarnation(parked) === currentIncarnation
+            ) {
+              await stopSuspendedRequest(parkedStop, parked);
+            }
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a stop recorded while parking was not carried onto the gate", {
+              requestId, error: String(err)
             });
           }
         }
@@ -2560,7 +2611,7 @@ async function runActionAttempt<
 
     // Deregister abort controller and active registry. An unstamped run stays
     // registered, heartbeat stopped, for the stale-request sweep to stamp.
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     if (finalized) {
       await registry.deregister(requestId).catch((err) => {
         logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
@@ -2846,7 +2897,7 @@ async function runActionAttempt<
 
     // Deregister abort controller and active registry. An unstamped run stays
     // registered, heartbeat stopped, for the stale-request sweep to stamp.
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     if (finalized) {
       await registry.deregister(requestId).catch((err) => {
         logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {

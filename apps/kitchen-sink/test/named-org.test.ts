@@ -2,11 +2,10 @@
  * Kitchen-sink runs as one named organization — driven through the app's own
  * `fsdev.config.ts` and the router it builds, not through `runAction`.
  *
- * Every case imports the real config. So the host resolver, the boot's
- * mailbox open and the step that clears a pre-change
- * store's mailboxes are the ones the app ships, and a request goes through
- * route-level authentication exactly as a browser's does. Promoted from the
- * spec POC (`specs/issues/FIX-1500/poc/named-org/`).
+ * Every case imports the real config. So the host resolver is the one the app
+ * ships, and a request goes through route-level authentication exactly as a
+ * browser's does. Promoted from the spec POC
+ * (`specs/issues/FIX-1500/poc/named-org/`).
  *
  * One thing is substituted, below the wiring under test: the model.
  * `KITCHEN_SINK_TEST_MODE=1` makes the config build its model resolver from
@@ -16,25 +15,19 @@
  * Checks, by the spec's ids (`specs/issues/FIX-1500/PLAN.md`), and the red
  * state each was seen in before its green was trusted:
  *
- *   V18 A session on the assistant's flow, with a worker and on a mailbox
- *       binds to `kitchen-sink`, whatever the body says. Red: remove `resolvePrincipal`
- *       from `fsdev.config.ts` — every session binds to `__fsd_default_org__`.
- *   V19 A store written before the app named its organization is not
- *       upgraded: it is wiped (the owner's call on #2159). The boot over one
- *       refuses to start, names every mailbox stored under another
- *       organization, and says to delete the store. The guard only reads: no
- *       mailbox is moved, rebound or deleted. Red: remove the guard in `fsdev.config.ts` — the boot fails with the
- *       bare `mailbox "support.help" could not be opened — Request failed
- *       (403)`, which names neither the cause nor the fix.
+ *   V18 A session on the assistant's flow, with a worker and with the
+ *       coordinator binds to `kitchen-sink`, whatever the body says
+ *       (FIX-1792 BR-25). Red: remove `resolvePrincipal` from
+ *       `fsdev.config.ts` — every session binds to `__fsd_default_org__`.
+ *
+ * V19 (a boot over a store written before the app named its organization
+ * refuses, naming each stored mailbox) and the refusal of a store written
+ * before mailboxes were renamed left with the mailboxes the boot opened
+ * (FIX-1792 S6, D2): the boot opens no session, so it reads none an earlier
+ * store holds, and nothing old is refused by name.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createFilesystemStores, createFlowState, filesystemStores, type FlowState } from "@flow-state-dev/engine";
-import { createSessionClient } from "@flow-state-dev/client";
-import { PRE_RENAME_NAMES, openMailboxes } from "@flow-state-dev/workforce";
+import type { FlowState } from "@flow-state-dev/engine";
 
 type ScriptStep =
   | { toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> }
@@ -69,25 +62,20 @@ type Router = Awaited<ReturnType<FlowState["getRouter"]>>;
 // One boot of the app, from its real config.
 // ---------------------------------------------------------------------------
 
-const cleanups: Array<() => Promise<void>> = [];
-
 afterEach(async () => {
   const hmr = globalThis as { __fsdFlowstate?: FlowState };
   await hmr.__fsdFlowstate?.dispose();
   delete hmr.__fsdFlowstate;
-  while (cleanups.length > 0) await cleanups.pop()!();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
-async function bootApp(options: { dataDir?: string; steps?: ScriptStep[] } = {}) {
+async function bootApp(options: { steps?: ScriptStep[] } = {}) {
   vi.resetModules();
   script.steps = options.steps ?? [{ text: "ok" }];
   vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
-  vi.stubEnv("STORE_TYPE", options.dataDir === undefined ? "memory" : "filesystem");
+  vi.stubEnv("STORE_TYPE", "memory");
   delete process.env.FSDEV_DEFAULT_MODEL;
-  // The config roots the filesystem profile at `<cwd>/.fsdev/data`.
-  if (options.dataDir !== undefined) vi.spyOn(process, "cwd").mockReturnValue(options.dataDir);
   const log: string[] = [];
   const realError = console.error;
   vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
@@ -123,10 +111,6 @@ async function call(
   return { status: res.status, text: await res.text() };
 }
 
-/** An out-of-band handle on a filesystem store: not the booted runtime's. */
-const storeAt = (dataDir: string) =>
-  createFilesystemStores({ rootDir: path.join(dataDir, ".fsdev", "data"), developmentOnly: true });
-
 const json = (text: string) => (text.length > 0 ? JSON.parse(text) : null);
 
 /** Open a session the way the page does: a body `userId`, which a resolver overrides. */
@@ -143,151 +127,37 @@ async function act(router: Router, flowId: string, action: string, sessionId: st
 // ---------------------------------------------------------------------------
 
 describe("V18 · one organization, from the host resolver", () => {
-  it("binds the assistant's flow, a worker's conversation and a mailbox to kitchen-sink, whatever the body says", async () => {
+  it("binds the assistant's flow, a worker's conversation and a conversation with the coordinator to kitchen-sink, whatever the body says", async () => {
     const { router } = await bootApp();
 
     const opens: Array<[string, Record<string, unknown>]> = [
       ["chat-agent", {}],
       ["agent", { state: { workerId: "support.devices" } }],
       ["agent", { state: { workerId: "support.general" } }],
-      ["mailbox", {}],
+      ["coordinator", { state: { workerId: "support.help" } }],
     ];
     for (const [flowId, body] of opens) {
       const opened = await openSession(router, flowId, { orgId: "globex", ...body });
       expect(opened.status, `${flowId}: ${opened.text}`).toBe(201);
       expect(opened.orgId, flowId).toBe(ORG);
     }
-    // And the mailbox the boot itself opened.
-    const help = await call(router, "GET", ["sessions", "support.help"]);
-    expect(help.status, help.text).toBe(200);
-    expect(json(help.text).session.orgId).toBe(ORG);
   });
 
-});
-
-describe("V19 · a store written before the app named its organization", () => {
-  /**
-   * The boot the app ran before it named its organization, for the part that
-   * matters here: the same mailbox kinds and the same mailbox open, through a
-   * router with no resolver, so every mailbox session lands in the
-   * development organization.
-   */
-  async function preChangeBoot(dataDir: string) {
-    const { buildKitchenSinkWorkforce } = await import("@/workforce/hire");
-    const workforce = await buildKitchenSinkWorkforce();
-    const flowstate = createFlowState({
-      flows: Object.fromEntries(workforce.mailboxFlows.map((flow) => [flow.id, flow])),
-      stores: { dev: { primary: filesystemStores({ rootDir: path.join(dataDir, ".fsdev", "data") }) } },
-    });
-    const router = await flowstate.getRouter();
-    const client = createSessionClient({
-      fetcher: async (input, init) => {
-        const url = new URL(String(input), "http://kitchen-sink.local");
-        const segments = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-        const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
-        return router[method](new Request(url, init), { params: { path: segments } });
-      },
-    });
-    await openMailboxes(workforce.mailboxes, { client, userId: "devuser" });
-    await flowstate.dispose();
-    return workforce.mailboxes.map((mailbox) => mailbox.id).sort();
-  }
-
-  it("refuses to boot, names every stale mailbox and the fix, and moves no mailbox", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-named-org-"));
-    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
-    const mailboxIds = await preChangeBoot(dataDir);
-    expect(mailboxIds.length).toBeGreaterThan(0);
-
-    const boot = bootApp({ dataDir });
-    await expect(boot).rejects.toThrow(/written before kitchen-sink ran as organization "kitchen-sink"/);
-    await expect(boot).rejects.toThrow(/Delete the store and restart: .*remove \.fsdev\/data/);
-    const message = await boot.catch((error: Error) => error.message);
-    for (const id of mailboxIds) expect(message).toContain(`"${id}" (organization "${DEFAULT_ORG_ID}")`);
-
-    // Nothing was migrated or deleted: every mailbox is still where the old boot left it.
-    // (The guard only reads. The boot step before it still writes its per-organization
-    // roster report, as it does on every boot.)
-    const store = storeAt(dataDir);
-    for (const id of mailboxIds) expect((await store.session.get(id))?.orgId, id).toBe(DEFAULT_ORG_ID);
+  it("binds a specialist's session for the coordinator's post to kitchen-sink too", async () => {
+    const { router, runtime } = await bootApp();
+    const opened = await openSession(router, "coordinator", { orgId: "globex", state: { workerId: "support.help" } });
+    expect(opened.status, opened.text).toBe(201);
+    const posted = await act(router, "coordinator", "run", opened.id!, { message: "a post naming nobody" }, { orgId: "globex" });
+    expect(posted.status, posted.text).toBe(200);
+    // Best fit cannot place it, so the fallback takes it, in a session the post's conversation started.
+    let delegate: { orgId?: string } | undefined;
+    for (let i = 0; i < 200 && delegate === undefined; i++) {
+      const sessions = await runtime.stores.session.list({ flowId: "agent", parentage: "all" });
+      delegate = sessions.find((s) => s.parentSessionId === opened.id);
+      if (delegate === undefined) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(delegate, "the fallback's session").toBeDefined();
+    expect(delegate!.orgId).toBe(ORG);
   });
 
-  it("boots over the same location once the store is wiped", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-named-org-"));
-    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
-    await preChangeBoot(dataDir);
-    await rm(path.join(dataDir, ".fsdev", "data"), { recursive: true, force: true });
-
-    const { router } = await bootApp({ dataDir });
-    const help = await call(router, "GET", ["sessions", "support.help"]);
-    expect(help.status, help.text).toBe(200);
-    expect(json(help.text).session.orgId).toBe(ORG);
-  });
-});
-
-/**
- * A store written before mailboxes were renamed is not carried over either.
- * The boot stops before opening anything, names each stale mailbox and what
- * gave it away, and says how to reset, as the organization check above does.
- * It only reads: the old data is still there afterwards.
- *
- * Two marks: a session on the old built-in kind, and a mailbox whose kind
- * never said anything (a custom kind keeps its name) but whose transcript
- * holds a line under the old item name.
- */
-describe("a store written before mailboxes were renamed", () => {
-  const now = Date.now();
-
-  async function seedSession(dataDir: string, flowKind: string) {
-    await storeAt(dataDir).session.set(
-      "support.help",
-      {
-        id: "support.help", flowKind, flowId: flowKind, userId: "devuser", orgId: ORG, state: { members: [], instructions: "" },
-        lineageId: "lin_support.help", version: 0, createdAt: now, updatedAt: now, journal: [],
-      } as never,
-      "absent",
-    );
-  }
-
-  async function seedOldLine(dataDir: string) {
-    await storeAt(dataDir).request.set(
-      "req_old_line",
-      {
-        id: "req_old_line", flowKind: "mailbox", flowId: "mailbox", actionName: "post", userId: "devuser", sessionId: "support.help",
-        orgId: ORG, source: "http", status: "completed", startedAtMs: now, state: {}, lineageId: "lin_req_old_line", version: 0,
-        createdAt: now, updatedAt: now, journal: [],
-        items: [{ id: "item_old_line", type: "component", component: PRE_RENAME_NAMES.postComponent, data: { body: "hi" }, status: "completed", createdAt: now }],
-      } as never,
-      "absent",
-    );
-  }
-
-  async function refusedBoot(dataDir: string) {
-    const boot = bootApp({ dataDir });
-    await expect(boot).rejects.toThrow(/were renamed to mailboxes/);
-    await expect(boot).rejects.toThrow(/Delete the store and restart: .*remove \.fsdev\/data/);
-    return boot.catch((error: Error) => error.message);
-  }
-
-  it("refuses to boot over a session on the old built-in kind, naming the mailbox, and moves nothing", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-pre-rename-"));
-    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
-    await seedSession(dataDir, PRE_RENAME_NAMES.kind);
-
-    const message = await refusedBoot(dataDir);
-
-    expect(message).toContain(`mailbox "support.help" (it is a session on the "${PRE_RENAME_NAMES.kind}" kind)`);
-    expect((await storeAt(dataDir).session.get("support.help"))?.flowKind).toBe(PRE_RENAME_NAMES.kind);
-  });
-
-  it("refuses to boot over a mailbox whose transcript holds a line under the old item name", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-pre-rename-"));
-    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
-    await seedSession(dataDir, "mailbox");
-    await seedOldLine(dataDir);
-
-    const message = await refusedBoot(dataDir);
-
-    expect(message).toContain(`mailbox "support.help" (its transcript holds "${PRE_RENAME_NAMES.postComponent}" items)`);
-  });
 });

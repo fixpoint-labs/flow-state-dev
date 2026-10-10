@@ -16,6 +16,7 @@ import {
   itemToLLMMessages,
   LLM_AUDIENCE_TYPES,
   loadLLMHistory,
+  outputItemToSessionItem,
   selectRequestsByLimit,
 } from "../../src/context/history";
 
@@ -597,5 +598,28 @@ describe("itemToLLMMessages — a tool result over the record limit", () => {
     expect(text).toContain("1258291");
     expect(text).not.toContain("omitted\\\"");
     expect(text).not.toContain("files\\\":");
+  });
+});
+
+describe("outputItemToSessionItem", () => {
+  it("carries a message's role, so a reader of all() can tell the caller's message from the flow's", () => {
+    const user: MessageItem = { ...makeMessage("req1", "hi", 100, 0), role: "user" };
+    const reply = makeMessage("req1", "hello", 101, 1);
+    expect(outputItemToSessionItem(user)).toMatchObject({ role: "user", payload: "hi" });
+    expect(outputItemToSessionItem(reply)).toMatchObject({ role: "assistant", payload: "hello" });
+  });
+
+  it("gives no other item type a role", () => {
+    const component = {
+      id: "c1",
+      type: "component",
+      component: "note",
+      data: {},
+      status: "completed",
+      requestId: "req1",
+      itemIndex: 2,
+      ts: 102,
+    } as unknown as OutputItem;
+    expect(outputItemToSessionItem(component)).not.toHaveProperty("role");
   });
 });

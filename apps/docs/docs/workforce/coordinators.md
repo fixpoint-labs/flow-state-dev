@@ -103,7 +103,7 @@ const help = createClient({ flowKind: session.flowKind, userId, baseUrl });
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
-Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies the coordinator writes itself carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`.
+Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
 A delegate's answer arrives in a request of its own once the delegate's turn ends. To see it, follow the session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), not the `run` request's stream.
 
@@ -112,7 +112,7 @@ A delegate's answer arrives in a request of its own once the delegate's turn end
 | `routing:` | Who gets a post |
 | --- | --- |
 | `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on with its `handOff` tool, to as many delegates as it likes, or answers itself. |
-| `best-fit` | One evaluator call picks the delegate whose note or, failing that, description fits the post best. A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
+| `best-fit` | One evaluator call picks the delegate whose note or, failing that, description fits the post best, reading the post with the conversation's [recent lines](#follow-ups-and-recent-lines). A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
 | `round-robin` | The next delegate in the list after the one your last post went to. |
 | `everyone` | Every delegate. |
 
@@ -125,6 +125,37 @@ Nobody took this post: best fit couldn't place it, and the coordinator's own tur
 ```
 
 `round-robin` and `everyone` say the same when they find no delegate to reach: `Nobody took this post: no delegate in this conversation can be reached.`
+
+### Follow-ups and recent lines
+
+A follow-up often makes sense only after what came before it. Say you ask about your laptop's wifi, `support.devices` answers, and you write back "It sees it. It fails right after the password." Read alone, that looks like a password question for `support.accounts`. Read with the lines before it, best fit can tell it's about the wifi and send it back to `support.devices`.
+
+So every post travels with the conversation's **recent lines**: your posts, the coordinator's own replies, and the delegates' answers that have landed, oldest first, each under who wrote it. Under `best-fit`, the evaluator call reads the post with them, so a follow-up to a delegate's answer can go back to that delegate. The other policies don't route by the lines. Whatever the `routing:`, the delegate that takes a post is shown the same lines just before it, as one message with the `user` role, never as part of its instructions:
+
+```text
+Recent lines in the conversation with support.help before this post, oldest first:
+- user_42: Hi, my laptop won't join the office wifi since this morning.
+- support.devices: Does the laptop see the office network when you pick it?
+```
+
+Each line starts with who wrote it:
+
+| Line by | Named as | Example |
+| --- | --- | --- |
+| You | Your user id | `user_42` |
+| A delegate, in an answer that landed | The delegate's worker id | `support.devices` |
+| The coordinator | The coordinator's worker id | `support.help` |
+
+A coordinator line appears only when the coordinator wrote something in the conversation itself: a reply from its own turn, which runs under `judgment` or when best fit hands it a post nobody else took, or a `Nobody took this post` message. The [routing record](#what-it-records) is never a line.
+
+What a delegate gets:
+
+- **The last 10 lines, at most 4,000 characters in all.** They're counted back from the newest. The line that crosses 4,000 characters is cut short and ends with `…`, and anything older is left out.
+- **This conversation's lines only.** They're read from this conversation's own messages, as far back as the session's history window reaches: its last 50 completed turns, where each post, each answer that lands and each other action on the conversation counts as one. A delegate never sees another conversation's lines.
+- **Shown for one turn, as conversation.** The lines reach the delegate's model as a message beside the post, for the turn that answers it. They carry no more weight than the post itself: a line written like an instruction is read as something said in the conversation, not as part of the delegate's instructions. The delegate's own session keeps the post and its answer, never the lines.
+- **Including an answer that just landed.** A post sent the moment an answer shows up in the conversation is routed and delivered with that answer among its lines.
+
+The first post in a conversation has no lines, so it's routed and delivered alone. A delegate on the built-in `agent` flow shows its model the lines with no changes; a flow of your own shows them [once its generator reads them](#making-your-own-flow-a-delegate).
 
 ## Changing the delegates
 
@@ -265,6 +296,58 @@ export function SupportDesk({ children }: { children: ReactNode }) {
 
 Import names from `@flow-state-dev/workforce/browser` in a client component; the package root is server code. A type-only import from the root, as above, is fine.
 
+## Handing out tasks
+
+A post gets an answer. Some work needs doing instead: a change made, a report written, a run that takes an hour. For that a coordinator files a **task** on its conversation's board, for one of its delegates.
+
+```ts
+await help.sendAction(
+  "addTask_tasks",
+  { goal: "Audit our dependencies' licenses", assignee: "licenses" },
+  { sessionId: session.id },
+);
+```
+
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same eight as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
+
+Either way, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
+
+```json
+{ "ok": false, "error": "unknown_assignee: \"helper\" is not on this board's team. Available: support.devices, licenses. …" }
+```
+
+A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board until you assign it.
+
+`addTask` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts by itself: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over, so one removed or fired in between doesn't run it, and the task fails instead.
+
+### Hearing how it went
+
+The conversation that filed a task hears once when it ends, in a line under the delegate's name:
+
+```text
+Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
+```
+
+It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. When the line arrives, a coordinator that routes by judgment takes a turn to read it and decide what to do next. One with a fixed routing policy shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word.
+
+### Managing tasks
+
+| Action | What it does |
+| --- | --- |
+| `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
+| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id and starts at once |
+| `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
+
+A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, file it again.
+
+To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
+
+```ts
+const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId });
+```
+
+Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a post to the same worker in this conversation still lands in the session where that delegate works your posts. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
+
 ## Making your own flow a delegate
 
 A worker on the built-in `agent` flow can take posts as it is. A [worker flow of your own](./workers-on-disk.md#which-flows-can-run-workers) takes them once it declares the delegated-post entry around its door, the block its `run` action runs. Here `door` and `inputSchema` are that flow's own:
@@ -293,13 +376,34 @@ Then add it to `delegateFlows`. The door is handed `{ message }`, where the mess
 
 `delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
+To show your flow's model the conversation's [recent lines](#follow-ups-and-recent-lines), set the `history` of the generator your door runs to `delegatedPostHistory`, in place of `history: true`:
+
+```ts
+import { generator } from "@flow-state-dev/core";
+import { delegatedPostHistory } from "@flow-state-dev/workforce";
+import { z } from "zod";
+
+const door = generator({
+  name: "research-answer",
+  inputSchema: z.object({ message: z.string() }),
+  model: "openai/gpt-5.4-mini",
+  history: delegatedPostHistory,
+  prompt: "You answer research questions in two or three sentences.",
+  user: (input) => input.message,
+});
+```
+
+It's the session's history, as `history: true` reads it. On a delegated post that came with lines, the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) goes in just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
+
 ## What it won't do
 
 - **Hand a post to another user's worker.** Their workers aren't on your roster, and naming one gets the same answer as a worker that doesn't exist.
 - **Write a change back to the file.** A conversation's delegates are its own.
 - **Stop a delegate at the deadline.** The round closes without it; the delegate's turn runs on.
 - **Recall a post.** Removing a delegate doesn't take back what it was handed.
-- **Pick by a delegate's instructions.** Best fit reads the delegate's note, or else its description, and nothing else.
+- **Pick by a delegate's instructions.** Best fit knows each delegate by its note, or else its description, and nothing else.
+- **Show a delegate another conversation.** A post's recent lines are its own conversation's, and the delegate's model sees them for that one turn.
+- **Let a delegate file tasks of its own.** A task session's `addTask` is refused, from the delegate's tools and from your app alike, with `{ "ok": false, "error": "no_delegation_board" }`.
 
 ## Related pages
 

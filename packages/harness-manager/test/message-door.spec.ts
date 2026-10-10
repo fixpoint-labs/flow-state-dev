@@ -164,6 +164,8 @@ function host(options: {
   holdPrompt?: boolean;
   /** Runs as each attempt's harness starts, before it names a session. */
   atHarnessStart?: () => Promise<void>;
+  /** Durable execution on the host, so a stop can find the attempt parked. */
+  durable?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-door-"));
   dirs.push(dir);
@@ -279,6 +281,7 @@ function host(options: {
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
+    ...(options.durable === true ? { durable: true } : {}),
   } as never);
 
   const runtime = async () =>
@@ -499,12 +502,38 @@ function host(options: {
     };
   };
 
+  // The door's first wait on the stop finds the attempt parked with its gate
+  // already resolved (`already-resolved`: an answer won, and it is resuming);
+  // after that the stop wait runs out, as for an attempt that ignores stops.
+  const resolvedThenExpire = async (attemptRequestId: string): Promise<() => void> => {
+    const stores = (await runtime()).stores;
+    const original = stores.request.setFieldsIfStatus.bind(stores.request);
+    const realNow = Date.now;
+    let asks = 0;
+    stores.request.setFieldsIfStatus = async (id: string, ...rest: unknown[]) => {
+      if (id === attemptRequestId) {
+        asks += 1;
+        if (asks === 2) return { applied: false, status: "suspended" };
+        if (asks === 3) {
+          const offset = 2 * 60_000;
+          Date.now = () => realNow() + offset;
+        }
+      }
+      return original(id, ...(rest as []));
+    };
+    return () => {
+      Date.now = realNow;
+      stores.request.setFieldsIfStatus = original;
+    };
+  };
+
   return {
     act,
     row,
     writeRow,
     failNextRequeue,
     expireStopWait,
+    resolvedThenExpire,
     release: () => release(),
     openSession: () => openSession(),
     openPrompt: () => openPrompt(),
@@ -863,6 +892,28 @@ describe("a run that doesn't stop in time", () => {
     expect(sent.error, messageOf(sent.error)).toBeUndefined();
     expect(sent.output.outcome).toBe("kept");
     expect((await lab.request(sent.requestId))?.status).toBe("completed");
+  }, 60_000);
+});
+
+describe("a stop that finds the attempt resuming from a resolved gate", () => {
+  it("waits for it as for any running attempt, and parks nothing while it runs", async () => {
+    const lab = host({ script: ["ignore-stop", "finished"], durable: true });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    const restore = await lab.resolvedThenExpire(running.run!.requestId);
+
+    let sent;
+    try {
+      sent = await lab.send(ALICE, "when you can");
+    } finally {
+      restore();
+      lab.release();
+    }
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    // Still running when the wait ran out: kept, never parked for the turn.
+    expect(sent.output.outcome).toBe("kept");
   }, 60_000);
 });
 

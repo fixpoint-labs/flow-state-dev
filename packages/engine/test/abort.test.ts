@@ -12,6 +12,7 @@ import {
   defaultBodyUserIdPrincipalResolver
 } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { createParkedStopDeps } from "../src/durability/stop-suspended";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";
 import {
   registerAbortController,
@@ -102,8 +103,9 @@ describe("abort-registry", () => {
       expect(controller.signal.aborted).toBe(true);
     });
 
-    it("does not tag a controller that has since been replaced", () => {
+    it("does not tag a controller that has since left the registry", () => {
       const first = registerAbortController("test-req-1");
+      deregisterAbortController("test-req-1", first);
       const second = registerAbortController("test-req-1", "inc_b");
       tagAbortController("test-req-1", first, "inc_a");
 
@@ -116,6 +118,39 @@ describe("abort-registry", () => {
 
       expect(abortRequest("test-req-1")).toBe(true);
       expect(controller.signal.aborted).toBe(true);
+    });
+  });
+
+  describe("several live attempts under one id", () => {
+    it("fires every attempt's controller", () => {
+      const first = registerAbortController("test-req-1", "inc_a");
+      const second = registerAbortController("test-req-1", "inc_a");
+
+      expect(abortRequest("test-req-1", "inc_a")).toBe(true);
+      expect(first.signal.aborted).toBe(true);
+      expect(second.signal.aborted).toBe(true);
+    });
+
+    it("keeps the other attempt's controller when one attempt deregisters", () => {
+      const first = registerAbortController("test-req-1", "inc_a");
+      const second = registerAbortController("test-req-1", "inc_a");
+      deregisterAbortController("test-req-1", first);
+
+      expect(hasActiveAbortController("test-req-1")).toBe(true);
+      expect(abortRequest("test-req-1")).toBe(true);
+      expect(first.signal.aborted).toBe(false);
+      expect(second.signal.aborted).toBe(true);
+
+      deregisterAbortController("test-req-1", second);
+      expect(hasActiveAbortController("test-req-1")).toBe(false);
+    });
+
+    it("registers a controller it already holds only once", () => {
+      const controller = registerAbortController("test-req-1");
+      registerAbortController("test-req-1", "inc_a", controller);
+      deregisterAbortController("test-req-1", controller);
+
+      expect(hasActiveAbortController("test-req-1")).toBe(false);
     });
   });
 });
@@ -411,6 +446,7 @@ describe("handleAbortRequest", () => {
       const write = stores.request.setFieldsIfStatus.bind(stores.request);
       stores.request.setFieldsIfStatus = async (...args) => {
         const result = await write(...args);
+        deregisterAbortController(REUSED, own);
         await stores.request.delete(REUSED);
         await stores.request.set(
           REUSED,
@@ -1966,6 +2002,78 @@ describe("cross-process abort accepted in the teardown window", () => {
     expect(continued.output).not.toBe("ran past the gate");
     const record = await hookedStores.request.get(requestId);
     expect(record?.status).toBe("aborted");
+  });
+});
+
+describe("a stop accepted in the window before the turn is written parked (FIX-1816)", () => {
+  it("is carried onto the gate when the host can stop a parked turn: it ends aborted, the gate stopped", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const flow = defineFlow({
+      kind: "teardown-window-stop",
+      actions: { run: { inputSchema: z.any(), block: sequencer({ name: "seq", durable: true }).step(gate) } }
+    })({ id: "teardown-window-stop" });
+
+    let intentRecorded = false;
+    const request = Object.create(stores.request) as StoreRegistry["request"];
+    Object.assign(request, {
+      async set(
+        this: StoreRegistry["request"],
+        id: string,
+        value: Parameters<StoreRegistry["request"]["set"]>[1],
+        expectedVersion: Parameters<StoreRegistry["request"]["set"]>[2]
+      ) {
+        if (!intentRecorded && value.status === "suspended") {
+          intentRecorded = true;
+          const accepted = await this.setFieldsIfStatus(id, { abortRequested: true }, ["in_progress"], Date.now());
+          expect(accepted.applied).toBe(true);
+        }
+        return Object.getPrototypeOf(this).set.call(this, id, value, expectedVersion);
+      }
+    });
+    const hookedStores = { ...stores, request };
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const continued: Promise<unknown>[] = [];
+    const runtimeConfig: Parameters<typeof runAction>[0]["runtimeConfig"] = { durabilityProvider: provider };
+    const parkedStop = createParkedStopDeps({
+      provider,
+      stores: hookedStores,
+      // The stop continues the turn, which ends `aborted` through its own run.
+      continueRequest: async (opts) => {
+        const handle = await continueRequest({ ...opts, stores: hookedStores, flowRegistry: registry, runtimeConfig });
+        continued.push(handle.finished);
+        return handle;
+      }
+    });
+    runtimeConfig.requestHost = { parkedStop };
+
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u_teardown_stop",
+      stores: hookedStores,
+      runtimeConfig
+    });
+    const requestId = initial.requestId!;
+    await Promise.all(continued);
+
+    expect(intentRecorded).toBe(true);
+    expect((await hookedStores.request.get(requestId))?.status).toBe("aborted");
+    const [suspension] = await provider.listSuspended({});
+    expect(suspension?.status).toBe("stopped");
   });
 });
 
@@ -3851,17 +3959,20 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
   it("reaches a request running in another process through its heartbeat", async () => {
     const stores = createInMemoryStores();
     const flow = makeStoppableFlow("stop-hook-xproc");
-    const target = await startTarget(runAction, stores, flow, "req_stop_xproc", {
-      sessionId: "sess_stop_xproc"
-    });
 
     // A fresh copy of the engine is a second process: its abort registry has
     // never seen the target's controller, so only the stored intent and the
-    // target's own heartbeat can stop it.
+    // target's own heartbeat can stop it. Loaded before the target starts: on
+    // a loaded machine the load alone can outlast the target's self-complete
+    // window, and the stop would then find it finished.
     vi.resetModules();
     const other = (await import("../src")) as { runAction: Run };
     const otherRegistry = await import("../src/execution/abort-registry");
     expect(other.runAction).not.toBe(runAction);
+
+    const target = await startTarget(runAction, stores, flow, "req_stop_xproc", {
+      sessionId: "sess_stop_xproc"
+    });
     // Precondition: the target's controller is visible here and not there.
     expect(hasActiveAbortController("req_stop_xproc")).toBe(true);
     expect(otherRegistry.hasActiveAbortController("req_stop_xproc")).toBe(false);

@@ -91,7 +91,8 @@ export const TERMINAL_SUSPENSION_STATUSES: readonly SuspensionStatus[] = [
   "submitted",
   "skipped",
   "timed_out",
-  "expired"
+  "expired",
+  "stopped"
 ];
 
 /** True when `status` is a resolved/aged-out (non-pending) suspension status. */

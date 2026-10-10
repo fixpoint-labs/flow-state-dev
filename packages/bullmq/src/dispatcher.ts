@@ -64,6 +64,7 @@ export function createWorkerDispatcher(
             metadata: envelope.metadata,
             requestId: envelope.requestId,
             ...(place !== undefined ? { leasePlace: place } : {}),
+            ...(envelope.leaseTurn != null ? { leaseTurn: envelope.leaseTurn } : {}),
           },
           place !== undefined ? { ...jobOpts, jobId: leaseJobId(place) } : jobOpts
         );

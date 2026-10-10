@@ -70,7 +70,7 @@ import {
   isDefaultBodyUserIdPrincipalResolver
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
-import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
+import type { FlowDispatcher, DispatchEnvelope, LeaseTurn } from "../dispatcher";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
   createInProcessDispatcher,
@@ -448,7 +448,9 @@ export function createInboundTransportHost(
   // dispatcher (BullMQ) runs in another process, so it is arbitrated only when
   // the arbiter's keys are shared with that process: the dispatch takes its
   // place here, the place rides the job, and the worker waits its turn and gives
-  // it back when the run ends (FIX-1634). Over a process-local arbiter it is not
+  // it back when the run ends (FIX-1634). A `hold` job's place has its turn at
+  // once, and a `defer` job takes no place here: its worker claims the key once
+  // it is free (`leaseTurn`, FIX-1836). Over a process-local arbiter it is not
   // arbitrated at all — releasing a key at enqueue would free a `reject` lease
   // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
@@ -762,13 +764,21 @@ export function createInboundTransportHost(
     // caller that does not own the session or request id must not hold, or
     // stand in line on, its key, where every process would honour the place.
     // That refusal, and the backend's own errors, arrive through `accepted`.
+    //
+    // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
+    // it reaches its turn (`leaseTurn`), and its worker carries that out.
     const decision =
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    const upFront = arbiter.arbitratesAcrossProcesses
-      ? undefined
-      : arbiter.admit(decision, requestId);
+    // `hold` and `defer` take their place only once ownership has passed, on
+    // every backend. Neither is refused synchronously (a `defer` over its cap
+    // is refused through the handle), so nothing is lost by waiting, and a
+    // caller who does not own the session never marks its key held or uses
+    // up its defer cap, not even for the moment before the refusal (BP-031).
+    const admitsAfterOwnership =
+      arbiter.arbitratesAcrossProcesses || decision.policy === "hold" || decision.policy === "defer";
+    const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its
     // run, every failure gives it back: the synchronous setup is wrapped below,
     // and each asynchronous chain ends in `releaseHeldAdmission`. A place nobody
@@ -944,13 +954,17 @@ export function createInboundTransportHost(
         const isDispatched =
           envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
 
-        if (isDispatched || (decision.policy === "queue" && decision.key !== undefined)) {
+        // A `defer` run waits for its key like a `queue` run, so it needs the
+        // same discoverable stub, heartbeat and cancel watch while it waits.
+        const waitsForKey =
+          (decision.policy === "queue" || decision.policy === "defer") && decision.key !== undefined;
+        if (isDispatched || waitsForKey) {
           // Registered HERE rather than left to `runAction`, because between this
           // dispatch and the run's own registration the request is real,
           // discoverable, and cancellable by anyone reading the store — and yet
-          // has no controller for `abortRequest` to find. `runAction` re-registers
-          // (overwriting this one) when it actually starts, which is the same
-          // last-write-wins hand-off the enqueue-time record already uses, so this
+          // has no controller for `abortRequest` to find. `runAction` takes it
+          // over when it actually starts (keeping it, or swapping it for a fresh
+          // one), the same hand-off the enqueue-time record already uses, so this
           // adds a window rather than a second registry to keep in sync. The
           // `finally` below removes it on every exit, started or not.
           let queuedAbort = registerAbortController(requestId);
@@ -1173,13 +1187,13 @@ export function createInboundTransportHost(
               // cancelled, or timed out — so the pre-start window cannot leak
               // controllers into a long-lived process. Idempotent with
               // `runAction`'s own deregistration on the path where it did start.
-              deregisterAbortController(requestId);
+              deregisterAbortController(requestId, queuedAbort);
             });
         } else {
           // Nothing is written before the run here (`runAction` writes its own
           // records), so a shared backend's place waits only on ownership.
           const arbitrated =
-            arbiter.arbitratesAcrossProcesses &&
+            admitsAfterOwnership &&
             decision.key !== undefined &&
             decision.policy !== "allow";
           finished = arbitrated
@@ -1259,12 +1273,24 @@ export function createInboundTransportHost(
           .then(async () => {
             entryOwned = true;
             const place = held?.place;
-            const handle = await effectiveDispatcher.dispatch(
-              place === undefined ? dispatchEnvelope : { ...dispatchEnvelope, leasePlace: place }
-            );
+            // A `hold` place has its turn already; a `defer` job holds no place
+            // yet and claims its key once the key is free.
+            const leaseTurn: LeaseTurn | undefined =
+              decision.key === undefined
+                ? undefined
+                : decision.policy === "hold"
+                  ? { kind: "now" }
+                  : decision.policy === "defer"
+                    ? { kind: "when-free", key: decision.key }
+                    : undefined;
+            const handle = await effectiveDispatcher.dispatch({
+              ...dispatchEnvelope,
+              ...(place !== undefined ? { leasePlace: place } : {}),
+              ...(leaseTurn !== undefined ? { leaseTurn } : {})
+            });
             // Enqueued: the place is the job's now, and its worker renews it.
             // Until here this process held it, and the admission renewed it.
-            held?.handOff();
+            held?.handOff(handle.finished);
             return handle;
           })
           // Materialization or the enqueue failed: the job is not running and

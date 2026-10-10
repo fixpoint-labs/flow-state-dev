@@ -22,5 +22,6 @@ export * from "./durable.mts";
 export * from "./model.mts";
 export * from "./specs.mts";
 export * from "./server.mts";
+export * from "./module-patch.mts";
 export * from "./worker-door.mts";
 export * from "./workers.mts";

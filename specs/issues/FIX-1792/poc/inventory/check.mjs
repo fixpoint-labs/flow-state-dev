@@ -86,6 +86,7 @@ const REMOVED_EXPORTS = [
   // S9 · best fit's mailbox wrapper, the wake, post-to-mailbox
   "routeByPurpose", "RouteByPurposeOptions", "wakeMemberSeats", "WakeMemberSeatsOptions", "hearingSeatsById", "reachableSeat",
   "mailboxPostCapability", "MAILBOX_POST_CAPABILITY", "POST_TO_MAILBOX_TOOL", "PostToMailboxInput", "postToMailboxInputSchema",
+  "workerMailboxPostCapability",
   // S9 · the inventory's mailbox and membership rows, devtool's and Shift Manager's readers of them
   "MailboxInventoryRow", "mailboxInventoryRowSchema", "defineMailboxInventoryCollection", "membershipKey",
   "MailboxRow", "MembershipRow", "toMailboxRow", "mailboxesBySeat", "mailboxOf",
@@ -134,6 +135,7 @@ const KEPT_EXPORTS = {
   INVENTORY_REGISTER_SEATS: "the seats inventory stays",
   inventorySeatsRegisteredSchema: "the seats inventory stays",
   inventoryWriterActions: "the seats inventory stays",
+  workerIdOfTurn: "the agent flow's own; it moves out of mailbox-post-capability.ts when S9 removes that file",
 };
 
 /** Where discovery's pinned domain list lives; `--after` requires it without `mailboxes` (S9). */
@@ -157,12 +159,17 @@ const SKIP = (f) =>
  * file becomes a Storefront workstream its lead worker opens; no WORKER.md),
  * `coordinator` (no board, or a board that goes with its feature), `removed`
  * (goes with the goal or legs it served). No old file is kept: D2.
+ *
+ * `done` names the PR (or issue) that converted or removed the file. A done
+ * file must be gone from the tree, and the census still counts it, from its
+ * row: `boards`, and `had` for the other keys it carried. So EXPECT stays the
+ * spec's census, whichever PRs have landed.
  */
 const FILES = {
   "apps/kitchen-sink/workforce/teams/support/mailboxes/help/MAILBOX.md":
-    { target: "coordinator", boards: ["escalations"], use: "kitchen-sink's help desk. Its escalations board goes with the escalation feature, removed by the product owner (2026-10-06)" },
+    { done: "P1", had: { boardActions: 1, routing: 1 }, target: "coordinator", boards: ["escalations"], use: "kitchen-sink's help desk. Its escalations board goes with the escalation feature, removed by the product owner (2026-10-06)" },
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire/fixtures/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
-    { target: "session", boards: ["work"], use: "a coordinator hires a worker and files it a task by name" },
+    { done: "FIX-1788, which retired its goal", target: "session", boards: ["work"], use: "a coordinator hires a worker and files it a task by name" },
   "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
     { target: "session", boards: ["triage", "parked"], use: "one worker files a row and another's board runs it; the filer has the task tools through its delegates and files on its own session board; parked is drained by nobody and goes" },
   "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/notices/MAILBOX.md":
@@ -174,17 +181,17 @@ const FILES = {
   "goals/manager-queue-lab/lab/workforce/teams/eng/mailboxes/queue/MAILBOX.md":
     { target: "session", boards: ["work"], use: "the manager files one row per desk; each desk's worker takes only its own" },
   "goals/pentest-lab/lab/refusal-trees/unknown-kind-corrected/teams/pentest/mailboxes/findings/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
+    { done: "P1", target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
   "goals/pentest-lab/lab/refusal-trees/unknown-kind/teams/pentest/mailboxes/findings/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
+    { done: "P1", target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
   "goals/pentest-lab/lab/refusal-trees/unknown-tool-corrected/teams/pentest/mailboxes/findings/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
+    { done: "P1", target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
   "goals/pentest-lab/lab/refusal-trees/unknown-tool/teams/pentest/mailboxes/findings/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
+    { done: "P1", target: "coordinator", boards: [], use: "a refusal tree's mailbox; the refusal is about a worker" },
   "goals/pentest-lab/lab/scenario-trees/unknown-member/teams/pentest/mailboxes/briefing/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "names a member no file declares; it opened and skipped it, and is now refused at load" },
+    { done: "P1", target: "coordinator", boards: [], use: "names a member no file declares; it opened and skipped it, and is now refused at load" },
   "goals/pentest-lab/lab/workforce/teams/pentest/mailboxes/findings/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "one post wakes both declared workers" },
+    { done: "P1", target: "coordinator", boards: [], use: "one post wakes both declared workers" },
   "goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/lab-no-cos/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { target: "session", boards: ["work"], use: "the landing summary counts what waits and runs, in a lab with no chief of staff" },
   "goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/lab/workforce/teams/desk/mailboxes/front/MAILBOX.md":
@@ -192,7 +199,7 @@ const FILES = {
   "goals/shift-manager/it-draws-v2s-look/lab/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { target: "session", boards: ["work"], use: "every screen draws the board's rows in v2's look" },
   "goals/shift-manager/it-sends-a-turn-into-a-seat-session/lab/asker/workforce/teams/desk/mailboxes/front/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a person's line lands in a worker's session" },
+    { done: "P1", target: "coordinator", boards: [], use: "a person's line lands in a worker's session" },
   "goals/shift-manager/it-shows-who-is-on-shift/lab/workforce/teams/eng/mailboxes/desk/MAILBOX.md":
     { target: "session", boards: ["work"], use: "the roster shows the tasks each worker holds; the lead drains it" },
   "goals/shift-manager/it-shows-who-is-on-shift/lab/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
@@ -200,15 +207,15 @@ const FILES = {
   "goals/task-run-link/it-names-the-run-working-each-task/fixtures/workforce/teams/lab/mailboxes/desk/MAILBOX.md":
     { target: "session", boards: ["work"], use: "each handed-off row links the run working it" },
   "goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents/fixtures/workforce/teams/desk/mailboxes/front/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a post wakes each agent member once, never on its own post" },
+    { done: "P1", target: "coordinator", boards: [], use: "a post wakes each agent member once, never on its own post" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/front/MAILBOX.md":
     { target: "removed", boards: [], use: "the pre-rename goal's renamed tree; it goes with the goal, whose refusal is removed (D2)" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/notices/MAILBOX.md":
     { target: "removed", boards: [], use: "the pre-rename goal's mailbox on a kind of its own; it goes with the goal (D2)" },
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/help/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a routed post gets one specialist's answer" },
+    { done: "P1", had: { routing: 1 }, target: "coordinator", boards: [], use: "a routed post gets one specialist's answer" },
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/lounge/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a mailbox without routing behaves as before" },
+    { done: "P1", target: "coordinator", boards: [], use: "a mailbox without routing behaves as before" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
     { target: "workstream", boards: ["work"], use: "the DevTeam builds a feature; the storefront project claims it, and its coding runs find the project through the claim. A Storefront workstream the EM leads and files on" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/triage/MAILBOX.md":
@@ -259,6 +266,14 @@ function frontmatter(text) {
  * Each line is `path: "CLASS · surface · why"`; the surface IDs are PLAN.md's.
  */
 const FILE_CLASS = {
+  "packages/workforce/test/reachable-seat.test.ts": "R · S9 · tests of reachableSeat, removed with the wake",
+  "packages/workforce/test/projects-harness.ts": "E · S9 · the harness registers the mailbox flow",
+  "packages/workforce/src/workers/register.ts": "E · S9 · the hire's mailboxBoards option goes",
+  "packages/workforce/src/best-fit.ts": "E · S9 · a comment names the mailbox's route wrapper, routeByPurpose",
+  "packages/shift-manager/test/devteam-cos-tool-names.test.ts": "E · S7 · the chief of staff loses setWorkstreams",
+  "packages/shift-manager/test/devteam-chief-of-staff-coordinator.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
+  "packages/shift-manager/test/devteam-chief-of-staff-memory.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
+  ".agents/skills/concept-doc/example/CONCEPT.md": "E · S12 · the concept-doc skill's worked example names removed exports; P4 edits it or `--after` fails on it",
   ".omp/extensions/mailbox.ts": "U · — · the agent-mailbox tool's command, not Workforce",
   "apps/docs/docs/client/react.md": "E · S12 · an example opens a session on flowKind \"mailbox\"",
   "apps/docs/docs/devtool/overview.md": "E · S12 · the inventory view's registered-mailboxes row",
@@ -284,22 +299,16 @@ const FILE_CLASS = {
   "apps/docs/docs/workforce/workforce-overview.svg": "E · S12 · the figure draws a MAILBOX.md",
   "apps/kitchen-sink/README.md": "C · S6 · the help desk is a coordinator; the escalation feature goes",
   "apps/kitchen-sink/app/page.tsx": "C · S6 · the page talks to the help coordinator",
-  "apps/kitchen-sink/components/flow-state/chat-assistant.tsx": "E · S6 · renders coordinator-route, not mailbox-route",
+  "apps/kitchen-sink/components/flow-state/chat-assistant.tsx": "E · S9 · with the registry copy it is installed from (upstream first): mailbox-route goes; no coordinator-route item reaches this renderer, the coordinator panel draws messages only",
   "apps/kitchen-sink/components/picked-session-panel.tsx": "C · S6 · the picked conversation is the coordinator's",
   "apps/kitchen-sink/e2e/talk-from-page.spec.ts": "C · S6 · posts through the coordinator; the escalation leg goes",
   "apps/kitchen-sink/e2e/workforce-shell.spec.ts": "C · S6 · the escalations panel goes",
   "apps/kitchen-sink/fsdev.config.ts": "C · S6 · mailbox wiring goes; the coordinator flow is on the list",
   "apps/kitchen-sink/lib/e2e-mock-script.ts": "C · S6 · the scripted replies name the coordinator; the escalation replies go",
-  "apps/kitchen-sink/lib/escalate-control.ts": "R · S6 · the no-filing control goes with the escalation feature",
-  "apps/kitchen-sink/lib/mailbox-landing-control.ts": "C · S6 · a goal control re-expressed on the coordinator, or gone with its leg",
-  "apps/kitchen-sink/lib/mailbox-post-control.ts": "C · S6 · a goal control re-expressed on the coordinator, or gone with its leg",
-  "apps/kitchen-sink/lib/mailbox-route-control.ts": "C · S6 · a goal control re-expressed on the coordinator, or gone with its leg",
-  "apps/kitchen-sink/lib/mailbox-wake-control.ts": "C · S6 · a goal control re-expressed on the coordinator, or gone with its leg",
   "apps/kitchen-sink/lib/models.ts": "E · S6 · a comment names mailbox-route",
   "apps/kitchen-sink/lib/workforce-shell.ts": "C · S6 · the escalations board ref and panel go",
   "apps/kitchen-sink/test/client-imports.test.ts": "E · S6 · MAILBOX_POST_COMPONENT import",
   "apps/kitchen-sink/test/e2e-mock-script.test.ts": "C · S6 · tests",
-  "apps/kitchen-sink/test/escalate.test.ts": "R · S6 · tests of the removed escalate tool",
   "apps/kitchen-sink/test/goal-control.test.ts": "C · S6 · tests; the no-filing control goes",
   "apps/kitchen-sink/test/mailbox-reply.test.ts": "C · S6 · a delegate's answer, not post-to-mailbox",
   "apps/kitchen-sink/test/mailbox-talk.test.ts": "C · S6 · tests",
@@ -309,9 +318,7 @@ const FILE_CLASS = {
   "apps/kitchen-sink/test/picked-session-panel.test.tsx": "C · S6 · tests",
   "apps/kitchen-sink/test/support-desk.test.ts": "C · S6 · the unattended-board warning goes",
   "apps/kitchen-sink/test/workforce-shell.test.ts": "C · S6 · tests",
-  "apps/kitchen-sink/workforce/blocks/escalate.ts": "R · S6 · the escalation feature is removed, not replaced",
   "apps/kitchen-sink/workforce/hire.ts": "C · S6 · mailbox binder calls and the escalate control go",
-  "apps/kitchen-sink/workforce/mailbox-notify.ts": "R · S6 · the mailbox's notify block",
   "apps/kitchen-sink/workforce/teams/support/workers/accounts/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools, with the escalation instruction",
   "apps/kitchen-sink/workforce/teams/support/workers/devices/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools, with the escalation instruction",
   "apps/kitchen-sink/workforce/teams/support/workers/fsd/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools, with the escalation instruction",
@@ -352,7 +359,6 @@ const FILE_CLASS = {
   "packages/shift-manager/test/build-inputs.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/chief-of-staff.test.ts": "E · S8 · workstreams as mailboxes in a fixture",
   "packages/shift-manager/test/columns.test.ts": "E · S8 · tests",
-  "packages/shift-manager/test/devforce-lab-hired-boot.test.ts": "C · S7 · tests",
   "packages/shift-manager/test/devteam-legacy-org.test.ts": "E · S7 · the mailbox session leaves its old-org fixture",
   "packages/shift-manager/test/devteam-pre-rename-store.test.ts": "R · S3 · the pre-rename store check goes with the refusal (D2)",
   "packages/shift-manager/test/devteam-repository-ask.test.ts": "C · S7 · the project's workstream, not a claim",
@@ -380,6 +386,7 @@ const FILE_CLASS = {
   "packages/ui/test/substrate-components-never-raw.test.ts": "E · S9 · tests",
   "packages/workforce/README.md": "E · S12 · the mailbox floor's exports",
   "packages/workforce/src/agent-worker-flow.ts": "E · S9 · taskLists from mailbox boards go",
+  "packages/workforce/src/conversation-board/task-entry.ts": "E · S9 · its mailboxLists option and the mailbox board ledgers go (FIX-1794 P2's task entry)",
   "packages/workforce/src/browser.ts": "E · S9 · browser exports",
   "packages/workforce/src/codegen/discover.ts": "E · S2 · the flows/mailboxes slot goes",
   "packages/workforce/src/codegen/index.ts": "E · S2 · the slot list",
@@ -412,7 +419,6 @@ const FILE_CLASS = {
   "packages/workforce/src/projects/project-writes.ts": "E · S10 · setWorkstreams and claims go",
   "packages/workforce/src/projects/talk-template.ts": "T · — · FIX-1793 removes it with rooms",
   "packages/workforce/src/projects/talk.ts": "T · — · FIX-1793 removes it with rooms",
-  "packages/workforce/src/seat-hire-blocks.ts": "E · S9 · the mailboxBoards hire option",
   "packages/workforce/test/agent-routed-answer.test.ts": "R · S9 · a routed mailbox answer; FIX-1791's delegated post replaces it",
   "packages/workforce/test/agent-worker-history.test.ts": "E · S9 · its wake fixture",
   "packages/workforce/test/agent-worker-mailbox-post.test.ts": "R · S9 · tests of the agent's onMailboxPost entry; FIX-1791 S9's delegated post replaces it",
@@ -451,8 +457,6 @@ const FILE_CLASS = {
   "packages/workforce/test/resources-doors-characterization.test.ts": "E · S1 · mailboxes/ decoy paths",
   "packages/workforce/test/seat-discovery.test.ts": "E · S9 · the mailboxes domain goes",
   "packages/workforce/test/seat-door.test.ts": "E · S9 · the roster's mailboxes field",
-  "packages/workforce/test/seat-hire-capability.test.ts": "E · S9 · the mailboxBoards option",
-  "packages/workforce/test/seat-id.test.ts": "E · S9 · tests",
   "packages/workforce/test/symlink-containment-matrix.test.ts": "E · S1 · tests",
   "packages/workforce/test/wake-member-seats.test-d.ts": "R · S9 · tests of the wake",
   "packages/workforce/test/wake-member-seats.test.ts": "R · S9 · tests of the wake",
@@ -469,6 +473,9 @@ const FILE_CLASS = {
  */
 const GOALS = {
   "goals/README.md": "EDIT · the word, FIX-1796",
+  "goals/lib/workers.mts": "EDIT · the hire's mailboxBoards option goes with S9",
+  "goals/lib/shift-manager.mts": "EDIT · the word, in pendingSeatAsks's doc comment (FIX-1824's move); FIX-1796",
+  "goals/coordinators/hands-each-post-to-its-delegates": "CONVERT · FIX-1791's goal check reads the DevTeam's mailbox boards; it follows the DevTeam in P3 (S7)",
   "goals/agent-discovery/an-orchestrator-routes-a-task-by-asking": "EDIT · a roster literal's mailboxes field",
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
@@ -568,10 +575,23 @@ function run(mode) {
     if (Array.isArray(fm.members) && fm.members.length === 0) census.emptyMembers += 1;
     const row = FILES[f];
     if (!row) { problems.push(`unclassified MAILBOX.md: ${f}`); continue; }
+    if (row.done !== undefined) continue;
     byTarget[row.target] = (byTarget[row.target] ?? 0) + 1;
     if (row.boards.join(",") !== fm.boards.join(",")) problems.push(`boards differ for ${f}: table [${row.boards}] file [${fm.boards}]`);
   }
-  for (const f of Object.keys(FILES)) if (!mailboxes.includes(f) && mode !== "after") problems.push(`listed but not found: ${f}`);
+  for (const [f, row] of Object.entries(FILES)) {
+    if (row.done !== undefined) {
+      // Converted or removed: gone from the tree, and counted from its row.
+      if (mailboxes.includes(f)) problems.push(`marked done (${row.done}) but still a MAILBOX.md: ${f}`);
+      census.files += 1;
+      if (row.boards.length > 0) census.withBoards += 1;
+      census.boards += row.boards.length;
+      for (const [k, n] of Object.entries(row.had ?? {})) census[k] += n;
+      byTarget[row.target] = (byTarget[row.target] ?? 0) + 1;
+      continue;
+    }
+    if (!mailboxes.includes(f) && mode !== "after") problems.push(`listed but not found: ${f}`);
+  }
 
   // Part 2
   const classed = {};

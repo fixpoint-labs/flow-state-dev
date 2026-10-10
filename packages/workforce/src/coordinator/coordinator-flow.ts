@@ -29,6 +29,13 @@
  * (`coordinator-check.ts`), so a fired delegate is skipped and recorded
  * without anyone editing the list.
  *
+ * **The conversation's lines.** When a post opens, its conversation's recent
+ * lines are read once from the conversation's own items, with any answer that
+ * landed while its request is still finishing (`coordinator-lines.ts`): best
+ * fit's call reads the post with them, and every delivery, by any policy,
+ * carries them to the delegate, whose model is shown them for that turn as a
+ * message of the conversation, never as system text (`delegated-post.ts`).
+ *
  * **How a delivery reaches a delegate.** Each delivery is opened in the
  * delivery ledger with a token, then dispatched to the delegate's flow on
  * {@link DELEGATED_POST_ENTRY}, into a session keyed by this conversation and
@@ -89,6 +96,7 @@ import { TASK_SETTLED_ENTRY } from "../conversation-board/notice-delivery";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   TASK_NOTICES_STATE,
+  REPLY_CONCURRENCY,
   conversationBoardStateShape,
   taskSettledEntry
 } from "../conversation-board/task-settled";
@@ -133,6 +141,7 @@ import {
   DELIVERIES_STATE,
   HAND_OFF,
   HOLD_STATE,
+  LANDED_STATE,
   LIST_DELEGATES,
   MAX_DELEGATES,
   REMOVE_DELEGATE,
@@ -142,6 +151,7 @@ import {
   ROUTE_ON_ACTION,
   SET_FALLBACK
 } from "./coordinator-keys";
+import { conversationLineSchema, keepLanded, linesField, readRecentLines } from "./coordinator-lines";
 import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
 import {
   MAX_OPEN_ROUNDS,
@@ -203,6 +213,11 @@ export interface CoordinatorFlowOptions {
   roundDeadlineMs?: number;
 }
 
+/** What best fit's one call is asked. */
+const ROUTE_QUESTION =
+  "Which delegate should answer the post? Read it with the recent lines before it: " +
+  "a post that follows up on a delegate's answer goes to that delegate.";
+
 /** The door's input: what the person says. */
 const doorInputSchema = z.object({ message: z.string() });
 
@@ -220,6 +235,8 @@ const postStateSchema = z.object({
   coordinator: z.string(),
   /** This conversation's id and incarnation, read from its session record when the post opened. */
   filingSessionId: z.string(),
+  /** This conversation's recent lines before this request, read when the post opened. */
+  recent: z.array(conversationLineSchema),
   policy: z.string(),
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
   /** What each hand-off of the judgment turn came to. */
@@ -247,7 +264,9 @@ const deliveryRequestSchema = z.object({
   from: z.string(),
   coordinator: z.string(),
   /** The delivering conversation's id and incarnation, which the delegate's session carries. */
-  filingSessionId: z.string()
+  filingSessionId: z.string(),
+  /** The delivering conversation's recent lines, which the delegate is shown with the post. */
+  recent: z.array(conversationLineSchema)
 });
 
 type DeliveryRequest = z.infer<typeof deliveryRequestSchema>;
@@ -550,7 +569,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           body: delivery.body,
           from: delivery.from,
           coordinator: delivery.coordinator,
-          ...(delivery.deadlineAt === undefined ? {} : { deadlineAt: delivery.deadlineAt })
+          ...(delivery.deadlineAt === undefined ? {} : { deadlineAt: delivery.deadlineAt }),
+          ...linesField(delivery.recent)
         })
       })
     );
@@ -626,7 +646,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const postOf = (ctx: BlockContext): PostState => {
     const post = (ctx.request.state as Record<string, unknown>)[POST_STATE] as PostState | undefined;
     if (post === undefined) throw new Error("No post is being routed in this request.");
-    return post;
+    // A request opened before posts carried their lines, and resumed since, reads as having none (BP-030).
+    return post.recent === undefined ? { ...post, recent: [] } : post;
   };
 
   /** A delegate record as a delivery names it: its worker, and its target when it has one. */
@@ -637,7 +658,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /**
    * A delivery of this request's post to `delegate`, which runs on `flow`:
-   * the post as it stands, or `passed`, the answers this delegate is handed.
+   * the post as it stands, or `passed`, the answers this delegate is handed,
+   * with the conversation's recent lines either way.
    */
   const deliveryOf = (
     post: PostState,
@@ -652,7 +674,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     body: passed.body,
     from: passed.from,
     coordinator: post.coordinator,
-    filingSessionId: post.filingSessionId
+    filingSessionId: post.filingSessionId,
+    recent: post.recent
   });
 
   /** What every record of this request's routing starts with, its note included when it has one. */
@@ -679,6 +702,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       ...opening,
       coordinator: worker.id,
       filingSessionId: await filingSessionIdOf(ctx.session),
+      // Read once, from the conversation's own items, and carried to best fit and every delivery.
+      recent: readRecentLines(ctx.session, {
+        person: ctx.session.identity.userId ?? "",
+        coordinator: worker.id,
+        coordinatorNames: turn.answerNames
+      }),
       policy: config.routing,
       defaults: { delegates: [...defaults.delegates], ...(defaults.fallback === undefined ? {} : { fallback: defaults.fallback }) },
       handOffs: []
@@ -795,7 +824,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const handOffTool = sequencer({
     name: HAND_OFF,
     description:
-      "Hand the post you are reading to one of this conversation's delegates, by its worker id. Its answer lands in this conversation under its name. Each delegate takes a post once.",
+      "Hand the post you are reading to one of this conversation's delegates, by its worker id. Its answer lands in this conversation under its name. A delegate takes each post once per round; a new message is a new post, even when it repeats an earlier ask.",
     inputSchema: handOffInputSchema
   })
     .step(handOffCheck)
@@ -933,6 +962,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     /** Each reachable delegate, by its label, with the flow it runs on. */
     byLabel: z.record(z.object({ delegate: deliveryDelegateSchema, flow: z.string() })),
     skipped: z.array(routedDelegateSchema),
+    /** The conversation's recent lines before the post, oldest first. */
+    recent: z.array(conversationLineSchema),
     post: z.object({ from: z.string(), text: z.string() })
   });
 
@@ -977,19 +1008,24 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         },
         byLabel,
         skipped,
+        recent: post.recent,
         post: { from: post.from, text: post.body }
       };
     }
   });
 
+  /**
+   * Best fit's one call: which delegate answers the post, read with the
+   * conversation's recent lines before it. Its state is `{ recent, post }`,
+   * each line and the post as `{ from, text }`; a scripted evaluation reads
+   * that shape.
+   */
   const routeEvaluator = evaluator({
     name: COORDINATOR_ROUTE,
     model: options.routeModel,
     inputSchema: bestFitCaseSchema,
-    state: (bestFit: BestFitCaseValue) => ({ post: bestFit.post }),
-    questions: (bestFit: BestFitCaseValue) => ({
-      member: choice("Which delegate should answer the post?", bestFit.ladder.options)
-    })
+    state: (bestFit: BestFitCaseValue) => ({ recent: bestFit.recent, post: bestFit.post }),
+    questions: (bestFit: BestFitCaseValue) => ({ member: choice(ROUTE_QUESTION, bestFit.ladder.options) })
   });
 
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
@@ -1482,6 +1518,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           return {
             state: {
               [DELIVERIES_STATE]: claimed.ledger,
+              // Kept before the answer is said, so a post routed while this request finishes still reads it.
+              [LANDED_STATE]: keepLanded(state[LANDED_STATE], {
+                requestId: ctx.request.identity.id,
+                from: claimed.delivery.delegate.worker,
+                text: answer.body,
+                at: now
+              }),
               ...(releases ? { [HOLD_STATE]: null } : {}),
               ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds })
             },
@@ -1587,7 +1630,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...turn.bound,
     session: {
       ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      serverOwned: [...COORDINATOR_SERVER_OWNED, TASK_NOTICES_STATE]
+      serverOwned: [...COORDINATOR_SERVER_OWNED, TASK_NOTICES_STATE],
+      // Every answer, routing and pass-on writes this one record at once; a pass-on that
+      // runs out of retries fails after its round has closed, and its answers are lost.
+      cas: { maxRetries: 8 }
     },
     resources: { ...resources, ...(turn.bound.resources ?? {}), ...conversationBoard.resources },
     isolateUserState: options.agent?.isolateUserState ?? false,
@@ -1596,7 +1642,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // `addTask_tasks` and the rest, checked against its delegates.
       ...conversationBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
-      run: { inputSchema: doorInputSchema.strict(), block: door, userMessage: (input: DoorInput) => input.message },
+      run: {
+        inputSchema: doorInputSchema.strict(),
+        block: door,
+        userMessage: (input: DoorInput) => input.message,
+        concurrency: REPLY_CONCURRENCY
+      },
       [ADD_DELEGATE]: {
         inputSchema: addInputSchema,
         block: addDelegateAction,
@@ -1623,8 +1674,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         // Here only, never in `actions`: an answer, and a report of none, name their delivery.
         [DELEGATE_ANSWER_ACTION]: { inputSchema: delegatedAnswerSchema, block: delegateAnswer, concurrency: "queue" },
         [DELEGATE_MISSED_ACTION]: { inputSchema: delegatedMissSchema, block: delegateMissed, concurrency: "queue" },
-        // Only this conversation's own code sends answers back out.
-        [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry },
+        // Only this conversation's own code sends answers back out. A round's
+        // routing can run the coordinator's turn, so it is a reply too.
+        [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY },
         // A filing's wake: one run of this conversation's board, as its owner.
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: conversationBoard.runBoard },
         // A task this conversation filed ended: its notice.

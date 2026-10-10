@@ -1,35 +1,28 @@
 /**
- * Goal check: a person who opens kitchen-sink finds one support mailbox and
- * four specialists named for what they handle. A question gets one
- * specialist's answer in the mailbox; a case that needs a person is filed onto
- * `escalations` and the specialist says so.
+ * Goal check: a person who opens kitchen-sink finds one support coordinator
+ * and four specialists named for what they handle, and a question posted to
+ * the coordinator gets one specialist's answer, under the specialist's name.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
- * Three legs, in one real browser against the app's PRODUCTION build (built
+ * Two legs, in one real browser against the app's PRODUCTION build (built
  * here, never assumed), on its scripted model, keyless:
  *
- *   roster  the rail lists one mailbox and the four specialists, each of the
- *           one seat kind and with its description; no other mailbox, seat or
- *           kind, and no "Hire another" anywhere.
+ *   roster  the rail's Coordinators section lists one kind, `coordinator`,
+ *           opening on the person's conversation with `support.help`; its
+ *           Workers section lists one kind, `agent`. The roster panel lists
+ *           exactly `support.help` on `coordinator` and the four specialists
+ *           on `agent`, each with its description; no "Hire another" anywhere.
  *   answer  post a question routed to the seat, with a fresh token; after a
- *           reload the mailbox shows one line under the seat's name answering
- *           it, carrying the answer marker and not the token.
- *   file    post a case that needs a person; after a reload the mailbox shows
- *           one line under the seat's name saying it filed (`file:line`), and
- *           the team panel's board shows exactly one row carrying the token
- *           (`file:row`).
+ *           reload the conversation shows one line under the seat's name
+ *           answering it, carrying the answer marker and not the token.
  *
- * And the boot still warns that `escalations` is unattended, as the only
- * such board (`warning`).
- *
- * `GOAL_LIVE=1`, with a key: the same build on real models. Three posts that
- * plainly need a person are each filed once, two that don't file nothing, and
- * each gets one answer line.
+ * `GOAL_LIVE=1`, with a key: the same build on real models and the app's own
+ * route. Each of five posts gets exactly one answer line, under one of the
+ * four specialists' names.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/run.mts
- * Controls: GOAL_CONTROL=no-landing  (must FAIL at answer and file:line, and nothing else)
- *           GOAL_CONTROL=no-filing   (must FAIL at file:row, and nothing else)
+ * Controls: GOAL_CONTROL=no-landing  (must FAIL at answer, and nothing else)
  * Held-out: GOAL_SEAT=<another specialist>
  * Live:     GOAL_LIVE=1 with AI_GATEWAY_API_KEY
  */
@@ -38,12 +31,13 @@ import type { Page } from "playwright";
 import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
+  coordinatorConversation,
   open,
   openShell as openShellAt,
   panel,
   rail,
   readUntil,
-  row,
+  showCoordinator,
   startKitchenSink,
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
@@ -56,32 +50,27 @@ interface Specialist {
 
 interface Fixture {
   port: number;
-  mailbox: { kind: string; id: string; board: string };
-  seatKind: string;
+  coordinator: { kind: string; id: string; description: string };
+  workerKind: string;
   specialists: Specialist[];
   seat: string;
   answer: { marker: string; replyMarker: string };
-  file: { marker: string; replyMarker: string };
-  live: { needsAPerson: string[]; answerable: string[] };
+  live: { posts: string[] };
 }
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const SEAT = process.env.GOAL_SEAT ?? fixture.seat;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const LIVE = process.env.GOAL_LIVE === "1";
-const MAILBOX = fixture.mailbox.id;
+const COORDINATOR = fixture.coordinator.id;
+/** The name the page draws the person's own lines under. */
+const PERSON = "devuser";
 
-/**
- * The assertions each control must redden, and only those. `answer`, `roster`
- * and `warning` are legs; the file leg is two assertions, graded apart:
- * `file:line` (the seat's line says it filed) and `file:row` (the row).
- */
+/** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
-  // A text answer no longer lands: the answer, and the line that says "filed".
-  // The row still lands, so the filing itself is not what the leg measures.
-  "no-landing": ["answer", "file:line"],
-  // The tool says it filed and files nothing: the row only.
-  "no-filing": ["file:row"],
+  // The specialist hears the post and answers, and its answer never comes
+  // back to the conversation.
+  "no-landing": ["answer"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -96,31 +85,35 @@ if (!fixture.specialists.some((s) => s.id === SEAT)) {
 
 type Drawn = Array<{ label: string; text: string }>;
 
-/** Open the mailbox's panel. */
-async function openMailbox(page: Page, origin: string): Promise<void> {
+/** Open the person's conversation with the coordinator in the panel. */
+async function openHelpDesk(page: Page, origin: string): Promise<void> {
   await openShellAt(page, origin);
-  await open(page, fixture.mailbox.kind);
-  await row(page, MAILBOX).click();
-  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
+  await showCoordinator(page, COORDINATOR);
 }
 
-/** Post a line from the mailbox's panel, and wait until it shows. */
+/** Post a line from the conversation's panel, and wait until it shows. */
 async function post(page: Page, line: string): Promise<void> {
-  await panel(page).getByLabel("Post to this mailbox").fill(line);
+  await panel(page).getByLabel("Post to this coordinator").fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
-  await readUntil(() => panel(page).getByTestId("mailbox-line").filter({ hasText: line }).count(), (n) => n > 0, 10_000);
+  await readUntil(() => panel(page).getByTestId("coordinator-line").filter({ hasText: line }).count(), (n) => n > 0, 10_000);
 }
 
-type Line = { author?: string; body: string };
+type Kept = { author?: string; body: string };
 
-/** The mailbox's lines as the server keeps them. Not graded: used only to wait. */
-async function keptLines(page: Page, origin: string): Promise<Line[]> {
-  const res = await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/state?include_items=true&item_types=component&limit=1000`);
-  const items = ((await res.json()) as { items?: Array<{ component?: string; data?: Line }> }).items ?? [];
-  return items.filter((item) => item.component === "mailbox-post").map((item) => item.data!);
+/** The conversation's lines as the server keeps them. Not graded: used only to wait. */
+async function keptLines(page: Page, origin: string): Promise<Kept[]> {
+  const id = await coordinatorConversation(page, origin, COORDINATOR);
+  if (id === undefined) return [];
+  const res = await page.request.get(`${origin}/api/flows/sessions/${id}/state?include_items=true&item_types=message&limit=1000`);
+  const items =
+    ((await res.json()) as { items?: Array<{ role?: string; agentName?: string; content?: Array<{ text?: string }> }> }).items ?? [];
+  return items.map((item) => ({
+    ...(item.agentName === undefined ? {} : { author: item.agentName }),
+    body: (item.content ?? []).map((part) => part.text ?? "").join(""),
+  }));
 }
 
-/** Wait until a seat's line follows the person's line carrying `mark`, or the time is up. Not graded. */
+/** Wait until a specialist's line follows the person's line carrying `mark`, or the time is up. Not graded. */
 async function waitAnswered(page: Page, origin: string, mark: string, ms: number): Promise<void> {
   await readUntil(
     () => keptLines(page, origin),
@@ -133,7 +126,7 @@ async function waitAnswered(page: Page, origin: string, mark: string, ms: number
 }
 
 /**
- * Reload, reopen the mailbox, and read it as drawn.
+ * Reload, reopen the conversation, and read it as drawn.
  *
  * The transcript mounts before its lines load, so this waits until the
  * person's lines carrying `marks` are drawn: every grade counts from them.
@@ -142,37 +135,30 @@ async function waitAnswered(page: Page, origin: string, mark: string, ms: number
  */
 async function drawnAfterReload(page: Page, origin: string, marks: string[]): Promise<Drawn> {
   await page.reload();
-  await openMailbox(page, origin);
+  await openHelpDesk(page, origin);
   return await readUntil(
     () =>
       panel(page)
-        .getByTestId("mailbox-line")
+        .getByTestId("coordinator-line")
         .evaluateAll((els) =>
           els.map((el) => ({
-            label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
-            text: el.textContent ?? "",
+            label: el.querySelector('[data-testid="coordinator-line-label"]')?.textContent ?? "",
+            text: el.querySelector('[data-testid="coordinator-line-body"]')?.textContent ?? "",
           })),
         ),
-    (drawn) => marks.every((mark) => drawn.some((l) => l.label === "devuser" && l.text.includes(mark))),
+    (drawn) => marks.every((mark) => drawn.some((l) => l.label === PERSON && l.text.includes(mark))),
     10_000,
   );
 }
 
 /** The lines drawn after the person's line carrying `mark`, up to the person's next line. */
 function answersTo(drawn: Drawn, mark: string): Drawn | undefined {
-  const at = drawn.findIndex((l) => l.label === "devuser" && l.text.includes(mark));
+  const at = drawn.findIndex((l) => l.label === PERSON && l.text.includes(mark));
   if (at === -1) return undefined;
   const rest = drawn.slice(at + 1);
-  const next = rest.findIndex((l) => l.label === "devuser");
+  const next = rest.findIndex((l) => l.label === PERSON);
   return next === -1 ? rest : rest.slice(0, next);
 }
-
-/** The rows the team panel draws on the mailbox's board: each row's text. */
-const boardRows = (page: Page) =>
-  page
-    .getByTestId(`board-${MAILBOX}.${fixture.mailbox.board}`)
-    .locator("li[data-task-id]")
-    .evaluateAll((rows) => rows.map((r) => r.textContent ?? ""));
 
 /** A rail section's kind rows, by name. */
 const sectionKinds = (page: Page, section: string) =>
@@ -181,77 +167,79 @@ const sectionKinds = (page: Page, section: string) =>
     .locator("button[data-kind]")
     .evaluateAll((bs) => bs.map((b) => b.getAttribute("data-kind") ?? ""));
 
+/** The roster panel as drawn: each worker's id, its flow and its description. */
+const rosterRows = (page: Page) =>
+  page
+    .locator('[data-testid="roster"]:visible [data-testid="roster-worker"]')
+    .evaluateAll((rows) =>
+      rows.map((row) => ({
+        id: row.getAttribute("data-worker-id") ?? "",
+        flow: row.querySelector(":scope > div > span:nth-of-type(2)")?.textContent ?? "",
+        description: row.querySelector(":scope > p:not([role])")?.textContent ?? "(none drawn)",
+      })),
+    );
+
 // ---------------------------------------------------------------------------
 // The legs
 // ---------------------------------------------------------------------------
 
 type Fail = (leg: string, line: string) => void;
 
-/** roster: the rail as drawn. */
-async function gradeRoster(page: Page, origin: string, fail: Fail, evidence: string[]): Promise<void> {
+/** roster: the rail and the roster panel as drawn. */
+async function gradeRoster(page: Page, origin: string, failLeg: Fail, evidence: string[]): Promise<void> {
   await openShellAt(page, origin);
-  const mailboxKinds = await sectionKinds(page, "Mailboxes");
-  if (JSON.stringify(mailboxKinds) !== JSON.stringify([fixture.mailbox.kind])) {
-    fail("roster", `the rail's Mailboxes section lists the kinds ${JSON.stringify(mailboxKinds)} (want ["${fixture.mailbox.kind}"])`);
+  let clean = true;
+  const fail: Fail = (leg, line) => {
+    clean = false;
+    failLeg(leg, line);
+  };
+
+  const coordinatorKinds = await sectionKinds(page, "Coordinators");
+  if (JSON.stringify(coordinatorKinds) !== JSON.stringify([fixture.coordinator.kind])) {
+    fail("roster", `the rail's Coordinators section lists the kinds ${JSON.stringify(coordinatorKinds)} (want ["${fixture.coordinator.kind}"])`);
   }
-  const mailboxes: string[] = [];
-  for (const kind of mailboxKinds) {
+  const conversations: string[] = [];
+  for (const kind of coordinatorKinds) {
     await open(page, kind);
-    const leaf = rail(page).locator(`ul[data-leaf="${kind}"]`);
-    await readUntil(() => leaf.locator("[data-session-id]").count(), (n) => n > 0, 10_000);
-    mailboxes.push(...(await leaf.locator("[data-session-id]").evaluateAll((bs) => bs.map((b) => b.getAttribute("data-session-id") ?? ""))));
+    const section = rail(page).getByRole("list", { name: "Coordinators" });
+    await readUntil(() => section.locator("[data-session-id]").count(), (n) => n > 0, 10_000);
+    conversations.push(...(await section.locator("[data-session-id]").evaluateAll((bs) => bs.map((b) => b.textContent ?? ""))));
   }
-  if (JSON.stringify(mailboxes) !== JSON.stringify([MAILBOX])) {
-    fail("roster", `the rail lists the mailboxes ${JSON.stringify(mailboxes)} (want ["${MAILBOX}"])`);
-  }
-
-  const seatKinds = await sectionKinds(page, "Seats");
-  if (JSON.stringify(seatKinds) !== JSON.stringify([fixture.seatKind])) {
-    fail("roster", `the rail's Seats section lists the kinds ${JSON.stringify(seatKinds)} (want ["${fixture.seatKind}"])`);
-  }
-  // Every seat kind opened, then the seats read once: the section lists them all.
-  for (const kind of seatKinds) await open(page, kind);
-  const listed = rail(page).getByRole("list", { name: "Seats" }).locator("button[data-instance-id]");
-  await readUntil(() => listed.count(), (n) => n > 0, 10_000);
-  const seats = await listed.evaluateAll((bs) => bs.map((b) => b.getAttribute("data-instance-id") ?? ""));
-  const want = fixture.specialists.map((s) => s.id);
-  if (JSON.stringify([...seats].sort()) !== JSON.stringify([...want].sort())) {
-    fail("roster", `the rail lists the seats ${JSON.stringify(seats)} (want ${JSON.stringify(want)})`);
+  if (JSON.stringify(conversations) !== JSON.stringify([COORDINATOR])) {
+    fail("roster", `the rail's Coordinators section opens on the conversations ${JSON.stringify(conversations)} (want ["${COORDINATOR}"])`);
   }
 
-  // Each specialist, opened: its kind and its description, as drawn under its row.
-  const described: string[] = [];
-  for (const specialist of fixture.specialists) {
-    if (!seats.includes(specialist.id)) continue;
-    await open(page, specialist.id);
-    const detail = rail(page).locator(`[data-leaf-detail="${specialist.id}"]`);
-    await detail.waitFor({ timeout: 10_000 });
-    const kind = (await detail.locator("[data-seat-kind]").textContent()) ?? "";
-    const description = (await detail.getByTestId("seat-description").count()) === 1
-      ? ((await detail.getByTestId("seat-description").textContent()) ?? "")
-      : "(none drawn)";
-    if (kind !== fixture.seatKind) fail("roster", `${specialist.id} shows the kind "${kind}" (want "${fixture.seatKind}")`);
-    if (description !== specialist.description) {
-      fail("roster", `${specialist.id} shows the description ${JSON.stringify(description)} (want ${JSON.stringify(specialist.description)})`);
-    } else {
-      described.push(`${specialist.id}: ${JSON.stringify(description)}`);
+  const workerKinds = await sectionKinds(page, "Workers");
+  if (JSON.stringify(workerKinds) !== JSON.stringify([fixture.workerKind])) {
+    fail("roster", `the rail's Workers section lists the kinds ${JSON.stringify(workerKinds)} (want ["${fixture.workerKind}"])`);
+  }
+
+  const rows = await readUntil(() => rosterRows(page), (rs) => rs.length > 0, 10_000);
+  const want = [
+    { id: COORDINATOR, flow: fixture.coordinator.kind, description: fixture.coordinator.description },
+    ...fixture.specialists.map((s) => ({ id: s.id, flow: fixture.workerKind, description: s.description })),
+  ];
+  const ids = rows.map((r) => r.id);
+  if (JSON.stringify([...ids].sort()) !== JSON.stringify(want.map((w) => w.id).sort())) {
+    fail("roster", `the roster panel lists ${JSON.stringify(ids)} (want ${JSON.stringify(want.map((w) => w.id))})`);
+  }
+  for (const w of want) {
+    const drawn = rows.find((r) => r.id === w.id);
+    if (drawn === undefined) continue;
+    if (drawn.flow !== w.flow) fail("roster", `${w.id} shows the flow "${drawn.flow}" (want "${w.flow}")`);
+    if (drawn.description !== w.description) {
+      fail("roster", `${w.id} shows the description ${JSON.stringify(drawn.description)} (want ${JSON.stringify(w.description)})`);
     }
   }
+
   const hireButtons = await page.getByRole("button", { name: "Hire another" }).count();
   if (hireButtons > 0) fail("roster", `the page draws ${hireButtons} "Hire another" button(s) (want none)`);
-  if (described.length === fixture.specialists.length && hireButtons === 0 && mailboxes.length === 1) {
-    evidence.push(`roster: the rail lists ${JSON.stringify(mailboxes)} under "${mailboxKinds.join(",")}" and four "${fixture.seatKind}" seats, ${described.join("; ")}; no "Hire another"`);
+  if (clean) {
+    evidence.push(
+      `roster: the rail lists "${coordinatorKinds.join(",")}" opening on ${JSON.stringify(conversations)} and "${workerKinds.join(",")}"; ` +
+        `the roster panel lists ${rows.map((r) => `${r.id} (${r.flow}): ${JSON.stringify(r.description)}`).join("; ")}; no "Hire another"`,
+    );
   }
-}
-
-/** One answer line under the seat, after the person's line carrying `mark`. */
-function oneLineBySeat(drawn: Drawn, mark: string): { line?: { label: string; text: string }; problem?: string } {
-  const answers = answersTo(drawn, mark);
-  if (answers === undefined) return { problem: `after the reload, no line of the person's carries ${mark}` };
-  if (answers.length !== 1 || answers[0]!.label !== SEAT) {
-    return { problem: `after the reload, the lines answering ${mark} are ${JSON.stringify(answers.map((l) => `${l.label}: ${l.text}`))} (want one, by ${SEAT})` };
-  }
-  return { line: answers[0] };
 }
 
 // ---------------------------------------------------------------------------
@@ -274,82 +262,50 @@ await runGoal(async (failures) => {
 
     // ---- roster ------------------------------------------------------------
     await gradeRoster(page, origin, fail, evidence);
-    // Every other leg posts to the mailbox the roster names. Without that
+    // The answer leg posts to the coordinator the roster names. Without that
     // roster there is nothing to post to, so the verdict is the roster's.
     if (failures.length > 0) return { failures, evidence: evidence.join("; ") };
 
-    // ---- answer and file: two posts, one reload -----------------------------
+    // ---- answer: one post, one reload ----------------------------------------
     const answerToken = `answer-token-a${run}`;
-    const fileToken = `case-token-f${run}`;
-    await openMailbox(page, origin);
+    await openHelpDesk(page, origin);
     await post(page, `[route:${SEAT}] ${fixture.answer.marker} ${answerToken} where is my refund?`);
     await waitAnswered(page, origin, answerToken, 15_000);
-    await post(page, `[route:${SEAT}] ${fixture.file.marker} ${fileToken} the charger caught fire and the desk smells of smoke`);
-    await waitAnswered(page, origin, fileToken, 15_000);
-    // The row is written by the mailbox's own request, a moment after the
-    // dispatch. Let it land before the reload; nothing here is graded.
-    await readUntil(
-      async () => (await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/resources/${MAILBOX}.${fixture.mailbox.board}`)).text(),
-      (body) => body.includes(fileToken),
-      10_000,
-    );
 
-    const drawn = await drawnAfterReload(page, origin, [answerToken, fileToken]);
-
-    const answered = oneLineBySeat(drawn, answerToken);
-    if (answered.problem !== undefined) fail("answer", answered.problem);
-    else if (!answered.line!.text.includes(fixture.answer.replyMarker)) {
-      fail("answer", `${SEAT}'s line ${JSON.stringify(answered.line!.text)} does not carry ${fixture.answer.replyMarker}`);
-    } else if (answered.line!.text.includes(answerToken)) {
-      fail("answer", `${SEAT}'s line hands the post back: ${JSON.stringify(answered.line!.text)}`);
+    const drawn = await drawnAfterReload(page, origin, [answerToken]);
+    const answers = answersTo(drawn, answerToken);
+    if (answers === undefined) {
+      fail("answer", `after the reload, no line of the person's carries ${answerToken}`);
+    } else if (answers.length !== 1 || answers[0]!.label !== SEAT) {
+      fail("answer", `after the reload, the lines answering ${answerToken} are ${JSON.stringify(answers.map((l) => `${l.label}: ${l.text}`))} (want one, by ${SEAT})`);
+    } else if (!answers[0]!.text.includes(fixture.answer.replyMarker)) {
+      fail("answer", `${SEAT}'s line ${JSON.stringify(answers[0]!.text)} does not carry ${fixture.answer.replyMarker}`);
+    } else if (answers[0]!.text.includes(answerToken)) {
+      fail("answer", `${SEAT}'s line hands the post back: ${JSON.stringify(answers[0]!.text)}`);
     } else {
-      evidence.push(`answer: after a reload, ${MAILBOX} shows one line answering ${answerToken}, by ${SEAT}: ${JSON.stringify(answered.line!.text)}`);
+      evidence.push(`answer: after a reload, ${COORDINATOR}'s conversation shows one line answering ${answerToken}, by ${SEAT}: ${JSON.stringify(answers[0]!.text)}`);
     }
 
-    const filed = oneLineBySeat(drawn, fileToken);
-    if (filed.problem !== undefined) fail("file:line", filed.problem);
-    else if (!filed.line!.text.includes(fixture.file.replyMarker)) {
-      fail("file:line", `${SEAT}'s line ${JSON.stringify(filed.line!.text)} does not say it filed (${fixture.file.replyMarker})`);
-    } else {
-      evidence.push(`file: ${SEAT}'s line reads ${JSON.stringify(filed.line!.text)}`);
-    }
-    const rows = await readUntil(() => boardRows(page), (rs) => rs.some((r) => r.includes(fileToken)), 10_000);
-    const mine = rows.filter((r) => r.includes(fileToken));
-    if (mine.length !== 1) {
-      fail("file:row", `after the reload, the team panel's ${fixture.mailbox.board} board holds ${mine.length} rows carrying ${fileToken} (want 1); it shows ${rows.length} rows`);
-    } else {
-      evidence.push(`file: after a reload, the team panel's ${fixture.mailbox.board} board shows ${JSON.stringify(mine[0])}`);
-    }
-
-    // ---- live: real models file what needs a person, and only that ---------
+    // ---- live: real models and the app's own route, one answer per post -----
     if (LIVE) {
       if ((process.env.AI_GATEWAY_API_KEY ?? "") === "") throw new Error("GOAL_LIVE=1 needs AI_GATEWAY_API_KEY");
       server.stop();
       live = await startKitchenSink(fixture.port + 1, { KITCHEN_SINK_TEST_MODE: "" });
-      const posts = [
-        ...fixture.live.needsAPerson.map((text) => ({ text, files: true })),
-        ...fixture.live.answerable.map((text) => ({ text, files: false })),
-      ];
-      await openMailbox(page, live.origin);
-      let before = (await boardRows(page)).length;
-      for (const [i, { text, files }] of posts.entries()) {
+      const specialists = fixture.specialists.map((s) => s.id);
+      for (const [i, text] of fixture.live.posts.entries()) {
         const mark = `(ref live-token-${i}${run})`;
-        await openMailbox(page, live.origin);
+        await openHelpDesk(page, live.origin);
         await post(page, `${text} ${mark}`);
         await waitAnswered(page, live.origin, mark, 120_000);
-        // Let a filing's row land before the reload; not graded.
+        // Let a second, wrong answer land before the reload, if one is coming; not graded.
         await page.waitForTimeout(3_000);
-        const liveDrawn = await drawnAfterReload(page, live.origin, [mark]);
-        const answers = answersTo(liveDrawn, mark) ?? [];
-        const after = (await boardRows(page)).length;
-        const who = answers.map((l) => l.label).join(", ") || "nobody";
-        if (answers.length !== 1) fail("live", `post ${i + 1} has ${answers.length} answer line(s) (want 1): ${JSON.stringify(answers)}`);
-        if (after - before !== (files ? 1 : 0)) {
-          fail("live", `post ${i + 1} (${files ? "needs a person" : "answerable"}) added ${after - before} row(s) to ${fixture.mailbox.board} (want ${files ? 1 : 0}); answered by ${who}: ${JSON.stringify(answers[0]?.text ?? "")}`);
+        const liveAnswers = answersTo(await drawnAfterReload(page, live.origin, [mark]), mark) ?? [];
+        const who = liveAnswers.map((l) => l.label).join(", ") || "nobody";
+        if (liveAnswers.length !== 1 || !specialists.includes(liveAnswers[0]!.label)) {
+          fail("live", `post ${i + 1} has ${liveAnswers.length} answer line(s) by ${who} (want one, by a specialist): ${JSON.stringify(liveAnswers)}`);
         } else {
-          evidence.push(`live ${i + 1}: ${files ? "filed" : "not filed"}, answered by ${who}: ${JSON.stringify(answers[0]?.text ?? "")}`);
+          evidence.push(`live ${i + 1}: answered by ${who}: ${JSON.stringify(liveAnswers[0]!.text)}`);
         }
-        before = after;
       }
     }
   } finally {
@@ -358,16 +314,7 @@ await runGoal(async (failures) => {
     live?.stop();
   }
 
-  // The boot still warns that escalations is unattended, as the only such board.
-  const unattended = [...(server?.log() ?? "").matchAll(/mailbox "([^"]+)" holds board "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`);
-  const unique = [...new Set(unattended)];
-  if (JSON.stringify(unique) !== JSON.stringify([`${MAILBOX}.${fixture.mailbox.board}`])) {
-    fail("warning", `the boot warns these boards are unattended: ${JSON.stringify(unique)} (want only ${MAILBOX}.${fixture.mailbox.board})`);
-  } else {
-    evidence.push(`the boot warns that ${MAILBOX}.${fixture.mailbox.board} is unattended, and no other board`);
-  }
-
-  // A control must redden each assertion it names, and only those.
+  // A control must redden each leg it names, and only those.
   if (CONTROL !== "") {
     const want = EXPECTED[CONTROL]!;
     const legs = new Set(failures.map((f) => /^\[([^\]]+)\]/.exec(f)?.[1] ?? ""));

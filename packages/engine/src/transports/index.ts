@@ -22,6 +22,7 @@ export type {
   DispatchEnvelope,
   FlowDispatchHandle,
   FlowDispatcher,
+  LeaseTurn,
   StreamBridge,
   StreamEvent,
   StreamPublisher,
@@ -30,13 +31,16 @@ export type {
 
 export {
   createInMemoryLeaseBackend,
+  DEFER_PATIENCE_MS,
   holdLeasePlace,
+  planDeferWait,
   planQueueWait,
   type ConcurrencyLeaseBackend,
   type LeasePlaceHold,
   type LeasePlace,
   type LeaseTakeInput,
   type LeaseTakeResult,
+  type DeferWaitStep,
   type QueueWaitStep
 } from "./concurrency/lease-backend";
 
@@ -44,6 +48,7 @@ export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/c
 
 export {
   ConcurrencyLeaseLostError,
+  ConcurrencyDeferLimitError,
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgRequiredError,

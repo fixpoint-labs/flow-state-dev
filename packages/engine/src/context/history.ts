@@ -392,6 +392,7 @@ export function outputItemToSessionItem(item: OutputItem): SessionItem {
     ts: item.ts,
     itemVisibility: item.itemVisibility,
     agentName: item.agentName,
+    ...(item.type === "message" ? { role: (item as MessageItem).role } : {}),
   };
 }
 

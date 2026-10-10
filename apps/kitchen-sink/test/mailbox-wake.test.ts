@@ -1,53 +1,42 @@
 /**
- * A post to `support.help` runs the specialist the route picked once, on this
+ * A post to `support.help` runs the specialist best fit picked once, on this
  * app's own wiring: the real config, the hired roster, and the scripted model
- * and route.
+ * and best-fit evaluation.
  *
- * What is graded is always the seats' own conversations, read back through the
- * same routes the page reads, never the fan-out's output. A seat's mailbox
- * conversation is a dispatch run of the mailbox, so it is listed only with
- * dispatch runs included.
+ * What is graded is always the specialists' own conversations, read back
+ * through the same routes the page reads, never the coordinator's records. A
+ * specialist's session for the person's conversation with `support.help` is a
+ * dispatch run of that conversation, so it is listed only with dispatch runs
+ * included.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1590/BUSINESS-RULES.md`, V3),
- * re-pointed onto the routed roster by FIX-1611, and the red state each was
- * seen in before its green was trusted:
+ * re-pointed onto the routed roster by FIX-1611 and onto the coordinator by
+ * FIX-1792 (BR-8):
  *
- *   BR-1  a post with no author runs the specialist it was routed to once, in
- *         one conversation of its own, the post heard once with one scripted
- *         reply under it, and no other specialist hears it (FIX-1611 BR-4).
- *         Red: the name-only stub (`GOAL_CONTROL=name-only-notify`) runs
- *         nobody; the route taken off (`GOAL_CONTROL=no-route`) runs everyone.
- *   BR-3  a post a seat wrote, through the internal seat entry, runs no seat,
- *         the writer included (FIX-1602's BR-3). A public post that only
- *         claims that seat as `author` still runs the specialist. Red: the
- *         seat mark stripped before the wake (`GOAL_CONTROL=no-author-filter`).
- *   BR-9  a second post lands in the same conversation of the specialist.
- *   BR-10 two posts at once each run exactly once, in that same conversation.
- *   BR-14 the post's own request carries no seat's answer: the wake runs in
- *         the mailbox's hand-off request.
- *   BR-11, BR-12 need a roster this app does not have (a seat in two
- *         mailboxes, a refused wake), so they are held on the factory below,
- *         with a roster built for them.
+ *   BR-1  a post runs the specialist best fit picked once, in one session of
+ *         its own under the person's conversation, the post heard once with
+ *         one scripted reply under it, and no other specialist hears it
+ *         (FIX-1611 BR-4). Red: no flow taking a delegated post
+ *         (`GOAL_CONTROL=no-delivery`) runs nobody; best fit read as
+ *         `everyone` (`GOAL_CONTROL=no-route`) runs everyone.
+ *   BR-3  a specialist's answer runs no specialist, its writer included.
+ *         Red: the coordinator read with `rounds: 1`
+ *         (`GOAL_CONTROL=answers-go-on`).
+ *   BR-9  a second post lands in the same session of the specialist.
+ *   BR-10 two posts at once each run exactly once, in that same session.
+ *   BR-14 the post's own request carries no specialist's answer: the answer
+ *         lands in a request of its own.
  *
- * BR-2 and BR-6 (the name-only line for a member the wake does not run) and
- * BR-4 (a mailbox with no agent member) left with the roster that had such
- * members: every member of `support.help` is an agent, so the notify has no
- * name-only line to give. FIX-1602's fixture host still proves the wake
- * without one.
+ * A post that claims an author is refused at the door: the coordinator takes
+ * the post alone, so there is no author to claim. BR-11 and BR-12 (a seat in
+ * two mailboxes, a refused wake) left with the mailbox's wake; the
+ * coordinator's own suite in `packages/workforce` holds a delegate's session
+ * per conversation and a delivery that fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { z } from "zod";
-import type { FlowState, StoreRegistry } from "@flow-state-dev/engine";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import {
-  MAILBOX_KIND,
-  createWorkerInstallation,
-  mailboxNotifyInputSchema,
-  defineMailboxFlow,
-  hireWorkforce,
-  workerConfigSchema,
-} from "@flow-state-dev/workforce";
+import type { FlowState } from "@flow-state-dev/engine";
+
+import { delegateOfRun } from "@/lib/workforce-shell";
 
 // Each case boots the whole app afresh, and the first import is cold.
 vi.setConfig({ testTimeout: 60_000 });
@@ -55,9 +44,9 @@ vi.setConfig({ testTimeout: 60_000 });
 type Router = Awaited<ReturnType<FlowState["getRouter"]>>;
 
 const USER = "devuser";
-const MAILBOX = "support.help";
+const COORDINATOR = "support.help";
 const SPECIALISTS = ["support.devices", "support.accounts", "support.fsd", "support.general"];
-/** The specialist each post names with `[route:<member>]`, which the scripted route honours. */
+/** The specialist each post names with `[route:<worker>]`, which the scripted evaluation honours. */
 const ROUTED = "support.accounts";
 const OTHERS = SPECIALISTS.filter((seat) => seat !== ROUTED);
 
@@ -90,48 +79,26 @@ async function call(router: Router, method: "GET" | "POST", segments: string[], 
   return { status: res.status, text: await res.text() };
 }
 
-/**
- * Post the way the page's composer does. `author`, when set, is only the
- * caller's claim. It is not a seat's post.
- */
-async function post(router: Router, sessionId: string, body: string, author?: string) {
-  const input = author === undefined ? { body } : { body, author };
-  const res = await call(router, "POST", ["mailbox", "actions", "post"], { userId: USER, sessionId, input });
-  expect(res.status, res.text).toBe(200);
-  return res;
+/** The person's conversation with `support.help`, opened as a session on `coordinator` naming it. */
+async function openConversation(router: Router): Promise<string> {
+  const res = await call(router, "POST", ["coordinator", "sessions"], { userId: USER, state: { workerId: COORDINATOR } });
+  expect(res.status, res.text).toBe(201);
+  return (JSON.parse(res.text) as { session: { id: string } }).session.id;
 }
 
-/**
- * Post the way a seat does: the mailbox's `seatPost` action, which is what
- * marks the line a seat's. `author` is the name on the line.
- */
-async function seatPost(sessionId: string, body: string, author: string) {
-  const flowstate = (globalThis as { __fsdFlowstate?: FlowState }).__fsdFlowstate;
-  if (flowstate === undefined) throw new Error("the app is not booted");
-  const runtime = await flowstate.getRuntime();
-  const mailbox = runtime.registry.get(MAILBOX_KIND);
-  if (mailbox === undefined) throw new Error("the mailbox kind is not registered");
-  const { KITCHEN_SINK_ORG_ID } = await import("@/lib/kitchen-sink-principal");
-  const result = await runAction({
-    source: "internal",
-    orgId: KITCHEN_SINK_ORG_ID,
-    flow: mailbox,
-    actionName: "seatPost",
-    input: { body, author },
-    userId: USER,
-    sessionId,
-    stores: runtime.stores,
-    runtimeConfig: { ...runtime.runtimeConfig },
-  });
-  expect(result.error, JSON.stringify(result.error)).toBeUndefined();
+/** Post the way the page's composer does: the coordinator's door, the post only. */
+async function post(router: Router, sessionId: string, message: string) {
+  const res = await call(router, "POST", ["coordinator", "actions", "run"], { userId: USER, sessionId, input: { message } });
+  expect(res.status, res.text).toBe(200);
+  return res;
 }
 
 type Message = { role: string; text: string };
 type Conversation = { sessionId: string; parentSessionId?: string; messages: Message[] };
 
 /**
- * Every conversation of a worker, dispatch runs included, with its kept
- * messages: the sessions on `agent`'s one copy created naming the worker.
+ * Every session of a worker, dispatch runs included, with its kept messages:
+ * the sessions on `agent`'s one copy created naming the worker.
  */
 async function conversationsOf(router: Router, seat: string): Promise<Conversation[]> {
   const listed = await call(
@@ -158,7 +125,7 @@ async function conversationsOf(router: Router, seat: string): Promise<Conversati
   return out;
 }
 
-/** The conversations of a seat that hold `token`. */
+/** The sessions of a worker that hold `token`. */
 async function holding(router: Router, seat: string, token: string): Promise<Conversation[]> {
   return (await conversationsOf(router, seat)).filter((c) => c.messages.some((m) => m.text.includes(token)));
 }
@@ -181,39 +148,47 @@ async function routedAnswered(router: Router, token: string): Promise<boolean> {
 
 const token = (label: string) => `${label}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-describe("V3 · a post runs the specialist it was routed to once, on the app's own mailbox", () => {
-  it("runs support.accounts once, in a conversation of its own, and nobody else", async () => {
+describe("V3 · a post runs the specialist best fit picked once, on the app's own coordinator", () => {
+  it("runs support.accounts once, in a session of its own under the person's conversation, and nobody else", async () => {
     const router = await bootApp();
+    const conversation = await openConversation(router);
     const mark = token("wake");
     const body = `[route:${ROUTED}] [scenario:wake] ${mark} can someone look at my refund?`;
-    const posted = await post(router, MAILBOX, body);
+    const posted = await post(router, conversation, body);
 
     await until(() => routedAnswered(router, mark), "the routed specialist to answer");
     // Give a wrongly woken specialist time to answer, so its absence is not a race.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const convs = await holding(router, ROUTED, mark);
-    expect(convs, `${ROUTED}'s conversations holding the post`).toHaveLength(1);
+    expect(convs, `${ROUTED}'s sessions holding the post`).toHaveLength(1);
     const [conv] = convs;
-    // A run the mailbox started, not a conversation the person opened.
-    expect(conv!.parentSessionId).toBe(MAILBOX);
+    // A run the person's conversation started, not a conversation the person opened.
+    expect(conv!.parentSessionId).toBe(conversation);
     expect(conv!.messages).toEqual([
-      { role: "user", text: expect.stringContaining(`${USER} in ${MAILBOX}: ${body}`) },
+      { role: "user", text: expect.stringContaining(`${USER}, through ${COORDINATOR}: ${body}`) },
       { role: "assistant", text: expect.stringContaining("[reply:wake]") },
     ]);
     // Only the routed specialist heard it.
     for (const seat of OTHERS) expect(await holding(router, seat, mark), seat).toEqual([]);
-    // BR-14: the post's own request streamed no seat's answer.
+    // BR-14: the post's own request streamed no specialist's answer.
     expect(posted.text).not.toContain("[reply:wake]");
+    // The run the page lists under the conversation names its delegate by the
+    // key the page's working row reads (`delegateOfRun`).
+    const children = await call(router, "GET", ["sessions", conversation, "children"]);
+    expect(children.status, children.text).toBe(200);
+    const runs = (JSON.parse(children.text) as { children: Array<{ id: string; topic?: string }> }).children;
+    expect(runs.filter((run) => run.id === conv!.sessionId).map(delegateOfRun)).toEqual([ROUTED]);
   });
 
-  it("lands a second post in the same conversation of the specialist", async () => {
+  it("lands a second post in the same session of the specialist", async () => {
     const router = await bootApp();
+    const conversation = await openConversation(router);
     const first = token("first");
     const second = token("second");
-    await post(router, MAILBOX, `[route:${ROUTED}] [scenario:wake] ${first}`);
+    await post(router, conversation, `[route:${ROUTED}] [scenario:wake] ${first}`);
     await until(() => routedAnswered(router, first), "the first answer");
-    await post(router, MAILBOX, `[route:${ROUTED}] [scenario:wake] ${second}`);
+    await post(router, conversation, `[route:${ROUTED}] [scenario:wake] ${second}`);
     await until(() => routedAnswered(router, second), "the second answer");
 
     const a = await holding(router, ROUTED, first);
@@ -223,174 +198,56 @@ describe("V3 · a post runs the specialist it was routed to once, on the app's o
     expect(b[0]!.messages.filter((m) => m.role === "user")).toHaveLength(2);
   });
 
-  it("runs two posts that arrive together once each, in the one conversation", async () => {
+  it("runs two posts that arrive together once each, in the one session", async () => {
     const router = await bootApp();
+    const conversation = await openConversation(router);
     const a = token("together-a");
     const b = token("together-b");
     await Promise.all([
-      post(router, MAILBOX, `[route:${ROUTED}] [scenario:wake] ${a}`),
-      post(router, MAILBOX, `[route:${ROUTED}] [scenario:wake] ${b}`),
+      post(router, conversation, `[route:${ROUTED}] [scenario:wake] ${a}`),
+      post(router, conversation, `[route:${ROUTED}] [scenario:wake] ${b}`),
     ]);
     await until(async () => (await routedAnswered(router, a)) && (await routedAnswered(router, b)), "both posts answered");
 
-    const convs = (await conversationsOf(router, ROUTED)).filter((c) => c.parentSessionId === MAILBOX);
-    expect(convs, `${ROUTED}'s mailbox conversations`).toHaveLength(1);
+    const convs = (await conversationsOf(router, ROUTED)).filter((c) => c.parentSessionId === conversation);
+    expect(convs, `${ROUTED}'s sessions under the conversation`).toHaveLength(1);
     const turns = convs[0]!.messages.filter((m) => m.role === "user").map((m) => m.text);
     // Each post heard exactly once, in no guaranteed order.
     expect(turns.filter((t) => t.includes(a))).toHaveLength(1);
     expect(turns.filter((t) => t.includes(b))).toHaveLength(1);
   });
 
-  it("runs no seat on a post a seat wrote, the writer included", async () => {
+  it("runs no specialist on a specialist's answer, the writer included", async () => {
     const router = await bootApp();
-    const mark = token("authored");
-    await seatPost(MAILBOX, `[route:${ROUTED}] [scenario:wake] ${mark}`, "support.devices");
-    // A wrongly woken seat answers within this in every run of the scripted model.
+    const conversation = await openConversation(router);
+    const mark = token("answered");
+    await post(router, conversation, `[route:${ROUTED}] [scenario:wake] ${mark}`);
+    await until(() => routedAnswered(router, mark), "the routed specialist to answer");
+    // A wrongly woken specialist answers within this in every run of the scripted model.
     await new Promise((resolve) => setTimeout(resolve, 1_500));
 
+    // The answer is "[reply:wake] …": nobody was handed it as a turn.
+    for (const seat of SPECIALISTS) {
+      const heardAnswer = (await conversationsOf(router, seat))
+        .flatMap((c) => c.messages)
+        .filter((m) => m.role === "user" && m.text.includes("[reply:wake]"));
+      expect(heardAnswer, seat).toEqual([]);
+    }
+  });
+
+  it("refuses a post that claims an author, and runs nobody on it", async () => {
+    const router = await bootApp();
+    const conversation = await openConversation(router);
+    const mark = token("claimed");
+    const res = await call(router, "POST", ["coordinator", "actions", "run"], {
+      userId: USER,
+      sessionId: conversation,
+      input: { message: `[route:${ROUTED}] [scenario:wake] ${mark}`, author: "support.devices" },
+    });
+    // Refused in the request's own stream, naming the key the door does not take.
+    expect(res.text).toContain("request.failed");
+    expect(res.text).toContain("Unrecognized key(s) in object: 'author'");
+    await new Promise((resolve) => setTimeout(resolve, 500));
     for (const seat of SPECIALISTS) expect(await holding(router, seat, mark), seat).toEqual([]);
   });
-
-  it("still runs the routed specialist when a public post claims a hire address as author", async () => {
-    const router = await bootApp();
-    const mark = token("claimed");
-    const body = `[route:${ROUTED}] [scenario:wake] ${mark} can someone look at my refund?`;
-    await post(router, MAILBOX, body, "support.devices");
-
-    await until(() => routedAnswered(router, mark), "the routed specialist to answer a claimed author");
-    const convs = await holding(router, ROUTED, mark);
-    expect(convs, `${ROUTED}'s conversations holding the claimed post`).toHaveLength(1);
-    expect(convs[0]!.messages[0]?.text).toEqual(expect.stringContaining(`support.devices in ${MAILBOX}: ${body}`));
-  });
 });
-
-// ---------------------------------------------------------------------------
-// The factory, on a roster built for the cases the app's own cannot reach.
-// ---------------------------------------------------------------------------
-
-async function bind(stores: StoreRegistry, sessionId: string, members: string[]): Promise<void> {
-  const now = Date.now();
-  await stores.session.set(
-    sessionId,
-    {
-      id: sessionId,
-      flowKind: MAILBOX_KIND,
-      flowId: MAILBOX_KIND,
-      userId: USER,
-      orgId: DEFAULT_ORG_ID,
-      state: { members, instructions: "Charter.", transcript: [] },
-      lineageId: `lin_${sessionId}`,
-      version: 0,
-      createdAt: now,
-      updatedAt: now,
-      journal: [],
-    } as never,
-    "any",
-  );
-}
-
-describe("V3 · the wake factory, off the app's own roster", () => {
-  /**
-   * `support.otto` is a standard worker on `agent`, whose copy is registered.
-   * `support.iris` runs on `listener`, whose copy is handed to the wake but not
-   * registered, so its dispatch is refused. `support.lost` never loaded, so
-   * there is no worker to wake.
-   */
-  async function host() {
-    vi.resetModules();
-    vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
-    vi.stubEnv("GOAL_CONTROL", "");
-    const { notifyFor } = await import("@/workforce/mailbox-notify");
-    const { createKitchenSinkTestModelResolver } = await import("@/test/mock-flowstate");
-    let flows: Record<string, unknown> = {};
-    const installation = createWorkerInstallation({
-      standardWorkers: [
-        { id: "support.iris", declared: { flow: "listener" }, body: "You answer questions." },
-        { id: "support.otto", declared: {}, body: "You answer questions." },
-      ],
-      workerFlows: () => flows as never,
-    });
-    const quiet = handler({ name: "listener-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => null });
-    const door = z.object({ message: z.string() });
-    flows = {
-      listener: defineFlow({
-        kind: "listener",
-        configSchema: workerConfigSchema(),
-        session: installation.session(),
-        resources: { ...installation.resources },
-        actions: { run: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: quiet } },
-        internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: quiet } } },
-      }),
-    };
-    const copies = hireWorkforce(installation);
-    const agent = copies.find((copy) => copy.id === "agent")!;
-    const mailbox = defineMailboxFlow({ notify: notifyFor(copies, installation) })();
-    const state = createFlowState({
-      flows: { [MAILBOX_KIND]: mailbox, [agent.id]: agent },
-      stores: { default: { primary: inMemoryStores() } },
-      modelResolver: createKitchenSinkTestModelResolver(),
-    });
-    const runtime = await state.getRuntime();
-    const send = (sessionId: string, body: string) =>
-      runAction({
-        orgId: DEFAULT_ORG_ID,
-        flow: mailbox,
-        actionName: "post",
-        input: { body },
-        userId: USER,
-        sessionId,
-        stores: runtime.stores,
-        runtimeConfig: { ...runtime.runtimeConfig },
-      });
-    const ottoRuns = async () => {
-      const sessions = await runtime.stores.session.list({ flowId: "agent", parentage: "all" });
-      return sessions.filter((s) => s.parentSessionId != null && (s.state as { workerId?: string }).workerId === "support.otto");
-    };
-    return { state, runtime, send, ottoRuns };
-  }
-
-  it("still runs the other members when one wake is refused, or has no seat", async () => {
-    const { state, runtime, send, ottoRuns } = await host();
-    try {
-      await bind(runtime.stores, "room.one", ["support.iris", "support.otto", "support.lost"]);
-      const sent = await send("room.one", "[scenario:wake] refused-one");
-      expect(sent.error).toBeUndefined();
-
-      await until(async () => (await ottoRuns()).length === 1, "otto's run");
-      const mailboxItems = async () =>
-        JSON.stringify(await runtime.stores.request.list({ sessionId: "room.one", withItems: true }));
-      // BR-12: iris's refusal is recorded in the fan-out's own request.
-      await until(async () => (await mailboxItems()).includes("flow-not-found"), "iris's refusal");
-      const items = await mailboxItems();
-      // The post stays written, whatever the wakes did.
-      expect(items).toContain('"component":"mailbox-post"');
-      expect(items).toContain("refused-one");
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("keeps one conversation per mailbox for a seat in two mailboxes", async () => {
-    const { state, runtime, send, ottoRuns } = await host();
-    try {
-      await bind(runtime.stores, "room.one", ["support.otto"]);
-      await bind(runtime.stores, "room.two", ["support.otto"]);
-      await send("room.one", "[scenario:wake] in room one");
-      await send("room.two", "[scenario:wake] in room two");
-      await until(async () => (await ottoRuns()).length === 2, "a conversation per mailbox");
-
-      const runs = await ottoRuns();
-      expect(runs.map((r) => r.parentSessionId).sort()).toEqual(["room.one", "room.two"]);
-      for (const run of runs) {
-        const [request] = await runtime.stores.request.list({ sessionId: run.id, withItems: true });
-        const text = JSON.stringify(request?.items ?? []);
-        // Neither sees the other's post.
-        const other = run.parentSessionId === "room.one" ? "room two" : "room one";
-        expect(text).not.toContain(other);
-      }
-    } finally {
-      await state.dispose();
-    }
-  });
-});
-

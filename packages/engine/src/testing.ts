@@ -46,3 +46,7 @@ export {
   StateReadGateTimeoutError,
   type StateReadGate
 } from "./stores/testing/state-read-gate";
+export {
+  createParkedGateConformanceTests,
+  type CreateParkedGateConformanceTestsOptions
+} from "./stores/testing/parked-gate-conformance";

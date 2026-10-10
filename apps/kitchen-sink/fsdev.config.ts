@@ -19,28 +19,18 @@ import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
-import { createSessionClient } from "@flow-state-dev/client";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
-import {
-  KITCHEN_SINK_ORG_ID,
-  KITCHEN_SINK_USER_ID,
-  resolveKitchenSinkPrincipal,
-} from "@/lib/kitchen-sink-principal";
+import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
-import {
-  describePreRenameMarks,
-  findPreRenameMarks,
-  mergeSeatFlows,
-  openMailboxes,
-} from "@flow-state-dev/workforce";
+import { mergeSeatFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -93,26 +83,15 @@ for (const failedPath of workforce.errors) {
   console.error(`[workforce] could not read ${failedPath}`);
 }
 
-// One instance per mailbox KIND the tree selected, never one per mailbox — a
-// mailbox kind is a singleton, so its address is its kind and every mailbox is
-// a named session on it.
-//
-// These replace the hand-registered built-in this app used to carry: only the binder hands a kind the ledgers a roster minted, so
-// an instance built by hand answers no board call however many `boards:` lines
-// the tree declares.
-const mailboxFlows = Object.fromEntries(
-  workforce.mailboxFlows.map((instance) => [instance.id, instance])
-);
-
-// The workforce's copies are addressed by their flow's kind (`agent`, and
-// `workforce-roster` for the roster flow). A session with a worker is a session
-// on its flow's copy, created naming the worker. `mergeSeatFlows` refuses a
-// copy at an id a flow of this app already holds rather than letting it
-// replace that flow.
+// The workforce's copies are addressed by their flow's kind (`agent`,
+// `coordinator`, and `workforce-roster` for the roster flow). A session with a
+// worker is a session on its flow's copy, created naming the worker: a
+// person's conversation with `support.help` is a session on `coordinator`.
+// `mergeSeatFlows` refuses a copy at an id a flow of this app already holds
+// rather than letting it replace that flow.
 const flowstate = createFlowState({
   flows: mergeSeatFlows(
     {
-      ...mailboxFlows,
       chatAgent: chatAgentFlow,
       richTextComponent: richTextComponentFlow,
       weeklyDigest: weeklyDigestFlow,
@@ -204,124 +183,13 @@ const flowstate = createFlowState({
   worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
   // Who every caller is, for every flow that brings no resolver of its own:
-  // the assistant's flow, the workforce's copies, every mailbox. One
+  // the assistant's flow and the workforce's copies. One
   // organization and one user, both constants, read from nothing on the
   // request (`lib/kitchen-sink-principal.ts`). `weekly-digest` keeps its own.
   resolvePrincipal: resolveKitchenSinkPrincipal,
   onError: (error, ctx) => {
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
-});
-
-const runtime = await flowstate.getRuntime();
-
-// ---------------------------------------------------------------------------
-// The mailboxes the tree declared, opened.
-//
-// After `createFlowState`, not beside the workforce build above, because opening a
-// mailbox is a session create and there is no session route until the
-// FlowState exists. Awaited at module scope for the reason the build is: both
-// the Next route handlers and the `fsdev` CLI import this module, so finishing
-// here is what guarantees no request arrives before the mailboxes are open.
-//
-// Unguarded on every boot, deliberately. Opening is idempotent — an open
-// mailbox is left exactly as it is — and the board list is the one thing
-// re-opening carries, so a "first boot only" flag would strand a board added
-// to a `MAILBOX.md` later.
-// ---------------------------------------------------------------------------
-
-/**
- * Who every mailbox session belongs to: the app's one user.
- *
- * A session belongs to one user, so a mailbox does too. The session route takes
- * its owner from the resolved principal, which is `KITCHEN_SINK_USER_ID` for
- * every caller, so opening the mailboxes as anyone else would make the binder
- * refuse its own sessions on the next boot.
- */
-const MAILBOX_OWNER = KITCHEN_SINK_USER_ID;
-
-// The session client, over this app's own router rather than over the network:
-// the app is the server, so a loopback fetcher hands the request straight to
-// the handler the Next route would have called.
-const mailboxSessions = createSessionClient({
-  fetcher: async (input, init) => {
-    const router = await flowstate.getRouter();
-    // The client builds `/api/flows/...`; the catch-all handler takes the
-    // segments beneath that prefix as its `path` param.
-    const url = new URL(String(input), "http://kitchen-sink.local");
-    const path = url.pathname
-      .replace(/^\/api\/flows\/?/, "")
-      .split("/")
-      .filter((segment) => segment.length > 0)
-      .map(decodeURIComponent);
-    const method = (init?.method ?? "GET").toUpperCase();
-    if (method !== "GET" && method !== "POST" && method !== "PATCH" && method !== "DELETE") {
-      throw new Error(`[workforce] the mailbox session client does not issue ${method}`);
-    }
-    return await router[method](new Request(url, init), { params: { path } });
-  },
-});
-
-/** What to do about a store this app will not open: the same for every reason it refuses one. */
-const RESET_THE_STORE =
-  `Earlier data is not carried over. Delete the store and restart: for the dev profile ` +
-  `(STORE_TYPE=filesystem) remove .fsdev/data; for the prod profile, point FSD_DB_URL at an empty database.`;
-
-// A store written before this app named its organization holds its mailbox
-// sessions under the framework's development organization, and this app can
-// neither open nor read them. There is no upgrade path: the store is wiped and
-// the app starts fresh. So the boot stops here and says so, naming every such
-// mailbox, instead of failing on the first one with a bare 403 from the open
-// below. It only reads: it writes, moves and deletes nothing, so two processes
-// booting over the same store at once cannot race each other here.
-{
-  const stale: string[] = [];
-  for (const mailbox of workforce.mailboxes) {
-    const stored = await runtime.stores.session.get(mailbox.id);
-    // A session stored with no organization at all (BP-030) is not this app's either.
-    if (stored !== undefined && stored.orgId !== KITCHEN_SINK_ORG_ID) {
-      stale.push(`"${mailbox.id}" (organization "${stored.orgId ?? "none"}")`);
-    }
-  }
-  if (stale.length > 0) {
-    throw new Error(
-      `[workforce] this store was written before kitchen-sink ran as organization ` +
-        `"${KITCHEN_SINK_ORG_ID}", and its mailboxes belong to another organization: ` +
-        `${stale.join(", ")}. ${RESET_THE_STORE}`,
-    );
-  }
-}
-
-// A store written before mailboxes were renamed holds sessions, transcript
-// lines and inventory rows under names nothing reads any more, so it is not
-// carried over either. Same answer as above: stop, name each mark, say how to
-// reset. Keyed on the store rather than the kind, because a custom kind kept
-// its name through the rename. Reads only.
-{
-  const marks = await findPreRenameMarks(runtime.stores, {
-    mailboxIds: workforce.mailboxes.map((mailbox) => mailbox.id),
-    orgIds: [KITCHEN_SINK_ORG_ID],
-  });
-  if (marks.sessions.length > 0 || marks.organizations.length > 0) {
-    throw new Error(`[workforce] this store was ${describePreRenameMarks(marks)}. ${RESET_THE_STORE}`);
-  }
-}
-
-await openMailboxes(workforce.mailboxes, {
-  client: {
-    createSession: mailboxSessions.createSession,
-    deleteSession: mailboxSessions.deleteSession,
-    // The binder reads the mailbox's raw state to tell an open mailbox from an
-    // empty one, and the session route sends a client only the state its flow
-    // exposes. So the occupant is read from the store, as the checks above
-    // read it: single-tenant, so the storage key is the bare id.
-    getSession: async (sessionId) => {
-      const stored = await runtime.stores.session.get(sessionId);
-      if (stored === undefined) throw new Error(`[workforce] no session "${sessionId}" behind the taken id`);
-      return stored;
-    },
-  },
-  userId: MAILBOX_OWNER,
 });
 
 export default flowstate;
