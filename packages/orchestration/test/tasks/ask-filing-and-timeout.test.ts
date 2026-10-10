@@ -333,6 +333,16 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         expect(board.list()[0]).toMatchObject({ status: "pending" });
         expect(board.list()[0]?.cancelOwed).toBeUndefined();
       });
+
+      it("a board whose list ignores the filter still cancels only the rows owed a cancel", async () => {
+        const board = await build();
+        await expect(addTaskAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
+        const unfiltered = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+          list: () => board.list()
+        }) as TaskCollectionRef;
+        await resumeOwedAsks(turnCtx(new Map(), "park"), unfiltered);
+        expect(board.list()[0]).toMatchObject({ status: "pending" });
+      });
     });
   });
 }

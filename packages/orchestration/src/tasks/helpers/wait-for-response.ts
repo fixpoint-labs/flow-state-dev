@@ -452,6 +452,8 @@ export async function resumeOwedAsks(
   collection: TaskCollectionRef
 ): Promise<ResumeOwedReport> {
   for (const row of collection.list({ cancelOwed: true })) {
+    // Re-checked here: this loop cancels, so a board that ignores the filter must not cancel every open row.
+    if (row.cancelOwed !== true) continue;
     try {
       await cancelIfOpen(collection, row.id, ASK_OVER_REASON);
     } catch (error) {
