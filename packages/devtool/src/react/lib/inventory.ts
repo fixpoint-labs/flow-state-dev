@@ -21,7 +21,7 @@
  * *live*. A row means *registered in this organization*, and the view says so.
  */
 import type { ResourceClient, ResourceManifest } from "@flow-state-dev/client";
-import { ClientHttpError } from "@flow-state-dev/client";
+import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } from "@flow-state-dev/client";
 
 /** The three published key patterns, by the section each one fills. */
 export const INVENTORY_PATTERNS = {
@@ -44,16 +44,6 @@ export type InventoryDeclarations = Record<InventoryCollection, InventoryDeclara
 
 /** Page size for every read — the collection route's maximum. */
 const INVENTORY_PAGE_SIZE = 200;
-
-/**
- * The most pages one collection read follows — the same bound the shipped
- * panel readers use (`MAX_PAGES` in `@flow-state-dev/react`'s panel reads),
- * 200,000 rows at this page size. A guard against a transport that hands back
- * a `nextCursor` forever, not a size anyone is expected to reach; hitting it,
- * or seeing one cursor twice, ends the read as failed rather than loading
- * forever or showing a list that looks whole.
- */
-const INVENTORY_MAX_PAGES = 1000;
 
 /**
  * Find the three collections in a session's manifest, by pattern.
@@ -108,41 +98,35 @@ function describeFailure(error: unknown): { httpStatus?: number; message: string
 /**
  * Read every page of one collection through the production route.
  *
- * Cursor-paged to the end: an organization bigger than one page is shown
- * whole, never silently cut. A failure on any page returns `failed` with how
- * far the read got, rather than the rows read so far.
+ * Cursor-paged to the end through the client's shared
+ * `readEveryCollectionPage`: an organization bigger than one page is shown
+ * whole, never silently cut. A failure on any page, a server that keeps
+ * returning cursors past the shared page ceiling, or one that repeats a
+ * cursor, returns `failed` with how far the read got, rather than the rows
+ * read so far.
  */
 export async function readEveryPage(
   client: Pick<ResourceClient, "listCollectionItems">,
   sessionId: string,
   ref: string,
 ): Promise<InventoryRead> {
-  const rows: unknown[] = [];
-  const seen = new Set<string>();
   let pagesRead = 0;
-  let cursor: string | undefined;
-  const stopped = (message: string): InventoryRead => ({ status: "failed", message, pagesRead, rowsRead: rows.length });
-  try {
-    do {
-      if (pagesRead >= INVENTORY_MAX_PAGES) {
-        return stopped(`the server kept returning more pages after ${INVENTORY_MAX_PAGES}, so the read stopped`);
-      }
-      const page = await client.listCollectionItems(sessionId, ref, {
-        limit: INVENTORY_PAGE_SIZE,
-        ...(cursor === undefined ? {} : { cursor }),
-      });
-      rows.push(...page.items.map((item) => item.clientData));
+  let rowsRead = 0;
+  const counted: Pick<ResourceClient, "listCollectionItems"> = {
+    listCollectionItems: async (...args) => {
+      const page = await client.listCollectionItems(...args);
       pagesRead += 1;
-      cursor = page.nextCursor;
-      if (cursor !== undefined) {
-        if (seen.has(cursor)) return stopped(`the server returned the same page cursor twice, so the read stopped`);
-        seen.add(cursor);
-      }
-    } while (cursor !== undefined);
+      rowsRead += page.items.length;
+      return page;
+    },
+  };
+  try {
+    const items = await readEveryCollectionPage(counted, sessionId, ref, { limit: INVENTORY_PAGE_SIZE });
+    return { status: "loaded", rows: items.map((item) => item.clientData) };
   } catch (error) {
-    return { status: "failed", ...describeFailure(error), pagesRead, rowsRead: rows.length };
+    const said = error instanceof CollectionReadStoppedError ? { message: error.message } : describeFailure(error);
+    return { status: "failed", ...said, pagesRead, rowsRead };
   }
-  return { status: "loaded", rows };
 }
 
 /** A seat row as the tab shows it. */

@@ -17,7 +17,10 @@ import {
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
-import { asksFor, workstreamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import { asksFor, seatStates, workstreamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import { withRoster } from "../src/lib/roster";
+import { workforceClientFor } from "../src/lib/workforce";
+import { ROSTER_FLOW_KIND } from "@flow-state-dev/workforce/browser";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { ASKER_KIND } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -62,6 +65,12 @@ async function ask(clients: ReturnType<typeof createLabClients>, seatId: string,
       if ((error as { status?: number }).status !== 409) throw error;
     });
   await clients.actions(ASKER_KIND).sendAction("ask", { what }, { sessionId });
+}
+
+/** The person hires a worker of their own on the asker kind, through the roster flow's `hire`. */
+async function hire(clients: ReturnType<typeof createLabClients>, id: string) {
+  const roster = await clients.sessions.createSession({ flowKind: ROSTER_FLOW_KIND, userId: clients.userId });
+  await clients.actions(ROSTER_FLOW_KIND).sendAction("hire", { id, flow: ASKER_KIND }, { sessionId: roster.id });
 }
 
 /** Count requests by method and path, through the real `fetch`. */
@@ -225,6 +234,8 @@ describe("one read per resource (V3, BR-11)", () => {
   it("lists once, reads each manifest kind once, and each board once per refresh", async () => {
     const { baseUrl, tree } = await lab();
     const reader = createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID }));
+    // The first read opens the person's roster session, so its kind's manifest is first read on the second.
+    await reader.read();
     await reader.read();
     const seen = countRequests();
     const snapshot = loaded(await reader.read());
@@ -391,6 +402,112 @@ describe("asks through the mailbox-notify path (V7)", () => {
     if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
     expect(snapshot.asks.value[0]!.seatId).toBe("ops.loner");
     for (const w of snapshot.inventory.value.workstreams) expect(asksFor(w, snapshot.asks.value)).toEqual([]);
+  });
+
+  it("an ask from the person's own worker is in Inbox, and that worker reads as on call", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    // A worker of the person's own: on their roster, never in the inventory.
+    await hire(clients, "ops.mine");
+    await ask(clients, "ops.mine", "ship it");
+    const snapshot = await eventually(async () => {
+      const s = loaded(await createLabReader(clients).read());
+      return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
+    }, "the own worker's ask");
+    if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
+    expect(snapshot.inventory.value.seats.map((s) => s.id)).not.toContain("ops.mine");
+    expect(snapshot.asks.value.map((a) => [a.seatId, a.item.message])).toEqual([["ops.mine", "Approve: ship it"]]);
+
+    // Roster and TEAMS join the roster the same way, so the worker is on call there.
+    const entries = await workforceClientFor(clients).roster();
+    const states = seatStates(withRoster(snapshot, { entries }).snapshot);
+    expect(states.seats.get("ops.mine")?.status).toBe("on call");
+  });
+
+  it("a roster that fails to load fails Inbox's asks by name, not by dropping the person's own workers", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(clients, "ops.asker", "deploy");
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/resources/workforceWorkers")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "roster unavailable" }), { status: 500 }));
+      }
+      return real(input, init);
+    });
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.asks).toMatchObject({ ok: false, failure: { message: expect.stringMatching(/your roster did not load\. roster unavailable$/) } });
+    expect(snapshot.inventory.ok).toBe(true);
+  });
+
+  it("a 404 from the roster's own reads fails Inbox's asks; only a Lab with no roster flow has no own workers", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(clients, "ops.asker", "deploy");
+    const real = globalThis.fetch;
+    const spy = vi.spyOn(globalThis, "fetch");
+    spy.mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/resources/workforceWorkers")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "no such collection" }), { status: 404 }));
+      }
+      return real(input, init);
+    });
+    expect(loaded(await createLabReader(clients).read()).asks).toMatchObject({ ok: false });
+
+    // The Lab refuses the roster flow itself, as one that doesn't serve it does.
+    spy.mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes(`/${ROSTER_FLOW_KIND}/sessions`)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `Unknown flow "${ROSTER_FLOW_KIND}"` }), { status: 404 }));
+      }
+      return real(input, init);
+    });
+    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: "u_no_roster" })).read());
+    expect(snapshot.asks).toEqual({ ok: true, value: [] });
+  });
+
+  it("a session on another flow that names the person's own worker is not that worker's", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await hire(clients, "ops.mine");
+    await ask(clients, "ops.mine", "ship it");
+    // The control: on the flow its roster names, the ask is the worker's.
+    await eventually(async () => {
+      const s = loaded(await createLabReader(clients).read());
+      return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
+    }, "the own worker's ask");
+    // The roster now says the worker runs elsewhere, so the asker session only names it.
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const response = await real(input, init);
+      if (!url.endsWith("/resources/workforceWorkers")) return response;
+      const body = (await response.json()) as { items: Array<{ clientData?: Record<string, unknown> }> };
+      for (const item of body.items) item.clientData = { ...item.clientData, flow: "elsewhere" };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.asks).toEqual({ ok: true, value: [] });
+  });
+
+  it("another person's own worker's ask is in their Inbox, never in this person's", async () => {
+    const { baseUrl } = await lab();
+    const mine = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const theirs = createLabClients({ baseUrl, userId: "u_other" });
+    await hire(theirs, "ops.theirs");
+    await ask(theirs, "ops.theirs", "their thing");
+    await ask(mine, "ops.asker", "deploy");
+    // The control: the ask is there to be read, by the person whose worker it is.
+    const theirAsks = await eventually(async () => {
+      const s = loaded(await createLabReader(theirs).read());
+      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
+    }, "their own worker's ask");
+    expect(theirAsks.map((a) => a.seatId)).toEqual(["ops.theirs"]);
+    const snapshot = loaded(await createLabReader(mine).read());
+    if (!snapshot.asks.ok) throw new Error("not loaded");
+    expect(snapshot.asks.value.map((a) => a.seatId)).toEqual(["ops.asker"]);
   });
 
   it("Approve and Deny resolve through the resume, and the ask leaves Inbox and every Stream together", async () => {
