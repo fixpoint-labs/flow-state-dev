@@ -206,26 +206,29 @@ A dispatch returns before the work it started has run. That is right for a job t
 the turn, and wrong when the next step needs the result. For that case, a worker files the task
 and waits for it.
 
-A waiting `addTask` (`waitForResponse: true`) files the work on the worker's own task board as
-usual, then parks the turn on it. When the task ends, the turn picks up where it stopped, with
-the task's output as the tool's result. Nothing holds the request open in between, so a server
-restart while the turn waits loses nothing: the turn resumes after the restart, and the task was
-filed once.
+A waiting `addTask` (`waitForResponse: true`) files the work on the same board a plain
+`addTask` would, the board the worker's task tools write to (in Workforce, the conversation's
+own board), then parks the turn on it. When the task ends, the turn picks up where it stopped,
+with the task's output as the tool's result. Nothing holds the request open in between. A server
+restart while the turn waits loses nothing: the turn resumes after the restart, and the task is
+filed only once.
 
 Every ask has a time limit: five minutes unless the worker sets its own, anywhere from 30
-seconds to an hour. If the task hasn't ended by then, the turn gets a timeout error at the next
-background sweep, and the task is cancelled. On a long-lived server the sweep wakes for the
-earliest deadline, so the error arrives within seconds of the limit. Where the sweep runs as an
-external cron job, as on a serverless host, a timeout fires no later than the next run, so a
-`timeoutMs` shorter than the cron's cadence can't fire sooner than that. Choose the limit with
-your host's sweep in mind.
+seconds to an hour. Asks are timed out by the durability sweeper, a background job the server
+runs whenever durable execution is on (see
+[Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). If the task
+hasn't ended by the limit, the turn gets a timeout error and the task is cancelled. On a
+long-lived server the timeout arrives within seconds of the limit. Where the sweep runs as an
+external cron job, it arrives at the first run after the limit.
 
 Stopping the conversation while it waits cancels the task and ends the turn. A worker that is
-itself working a task can't wait; it files without waiting, so asks never nest.
+itself working a task can't wait: a waiting `addTask` there is refused with `wait_unavailable`,
+and nothing is filed.
 
-Each answer replays the asking turn once, so an ask costs one extra replay. Use one when the
-answer changes what this turn says or does next. When it doesn't, file the task and let the
-turn end. See [the task board](/docs/orchestration/task-board#asking-and-waiting-for-the-answer)
+Waiting has a cost you can see in the run. The turn is saved when it parks and loaded again
+when the answer arrives. Steps it already ran aren't run again; the model picks up with the
+answer as the tool's result. Use an ask when the answer changes what this turn says or does
+next. When it doesn't, file the task and let the turn end. See [the task board](/docs/orchestration/task-board#asking-and-waiting-for-the-answer)
 for the option, its limits and its errors.
 
 ## Finding dispatched runs on a flow
