@@ -83,7 +83,7 @@ import { isTaskTurn } from "../task-board/task-turn";
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
 import { shouldRetryOnFail } from "../tasks/collection/internal";
-import { addTaskAndWait, canHoldAsk, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS } from "../tasks/helpers/wait-for-response";
+import { addTaskAndWait, canHoldAsk, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS, toolCallOf } from "../tasks/helpers/wait-for-response";
 
 /**
  * Own-state field the default resolver's board lives on. A host generator that
@@ -576,6 +576,18 @@ function isTakenTaskId(err: unknown): boolean {
   return err instanceof Error && /already exists/.test(err.message);
 }
 
+/**
+ * The refusal for reassigning a task an answer has re-queued and that hasn't
+ * run again yet. Lifts once the re-entry is claimed.
+ */
+const awaitingAnswerError = (taskId: string) => ({
+  ok: false as const,
+  taskId,
+  error:
+    `task_awaiting_answer: task "${taskId}" was just answered and is about to pick up again ` +
+    `with its worker, in the session that asked. Reassign it after that run starts. Nothing was written.`,
+});
+
 /** `addTask`'s refusal for a follow-up whose session took another follow-up first. */
 const followUpBusyError = (id: string, followUpOf: string) => ({
   ok: false as const,
@@ -778,7 +790,14 @@ function buildTaskTools(
   ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
     const collection = await resolve(ctx);
     if (!collection) return noBoardError;
-    if (!collection.get(taskId)) return taskNotFoundError(taskId);
+    const current = collection.get(taskId);
+    if (!current) return taskNotFoundError(taskId);
+    // An answered task waits to run again in the session that asked, which
+    // its assignee keys: moving it before that run would hand the answer to
+    // a session that never saw the task or the question (FIX-1817).
+    if (options?.assignee !== undefined && current.answered === true && current.status === "pending") {
+      return awaitingAnswerError(taskId);
+    }
     // Read only when there is an assignee to check: a status change or a
     // label write asks nothing of the roster, so a per-call roster is not
     // read for it.
@@ -923,7 +942,16 @@ function buildTaskTools(
       // partition only, so a refusal stores nothing.
       let followUp: { root: string; assignee: string | undefined; id: string } | undefined;
       if (input.followUpOf !== undefined) {
-        const resolved = resolveFollowUp(collection, input.followUpOf);
+        // On the waiting path the checks and the id they pick are recorded
+        // with the call, so the replay after the answer reuses them instead of
+        // re-counting against a board that now holds this follow-up.
+        const followUpOf = input.followUpOf;
+        const check = async () => resolveFollowUp(collection, followUpOf);
+        const call = input.waitForResponse === true ? toolCallOf(ctx) : undefined;
+        const resolved =
+          call !== undefined && ctx.runOnce !== undefined
+            ? await ctx.runOnce(`fsd.followUp:${call.logicalId}`, check)
+            : await check();
         if ("error" in resolved) return resolved;
         followUp = resolved;
       }

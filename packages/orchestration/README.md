@@ -762,7 +762,7 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
-and `session_has_unfinished_task` — a coordinator
+`session_has_unfinished_task`, and `task_awaiting_answer` — a coordinator
 rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
@@ -774,7 +774,9 @@ waiting on its own sub-tasks included, and a late answer to a question the task 
 moved past (`not_parked_on_question: …`), and a finished one
 (`terminal_task_write_declined: …`). It
 doesn't drain the board: on a Workforce conversation's board the task starts on
-its own; on your own board, drain it afterwards.
+its own; on your own board, drain it afterwards. Until the answered task runs again, `assignTask`
+and `updateTask` refuse to move it to another worker (`task_awaiting_answer`), so
+the answer reaches the session that asked.
 
 `addTask` takes `followUpOf` to file new work on a finished task: the follow-up
 is a new task, with the same worker, that runs in the finished task's session. It

@@ -246,6 +246,34 @@ describe("V3 · the conversation answers (S2, S3)", () => {
     }
   });
 
+  it("refuses to reassign an answered task before it runs again, so the answer runs in the session that asked", async () => {
+    const h = plain();
+    try {
+      const conv = await h.conversation("alice", "pm");
+      const filing = await h.filingOf("alice", conv);
+      const filed = await file(h, conv, { goal: "[park:Which region?] deploy", assignee: "eng.tasker" });
+      await h.settled();
+      const asked = (await h.row("alice", filing, filed.taskId!))!.run!.sessionId;
+      // The answer lands, and its start is held back, so the row waits pending.
+      const lost = await h.loseDispatches("runTaskBoard");
+      await answer(h, conv, filed.taskId!, "eu-west");
+      await h.settled();
+      const moved = await h.act("alice", conv, "assignTask_tasks", { taskId: filed.taskId, assignee: "eng.writer" });
+      expect(moved.output).toMatchObject({ ok: false, error: expect.stringMatching(/^task_awaiting_answer: /) });
+      const patched = await h.act("alice", conv, "updateTask_tasks", { taskId: filed.taskId, patch: { assignee: "eng.writer" } });
+      expect(patched.output).toMatchObject({ ok: false, error: expect.stringMatching(/^task_awaiting_answer: /) });
+      lost.restore();
+      await h.act("alice", conv, "listTasks_tasks", {});
+      await h.settled();
+      const done = (await h.row("alice", filing, filed.taskId!))!;
+      expect(done).toMatchObject({ status: "completed", assignee: "eng.tasker" });
+      expect(done.run!.sessionId).toBe(asked);
+      expect(h.runs.at(-1)).toMatchObject({ worker: "eng.tasker", sessionId: asked, message: "Answer to your question:\n\neu-west" });
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("survives a lost start: the answer's row waits, and the next touch of the board runs it (BR-12)", async () => {
     const h = plain();
     try {
