@@ -65,9 +65,11 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
+  httpActions,
   modulePatchEnv,
   runGoal,
   silentLogger,
+  untilIdle,
   type ModulePatch
 } from "../../lib/index.mts";
 
@@ -123,8 +125,6 @@ if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefine
 }
 
 type Proof = { taskId: string; attempt: number; sessionId: string; requestId: string; marker: string };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Parse an SSE body into its JSON `data:` frames. */
 function sseFrames(body: string): Array<Record<string, any>> {
@@ -254,45 +254,7 @@ await runGoal(async (failures) => {
   try {
     const runtime = await state.getRuntime();
     const router = (await state.getRouter()) as any;
-    const call = async (method: "GET" | "POST", path: string[], body?: unknown, query = "") => {
-      const response = await router[method](
-        new Request(`http://goal/api/flows/${path.join("/")}${query}`, {
-          method,
-          headers: { "content-type": "application/json", "x-user": USER_ID },
-          ...(body === undefined ? {} : { body: JSON.stringify(body) })
-        }),
-        { params: { path } }
-      );
-      return { status: response.status, text: await response.text() };
-    };
-    /** One action over HTTP, and its answer read back as an app reads it: the session's ended request. */
-    const act = async (flow: string, sessionId: string, action: string, input: unknown): Promise<any> => {
-      const sent = await call("POST", [flow, sessionId, "actions", action], { userId: USER_ID, input });
-      if (sent.status !== 202) throw new Error(`${action} was refused (${sent.status}): ${sent.text}`);
-      const requestId = JSON.parse(sent.text).request.id as string;
-      for (let i = 0; i < 500; i += 1) {
-        const status = JSON.parse((await call("GET", [flow, "requests", requestId, "status"])).text).status;
-        if (status !== "in_progress") break;
-        await sleep(10);
-      }
-      const listed = await call("GET", ["sessions", sessionId, "requests"], undefined, "?include_result_output=true&limit=100");
-      const found = (JSON.parse(listed.text).requests ?? []).find((r: { id: string }) => r.id === requestId);
-      if (found?.result?.error !== undefined) throw new Error(`${action} failed: ${JSON.stringify(found.result.error)}`);
-      return found?.result?.output;
-    };
-    /** Wait until no request is running, then a beat more, as nothing else is in flight. */
-    const settled = async () => {
-      for (let i = 0; i < 1000; i += 1) {
-        const all = await runtime.stores.request.list({});
-        if (!all.some((r) => r.status === "in_progress")) {
-          await sleep(50);
-          const again = await runtime.stores.request.list({});
-          if (!again.some((r) => r.status === "in_progress") && again.length === all.length) return;
-        }
-        await sleep(20);
-      }
-      throw new Error("a request never finished");
-    };
+    const { call, act, open } = httpActions(router, USER_ID);
     /** Every stored row of the user's conversation ledger, read from the store, not through the board. */
     const storedRows = async (): Promise<Task[]> =>
       Object.values(await runtime.stores.resourceState.getByPrefix("user", `${USER_ID}:~org:${ORG_ID}`, "tasks/")).map(
@@ -300,11 +262,12 @@ await runGoal(async (failures) => {
       );
 
     // ---- the conversation with the filer -----------------------------------
-    const created = await call("POST", [filerKind, "sessions"], { userId: USER_ID, state: { workerId: filer.id } });
-    if (created.status >= 300) {
-      return { failures: [`a: opening a conversation with ${filer.id} answered ${created.status}: ${created.text}`], evidence: "" };
+    let conversation: string;
+    try {
+      conversation = await open(filerKind, { workerId: filer.id });
+    } catch (error) {
+      return { failures: [`a: ${(error as Error).message}`], evidence: "" };
     }
-    const conversation = JSON.parse(created.text).session.id as string;
 
     // ---- file the tasks, through the conversation's own task actions ------
     type Filed = { taskId: string; worker: (typeof takers)[number]; goal: string };
@@ -318,7 +281,7 @@ await runGoal(async (failures) => {
     await file(shared[1]!, `${shared[1]!.id} task 2`);
     await file(shared[0]!, `${shared[0]!.id} task 2 ${FAILS_ONCE}`);
     await file(shared[0]!, `${shared[0]!.id} task 3 ${FAILS_ALWAYS}`);
-    await settled();
+    await untilIdle(runtime.stores);
     const retried = filed.find((f) => f.goal.includes(FAILS_ONCE))!;
     const failing = filed.find((f) => f.goal.includes(FAILS_ALWAYS))!;
 

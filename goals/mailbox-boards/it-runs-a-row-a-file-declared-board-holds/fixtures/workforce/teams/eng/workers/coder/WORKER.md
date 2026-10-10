@@ -1,6 +1,6 @@
 ---
-description: Claims rows off the team's board and runs them.
+description: Takes the tasks it is handed and finishes them.
 flow: coder
 ---
 
-Take the next row and finish it.
+Finish the task you are handed.
