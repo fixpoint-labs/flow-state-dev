@@ -1,5 +1,91 @@
 # @flow-state-dev/claude-code
 
+## 0.2.0
+
+### Minor Changes
+
+- 63b7b1d: Remove the experimental `claude --remote` dispatch path from `@flow-state-dev/claude-code/cli` (FIX-1174).
+  These exports are gone: `claudeRemoteDispatch`, `ClaudeRemoteDispatchOptions`,
+  `claudeRemoteTasksSchema`, `CLAUDE_REMOTE_TASKS_KEY`, `createClaudeCliCapability`,
+  `CreateClaudeCliCapabilityOptions`, `scriptPtyClaudeCliExec`, `resolvePtyClaudeCli`, `stripAnsi`,
+  `parseRemoteDispatchOutput`, `ParsedRemoteDispatch`, `CLAUDE_CLI_REMOTE_SOURCE`,
+  `claudeRemoteHandleSchema`, `ClaudeRemoteHandle`, `ClaudeCliNotFoundError` and
+  `ClaudeRemoteDispatchError`. Handles already written to `claudeRemoteTasks` in session state are
+  no longer read by anything in this package.
+
+  There is no drop-in replacement. The nearest alternative is `claudeCodeAgent` from
+  `@flow-state-dev/claude-code/sdk`, which runs the agent in-process and streams its work instead of
+  handing it to a cloud session. The `/cli` resolver seam (`defaultResolveClaudeCli`,
+  `defaultClaudeCliExec` and their types) is unchanged.
+
+- 02ee032: Remove backward-compatibility paths (FIX-1804, FIX-850): stores read only the current on-disk and table layouts with no migration of older data, `@flow-state-dev/claude-code` drops its package-root entry and deprecated handle aliases, `@flow-state-dev/patterns` drops `legacyWorkerAdapter` and `executableTaskSchema`, and removed options such as `clientData`, `requireOrg`, `presets`, `preset/*` model strings, `prefer` and `fileFilter`/`syncMode` are no longer refused by name.
+
+### Patch Changes
+
+- f14cc4a: `claudeCodeAgent` now waits, for up to 5 seconds, for the agent's process to exit after an abort before it rejects, so a run stopped right after it starts can be resumed instead of failing with "No conversation found" (FIX-1742).
+- 958aac2: `claudeCodeAgent` now reports a failed run when the Agent SDK ends a turn with a `success` result flagged `is_error` (how the SDK reports an API error). The handle's `status` is `"errored"` and its `outcome` is `"failed"`, and an `error` item carries the SDK's error text; previously the run was recorded as completed (FIX-1175).
+- 77b08f7: A Claude Code run inside a container now shows its top-level steps, including its sub-agent boxes, inside that container, as Codex and Cursor runs already do; steps inside a sub-agent still show inside the sub-agent (FIX-1701).
+- f469423: `claudeCodeAgent` now puts the task's id on every item it emits when it runs inside a task, as the Codex and Cursor harnesses do, so a task's own view shows the run's messages, reasoning and tool calls (FIX-1692).
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [5181ddb]
+- Updated dependencies [8628a54]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [423a405]
+- Updated dependencies [ba74f01]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b808784]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [db7df1c]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+- Updated dependencies [57a859d]
+- Updated dependencies [707b340]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/workspace@0.2.0
+
 ## 0.1.3
 
 ### Patch Changes
