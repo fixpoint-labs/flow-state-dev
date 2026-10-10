@@ -313,11 +313,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const hired = Object.fromEntries(workers.map((worker) => [worker.id, String(worker.declared.flow)]));
 
   const judgmentCalls: JudgmentCall[] = [];
-  const base =
-    options.model === undefined
-      ? (modelId: string) => quietModel(modelId)
-      : (createModelResolver() as unknown as (m: string, b?: string, o?: unknown) => GeneratorModel);
-  const resolver = Object.assign(observing(base, judgmentCalls), options.model === undefined ? {} : createModelResolver());
+  // One resolver: wrapped to observe judgment calls, keeping its own properties.
+  const live = options.model === undefined ? undefined : createModelResolver();
+  const base = live === undefined ? (modelId: string) => quietModel(modelId) : (live as unknown as (m: string, b?: string, o?: unknown) => GeneratorModel);
+  const resolver = Object.assign(observing(base, judgmentCalls), live ?? {});
 
   const state = createFlowState({
     flows: instances,
