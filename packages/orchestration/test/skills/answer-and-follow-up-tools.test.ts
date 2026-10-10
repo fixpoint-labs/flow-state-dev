@@ -254,7 +254,7 @@ describe("addTask's followUpOf (S4)", () => {
     const b = await board([row("root", { status: "in_progress", assignee: "researcher", attempts: 1 })]);
     // A host that can hold an ask, so addTask carries waitForResponse.
     const ctx = { ...b.ctx, requestHost: { resumeAsk: async () => undefined, hasAskSweeper: true } };
-    const tools = taskToolsForTurn(defaultOwnStateResolver)(ctx);
+    const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesAsks: true })(ctx);
     const addTask = toolNamed(tools, "addTask");
     expect(Object.keys((addTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "waitForResponse"]));
     const unfinished = (await runForTest(addTask, { goal: "next", followUpOf: "root", waitForResponse: true }, ctx)) as any;

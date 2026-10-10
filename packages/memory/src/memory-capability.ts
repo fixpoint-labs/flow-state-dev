@@ -192,6 +192,7 @@ export function buildMemoryCapability(
   const epCapability = episodicConfig
     ? createEpisodicMemoryCapability({
         scope: episodicConfig.scope,
+        flowIsolation: episodicConfig.flowIsolation,
         maxEpisodes: episodicConfig.maxEpisodes,
       })
     : undefined
@@ -199,6 +200,7 @@ export function buildMemoryCapability(
   const semCapability = semanticConfig
     ? createSemanticMemoryCapability({
         scope: semanticConfig.scope,
+        flowIsolation: semanticConfig.flowIsolation,
         // Relations tier (FIX-745): when resolved, create the resource with a
         // typed-edge slot. We forward ONLY `maxEdges` to the core slot.
         // Vocabulary enforcement is owned by memory's `applyEdges`, which
@@ -219,7 +221,7 @@ export function buildMemoryCapability(
     : undefined
 
   const digestCapability = digestConfig
-    ? createDigestMemoryCapability({ scope: digestConfig.scope })
+    ? createDigestMemoryCapability({ scope: digestConfig.scope, flowIsolation: digestConfig.flowIsolation })
     : undefined
 
   // Extract typed resource references from the tier capabilities. Cast

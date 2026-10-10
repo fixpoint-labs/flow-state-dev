@@ -1,5 +1,6 @@
 import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
+import { flowIsolationEntry, type MemoryResourceOptions } from './resource-options'
 
 /** Schema for a single episodic memory record. */
 export const episodeSchema = z.object({
@@ -74,12 +75,16 @@ export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
  * Blocks and capabilities install the returned definition via the unified
  * `resources: { episodicMemory: <created> }` map and access it through
  * `ctx.resources.get('episodicMemory')` regardless of scope.
+ *
+ * `options.flowIsolation` is the resource's own `flowIsolation`. Omit it to
+ * take the flow's `isolateUserState` / `isolateOrgState` default.
  */
-export function createEpisodicMemoryResource(scope: 'user' | 'org') {
+export function createEpisodicMemoryResource(scope: 'user' | 'org', options?: MemoryResourceOptions) {
   return defineResource({
     scope,
     stateSchema: episodicMemoryStateSchema,
     default: { episodes: [], totalEncoded: 0 },
     writable: true,
+    ...flowIsolationEntry(options),
   })
 }

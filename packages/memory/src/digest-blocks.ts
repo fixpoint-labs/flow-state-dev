@@ -16,9 +16,7 @@
 import { generator, handler, sequencer } from '@flow-state-dev/core'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory'
-import { createEpisodicMemoryResource } from './episodic-memory'
 import { recent as recentEpisodes } from './episodic-memory-helpers'
-import { createSemanticMemoryResource } from './semantic-memory'
 import { topFacts } from './semantic-memory-helpers'
 import {
   createDigestMemoryResource,
@@ -28,6 +26,7 @@ import {
 import { computeSourceSignature } from './digest-helpers'
 import { memorySystemResource } from './memory-system'
 import type { MemorySystemBlocksConfig } from './memory-system-blocks'
+import { episodicResourceOf, semanticResourceOf, digestResourceOf } from './internal/tier-resources'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -37,6 +36,8 @@ import type { MemorySystemBlocksConfig } from './memory-system-blocks'
 export interface DigestBlocksConfig {
   /** Resource scope (mirrors semantic). */
   scope: 'user' | 'org'
+  /** Derived from the episodic and semantic tiers; undefined takes the flow's default. */
+  flowIsolation?: boolean
   /** Hard cap on digest output tokens. */
   maxTokens: number
   /** How many top-by-reinforcement facts to feed into the prompt. */
@@ -194,13 +195,9 @@ export function buildDigestContext(input: DigestGuardOutput): string {
  * manual `mem.regenerateDigest()` escape hatch).
  */
 export function digestRegenerateGuard(config: DigestRegenerateConfig) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
-  const digestResource = config._digestResource ?? createDigestMemoryResource(config.digest.scope)
+  const semanticResource = semanticResourceOf(config)
+  const episodicResource = episodicResourceOf(config)
+  const digestResource = digestResourceOf(config)
 
   const resources: Record<string, any> = {
     workingMemory: workingMemoryResource,
@@ -331,13 +328,9 @@ export function digestRegenerateGenerate(config: DigestRegenerateConfig) {
  * response doesn't overwrite a previous good digest.
  */
 export function digestRegeneratePersist(config: DigestRegenerateConfig) {
-  const semanticResource = config._semanticResource ?? (config.semantic
-    ? createSemanticMemoryResource(config.semantic.scope)
-    : undefined)
-  const episodicResource = config._episodicResource ?? (config.episodic
-    ? createEpisodicMemoryResource(config.episodic.scope)
-    : undefined)
-  const digestResource = config._digestResource ?? createDigestMemoryResource(config.digest.scope)
+  const semanticResource = semanticResourceOf(config)
+  const episodicResource = episodicResourceOf(config)
+  const digestResource = digestResourceOf(config)
 
   const resources: Record<string, any> = {
     workingMemory: workingMemoryResource,
@@ -392,7 +385,7 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
  * to bypass the guard's staleness check.
  */
 export function digestRegenerate(config: DigestRegenerateConfig) {
-  const sharedDigestResource = config._digestResource ?? createDigestMemoryResource(config.digest.scope)
+  const sharedDigestResource = digestResourceOf(config)
   const digestConfig = { ...config, _digestResource: sharedDigestResource }
 
   const guardBlock = digestRegenerateGuard(digestConfig)

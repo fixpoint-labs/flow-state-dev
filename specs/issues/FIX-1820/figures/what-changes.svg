@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: leg a, ask survives a restart, green on the DevTeam install at its own commit; leg b, a task session stays open, green on a goal-local Lab at another commit, with no restart; and assign across a restart, never run. After: one main commit, recorded on a clean tree after every child has merged, FIX-1816&#8217;s follow-up #3032 included, carrying three parts in order. Part 1 runs leg a and leg b as merged, with their controls no-run-once, no-waker, new-session and drop-answer, plus three neighbouring checks on the same board. Part 2, new, is J4: a parked task with the server killed while it waits, answered after the restart, in the same session with one draw and the row unchanged, with a fresh-store control. Part 3 is the gap sweep, written in the report: seams, promises and not-done-if states, each mapped to a check that ran or the package test that covers it. A clean run opens the closure PR with the report as its body. A finding becomes a child of FIX-1815 that blocks FIX-1820, and the whole plan runs again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-alone { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-old { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-part { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 3; }
+    .n-find { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .line  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .tick  { fill:var(--ink-3); }
+    .pin   { fill:var(--accent); }
+    .loop  { stroke:var(--prose); stroke-width:1.3; fill:none; stroke-dasharray:5 3; }
+    .rule  { stroke:var(--rule); stroke-width:1; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-pr  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · EACH CHECK ON ITS OWN COMMIT AND FIXTURE</text>
+    <rect class="n-alone" x="16" y="36" width="290" height="58" rx="5"/>
+    <text class="t-b" x="30" y="56">leg a · ask survives a restart</text>
+    <text class="t-s" x="30" y="72">DevTeam · SIGKILL while suspended</text>
+    <text class="t-s" x="30" y="86">green on its own commit</text>
+    <rect class="n-alone" x="322" y="36" width="290" height="58" rx="5"/>
+    <text class="t-b" x="336" y="56">leg b · task session stays open</text>
+    <text class="t-s" x="336" y="72">goal-local Lab · park, answer, follow up</text>
+    <text class="t-gone" x="336" y="86">no restart · another commit</text>
+    <rect class="n-old" x="628" y="36" width="296" height="58" rx="5"/>
+    <text class="t-b" x="642" y="56">assign across a restart</text>
+    <text class="t-gone" x="642" y="72">never run</text>
+    <text class="t-s" x="642" y="86">FIX-1817 left it to this issue</text>
+    <line class="line" x1="16" y1="114" x2="924" y2="114"/>
+    <circle class="tick" cx="161" cy="114" r="4"/>
+    <circle class="tick" cx="467" cy="114" r="4"/>
+    <text class="t-lbl" x="16" y="132">MAIN · TWO COMMITS, NEVER THE SAME ONE</text>
+  </g>
+
+  <line class="rule" x1="16" y1="142" x2="924" y2="142"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="168">AFTER · ONE MAIN COMMIT · EVERY CHILD MERGED, #3032 INCLUDED · CLEAN TREE</text>
+    <line class="line" x1="30" y1="186" x2="924" y2="186"/>
+    <circle class="pin" cx="30" cy="186" r="6"/>
+    <text class="t-acc" x="44" y="182">HEAD, RECORDED</text>
+
+    <rect class="n-part" x="16" y="202" width="292" height="84" rx="5"/>
+    <text class="t-lbl" x="30" y="220">PART 1 · THE GOAL CHECK</text>
+    <text class="t-b" x="30" y="238">leg a and leg b, as merged</text>
+    <text class="t-s" x="30" y="254">no-run-once · no-waker</text>
+    <text class="t-s" x="30" y="268">new-session · drop-answer</text>
+    <text class="t-s" x="30" y="280">+ 3 neighbouring checks on the board</text>
+
+    <rect class="n-new" x="324" y="202" width="292" height="84" rx="5"/>
+    <text class="t-acc" x="338" y="220">PART 2 · NEW</text>
+    <text class="t-b" x="338" y="238">J4 · a parked task, server killed</text>
+    <text class="t-s" x="338" y="254">answer after the restart</text>
+    <text class="t-s" x="338" y="268">same session · one draw · row unchanged</text>
+    <text class="t-s" x="338" y="280">control: fresh-store</text>
+
+    <rect class="n-alone" x="632" y="202" width="292" height="84" rx="5"/>
+    <text class="t-lbl" x="646" y="220">PART 3 · GAP SWEEP, IN THE REPORT</text>
+    <text class="t-b" x="646" y="238">seams, promises, not done if</text>
+    <text class="t-s" x="646" y="254">each mapped to a check that ran</text>
+    <text class="t-s" x="646" y="268">or the package test that covers it</text>
+    <text class="t-s" x="646" y="280">no new code</text>
+
+    <circle class="tick" cx="162" cy="186" r="3"/>
+    <circle class="tick" cx="470" cy="186" r="3"/>
+    <circle class="tick" cx="778" cy="186" r="3"/>
+  </g>
+
+  <g id="outcomes">
+    <path class="line" d="M 720 286 L 720 312 L 300 312 L 300 330"/>
+    <rect class="n-part" x="16" y="330" width="430" height="52" rx="5"/>
+    <text class="t-b" x="30" y="351">a clean run · the closure PR</text>
+    <text class="t-s" x="30" y="369">the new directory · the report as its body</text>
+
+    <path class="line" d="M 870 286 L 870 330"/>
+    <rect class="n-find" x="476" y="330" width="448" height="52" rx="5"/>
+    <text class="t-b" x="490" y="351">a finding · a child of FIX-1815, blocking FIX-1820</text>
+    <text class="t-pr" x="490" y="369">no PR · fixed on its own route · the whole plan again</text>
+    <path class="loop" d="M 924 356 L 932 356 L 932 152 L 30 152 L 30 180"/>
+  </g>
+</svg>

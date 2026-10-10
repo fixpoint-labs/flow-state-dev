@@ -70,7 +70,7 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef> {
 export type Settle =
   | { kind: "complete"; output: unknown }
   | { kind: "fail"; error: string }
-  | { kind: "cancel" };
+  | { kind: "cancel"; reason?: string };
 
 /**
  * The asking flow. `run` is the asking turn; `settle` stands in for the
@@ -161,7 +161,7 @@ export function askFlow(
       const outcome = input.outcome as Settle;
       if (outcome.kind === "complete") await board.complete(claimed.id, outcome.output);
       else if (outcome.kind === "fail") await board.fail(claimed.id, outcome.error);
-      else await board.cancel(claimed.id, "cancelled by the colleague");
+      else await board.cancel(claimed.id, outcome.reason ?? "cancelled by the colleague");
       return board.get(claimed.id)?.status;
     }
   });

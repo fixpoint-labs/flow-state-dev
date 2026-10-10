@@ -213,6 +213,12 @@ export interface WorkingMemorySystemConfig {
 export interface EpisodicMemoryConfig {
   /** Scope for episodic storage. Default: 'user'. */
   scope?: 'user' | 'org'
+  /**
+   * Isolate this tier per flow instance (`true`) or share it across flows
+   * (`false`), whatever the flow's `isolateUserState` / `isolateOrgState`
+   * says. Omit to take the flow's default.
+   */
+  flowIsolation?: boolean
   /** Minimum importance for an item to be encoded as an episode. Default: 0.6. */
   significanceThreshold?: number
   /** Maximum episodes to retain. Default: 200. */
@@ -262,6 +268,12 @@ export interface RelationsConfig {
 export interface SemanticMemoryConfig {
   /** Scope for semantic storage. Default: same as episodic, or 'user'. */
   scope?: 'user' | 'org'
+  /**
+   * Isolate this tier per flow instance (`true`) or share it across flows
+   * (`false`), whatever the flow's `isolateUserState` / `isolateOrgState`
+   * says. Omit to take the flow's default. Not inherited from episodic.
+   */
+  flowIsolation?: boolean
   consolidation?: {
     /** Consolidate after this many new episodic entries. Default: 5. */
     episodicThreshold?: number

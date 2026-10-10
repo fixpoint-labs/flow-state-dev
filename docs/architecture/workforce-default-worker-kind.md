@@ -377,9 +377,12 @@ one seat is invisible to its neighbour with the flag on, and visible with it off
 forwards the flag through `defineAgentWorkerFlow({ isolateUserState })`. **Nothing invents a new
 isolation primitive, and no memory field goes on the seat object.**
 
-The residual limit is narrower than the original gap statement and is filed rather than taught
-as a blocker: the flag is on the kind, and memory's resource factories do not forward
-`flowIsolation` per tier, so a roster is all-isolated or all-shared and cannot mix. Renaming a
+The residual limit the contract once filed here, that the flag is on the kind and memory's
+tiers could not differ from it, is closed (FIX-1396). Each durable tier now declares its own
+`flowIsolation` through the existing resource seam (`system({ semantic: { flowIsolation: false } })`),
+which wins over the flow default in both directions; the digest is isolated when either of its
+sources is. Nothing new was added to core. Per-tier isolation is per flow copy, like the flag:
+workers that run on one copy still share every tier. Renaming a
 seat moves where its isolated data lives, which orphans that seat's memory; documented, not
 migrated.
 
@@ -543,9 +546,3 @@ BP-037 neither the spec nor its POC lands on `main`.
   a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less seat
   does no storage work at all — but the roster × catalog case is still unrun. Not a reason to
   change C3, which trades it for a privacy promise the storage actually keeps.
-- **Memory isolation is per kind, not per tier** — C4's residual, and all that is left of it:
-  FIX-1364 corrected C4 itself, since "member" there means *seat* and `isolateUserState`
-  already isolates on the instance id. What remains is that the flag lives on the flow
-  definition and memory's resource factories declare no `flowIsolation` of their own, so a
-  roster cannot mix a shared tier with a per-seat one. Same shape as C3's skills-collection
-  gap; belongs to the memory package. Filed as FIX-1396.

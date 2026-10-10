@@ -10,6 +10,7 @@
 
 import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
+import { flowIsolationEntry, type MemoryResourceOptions } from './resource-options'
 
 /**
  * Signature of the source stores at the moment a digest was generated.
@@ -53,13 +54,17 @@ export type DigestMemoryState = z.infer<typeof digestMemoryStateSchema>
  *
  * Scope mirrors the semantic store's scope — the factory enforces this
  * intrinsically. Persists across sessions; lives at `'user'` or `'org'`.
+ *
+ * `options.flowIsolation` is the resource's own `flowIsolation`. Omit it to
+ * take the flow's `isolateUserState` / `isolateOrgState` default.
  */
-export function createDigestMemoryResource(scope: 'user' | 'org') {
+export function createDigestMemoryResource(scope: 'user' | 'org', options?: MemoryResourceOptions) {
   return defineResource({
     ref: 'digestMemory',
     scope,
     stateSchema: digestMemoryStateSchema,
     default: { totalGenerated: 0 },
     writable: true,
+    ...flowIsolationEntry(options),
   })
 }
