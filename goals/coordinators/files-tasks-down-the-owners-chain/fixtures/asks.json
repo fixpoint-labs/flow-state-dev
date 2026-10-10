@@ -1,0 +1,3 @@
+{
+  "e": "File a task for {broken}: draft the release notes for {word}. If it fails, file it again for {helper}, and tell me which task failed and the error it gave."
+}
