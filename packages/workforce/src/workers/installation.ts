@@ -41,6 +41,7 @@ import {
 } from "../hire";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
+import { taskChainSchema } from "../conversation-board/chain";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
@@ -48,6 +49,8 @@ import {
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
+  TASK_CHAIN_STATE_KEY,
+  TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
@@ -206,6 +209,8 @@ export type WorkerSessionStateShape = {
   readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
+  readonly [TASK_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
@@ -412,6 +417,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
+    [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
@@ -537,8 +544,17 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
     // A task's session is opened only by its board's hand-over, a dispatch
     // into a child of the conversation. A caller naming a task would make a
-    // decoy that lookups and `isTaskSession` take for the real one (BP-031).
-    for (const key of [TASK_ID_STATE_KEY, FILING_FLOW_STATE_KEY, FILING_WORKSTREAM_STATE_KEY]) {
+    // decoy that lookups take for the real one, a caller naming a chain or a
+    // flow would set how deep its filings go and where its split is reached,
+    // and one naming a workstream would point a run at another project's
+    // files (BP-031).
+    for (const key of [
+      TASK_ID_STATE_KEY,
+      FILING_FLOW_STATE_KEY,
+      TASK_CHAIN_STATE_KEY,
+      TASK_FLOW_STATE_KEY,
+      FILING_WORKSTREAM_STATE_KEY
+    ]) {
       if (input.state[key] !== undefined && input.via !== "dispatch") {
         return {
           ok: false,

@@ -108,3 +108,22 @@ export const FILING_FLOW_STATE_KEY = "filingFlow";
 
 /** The prefix every derived worker-session id starts with. */
 export const DERIVED_WORKER_SESSION_PREFIX = "wks_";
+
+/**
+ * The session-state field that places a task session in its chain of split
+ * tasks (FIX-1802 S5): the board its task is on (the top's is the first) and
+ * the chain's top task, as `{ depth, top: { partition, taskId } }`. Set by
+ * the hand-over at the session's birth, from the filing session's own; read
+ * when the session files pieces. Readonly, and set only by the hand-over: the
+ * installation's create check refuses a create on any other path that names
+ * it.
+ */
+export const TASK_CHAIN_STATE_KEY = "taskChain";
+
+/**
+ * The session-state field that names the flow a task session runs on, as the
+ * hand-over named it at the session's birth: where the session that filed
+ * its task reaches it again, to settle a split or cancel its pieces
+ * (FIX-1802 S4). Readonly, and set only by the hand-over.
+ */
+export const TASK_FLOW_STATE_KEY = "taskFlow";

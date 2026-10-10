@@ -116,8 +116,12 @@ import {
 } from "../projects/project-coordinator";
 import { defineSessionBoard } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
-import { TASK_NOTICES_STATE, REPLY_CONCURRENCY, conversationBoardStateShape } from "../conversation-board/task-settled";
-import { WORKER_TASK_ENTRY } from "../worker-task-entry";
+import {
+  CONVERSATION_BOARD_SERVER_OWNED,
+  REPLY_CONCURRENCY,
+  conversationBoardStateShape
+} from "../conversation-board/task-settled";
+import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { workerConfigOf } from "../workers/verified-worker";
 import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
@@ -150,7 +154,6 @@ import {
   COORDINATOR_JUDGMENT,
   COORDINATOR_KIND,
   COORDINATOR_ROUTE,
-  DELEGATED_POST_ENTRY,
   DELEGATE_ANSWER_ACTION,
   DELEGATE_MISSED_ACTION,
   DELIVERIES_STATE,
@@ -1627,7 +1630,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...turn.bound,
     session: {
       ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      serverOwned: [...COORDINATOR_SERVER_OWNED, TASK_NOTICES_STATE],
+      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }

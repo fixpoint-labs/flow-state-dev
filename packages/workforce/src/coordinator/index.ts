@@ -25,7 +25,6 @@ export {
   COORDINATOR_JUDGMENT,
   COORDINATOR_KIND,
   COORDINATOR_ROUTE,
-  DELEGATED_POST_ENTRY,
   MAX_ROUNDS
 } from "./coordinator-keys";
 export {

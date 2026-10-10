@@ -45,12 +45,6 @@ export const DELEGATE_MISSED_ACTION = "delegateMissed";
  */
 export const ROUTE_ON_ACTION = "routeOn";
 
-/**
- * The internal entry a worker flow declares to take a delegated post. A
- * worker whose flow declares it can be a delegate that takes posts.
- */
-export const DELEGATED_POST_ENTRY = "onDelegatedPost";
-
 /** The highest `rounds:` a coordinator may set. */
 export const MAX_ROUNDS = 3;
 

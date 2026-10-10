@@ -14,6 +14,7 @@ import { AGENT_KIND } from "../agent-worker-flow";
 import { checkWorkerFlows, unattendedBoardWarnings } from "../hire";
 import type { InventorySeat } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
+import { setTaskChainLimit } from "./chain-limit";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
 import { standardWorkerFlow } from "./standard-workers";
@@ -35,6 +36,13 @@ export interface HireWorkforceOptions {
    * something drains them.
    */
   mailboxBoards?: readonly string[];
+  /**
+   * The most tasks one top task may have under it, at any depth, finished
+   * ones included: a filing past it is refused as `total_task_cap_exceeded`.
+   * Omitted, 100. A chain is also never more than five boards deep, whatever
+   * this says.
+   */
+  taskChainLimit?: number;
 }
 
 /**
@@ -54,6 +62,7 @@ export interface HireWorkforceOptions {
  *   and nothing is registered: a short roster that still runs is the failure.
  */
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
+  if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
   checkWorkerFlows(installation.workerFlows());
   const copies: FlowInstance[] = [];
   const unbound: string[] = [];

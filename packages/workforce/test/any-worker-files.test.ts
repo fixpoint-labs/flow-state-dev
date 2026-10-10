@@ -506,25 +506,33 @@ describe("who it files for, and which board (V2)", () => {
   });
 });
 
-describe("a task session still can't file in P1 (S6, V5)", () => {
-  it("gives a task session no task tools and no board, whatever its worker's delegates", async () => {
+describe("a task session files on the delegate rule (S6, V5)", () => {
+  it("gives a task session whose worker has a task-taking delegate the eight task tools, each once, and its own board", async () => {
     const h = host();
     try {
       const conv = await h.conversation("alice", "chief");
       const filed = await file(h, "alice", conv, { goal: "TASK: split this up", assignee: "ana" }, "coordinator");
       expect(filed.ok).toBe(true);
       await h.settled();
-      // ana took it, in a task session whose turn carried none of the eight.
+      // ana took it, in a task session whose turn carried each of the eight once.
       const taskTurns = turnsAbout(h.seen, "TASK: split this up").filter((entry) => entry.block === "agent-answer");
       expect(taskTurns.length).toBeGreaterThan(0);
-      for (const entry of taskTurns) expect(taskToolsIn(entry.names)).toEqual([]);
+      for (const entry of taskTurns) {
+        for (const tool of TASK_TOOLS) expect(entry.names.filter((name) => name === tool), tool).toHaveLength(1);
+      }
       const worked = (await (await h.state.getRuntime()).stores.request.list({})).filter((request) => request.actionName === "work");
       expect(worked).toHaveLength(1);
       const taskSession = await h.session(worked[0]!.sessionId);
       expect((taskSession.state as Record<string, unknown>).taskId).toBe(filed.taskId);
-      const refused = await file(h, "alice", taskSession.id, { goal: "a piece", assignee: "eng.tasker" }, "agent");
-      expect(refused).toMatchObject({ ok: false, error: "no_delegation_board" });
-      expect((await h.rows("alice")).map((row) => row.goal)).toEqual(["TASK: split this up"]);
+      // The app files on it too: on the task session's own board, not the conversation's.
+      const piece = await file(h, "alice", taskSession.id, { goal: "a piece", assignee: "eng.tasker" }, "agent");
+      expect(piece).toMatchObject({ ok: true });
+      await h.settled();
+      const rows = await h.rows("alice");
+      const top = rows.find((row) => row.goal === "TASK: split this up")!;
+      const filedPiece = rows.find((row) => row.goal === "a piece")!;
+      expect(filedPiece.partition).not.toBe(top.partition);
+      expect(filedPiece.status).toBe("completed");
     } finally {
       await h.dispose();
     }

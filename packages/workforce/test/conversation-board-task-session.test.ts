@@ -1,5 +1,6 @@
 /**
- * A task's own session (FIX-1794 V7, BR-7 and BR-16 to BR-20) and its start
+ * A task's own session (FIX-1794 V7, BR-7 as FIX-1802 replaces it, and BR-16
+ * to BR-20) and its start
  * (V4, BR-10a).
  *
  * A filing's board hands the task to the delegate's `work` entry in a new
@@ -201,12 +202,12 @@ describe("attempts and reassigns (BR-17, BR-18)", () => {
   });
 });
 
-describe("a task session can't file yet (BR-7)", () => {
-  it("gets none of the task tools on its turn, its action is answered no_delegation_board, and nothing is stored", async () => {
+describe("a task session files its pieces (BR-7, as FIX-1802 S6 replaces it)", () => {
+  it("gets the task tools on its turn, and its action files on its own board", async () => {
     // `boss` hands a task to `lead`, a coordinator: the task runs lead's own
     // turn, in a session of its own on the coordinator flow. lead's delegate
-    // takes tasks, so only its being a task session keeps it from filing
-    // (FIX-1802 S6: P2 lifts that with the split).
+    // takes tasks, so its task session files: FIX-1802's delegate rule, with
+    // the split.
     const judgment = mockGenerator({ script: [{ text: "I'll do it myself." }, { text: "Noted." }] });
     const taskTurnTools: string[][] = [];
     const host = bootBoardHost({
@@ -225,16 +226,25 @@ describe("a task session can't file yet (BR-7)", () => {
       const app = host.client("alice");
       const taskSession = await app.findWorkerSession({ worker: "lead", taskId: filed.taskId!, filingSessionId: filing });
       expect(taskSession).toBeDefined();
-      // lead's turn in the task session was handed none of the task tools.
+      // lead's turn in the task session was handed the task tools.
       expect(taskTurnTools.length).toBeGreaterThan(0);
       for (const names of taskTurnTools) {
-        expect(names.filter((name) => ["addTask", "assignTask", "listTasks", "cancelTask"].includes(name))).toEqual([]);
+        expect(names.filter((name) => ["addTask", "assignTask", "listTasks", "cancelTask"].includes(name)).sort()).toEqual([
+          "addTask",
+          "assignTask",
+          "cancelTask",
+          "listTasks"
+        ]);
       }
       const byAction = await host.act("alice", taskSession!.id, "addTask_tasks", { goal: "another piece", assignee: "eng.tasker" });
-      expect(byAction.output).toEqual({ ok: false, error: "no_delegation_board" });
-      // The only row is the one boss filed, completed by lead's turn.
-      expect((await host.rows("alice")).map((row) => [row.goal, row.status])).toEqual([["Ship the release", "completed"]]);
-      expect(host.runs).toEqual([]);
+      expect(byAction.output).toMatchObject({ ok: true });
+      await host.settled();
+      // The piece is on the task session's own board, not the conversation's.
+      const rows = await host.rows("alice");
+      const top = rows.find((row) => row.goal === "Ship the release")!;
+      const piece = rows.find((row) => row.goal === "another piece")!;
+      expect(top.status).toBe("completed");
+      expect(piece.partition).not.toBe(top.partition);
     } finally {
       await host.dispose();
     }

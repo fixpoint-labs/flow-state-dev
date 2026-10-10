@@ -30,7 +30,7 @@ import {
 import { z } from "zod";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
-import { DELEGATED_POST_ENTRY } from "../src/coordinator/coordinator-keys";
+import { DELEGATED_POST_ENTRY } from "../src/worker-task-entry";
 import { RECENT_CHARS, RECENT_LINES, keepLanded, recentLines } from "../src/coordinator/coordinator-lines";
 import { delegatedPostEntry, delegatedPostHistory } from "../src/coordinator/delegated-post";
 import { workerConfigSchema } from "../src/worker-config";
