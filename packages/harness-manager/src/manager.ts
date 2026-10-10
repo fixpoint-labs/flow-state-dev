@@ -372,6 +372,13 @@ export const harnessJudgeVerdictSchema = z.object({
 export type HarnessJudgeVerdict = z.infer<typeof harnessJudgeVerdictSchema>;
 
 /**
+ * The verdict as the manager reads it: a confidence outside 0 to 1 is not a
+ * verdict. Kept off the exported schema, which a host may hand its evaluator
+ * as an output schema, where a bound is one more keyword a provider can refuse.
+ */
+const judgeVerdictReadSchema = harnessJudgeVerdictSchema.extend({ confidence: z.number().min(0).max(1) });
+
+/**
  * A second reading of a run that passed the phase's own check, on a board
  * read from the claim: did the answer meet the task's goal?
  *
@@ -1271,6 +1278,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       "[harness-manager] give a board: `boardCollectionId` with `boardCollection`, or " +
         "`ledgers` to read each run's board from its claim.",
     );
+  }
+
+  if (judge !== undefined && !(Number.isFinite(judge.floor) && judge.floor >= 0 && judge.floor <= 1)) {
+    throw new Error(`[harness-manager] the judge's floor is a confidence, from 0 to 1; got ${judge.floor}.`);
   }
 
   // **The board id is checked HERE, not first at an attempt.** It becomes a
@@ -2640,7 +2651,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
               name: `${name}-judge-verdict`,
               inputSchema: z.unknown(),
               outputSchema: z.object({ verdict: harnessJudgeVerdictSchema }),
-              execute: (verdict: unknown) => ({ verdict: harnessJudgeVerdictSchema.parse(verdict) }),
+              execute: (verdict: unknown) => ({ verdict: judgeVerdictReadSchema.parse(verdict) }),
             }),
           )
           .rescue([

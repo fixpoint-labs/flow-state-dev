@@ -173,7 +173,8 @@ On a board read from the claim:
   with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
   count, subjects } }` and answering `{ verdict: "done" | "not-done" | "ask", confidence,
   reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* parks
-  the task with the reason as its question. A verdict under `floor` counts as done. A judge
+  the task with the reason as its question. A verdict under `floor` counts as done. `confidence`
+  and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
   that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
   your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
 
