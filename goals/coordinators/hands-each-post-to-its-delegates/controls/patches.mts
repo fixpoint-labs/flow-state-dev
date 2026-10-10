@@ -79,7 +79,11 @@ export const CONTROLS: Record<ControlName, Control> = {
  *   matches: the control would not apply.
  */
 export function controlEnv(control: Control, root: string, mark: string): Record<string, string> {
-  return modulePatchEnv([{ module: control.module, from: control.from, to: control.to }], root, mark);
+  try {
+    return modulePatchEnv([{ module: control.module, from: control.from, to: control.to }], root, mark);
+  } catch (error) {
+    throw new Error(`control ${control.name}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** The patch as a reader sees it: the module, the line before and after. */
