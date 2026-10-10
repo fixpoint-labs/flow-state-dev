@@ -32,7 +32,10 @@
  *    mailbox's own session.
  * 5. **Pending asks**: for each listed session a seat owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
- *    pending. Not the transcript.
+ *    pending. Not the transcript. A seat is one the inventory registers, or
+ *    one of the person's own workers: those are on their roster, never in the
+ *    inventory, so the roster is read first, through Workforce's `roster()`,
+ *    which answers for the caller only.
  * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
  * 7. **The organization's projects**: every row of its `projects` collection,
@@ -57,7 +60,7 @@ import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import type { LabClients } from "./connection";
+import { workforceClientFor, type LabClients } from "./connection";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -518,6 +521,21 @@ const openingRoom = new WeakMap<LabClients, Promise<void>>();
 
 export function createLabReader(clients: LabClients): LabReader {
   const manifests = new Map<string, Promise<ResourceManifest>>();
+  const workforce = workforceClientFor(clients);
+
+  /**
+   * The ids of the person's own workers, off their roster. A Lab that serves
+   * no roster flow (a 404) has nobody's own workers, so none.
+   */
+  const readOwnWorkers = async (): Promise<Section<Set<string>>> => {
+    try {
+      const entries = await workforce.roster();
+      return { ok: true, value: new Set(entries.filter((entry) => !entry.standard).map((entry) => entry.id)) };
+    } catch (error) {
+      const failure = describeFailure(error);
+      return failure.httpStatus === 404 ? { ok: true, value: new Set() } : { ok: false, failure };
+    }
+  };
 
   /** The manifest of `sessionId`'s flow kind, read once per kind. */
   const manifestFor = (flowKind: string, sessionId: string): Promise<ResourceManifest> => {
@@ -797,7 +815,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId, "their session records none") } };
 
-    const inventory = await readInventory(sessions);
+    const [inventory, ownWorkers] = await Promise.all([readInventory(sessions), readOwnWorkers()]);
 
     const [boardEntries, asks, resources, projects] = await Promise.all([
       inventory.ok
@@ -809,14 +827,20 @@ export function createLabReader(clients: LabClients): LabReader {
         if (!inventory.ok) {
           return { ok: false, failure: { message: `Asks are read from seat sessions, and the seat inventory did not load. ${inventory.failure.message}` } };
         }
+        if (!ownWorkers.ok) {
+          return { ok: false, failure: { message: `Asks are read from your own workers' sessions too, and your roster did not load. ${ownWorkers.failure.message}` } };
+        }
         // A seat's sessions are on its worker flow, and name the worker in
         // their state. One on a seat's flow that names none is still read: its
-        // asks are shown, unattributed.
+        // asks are shown, unattributed. A session naming one of the person's
+        // own workers is read whatever flow it is on: the listing holds only
+        // the person's sessions, so it is their own worker's and nobody else's.
         const seatIds = new Set(inventory.value.seats.map((s) => s.id));
         const seatKinds = new Set(inventory.value.seats.map((s) => s.kind).filter((k): k is string => k !== null));
         const seatSessions = sessions.flatMap((s): Array<{ session: SessionSummary; seatId: string | null }> => {
-          if (!seatKinds.has(s.flowKind)) return [];
           const workerId = workerOf(s);
+          if (workerId !== null && ownWorkers.value.has(workerId)) return [{ session: s, seatId: workerId }];
+          if (!seatKinds.has(s.flowKind)) return [];
           if (workerId === null) return [{ session: s, seatId: null }];
           return seatIds.has(workerId) ? [{ session: s, seatId: workerId }] : [];
         });
