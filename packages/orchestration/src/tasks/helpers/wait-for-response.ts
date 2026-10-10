@@ -51,7 +51,11 @@ export const MIN_ASK_TIMEOUT_MS = 30_000;
 /** The longest `timeoutMs` an ask takes: an hour. */
 export const MAX_ASK_TIMEOUT_MS = 60 * 60_000;
 
-/** The gate an asked row's turn parks on, derived from the row. */
+/**
+ * The stem of the gate an asked row's turn parks on: the board and the row.
+ * A filing adds its own nonce after `#`, so the gate names one filing; read
+ * a row's gate from `row.ask.gateId`, never by rebuilding it.
+ */
 export function askGateId(collectionId: string, taskId: string): string {
   return `ask:${collectionId}:${taskId}`;
 }
@@ -105,7 +109,7 @@ export type WaitForResponseResult =
  * stamps the key), so there it is derived from the block identity, to the same
  * value. The step key is derived from the block path.
  */
-function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
+export function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
   const instanceId = ctx._blockIdentity?.blockInstanceId;
   if (instanceId === undefined) return undefined;
   const parsed = parseBlockInstanceId(instanceId);
@@ -164,7 +168,7 @@ export interface AddTaskAndWaitOptions {
 export async function addTaskAndWait(
   ctx: BlockContext,
   collection: TaskCollectionRef,
-  init: Omit<TaskInit, "id" | "ask">,
+  init: Omit<TaskInit, "ask">,
   options: AddTaskAndWaitOptions = {}
 ): Promise<WaitForResponseResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
@@ -228,15 +232,18 @@ export async function addTaskAndWait(
   // the row on that replay, never from ids a crash outlived.
   const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
     const planned = await ctx.runOnce!(`fsd.ask.plan:${call.logicalId}`, async () => {
-      // Unique across processes: a row that already holds this id is this
-      // ask's own filing, never another's that happened to mint the same id.
-      const taskId = `task_${crypto.randomUUID()}`;
-      return { taskId, gateId: askGateId(collection.collectionId, taskId) };
+      // A caller's own id is kept (a follow-up's `<root>-f<n>`, whose one
+      // insert is what keeps a session to one task); otherwise one is minted,
+      // unique across processes. The gate carries a nonce of this plan's, so
+      // a row under the id is adopted only when this very call filed it.
+      const taskId = init.id ?? `task_${crypto.randomUUID()}`;
+      return { taskId, gateId: `${askGateId(collection.collectionId, taskId)}#${crypto.randomUUID()}` };
     });
     const existing = collection.get(planned.taskId);
     if (existing !== undefined && existing.ask?.gateId !== planned.gateId) {
-      // Unreachable with a minted UUID: only a corrupt memo or a programming
-      // error puts another row under this id. Thrown, never adopted.
+      // Another call's row under this id (a caller's id already taken), or,
+      // for a minted id, a corrupt memo or a programming error: thrown, never
+      // adopted, as the one insert under that id would refuse it.
       throw new Error(
         `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
       );

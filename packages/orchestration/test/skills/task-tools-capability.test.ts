@@ -71,13 +71,14 @@ function findTool(name: string): GeneratorTool {
 }
 
 describe("taskTools capability", () => {
-  it("registers eight tools under the default preset", () => {
+  it("registers nine tools under the default preset", () => {
     const presetDefs = (taskTools as unknown as {
       __presetDefs?: { tools?: { controlTools?: unknown } };
     }).__presetDefs;
     const names = resolvedControlTools(presetDefs?.tools?.controlTools).map((t) => t.config?.name).sort();
     expect(names).toEqual([
       "addTask",
+      "answerTask",
       "assignTask",
       "blockTask",
       "cancelTask",

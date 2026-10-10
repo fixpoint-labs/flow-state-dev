@@ -480,6 +480,7 @@ describe("a board added to a mailbox that is already open", () => {
 describe("a mailbox's board task actions", () => {
   const TOOLS = [
     "addTask",
+    "answerTask",
     "assignTask",
     "blockTask",
     "cancelTask",
@@ -500,7 +501,7 @@ describe("a mailbox's board task actions", () => {
     ]);
   });
 
-  it("adds the eight tools per board, named for the board, on a mailbox that opts in", () => {
+  it("adds the nine tools per board, named for the board, on a mailbox that opts in", () => {
     const [mailbox] = mailboxInstances([
       record("eng.feature", { boards: ["triage", "work"], boardActions: true }),
       record("eng.platform", { boards: ["triage"] })

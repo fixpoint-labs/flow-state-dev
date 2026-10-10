@@ -351,6 +351,8 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `getCollectionItemState(sessionId, ref, topic)` → `CollectionItemState | null`
 - `getResourceManifest(sessionId)` → `ResourceManifest`
 
+- `readEveryCollectionPage(source, sessionId, ref, { limit?, keepReading? })` — Every row of one collection, following `nextCursor` to the end. Rejects with `CollectionReadStoppedError` (`reason: "page-limit" | "repeated-cursor"`) when the server keeps returning cursors past `COLLECTION_READ_MAX_PAGES` (1,000) pages or sends the same cursor twice, so a read that stopped early is never handed back as the whole list
+
 The list/get-state methods require `client.state.read: true` on the collection. The manifest endpoint enumerates every public resource on the session's flow.
 
 ## Notes

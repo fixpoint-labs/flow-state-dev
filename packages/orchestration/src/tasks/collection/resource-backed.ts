@@ -123,6 +123,7 @@ import {
   routeFailure,
   assertTransitionFrom,
   transitionDeclineReason,
+  assigneeChangeDecline,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -799,6 +800,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
               return {
                 feedback: error,
+                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -858,15 +860,16 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // being parked behind the attempt that already ended it. `ifAllowed` is
       // forced on that path only, the way `unpark` forces its own fence.
       const forTurn = options?.forTurn === true;
+      const fenced = forTurn || options?.fromRunning === true;
       // A park its holder marks `quiet` asks nobody anything: the ending
       // recorders are told so. A park for a person's turn is quiet on its own.
       return transitionRef(
         id,
         "parked",
         "review_requested",
-        () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
-        forTurn ? { ...options, ifAllowed: true } : options,
-        forTurn ? "in_progress" : undefined,
+        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
+        fenced ? { ...options, ifAllowed: true } : options,
+        fenced ? "in_progress" : undefined,
         options?.quiet === true
       );
     },
@@ -883,7 +886,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "pending",
         "resumed",
-        (task) => unparkPatch(task as Task, feedback) as Partial<Task<TInput, TOutput>>,
+        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
       );
@@ -980,6 +983,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             if (options.immutableAssignee === true && ATTEMPT_OWNED_STATUSES.has(task.status)) {
               throw new WriteDeclined("immutable-assignee", task.status);
             }
+            const refused = assigneeChangeDecline(task as Task, assignee);
+            if (refused !== undefined) throw new WriteDeclined(refused, task.status);
             return task.assignee === assignee ? undefined : { assignee };
           },
           { declineOnTerminal: true }
@@ -989,7 +994,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // from the updater skips the store's check of that snapshot. Unlike
       // `terminal`, an attempt-held status is one another request moves on,
       // so confirm the decline against the committed row before reporting it.
-      if (outcome.outcome === "declined" && outcome.reason === "immutable-assignee") {
+      // An answered row's fence lifts when another request claims it, so it
+      // is confirmed against the committed row the same way.
+      if (
+        outcome.outcome === "declined" &&
+        (outcome.reason === "immutable-assignee" || outcome.reason === "awaiting-answer")
+      ) {
         const ref = mirror.get(id);
         if (ref !== undefined) {
           await readCommitted(ref, () => undefined);

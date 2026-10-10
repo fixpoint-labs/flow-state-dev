@@ -27,6 +27,7 @@ import {
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
+  TaskWriteDeclineReason,
   TaskWriteOutcome,
 } from "./types";
 import {
@@ -54,6 +55,7 @@ import {
   sumGrantedRetries,
   assertTransitionFrom,
   transitionDeclineReason,
+  assigneeChangeDecline,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -385,7 +387,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     id: string,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
-    options?: { declineOnTerminal?: boolean }
+    options?: {
+      declineOnTerminal?: boolean;
+      /** A refusal decided on the freshest committed task, inside the write. */
+      decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined;
+    }
   ): Promise<TaskWriteOutcome> {
     /** What one `patchOne` invocation did — returned, never captured outward. */
     type PatchResult =
@@ -407,6 +413,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               kind: "declined",
               verdict: { outcome: "declined", reason: "terminal", status: task.status },
             },
+          };
+        }
+        const refused = options?.decline?.(task);
+        if (refused !== undefined) {
+          return {
+            state: undefined,
+            result: { kind: "declined", verdict: { outcome: "declined", reason: refused, status: task.status } },
           };
         }
         const update = patch(task);
@@ -632,6 +645,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               kind: "retried" as const,
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
+                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -694,13 +708,14 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // being parked behind the attempt that already ended it. `ifAllowed` is
       // forced on that path only, the way `unpark` forces its own fence.
       const forTurn = options?.forTurn === true;
+      const fenced = forTurn || options?.fromRunning === true;
       return transitionTo(
         id,
         "parked",
         "review_requested",
-        () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
-        forTurn ? { ...options, ifAllowed: true } : options,
-        forTurn ? "in_progress" : undefined
+        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
+        fenced ? { ...options, ifAllowed: true } : options,
+        fenced ? "in_progress" : undefined
       );
     },
 
@@ -716,7 +731,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "pending",
         "resumed",
-        (task) => unparkPatch(task as Task, feedback) as Partial<Task<TInput, TOutput>>,
+        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
       );
@@ -802,7 +817,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "assignee_changed",
         (task) => (task.assignee === assignee ? undefined : { assignee }),
-        { declineOnTerminal: true }
+        { declineOnTerminal: true, decline: (task) => assigneeChangeDecline(task as Task, assignee) }
       );
     },
 

@@ -58,9 +58,9 @@ type Park = "park" | { timedOut: true };
  * `runOnce` record and outlives a crash: share it across two calls to model
  * the replay of one call.
  */
-function turnCtx(memo: Map<string, unknown>, park: Park): BlockContext {
+function turnCtx(memo: Map<string, unknown>, park: Park, callId = "c1"): BlockContext {
   return {
-    _blockIdentity: { blockName: "addTask", blockInstanceId: "req_1:root/step[0]/tool[addTask][0%3Ac1]:0" },
+    _blockIdentity: { blockName: "addTask", blockInstanceId: `req_1:root/step[0]/tool[addTask][0%3A${callId}]:0` },
     session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
     request: { identity: { type: "request", id: "req_1" } },
     requestHost: { resumeAsk: async () => ({ ok: true }), hasAskSweeper: true },
@@ -129,6 +129,19 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       const shipped = memo.get(`fsd.ask.file:${LOGICAL_ID}`) as { taskId: string; gateId: string; deadline: number };
       expect(shipped).toEqual({ taskId: row!.id, gateId: row!.ask!.gateId, deadline: row!.ask!.deadline });
       expect(board.get(shipped.taskId)?.ask?.gateId).toBe(shipped.gateId);
+    });
+
+    it("keeps a caller's own id, and a second call asking under that id is refused, not adopted", async () => {
+      const board = await build();
+      await expect(addTaskAndWait(turnCtx(new Map(), "park", "c1"), board, { ...init, id: "root-f1" })).rejects.toThrow("parked");
+      expect(board.list().map((row) => row.id)).toEqual(["root-f1"]);
+      const first = board.get("root-f1")!.ask!.gateId;
+      // Another call, another turn's memo, the same follow-up id.
+      await expect(addTaskAndWait(turnCtx(new Map(), "park", "c2"), board, { ...init, id: "root-f1" })).rejects.toThrow(
+        /isn't this ask's/
+      );
+      expect(board.list()).toHaveLength(1);
+      expect(board.get("root-f1")!.ask!.gateId).toBe(first);
     });
 
     it("mints a cross-process-unique id for a new ask", async () => {

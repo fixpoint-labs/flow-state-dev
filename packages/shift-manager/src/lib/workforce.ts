@@ -12,18 +12,12 @@
  * `createWorkforceClient`. An app builds the same client with `useMemo`.
  */
 import { useMemo } from "react";
-import { createWorkforceClient, type WorkforceClient } from "@flow-state-dev/workforce/browser";
-import type { LabClients } from "./connection";
+import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
+import { workforceClientFor } from "./connection";
 import { useLab } from "./lab-data";
 
-/** A workforce client for the Lab connection `clients` reads as. */
-export function workforceClientFor(clients: LabClients): WorkforceClient {
-  return createWorkforceClient({
-    userId: clients.userId,
-    ...(clients.baseUrl === undefined ? {} : { baseUrl: clients.baseUrl }),
-    fetcher: clients.fetcher,
-  });
-}
+// Built in `connection`, beside the clients it is made from, so the Lab reader can build one too.
+export { workforceClientFor };
 
 /**
  * The workforce client for the Lab this page reads, one per connection.

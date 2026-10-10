@@ -40,7 +40,7 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
 
       const [row] = await rows(state, flow);
       expect(row).toMatchObject({ status: "pending", resumeOwed: false });
-      expect(row!.ask?.gateId).toBe(askGateId(BOARD, row!.id));
+      expect(row!.ask?.gateId.startsWith(`${askGateId(BOARD, row!.id)}#`)).toBe(true);
       // The default bound: five minutes from filing (BR-14).
       const left = row!.ask!.deadline - Date.now();
       expect(left).toBeGreaterThan(4 * 60_000);

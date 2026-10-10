@@ -226,6 +226,18 @@ A refused answer writes nothing. One park takes one answer: the first accepted a
 
 Whichever drain gets there first claims the task and runs it, exactly as if it had been queued that moment. If another drain claims the task before the one `unparkAndDrain` starts, that drain finds nothing to claim and returns.
 
+### Answering through the task tools
+
+`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can write the board can call it:
+
+```ts
+await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+```
+
+It moves the task back to `pending` with the answer, like `unparkAndDrain`, but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, one parked for a person's turn or waiting on its own sub-tasks included, and an answer that arrives after the task has moved on to a newer question, writing nothing.
+
+The worker's side is `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
+
 ### What the mode requires
 
 Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws, naming the problem and the change to make:
@@ -317,7 +329,7 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
-A dispatch run is an ordinary session — of this flow, or of the flow the seat names with `flowKind`. Which session a row lands in is derived from the seat's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
+A dispatch run is an ordinary session — of this flow, or of the flow the seat names with `flowKind`. Which session a row lands in is derived from the seat's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
 A seat hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. The stamped address is `type: "task"` — do not set `type` on the seat. A board can mix seats that hand off with seats that run inline:
 
@@ -367,7 +379,7 @@ export default defineFlow({
 
 | `session` | How many runs | Reach for it when |
 |---|---|---|
-| `"per-task"` | one per task | tasks are independent |
+| `"per-task"` | one per task; a follow-up task runs in the session of the task it follows | tasks are independent |
 | `"per-worker"` | one per seat, shared by every task the seat runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several seats, or a key you compute from the task |
 
@@ -401,6 +413,8 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 ```
 
 The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
+
+A task keeps its session for its whole life. If its worker parks it on a question, the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there, or file a follow-up task with `followUpOf`, which runs in the same session. That holds for a seat that hands off `per-task` and on a Workforce conversation's board; a `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The finished task itself never changes.
 
 ### Sending a task to a flow chosen per task
 
@@ -805,7 +819,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 ## Changing tasks from outside a run
 
-Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the eight task tools a model can hold, as actions any caller of the flow can run:
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the nine task tools a model can hold, as actions any caller of the flow can run:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";

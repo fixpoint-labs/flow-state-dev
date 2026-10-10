@@ -16,6 +16,7 @@ import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
 import { createLabReader, toProject, type Project } from "../src/lib/reads";
 import { postToRoom, readRoom, readRoomPages, startRoomRefresh, TalkRefused, type RoomLine, type RoomPage } from "../src/lib/talk";
 import { ClientHttpError } from "@flow-state-dev/client";
+import { ROSTER_FLOW_KIND } from "@flow-state-dev/workforce/browser";
 import { ASKER_KIND } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -562,9 +563,10 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
       openApp(baseUrl, "/p/desk/stream", OTHER);
       await screen.findByTestId("project-join", undefined, { timeout: 10_000 });
       expect(screen.queryByTestId("refusal")).toBeNull();
-      // The one session opened for them is their own, on the room kind, in the Lab's organization.
+      // The one room session opened for them is their own, on the room kind, in the Lab's organization.
+      // Their roster session, which reading their workers' asks opens, is no room.
       const mine = await createLabClients({ userId: OTHER, baseUrl }).sessions.listSessions({ userId: OTHER });
-      expect(mine.map((s) => s.flowKind)).toEqual(["mailbox"]);
+      expect(mine.map((s) => s.flowKind).filter((kind) => kind !== ROSTER_FLOW_KIND)).toEqual(["mailbox"]);
     });
 
     it("an outsider sees the projects and the members-only state, and the room is never read", async () => {
