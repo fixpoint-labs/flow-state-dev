@@ -21,7 +21,7 @@ document adds time to it.
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **LAB-163** OMP harness | spec → impl PR | The shipped harness contract and the manager's slot and policy · LAB-154's manager-side session association · [D4](DECISIONS.md#d4), [D5](DECISIONS.md#d5), [D6](DECISIONS.md#d6) | An OMP harness taking prompt input and trusted run configuration; observable events; session identity through `onSession` during the run; resume of that exact saved conversation; terminal success, runtime failure and cancellation told apart; honest startup/model/auth failures; the tested OMP version recorded | LAB-164's delivery | Medium |
+| **LAB-163** OMP harness | spec → impl PR | The shipped harness contract and the manager's slot and policy · LAB-154's manager-side session association · [D4](DECISIONS.md#d4), [D5](DECISIONS.md#d5), [D6](DECISIONS.md#d6) | An OMP harness taking prompt input and trusted run configuration; observable events; session identity through `onSession` during the run; resume of that exact saved conversation, with the manager keeping that resume owed across a failed attempt's retries (ER-3); terminal success, runtime failure and cancellation told apart; honest startup/model/auth failures; the tested OMP version recorded | LAB-164's delivery | Medium |
 | **LAB-164** questions park and resume | spec → impl PR → the proof | LAB-163's adapter, resume and `onSession` · the existing manager intake, inbox, answer action and operator surface · [D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3), [D6](DECISIONS.md#d6) | The trusted attempt-correlated handoff, co-specified with LAB-163; a captured question as durable evidence; the park where the attempt and the request end; the answer carried into a later attempt of the same session; real questions told apart from permission and extension dialogs; the negative cases; reproducible full-path evidence | The epic's wrap | Large |
 
 **The feasibility check is LAB-164's, and it is not a third issue.** It is the first thing LAB-164
@@ -55,7 +55,7 @@ ER-13 consumes it without re-parenting it.
 | Seam | Between | Rule |
 |---|---|---|
 | The attempt-correlated question destination | LAB-163 and LAB-164 | ER-4. LAB-164 decides it, LAB-163 co-specifies it, and both do so before either interface is final. A second route is exactly the failure the seam exists to prevent |
-| `resume` and `onSession` | LAB-163 and LAB-154 (shipped) | LAB-154 owns manager-side association; LAB-163 supplies OMP's side. Neither redoes the other's half |
+| `resume` and `onSession` | LAB-163 and LAB-154 (shipped) | LAB-154 owns manager-side association; LAB-163 supplies OMP's side, plus the one addition ER-3 needs: a resume owed to a parked session survives a failed attempt instead of falling back to `null`. Neither redoes the other's half |
 | The completed-handle park arm of the manager's intake | LAB-164 and the shipped manager | Preserve the single marker intake first (D3). Any change to the intake returns to this epic (ER-7) |
 | The pinned OMP version | Both issues | ER-17. One pinned version across the set's evidence; two versions makes the proof unreadable |
 
@@ -64,7 +64,7 @@ ER-13 consumes it without re-parenting it.
 | Issue | What it owns | Why it isn't in the set |
 |---|---|---|
 | [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) | The broader substrate same-session POC | This epic adds OMP-specific capture and stop evidence and reuses its continuity standard. It does not close or supersede it (ER-13) |
-| [LAB-154](https://linear.app/fixpoint-labs/issue/LAB-154) | Manager-side session association · **done** | Consumed. LAB-163 supplies OMP's side only |
+| [LAB-154](https://linear.app/fixpoint-labs/issue/LAB-154) | Manager-side session association · **done** | Consumed. LAB-163 supplies OMP's side, and adds only the sticky resume obligation ER-3 needs |
 | [LAB-140](https://linear.app/fixpoint-labs/issue/LAB-140) | The harness manager program · in progress | The set adds a slot to it; it does not rewrite it |
 | [LAB-151](https://linear.app/fixpoint-labs/issue/LAB-151) | The operator board · in review | The surface this epic reuses. Building a second one is what D1 cut |
 | [FIX-1241 / D-1](https://linear.app/fixpoint-labs/issue/FIX-1241) | The one-human-wait model | A standing decision D2 preserves. No child reopens it locally |

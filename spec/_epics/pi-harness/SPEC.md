@@ -96,10 +96,14 @@ neither is a placeholder.
 ## What stays as it is
 
 - **The harness manager, the inbox, the answer action and the operator surface.** Reused, not
-  extended. [LAB-140](https://linear.app/fixpoint-labs/issue/LAB-140) owns the manager program,
+  extended, with one exception below. [LAB-140](https://linear.app/fixpoint-labs/issue/LAB-140) owns the manager program,
   [LAB-151](https://linear.app/fixpoint-labs/issue/LAB-151) the operator board.
 - **Manager-side session association** — [LAB-154](https://linear.app/fixpoint-labs/issue/LAB-154),
-  done. LAB-163 supplies OMP's side of `resume`/`onSession` and does not redo that work.
+  done. LAB-163 supplies OMP's side of `resume`/`onSession` and does not redo that work. **The one
+  manager change in scope:** today a resumed attempt that throws loses the session it was owed —
+  the retry is handed `null` and starts fresh. LAB-163 makes that resume obligation stick across
+  retries for a row continuing a parked session (ER-3), leaving the ordinary-retry self-heal of
+  other harnesses as it is (ER-12).
 - **Tool permissions**, which stay the host's configured allow/deny policy.
 - **Upstream pi.** Deferred, not refused forever — reopened for a real pi audience, not because
   the protocol names look alike.

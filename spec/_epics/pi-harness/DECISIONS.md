@@ -107,6 +107,11 @@ that reads *consumes* is a place that child must not re-decide.
 - **The negative persistence claim needed an evidence field** (note). Post-stop `ENOENT` checks
   were added; `rpc-ui --tools ask` is the local check, and source inspection the basis for the
   mode distinction.
+- **A failed resume must not be retried fresh** (must fix). The shipped manager reads only the
+  previous attempt's confirmed session, and a resume that throws confirms none, so the retry is
+  handed `null` and quietly starts a new conversation — D6's fail-closed lookup undone one attempt
+  later. LAB-163 owns keeping the obligation across retries for a parked session (ER-3); the
+  ordinary-retry self-heal stays for other harnesses (ER-12).
 - **Runtime audience: OMP first, pi deferred.** Reopen for an immediate pi audience, not because
   the protocol names look alike.
 

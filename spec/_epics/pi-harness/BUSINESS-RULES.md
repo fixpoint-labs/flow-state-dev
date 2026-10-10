@@ -13,7 +13,7 @@ who owns it and where it's checked. ER-1 to ER-7 are the rows of the ownership m
 |---|---|---|---|
 | ER-1 | A dispatched OMP run executes in the selected checkout, produces observable output, and settles through the existing manager | LAB-163 | LAB-163's tests · the full-path proof |
 | ER-2 | Cancellation stops work and throws. A prompt acknowledgement, an intermediate event or a process exit is never read as completion, and a runtime stop is never relabelled as successful parking | LAB-163 ([D4](DECISIONS.md#d4)) | LAB-163's tests · the proof's negative cases |
-| ER-3 | A later attempt reopens the same saved session and remembers a fact the run generated before the question, absent from the new prompt. Missing, corrupt or mismatched resume material fails rather than starting a fresh conversation | LAB-163 ([D6](DECISIONS.md#d6)) | LAB-163's tests · the full-path proof |
+| ER-3 | A later attempt reopens the same saved session and remembers a fact the run generated before the question, absent from the new prompt. Missing, corrupt or mismatched resume material fails rather than starting a fresh conversation — on that attempt **and every retry after it**: for a row continuing a parked session, the manager keeps the session it owes until a harness confirms it or the row settles failed, never handing a retry `null` | LAB-163 ([D6](DECISIONS.md#d6)) | LAB-163's tests · the full-path proof |
 | ER-4 | A captured question reaches the manager's intake through one trusted, attempt-correlated path | LAB-164 decides · LAB-163 co-specifies ([D3](DECISIONS.md#d3)) | The joint feasibility check · both spec reviews |
 | ER-5 | The attempt and the worker request end at the park. No runtime process and no worker request is retained during human wait | LAB-164 ([D2](DECISIONS.md#d2)) | The full-path proof |
 | ER-6 | Only a real question enters the parked-question path. Tool-permission prompts and extension UI dialogs do not; they follow the host's configured allow/deny policy | LAB-164 ([D2](DECISIONS.md#d2)) | LAB-164's tests · the proof |
@@ -45,7 +45,7 @@ who owns it and where it's checked. ER-1 to ER-7 are the rows of the ownership m
 | # | The epic is done when | Proved by |
 |---|---|---|
 | ER-19 | A real OMP run reaches a real question; the operator sees it through the existing surface after durable parking; the runtime is stopped; an answer continues the exact saved session, with a pre-question generated fact intact and absent from the answer prompt; the task settles | LAB-164's full-path evidence, reproducible, against a pinned OMP version |
-| ER-20 | User cancellation stays cancellation; late, duplicate and cross-attempt answers cannot affect another run; missing or corrupt resume material and runtime failure fail safely, without a silent fresh session | LAB-164's negative cases, run separately from the happy path |
+| ER-20 | User cancellation stays cancellation; late, duplicate and cross-attempt answers cannot affect another run; missing or corrupt resume material and runtime failure fail safely, without a silent fresh session on that attempt or on any retry | LAB-164's negative cases, run separately from the happy path |
 | ER-21 | If safe capture, stop, persistence or same-session continuation cannot be shown, the epic returns to the objective gate | The kill line. No live wait, fresh-session replay or adapter-only delivery is substituted and called complete |
 
 **Restarting a process is an adversarial condition here, not the proof.** The same session identity
