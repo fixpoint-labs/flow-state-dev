@@ -393,16 +393,16 @@ A delegate working a task sometimes can't go on without you: which region, which
 Answer it from the conversation:
 
 ```ts
-await coordinator.sendAction(
+await help.sendAction(
   "answerTask_tasks",
   { taskId, answer: "Use eu-west." },
   { sessionId: session.id },
 )
 ```
 
-The coordinator has the same verb as its `answerTask` tool, so when you answer it in chat it passes the answer on. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
+You can also just answer in chat: the coordinator passes your answer on with its `answerTask` tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
 
-An answer doesn't use up the task's retries, and the task can ask again. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one.
+An answer doesn't use up the task's retries, and the task can ask again. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
 
 A task handed to a delegate by a coordinator that is waiting for it (`waitForResponse`) can't stop on a question. Its delegate answers with what it has, or fails.
 
@@ -411,8 +411,9 @@ A task handed to a delegate by a coordinator that is waiting for it (`waitForRes
 A finished task's session stays open. To ask it about the work, send a message to its worker in that session:
 
 ```ts
-const run = await workforce.findWorkerSession({ worker: "researcher", taskId, filingSessionId })
-await researcher.sendAction("run", { message: "Which sources did you rule out?" }, { sessionId: run.id })
+const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
+const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl })
+await licenses.sendAction("run", { message: "Which licenses did you flag?" }, { sessionId: run.id })
 ```
 
 It answers from what it did. The task itself doesn't change: a finished task stays finished.
@@ -420,14 +421,18 @@ It answers from what it did. The task itself doesn't change: a finished task sta
 To build on the work, file a follow-up task that names it:
 
 ```ts
-await coordinator.sendAction(
+await help.sendAction(
   "addTask_tasks",
   { goal: "Now write it up for the team", followUpOf: taskId },
   { sessionId: session.id },
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. The task it names has to be finished, its session works one task at a time, and a follow-up doesn't take an assignee.
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. `addTask` refuses the follow-up, filing nothing, if the task it names isn't finished, if that session still has an unfinished task, or if you pass an `assignee`:
+
+```json
+{ "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" is in_progress. A follow-up names a finished task. Nothing was filed." }
+```
 
 ## Making your own flow a delegate
 

@@ -776,7 +776,7 @@ uses: [mailboxBoardTaskTools(followups)],
 
 That gives the model all nine task tools over this board, each named for the board it reaches: `addTask_engineering_incidents_followups`, and the same for `assignTask`, `updateTask`, `listTasks`, `completeTask`, `failTask`, `blockTask`, `cancelTask` and `answerTask`. The set is fixed: a `tools:` list on the worker can neither grant these nor withhold them. So a worker holding the capability can assign rows and settle them, not only add them. A narrower set means a different capability.
 
-Compose it once per board. A worker holding two boards holds sixteen tools, and the names say which board each one writes to.
+Compose it once per board. A worker holding two boards holds eighteen tools, and the names say which board each one writes to.
 
 A mailbox can offer the same nine tools to its callers, as actions. Add `boardActions: true` to its `MAILBOX.md`:
 

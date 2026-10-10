@@ -228,15 +228,15 @@ Whichever drain gets there first claims the task and runs it, exactly as if it h
 
 ### Answering through the task tools
 
-The task tools carry a ninth verb, `answerTask`, also sent as the `answerTask_<board>` action. Whoever can write the board answers a parked task with it:
+`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can write the board can call it:
 
 ```ts
 await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
-It moves the task back to `pending` with the answer, like `unparkAndDrain`, with two differences. It doesn't drain the board in your request: on a Workforce conversation's board the answer starts the board in a request of its own, and on a board of your own you drain it afterwards. And the claim that follows isn't charged against the task's `maxAttempts`. The next attempt gets the answer as `input.answer`, which a retry after a failure never has. `answerTask` declines a task that isn't parked, and one parked for a person's turn, writing nothing.
+It moves the task back to `pending` with the answer, like `unparkAndDrain`, but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` declines a task that isn't parked, and one parked for a person's turn, writing nothing.
 
-The worker's side is `parkOnQuestion({ question })`. It parks the task the worker's own turn is running, never one named on input, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
+The worker's side is `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
 
 ### What the mode requires
 

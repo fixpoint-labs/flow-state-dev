@@ -1402,7 +1402,7 @@ and the seat holds all nine task tools over that board, each name carrying the b
 ledger, so the seat's flow does not declare it again. A seat's `tools:` list can neither grant these
 nor fence them out. A narrower set is a different capability.
 
-Compose it once per board; a seat holding two boards holds sixteen tools and the names say which
+Compose it once per board; a seat holding two boards holds eighteen tools and the names say which
 board each writes to. A mailbox board is org-scoped, so it cannot be declared by a block colocated
 in a seat's own folder; that refuses at `hireWorkforce`.
 
