@@ -443,7 +443,7 @@ The resume endpoint (`POST /:flowKind/requests/:requestId/resume`) re-invokes th
 
 Completed blocks are not re-executed. The runtime replays each one's recorded `block_trace` output, keyed by the block's logical path (`${requestId}:${path}` — the attempt-independent prefix of a `blockInstanceId`, so replay tolerates code changes and retries between suspend and resume). The division of labor: the **item log** is the source of truth for block outputs (what replay reads), while `state_snapshot` restores accumulator state only (the sequencer's `stateSchema` fields). The suspending block re-runs because it has no committed output yet; on this re-run, `ctx.suspend()` returns the `resumeData` provided by the external actor instead of throwing.
 
-`SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` and `SuspensionTimeoutError` are ordinary catchable errors thrown on resume when the suspension was rejected or timed out.
+`SuspensionError` is a control-flow signal, not a block failure — rescue handlers never fire for it. `SuspensionRejectedError` is an ordinary catchable error thrown on resume when the suspension was rejected, or when an approval expired (`expired: true`). `SuspensionTimeoutError` is exported and catchable, but the runtime does not throw it: a lapsed `timeoutMs` expires the gate instead.
 
 ### Background work under replay (locked contract)
 

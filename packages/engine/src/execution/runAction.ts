@@ -1830,11 +1830,14 @@ async function runActionAttempt<
         // nobody sends it again: reopened, it would be lost and the ask would
         // time out. A person's approval is reopened, since they resubmit it.
         // An approval that expired stays expired too (FIX-1846): nobody
-        // resubmits an expiry, and the sweep re-drives it.
+        // resubmits an expiry, and the sweep re-drives it. Only when this run
+        // owns the expiry, though: an `expired` read back under an accepted
+        // approve is a raced write, and keeping it would have the sweep
+        // re-drive the person's approval as a rejection.
         const keepsResolution =
           suspension !== null &&
           (suspension.status === "stopped" ||
-            isExpiredApproval(suspension) ||
+            (isExpiredApproval(suspension) && resumeContextRaw.resolution === "expired") ||
             (suspension.status === "submitted" && isAskGate(suspension)));
         if (suspension !== null && !keepsResolution) {
           await provider.suspend({

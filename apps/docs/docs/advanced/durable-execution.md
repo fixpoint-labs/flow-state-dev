@@ -226,7 +226,7 @@ A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `s
 
 ## Error handling
 
-Three errors are relevant to durable execution:
+Two errors are relevant to durable execution:
 
 **`SuspensionError`** — Thrown by `ctx.suspend()` as a control-flow signal. The sequencer catches it; rescue handlers do not. You cannot catch this yourself. It is not a block failure.
 
@@ -246,7 +246,7 @@ const reviewSequencer = sequencer({ name: "review", durable: true })
   ]);
 ```
 
-**`SuspensionTimeoutError`** — Thrown when a suspension with `timeoutMs` expires before it is resolved. Also catchable in rescue.
+**When `timeoutMs` elapses.** What happens to an unanswered gate depends on what it waits for. An approval resolves as a rejection with `expired: true`, so the `SuspensionRejectedError` rescue above catches it, and a gated tool call returns a result saying the approval is no longer valid. Any other gate is marked `expired`, and the resume endpoint refuses it from then on.
 
 ## DurabilityProvider interface
 

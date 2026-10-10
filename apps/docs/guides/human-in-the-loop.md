@@ -406,7 +406,7 @@ sequencer({ name: "reviewPipeline", durable: true })
   .rescue([{ when: [SuspensionRejectedError], block: notifyRejected }]);
 ```
 
-To expire a gate that no one answers, pass `timeoutMs` to `ctx.suspend()`. After it elapses the suspension flips to `timed_out` and resolving it throws `SuspensionTimeoutError`, also catchable in rescue. See [durable execution](/docs/advanced/durable-execution#error-handling) for the full error contract.
+To expire a gate that no one answers, pass `timeoutMs` to `ctx.suspend()`. Once it elapses, an approval resolves as a rejection with `expired: true`, so the same `SuspensionRejectedError` rescue catches it. Any other gate is marked `expired` and can no longer be resolved. See [durable execution](/docs/advanced/durable-execution#error-handling) for the full error contract.
 
 ## Resolving without a browser
 

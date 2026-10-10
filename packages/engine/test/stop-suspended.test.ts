@@ -1015,6 +1015,41 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     expect(replayed).toMatchObject({ suspensionId: gate.suspensionId, rejected: false, expired: false });
   });
 
+  it("an approval whose gate a racing write labels expired, and whose run then fails setup, is reopened rather than re-driven as a rejection", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    const racing = {
+      ...h.parked,
+      continueRequest: async (opts: Parameters<typeof h.cont>[0]) => {
+        const current = (await h.provider.loadSuspension(requestId, gate.suspensionId))!;
+        await h.provider.suspend({ ...current, status: "expired", resolvedAt: Date.now() });
+        return h.cont(opts);
+      }
+    };
+    // The approved run dies in setup, before the turn leaves `suspended`.
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("crash before continuing"));
+    await resumeUnderLease(racing, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: gate }),
+      action: "approve",
+      data: { ok: true },
+      resumedBy: USER
+    });
+    await drain(h);
+
+    // The person approved, so the gate goes back to waiting for their answer,
+    // not on to the sweep as an expiry it would re-drive as a rejection.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect(state.calls).toHaveLength(1);
+    expect(state.toolRuns).toBe(0);
+  });
+
   it("a resume route caller cannot label its own rejection expired: it is recorded rejected", async () => {
     const state = { calls: [] as unknown[], toolRuns: 0 };
     const flow = approvalToolFlow(state);
