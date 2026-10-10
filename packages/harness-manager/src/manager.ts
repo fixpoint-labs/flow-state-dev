@@ -649,8 +649,10 @@ export class HarnessAttemptFailed extends Error {
  *
  * Not a failed attempt. The same source and host give the same answer next
  * time, so a retry would spend every attempt on one refusal. The manager
- * settles the row `cancelled` with this message as its reason, under the
- * attempt's own claim, and the board's recorder then has nothing to re-queue.
+ * settles the row with this message as its reason, under the attempt's own
+ * claim, and the board's recorder then has nothing to re-queue: `cancelled`
+ * on the fixed board, `errored` on a board read from the claim, where the
+ * conversation that filed the row reports it.
  */
 export class HarnessRunRefused extends Error {
   constructor(message: string) {
@@ -2412,14 +2414,18 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // Under this attempt's own claim, so a superseded attempt cannot cancel
       // a row its replacement holds. Best effort, like the write above: the
       // error being unwound is what the caller gets either way.
+      //
+      // On a board read from the claim the row fails for good instead: a
+      // cancelled row there reaches nobody, and an `errored` one is what the
+      // conversation that filed it reports. The fixed board keeps the cancel.
       if (error instanceof HarnessRunRefused && state?.taskId != null && state.attempt != null) {
         try {
           const tasks = await runBoard(ctx as BlockContext);
           const row = tasks.get(state.taskId);
           if (row !== undefined) {
-            await tasks.cancel(state.taskId, reason, {
-              claim: { ...ticketForClaim(tasks.collectionId, row, tasks.partition), attempt: state.attempt },
-            });
+            const claim = { ...ticketForClaim(tasks.collectionId, row, tasks.partition), attempt: state.attempt };
+            if (state.claim != null) await tasks.fail(state.taskId, reason, { claim, noRetry: true });
+            else await tasks.cancel(state.taskId, reason, { claim });
           }
         } catch {
           // Left to the board's recorder, which re-queues it as before.
