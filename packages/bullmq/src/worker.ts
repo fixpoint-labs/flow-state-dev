@@ -34,6 +34,7 @@ import { runAction } from "@flow-state-dev/engine";
 import type {
   FlowRegistry,
   LeasePlace,
+  LeaseTakeResult,
   StoreRegistry,
   RuntimeConfig,
   StreamBridge,
@@ -41,7 +42,7 @@ import type {
 } from "@flow-state-dev/engine";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { resolveWorkerConnection } from "./connection";
-import type { JobLeaseBackend } from "./lease-backend";
+import type { JobLeaseBackend, JobLeaseTakeInput } from "./lease-backend";
 import type { BullmqConnectionOptions, FlowJobData, RetryConfig } from "./types";
 
 /** Dependencies injected into the flow worker. */
@@ -108,6 +109,29 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
   };
 
   /**
+   * Take a place for the job and record it on the job's data, as one step. A
+   * place nothing records is known to no one: neither this attempt's
+   * give-back nor a retry would find it, and it would block its key until its
+   * lease ran out. So a place whose record fails is given back here.
+   */
+  const takeRecorded = async (
+    job: Job<FlowJobData>,
+    backend: JobLeaseBackend,
+    input: JobLeaseTakeInput,
+    record: (place: LeasePlace) => Partial<FlowJobData>
+  ): Promise<LeaseTakeResult> => {
+    const taken = await backend.take(input);
+    if (!("place" in taken)) return taken;
+    try {
+      await job.updateData({ ...job.data, ...record(taken.place) });
+    } catch (error) {
+      await giveBack(taken.place);
+      throw error;
+    }
+    return taken;
+  };
+
+  /**
    * A `defer` job that holds no place yet: claim its key if nothing holds or
    * waits on it, or requeue it to try again, on the schedule the engine's
    * `planDeferWait` sets. Out of patience, it lines up behind the places on
@@ -120,9 +144,8 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     key: string,
     requestId: string
   ): Promise<LeasePlace | typeof CANCELLED | undefined> => {
-    const data = job.data;
     const now = Date.now();
-    const wait = data.leaseWait ?? { firstCheckAt: now, attempt: 0 };
+    const wait = job.data.leaseWait ?? { firstCheckAt: now, attempt: 0 };
     const step = planDeferWait({
       waitedMs: now - wait.firstCheckAt,
       attempt: wait.attempt,
@@ -130,20 +153,24 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     });
     if (step.kind === "line-up") {
       // Newer `hold` runs join behind this place, so they no longer delay it.
-      const behind = await backend.take({ key, requestId, jobId: job.id });
+      const behind = await takeRecorded(job, backend, { key, requestId, jobId: job.id }, (place) => ({
+        leasePlace: place,
+        leaseTurn: { kind: "behind" },
+        leaseWait: null,
+      }));
       if ("heldBy" in behind) throw new Error(`Could not line up on "${key}"`);
-      await job.updateData({ ...data, leasePlace: behind.place, leaseTurn: { kind: "behind" }, leaseWait: null });
       return takeTurn(job, token);
     }
-    const claimed = await backend.take({ key, requestId, ifEmpty: true, jobId: job.id });
-    if ("place" in claimed) {
-      // Claimed because the key was free: it is this run's turn already, and
-      // stays so across a retry.
-      await job.updateData({ ...data, leasePlace: claimed.place, leaseTurn: { kind: "now" }, leaseWait: null });
-      return claimed.place;
-    }
+    const claimed = await takeRecorded(
+      job,
+      backend,
+      { key, requestId, ifEmpty: true, jobId: job.id },
+      (place) => ({ leasePlace: place, leaseTurn: { kind: "claimed" }, leaseWait: null })
+    );
+    // Claimed because the key was free: it is this run's turn already.
+    if ("place" in claimed) return claimed.place;
     await job.updateData({
-      ...data,
+      ...job.data,
       leaseWait: { firstCheckAt: wait.firstCheckAt, attempt: wait.attempt + 1 },
     });
     await job.moveToDelayed(Date.now() + step.retryInMs, token);
@@ -166,7 +193,7 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     const data = job.data;
     const backend = leaseBackend;
     const rule = data.leaseTurn ?? undefined;
-    let place = data.leasePlace ?? undefined;
+    const place = data.leasePlace ?? undefined;
     const claimsKey = place === undefined && rule?.kind === "when-free" ? rule.key : undefined;
     if (
       (place === undefined && claimsKey === undefined) ||
@@ -198,7 +225,12 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
      * still coming, so it lines up again, at the back.
      */
     const retake = async (): Promise<void> => {
-      const retaken = await backend.take({ key: held.key, requestId, jobId: job.id });
+      const retaken = await takeRecorded(
+        job,
+        backend,
+        { key: held.key, requestId, jobId: job.id },
+        (next) => ({ leasePlace: next })
+      );
       if ("heldBy" in retaken) throw new Error(`Could not line up again on "${held.key}"`);
       held = retaken.place;
     };
@@ -207,13 +239,26 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     // the queue is still this job's, and the turn check reconciles expired
     // places by their job's state, which for this job is `active`.
     const kept = (await backend.renew(held)) !== false;
+
+    // A `defer` claimed its key only because the key was free. Having lost
+    // that place (its worker stalled, and another run may hold the key now),
+    // it claims the key again rather than running behind or beside that run.
+    if (!kept && rule?.kind === "claimed") {
+      await job.updateData({
+        ...job.data,
+        leasePlace: null,
+        leaseTurn: { kind: "when-free", key: held.key },
+        leaseWait: null,
+      });
+      return takeTurn(job, token);
+    }
     if (!kept) await retake();
 
-    // A place with its turn already runs at once, wherever it is in line.
-    if (rule?.kind === "now") {
-      if (held !== data.leasePlace || data.leaseWait != null) {
-        await job.updateData({ ...data, leasePlace: held, leaseWait: null });
-      }
+    // A `hold` place has its turn already and runs at once, wherever it is in
+    // line. So does a claimed `defer` that kept its place: it was first when
+    // it claimed the free key, and every later place joined behind it.
+    if (rule?.kind === "now" || rule?.kind === "claimed") {
+      if (job.data.leaseWait != null) await job.updateData({ ...job.data, leaseWait: null });
       return held;
     }
 
@@ -222,13 +267,12 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       await retake();
       turn = await backend.isMyTurn(held);
     }
-    place = held;
 
     const now = Date.now();
     const wait = data.leaseWait ?? { firstCheckAt: now, attempt: 0 };
     const waitedMs = now - wait.firstCheckAt;
     const step = planQueueWait({
-      key: place.key,
+      key: held.key,
       waitedMs,
       attempt: wait.attempt,
       // A `defer` that lined up after its patience waits for the runs ahead
@@ -238,20 +282,18 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     // The first check is always honoured; a later one past the budget times
     // out, as the engine's own wait does.
     if (turn === true && (wait.attempt === 0 || step.kind === "wait")) {
-      if (place !== data.leasePlace || data.leaseWait != null) {
-        await job.updateData({ ...data, leasePlace: place, leaseWait: null });
-      }
-      return place;
+      if (job.data.leaseWait != null) await job.updateData({ ...job.data, leaseWait: null });
+      return held;
     }
 
     if (step.kind === "timeout") {
-      // The processor publishes the terminal and gives the place back.
+      // The processor publishes the terminal and gives back the place the
+      // job's data names, which is `held`.
       await settleUnstartedRequest(stores, requestId, { status: "failed", cause: step.error });
       throw new UnrecoverableError(step.error.message);
     }
     await job.updateData({
-      ...data,
-      leasePlace: place,
+      ...job.data,
       leaseWait: { firstCheckAt: wait.firstCheckAt, attempt: wait.attempt + 1 },
     });
     // Back to the queue as a delayed job: the slot is free for other work,

@@ -40,20 +40,28 @@ export interface FlowJobData {
   leaseWait?: { firstCheckAt: number; attempt: number } | null;
   /**
    * How the job reaches its turn when not by waiting in line for
-   * `leasePlace` (`queue`, `reject`), as the dispatching host set it
-   * (`DispatchEnvelope.leaseTurn`) or as the worker moved it on since:
-   *
-   *   - `{ kind: "now" }` — runs at once under `leasePlace`: a `hold` run, or a
-   *     `defer` run that claimed its key.
-   *   - `{ kind: "when-free", key }` — a `defer` run that has not claimed `key`
-   *     yet. It claims it once nothing holds or waits on it.
-   *   - `{ kind: "behind" }` — a `defer` run that ran out of patience and lined
-   *     up at the back: it waits for `leasePlace`'s turn with no time budget.
+   * `leasePlace` (`queue`, `reject`); see {@link JobLeaseTurn}.
    *
    * `== null` → `leasePlace` waits its turn with the `queue` budget.
    */
-  leaseTurn?: LeaseTurn | { kind: "behind" } | null;
+  leaseTurn?: JobLeaseTurn | null;
 }
+
+/**
+ * How a job reaches its turn, as the dispatching host set it
+ * (`DispatchEnvelope.leaseTurn`) or as the worker moved it on since:
+ *
+ *   - `{ kind: "now" }` — a `hold` run: runs at once under `leasePlace`, even
+ *     after a lost place is taken again at the back.
+ *   - `{ kind: "when-free", key }` — a `defer` run that has not claimed `key`
+ *     yet. It claims it once nothing holds or waits on it.
+ *   - `{ kind: "claimed" }` — a `defer` run that claimed its free key and holds
+ *     `leasePlace`. It runs at once while it keeps that place; one that lost
+ *     it goes back to `when-free`.
+ *   - `{ kind: "behind" }` — a `defer` run that ran out of patience and lined
+ *     up at the back: it waits for `leasePlace`'s turn with no time budget.
+ */
+export type JobLeaseTurn = LeaseTurn | { kind: "claimed" } | { kind: "behind" };
 
 export interface EnqueueOptions {
   /** Override default retry config for this job. */

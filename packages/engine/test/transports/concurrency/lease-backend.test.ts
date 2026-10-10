@@ -22,6 +22,8 @@ import {
 import { admitAndRun } from "./admit-and-run";
 import {
   createInMemoryLeaseBackend,
+  DEFER_PATIENCE_MS,
+  planDeferWait,
   planQueueWait,
   type ConcurrencyLeaseBackend
 } from "../../../src/transports/concurrency/lease-backend";
@@ -497,6 +499,29 @@ describe("planQueueWait — the engine's answer to 'not my turn yet'", () => {
       expect(low.delayMs).toBeLessThan(high.delayMs);
       expect(low.delayMs).toBeGreaterThan(0);
     }
+  });
+
+  it("never times out a wait with no budget", () => {
+    const step = planQueueWait({ key: "k", waitedMs: 10 * 60_000, attempt: 40, budgetMs: Infinity, random: () => 1 });
+    expect(step).toEqual({ kind: "wait", delayMs: 2_000 });
+  });
+});
+
+describe("planDeferWait — the engine's answer to 'the key is not free yet'", () => {
+  it("keeps trying to claim the key until its patience is spent, then lines up", () => {
+    expect(planDeferWait({ waitedMs: DEFER_PATIENCE_MS - 1, attempt: 0 }).kind).toBe("claim-if-free");
+    expect(planDeferWait({ waitedMs: DEFER_PATIENCE_MS, attempt: 0 })).toEqual({ kind: "line-up" });
+    expect(planDeferWait({ waitedMs: 1_000, attempt: 0, patienceMs: 1_000 })).toEqual({ kind: "line-up" });
+  });
+
+  it("never sleeps past its patience, so the line-up lands on time", () => {
+    const step = planDeferWait({ waitedMs: DEFER_PATIENCE_MS - 300, attempt: 20, random: () => 1 });
+    expect(step).toEqual({ kind: "claim-if-free", retryInMs: 300, patienceLeftMs: 300 });
+  });
+
+  it("backs off like a queued wait, capped at two seconds", () => {
+    const step = planDeferWait({ waitedMs: 0, attempt: 20, random: () => 1 });
+    expect(step).toEqual({ kind: "claim-if-free", retryInMs: 2_000, patienceLeftMs: DEFER_PATIENCE_MS });
   });
 });
 

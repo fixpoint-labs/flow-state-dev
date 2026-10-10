@@ -505,8 +505,9 @@ describeWithRedis("a reply and its notice on BullMQ workers (FIX-1836)", () => {
     await untilSettled(d.store, [notice], 15_000);
     expect(await statusesOf(d.store, [notice])).toEqual(["completed"]);
     const ran = d.spans.find((s) => s.tag === "notice")!;
-    // It waited out the lease, and not much longer.
-    expect(ran.start - crashedAt).toBeGreaterThanOrEqual(leaseMs);
+    // It waited out the lease, and not much longer. The lease counts from
+    // the last renewal, which can land up to a quarter-lease before the cut.
+    expect(ran.start - crashedAt).toBeGreaterThanOrEqual(leaseMs * 0.75);
     expect(ran.start - crashedAt).toBeLessThan(leaseMs + 3_000);
     // The reply is still running on the crashed worker: nothing it did let
     // the notice go.
