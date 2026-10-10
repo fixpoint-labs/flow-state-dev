@@ -5,7 +5,7 @@
  *
  * It reports what happened on one `__GOAL__<json>` line; `run.mts` grades it.
  * Run by `run.mts` as its own process, so a control's module patch
- * (`controls/module-patch.mjs`, through `NODE_OPTIONS`) is in place before any
+ * (`goals/lib/module-patch.mjs`, through `NODE_OPTIONS`) is in place before any
  * Workforce module loads. Against another commit, `run.mts` copies this file
  * and `fixtures/` into that checkout's `goals/`, so every import resolves to
  * that commit's packages.

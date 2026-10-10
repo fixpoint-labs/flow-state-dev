@@ -1,7 +1,7 @@
 /**
  * The goal's six controls, each one scratch patch to one Workforce module,
- * applied as the process under test loads it (`module-patch.mjs`). Nothing is
- * written to the checkout, and nothing here is committed code.
+ * applied as the process under test loads it (`goals/lib/module-patch.mjs`).
+ * Nothing is written to the checkout, and nothing here is committed code.
  *
  * - `no-roster-check`: the delegate check takes a worker that isn't on the
  *   conversation's user's roster as if it were, so Bob's worker can join
@@ -27,9 +27,7 @@
  * and marks a file when it applied, so a control that never reached the
  * served code fails the run instead of passing on it.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { describePatches, modulePatchEnv } from "../../../lib/module-patch.mts";
 
 /** The controls this goal understands. */
 export const CONTROL_NAMES = [
@@ -115,8 +113,6 @@ export const CONTROLS: Record<ControlName, Control> = {
   },
 };
 
-const MODULE_PATCH = fileURLToPath(new URL("./module-patch.mjs", import.meta.url));
-
 /**
  * The environment that applies `control` to a process serving the checkout
  * at `root`, appending the patched file to `mark` when it loads.
@@ -125,23 +121,14 @@ const MODULE_PATCH = fileURLToPath(new URL("./module-patch.mjs", import.meta.url
  *   matches: the control would not apply.
  */
 export function controlEnv(control: Control, root: string, mark: string): Record<string, string> {
-  const file = join(root, control.module);
-  const source = readFileSync(file, "utf8");
-  if (!new RegExp(control.from).test(source)) {
-    throw new Error(`control ${control.name}: ${control.module} has nothing matching /${control.from}/ to patch`);
+  try {
+    return modulePatchEnv([{ module: control.module, from: control.from, to: control.to }], root, mark);
+  } catch (error) {
+    throw new Error(`control ${control.name}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return {
-    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${pathToFileURL(MODULE_PATCH).href}`.trim(),
-    GOAL_MODULE_PATCH: JSON.stringify({ file, from: control.from, to: control.to, mark }),
-  };
 }
 
 /** The patch as a reader sees it: the module, the line before and after. */
 export function describePatch(control: Control, root: string): string {
-  const file = join(root, control.module);
-  const before = readFileSync(file, "utf8")
-    .split("\n")
-    .filter((line) => new RegExp(control.from).test(line));
-  const after = before.map((line) => line.replace(new RegExp(control.from), control.to));
-  return [`--- a/${control.module}`, `+++ b/${control.module}`, ...before.map((l) => `-${l}`), ...after.map((l) => `+${l}`)].join("\n");
+  return describePatches([{ module: control.module, from: control.from, to: control.to }], root);
 }
