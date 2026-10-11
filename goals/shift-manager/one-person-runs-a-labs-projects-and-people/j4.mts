@@ -4,8 +4,11 @@
  * A writer that sees only the pages DOCS.md lists, the pentest Lab's README
  * and a scratch copy of `goals/pentest-lab/lab/` (S5) adds the chief of staff,
  * its `hire` and `fire` tools from `createWorkerHireBlocks` with the fire
- * asking first, the `projects` collection and the project tools. The writer
- * is an isolated Claude
+ * asking first, the `projects` collection and the project tools it names. The
+ * task also states what the Lab's other checks need of it (every start fresh,
+ * `probe` and `coordinator` run only declared workers), facts the writer can't
+ * read from the docs or the copy; what to do about them is still the docs' to
+ * say. The writer is an isolated Claude
  * Code agent (the Agent SDK) whose only tools read and write inside its own
  * workspace: the docs and the copy, nothing else of the repository. Every
  * step it reports no page covered is a failed step, reason *doc silent*
@@ -45,14 +48,21 @@ Read only the pages under \`docs/\` (and the Lab's own files) to learn how. Noth
 What the Lab must get:
 1. A chief of staff: the org worker Shift Manager talks to, able to hire workers of the person's own at once and
    fire them only after the person approves.
-2. Projects: the organization's \`projects\` collection, and the project tools on the chief of staff so a person can
-   ask it to create a project.
+2. Projects: the organization's \`projects\` collection, and the project tools \`createProject\` and \`openWorkstream\`
+   on the chief of staff, so a person can ask it to create a project and open workstreams in it.
+The chief of staff runs on the \`coordinator\` flow with no \`delegates:\`, and its model is \`anthropic/claude-haiku-5-5\`.
+It needs no \`setRepository\` and no memory; whether it also gets \`discover\` doesn't matter.
+
+What the Lab's other checks need of it, which its files don't show you:
+- Every start of the Lab is fresh: nothing one run writes is kept for the next.
+- Only the workers its files declare run its \`probe\` and \`coordinator\` flows. Nobody hires onto them.
 
 Keep everything the Lab does today working. Edit the files under \`lab/\` (its host and config, and its workforce tree).
 The Lab is served by Shift Manager from \`lab/fsdev.config.mts\`.
 
 As you work, keep a log at \`lab/J4-STEPS.md\`: one line per step, in this form:
 - <what you did> · <the docs page and section that told you how>
+When this task names the exact value you wrote, such as a tool or the model, write \`· this task\` in place of the page.
 When no page told you how to do a step and you had to guess or infer it, write instead:
 - <what you did> · doc silent: <what the docs did not say>
 Be honest: a step you inferred from the Lab's own code or from general knowledge, and not from a docs page, is doc silent.`;
