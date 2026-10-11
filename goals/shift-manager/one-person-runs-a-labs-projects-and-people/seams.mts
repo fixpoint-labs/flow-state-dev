@@ -121,8 +121,8 @@ export function seams(base: string): SeamRow[] {
     const cos = toolsOf(join(tree, "org/workers/chief-of-staff/WORKER.md"));
     // PLAN's six less `rehire` and `brokenSeats`, which FIX-1788 retired, and `setWorkstreams` and
     // `post-to-mailbox`, which went with mailboxes (FIX-1792); `setRepository` (FIX-1762),
-    // `openWorkstream` (FIX-1793) and `memory/recall` (FIX-1776).
-    const want = ["hire", "fire", "createProject", "setRepository", "openWorkstream", "memory/recall"];
+    // `openWorkstream` (FIX-1793), `memory/recall` (FIX-1776) and `listProjects`, which reads a project before filing.
+    const want = ["hire", "fire", "listProjects", "createProject", "setRepository", "openWorkstream", "memory/recall"];
     out.push(`CoS tools: [${cos.join(", ")}]`);
     const cosOk = JSON.stringify([...cos].sort()) === JSON.stringify([...want].sort());
     if (!cosOk) out.push(`FAIL: wanted [${want.join(", ")}]`);
