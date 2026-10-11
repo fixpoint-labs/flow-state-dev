@@ -49,3 +49,4 @@
 | 2026-10-10 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-delivery`: **support.accounts** only — *0 of support.accounts's 0 sessions hold the first post*, and the second. **others** green. |
 | 2026-10-10 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-route`: **others** only — `support.devices`, `support.fsd` and `support.general` each hold 1 session with the posts' tokens. **support.accounts** green. |
 | 2026-10-10 | same | scripted | PASS (expected) | `GOAL_CONTROL=answers-go-on`: every leg green, as the control's row says. |
+| 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | scripted | **PASS** | Re-run on P4, no change to the goal. Fresh production build, keyless. After a reload, one `support.accounts` session, listed as a run of the conversation with `support.help`, holds both posts as its turns with a `[reply:wake]` reply under each; `support.devices`, `support.fsd` and `support.general` hold 0 sessions with either token. |

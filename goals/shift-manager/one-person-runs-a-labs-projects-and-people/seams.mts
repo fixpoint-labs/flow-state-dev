@@ -206,12 +206,18 @@ export function seams(base: string): SeamRow[] {
     const baseBinder = git("ls-tree", "-r", "--name-only", base, "packages/workforce/src").split("\n").find((p) => /\/\w+-binder\.ts$/.test(p));
     const binder = "packages/workforce/src/mailbox/mailbox-binder.ts";
     const before = baseBinder === undefined ? undefined : keysOf(git("show", `${base}:${baseBinder}`));
-    const after = keysOf(readFileSync(join(REPO_ROOT, binder), "utf8"));
+    // FIX-1792 P4 removed MAILBOX.md and its binder: with no key list left, none can have grown.
+    const binderGone = !existsSync(join(REPO_ROOT, binder));
+    const after = binderGone ? undefined : keysOf(readFileSync(join(REPO_ROOT, binder), "utf8"));
     const gained = (after ?? []).filter((k) => !(before ?? []).includes(k));
     const lost = (before ?? []).filter((k) => !(after ?? []).includes(k));
-    out.push(`$ MAILBOX.md DECLARABLE_KEYS ${base.slice(0, 9)} → commit: [${before?.join(", ")}] → [${after?.join(", ")}]; gained [${gained.join(", ")}], lost [${lost.join(", ")}]`);
+    out.push(
+      binderGone
+        ? `$ MAILBOX.md DECLARABLE_KEYS ${base.slice(0, 9)} → commit: [${before?.join(", ")}] → MAILBOX.md removed (FIX-1792 P4), no key list left`
+        : `$ MAILBOX.md DECLARABLE_KEYS ${base.slice(0, 9)} → commit: [${before?.join(", ")}] → [${after?.join(", ")}]; gained [${gained.join(", ")}], lost [${lost.join(", ")}]`,
+    );
     // The one key the epic added, `mintFor`, went with the project rooms (FIX-1793): the list is the base's again.
-    const keysOk = before !== undefined && after !== undefined && gained.length === 0 && lost.length === 0;
+    const keysOk = before !== undefined && (binderGone || (after !== undefined && gained.length === 0 && lost.length === 0));
     if (naming.length > 0) out.push("FAIL: core or engine gained a Project, Workstream, CoS or admin-seat name");
     if (all.length > 0) out.push("FAIL: a forbidden tree folder or MAILBOXES.md was added");
     if (!keysOk) out.push("FAIL: MAILBOX.md's key list changed");

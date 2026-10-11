@@ -134,12 +134,9 @@ export async function walkSurfaces(
   if (!(await page.locator("[data-testid=org-switcher] [role=menu]").isVisible().catch(() => false))) reach("the org switcher does not open");
   await switcher.locator("button[aria-haspopup=menu]").click();
 
-  // Jump to: a workstream, a worker, a task and a declared document.
+  // Jump to: a worker, a task and a declared document.
   const docs = readableDocuments(tree.root);
   const targets: Array<{ group: string; query: string; lands: string }> = [
-    ...(tree.mailboxes[0] === undefined
-      ? []
-      : [{ group: "Workstreams", query: tree.mailboxes[0].id, lands: `[data-testid=workstream][data-mailbox-id="${tree.mailboxes[0].id}"]` }]),
     { group: "Workers", query: store.seats[0] ?? "", lands: "[data-testid=roster]" },
     ...(rows[0] === undefined ? [] : [{ group: "Tasks", query: rows[0].title.slice(0, 24), lands: `[data-testid=task-frame][data-task-id="${rows[0].id}"]` }]),
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
@@ -213,12 +210,6 @@ export async function walkSurfaces(
     if (!same(filtered, want)) teams(`Roster for team ${team} lists ${diff(want, filtered)}`);
   }
 
-  // PROJECTS: the workstreams.
-  const streams = (await page.locator("[data-testid^=nav-workstream-]").evaluateAll((els) => els.map((e) => e.getAttribute("data-testid") ?? ""))).map((t) =>
-    t.slice("nav-workstream-".length),
-  );
-  if (!same(streams, store.mailboxes.map((c) => c.id))) reach(`PROJECTS lists ${diff(store.mailboxes.map((c) => c.id), streams)}`);
-
   // The theme mark, which replaced v2's Day / Night switch (36bed1297 / #2825): there, and
   // clicked as a person cycles it, it reaches night and day, the page taking each, then the
   // theme it started on.
@@ -237,18 +228,11 @@ export async function walkSurfaces(
     }
   }
 
-  // The project level: No project, then each of the store's projects, in four
-  // tabs. A tab draws the store's content, or its named empty state when the
-  // store holds none: No project has no coordinator and no brief.
-  // A project lists no mailbox, so No project holds every mailbox workstream.
-  const levels = [
-    { id: "unassigned", nav: "projects-heading", project: false, brief: null, workstreams: store.mailboxes.map((c) => c.id) },
-    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, project: true, brief: p.brief, workstreams: [] as string[] })),
-  ];
-  const holdsBoard = new Set(tree.mailboxes.filter((c) => c.boardRefs.length > 0).map((c) => c.id));
-  for (const level of levels) {
-    const where = level.id === "unassigned" ? "No project" : `project ${level.id}`;
-    await page.getByTestId(level.nav).click();
+  // The project level: each of the store's projects, in four tabs. A tab draws
+  // the store's content, or its named empty state when the store holds none.
+  for (const level of store.projects) {
+    const where = `project ${level.id}`;
+    await page.getByTestId(`nav-project-${level.id}`).click();
     if (!(await page.locator(`[data-testid=project][data-project-id="${level.id}"]`).waitFor({ timeout: 10_000 }).then(() => true, () => false))) {
       reach(`${where} does not open`);
       continue;
@@ -258,46 +242,19 @@ export async function walkSurfaces(
       if (!(await tabSelected(page, tab))) reach(`${where}'s ${tab} tab is not selected`);
       if (tab === "stream") {
         // A project's Stream is the person's conversation with their project coordinator for it,
-        // drawn once its session is found or started; No project has none, by name.
-        if (level.project) {
-          const session = await page
-            .waitForFunction(() => document.querySelector("[data-testid=project-stream-conversation]")?.getAttribute("data-session-id") || null, undefined, { timeout: 30_000 })
-            .then(() => true, () => false);
-          if (!session) reach(`${where}'s Stream draws no project coordinator conversation naming its session`);
-        } else if (!(await visible(page, "project-stream-none"))) reach(`${where}'s Stream shows no named empty state`);
-      } else if (tab === "board" && level.project) {
+        // drawn once its session is found or started.
+        const session = await page
+          .waitForFunction(() => document.querySelector("[data-testid=project-stream-conversation]")?.getAttribute("data-session-id") || null, undefined, { timeout: 30_000 })
+          .then(() => true, () => false);
+        if (!session) reach(`${where}'s Stream draws no project coordinator conversation naming its session`);
+      } else if (tab === "board") {
         // A project's Board draws the person's own workstream sessions in it, or names that they hold none.
         if (!(await page.locator("[data-testid=project-board], [data-testid=project-board-none]").first().waitFor({ timeout: 10_000 }).then(() => true, () => false))) {
           reach(`${where}'s Board shows neither the person's workstreams nor a named empty state`);
         }
-      } else if (tab === "board") {
-        const lanesWanted = level.workstreams.filter((id) => holdsBoard.has(id));
-        if (lanesWanted.length === 0) {
-          if (!(await visible(page, "project-board-none"))) reach(`${where} holds no board and its Board shows no named empty state`);
-        } else {
-          await page.getByTestId("project-lane").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-          const lanes = await attr(page, "project-lane", "data-mailbox-id");
-          if (!same(lanes, lanesWanted)) reach(`${where}'s Board lanes: ${diff(lanesWanted, lanes)}`);
-          for (const id of lanesWanted) {
-            const cards = (await page.locator(`[data-testid=project-lane][data-mailbox-id="${id}"] [data-testid=board-card]`).evaluateAll((els) => els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`))) as string[];
-            const want = (store.rows[id] ?? []).map((r) => `${r.ref}/${r.id}`);
-            if (!same(cards, want)) reach(`${where}'s ${id} lane: ${diff(want, cards)}`);
-          }
-        }
-      } else if (tab === "workstreams" && level.project) {
-        // A project's Workstreams: the progress worked out from its entries, then the mailbox workstreams its row lists.
-        if (!(await visible(page, "project-progress"))) reach(`${where}'s Workstreams draws no progress`);
-        if (level.workstreams.length > 0) await page.getByTestId("project-workstream").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-        const listed = await attr(page, "project-workstream", "data-mailbox-id");
-        if (!same(listed, level.workstreams)) reach(`${where}'s Workstreams: ${diff(level.workstreams, listed)}`);
       } else if (tab === "workstreams") {
-        if (level.workstreams.length === 0) {
-          if (!(await visible(page, "project-workstreams-none"))) reach(`${where} lists no workstream and says nothing`);
-        } else {
-          await page.getByTestId("project-workstream").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-          const listed = await attr(page, "project-workstream", "data-mailbox-id");
-          if (!same(listed, level.workstreams)) reach(`${where}'s Workstreams: ${diff(level.workstreams, listed)}`);
-        }
+        // A project's Workstreams: the progress worked out from its entries.
+        if (!(await visible(page, "project-progress"))) reach(`${where}'s Workstreams draws no progress`);
       } else if (level.brief === null) {
         if (!(await visible(page, "project-brief-none"))) reach(`${where} has no brief and its Brief shows no named empty state`);
       } else {
@@ -307,48 +264,6 @@ export async function walkSurfaces(
     }
   }
 
-  // Each workstream: four tabs, the right panel, the board, and the task level from a card.
-  for (const mailbox of tree.mailboxes) {
-    await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-    await page.locator(`[data-testid=workstream][data-mailbox-id="${mailbox.id}"]`).waitFor();
-    if (!(await visible(page, "workstream-panel"))) reach(`${mailbox.id} has no right panel`);
-    const members = await attr(page, "panel-member", "data-seat-id");
-    if (!same(members, mailbox.members)) reach(`${mailbox.id}'s panel team: ${diff(mailbox.members, members)}`);
-    if (!(await tabSelected(page, "stream"))) reach(`${mailbox.id} does not open on its Stream tab`);
-    if (!(await visible(page, "composer", 5_000))) reach(`${mailbox.id}'s Stream has no composer`);
-
-    await page.locator("[role=tab][data-tab=board]").click();
-    if (!(await tabSelected(page, "board"))) reach(`${mailbox.id}'s Board tab is not selected`);
-    const here = store.rows[mailbox.id] ?? [];
-    if (mailbox.boardRefs.length === 0) {
-      if (!(await visible(page, "board-none"))) reach(`${mailbox.id} attaches no board and its Board tab doesn't say so`);
-    } else if (!(await visible(page, "board"))) {
-      reach(`${mailbox.id}'s Board tab shows no board`);
-    } else {
-      const cards = (await page.getByTestId("board-card").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`))) as string[];
-      const want = here.map((r) => `${r.ref}/${r.id}`);
-      if (!same(cards, want)) reach(`${mailbox.id}'s Board: ${diff(want, cards)}`);
-    }
-    await page.locator("[role=tab][data-tab=brief]").click();
-    if (!(await tabSelected(page, "brief"))) reach(`${mailbox.id}'s Brief tab is not selected`);
-    if (!(await visible(page, "brief", 5_000)) && !(await visible(page, "empty-state", 1_000))) reach(`${mailbox.id}'s Brief shows neither a charter nor a named empty state`);
-    await page.locator("[role=tab][data-tab=results]").click();
-    if (!(await tabSelected(page, "results"))) reach(`${mailbox.id}'s Results tab is not selected`);
-    if (!(await visible(page, "empty-state"))) reach(`${mailbox.id}'s Results shows no named empty state`);
-
-    const first = here[0];
-    if (first !== undefined) {
-      await page.locator("[role=tab][data-tab=board]").click();
-      await page.locator(`[data-testid=board-card][data-task-id="${first.id}"]`).click();
-      await page.locator(`[data-testid=task-frame][data-task-id="${first.id}"]`).waitFor();
-      if (!(await visible(page, "task-panel-slot"))) reach(`the task frame for ${first.id} has no right panel`);
-      for (const tab of ["session", "diff", "checks", "brief"]) {
-        await page.locator(`[role=tab][data-tab=${tab}]`).click();
-        if (!(await tabSelected(page, tab))) reach(`the task frame's ${tab} tab is not selected`);
-        if (!(await visible(page, "task-slot"))) reach(`the task frame's ${tab} tab shows nothing`);
-      }
-    }
-  }
   if (options.taskLevel && rows.length === 0) reach("no board holds a row, so the task level was never reached");
   return { orgShown };
 }
@@ -375,9 +290,9 @@ async function startDevTeam(ctx: LegCtx, label: string, harness: "claude-code" |
 }
 
 /** The first row on the store that is running and linked to its run. */
-async function runningRow(api: LabApi, tree: Tree, userId: string, withinMs: number): Promise<StoredRow | undefined> {
+async function runningRow(api: LabApi, userId: string, withinMs: number): Promise<StoredRow | undefined> {
   for (const until = Date.now() + withinMs; Date.now() < until; await sleep(500)) {
-    const store = await readStore(api, tree, userId);
+    const store = await readStore(api, userId);
     const row = Object.values(store.rows).flat().find((r) => r.status === "in_progress" && r.run !== null);
     if (row !== undefined) return row;
   }
@@ -408,21 +323,14 @@ async function conversationRunningRow(api: LabApi, root: string, userId: string,
   return undefined;
 }
 
-/** The Inbox journey: select the ask, see the stream's card, approve it. Returns the ask approved. */
-async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, signal: string, report: Report): Promise<boolean> {
+/** The Inbox journey: select the ask, see its card, approve it. Returns whether the approval was stored. */
+async function inboxJourney(page: Page, api: LabApi, store: Store, signal: string, report: Report): Promise<boolean> {
   const fail = (why: string) => report.fail(signal, why);
   const ask = store.asks[0];
   if (ask === undefined) {
     fail("no ask is pending in the store, so there is nothing to answer");
     return false;
   }
-  // The ask's workstreams (BR-18, decided for FIX-1663): the mailbox whose post started the run when
-  // the ask's session has one as its parent, otherwise every mailbox the store lists the seat in.
-  const session = await api.get(`/sessions/${encodeURIComponent(ask.sessionId)}`);
-  const parent = (session.session ?? session).parentSessionId as string | null | undefined;
-  const memberOf = store.mailboxes.filter((c) => ask.seat !== null && c.members.includes(ask.seat)).map((c) => c.id);
-  const streams = parent != null && store.mailboxes.some((c) => c.id === parent) ? [parent] : memberOf;
-  const workstream = streams[0];
   await page.getByTestId("nav-inbox").click();
   const item = page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`);
   if (!(await item.waitFor({ timeout: 15_000 }).then(() => true, () => false))) {
@@ -430,38 +338,12 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
     return false;
   }
   const kind = (await item.getByTestId("inbox-item-kind").textContent()) ?? "";
-  const shownStream = (await item.getByTestId("inbox-item-workstream").textContent()) ?? "";
   if (kind.trim() === "") fail("the ask's Inbox item names no kind");
-  const named = shownStream.trim() === "no workstream" ? [] : shownStream.split(",").map((w) => w.trim()).filter(Boolean);
-  if (!same(named, streams)) fail(`the ask's Inbox item names workstreams ${diff(streams, named)}`);
   await item.click();
   const detailCard = page.locator(`[data-testid=inbox-detail] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"]`);
   if (!(await detailCard.waitFor({ timeout: 10_000 }).then(() => true, () => false))) {
     fail("the detail pane draws no ask card for the selected ask");
     return false;
-  }
-  // Inbox's detail draws the ask's question as its heading and the card without it (FIX-1737 D);
-  // the stream's card carries the question itself. Together they must say the same.
-  const squash = (t: string | null) => (t ?? "").replace(/\s+/g, "");
-  const detailTitle = squash(await page.getByTestId("inbox-detail-title").textContent().catch(() => null));
-  const detailText = squash(await detailCard.textContent());
-  // The card is on each of those Streams, and says what Inbox's detail says.
-  for (const stream of streams) {
-    await page.getByTestId(`nav-workstream-${stream}`).click();
-    await page.locator(`[data-testid=workstream][data-mailbox-id="${stream}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
-    const streamCard = page.locator(`[data-testid=feed-ask] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"]`);
-    if (!(await streamCard.waitFor({ timeout: 10_000 }).then(() => true, () => false))) fail(`${stream}'s stream shows no card for the ask`);
-    else {
-      const streamText = squash(await streamCard.textContent());
-      const at = detailTitle === "" ? -1 : streamText.indexOf(detailTitle);
-      const rest = at < 0 ? streamText : streamText.slice(0, at) + streamText.slice(at + detailTitle.length);
-      if (at < 0) fail(`the stream's card does not say the detail pane's question "${detailTitle.slice(0, 80)}"`);
-      else if (rest !== detailText) fail(`the detail pane's card and ${stream}'s card differ: "${detailText.slice(0, 120)}" / "${rest.slice(0, 120)}"`);
-    }
-  }
-  if (streams.length > 0) {
-    await page.getByTestId("nav-inbox").click();
-    await item.click();
   }
   await page.locator("[data-testid=inbox-detail]").getByRole("button", { name: "Approve" }).click();
   let gone = false;
@@ -472,15 +354,7 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
   }
   if (!stored) fail(`after Approve the seat's session ${ask.sessionId} holds no resume for ${ask.suspensionId}`);
   if (!gone) fail("after Approve the ask is still listed in Inbox");
-  if (workstream !== undefined) {
-    await page.getByTestId(`nav-workstream-${workstream}`).click();
-    await page.locator(`[data-testid=workstream][data-mailbox-id="${workstream}"] [data-testid=stream]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
-    await sleep(500);
-    if ((await page.locator(`[data-testid=feed-ask] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"] button:not([disabled])`).count()) > 0) {
-      fail(`${workstream}'s stream still offers an answer on the approved ask`);
-    }
-  }
-  report.note(`${signal}: ${kind.trim()} ask ${ask.suspensionId} from ${ask.seat} on ${shownStream.trim()}, approved; resume stored ${stored}, gone from Inbox ${gone}`);
+  report.note(`${signal}: ${kind.trim()} ask ${ask.suspensionId} from ${ask.seat}, approved; resume stored ${stored}, gone from Inbox ${gone}`);
   return stored;
 }
 
@@ -544,21 +418,20 @@ export async function legA(ctx: LegCtx): Promise<void> {
     await open(page, served.origin, "/");
     const { userId, bearer } = await injected(page);
     const api = labApi(served.origin, bearer);
-    const before = await readStore(api, tree, userId);
+    const before = await readStore(api, userId);
     report.note(`a: DevForce served as the devteam profile on the claude-code harness, ${keys.length} model key(s) set; org ${before.orgs.join(", ")}`);
 
     // a1: from the first screen, Inbox.
-    const approved = await inboxJourney(page, api, before, tree, "a1", report);
+    const approved = await inboxJourney(page, api, before, "a1", report);
 
     // a4: the `@worker` turn, while the approved task runs.
-    const row = approved ? await runningRow(api, tree, userId, RUN_STARTS_MS) : undefined;
+    const row = approved ? await runningRow(api, userId, RUN_STARTS_MS) : undefined;
     if (row === undefined) {
       report.fail("a2", approved ? `no row was running with a run link within ${RUN_STARTS_MS / 60_000} min of Approve` : "no ask was approved, so no task runs");
       report.fail("a4", "no task of the coder's is running, so there is nothing to talk to");
     } else {
-      // The row's board: a mailbox's, or a seat session's own (`<sessionId>.tasks`) in a tree with none.
-      const mailbox = tree.mailboxes.find((c) => c.boardRefs.includes(row.ref));
-      const holder = mailbox?.id ?? row.ref.replace(/\.tasks$/, "");
+      // The row's board: the filing session's own (`<sessionId>.tasks`).
+      const holder = row.ref.replace(/\.tasks$/, "");
       const assignee = String(row.raw.assignee ?? "");
       const seat = tree.seats.find((s) => s === assignee || s.endsWith(`.${assignee}`)) ?? assignee;
       // The turn goes in mid-run: once the harness has had A4_SETTLE_MS to open and
@@ -568,21 +441,11 @@ export async function legA(ctx: LegCtx): Promise<void> {
       await sleep(A4_SETTLE_MS);
       const working = (await api.items(row.run!.sessionId)).filter((i) => i.requestId === row.run!.requestId && (i.type === "tool_output" || i.type === "reasoning" || (i.type === "message" && i.role === "assistant"))).length;
       const line = token("a4");
-      let sent: Awaited<ReturnType<typeof sendAndWatch>>;
-      if (mailbox !== undefined) {
-        await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-        await page.locator("[role=tab][data-tab=stream]").click();
-        await page.getByTestId("composer-input").fill(`@${seat.split(".").at(-1)} ${line}`);
-        const picker = page.getByTestId("composer-task-picker");
-        if (await picker.isVisible().catch(() => false)) await picker.selectOption(row.id);
-        sent = await sendAndWatch(page, "composer", () => api.holds(row.run!.sessionId, "user", line));
-      } else {
-        // No mailbox workstream to post in: the line goes through the task's own composer, from Tasks.
-        await page.getByTestId("nav-tasks").click();
-        await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
-        await page.getByTestId("task-composer-input").fill(line);
-        sent = await sendAndWatch(page, "task-composer", () => api.holds(row.run!.sessionId, "user", line));
-      }
+      // The line goes through the task's own composer, from Tasks.
+      await page.getByTestId("nav-tasks").click();
+      await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
+      await page.getByTestId("task-composer-input").fill(line);
+      const sent = await sendAndWatch(page, "task-composer", () => api.holds(row.run!.sessionId, "user", line));
       if (sent.state !== "delivered") report.fail("a4", `the composer never read delivered: ${sent.state}${sent.error === null ? "" : `, "${sent.error}"`}`);
       else if (sent.heldAtDelivered !== true) report.fail("a4", `the composer read delivered while ${seat}'s running task session ${row.run!.sessionId} held no person's turn with the token`);
       // The seat answers in that session: an assistant message, after the person's turn, from the next
@@ -593,7 +456,7 @@ export async function legA(ctx: LegCtx): Promise<void> {
       for (const until = Date.now() + ANSWER_MS; Date.now() < until && answer === undefined; await sleep(2_000)) {
         const messages = await api.items(row.run!.sessionId, ["message"]);
         turnAt = messages.findIndex((m) => m.role === "user" && JSON.stringify(m.content ?? m.text ?? m).includes(line));
-        const linked = (await readStore(api, tree, userId)).rows[holder]?.find((r) => r.id === row.id)?.run;
+        const linked = (await readStore(api, userId)).rows[holder]?.find((r) => r.id === row.id)?.run;
         if (linked != null && linked.requestId !== row.run!.requestId) nextRequest = linked.requestId;
         if (turnAt >= 0 && nextRequest !== undefined) answer = messages.slice(turnAt + 1).find((m) => m.role === "assistant" && m.requestId === nextRequest);
         if (sent.state !== "delivered") break;
@@ -602,28 +465,22 @@ export async function legA(ctx: LegCtx): Promise<void> {
       else if (sent.state === "delivered" && nextRequest === undefined) report.fail("a4", `no next attempt took the line within ${ANSWER_MS / 60_000} min (not retried)`);
       else if (sent.state === "delivered" && answer === undefined) report.fail("a4", `the next attempt ${nextRequest} did not answer in ${row.run!.sessionId} within ${ANSWER_MS / 60_000} min of the turn (not retried)`);
       const answerText = answer === undefined ? "" : JSON.stringify(answer.content ?? answer.text ?? "").slice(0, 160);
-      report.note(`a4: ${mailbox === undefined ? `${seat}'s task composer:` : `@${seat.split(".").at(-1)}`} ${line} sent after ${working} harness item(s) in the attempt → ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}${sent.error === null ? "" : ` "${sent.error}"`} in ${row.run!.sessionId}; next attempt ${nextRequest ?? "none"}; answer ${answer === undefined ? "none" : `${String(answer.id)}: ${answerText}`}`);
+      report.note(`a4: ${seat}'s task composer: ${line} sent after ${working} harness item(s) in the attempt → ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}${sent.error === null ? "" : ` "${sent.error}"`} in ${row.run!.sessionId}; next attempt ${nextRequest ?? "none"}; answer ${answer === undefined ? "none" : `${String(answer.id)}: ${answerText}`}`);
 
-      // a2: the task, from Tasks and again from the workstream's Board (a mailbox's; a tree with none has no Board to open it from).
-      const current = (await readStore(api, tree, userId)).rows[holder]?.find((r) => r.id === row.id) ?? row;
+      // a2: the task, from Tasks.
+      const current = (await readStore(api, userId)).rows[holder]?.find((r) => r.id === row.id) ?? row;
       const linked = current.run === null ? row : current;
       await page.getByTestId("nav-tasks").click();
       await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
       await taskJourney(page, api, linked, served.devtool, "a2", report, "Tasks");
-      if (mailbox !== undefined) {
-        await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-        await page.locator("[role=tab][data-tab=board]").click();
-        await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
-        await taskJourney(page, api, linked, served.devtool, "a2", report, "Board");
-      }
     }
 
     // a3: every surface, against the store as it stands now.
-    const store = await readStore(api, tree, userId);
+    const store = await readStore(api, userId);
     const { orgShown } = await walkSurfaces(page, served.origin, store, tree, { reach: "a3", teams: "a3" }, report);
     if (errors.length > 0) report.fail("a3", `the page threw: ${errors.join(" | ")}`);
     const rows = Object.values(store.rows).flat();
-    report.note(`a3: ${store.seats.length} seats [${store.seats.join(", ")}], ${store.mailboxes.length} workstream(s), ${rows.length} row(s) [${rows.map((r) => r.status).join(", ")}], ${store.asks.length} ask(s) pending; org switcher "${orgShown}"`);
+    report.note(`a3: ${store.seats.length} workers [${store.seats.join(", ")}], ${rows.length} row(s) [${rows.map((r) => r.status).join(", ")}], ${store.asks.length} ask(s) pending; org switcher "${orgShown}"`);
   } finally {
     await page.close();
     await served.stop();
@@ -633,13 +490,13 @@ export async function legA(ctx: LegCtx): Promise<void> {
 // ---- leg b: pentest, keyless, and every Lab under an org ------------------------
 
 /**
- * Names a pentest seat, team or mailbox: a full id anywhere, or a bare name
+ * Names a pentest worker or team: a full id anywhere, or a bare name
  * as a whole string literal. A bare name in prose ("an audit note", "the
  * findings") is English, not the tree.
  */
 function pentestNames(tree: Tree): RegExp {
   const esc = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const ids = [...tree.seats, ...tree.mailboxes.map((c) => c.id)];
+  const ids = [...tree.seats];
   const bare = new Set<string>();
   for (const id of ids) for (const part of id.split(".")) bare.add(part);
   return new RegExp(`(?<![\\w.-])(${ids.map(esc).join("|")})(?![\\w-])|["'\`](${[...bare].map(esc).join("|")})["'\`]`);
@@ -661,7 +518,7 @@ function shiftManagerFiles(): string[] {
   return out;
 }
 
-/** Leg b: the same reach on the pentest tree, its post, the fence, and the org step on the pentest, no-resolver and DevForce Labs. */
+/** Leg b: the same reach on the pentest tree, the fence, and the org step on the pentest, no-resolver and DevForce Labs. */
 export async function legB(ctx: LegCtx): Promise<void> {
   const { report } = ctx;
   const tree = await readTree(TREES.pentest);
@@ -671,37 +528,18 @@ export async function legB(ctx: LegCtx): Promise<void> {
     await open(page, served.origin, "/");
     const { userId, bearer } = await injected(page);
     const api = labApi(served.origin, bearer);
-    const store = await readStore(api, tree, userId);
+    const store = await readStore(api, userId);
     if (!same(store.seats, tree.seats)) report.fail("b:reach", `the store's seats are not the tree's: ${diff(tree.seats, store.seats)}`);
     const { orgShown } = await walkSurfaces(page, served.origin, store, tree, { reach: "b:reach", teams: "b:teams" }, report, {
-      // The pentest mailbox attaches no board, so no task exists to reach; its Board tab names that (PLAN: b).
+      // Nothing files on a pentest board, so no task exists to reach (PLAN: b).
       taskLevel: false,
     });
     if (store.orgs.length !== 1) report.fail("b:org", `[pentest] the person's sessions sit in ${store.orgs.length} orgs (${store.orgs.join(", ")})`);
     else if (orgShown !== store.orgs[0]) report.fail("b:org", `[pentest] the org switcher names "${orgShown}", the store's org is ${store.orgs[0]}`);
 
-    // The post: in the stored transcript before the stream shows it.
-    const mailbox = tree.mailboxes[0]!;
-    const line = token("b-post");
-    await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-    await page.locator("[role=tab][data-tab=stream]").click();
-    await page.getByTestId("composer-input").fill(line);
-    await page.getByTestId("composer-send").click();
-    const drawn = page.getByTestId("transcript-line-body").filter({ hasText: line });
-    const keptNow = async () => (await api.items(mailbox.id, ["component"])).filter((i) => i.component === "mailbox-post" && i.data?.body === line).length;
-    let atDrawn: number | null = null;
-    for (const until = Date.now() + 30_000; Date.now() < until && atDrawn === null; await sleep(50)) {
-      if ((await drawn.count()) > 0) atDrawn = await keptNow();
-    }
-    if (atDrawn === null) report.fail("b:post", `"${line}" was never drawn (${(await page.getByTestId("composer-status").textContent().catch(() => "")) ?? ""})`);
-    else if (atDrawn !== 1) report.fail("b:post", `the stream drew the post while the mailbox's stored transcript held ${atDrawn} copies of it`);
-    await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
-    await page.getByTestId("transcript").waitFor().catch(() => undefined);
-    await sleep(1_000);
-    if ((await drawn.count()) !== 1) report.fail("b:post", `after a reload "${line}" is drawn ${await drawn.count()} times`);
     if (errors.length > 0) report.fail("b:reach", `the page threw: ${errors.join(" | ")}`);
     report.note(
-      `b: pentest served from its committed config, keyless; ${store.seats.length} seats [${store.seats.join(", ")}] in teams [${[...new Set(store.seats.map((s) => s.split(".")[0]))].join(", ")}], workstreams [${store.mailboxes.map((c) => c.id).join(", ")}]; post held ${atDrawn ?? "never drawn"} when drawn; org switcher "${orgShown}", store org ${store.orgs.join(", ")}`,
+      `b: pentest served from its committed config, keyless; ${store.seats.length} seats [${store.seats.join(", ")}] in teams [${[...new Set(store.seats.map((s) => s.split(".")[0]))].join(", ")}]; org switcher "${orgShown}", store org ${store.orgs.join(", ")}`,
     );
   } finally {
     await page.close();
@@ -720,7 +558,7 @@ export async function legB(ctx: LegCtx): Promise<void> {
     return m === null ? [] : [`${relative(REPO_ROOT, file)}: ${m[1] ?? m[2]}`];
   });
   if (hits.length > 0) report.fail("b:fence", `Shift Manager names the pentest tree: ${hits.slice(0, 5).join("; ")}`);
-  report.note(`b:fence: git diff of packages/shift-manager empty; no Shift Manager file (registry copies aside) names a pentest id [${[...tree.seats, ...tree.mailboxes.map((c) => c.id)].join(", ")}] or quotes a bare name of one`);
+  report.note(`b:fence: git diff of packages/shift-manager empty; no Shift Manager file (registry copies aside) names a pentest id [${tree.seats.join(", ")}] or quotes a bare name of one`);
 
   // Every Lab opens under an org: a Lab with no resolver opens under the dev org.
   const askLab = await startShiftManager(ctx.scratch, "b-no-resolver", { config: ASK_LAB_CONFIG, pages: ctx.pages, env: KEYLESS });
@@ -748,7 +586,7 @@ export async function legB(ctx: LegCtx): Promise<void> {
   try {
     await open(third.page, devforce.origin, "/");
     const { userId, bearer } = await injected(third.page);
-    const store = await readStore(labApi(devforce.origin, bearer), devforceTree, userId);
+    const store = await readStore(labApi(devforce.origin, bearer), userId);
     const shown = ((await third.page.getByTestId("org-switcher").locator("span.truncate").first().textContent().catch(() => null)) ?? "").trim();
     if (store.orgs.length !== 1) report.fail("b:org", `[devforce] the person's sessions sit in ${store.orgs.length} orgs (${store.orgs.join(", ")})`);
     else if (shown !== store.orgs[0]) report.fail("b:org", `[devforce] the org switcher names "${shown}", the store's org is ${store.orgs[0]}`);
@@ -829,7 +667,7 @@ export async function legC(ctx: LegCtx): Promise<void> {
       if (dark !== wantDark) report.fail("c:reach", `[${shift}] --shift ${shift} started the page ${dark ? "dark" : "light"}`);
       const { userId, bearer } = await injected(page);
       const api = labApi(devforce.origin, bearer);
-      const before = await readStore(api, tree, userId);
+      const before = await readStore(api, userId);
       // The ask card, in Inbox's detail pane and in the stream.
       const ask = before.asks[0];
       if (ask !== undefined) {
@@ -837,18 +675,11 @@ export async function legC(ctx: LegCtx): Promise<void> {
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
         await page.locator("[data-testid=inbox-detail] [data-testid=ask-card]").waitFor();
         await sweep(page, { ask: `[data-testid=inbox-detail] ${SWEPT.ask}` }, tally);
-        // And in the Stream of a mailbox workstream the asking worker is on, when there is one.
-        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))?.id;
-        if (workstream !== undefined) {
-          await page.getByTestId(`nav-workstream-${workstream}`).click();
-          await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
-          await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
-        }
         // Approve, so a run's Session and its trace page can be read.
         await page.getByTestId("nav-inbox").click();
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
         await page.locator("[data-testid=inbox-detail]").getByRole("button", { name: "Approve" }).click();
-        const row = await runningRow(api, tree, userId, 60_000);
+        const row = await runningRow(api, userId, 60_000);
         if (row !== undefined) {
           await page.getByTestId("nav-tasks").click();
           await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
@@ -867,7 +698,7 @@ export async function legC(ctx: LegCtx): Promise<void> {
         } else report.fail("c:reach", `[${shift}] DevForce's approved row never ran on the scripted harness`);
       } else report.fail("c:reach", `[${shift}] DevForce raised no ask, so the ask card could not be swept`);
       // Every surface a3 reaches, now that a row exists, on this shift's look.
-      await walkSurfaces(page, devforce.origin, await readStore(api, tree, userId), tree, { reach: "c:reach", teams: "c:reach" }, report);
+      await walkSurfaces(page, devforce.origin, await readStore(api, userId), tree, { reach: "c:reach", teams: "c:reach" }, report);
       if (errors.length > 0) report.fail("c:reach", `[${shift}] the page threw: ${errors.join(" | ")}`);
     } finally {
       await page.close();

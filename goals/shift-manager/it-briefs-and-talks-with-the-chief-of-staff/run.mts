@@ -18,9 +18,8 @@
  *   landing  `/` and an unknown path draw Chief of Staff, its entry current
  *   summary  the needs-you count equals the store's pending asks, every one is
  *            listed, the running line equals the running rows on the person's
- *            conversation boards, and the rail lists the tree's workstreams:
- *            none, since the desk's coordinator is a worker. Per-stream counts
- *            are retired with the mailbox (goal.md, BR-24).
+ *            conversation boards. The rail of workstreams and its per-stream
+ *            counts are retired with the mailbox (goal.md, BR-24).
  *   inline   Approve on one summary ask leaves one fewer pending suspension in
  *            the store, and both the summary and Inbox drop it
  *   talk     a fresh token typed to the chief of staff is a user item in its
@@ -277,8 +276,6 @@ await runGoal(async (failures) => {
   const cosSeat = desk.workers.find((w) => w.id.split(".").at(-1) === COS_NAME);
   const asker = desk.workers.find((w) => w.declared.flow === "asker");
   if (cosSeat === undefined || asker === undefined) throw new Error("the desk tree declares no chief of staff or asker");
-  // A workstream is a mailbox the tree declares; the desk's coordinator is a worker, so it has none.
-  const workstreams = desk.mailboxes.length;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];
@@ -344,9 +341,7 @@ await runGoal(async (failures) => {
       const storeRunning = (await api.conversationRows(listed)).filter((r) => r.status === "in_progress").length;
       const shownRunning = await page.getByTestId("cos-summary-running").getAttribute("data-runs");
       if (Number(shownRunning) !== storeRunning) fail("summary", `the summary says ${shownRunning} runs going, the person's conversation boards hold ${storeRunning} running`);
-      const streams = await page.getByTestId("cos-stream").count();
-      if (streams !== workstreams) fail("summary", `the rail lists ${streams} workstream(s), the tree declares ${workstreams}`);
-      evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${shownRunning} running / ${storeRunning} in the store, ${streams} workstreams in the rail`);
+      evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${shownRunning} running / ${storeRunning} in the store`);
 
       // inline
       const answered = shownAsks[0] ?? pending[0]!;

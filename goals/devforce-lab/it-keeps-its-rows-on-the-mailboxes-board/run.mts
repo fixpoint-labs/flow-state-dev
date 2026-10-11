@@ -14,7 +14,7 @@
  *
  * Legs:
  *
- *   0  the tree declares no mailbox
+ *   0  the tree holds no mailbox file
  *   a  the workstream session's board holds exactly the filed row, completed,
  *      assignee eng.coder, read by its owner
  *   b  Bob and the outsider read the entry: owner Alice, lead eng.em, its
@@ -31,13 +31,12 @@
  *
  * Run: pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts
  */
-import { writeFileSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { runGoal, silentLogger } from "../../lib/index.mts";
 import { labApi, labRoutes } from "../../lib/shift-manager.mts";
 import { createLabClients } from "../../../packages/shift-manager/src/lib/connection.ts";
@@ -82,9 +81,10 @@ await runGoal(async (failures) => {
     failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);
   };
 
-  // ---- (0) the tree declares no mailbox ----------------------------------
-  const roster = await readDeclaredRoster(LAB_TREE);
-  if (roster.mailboxes.length > 0) note("0:no-mailbox", `the tree declares ${show(roster.mailboxes.map((m) => m.id))}`);
+  // ---- (0) the tree holds no mailbox file --------------------------------
+  // Nothing loads a mailbox file any more, so the tree itself is read for one.
+  const mailboxFiles = (readdirSync(LAB_TREE, { recursive: true }) as string[]).filter((rel) => rel.endsWith("MAILBOX.md"));
+  if (mailboxFiles.length > 0) note("0:no-mailbox", `the tree holds ${show(mailboxFiles)}`);
 
   const dirs = createScratchRepo("workstream-board");
   const stub = harnessStub({ duringRun: commitWork });

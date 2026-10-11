@@ -39,7 +39,7 @@ import { readShiftManagerTheme } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { PENTEST_CONFIG, TREES, legA, legB, legC, staticFence, type LegCtx, type Report } from "./legs.mts";
 import { j3, j4, part4 } from "./parts.mts";
-import { SHIFT_MANAGER, THEME_IMPORT, buildPages, injected, labApi, open, readStore, readTree, startShiftManager, type Built, type Patch, type Swap } from "./shell.mts";
+import { SHIFT_MANAGER, THEME_IMPORT, buildPages, injected, labApi, open, readStore, startShiftManager, type Built, type Patch, type Swap } from "./shell.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("shift-manager-closure");
@@ -196,14 +196,13 @@ async function b0(report: Report): Promise<void> {
           await open(page, served.origin, "/");
           const who = await injected(page);
           const api = labApi(served.origin, who.bearer);
-          const store = await readStore(api, await readTree(TREES.pentest), who.userId);
+          const store = await readStore(api, who.userId);
           const listed = await api.get("");
           const flows = (Array.isArray(listed) ? listed : (listed?.flows ?? [])) as Array<{ id?: string; kind?: string }>;
           return {
             flows: flows.map((f) => String(f.id ?? f.kind)).sort(),
             orgs: store.orgs,
             seats: store.seats,
-            mailboxes: store.mailboxes.map((c) => `${c.id}[${c.members.join(",")}]`),
             userId: who.userId,
             bearer: who.bearer !== undefined,
           };
@@ -224,7 +223,7 @@ async function b0(report: Report): Promise<void> {
         const b = JSON.stringify(theirs[key]);
         if (a !== b) fail(`the writer's config boots a different ${key}: ${b}, the committed config ${a}`);
       }
-      report.note(`b0: booted with the README's command over the writer's copy; both configs boot ${ours.flows.length} flows, org [${ours.orgs.join(", ")}], seats [${ours.seats.join(", ")}], workstreams [${ours.mailboxes.join(", ")}], page as ${ours.userId}${ours.bearer ? " with a bearer" : ""}`);
+      report.note(`b0: booted with the README's command over the writer's copy; both configs boot ${ours.flows.length} flows, org [${ours.orgs.join(", ")}], workers [${ours.seats.join(", ")}], page as ${ours.userId}${ours.bearer ? " with a bearer" : ""}`);
     } finally {
       await browser.close();
     }
@@ -281,10 +280,10 @@ const CONTROLS: Control[] = [
   {
     name: "optimistic-post",
     build: async () => {
-      const swap = swapOf(["transcript.ts", "send.ts"], "it-opens-a-lab", "optimistic-post.ts");
+      const swap = swapOf("send.ts", "it-opens-a-lab", "optimistic-post.ts");
       return { themed: await swapBuild("ctl-optimistic-post", swap, false), noTheme: await swapBuild("ctl-optimistic-post-no-theme", swap, true) };
     },
-    must: ["a4", "b:post"],
+    must: ["a4"],
     legs: ["a", "b", "c"],
   },
   {

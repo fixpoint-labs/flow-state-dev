@@ -158,12 +158,10 @@ export interface OpenInventoryOptions {
 /** What one boot wrote, and what it could not. */
 export interface InventoryBinding {
   /**
-   * How many seat rows were written. A row the boot may no longer write — the
-   * store already holds a newer hire's row at that address — is left and not
-   * counted. The count is the seat action's own, read from what `run`
-   * returns: the action's output, or a run result carrying it as `output`.
-   * A door whose return carries neither (an HTTP action client returns no
-   * output) gets the number of rows sent instead.
+   * How many seat rows were written. The count is the seat action's own, read
+   * from what `run` returns: the action's output, or a run result carrying it
+   * as `output`. A door whose return carries neither (an HTTP action client
+   * returns no output) gets the number of rows sent instead.
    */
   seats: number;
   /**
@@ -194,10 +192,7 @@ function messageOf(error: unknown): string {
  * Fill the org's live inventory: one row per hired seat.
  *
  * Re-running over an unchanged roster is a no-op: every write is keyed by the
- * record's own id, so nothing duplicates and nothing appends. A seat
- * row is written only where the boot may still write it (no row when read, or
- * a stored row of the same seat), so a boot whose roster is older than the
- * store never replaces a runtime hire's row.
+ * record's own id, so nothing duplicates and nothing appends.
  *
  * @param roster  The hired seats.
  * @param options `run`: the action door. `seatWriter`: the flow the seat rows
@@ -276,8 +271,7 @@ export async function openInventory(
         // `InventoryActionRequest.source`.
         source: "internal"
       });
-      // The action skips a row the boot may no longer write (a newer hire's),
-      // so its own count is the one reported, when the door hands it back.
+      // The action's own count is the one reported, when the door hands it back.
       seatsWritten = writtenOf(ran) ?? seats.length;
     } catch (error) {
       // Collected, not thrown: the caller is the one that knows whether a
