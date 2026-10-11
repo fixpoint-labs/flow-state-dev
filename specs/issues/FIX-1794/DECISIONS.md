@@ -227,6 +227,6 @@ left.
   a task it filed ends, as a judgment coordinator does ([#3035](https://github.com/fixpoint-labs/flow-state-dev/pull/3035)).
   Every policy still shows the ending as a line; round robin and everyone show only the line.
 - **Amended after merge (leg e, 2026-10-11)**: leg e's signal no longer names a refusal code. Other
-  writes to a finished task are FIX-1817 BR-26's, which the goal doesn't exercise.
+  writes to a finished task are FIX-1817 BR-26's, and the goal doesn't exercise them.
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).
