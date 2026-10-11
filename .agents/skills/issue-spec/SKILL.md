@@ -241,7 +241,7 @@ The incentive gradient of this workflow pulls toward producing a spec: that's th
    Then compare the change to the closest entry:
    - **It differs only by a flag, or only in what the caller does** → it is a parameter on that entry, not a new method or a new kind. Extend it, or fold both into one. Name it by the variable, not the scenario: `wait`, not `ask`.
    - **It differs in what the recipient or the mechanism does** → it may earn its own name. Say what that difference is.
-   - **Two existing entries already do the job the same way** → say so, and add a `PLAN.md → Follow-ups` line to run `audit-coherence` with that job as the scope.
+   - **Two existing entries already do the job the same way** → say so, and file the fold through `issue-manager` (it dedupes against existing issues): a job-scoped `audit-coherence` run, then the fold. Put the issue ID in `PLAN.md → Follow-ups`; a note with no issue has no owner once the spec merges.
 
 **The required output of this step: a verdict** — one of:
 

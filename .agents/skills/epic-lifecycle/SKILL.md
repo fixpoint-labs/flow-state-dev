@@ -315,7 +315,9 @@ The epic-specific delta:
    for in this wake. The wake only observes the cancel; a human usually made it in Linear. If the
    row carried out a decision recorded in the epic-spec, you post a note on the epic issue saying
    whether that decision still stands and why the child went, or put the question to the user
-   when only they know. Otherwise the epic keeps a decision nothing implements, and the next
+   when only they know. If the decision no longer stands, a note isn't enough: later specs read
+   the retained `DECISIONS.md` as authority, so dispatch `epic-agent` for an amendment PR from
+   `main`, which goes through renewed approval like any meaningful amendment. Otherwise the epic keeps a decision nothing implements, and the next
    reader trusts it. A row cancelled with no such decision behind it needs no note.
 
    **`suspectOwnerApprovals`** is an owner-login GitHub review or approving comment with no
@@ -771,7 +773,9 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   2. **Names the job** each addition does (deliver work, wait for a result, answer, report an
      ending…), and dedupes: one entry per job, however many issues touched it.
   3. **Runs `audit-coherence` once per job** with that job as the scope, across packages, and
-     puts the surface map's fold candidates in the lessons PR as proposed follow-ups. A job whose
+     files each fold candidate through `issue-manager` (deduped, in the epic's project), linking
+     the issues from the lessons PR. The lessons PR is a draft that may never merge; the issue
+     is what gives the fold an owner. A job whose
      only addition a merged spec already compared against the closest entry, finding no fold,
      needs no audit; list it as cleared by that spec. Two or more additions to one job always
      get the audit, because no single spec saw both.
