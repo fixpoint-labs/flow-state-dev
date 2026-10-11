@@ -11,9 +11,10 @@
  * what the task asked for; and which section it read for that. A *gap* fails J4. A
  * sure *answered* or *outside*, at {@link JUDGE_FLOOR} or above, drops the
  * line. An unsure one is noisy too: Jev's confidence on the same line swings
- * across the floor from call to call. So an unsure line is judged
+ * across the floor from call to call. So an unsure line is judged again, up to
  * {@link JUDGE_CALLS} times in all, and fails J4, naming the section Jev cited,
- * only when most of those calls are not a sure drop. A line Jev is unsure
+ * only when most of those calls are not a sure drop. Judging stops as soon as
+ * either side holds that majority. A line Jev is unsure
  * about every time still fails, as a cut docs section does.
  *
  * The model is `typesafe-ai/jev` through the AI Gateway, as DevTeam's coder
@@ -200,12 +201,14 @@ export async function judgeSilent(task: string, lines: string[], sections: DocSe
       out.push(first);
       continue;
     }
+    // Judged again until one side holds a majority of JUDGE_CALLS, so a second failing call ends it.
     const calls = [first];
-    for (let n = 1; n < JUDGE_CALLS; n++) calls.push(await once(line, picked, `j4_judge_${i}_${n}`));
-    const failing = calls.filter((c) => c.fails).length;
+    const majority = (fails: boolean) => calls.filter((c) => c.fails === fails).length * 2 > JUDGE_CALLS;
+    while (!majority(true) && !majority(false)) calls.push(await once(line, picked, `j4_judge_${i}_${calls.length}`));
+    const fails = majority(true);
     // The line reads as the call that decided it: the first failing call, or the first sure drop.
-    const shown = failing * 2 > calls.length ? first : calls.find((c) => !c.fails)!;
-    out.push({ ...shown, calls: calls.map((c) => ({ verdict: c.verdict, confidence: c.confidence })), fails: failing * 2 > calls.length });
+    const shown = fails ? first : calls.find((c) => !c.fails)!;
+    out.push({ ...shown, calls: calls.map((c) => ({ verdict: c.verdict, confidence: c.confidence })), fails });
   }
   return out;
 }
