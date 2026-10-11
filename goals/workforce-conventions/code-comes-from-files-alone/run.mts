@@ -37,12 +37,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { build, type Plugin } from "esbuild";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, loadFixture, runGoal } from "../../lib/index.mts";
+import { answerSeats } from "./bundled-host.mts";
 
 interface Fixture {
   host: {
@@ -75,11 +73,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** A name only the kind's own module carries: its answer block's. Present in the bundle means the kind was bundled. */
 const KIND_MARK = "desk-clerk-answer";
 
-/**
- * The `runtime-scan` control: the generated module swapped, at bundle time, for
- * one that finds kinds the way a run-time scan would — by listing
- * `flows/workers/` beside the running code and importing what is there.
- */
+/** Swap the generated module for a run-time scan of `flows/workers/` beside the bundle. */
 const runtimeScan: Plugin = {
   name: "runtime-scan",
   setup(b) {
@@ -163,90 +157,58 @@ await runGoal(async (failures) => {
   if (roster.errors.length > 0) {
     fail("d", `the fixture tree did not load: ${roster.errors.map((e) => e.path).join(", ")}`);
   }
-  let workers: WorkerManifest[] = roster.workers;
+  let workers = roster.workers;
   if (CONTROL === "shared-settings") {
     // One configuration for every seat: the first seat's declared keys, each
     // seat keeping only its own id.
     const first = workers[0]!.declared;
     workers = workers.map((worker) => ({ ...worker, declared: { ...first } }));
   }
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: generated.kinds as never });
-  const copies = hireWorkforce(installation);
-  const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    stores: { default: { primary: inMemoryStores() } },
-  } as never);
-  try {
-    const runtime = await state.getRuntime();
-    const router = await state.getRouter();
-    const seen: Record<string, string> = {};
-    const copy = copies.find((c) => c.kind === fixture.host.kind);
-    if (copy === undefined) fail("d", `no copy of the tree's custom flow "${fixture.host.kind}" was registered (registered: ${copies.map((c) => c.id).join(", ")})`);
-    for (const seatId of fixture.host.seats) {
-      if (copy === undefined) break;
-      const declaredFlow = installation.standardWorker(seatId)?.declared.flow;
-      if (declaredFlow !== fixture.host.kind) {
-        fail("d", `${seatId} runs on "${String(declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
-      }
-      // A session on the one copy, created naming the worker.
-      const sessionPath = [copy.id, "sessions"];
-      const created = await router.POST(
-        new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ userId: fixture.host.userId, sessionId: `s_${seatId}`, state: { workerId: seatId } }),
-        }),
-        { params: { path: sessionPath } },
-      );
-      if (created.status !== 201) {
-        fail("d", `${seatId}: its session was not created (${created.status}): ${await created.text()}`);
-        continue;
-      }
-      const ran = (await runAction({
-        flow: copy,
-        actionName: "answer",
-        input: { note: fixture.host.note },
-        userId: fixture.host.userId,
-        // A fixture host with one organization: the development default.
-        orgId: DEFAULT_ORG_ID,
-        sessionId: `s_${seatId}`,
-        stores: runtime.stores,
-        runtimeConfig: { ...runtime.runtimeConfig },
-      } as never)) as { output?: { said?: string }; error?: unknown };
-      const said = ran.output?.said ?? "";
-      seen[seatId] = said;
-      const desk = declaredDesk(seatId);
-      if (said === "") {
-        fail("d", `${seatId}: answered nothing${ran.error === undefined ? "" : `: ${String(ran.error)}`}`);
-      } else if (!said.includes(`[${desk} desk]`)) {
-        fail("d", `${seatId}: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
-      }
+  const hired = await answerSeats({
+    kinds: generated.kinds,
+    workers,
+    userId: fixture.host.userId,
+    note: fixture.host.note,
+    kind: fixture.host.kind,
+    seats: fixture.host.seats,
+  });
+  const seen: Record<string, string> = {};
+  if (!hired.found) fail("d", `no copy of the tree's custom flow "${fixture.host.kind}" was registered (registered: ${hired.registered.join(", ")})`);
+  for (const seatId of fixture.host.seats) {
+    const row = hired.answers[seatId];
+    if (row === undefined) continue;
+    if (row.declaredFlow !== fixture.host.kind) {
+      fail("d", `${seatId} runs on "${String(row.declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
     }
-    // Two seats, one kind. Equal answers would pass every check above while
-    // meaning the configuration came from somewhere other than their files.
-    const answers = fixture.host.seats.map((seatId) => seen[seatId] ?? "");
-    if (answers.length > 1 && new Set(answers).size === 1) {
-      fail(
-        "d",
-        `both seats answered ${JSON.stringify(answers[0])} — they sit on one kind, so an identical answer means ` +
-          `they are running one shared configuration rather than their own files`
-      );
+    if (row.status !== 201) {
+      fail("d", `${seatId}: its session was not created (${row.status}): ${String(row.error ?? "")}`);
+      continue;
     }
-    evidence.push(
-      `on the fixture host, hired from its generated module: ` +
-        fixture.host.seats.map((seatId) => `${seatId} said ${JSON.stringify(seen[seatId] ?? "")}`).join(", ")
-    );
-  } finally {
-    await state.dispose();
+    const said = row.said;
+    seen[seatId] = said;
+    const desk = declaredDesk(seatId);
+    if (said === "") {
+      fail("d", `${seatId}: answered nothing${row.error === undefined ? "" : `: ${String(row.error)}`}`);
+    } else if (!said.includes(`[${desk} desk]`)) {
+      fail("d", `${seatId}: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
+    }
   }
-
+  // Two seats, one kind. Equal answers would pass every check above while
+  // meaning the configuration came from somewhere other than their files.
+  const answers = fixture.host.seats.map((seatId) => seen[seatId] ?? "");
+  if (answers.length > 1 && new Set(answers).size === 1) {
+    fail(
+      "d",
+      `both seats answered ${JSON.stringify(answers[0])} — they sit on one kind, so an identical answer means ` +
+        `they are running one shared configuration rather than their own files`
+    );
+  }
+  evidence.push(
+    `on the fixture host, hired from its generated module: ` +
+      fixture.host.seats.map((seatId) => `${seatId} said ${JSON.stringify(seen[seatId] ?? "")}`).join(", ")
+  );
 
   // ---- (e) the kind, through a production bundle ----------------------------
-  // `bundled-host.mts` reaches the kind only through the generated module. It
-  // is bundled and minified into one file, written to an empty folder outside
-  // the repository, and run there with plain node: nothing beside it holds the
-  // fixture's source, so the workers answer only if the generated module's
-  // static imports were carried into the bundle.
   const out = mkdtempSync(join(tmpdir(), "goal-code-from-files-"));
   try {
     const bundle = join(out, "host.mjs");

@@ -1,69 +1,91 @@
 /**
- * The app leg (e) bundles: a host whose only route to the fixture's worker kind
- * is the generated module.
- *
- * `run.mts` builds this file into one production bundle with esbuild, writes
- * the bundle to an empty folder outside the repository, and runs it there with
- * plain `node`. Nothing next to the bundle holds the fixture's source, so the
- * kind answers only if the generated module's static imports were carried into
- * the bundle. A host that found its kinds by scanning a folder at run time
- * would find no folder.
- *
- * The workers' `WORKER.md` records arrive as data, in the JSON file named by
- * `argv[2]`: those are files an app deploys beside its code, and this leg is
- * about the code. It prints one JSON line, `{ "answers": { <workerId>: said } }`.
+ * Leg (e)'s bundle entry, and the hire → session → `answer` sequence leg (d)
+ * runs too. The kind is imported only from the generated module. Worker records
+ * for the bundled run arrive as JSON on argv. The process prints one line,
+ * `{ kinds, answers }`.
  */
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 import { kinds } from "./fixtures/workforce/workforce.gen.ts";
 
-interface HostInput {
+export interface SeatAnswer {
+  declaredFlow: unknown;
+  status: number;
+  said: string;
+  error?: unknown;
+}
+
+/** Hire `workers` onto the caller's `kinds` and run each seat's `answer`. */
+export async function answerSeats(input: {
+  kinds: Record<string, unknown>;
+  workers: readonly WorkerManifest[];
   userId: string;
   note: string;
   kind: string;
-  seats: string[];
-  workers: WorkerManifest[];
-}
-
-const input = JSON.parse(readFileSync(process.argv[2]!, "utf8")) as HostInput;
-const installation = createWorkerInstallation({ standardWorkers: input.workers, workerFlows: kinds as never });
-const copies = hireWorkforce(installation);
-const state = createFlowState({
-  flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-  stores: { default: { primary: inMemoryStores() } },
-} as never);
-
-const answers: Record<string, string> = {};
-try {
-  const runtime = await state.getRuntime();
-  const router = await state.getRouter();
+  seats: readonly string[];
+}): Promise<{ registered: string[]; found: boolean; answers: Record<string, SeatAnswer> }> {
+  const installation = createWorkerInstallation({ standardWorkers: input.workers, workerFlows: input.kinds as never });
+  const copies = hireWorkforce(installation);
+  const state = createFlowState({
+    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    stores: { default: { primary: inMemoryStores() } },
+  } as never);
+  const answers: Record<string, SeatAnswer> = {};
+  const registered = copies.map((copy) => copy.id);
   const copy = copies.find((c) => c.kind === input.kind);
-  for (const seatId of input.seats) {
-    if (copy === undefined) break;
-    const sessionPath = [copy.id, "sessions"];
-    await router.POST(
-      new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: input.userId, sessionId: `s_${seatId}`, state: { workerId: seatId } }),
-      }),
-      { params: { path: sessionPath } },
-    );
-    const ran = (await runAction({
-      flow: copy,
-      actionName: "answer",
-      input: { note: input.note },
-      userId: input.userId,
-      orgId: DEFAULT_ORG_ID,
-      sessionId: `s_${seatId}`,
-      stores: runtime.stores,
-      runtimeConfig: { ...runtime.runtimeConfig },
-    } as never)) as { output?: { said?: string } };
-    answers[seatId] = ran.output?.said ?? "";
+  try {
+    if (copy === undefined) return { registered, found: false, answers };
+    const runtime = await state.getRuntime();
+    const router = await state.getRouter();
+    for (const seatId of input.seats) {
+      const declaredFlow = installation.standardWorker(seatId)?.declared.flow;
+      const sessionPath = [copy.id, "sessions"];
+      const created = await router.POST(
+        new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: input.userId, sessionId: `s_${seatId}`, state: { workerId: seatId } }),
+        }),
+        { params: { path: sessionPath } },
+      );
+      if (created.status !== 201) {
+        answers[seatId] = { declaredFlow, status: created.status, said: "", error: await created.text() };
+        continue;
+      }
+      const ran = (await runAction({
+        flow: copy,
+        actionName: "answer",
+        input: { note: input.note },
+        userId: input.userId,
+        orgId: DEFAULT_ORG_ID,
+        sessionId: `s_${seatId}`,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+      } as never)) as { output?: { said?: string }; error?: unknown };
+      answers[seatId] = { declaredFlow, status: created.status, said: ran.output?.said ?? "", error: ran.error };
+    }
+  } finally {
+    await state.dispose();
   }
-} finally {
-  await state.dispose();
+  return { registered, found: true, answers };
 }
-process.stdout.write(`${JSON.stringify({ kinds: Object.keys(kinds), answers })}\n`);
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const input = JSON.parse(readFileSync(process.argv[2]!, "utf8")) as {
+    userId: string;
+    note: string;
+    kind: string;
+    seats: string[];
+    workers: readonly WorkerManifest[];
+  };
+  const { answers } = await answerSeats({ ...input, kinds });
+  process.stdout.write(
+    `${JSON.stringify({
+      kinds: Object.keys(kinds),
+      answers: Object.fromEntries(Object.entries(answers).map(([id, row]) => [id, row.said])),
+    })}\n`,
+  );
+}
