@@ -169,19 +169,13 @@ See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onr
 
 ## Inventory
 
-If your app writes a [workforce inventory](/docs/workforce/inventory), the Inventory tab shows the organization's registered seats, mailboxes and memberships from one session. Open any mailbox's session and pick the tab.
+If your app writes a [workforce inventory](/docs/workforce/inventory), the Inventory tab shows the workers registered in the organization. Open a session whose flow declares the inventory collection, such as a person's session on the `workforce-roster` flow, and pick the tab.
 
-The tab appears on a session whose flow declares at least one of the three inventory collections. It has one section per collection:
+The tab has one section, **Registered seats**, with each worker's Id and Kind. When nothing is registered, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
 
-- **Registered seats:** Id, Kind, and Mailboxes, the mailboxes that seat's membership rows name. Mailboxes shows only when the flow declares the membership collection.
-- **Registered mailboxes:** Id, Kind, Members, and Registered, the time the mailbox first registered.
-- **Registered memberships:** Seat and Mailbox.
+Every row is labelled registered. The tab says the same: a row stays once it is written, so a worker that was fired is still listed as registered. The tab is a record of what has been registered here. It can't tell you which workers are working now.
 
-A mailbox's session declares all three. Some flows declare only part. A collection the flow doesn't declare reads "Not installed on this flow.", which is different from an empty section such as "No seats registered." When nothing is registered anywhere, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
-
-Every row is labelled registered. Rows are never removed, so a fired seat stays listed, and a mailbox's members are the ones it had when it registered. The tab is a record of what has been registered here. It can't tell you which seats are working now.
-
-The tab works with `FSDEV_DEBUG_ENDPOINTS=0`. Each request carries the DevTool's bearer token, from `devtool.bearerToken` in your config or the Settings sheet (see [Connecting to a secured flow](./setup.md#connecting-to-a-secured-flow)). It reads every page of each collection.
+The tab works with `FSDEV_DEBUG_ENDPOINTS=0`. Each request carries the DevTool's bearer token, from `devtool.bearerToken` in your config or the Settings sheet (see [Connecting to a secured flow](./setup.md#connecting-to-a-secured-flow)). It reads every page of the collection.
 
 It shows the organization of the session you opened and no other. There is no organization picker.
 

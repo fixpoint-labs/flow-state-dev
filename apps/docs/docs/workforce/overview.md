@@ -21,13 +21,12 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 ![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, and hireWorkforce gives back one copy of each flow a worker runs on, which your app registers. Every worker on a flow shares that copy. Sessions name their worker when they are created, and live in your store with the state and resources a worker writes. A worker a user hires or forks while the app runs is a row in their own data. A task's assignee can name a standard worker that takes tasks: the board runs the list, and Workforce finds the worker.](./workforce-overview.svg)
 
-Workforce reads your files and runs them. Each `WORKER.md` is a standard worker every user has, run by one shared copy of the flow it names. A user can add workers of their own, which nobody else can reach. Each `MAILBOX.md` becomes a named session on a mailbox kind, the built-in one unless the file names another. Sessions, resources and boards work as they do on any flow, and live where they always do.
+Workforce reads your files and runs them. Each `WORKER.md` is a standard worker every user has, run by one shared copy of the flow it names. A user can add workers of their own, which nobody else can reach.
 
 - **A user's own workers are data.** A worker a user hires or forks while the app runs is a row in their own data: every process sees it on the next turn, nothing restarts, and no other user can reach it. See [Hiring and forking](./durable-hire).
-- **A mailbox is what a reader opens.** A mailbox is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed mailbox sends each post to the one member whose job fits it. See [Mailboxes](./mailboxes).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
 
-For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed mailbox, declared under its `workforce/` folder, with a board for cases that need a person.
+For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and a coordinator in front of them, declared under its `workforce/` folder. A coordinator is a worker that hands each message to other workers, its delegates; this one sends each question to the specialist whose job fits it.
 
 ## Hire a roster
 
@@ -104,17 +103,17 @@ A **project** is a body of work, private to you or shared with your organization
 
 A **workstream** is one area of a project with one owner: an entry on the project that everyone who reads the project can see, and a lasting session of one of the owner's workers that does the work. Each person talks to a project through their own project coordinator, which hands work only to their own workstreams. See [Projects](./projects).
 
-The **chief of staff** is an org-level worker a person asks about the organization: who works here, who is in a mailbox. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the person who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
+The **chief of staff** is an org-level worker a person asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the person who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
 
 ## Giving a task to a worker
 
-A task on a mailbox's board can name any of your standard workers that takes tasks, by the name `discover` lists: `engineering.lead`. When the board hands the task over, Workforce's worker lookup finds the worker of that name and the task runs in a session of its flow that names it, one run per task.
+A [coordinator](./coordinators.md) files tasks for its delegates on its conversation's board, and any worker can file tasks for delegates of its own, as [Delegating work](./delegating-work.md) shows. A task names its worker by id, the name `discover` lists: `engineering.lead`. When the board hands the task over, the task runs in a session of that worker's flow that names it, one run per task.
 
-A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry.
+A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
 
-The name reaches the workers your files declare. A mailbox's board is the organization's, and whoever drains it opens the task's session, so it never hands a task to a user's own worker, which only its owner can open a session with. With the mailbox's filing check on, a task for a name nobody holds is refused when it is filed, naming it. A task whose worker was fired before it ran fails with the worker's name. No other worker picks it up.
+Filing a task for a worker that isn't one of the filer's delegates, or that takes no tasks, is refused, and the refusal names the worker. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
 
-[Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names) has the wiring: the lookup, the filing check, and the board that hands tasks over.
+[Handing out tasks](./coordinators.md#handing-out-tasks) has the details: filing, retries, questions and follow-ups.
 
 ## What it will not do
 
@@ -130,9 +129,9 @@ The name reaches the workers your files declare. A mailbox's board is the organi
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
-- [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
+- [Coordinators](./coordinators) — a worker that hands each message to its delegates, and files tasks for them on its conversation's board.
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
-- [Inventory](./inventory) — a record of every seat and mailbox registered in an organization, readable by a block.
+- [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
 - [The chief of staff](./chief-of-staff) — the one worker a person asks to hire or fire workers of their own, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.

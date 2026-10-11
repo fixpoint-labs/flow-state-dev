@@ -52,11 +52,11 @@ const answering = harnessManager({
 });
 ```
 
-`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the person the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and that board's rows run exactly as before.
+`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the person the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
 
 A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made.
 
-Two things work differently for a task from a conversation's board. A run refused before it starts (no project, a remote the host doesn't allow) fails the task for good, so the conversation hears why. On a fixed board it's cancelled, as before. And a question the run asks parks the task the way the conversation parks any task: the person answers in the conversation, and the run's next attempt gets the answer in its prompt.
+A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks parks the task the way the conversation parks any task: the person answers in the conversation, and the run's next attempt gets the answer in its prompt.
 
 You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the person, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
 
@@ -194,7 +194,7 @@ The stop costs the step the run was in the middle of.
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Any later session works out the same path from the same inputs, without looking it up.
 
-The board can be your own task collection or one a mailbox holds. A mailbox's board has an id like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a mailbox's board, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
+The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
 
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. A process that was displaced never removes its replacement's lock.
 
@@ -258,7 +258,7 @@ record instead of deriving them again.
 - **A repository on the host's own disk is never saved.** A run cut from a repository listed in `localRepositories` on `localWorkspaceHost` works in that repository directly, and its work stays on that machine.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
 - **A harness that can't resume can't be sent a message.** A run whose harness never confirms a coding session is refused with *this run's harness can't continue with a message*.
-- **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a mailbox board a project holds, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
+- **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
 
 ## Related pages
 

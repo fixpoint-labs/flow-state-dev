@@ -235,8 +235,7 @@ Sequencers collect collection declarations from child blocks. `defineFlow` merge
 A block reaches only the resources its flow declares, so a block that must
 read a collection chosen per request (a task door reading the list a task came
 from) declares every collection it may be handed at boot and resolves one by
-id inside that set. Workforce's `mailboxTaskLists(boardIds)` does this for the
-mailbox task lists the tree declares.
+id inside that set.
 
 ## When to use collections vs static resources
 

@@ -2,11 +2,11 @@
  * `@flow-state-dev/workforce/codegen` — turn an app's code folders into a module.
  *
  * The convention's other half. Where `./loader` reads the Markdown that
- * describes a team, this reads the **tree** under `workforce/flows/workers/`,
- * `workforce/flows/mailboxes/` and `workforce/blocks/` — and the TypeScript in
+ * describes a team, this reads the **tree** under `workforce/flows/workers/`
+ * and `workforce/blocks/` — and the TypeScript in
  * every `resources/` folder beside the documents, and every `blocks/` folder
  * inside the team tree, and every package's `blocks/` — and renders one module
- * of static imports: `kinds`, `mailboxKinds`, `blocks`, `seatBlocks`,
+ * of static imports: `kinds`, `blocks`, `seatBlocks`,
  * `packageBlocks` and `resourceModules`, each feeding a parameter the framework
  * already takes. `fsdev gen` is a thin
  * command over these two calls — it resolves the root, writes the file, and

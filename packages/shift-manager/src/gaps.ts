@@ -4,14 +4,6 @@
  * the issue that fills a surface replaces its entry here and nothing else.
  */
 export const GAPS = {
-  results: {
-    title: "No results yet",
-    body: "What a workstream has produced arrives with FIX-1651.",
-  },
-  progress: {
-    title: "No progress read yet",
-    body: "How far a workstream has got arrives with FIX-1651.",
-  },
   inReview: "What counts as in review arrives with FIX-1651.",
   now: "What a task is doing now arrives with FIX-1651.",
   harness: "Which harness a seat runs arrives with FIX-1652.",
@@ -53,17 +45,13 @@ export const GAPS = {
     noDoor: "takes no message.",
     /** BR-22: Inbox's reply, to a kind with no door. Drawn after the worker's name. */
     replyNoDoor: "takes no message. Answer its ask with Approve or Reject.",
-    /** BR-19: `@worker` with no task in this workstream. Drawn after the worker's name. */
-    noTask: "has no task in this workstream to message.",
-    /** `@name` that names no member of this workstream. Drawn after the name. */
-    noWorker: "is not a worker in this workstream.",
   },
   /** Roster's gaps, and the partial mark every status screen shares (FIX-1723). */
   roster: {
     watches:
       "What a worker is on call for beyond you, such as webhooks, schedules and other standing watches, arrives with FIX-1675. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.",
     seatMatch:
-      "Which worker holds a task is a best match on the task's assignee: its id, then a unique name, then who is in the task's workstream. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
+      "Which worker holds a task is a best match on the task's assignee: its id, then a unique name. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
     partial: "Asks did not load, so on call may be missing workers waiting on you.",
   },
   /** The Chief of Staff view's named states (BR-11, BR-12). */

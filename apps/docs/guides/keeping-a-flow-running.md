@@ -226,12 +226,6 @@ your host runs dispatched work:
 
 Webhook deliveries (with or without a `sessionId`) and schedule ticks run normally on every host.
 
-Workforce mailboxes are sessions that already exist, so the same rule reaches them. On a host
-that can't apply a mailbox's policy across processes, a post made from your app is saved to the
-mailbox and shows in its transcript, but no member is woken and nothing answers. A post from
-another flow on such a host is refused with `external-dispatcher`. See
-[Mailboxes](/docs/workforce/mailboxes#where-posting-from-another-flow-works-and-where-it-doesnt).
-
 To get a hand-off's result back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
@@ -239,17 +233,6 @@ conversation. From your app, the client SDK's `listChildSessions` lists the sess
 conversation's hand-offs started. If the flow has to deliver into an existing session behind a
 custom dispatcher, serve it from a host with no queue worker, and accept that its runs aren't
 retried.
-
-## A mailbox or a board
-
-If you use Workforce, a mailbox and a board look alike and do different jobs. A **mailbox** holds
-a conversation: posts, in order, that its members can be woken by. A **board** holds work:
-rows a worker claims, runs and settles. A mailbox can hold boards. Use the mailbox for what
-people and agents say, and a board for what has to get done. Posting in a mailbox hands
-nobody the work; filing a row does.
-
-Read next: [Mailboxes](/docs/workforce/mailboxes), [Holding a board](/docs/workforce/mailboxes#holding-a-board),
-and [Task board](/docs/orchestration/task-board).
 
 ## Where each setting lives
 

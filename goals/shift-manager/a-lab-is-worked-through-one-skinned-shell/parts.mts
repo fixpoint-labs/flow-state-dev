@@ -247,30 +247,25 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
     await setup.locator("[data-testid=inbox-detail]").getByRole("button", { name: "Approve" }).click();
     let row: { ref: string; id: string } | undefined;
     for (let waited = 0; waited < 60_000 && row === undefined; waited += 500) {
-      row = Object.values((await readStore(api, tree, userId)).rows).flat()[0];
+      row = Object.values((await readStore(api, userId)).rows).flat()[0];
       if (row === undefined) await sleep(500);
     }
     await setup.close();
     if (row === undefined) return fail("DevForce filed no row after its ask was approved");
-    const ch = tree.mailboxes[0]?.id;
-    const project = (await readStore(api, tree, userId)).projects[0]?.id;
+    const project = (await readStore(api, userId)).projects[0]?.id;
     const task = `/tasks/${encodeURIComponent(row.ref)}/${encodeURIComponent(row.id)}`;
     const addresses: Array<{ path: string; surface: string | string[]; owner: string }> = [
       { path: "/cos", surface: "cos", owner: "Chief of Staff (FIX-1719's seat; FIX-1722's view)" },
       { path: "/roster", surface: "roster", owner: "TEAMS, workers, shift status (Workforce; FIX-1723)" },
       { path: `/roster?team=${tree.teams[0]}`, surface: "roster", owner: "a team's workers (Workforce; FIX-1723)" },
-      // No project: no coordinator and no brief, by name; its Board and Workstreams draw the workstreams no project lists, or say there are none.
-      { path: "/p/unassigned/stream", surface: "project-stream-none", owner: "No project's Stream, with no coordinator (FIX-1718, FIX-1793)" },
-      ...(project === undefined ? [] : [{ path: `/p/${encodeURIComponent(project)}/stream`, surface: "project-stream-conversation", owner: "a project's Stream: the person's project coordinator (FIX-1793)" }]),
-      { path: "/p/unassigned/board", surface: ["project-board", "project-board-none"], owner: "No project's board (FIX-1718)" },
-      { path: "/p/unassigned/workstreams", surface: ["project-workstreams", "project-workstreams-none"], owner: "No project's workstreams (FIX-1718)" },
-      { path: "/p/unassigned/brief", surface: "project-brief-none", owner: "No project's brief (FIX-1718)" },
-      // A mailbox workstream's own address, when the tree declares one.
-      ...(ch === undefined
+      // A project's four tabs: its Stream is the person's project coordinator; its Board, Workstreams and Brief draw the store's or say there is none.
+      ...(project === undefined
         ? []
         : [
-            { path: `/w/${encodeURIComponent(ch)}/stream`, surface: "workstream", owner: "a workstream (FIX-1650)" },
-            ...["board", "brief", "results"].map((tab) => ({ path: `/w/${encodeURIComponent(ch)}/${tab}`, surface: "workstream", owner: `a workstream's ${tab} (FIX-1651)` })),
+            { path: `/p/${encodeURIComponent(project)}/stream`, surface: "project-stream-conversation", owner: "a project's Stream: the person's project coordinator (FIX-1793)" },
+            { path: `/p/${encodeURIComponent(project)}/board`, surface: ["project-board", "project-board-none"], owner: "a project's board (FIX-1718, FIX-1793)" },
+            { path: `/p/${encodeURIComponent(project)}/workstreams`, surface: "project-progress", owner: "a project's workstreams (FIX-1718, FIX-1793)" },
+            { path: `/p/${encodeURIComponent(project)}/brief`, surface: ["project-brief", "project-brief-none"], owner: "a project's brief (FIX-1718)" },
           ]),
       { path: "/inbox", surface: "inbox", owner: "Inbox (FIX-1652)" },
       { path: "/tasks", surface: "tasks", owner: "Tasks, NOW, TIME and COST (FIX-1651; session data)" },
@@ -348,22 +343,21 @@ export function part4(base: string, report: Report): void {
   const routes = readFileSync(join(src, "lib", "routes.ts"), "utf8");
   const pinned: Array<[string, RegExp]> = [
     ["task", /if \(head === "tasks" && a !== undefined && b !== undefined\)[\s\S]*?level: "task", boardRef: a, taskId: b, tab: oneOf\(TASK_TABS/],
-    ["workstream", /if \(head === "w" && a !== undefined\) return \{ level: "workstream", mailboxId: a, tab: oneOf\(WORKSTREAM_TABS/],
     ["project", /if \(head === "p" && a !== undefined\) return \{ level: "project", projectId: a, tab: oneOf\(PROJECT_TABS/],
   ];
   for (const [name, re] of pinned) if (!re.test(routes)) report.fail("P4:routes", `the ${name} route is not FIX-1662's pinned shape`);
-  const tabs = { TASK_TABS: "session, diff, checks, brief", WORKSTREAM_TABS: "stream, board, brief, results", PROJECT_TABS: "stream, board, workstreams, brief" };
+  const tabs = { TASK_TABS: "session, diff, checks, brief", PROJECT_TABS: "stream, board, workstreams, brief" };
   for (const [name, want] of Object.entries(tabs)) {
     const got = new RegExp(`${name} = \\[([^\\]]*)\\]`).exec(routes)?.[1]?.replace(/"/g, "").split(",").map((s) => s.trim()).join(", ");
     if (got !== want) report.fail("P4:routes", `${name} is [${got}], pinned [${want}]`);
   }
   const heads = [...routes.matchAll(/head === "([a-z]+)"/g)].map((m) => m[1]!);
   const levels = [...new Set([...routes.matchAll(/level: "([a-z]+)"/g)].map((m) => m[1]!))].sort();
-  report.note(`P4 routes: task, workstream and project routes as pinned; route heads [${[...new Set(heads)].join(", ")}], levels [${levels.join(", ")}]; the task level's panel slot is graded in a3 (task-panel-slot holds the inspector)`);
+  report.note(`P4 routes: task and project routes as pinned; route heads [${[...new Set(heads)].join(", ")}], levels [${levels.join(", ")}]; the task level's panel slot is graded in a3 (task-panel-slot holds the inspector)`);
 
   // One session write path (ER-15): every write Shift Manager makes, by call and by module.
   const allowed: Record<string, string[]> = {
-    "sendAction(": ["lib/send.ts", "lib/transcript.ts", "lib/action.ts"],
+    "sendAction(": ["lib/send.ts", "lib/action.ts"],
     "abortRequest(": ["lib/run.ts"],
     "resumeSuspension(": ["lib/reads.ts"],
     "createSession(": ["lib/reads.ts", "lib/conversation.ts"],
@@ -380,18 +374,17 @@ export function part4(base: string, report: Report): void {
       if (!(allowed[call] ?? []).includes(rel)) report.fail("P4:ER-15", `${rel} writes through ${call}, outside the doors ER-15 names`);
     }
   }
-  const transcriptPost = /sendAction\("post"/.test(readFileSync(join(src, "lib", "transcript.ts"), "utf8"));
-  if (!transcriptPost) report.fail("P4:ER-15", "lib/transcript.ts sends something other than the mailbox's post");
   // An action whose answer a view reads (FIX-1793): action.ts sends one action, in its one
   // runner, on the session the caller names or a fresh one of its own.
   const action = stripComments(readFileSync(join(src, "lib", "action.ts"), "utf8"));
   const actionSends = action.match(/\bsendAction\(/g)?.length ?? 0;
   if (actionSends !== 1 || !/sendAction\(action, input, \{ sessionId: session \}\)/.test(action)) report.fail("P4:ER-15", `lib/action.ts sends ${actionSends} action(s) outside runAction's one send`);
-  // The person's reading sessions (FIX-1752, FIX-1793): reads.ts creates sessions on its reader kinds only.
+  // The person's reading session (FIX-1752, FIX-1793): reads.ts creates sessions on its one reader
+  // kind only, the roster flow (the mailbox reader went with the mailbox, FIX-1792 P4).
   const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\[INVENTORY_READER_KIND, PROJECT_READER_KIND\]/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kinds");
+  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\bconst kind = PROJECT_READER_KIND;/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kind");
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));
@@ -400,16 +393,16 @@ export function part4(base: string, report: Report): void {
   if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*seat\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*seat\.id\s*\}/.test(opens[0]!)) {
     report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
   }
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the mailbox's post (transcript.ts), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kinds), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kind), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
-  // One ask rendering: Inbox's detail and the stream's card draw through AskCard.
-  for (const surface of ["Inbox.tsx", "Stream.tsx", "ChiefOfStaff.tsx"]) {
+  // One ask rendering: Inbox's detail and Chief of Staff's card draw through AskCard.
+  for (const surface of ["Inbox.tsx", "ChiefOfStaff.tsx"]) {
     const text = readFileSync(join(src, "surfaces", surface), "utf8");
     if (!/import \{ AskCard \} from "\.\.\/components\/AskCard"/.test(text) || !/<AskCard\b/.test(text)) report.fail("P4:ask", `${surface} does not draw its asks through AskCard`);
   }
   const askRenderers = own.filter((f) => /<Approval\b|<Question\b|SuspensionCard/.test(readFileSync(f, "utf8"))).map((f) => relative(src, f));
   if (askRenderers.some((f) => !f.endsWith("AskCard.tsx"))) report.fail("P4:ask", `an ask is drawn outside AskCard: ${askRenderers.join(", ")}`);
-  report.note(`P4 one ask rendering: Inbox, Stream and Chief of Staff import AskCard; registry ask cards are drawn only in [${askRenderers.join(", ")}]; a1 compared the two cards' text on screen`);
+  report.note(`P4 one ask rendering: Inbox and Chief of Staff import AskCard; registry ask cards are drawn only in [${askRenderers.join(", ")}]; a1 compared the two cards' text on screen`);
 
   // Layer fence (ER-7, ER-8): the set's changes to core, engine, client and react.
   const layerDiff = git("diff", `${base}..HEAD`, "--", "packages/core/src", "packages/engine/src", "packages/client/src", "packages/react/src");

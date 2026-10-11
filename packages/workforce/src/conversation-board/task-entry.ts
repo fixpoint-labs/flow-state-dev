@@ -5,8 +5,7 @@
  *
  * - **Where it takes tasks from.** Any conversation's board, read off the
  *   conversation ledger at the partition the hand-over names, at the running
- *   user's scope only; and, on a kind that takes them, the mailbox task lists
- *   it names. Every check a board's gate runs (row, attempt, identity,
+ *   user's scope only. Every check a board's gate runs (row, attempt, identity,
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
  *   A task session takes tasks only from the conversation it was opened for.
  * - **The message** (FIX-1817). The task as filed is the turn's user item,
@@ -40,16 +39,11 @@ import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput 
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   clearNotice,
-  getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
-  resolveResourceCollection,
-  type DefinedTaskCollection,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { mailboxBoardLedger } from "../mailbox/mailbox-board";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
@@ -143,23 +137,10 @@ export interface WorkerTaskClaim {
 /** What a `block` entry's block is handed: the task as the board packed it, and the claim it runs under. */
 export type WorkerTaskBlockInput = TaskWorkerInput & { readonly claim: WorkerTaskClaim };
 
-/** A mailbox task list as its declaration: the id it is registered under, and the ledger itself. */
-export interface MailboxListDeclaration {
-  readonly id: string;
-  readonly collection: DefinedTaskCollection;
-}
-
 /** What a flow's `work` entry is built from: a `turn` or a `block`, exactly one. */
 export type WorkerTaskEntryOptions = {
   /** Names the entry's blocks. */
   readonly name: string;
-  /**
-   * Mailbox task lists the entry also takes tasks from: by minted id, or as
-   * the declaration itself (`{ id, collection }`) when the flow already holds
-   * the list under its own declaration, so the entry doesn't install a second
-   * one under the same key.
-   */
-  readonly mailboxLists?: readonly (string | MailboxListDeclaration)[];
 } & (
   | {
       /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
@@ -222,7 +203,7 @@ function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
  * run that board in the conversation: its run entry, on the flow that filed
  * the task. All three come from the session's readonly fields the hand-over
  * wrote at its birth, never from a request. `undefined` outside a
- * conversation's task session (a mailbox list's task, or any other session).
+ * conversation's task session.
  *
  * For a host's message door over a worker's runs
  * (`harnessMessageDoor` in `@flow-state-dev/harness-manager`): the row the
@@ -254,33 +235,12 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   if (options.turn === undefined && options.block === undefined) {
     throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, the block that does the task's work.`);
   }
-  // Each list's declaration, by id: the one the caller gave, or the mailbox board's own.
-  const lists = new Map<string, DefinedTaskCollection>(
-    (options.mailboxLists ?? []).map((list) =>
-      typeof list === "string" ? [list, mailboxBoardLedger(list)] : [list.id, list.collection]
-    )
-  );
-  const resources = { ...conversationLedgerResources, ...Object.fromEntries(lists) };
 
   // Marked, so the delegate check knows this entry takes a conversation's tasks.
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
-    resolve: async (ledgerId, ctx, partition) => {
-      if (ledgerId === CONVERSATION_LEDGER_ID) return conversationLedgers(ledgerId, ctx, partition);
-      const declared = lists.get(ledgerId);
-      if (declared === undefined || partition !== undefined) return undefined;
-      const collection = resolveResourceCollection(ctx, ledgerId);
-      return collection === undefined
-        ? undefined
-        : getOrCreateTaskCollection({
-            ctx,
-            backing: "resource",
-            collectionId: ledgerId,
-            collection,
-            immutableAssignee: hasFrozenLedgerAssignee(declared)
-          });
-    },
-    uses: [defineCapability({ name: `${name}-ledgers`, resources })],
+    resolve: conversationLedgers,
+    uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources } })],
     // The turn keeps the worker's skill state on the session, the same shape
     // for every task, and each task runs in a session of its own.
     allowSessionState: true
@@ -325,8 +285,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     const taskId = sessionTaskOf(ctx);
     const partition = filingPartitionOf(ctx);
     const flowKind = filingFlowOf(ctx);
-    // A task off a mailbox list owes no notice: its ledger records none, and
-    // its session names no filing session.
+    // A session that names no filing conversation owes no notice.
     if (taskId === undefined || partition === undefined || flowKind === undefined) return 0;
     const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return 0;

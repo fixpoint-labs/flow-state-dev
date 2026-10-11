@@ -34,15 +34,15 @@ import { interruptRun, readRunStatus, resolveRunFlow, RunReadError, type OpenRun
 export const REREAD_EVERY_MS = 2_000;
 export const REREAD_AT_MOST = 30;
 
-/** The mailbox a board ref belongs to: everything before its last dot. */
-export function mailboxOf(boardRef: string): string {
+/** The session a board ref names as its holder: everything before its last dot. */
+export function holderSessionOf(boardRef: string): string {
   const dot = boardRef.lastIndexOf(".");
   return dot > 0 ? boardRef.slice(0, dot) : boardRef;
 }
 
-/** Whether `boardRef` names a conversation's board (`<sessionId>.tasks`) rather than a workstream's. */
+/** Whether `boardRef` names a conversation's board (`<sessionId>.tasks`), the only boards there are. */
 export function isConversationBoard(boardRef: string): boolean {
-  return boardRef === conversationBoardRef(mailboxOf(boardRef));
+  return boardRef === conversationBoardRef(holderSessionOf(boardRef));
 }
 
 /** Where the run stands for the screen. */
@@ -130,21 +130,21 @@ export function TaskProvider({
   // gets the same bounded re-read as a row waiting for its link. A board whose
   // read failed is neither: the screen shows that failure, with Retry, rather
   // than calling the task missing.
-  const mailboxBoards = snapshot.boards[mailboxOf(boardRef)];
+  const holder = holderSessionOf(boardRef);
+  const holderBoards = snapshot.boards[holder];
   const [boardRead, setBoardRead] = useState(false);
   // A conversation's board is known once its conversation is the person's,
   // since a task filed a moment ago is on no snapshot yet.
   const boardKnown =
     boardRead ||
-    (mailboxBoards?.ok === true && mailboxBoards.value.refs.includes(boardRef)) ||
-    (isConversationBoard(boardRef) && snapshot.sessions.some((session) => session.id === mailboxOf(boardRef)));
-  const boardFailure = rowFailure ?? (!boardRead && mailboxBoards?.ok === false ? mailboxBoards.failure : undefined);
+    (holderBoards?.ok === true && holderBoards.value.refs.includes(boardRef)) ||
+    (isConversationBoard(boardRef) && snapshot.sessions.some((session) => session.id === holder));
+  const boardFailure = rowFailure ?? (!boardRead && holderBoards?.ok === false ? holderBoards.failure : undefined);
 
   /** One read of this task's board. Every read, polled or not, lands its rows or its failure the same way. */
   const readBoardNow = useCallback(
     () =>
-      reader
-        .readBoard(mailboxOf(boardRef), boardRef)
+      (isConversationBoard(boardRef) ? reader.readBoard(holderSessionOf(boardRef)) : Promise.resolve([]))
         .then((rows) => {
           setBoardRows(rows);
           setBoardRead(true);

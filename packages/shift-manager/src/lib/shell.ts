@@ -2,10 +2,9 @@
  * Small derivations the sidebar and Chief of Staff draw in design v2's form:
  * the person's initials in the footer (v2:110), a clock time on a line
  * (v2:135), and the lines Chief of Staff offers to start a message with
- * (v2:174), and the mark a workstream carries (v2:1183-1184). Each is drawn from what the Lab already holds; none invents a
+ * (v2:174). Each is drawn from what the Lab already holds; none invents a
  * value the Lab doesn't.
  */
-import { streamCounts, type LoadedSnapshot, type StreamCount } from "./derive";
 
 /**
  * Up to two initials for a user id: the first letter of each of its first two
@@ -26,30 +25,7 @@ export function clockTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-/**
- * A workstream's mark (v2:1183-1184): `needs` while one of its members' asks
- * waits on the person, else `run` while a row on its boards runs, else
- * `null`. The sidebar draws it as the workstream's dot, and Chief of Staff
- * picks the stream its suggestion names by it.
- */
-export function streamMark({ needsYou, running }: Pick<StreamCount, "needsYou" | "running">): "needs" | "run" | null {
-  if ((needsYou ?? 0) > 0) return "needs";
-  return running.ok && running.value > 0 ? "run" : null;
-}
-
-/**
- * The lines Chief of Staff offers above its composer, each of which only
- * fills the draft. v2 offers the question about what blocks a stream for the
- * one that needs the person (or, with none, the first one running), and
- * always "Who's on call?". A Lab with neither gets the one.
- */
-export function chiefOfStaffSuggestions(snapshot: LoadedSnapshot): string[] {
-  const streams = streamCounts(snapshot);
-  const lines: string[] = [];
-  if (streams.ok) {
-    const stream = streams.value.find((s) => streamMark(s) === "needs") ?? streams.value.find((s) => streamMark(s) === "run");
-    if (stream !== undefined) lines.push(`What's blocking #${stream.workstream.id}?`);
-  }
-  lines.push("Who's on call?");
-  return lines;
+/** The lines Chief of Staff offers above its composer, each of which only fills the draft (v2:174). */
+export function chiefOfStaffSuggestions(): string[] {
+  return ["Who's on call?"];
 }

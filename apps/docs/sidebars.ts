@@ -236,7 +236,6 @@ const sidebars: SidebarsConfig = {
         "workforce/code-on-disk",
         "workforce/capabilities-on-disk",
         "workforce/packages-on-disk",
-        "workforce/mailboxes",
         "workforce/projects",
         "workforce/inventory",
         "workforce/durable-hire",

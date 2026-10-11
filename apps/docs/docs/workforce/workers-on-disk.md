@@ -70,7 +70,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. In a [routed mailbox](./mailboxes.md#routing-a-mailbox), it is also what the route reads to decide whether a post is this worker's. The file refuses `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` and `teamInstructions:` outright. A seat's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker runs on [the built-in worker flow](./built-in-worker.md), which needs no flow of yours.
+`description` is the only key the file itself requires. When a [coordinator](./coordinators.md), a worker that hands each message to other workers called its delegates, routes by `best-fit`, a delegate's description is what it picks by, unless the delegate was given a note in its place. The file refuses `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` and `teamInstructions:` outright. A worker's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker runs on [the built-in worker flow](./built-in-worker.md), which needs no flow of yours.
 
 `resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones the app passed to the installation as `documents`. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document the app passed as `documents`, on the flow's shared copy, and writes the ones that allow writes; `resources: []` is how you say it gets none.
 
@@ -143,11 +143,11 @@ A worker's id is its team folder and its own folder joined with a dot. `teams/en
 
 An org seat's id is its folder name alone, with no dot: `org/workers/chief-of-staff/` is `chief-of-staff`. Since a team seat's id always has a dot, the two can't collide. `chief-of-staff` and `engineering.chief-of-staff` are two different seats.
 
-The team qualifier means every team can have a `lead` without checking what the other teams called theirs. The id is how everything else names the worker: a session's `workerId`, a mailbox's `members:`, a task handed to it. Its sessions run on the flow it names, so `engineering.lead` on `agent` is talked to in a session of `agent` created with `state: { workerId: "engineering.lead" }`.
+The team qualifier means every team can have a `lead` without checking what the other teams called theirs. The id is how everything else names the worker: a session's `workerId`, a coordinator's `delegates:`, a task handed to it. Its sessions run on the flow it names, so `engineering.lead` on `agent` is talked to in a session of `agent` created with `state: { workerId: "engineering.lead" }`.
 
 ### Names in the tree {#names-in-the-tree}
 
-The same rule governs every name the convention reads, not just these two folders: teams, workers, mailboxes, documents, skills, and the files that declare your own flow kinds and blocks.
+The same rule governs every name the convention reads, not just these two folders: teams, workers, documents, skills, and the files that declare your own flow kinds and blocks.
 
 A name must be lowercase letters, digits, and single hyphens, at most 64 characters. So `api-designer` is fine. `API_Designer` and `api.designer` are refused when the tree is read, with the rule in the message.
 
@@ -252,7 +252,7 @@ A reported folder is a worker your app was supposed to have, so logging a warnin
 
 ### What is passed over in silence
 
-A team's `mailboxes/`, `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/` or `org/workers/<worker>/`, not that the path looks like a worker.
+A team's `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/` or `org/workers/<worker>/`, not that the path looks like a worker.
 
 `org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported. An org seat reads the organization's skills, packages and references, then its own folder's. It has no team, so no team's folders reach it and no `TEAM.md` instructions apply.
 
@@ -817,7 +817,6 @@ worker when the session is created.
 - It does not follow symlinks inside the tree. A team, a worker slot, a `WORKER.md`, a skill folder — any of these that is a shortcut to somewhere else is refused rather than read. The root you hand it is refused too, with or without a trailing slash. It does not cover a root named through a `.` segment, or anything above the root, so a path that passes through a shortcut on its way in still reads. If you keep the tree behind a symlink on purpose, hand over the path it points at.
 - It does not watch the tree. Read it once, at startup, and re-run `fsdev gen` when the code folders change.
 - It does not run a [task board](../orchestration/task-board.md). A worker is someone you open a session with, and a name a board can hand a task to: see [Giving a task to a worker](./overview.md#giving-a-task-to-a-worker). A board's own workers are in-process and claim tasks from a collection.
-- It does not describe a mailbox. A `WORKER.md` is one worker on its flow's shared copy; a mailbox is a session on a shared kind, which is a different binding with a different reason. See [Mailboxes](./mailboxes.md).
 
 ## Related pages
 
@@ -826,6 +825,6 @@ worker when the session is created.
 - [The built-in worker](./built-in-worker.md) — the `agent` kind a record with no `flow:` runs on, its tools, its skills, and its memory.
 - [Code on disk](./code-on-disk.md) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Skills](../skills/overview) — what a `SKILL.md` is and what goes in one.
-- [Mailboxes](./mailboxes.md) — several agents on one topic, with one durable transcript and nobody owning a row.
+- [Coordinators](./coordinators.md) — a worker that hands each message to its delegates, declared with `flow: coordinator`.
 - [Orchestration](../orchestration/overview) — coordinating units of work on a board.
 - [Agents](../orchestration/agents) — board workers, personas, and `createWorkforceCapability`.

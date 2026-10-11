@@ -15,8 +15,8 @@
  *   - **Nothing fatal, except cancellation.** An unknown domain, an empty
  *     domain and a reader that throws all degrade to an answer the model can
  *     act on. A planner that loses its turn because one collection was
- *     misconfigured is worse than one that plans with three domains out of
- *     four. Cancellation is the exception: it is not a domain's problem but
+ *     misconfigured is worse than one that plans with two domains out of
+ *     three. Cancellation is the exception: it is not a domain's problem but
  *     the caller's, so it propagates instead of being reported as one.
  *   - **Thin by default.** `detail: "full"` adds each entry's `contract`;
  *     every other call pays for the purpose line and no more.
@@ -66,7 +66,7 @@ async function readDomain(
   ctx: BlockContext,
 ): Promise<z.infer<typeof domainResultSchema>> {
   const source = registry.source(domain);
-  // Absent, not empty-with-a-reason: a scope that carries no mailboxes is an
+  // Absent, not empty-with-a-reason: a scope that carries no resources is an
   // ordinary state and the model should read it as "nothing here".
   if (source === undefined) return { domain, entries: [] };
 
@@ -100,10 +100,10 @@ async function readDomain(
  *
  * - `discover({ domain?, detail? })` — with no domain, every domain the scope
  *   carries; with one, just that domain. A domain name that is not one of the
- *   four returns the known names rather than throwing, so the next call can
+ *   three returns the known names rather than throwing, so the next call can
  *   succeed.
  *
- * One tool taking a domain, rather than a `listSeats` / `listMailboxes` family:
+ * One tool taking a domain, rather than a `listSeats` / `listSkills` family:
  * it keeps the shared shape real in the surface a model sees, and `detail`
  * turns "how much does an entry say" into a per-call choice. Going from one
  * tool to four later is additive; going from four to one would break prompts.
@@ -112,7 +112,7 @@ export function discoveryTools(registry: ManifestRegistry) {
   const discover = handler({
     name: "discover",
     description:
-      "List what is in scope for you right now — the seats you can hand work to, the mailboxes they share, the skills you can load, and the resources you can read. Omit `domain` for everything in scope.",
+      "List what is in scope for you right now — the seats you can hand work to, the skills you can load, and the resources you can read. Omit `domain` for everything in scope.",
     inputSchema: z.object({
       domain: z
         .string()

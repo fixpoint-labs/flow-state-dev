@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { pickedTeam, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { parseRoute, pathFor } from "../src/lib/routes";
-import { STAFF_TEAM, toBoardRow, toSeat, toWorkstream, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
+import { STAFF_TEAM, toBoardRow, toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
 
 const ORG = "acme";
 
@@ -21,14 +21,14 @@ describe("BR-13a, BR-13b: which group a seat sits in", () => {
   });
 });
 
-/** A loaded snapshot of `seats`, one workstream holding `rows`, and `asks` (or asks that failed). */
-function snapshotOf(seats: Seat[], rows: BoardRow[], asks: Ask[] | "failed" = [], members: string[] = seats.map((s) => s.id)) {
+/** A loaded snapshot of `seats`, one conversation's board holding `rows`, and `asks` (or asks that failed). */
+function snapshotOf(seats: Seat[], rows: BoardRow[], asks: Ask[] | "failed" = []) {
   return {
     readAt: 0,
     sessions: [],
     orgId: ORG,
-    inventory: { ok: true, value: { seats, workstreams: [toWorkstream({ id: "eng.desk", kind: "mailbox", members })!] } },
-    boards: { "eng.desk": { ok: true, value: { refs: ["eng.desk.work"], rows } } },
+    inventory: { ok: true, value: { seats } },
+    boards: { s_desk: { ok: true, value: { refs: ["s_desk.tasks"], rows } } },
     asks: asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: asks },
     resources: { ok: true, value: [] },
   } as unknown as LoadedSnapshot;
@@ -36,7 +36,7 @@ function snapshotOf(seats: Seat[], rows: BoardRow[], asks: Ask[] | "failed" = []
 
 const seat = (id: string) => toSeat({ id, kind: "worker" })!;
 const row = (id: string, status: string, assignee: string | null): BoardRow =>
-  toBoardRow("eng.desk.work", "eng.desk", id, { id, title: id, status, assignee });
+  toBoardRow("s_desk.tasks", "s_desk", id, { id, title: id, status, assignee });
 const ask = (seatId: string | null, suspensionId: string): Ask =>
   ({ sessionId: `s_${suspensionId}`, seatId, flowId: seatId, parentSessionId: null, kind: "approval", item: { suspensionId }, since: 0, unanswerable: null }) as unknown as Ask;
 
@@ -78,9 +78,9 @@ describe("BR-1 to BR-5: the one status rule", () => {
 
   it("BR-5: an assignee that resolves to no single seat, or an ask with no seat, counts for nobody", () => {
     const ops = seat("ops.coder");
-    // `coder` names a seat in two teams, both members of the mailbox: no single seat.
+    // `coder` names a seat in two teams: no single seat.
     const states = seatStates(
-      snapshotOf([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")], ["eng.coder", "ops.coder"]),
+      snapshotOf([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")]),
     );
     expect([...states.seats.values()].map((s) => [s.status, s.held.length, s.asks.length])).toEqual([
       ["off shift", 0, 0],

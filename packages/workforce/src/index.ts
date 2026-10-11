@@ -26,19 +26,11 @@
  * resources a flow renders as a system prompt, and `createWorkforceCapability`,
  * which surfaces a roster through the capability system.
  *
- * The package also ships the **mailbox** floor: `mailboxFlow`, the one built-in
- * mailbox kind, and the two-phase binder (`mailboxInstances` at build time,
- * `openMailboxes` at runtime) that turns mailbox records into one registered
- * instance per kind and one named session per mailbox. A worker record and a
- * mailbox record look alike and bind differently, and the difference is worth
- * holding on to: hiring a worker MINTS a flow copy per record, while opening a
- * mailbox opens a SESSION per record on a shared one.
- *
- * Beside the mailbox floor sits the **inventory**: three org-scoped resource
- * collections holding what is actually open, which a folder of files cannot
- * answer at run time because a block does not walk folders. `inventory/
- * collections.ts` is canonical for what each one holds and how they join back
- * to the declared records.
+ * Beside the seat factory sits the **inventory**: an org-scoped resource
+ * collection holding the seats registered in this org, which a folder of files
+ * cannot answer at run time because a block does not walk folders. `inventory/
+ * collections.ts` is canonical for what it holds and how it joins back to the
+ * declared records.
  *
  * And beside the inventory sits the **roster**: the durable record of seats
  * hired while the app was running, which files cannot hold because a runtime
@@ -48,21 +40,13 @@
  * row is deletable because firing a seat is half of what a roster is for,
  * while an inventory row means *was registered here*. A declared seat's
  * inventory row is never removed; a runtime-hired seat's is removed by its
- * fire, and only while it carries the incarnation fired. A mailbox's row stays.
+ * fire, and only while it carries the incarnation fired.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
-export {
-  mailboxPostCapability,
-  workerMailboxPostCapability,
-  MAILBOX_POST_CAPABILITY,
-  POST_TO_MAILBOX_TOOL,
-  postToMailboxInputSchema,
-  type PostToMailboxInput,
-} from "./mailbox-post-capability";
-export { unattendedBoardWarnings, type HireOptions, type WorkerFlowEntry } from "./hire";
+export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
 export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
@@ -72,8 +56,7 @@ export {
   workerTaskEntry,
   type WorkerTaskBlockInput,
   type WorkerTaskClaim,
-  type WorkerTaskEntryOptions,
-  type MailboxListDeclaration
+  type WorkerTaskEntryOptions
 } from "./conversation-board/task-entry";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
@@ -132,7 +115,6 @@ export {
   type WorkerConfig
 } from "./worker-config";
 export type { WorkerManifest, TeamManifest, ResourceDoc, PackageManifest } from "./manifest";
-export * from "./mailbox";
 export * from "./inventory";
 export * from "./projects";
 export * from "./workers";

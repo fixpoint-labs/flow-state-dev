@@ -650,8 +650,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
-async function readStore(api: LabApi, tree: string, userId: string, boards: readonly string[] = []): Promise<Store> {
-  const roster = await readDeclaredRoster(tree);
+async function readStore(api: LabApi, userId: string, boards: readonly string[] = []): Promise<Store> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   // The inventory, read through the first of the person's sessions whose flow declares it.
   let seatsAt: { host: string; ref: string } | undefined;
@@ -675,34 +674,13 @@ async function readStore(api: LabApi, tree: string, userId: string, boards: read
           return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
   // The person's pending asks on the seats' sessions, by seat ("" for a session naming none).
-  // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
+  // Dispatch runs included: a worker woken by a board asks from one, and the app lists them.
   const asks = new Map<string, number>();
   for (const ask of await pendingSeatAsks(api, listing.sessions ?? [], seats)) asks.set(ask.seatId ?? "", (asks.get(ask.seatId ?? "") ?? 0) + 1);
+  // A worker file declares no mailbox (FIX-1792), so there is no mailbox workstream to read.
   const mailboxes: Store["mailboxes"] = {};
   const allRows: Array<Record<string, any>> = [];
   let running = 0;
-  for (const mailbox of roster.mailboxes) {
-    const members = (mailbox.declared.members as string[] | undefined) ?? [];
-    const rows: Array<Record<string, any>> = [];
-    for (const board of (mailbox.declared.boards as string[] | undefined) ?? []) rows.push(...(await api.collection(mailbox.id, `${mailbox.id}.${board}`)));
-    allRows.push(...rows.map((r) => ({ ...r, mailboxId: mailbox.id })));
-    const live = rows.filter((r) => r.status === "in_progress");
-    running += live.length;
-    const holds = (seat: { id: string; name: string }) => live.some((r) => r.assignee === seat.id || r.assignee === seat.name);
-    mailboxes[mailbox.id] = {
-      rows: rows.length,
-      running: live.length,
-      needs: members.some((m) => (asks.get(m) ?? 0) > 0),
-      live: members
-        .map((m) => seats.find((s) => s.id === m))
-        .filter((s): s is (typeof seats)[number] => s !== undefined && holds(s))
-        .slice(0, 3)
-        // A name two members share reaches neither, so that member is offered by its id.
-        .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
-      lines: (await api.items(mailbox.id, ["component"])).filter((i) => i.component === "mailbox-post").length,
-      asks: members.reduce((n, m) => n + (asks.get(m) ?? 0), 0),
-    };
-  }
   // A workstream session's own board: its rows, named by the session as the app names them.
   for (const session of boards) {
     const rows = await sessionBoardRows(api, session);
@@ -880,9 +858,9 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     if (injected?.userId === undefined) throw new Error(`${lab}: the page was handed no userId`);
     const api = labApi(served.origin, injected.bearerToken);
     const roster = await readDeclaredRoster(LABS[lab].tree);
-    // Neither Lab declares a mailbox, so neither has a mailbox workstream, and the sweep opens
-    // no workstream or Board screen on either.
-    const mailbox = roster.mailboxes[0]?.id ?? "";
+    // A worker file declares no mailbox, so neither Lab has a mailbox workstream, and the sweep
+    // opens no workstream or Board screen on either.
+    const mailbox = "";
     let project = "";
     const boards: string[] = [];
 
@@ -947,7 +925,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     await page.reload();
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
     // The desk Lab's exchange above waited for the seat's reply to be drawn.
-    const store = { ...(await readStore(api, LABS[lab].tree, injected.userId, boards)), replied: lab === "desk" };
+    const store = { ...(await readStore(api, injected.userId, boards)), replied: lab === "desk" };
     evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, ${store.asks} ask(s) pending, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
 
     const counts: string[] = [];

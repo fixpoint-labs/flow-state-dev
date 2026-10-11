@@ -348,8 +348,9 @@ await runGoal(async (failures) => {
         note(`documents ${JSON.stringify(docRefs)}, wanted ${JSON.stringify(fixture.documents)}`);
       }
       // No mailbox: the team's feature and release work are workstreams the EM leads.
-      const mailboxIds = lab.roster.mailboxes.map((mailbox) => mailbox.id);
-      if (mailboxIds.length > 0) note(`the tree declares mailboxes ${JSON.stringify(mailboxIds)}, wanted none`);
+      // Nothing loads a mailbox file any more, so the tree itself is read for one.
+      const mailboxFiles = filesUnder(LAB_TREE).map(([rel]) => rel).filter((rel) => rel.endsWith("MAILBOX.md"));
+      if (mailboxFiles.length > 0) note(`the tree holds mailbox files ${JSON.stringify(mailboxFiles)}, wanted none`);
 
       // BR-2, both halves. One line of one `WORKER.md` is the only difference
       // between the two trees, and the corrected twin IS the real tree.
@@ -681,7 +682,6 @@ await runGoal(async (failures) => {
       JSON.stringify([
         tree.workers.map((w) => w.id).sort(),
         tree.documents.map((d) => d.ref).sort(),
-        tree.mailboxes.map((c) => c.id).sort(),
       ]);
     if (shape(real) !== shape(withDecoy)) {
       note(`a boards/ folder changed what the tree produced: ${shape(withDecoy)}`);

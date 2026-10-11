@@ -53,11 +53,11 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { selectHarness } from "./harness.mts";
-import { LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_KIND } from "./workforce/flows/workers/coder.mts";
 import { EM_KIND } from "./workforce/flows/workers/em.mts";
-import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
+import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
 
 /**
  * The feature the EM seat asks a person to approve when the server opens, from
@@ -132,8 +132,6 @@ const DEFAULT_WORKSTREAMS = [
 
 // A store from before the lab's org id changed is set aside, loudly, not reused.
 await setAsideLegacyOrgStore(STORE);
-// So is one from before mailboxes were renamed.
-await setAsidePreRenameStore(STORE, { mailboxIds: roster.mailboxes.map((m) => m.id), orgIds: [LAB_ORG_ID] });
 
 const harness = selectHarness();
 

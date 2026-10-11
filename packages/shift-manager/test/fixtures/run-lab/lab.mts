@@ -295,7 +295,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   // The seat write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_KIND,
-    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+    internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -341,7 +341,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   };
 
   const inventory = await openInventory(
-    { seats: inventorySeats(installation), mailboxes: [] },
+    { seats: inventorySeats(installation) },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
       seatWriter: { flowKind: INVENTORY_WRITER_KIND },

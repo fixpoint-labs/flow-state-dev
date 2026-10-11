@@ -67,7 +67,7 @@ const { installation, copies } = installWorkers(tree.workers, (installation) => 
 // The worker-row write takes caller-supplied rows, so it is internal only.
 const writer = defineFlow({
   kind: INVENTORY_WRITER_KIND,
-  internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+  internal: { actions: { ...inventoryWriterActions() } },
 } as never) as unknown as FlowInstance;
 const flows: Record<string, FlowInstance> = {
   ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -85,7 +85,7 @@ const flowState = createFlowState({
 
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats: inventorySeats(installation), mailboxes: [] },
+  { seats: inventorySeats(installation) },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({

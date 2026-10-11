@@ -1,14 +1,4 @@
 {
-  "port": 3987,
-  "app": {
-    "mailbox": "support.help",
-    "board": "escalations",
-    "seat": "support.devices",
-    "block": "escalate",
-    "blockToken": "escalate-file",
-    "marker": "[scenario:needs-a-person]",
-    "controlKinds": ["chat-agent", "rich-text-component", "weekly-digest"]
-  },
   "host": {
     "userId": "goal-code-from-files",
     "note": "is the printer fixed?",

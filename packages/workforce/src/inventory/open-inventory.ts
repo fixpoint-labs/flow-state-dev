@@ -1,43 +1,28 @@
 /**
  * `openInventory` — the boot binder that fills the live inventory.
  *
- * It runs after `openMailboxes` and writes nothing itself. Everything the
- * inventory holds is written from inside a flow, because a resource collection
- * has no door outside one: the session routes carry session state, and the
- * resource routes carry a collection item's *content*, not its state. So the
- * binder's whole job is to run two actions in the right places and to name what
- * failed.
- *
- * **Two writers, split by where the live answer lives.**
+ * It writes nothing itself. Everything the inventory holds is written from
+ * inside a flow, because a resource collection has no door outside one: the
+ * session routes carry session state, and the resource routes carry a
+ * collection item's *content*, not its state. So the binder's whole job is to
+ * run one action in the right place and to name what failed.
  *
  * A **seat** has no session. What it is — its id and the kind it was hired into
  * — is the roster the process was hired from, which the binder already holds,
  * so the seat rows go out in ONE run carrying all of them.
  *
- * A **mailbox** has a session, and its `members` live there and nowhere else.
- * So the binder does not write a mailbox's row at all: it runs
- * {@link INVENTORY_REGISTER_MAILBOX} inside that mailbox's own session and the
- * mailbox writes its own row from its own state. **The binder carries no member
- * data**, and that is the point rather than a detail. A roster's `members:` is
- * what a file said when it was last read; an edit to it does not reach a
- * mailbox that is already open, so a binder copying it forward would publish a
- * file-time answer under a live name. What the row buys is that the two
- * disagreeing becomes *visible* instead of silent.
- *
  * **Nothing is deleted for being absent.** A row means *was registered in this
  * org*, not *still declared*. A roster handed to one boot may be a partial one,
- * and a binder that reconciled against it would drop the row of a live mailbox
- * another process opened. A reader tolerates a row naming something it cannot
- * reach; there is no undoing a row that should not have been removed.
+ * and a binder that reconciled against it would drop the row of a live seat
+ * another process registered. A reader tolerates a row naming something it
+ * cannot reach; there is no undoing a row that should not have been removed.
  *
  * Each removal is positive evidence, not absence: `fire` (`removeHiredSeat`)
  * deletes the row of the hired seat it removes, which it knows exactly.
  */
 
-import { kindOf, orderedById } from "../mailbox/mailbox-binder";
-import { INVENTORY_REGISTER_MAILBOX, INVENTORY_REGISTER_SEATS } from "../mailbox/mailbox-flow";
-import type { MailboxManifest } from "../manifest";
 import { seatDoorOf } from "../seat-door";
+import { INVENTORY_REGISTER_SEATS } from "./seat-writer";
 
 /**
  * One registered seat, as the binder needs it.
@@ -61,34 +46,32 @@ export interface InventorySeat {
   actions: Readonly<Record<string, unknown>>;
 }
 
-/** What the binder registers: the seats that were hired, and the mailboxes that were opened. */
+/** What the binder registers: the seats that were hired. */
 export interface InventoryRoster {
   /** The registered seats: `inventorySeats(installation)`, the standard workers with their flows' actions. */
   seats: readonly InventorySeat[];
-  /** The mailbox records — the same ones `mailboxInstances` registered and `openMailboxes` opened. */
-  mailboxes: readonly MailboxManifest[];
 }
 
 /** One action the binder asks the app's door to run. */
 export interface InventoryActionRequest {
-  /** The action's name — one of the two pinned inventory action names. */
+  /** The action's name: {@link INVENTORY_REGISTER_SEATS}. */
   action: string;
-  /** The action's input. Empty for a mailbox registration. */
+  /** The action's input: the seat rows. */
   input: unknown;
-  /** The user every run is made as — the same one the mailboxes were opened for. */
+  /** The user the run is made as. */
   userId: string;
   /** The org the rows are written in. Always present: the binder refuses without one. */
   orgId: string;
-  /** The flow kind to run on: the mailbox's own kind, or the seat writer's. */
+  /** The flow kind to run on: the seat writer's. */
   flowKind: string;
-  /** The session to run in: the mailbox's id for a mailbox, the seat writer's session otherwise. */
+  /** The session to run in: the seat writer's. */
   sessionId: string;
   /**
-   * `"internal"` for the seat write, absent for a mailbox registration.
+   * `"internal"`: the seat write.
    *
    * The seat-registration action lives only in the flow's `internal.actions`
    * map, not its public one (see `inventoryWriterActions` in
-   * `mailbox-flow.ts`), because its whole input is caller-supplied row data
+   * `seat-writer.ts`), because its whole input is caller-supplied row data
    * with nothing to validate it against. `run` must forward this straight
    * into `runAction`'s own `source` option — `runAction({ source:
    * request.source, ... })` — so the seat write resolves from `internal.actions`
@@ -113,21 +96,17 @@ export interface InventorySeatWriter {
  * The session the seat write runs in when the caller names none.
  *
  * An ordinary session on the writer's flow, created on the first boot and
- * reused after. It never collides with a mailbox: a mailbox's id is
- * `"<teamId>.<name>"` and always carries a dot.
+ * reused after.
  */
 export const INVENTORY_SEAT_WRITER_SESSION = "inventory-binder";
 
 export interface OpenInventoryOptions {
   /**
-   * The action door — one call per open mailbox, plus one for the seats.
+   * The action door — one call, for the seats.
    *
-   * Structurally typed and supplied by the app, for the same reason
-   * `openMailboxes` takes its session client that way: this package depends on
-   * no client package. It is a one-liner over whatever the app already uses to
-   * run an action, and it has to be the app's because the shipped action client
-   * is bound to one `flowKind` when it is created while mailboxes may be
-   * several:
+   * Structurally typed and supplied by the app, because this package depends
+   * on no client package. It is a one-liner over whatever the app already uses
+   * to run an action:
    *
    * ```ts
    * const run = (req) =>
@@ -136,8 +115,8 @@ export interface OpenInventoryOptions {
    * ```
    *
    * **It must reject when the action fails.** A door that hands back a failed
-   * run as an ordinary value reports every mailbox registered and writes
-   * nothing, and the binder has no other way to tell: an action's return value
+   * run as an ordinary value reports the seats written when nothing was, and
+   * the binder has no other way to tell: an action's return value
    * arrives in whatever shape that door gives it, so the rejection is the only
    * signal this package can read.
    *
@@ -152,9 +131,9 @@ export interface OpenInventoryOptions {
    *
    * A seat has no session of its own, and a collection can only be written from
    * inside a running flow — so the seat rows need a flow to run in, and the
-   * binder cannot derive one. Every mailbox kind built with `inventory: true`
-   * carries the writer, and so does any flow of the app's own that spreads
-   * `inventoryWriterActions`. Naming it is one line, and it is the single thing
+   * binder cannot derive one. Any flow of the app's own that spreads
+   * `inventoryWriterActions()` into its `internal.actions` carries the writer.
+   * Naming it is one line, and it is the single thing
    * about this call that is not already decided by the roster.
    *
    * Required when the roster carries seats, and refused by name when it is
@@ -162,12 +141,11 @@ export interface OpenInventoryOptions {
    */
   seatWriter?: InventorySeatWriter;
 
-  /** The user every run is made as — the same one `openMailboxes` opened the mailboxes for. */
+  /** The user the run is made as. */
   userId: string;
 
   /**
-   * The org the rows are written in, and the same one the mailboxes were opened
-   * under.
+   * The org the rows are written in.
    *
    * Optional in this type only because the boot options beside it are; a run
    * without one is refused. The inventory is org-scoped storage, so a write
@@ -180,20 +158,15 @@ export interface OpenInventoryOptions {
 /** What one boot wrote, and what it could not. */
 export interface InventoryBinding {
   /**
-   * How many seat rows were written. A row the boot may no longer write — the
-   * store already holds a newer hire's row at that address — is left and not
-   * counted. The count is the seat action's own, read from what `run`
-   * returns: the action's output, or a run result carrying it as `output`.
-   * A door whose return carries neither (an HTTP action client returns no
-   * output) gets the number of rows sent instead.
+   * How many seat rows were written. The count is the seat action's own, read
+   * from what `run` returns: the action's output, or a run result carrying it
+   * as `output`. A door whose return carries neither (an HTTP action client
+   * returns no output) gets the number of rows sent instead.
    */
   seats: number;
-  /** How many mailboxes registered themselves. */
-  mailboxes: number;
   /**
-   * What failed, named, in roster order. Never thrown: one mailbox whose kind
-   * cannot register is not an app with no inventory, and the caller decides
-   * which of these is fatal.
+   * What failed, named. Never thrown: the caller decides whether a seatless
+   * inventory is worth refusing to boot over.
    */
   problems: string[];
 }
@@ -216,21 +189,12 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Fill the org's live inventory: one row per hired seat, and one per open
- * mailbox written by that mailbox itself.
- *
- * Run it after `openMailboxes` — a mailbox that is not open yet has no session
- * to register in, and the failure is named rather than silent. The seat half
- * does not care about the order.
+ * Fill the org's live inventory: one row per hired seat.
  *
  * Re-running over an unchanged roster is a no-op: every write is keyed by the
- * record's own id, so nothing duplicates and nothing appends. A mailbox that
- * has been open since an earlier boot keeps its original `openedAt`. A seat
- * row is written only where the boot may still write it (no row when read, or
- * a stored row of the same seat), so a boot whose roster is older than the
- * store never replaces a runtime hire's row.
+ * record's own id, so nothing duplicates and nothing appends.
  *
- * @param roster  The hired seats and the opened mailbox records.
+ * @param roster  The hired seats.
  * @param options `run`: the action door. `seatWriter`: the flow the seat rows
  *   are written through. `userId` / `orgId`: who and where.
  * @returns What was written, and one named entry per failure. Nothing is
@@ -246,7 +210,6 @@ export async function openInventory(
   options: OpenInventoryOptions
 ): Promise<InventoryBinding> {
   const seats = orderedById(roster.seats);
-  const mailboxes = orderedById(roster.mailboxes);
 
   // `openInventory` writes through trusted direct execution, below any
   // resolver, so it names the organization itself (BR-4) — an ABSENT one is
@@ -257,15 +220,15 @@ export async function openInventory(
   // which points at nothing.
   //
   // Naming `DEFAULT_ORG_ID` explicitly is a different thing and goes through
-  // (D3): a development app with no resolver has its mailbox sessions bound to
-  // the framework default, and saying so here is how its rows land where those
+  // (D3): a development app with no resolver has its sessions bound to the
+  // framework default, and saying so here is how its rows land where those
   // sessions read them. The refusal is about the caller who said nothing.
   const orgId = options.orgId;
   if (orgId === undefined) {
     throw new Error(
       `openInventory was given no \`orgId\`. The inventory is org-scoped storage, so a write ` +
         `with no organization lands where no flow in the app can read it back. Pass the same ` +
-        `organization the mailbox sessions are opened under — the verified one if the app ` +
+        `organization the app's sessions are opened under — the verified one if the app ` +
         `authenticates, or \`DEFAULT_ORG_ID\` from \`@flow-state-dev/core\` if it does not.`
     );
   }
@@ -275,8 +238,8 @@ export async function openInventory(
       `openInventory was given ${seats.length} seat${seats.length === 1 ? "" : "s"} and no ` +
         `\`seatWriter\`. A seat has no session, so its row has to be written from inside some ` +
         `flow, and there is nothing in the roster that says which. Pass ` +
-        `\`seatWriter: { flowKind }\` naming a kind that carries the inventory writer — the ` +
-        `mailbox kind does when \`mailboxInstances\` was called with \`inventory: true\`.`
+        `\`seatWriter: { flowKind }\` naming a kind whose \`internal.actions\` spread ` +
+        `\`inventoryWriterActions()\`.`
     );
   }
 
@@ -308,50 +271,21 @@ export async function openInventory(
         // `InventoryActionRequest.source`.
         source: "internal"
       });
-      // The action skips a row the boot may no longer write (a newer hire's),
-      // so its own count is the one reported, when the door hands it back.
+      // The action's own count is the one reported, when the door hands it back.
       seatsWritten = writtenOf(ran) ?? seats.length;
     } catch (error) {
-      // Collected, not thrown: an app whose mailboxes all registered is not an
-      // app with no inventory, and the caller is the one that knows whether a
+      // Collected, not thrown: the caller is the one that knows whether a
       // seatless inventory is worth refusing to boot over.
       problems.push(`the seat rows could not be written — ${messageOf(error)}`);
     }
   }
 
-  let mailboxesWritten = 0;
-  for (const manifest of mailboxes) {
-    const selected = kindOf(manifest.declared);
-    if ("problem" in selected) {
-      problems.push(`mailbox "${manifest.id}" — ${selected.problem}`);
-      continue;
-    }
+  return { seats: seatsWritten, problems };
+}
 
-    try {
-      await options.run({
-        action: INVENTORY_REGISTER_MAILBOX,
-        // Empty, and that is the contract rather than an omission: the mailbox
-        // reads its members out of its own session state, so there is nothing
-        // for the binder to supply and nothing it could supply that would not
-        // be the file's answer wearing the live one's name.
-        input: {},
-        userId: options.userId,
-        orgId,
-        flowKind: selected.kind,
-        sessionId: manifest.id
-      });
-      mailboxesWritten += 1;
-    } catch (error) {
-      // The walk continues. The two ways to land here are a mailbox that is
-      // not open (so there is no membership to publish) and a kind that does
-      // not declare the registration action at all — a hand-rolled one that
-      // did not carry it. Both are named; neither is a mailbox quietly absent
-      // from the inventory.
-      problems.push(
-        `mailbox "${manifest.id}" could not register in the inventory — ${messageOf(error)}`
-      );
-    }
-  }
-
-  return { seats: seatsWritten, mailboxes: mailboxesWritten, problems };
+/**
+ * Records ordered by id, so one run's rows and refusals read in a stable order.
+ */
+export function orderedById<T extends { id: string }>(records: readonly T[]): T[] {
+  return [...records].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

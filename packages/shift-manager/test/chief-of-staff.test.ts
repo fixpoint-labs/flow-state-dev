@@ -1,12 +1,12 @@
 /**
  * The Chief of Staff view's pure parts: where Shift Manager lands (V1, BR-1),
  * which seat is the chief of staff (V2, D2, BR-10 to BR-12), the shift
- * summary's and the rail's numbers (V3, V7; D1, BR-4, BR-19), and which session
+ * summary's numbers (V3; D1, BR-4), and which session
  * is the person's conversation with it (V4, BR-14).
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../src/lib/derive";
+import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
 import { STAFF_TEAM, toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
@@ -16,7 +16,8 @@ const seat = (id: string, door: string | null = "run"): Seat => ({ ...toSeat({ i
 
 describe("landing (V1, BR-1)", () => {
   it("opens Chief of Staff at /, at /cos and at any path Shift Manager doesn't know", () => {
-    for (const path of ["/", "/cos", "/nowhere", "/cos/extra", "/w"]) {
+    // `/w/…` was a mailbox workstream's address; with no such level, it lands here too.
+    for (const path of ["/", "/cos", "/nowhere", "/cos/extra", "/w", "/w/ops.desk/stream"]) {
       expect(parseRoute(path), path).toEqual({ level: "cos" });
     }
     expect(pathFor({ level: "cos" })).toBe("/cos");
@@ -28,9 +29,8 @@ describe("landing (V1, BR-1)", () => {
       { level: "inbox", suspensionId: "susp 1" },
       { level: "tasks", by: "state" },
       { level: "tasks", by: "worker" },
-      { level: "task", boardRef: "ops.desk.work", taskId: "t-1", tab: "diff" },
-      { level: "workstream", mailboxId: "ops.desk", tab: "board" },
-      { level: "project", projectId: "unassigned", tab: "brief" },
+      { level: "task", boardRef: "s_1.tasks", taskId: "t-1", tab: "diff" },
+      { level: "project", projectId: "web", tab: "brief" },
       { level: "resource", sessionId: "s_1", ref: "runbook" },
       { level: "cos" },
     ];
@@ -74,11 +74,11 @@ describe("which seat is the chief of staff (V2, D2)", () => {
   });
 });
 
-// ---- the summary and the rail ---------------------------------------------------
+// ---- the summary -----------------------------------------------------------------
 
-const row = (mailboxId: string, id: string, status: string): BoardRow => ({
-  boardRef: `${mailboxId}.work`,
-  mailboxId,
+const row = (holderSessionId: string, id: string, status: string): BoardRow => ({
+  boardRef: `${holderSessionId}.tasks`,
+  holderSessionId,
   id,
   title: id,
   goal: null,
@@ -115,18 +115,12 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
       ok: true,
       value: {
         seats: [seat("ops.a"), seat("ops.b"), seat("ops.c")],
-        workstreams: [
-          { id: "ops.desk", kind: "mailbox", members: ["ops.a", "ops.b"] },
-          { id: "ops.side", kind: "mailbox", members: ["ops.c"] },
-          { id: "ops.quiet", kind: "mailbox", members: [] },
-        ],
       },
     },
     projects: { ok: true, value: { rows: [] } },
     boards: {
-      "ops.desk": { ok: true, value: { refs: ["ops.desk.work"], rows: [row("ops.desk", "1", "in_progress"), row("ops.desk", "2", "in_progress"), row("ops.desk", "3", "pending")] } },
-      "ops.side": { ok: true, value: { refs: ["ops.side.work"], rows: [row("ops.side", "4", "in_progress"), row("ops.side", "5", "completed")] } },
-      "ops.quiet": { ok: true, value: { refs: [], rows: [] } },
+      s_desk: { ok: true, value: { refs: ["s_desk.tasks"], rows: [row("s_desk", "1", "in_progress"), row("s_desk", "2", "in_progress"), row("s_desk", "3", "pending")] } },
+      s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [row("s_side", "4", "in_progress"), row("s_side", "5", "completed")] } },
     },
     asks: { ok: true, value: [ask("ops.a", "x"), ask("ops.c", "y"), ask("ops.a", "z")] },
     resources: { ok: true, value: [] },
@@ -135,7 +129,7 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
 }
 
 describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
-  it("counts the pending asks, the running rows and the workstreams they run in, from the snapshot", () => {
+  it("counts the pending asks, the running rows and the boards they run on, from the snapshot", () => {
     const summary = shiftSummary(snapshotOf());
     expect(summary.asks).toEqual(snapshotOf().asks);
     expect(summary.running).toEqual({ ok: true, value: { runs: 3, workstreams: 2 } });
@@ -152,29 +146,9 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
     const noAsks = shiftSummary(snapshotOf({ asks: { ok: false, failure } }));
     expect(noAsks.asks).toEqual({ ok: false, failure });
     expect(noAsks.running.ok).toBe(true);
-    const noBoard = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, "ops.side": { ok: false, failure } } }));
+    const noBoard = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
     expect(noBoard.running).toEqual({ ok: false, failure });
     expect(noBoard.asks.ok).toBe(true);
-  });
-});
-
-describe("the rail's STREAMS (V7, BR-19)", () => {
-  it("gives each workstream its running rows and its members' pending asks", () => {
-    expect(streamCounts(snapshotOf())).toEqual({
-      ok: true,
-      value: [
-        { workstream: expect.objectContaining({ id: "ops.desk" }), running: { ok: true, value: 2 }, needsYou: 2 },
-        { workstream: expect.objectContaining({ id: "ops.side" }), running: { ok: true, value: 1 }, needsYou: 1 },
-        { workstream: expect.objectContaining({ id: "ops.quiet" }), running: { ok: true, value: 0 }, needsYou: 0 },
-      ],
-    });
-  });
-
-  it("fails as a whole only when the inventory did", () => {
-    const failure = { message: "no inventory" };
-    expect(streamCounts(snapshotOf({ inventory: { ok: false, failure } }))).toEqual({ ok: false, failure });
-    const one = streamCounts(snapshotOf({ boards: { ...snapshotOf().boards, "ops.side": { ok: false, failure } } }));
-    expect(one.ok && one.value[1]!.running).toEqual({ ok: false, failure });
   });
 });
 
@@ -183,7 +157,7 @@ describe("the person's conversation with the chief of staff (V4, BR-14)", () => 
   const session = (id: string, workerId: string | undefined, createdAt: number, parentSessionId?: string, flowKind = "agent"): SessionSummary =>
     ({ id, flowKind, flowId: flowKind, ...(workerId === undefined ? {} : { state: { workerId } }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
-  it("is the newest session on the seat's flow, naming its worker, that no mailbox or run started", () => {
+  it("is the newest session on the seat's flow, naming its worker, that no other run started", () => {
     const sessions = [
       session("old", "desk.chief-of-staff", 1),
       session("newest", "desk.chief-of-staff", 3),
@@ -197,7 +171,7 @@ describe("the person's conversation with the chief of staff (V4, BR-14)", () => 
     expect(conversationSession(sessions, cos)).toBe("newest");
   });
 
-  it("is never a session a mailbox post or another run started, and none when there is no direct one", () => {
+  it("is never a session another run started, and none when there is no direct one", () => {
     expect(conversationSession([session("heard", "desk.chief-of-staff", 9, "desk.front")], cos)).toBeNull();
     // A store that nulls absent keys hands back `null` for a direct session's parent.
     expect(conversationSession([{ ...session("direct", "desk.chief-of-staff", 1), parentSessionId: null } as unknown as SessionSummary], cos)).toBe(

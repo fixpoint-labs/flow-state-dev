@@ -7,7 +7,7 @@
  * arrives as `instructions`. That is the whole out-of-the-box promise: it
  * talks, and it can reach whatever skills the app handed over.
  *
- * **It is a factory, not a flow constant** — unlike `mailboxFlow` next door.
+ * **It is a factory, not a flow constant.**
  * `defineAgentWorkerFlow()` called with no arguments *is* the built-in; the
  * same call with arguments is how an app replaces it. A finished flow value
  * could not carry the app's tool catalog or its skills, which would force a
@@ -86,21 +86,6 @@ import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
-import {
-  mailboxNotifyInputSchema,
-  mailboxTranscriptLineSchema,
-  type MailboxNotifyInput,
-  type MailboxTranscriptLine
-} from "./mailbox/mailbox-flow";
-import {
-  ROUTED_TURN_STATE,
-  answerRoutedPost,
-  mailboxPostCapability,
-  routedTurnStateSchema,
-  seatIdConfigSchema,
-  workerIdOfTurn,
-  workerMailboxPostCapability
-} from "./mailbox-post-capability";
 import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogSeatCapabilities,
@@ -318,18 +303,6 @@ export interface AgentWorkerFlowOptions {
    */
   isolateUserState?: boolean;
   /**
-   * The mailbox task lists this kind's workers take tasks from, by minted id
-   * (`mailboxBoardIds(mailboxes)`), beside the conversation boards every
-   * worker of this kind takes tasks from. A task handed to one of these
-   * workers runs as one turn: the task's goal and context are the message,
-   * the worker's own instructions, tools and model answer it, and the answer
-   * is the task's result. Hand tasks over `per-task`, so each runs in a
-   * session of its own, apart from the worker's conversations.
-   *
-   * Absent, the kind takes tasks from conversation boards only.
-   */
-  taskLists?: readonly string[];
-  /**
    * A block run after the worker answers, as a side-chain — it cannot change
    * the answer, and a failure in it does not fail the turn.
    *
@@ -532,7 +505,7 @@ function settingsSchema(
      * Which discovery domains this seat sees (FIX-817).
      *
      * ```yaml
-     * discover: [seats, mailboxes]
+     * discover: [seats, skills]
      * ```
      *
      * **Omit the key to see every domain the seat's scope carries** — today's
@@ -822,12 +795,7 @@ const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer
  * @param share The sharing flow's kind, answer name and extra tools.
  */
 export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: AgentTurnShare = AGENT_TURN) {
-  // A copy that runs every worker has no `seatId` of its own: its mailbox
-  // lines are signed by the worker each turn loads.
-  const options: AgentWorkerFlowOptions =
-    given.installation === undefined
-      ? given
-      : { ...given, uses: given.uses?.map((use) => (use === mailboxPostCapability ? workerMailboxPostCapability : use)) };
+  const options: AgentWorkerFlowOptions = given;
   const catalog = mergeKindCatalog(options.uses, options.catalog);
   // Before anything is built from it. A catalog key that disagrees with its
   // block's own name would hand the model a tool no seat's `tools:` can
@@ -849,13 +817,6 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const turnConfig = (ctx: { readonly session: object; readonly flow?: { readonly config: unknown } }) =>
     seatConfigOf(ctx) as z.infer<typeof settings>;
   const inputSchema = z.object({ message: z.string() });
-  /**
-   * The answer's own input: the turn, and on a routed mailbox post the
-   * mailbox's lines before it. Only the kind's `onMailboxPost` sets `recent`,
-   * from the fan-out's delivery; the public `run` action's input is
-   * `inputSchema`, which has no such field, so a caller cannot hand lines in.
-   */
-  const turnInputSchema = inputSchema.extend({ recent: z.array(mailboxTranscriptLineSchema).optional() });
 
   const appSkills = options.skills ?? [];
 
@@ -993,14 +954,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
     generator({
       name,
-      inputSchema: turnInputSchema,
+      inputSchema,
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
       // The earlier turns of THIS conversation, so a follow-up keeps its
-      // subject. A conversation is one session: a seat has one per mailbox it
-      // hears and one per direct conversation, so nothing said in one reaches
-      // another. Bounded by the session's history window (the framework's
-      // default, 50 turns); older turns fall out rather than being summarized.
+      // subject. A conversation is one session: a worker has one per
+      // conversation, so nothing said in one reaches another. Bounded by the
+      // session's history window (the framework's default, 50 turns); older turns fall out rather than being summarized.
       // On a coordinator's delivery, the delivering conversation's recent
       // lines join it as one user-role message before the post, for this
       // call only; on any other turn it is `history: true` unchanged. A
@@ -1058,11 +1018,6 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
         (_input, ctx) => packageInstructionsOf(turnConfig(ctx)[SEAT_PACKAGES_KEY])
       ],
       model: (_input, ctx) => turnConfig(ctx).model,
-      // A routed mailbox post's lines before it, for this turn only: the
-      // context slot reaches the model on its own call and is never stored,
-      // so the lines are not kept in the conversation or sent on a later
-      // turn. Absent on every other turn.
-      context: [(input) => recentLinesContext(input.recent)],
       // The seat's granted tools. With a written `tools:` line, both halves of
       // it: `tools` holds the names that resolved to the app's CATALOG;
       // `seatTools` holds the blocks that resolved to this seat's own folders,
@@ -1212,7 +1167,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     }
   });
 
-  const answered = sequencer({ name: "agent-run", inputSchema: turnInputSchema, flowConfigSchema: settings })
+  const answered = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier === true, matcherWithClassifier)
     .tap(appendSeatDefaults)
@@ -1304,7 +1259,7 @@ type AgentTurnBinding = {
   request?: { onStarted: BlockDefinition<any, any> };
 };
 
-/** The built-in `agent` flow: the agent's turn behind its door, its mailbox entries and its task entry. */
+/** The built-in `agent` flow: the agent's turn behind its door, its delegated-post and workstream entries, and its task entry. */
 function defineAgentFlowAround(
   options: AgentWorkerFlowOptions,
   settings: ReturnType<typeof agentWorkerTurn>["settings"],
@@ -1315,112 +1270,14 @@ function defineAgentFlowAround(
   installation: WorkerInstallation | undefined,
   board: SessionBoard | undefined
 ) {
-
-  /**
-   * Marks the turn as the answer to a routed post, so the post tool and the
-   * landing below know which post it is. Request state, not session state:
-   * one seat session can answer two routed posts at once (a follow-up held for
-   * it), and each is its own request.
-   */
-  const markRoutedTurn = handler({
-    name: "agent-mark-routed-turn",
-    inputSchema: mailboxNotifyInputSchema,
-    outputSchema: z.object({}),
-    requestStateSchema: routedTurnStateSchema,
-    execute: async (post: MailboxNotifyInput, ctx) => {
-      await ctx.request.patchState({
-        [ROUTED_TURN_STATE]: { mailboxId: post.mailboxId, postId: post.postId }
-      });
-      return {};
-    }
-  });
-
-  /**
-   * The routed reply's answer: the reply, to the post's mailbox. The mailbox
-   * lands it unless the post has its answer, and takes a post's answers in the
-   * order they were handed over, so after the tool's answer, or on a post
-   * delivered again, it lands no second line. It goes in even when the tool
-   * handed an answer over (`handed`), because that means the mailbox took the
-   * hand-off, not that it kept the line: a dispatch returns before the mailbox
-   * writes, so a mailbox that then cannot keep the tool's answer lands this
-   * reply instead. An empty reply is a failed answer: the run fails and nothing
-   * is posted, never a stock line, unless the tool handed an answer over. A
-   * hand-off the dispatch refuses fails the run and leaves the post
-   * unanswered, so the post delivered again is answered.
-   */
-  const routedAnswer = handler({
-    name: "agent-routed-answer",
-    inputSchema: z.unknown(),
-    outputSchema: z.union([
-      z.object({
-        mailbox: z.string(),
-        postId: z.string(),
-        body: z.string(),
-        author: z.string()
-      }),
-      z.object({ answeredAlready: z.literal(true) })
-    ]),
-    requestStateSchema: routedTurnStateSchema,
-    // A copy minted for one worker signs as its `seatId`, checked at the mint.
-    ...(options.installation === undefined ? { flowConfigSchema: seatIdConfigSchema } : {}),
-    execute: async (reply: unknown, ctx) => {
-      // Run only on a routed turn (the `tapIf` below), which is marked.
-      const routed = ctx.request.state.mailboxRoutedPost!;
-      if (typeof reply === "string" && reply.trim().length > 0) {
-        return {
-          mailbox: routed.mailboxId,
-          postId: routed.postId,
-          body: reply,
-          author:
-            options.installation === undefined
-              ? String((ctx.flow.config as Record<string, unknown>).seatId)
-              : workerIdOfTurn(ctx)
-        };
-      }
-      if (routed.handed === true) return { answeredAlready: true as const };
-      throw new Error(
-        `This seat was routed a post in ${routed.mailboxId} and its turn ended with an empty reply, ` +
-          "so nothing was posted to the mailbox."
-      );
-    }
-  });
-
-  const landRoutedReply = sequencer({ name: "agent-land-routed-reply", inputSchema: z.unknown() })
-    .step(routedAnswer)
-    .stepIf((answer) => !("answeredAlready" in answer), answerRoutedPost);
-
-  /**
-   * A mailbox post as this seat hears it. Every delivery runs `run` on the
-   * heard turn. A routed one (the mailbox's route picked this seat, and only
-   * the fan-out says so) also carries the mailbox's lines before the post,
-   * which the answer sees as context, and ends with the reply posted into the
-   * mailbox as the seat. The reply is not otherwise posted: an unrouted post
-   * reaches the mailbox only if the turn calls the post tool.
-   */
-  const heardPost = sequencer({ name: "agent-heard-post", inputSchema: mailboxNotifyInputSchema })
-    .tapIf((post: MailboxNotifyInput) => post.routed === true, markRoutedTurn)
-    .step(
-      (post: MailboxNotifyInput) => ({
-        message: heardTurn(post),
-        ...(post.recent === undefined ? {} : { recent: post.recent })
-      }),
-      run
-    )
-    .tapIf((_reply, ctx) => ctx.request.state[ROUTED_TURN_STATE] !== undefined, landRoutedReply);
-
   /**
    * A task as this worker takes it: one turn of `run`, the task as the
    * message, the answer as the result. A turn that throws fails the attempt
    * through the board's ordinary error path. Tasks come from any
-   * conversation's board that hands one to a worker of this kind, and from
-   * the mailbox task lists the app names; the conversation that filed a task
-   * hears how it ended.
+   * conversation's board that hands one to a worker of this kind; the
+   * conversation that filed a task hears how it ended.
    */
-  const taskEntry = workerTaskEntry({
-    name: "agent-task-turn",
-    turn: run,
-    ...(options.taskLists !== undefined ? { mailboxLists: options.taskLists } : {})
-  });
+  const taskEntry = workerTaskEntry({ name: "agent-task-turn", turn: run });
 
   const flow = defineFlow({
     kind: AGENT_KIND,
@@ -1453,19 +1310,8 @@ function defineAgentFlowAround(
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})
     },
-    // A mailbox's notify block reaches a seat here: a dispatch resolves only
-    // internal entries, so this is never caller-addressed. It runs `run`'s own
-    // sequence, so a seat answers a post exactly as it answers a person; the
-    // only difference is that the post, as the seat hears it, is the turn.
-    // Default concurrency on purpose: a queued request is refused after the
-    // engine's wait, which would drop a post arriving behind a slow answer.
     internal: {
       actions: {
-        onMailboxPost: {
-          inputSchema: mailboxNotifyInputSchema,
-          block: heardPost,
-          userMessage: heardTurn
-        },
         // A coordinator's delivery: one turn of `run` on the post, its reply
         // handed back to the delivering conversation with the delivery's
         // token. That is what makes an agent worker a delegate that takes posts.
@@ -1497,27 +1343,4 @@ function defineAgentFlowAround(
     return seat;
   };
   return Object.assign(mint, flow) as typeof flow;
-}
-
-/**
- * A mailbox post as an agent seat hears it: `<writer> in <mailbox>: <body>`.
- * The writer is the post's `author` (a seat wrote it), else its `principal`;
- * the mailbox is the mailbox's session id. A routed post adds one sentence
- * saying where the reply goes.
- */
-function heardTurn(post: MailboxNotifyInput): string {
-  const heard = `${post.author ?? post.principal} in ${post.mailboxId}: ${post.body}`;
-  if (post.routed !== true) return heard;
-  return `${heard}\n\nYou were picked to answer this post, and your reply is posted to ${post.mailboxId} as you.`;
-}
-
-/**
- * A routed turn's context section: the mailbox's lines before the post,
- * oldest first, each as `<writer>: <body>`. `undefined` with no lines, so the
- * slot drops it and a turn that has none carries no section.
- */
-function recentLinesContext(recent: readonly MailboxTranscriptLine[] | undefined): string | undefined {
-  if (recent === undefined || recent.length === 0) return undefined;
-  const lines = recent.map((line) => `- ${line.author ?? line.principal}: ${line.body}`);
-  return ["Recent lines in the mailbox, oldest first:", ...lines].join("\n");
 }

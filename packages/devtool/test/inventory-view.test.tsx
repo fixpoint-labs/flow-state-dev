@@ -1,6 +1,6 @@
 /**
  * The Inventory tab (ER-Devtool checklist row 5): the organization's
- * registered seats, mailboxes and memberships, read from one session.
+ * registered workers, read from one session.
  *
  * The transport is a stubbed `fetch` behind the REAL `DevToolProvider`, not a
  * mocked hook, because half of what is under test is the request: a tab that
@@ -14,14 +14,10 @@
  * - V3a: `createDevToolResourceClient` built with no `fetcher` (a bare
  *   resource client) → `the manifest request carries the token: expected null
  *   to be 'Bearer tok-inventory'`.
- * - V3b: an undeclared collection read as a loaded, empty one → `the mailboxes
- *   section of a seat-only flow: expected 'loaded' to be 'not-installed'`; and
- *   the absent text swapped for the empty text → `expected 'Registered
- *   mailboxesNo mailboxes regist…' to contain 'Not installed on this flow.'`.
- * - BR-12: the mailboxes heading changed to *Open mailboxes* → `words the tab
- *   must not use: expected [ 'Open' ] to deeply equal []`. The first cut of
- *   this scan read `textContent` and stayed GREEN under that mutation, because
- *   it glues "eng.queue" onto "Open" and the word boundary never fires.
+ * - BR-12: a heading changed to *Open …* → `words the tab must not use:
+ *   expected [ 'Open' ] to deeply equal []`. The first cut of this scan read
+ *   `textContent` and stayed GREEN under that mutation, because it glues the
+ *   end of one element onto "Open" and the word boundary never fires.
  * - The pagination guard removed (no page bound, no repeated-cursor check) →
  *   `expected 'the read never stopped' to match /same page cursor twice/`,
  *   `… to match /after 1000/`, and in the tab `expected 'Registered
@@ -29,7 +25,7 @@
  *   stubs' own backstops stop the loop, so the red state cannot hang the suite.
  * - BR-9/BR-10: a failed read returned as an empty one → the 403 and the
  *   later-page cases fail with `expected 'loaded' to be 'failed'`, the 404 case
- *   with `expected 'Registered mailboxes0No mailboxes regis…' to contain '(404)'`.
+ *   with `expected 'Registered seats0No seats regis…' to contain '(404)'`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -45,8 +41,8 @@ import { readEveryPage } from "../src/react/lib/inventory";
 const SESSION = "eng.queue";
 const TOKEN = "tok-inventory";
 
-/** Refs a flow gave the collections. Deliberately not the patterns: the tab must read them off the manifest. */
-const REFS = { seats: "orgSeats", mailboxes: "orgMailboxes", memberships: "orgMembers" };
+/** The ref a flow gave the collection. Deliberately not the pattern: the tab must read it off the manifest. */
+const REFS = { seats: "orgSeats" };
 
 type ManifestEntry = { ref: string; kind: "collection"; scope: "org"; pattern: string; hasClientData: boolean; client: { state: { read: boolean } } };
 
@@ -54,11 +50,7 @@ function collection(ref: string, pattern: string, read = true): ManifestEntry {
   return { ref, kind: "collection", scope: "org", pattern, hasClientData: read, client: { state: { read } } };
 }
 
-const ALL_THREE = [
-  collection(REFS.seats, "inventory/seats/*"),
-  collection(REFS.mailboxes, "inventory/mailboxes/*"),
-  collection(REFS.memberships, "inventory/members/**"),
-];
+const INVENTORY = [collection(REFS.seats, "inventory/seats/*")];
 
 /** A page answer: `items` as the route sends them, and a cursor when more remain. */
 type Page = { status?: number; items?: unknown[]; nextCursor?: string; error?: string };
@@ -84,7 +76,7 @@ function serve(server: Server) {
 
       if (url.includes(`/api/flows/sessions/${encodeURIComponent(SESSION)}/manifest`)) {
         if (!Array.isArray(server.manifest)) return json(server.manifest.status, { error: "no" });
-        return json(200, { flowKind: "mailbox", resources: server.manifest });
+        return json(200, { flowKind: "roster", resources: server.manifest });
       }
       const read = /\/api\/flows\/sessions\/[^/]+\/resources\/([^/?]+)\?(.*)$/.exec(url);
       if (read !== null) {
@@ -135,17 +127,17 @@ function renderWorkspace(bearerToken: string | undefined = TOKEN) {
 async function openPanel(): Promise<HTMLElement> {
   await waitFor(() => expect(screen.getByRole("tab", { name: "Inventory" })).toBeInTheDocument());
   await waitFor(() =>
-    expect(document.querySelectorAll("[data-inventory-section]").length).toBe(3),
+    expect(document.querySelectorAll("[data-inventory-section]").length).toBe(1),
   );
   return document.querySelector<HTMLElement>("[data-inventory-view]")!;
 }
 
-function section(name: "seats" | "mailboxes" | "memberships"): HTMLElement {
+function section(name: "seats"): HTMLElement {
   return document.querySelector<HTMLElement>(`[data-inventory-section="${name}"]`)!;
 }
 
 /** The cells of the row whose first cell reads `id`, keyed by column heading. */
-function rowById(sectionName: "seats" | "mailboxes" | "memberships", id: string): Record<string, string> | undefined {
+function rowById(sectionName: "seats", id: string): Record<string, string> | undefined {
   const table = section(sectionName).querySelector("table");
   if (table === null) return undefined;
   const headers = [...table.querySelectorAll("thead th")].map((th) => (th.textContent ?? "").trim());
@@ -161,29 +153,19 @@ const SEATS = [
   { id: "eng.planner", kind: "planner" },
   { id: "eng.builder", kind: "worker" },
 ];
-const MAILBOX = {
-  id: "eng.queue",
-  kind: "mailbox",
-  members: ["eng.planner", "eng.builder"],
-  openedAt: "2026-09-24T10:00:00.000Z",
-};
-const MEMBERSHIPS = [
-  { seatId: "eng.planner", mailboxId: "eng.queue" },
-  { seatId: "eng.builder", mailboxId: "eng.queue" },
-];
 
-const EMPTY_TEXT = /No (seats|mailboxes|memberships) registered/;
+const EMPTY_TEXT = /No seats registered/;
 const ABSENT_TEXT = "Not installed on this flow.";
 
-describe("V3 · the Inventory tab on a mailbox's session", () => {
+describe("V3 · the Inventory tab on a session that declares the inventory", () => {
   beforeEach(() =>
     serve({
-      manifest: ALL_THREE,
-      pages: { [REFS.seats]: [{ items: SEATS }], [REFS.mailboxes]: [{ items: [MAILBOX] }], [REFS.memberships]: [{ items: MEMBERSHIPS }] },
+      manifest: INVENTORY,
+      pages: { [REFS.seats]: [{ items: SEATS }] },
     }),
   );
 
-  it("appears, and shows every seat with its kind and mailboxes, and the mailbox with its members (BR-7, BR-8)", async () => {
+  it("appears, and shows every seat with its kind (BR-7, BR-8)", async () => {
     renderWorkspace();
     const panel = await openPanel();
 
@@ -191,14 +173,7 @@ describe("V3 · the Inventory tab on a mailbox's session", () => {
       const row = rowById("seats", seat.id);
       expect(row, `seat ${seat.id} has a row`).toBeDefined();
       expect(row!.Kind).toBe(seat.kind);
-      expect(row!.Mailboxes).toBe("eng.queue");
     }
-    const mailbox = rowById("mailboxes", "eng.queue");
-    expect(mailbox, "the mailbox has a row").toBeDefined();
-    expect(mailbox!.Kind).toBe("mailbox");
-    expect(mailbox!.Members).toBe("eng.planner, eng.builder");
-    expect(mailbox!.Registered).toBe(MAILBOX.openedAt);
-    expect(rowById("memberships", "eng.builder")?.Mailbox).toBe("eng.queue");
 
     // Nothing is inside an expander.
     expect(panel.querySelectorAll("details").length).toBe(0);
@@ -224,13 +199,11 @@ describe("V3 · the Inventory tab on a mailbox's session", () => {
 
   it("names no organization and offers no picker (BR-16)", async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
         // A key outside the named fields, carrying an org id, as a server that
         // over-shared might send it. The view renders named fields only.
         [REFS.seats]: [{ items: [{ ...SEATS[0], orgId: "org_secret_acme" }] }],
-        [REFS.mailboxes]: [{ items: [MAILBOX] }],
-        [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
     renderWorkspace();
@@ -241,50 +214,14 @@ describe("V3 · the Inventory tab on a mailbox's session", () => {
     expect(within(panel).queryAllByRole("combobox")).toEqual([]);
     expect(panel.querySelectorAll("select").length).toBe(0);
   });
-
-  it("shows each collection's own answer when a mailbox's members and the membership rows disagree (BR-13)", async () => {
-    serve({
-      manifest: ALL_THREE,
-      pages: {
-        [REFS.seats]: [{ items: SEATS }],
-        [REFS.mailboxes]: [{ items: [MAILBOX] }],
-        // Only the planner has a membership row; the mailbox row names both.
-        [REFS.memberships]: [{ items: [MEMBERSHIPS[0]] }],
-      },
-    });
-    renderWorkspace();
-    await openPanel();
-    expect(rowById("mailboxes", "eng.queue")!.Members).toBe("eng.planner, eng.builder");
-    expect(rowById("seats", "eng.builder")!.Mailboxes).toBe("none");
-    expect(rowById("seats", "eng.planner")!.Mailboxes).toBe("eng.queue");
-  });
-
-  it("reads a mailbox row that predates members and openedAt as none and unknown (BR-14)", async () => {
-    serve({
-      manifest: ALL_THREE,
-      pages: {
-        [REFS.seats]: [{ items: SEATS }],
-        [REFS.mailboxes]: [{ items: [{ id: "eng.legacy", kind: "mailbox" }] }],
-        [REFS.memberships]: [{ items: [] }],
-      },
-    });
-    renderWorkspace();
-    await openPanel();
-    const legacy = rowById("mailboxes", "eng.legacy");
-    expect(legacy, "the legacy row rendered").toBeDefined();
-    expect(legacy!.Members).toBe("none");
-    expect(legacy!.Registered).toBe("unknown");
-  });
 });
 
 describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", () => {
   it("reads past the first page, so the organization is shown whole (BR-9)", async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-1" }, { items: [SEATS[1]] }],
-        [REFS.mailboxes]: [{ items: [MAILBOX] }],
-        [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
     renderWorkspace();
@@ -296,11 +233,9 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
 
   it("says how far it got when a later page fails, and shows no partial list (BR-9)", async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-1" }, { status: 500, error: "store unavailable" }],
-        [REFS.mailboxes]: [{ items: [MAILBOX] }],
-        [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
     renderWorkspace();
@@ -315,11 +250,9 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
 
   it("names a refused read with its status and never shows an empty organization (BR-10, 403)", async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
         [REFS.seats]: [{ status: 403, error: `State read not permitted for "${REFS.seats}"` }],
-        [REFS.mailboxes]: [{ items: [] }],
-        [REFS.memberships]: [{ items: [] }],
       },
     });
     renderWorkspace();
@@ -331,40 +264,36 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
     expect(seats.textContent).toContain("State read not permitted");
     expect(seats.textContent).not.toMatch(EMPTY_TEXT);
     // The organization-wide "nothing registered" line would be a lie here:
-    // one collection could not be read at all.
+    // the collection could not be read at all.
     expect(panel.textContent).not.toContain("Nothing is registered");
   });
 
   it("names an unknown collection (BR-10, 404)", async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
-        [REFS.seats]: [{ items: SEATS }],
-        [REFS.mailboxes]: [{ status: 404, error: `Unknown resource "${REFS.mailboxes}"` }],
-        [REFS.memberships]: [{ items: MEMBERSHIPS }],
+        [REFS.seats]: [{ status: 404, error: `Unknown resource "${REFS.seats}"` }],
       },
     });
     renderWorkspace();
     await openPanel();
-    const mailboxes = section("mailboxes");
-    expect(mailboxes.textContent).toContain("(404)");
-    expect(mailboxes.textContent).toContain("not found");
-    expect(mailboxes.textContent).not.toMatch(EMPTY_TEXT);
+    const seats = section("seats");
+    expect(seats.textContent).toContain("(404)");
+    expect(seats.textContent).toContain("not found");
+    expect(seats.textContent).not.toMatch(EMPTY_TEXT);
   });
 
   it("states an empty organization, and says how rows get there (BR-11)", async () => {
     serve({
-      manifest: ALL_THREE,
-      pages: { [REFS.seats]: [{ items: [] }], [REFS.mailboxes]: [{ items: [] }], [REFS.memberships]: [{ items: [] }] },
+      manifest: INVENTORY,
+      pages: { [REFS.seats]: [{ items: [] }] },
     });
     renderWorkspace();
     const panel = await openPanel();
     expect(panel.textContent).toContain("Nothing is registered in this organization yet");
     expect(panel.textContent).toContain("openInventory");
-    for (const name of ["seats", "mailboxes", "memberships"] as const) {
-      expect(section(name).dataset.inventoryStatus).toBe("loaded");
-      expect(section(name).textContent).toMatch(EMPTY_TEXT);
-    }
+    expect(section("seats").dataset.inventoryStatus).toBe("loaded");
+    expect(section("seats").textContent).toMatch(EMPTY_TEXT);
   });
 });
 
@@ -409,12 +338,10 @@ describe("V3 · a cursor that never ends is a failed read, not a hang (BR-9, BR-
 
   it("shows the stuck read in the tab as a failure, never loading or empty", { timeout: 5_000 }, async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
         // Page 0 points at page 0 again: the same cursor, forever.
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-0" }],
-        [REFS.mailboxes]: [{ items: [MAILBOX] }],
-        [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
     renderWorkspace();
@@ -428,7 +355,7 @@ describe("V3 · a cursor that never ends is a failed read, not a hang (BR-9, BR-
 });
 
 describe("V3 · where the tab appears (BR-7)", () => {
-  it("does not appear on a session whose flow declares none of the three", async () => {
+  it("does not appear on a session whose flow does not declare the inventory", async () => {
     serve({
       manifest: [collection("board", "tasks/eng.queue/*")],
       pages: {},
@@ -445,11 +372,9 @@ describe("V3 · where the tab appears (BR-7)", () => {
 describe("V3a · every request carries the bearer token (BR-25)", () => {
   it("sends Authorization on the manifest and on page 1 and page 2 of a paginated read", async () => {
     serve({
-      manifest: ALL_THREE,
+      manifest: INVENTORY,
       pages: {
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-1" }, { items: [SEATS[1]] }],
-        [REFS.mailboxes]: [{ items: [MAILBOX] }],
-        [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
     renderWorkspace(TOKEN);
@@ -469,32 +394,5 @@ describe("V3a · every request carries the bearer token (BR-25)", () => {
     for (const request of seen.filter((s) => s.url.includes("/resources/"))) {
       expect(request.authorization, `${request.url} carries the token`).toBe(`Bearer ${TOKEN}`);
     }
-  });
-});
-
-describe("V3b · a seat-only flow, the shape the hire tools install (BR-7, BR-8, BR-24)", () => {
-  it("shows the tab, renders the seats, and reads the other two as not installed — never as empty", async () => {
-    serve({
-      manifest: [collection("seatInventory", "inventory/seats/*")],
-      pages: { seatInventory: [{ items: SEATS }] },
-    });
-    renderWorkspace();
-    await openPanel();
-
-    expect(rowById("seats", "eng.planner")?.Kind).toBe("planner");
-    expect(rowById("seats", "eng.builder")?.Kind).toBe("worker");
-
-    for (const name of ["mailboxes", "memberships"] as const) {
-      expect(section(name).dataset.inventoryStatus, `the ${name} section of a seat-only flow`).toBe("not-installed");
-      expect(section(name).textContent).toContain(ABSENT_TEXT);
-      expect(section(name).textContent).not.toMatch(EMPTY_TEXT);
-      expect(section(name).querySelector("table")).toBeNull();
-    }
-    // The two texts a reader tells apart are actually different.
-    expect(ABSENT_TEXT).not.toMatch(EMPTY_TEXT);
-    // Nothing was asked of a collection the flow does not declare.
-    expect(seen.filter((s) => s.url.includes("/resources/")).map((s) => s.url)).toEqual([
-      expect.stringContaining("/resources/seatInventory?"),
-    ]);
   });
 });

@@ -7,8 +7,7 @@
  * script over two Labs: DevTeam on this goal's recording harness
  * (`lab/fsdev.config.mts`), with two coder rows running, and a fixture Lab
  * whose one seat asks and hears (`lab/asker/`). Chromium sends a fresh token
- * three ways: the task composer, `@coder` in the workstream, and Inbox's
- * reply. What happened is read from the store, through each Lab's routes with
+ * three ways: the task composer, and Inbox's reply on each Lab's ask. What happened is read from the store, through each Lab's routes with
  * this script's own requests, and from the file the harness writes each
  * attempt to. Never from Shift Manager's state.
  *
@@ -23,8 +22,8 @@
  *   standing     the row's retry standing (attempts, less the re-entries
  *                it isn't charged for) is unchanged by the turn, read from
  *                the stored row
- *   picker       `@coder` asks which of the coder's two tasks, and the line
- *                reaches the one chosen and not the other
+ *   only that    the line reaches the task it was typed on, not the other
+ *                task running beside it
  *   em door      Inbox's reply to DevTeam's EM ask lands in the EM's session, and the EM answers it
  *   heard        Inbox's reply to the fixture seat's ask is in the ask's
  *                session, the seat says it heard it, and Inbox then draws it
@@ -51,16 +50,17 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { mailboxBoard } from "@flow-state-dev/workforce";
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { LAB_ORG_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { LAB_ORG_ID, LAB_USER_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { ASKER_KIND, heardLine } from "./lab/asker/asker.mts";
 import type { RecordedAttempt } from "./lab/recording-harness.mts";
-import { ROWS, STORE_ENV } from "./lab/rows.mts";
+import { EM_ANSWER, ROWS, STORE_ENV } from "./lab/rows.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["optimistic-turn", "fresh-session"] as const;
@@ -172,6 +172,10 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
 
 type Row = {
   id: string;
+  /** Where the row is stored in the person's conversation ledger: `<partition>/<taskId>`. */
+  topic: string;
+  /** What the row is, as filed: the board's view carries no payload, so a filed row is found by it. */
+  goal: string;
   status: string;
   title: string;
   attempts: number;
@@ -194,15 +198,21 @@ function labApi(origin: string, bearer: string | undefined) {
     if (status !== 200) throw new Error(`GET ${path}: ${status} ${JSON.stringify(body)}`);
     return body;
   };
-  const rows = async (mailboxId: string, boardRef: string): Promise<Row[]> => {
-    const body = await get(`/sessions/${enc(mailboxId)}/resources/${enc(boardRef)}?limit=200`);
-    return ((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map(({ clientData: r = {} }) => ({
-      id: String(r.id),
-      status: String(r.status),
-      title: String(r.title ?? r.id),
-      attempts: Number(r.attempts ?? 0),
-      run: r.run == null ? null : { sessionId: String(r.run.sessionId), requestId: String(r.run.requestId) },
-    }));
+  /** One conversation's board: the person's conversation ledger read through it, its own rows kept. */
+  const rows = async (sessionId: string): Promise<Row[]> => {
+    const body = await get(`/sessions/${enc(sessionId)}/resources/tasks?limit=200`);
+    const items = (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>;
+    return items
+      .filter((item) => sessionIdOfFiling(decodeURIComponent(item.topic.split("/")[0] ?? "")) === sessionId)
+      .map(({ topic, clientData: r = {} }) => ({
+        id: String(r.id),
+        topic,
+        goal: String(r.goal ?? ""),
+        status: String(r.status),
+        title: String(r.title ?? r.id),
+        attempts: Number(r.attempts ?? 0),
+        run: r.run == null ? null : { sessionId: String(r.run.sessionId), requestId: String(r.run.requestId) },
+      }));
   };
   const ownerOf = async (sessionId: string): Promise<string> => {
     const body = await get(`/sessions/${enc(sessionId)}`);
@@ -233,10 +243,13 @@ type Counters = { attempts: number; abandonments: number; turnReentries: number 
 /** Retry standing: the attempts the row has been charged for (BR-9). */
 const standing = (c: Counters) => c.attempts - c.abandonments - c.turnReentries;
 
-async function storedCounters(ledgerId: string, taskId: string): Promise<Counters | undefined> {
+/** The lab user's storage cell, where the conversation ledger is kept. */
+const USER_CELL = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
+
+async function storedCounters(topic: string): Promise<Counters | undefined> {
   const stores = createSQLiteStores({ filename: STORE_FILE, skipSchemaInit: true });
   try {
-    const record = (await stores.resourceState.get("org", LAB_ORG_ID, `${ledgerId}/${taskId}`)) as { state?: Record<string, unknown> } | undefined;
+    const record = (await stores.resourceState.get("user", USER_CELL, `tasks/${topic}`)) as { state?: Record<string, unknown> } | undefined;
     const state = record?.state;
     if (state === undefined) return undefined;
     return {
@@ -257,7 +270,8 @@ function attempts(): RecordedAttempt[] {
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as RecordedAttempt);
 }
-const attemptsOf = (issue: string) => attempts().filter((a) => a.row.startsWith(`Row ${issue},`));
+/** A row's attempts, by the row line of the prompt each was handed. */
+const attemptsOf = (rowId: string) => attempts().filter((a) => a.row.startsWith(`Row ${rowId},`));
 
 // ---- the page ----------------------------------------------------------------
 
@@ -288,16 +302,18 @@ async function sendAndWatch(
 // ---- one turn into a coding run ----------------------------------------------
 
 type Turn = { route: string; line: string; row: Row; counters: Counters; issue: string; owner: string; previousSession: string | null };
-type Where = { mailboxId: string; boardRef: string; ledgerId: string };
+/** The conversation whose board holds the rows: the EM worker's own session. */
+type Where = { sessionId: string };
 
 /** Read a row's state, and the harness's last attempt for it, before a turn. */
-async function before(api: LabApi, where: Where, issue: string, route: string): Promise<Turn> {
-  const row = (await api.rows(where.mailboxId, where.boardRef)).find((r) => r.id.startsWith(`${issue.toLowerCase()}--`));
+async function before(api: LabApi, where: Where, filed: { issue: string; goal: string }, route: string): Promise<Turn> {
+  const { issue } = filed;
+  const row = (await api.rows(where.sessionId)).find((r) => r.goal === filed.goal);
   if (row === undefined || row.status !== "in_progress" || row.run === null) {
     throw new Error(`store: ${issue} is not running (${row === undefined ? "no row" : `${row.status}, ${row.run === null ? "no run" : "linked"}`})`);
   }
-  const counters = await storedCounters(where.ledgerId, row.id);
-  if (counters === undefined) throw new Error(`store: ${row.id} is not stored under ${where.ledgerId} in ${STORE_FILE}`);
+  const counters = await storedCounters(row.topic);
+  if (counters === undefined) throw new Error(`store: ${row.id} is not stored at tasks/${row.topic} in ${STORE_FILE}`);
   return {
     route,
     line: token(route),
@@ -305,7 +321,7 @@ async function before(api: LabApi, where: Where, issue: string, route: string): 
     counters,
     issue,
     owner: await api.ownerOf(row.run.sessionId),
-    previousSession: attemptsOf(issue).at(-1)?.session ?? null,
+    previousSession: attemptsOf(row.id).at(-1)?.session ?? null,
   };
 }
 
@@ -336,7 +352,7 @@ async function grade(
   // continued
   let next: RecordedAttempt | undefined;
   for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until && next === undefined; await sleep(250)) {
-    next = attemptsOf(turn.issue).find((a) => a.prompt.includes(turn.line));
+    next = attemptsOf(turn.row.id).find((a) => a.prompt.includes(turn.line));
   }
   if (next === undefined) fail("continued", `the harness recorded no attempt on ${turn.issue} whose prompt holds the line`);
   else if (next.resume !== turn.previousSession) {
@@ -347,7 +363,7 @@ async function grade(
   // turn's re-entry wasn't charged.
   let after: Counters | undefined;
   for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until; await sleep(250)) {
-    after = await storedCounters(where.ledgerId, turn.row.id);
+    after = await storedCounters(turn.row.topic);
     if (after === undefined || after.attempts > turn.counters.attempts) break;
   }
   if (after === undefined) fail("standing", `the row ${turn.row.id} is no longer stored`);
@@ -360,7 +376,7 @@ async function grade(
   // keeps showing it. A run that moved to a new session drops the line from it.
   let linked: Row["run"] = null;
   for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until; await sleep(250)) {
-    linked = (await api.rows(where.mailboxId, where.boardRef)).find((r) => r.id === turn.row.id)?.run ?? null;
+    linked = (await api.rows(where.sessionId)).find((r) => r.id === turn.row.id)?.run ?? null;
     if (linked !== null && linked.requestId !== run.requestId) break;
   }
   if (linked === null || linked.requestId === run.requestId) {
@@ -379,11 +395,9 @@ async function grade(
 
 await runGoal(async (failures) => {
   const devteam = await readDeclaredRoster(LABS.devteam.tree);
-  const mailbox = devteam.mailboxes[0]!;
-  const boardName = (mailbox.declared.boards as string[])[0]!;
-  const where: Where = { mailboxId: mailbox.id, boardRef: `${mailbox.id}.${boardName}`, ledgerId: mailboxBoard(mailbox.id, boardName).id };
-  const coder = devteam.workers.find((w) => w.declared.flow === "coder" && (mailbox.declared.members as string[]).includes(w.id) && w.id.endsWith(".coder"))!;
   const em = devteam.workers.find((w) => w.declared.flow === "em")!;
+  // The rows are filed through the EM's own action, on its own session's board.
+  const where: Where = { sessionId: seatSessionId(em.id) };
   // The asker lab's one worker on the asker kind; its coordinator, `desk.front`, is another worker file.
   const asker = (await readDeclaredRoster(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_KIND)!;
 
@@ -402,8 +416,8 @@ await runGoal(async (failures) => {
     const injected = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { bearerToken?: string } | null;
     const api = labApi(served.devteam.origin, injected?.bearerToken);
     for (let waited = 0; waited < 60_000; waited += 250) {
-      const running = (await api.rows(where.mailboxId, where.boardRef)).filter((r) => r.status === "in_progress" && r.run !== null);
-      if (running.length === ROWS.length && ROWS.every((r) => attemptsOf(r.issue).length > 0)) break;
+      const running = (await api.rows(where.sessionId)).filter((r) => r.status === "in_progress" && r.run !== null);
+      if (running.length === ROWS.length && running.every((r) => attemptsOf(r.id).length > 0)) break;
       await sleep(250);
     }
 
@@ -418,39 +432,22 @@ await runGoal(async (failures) => {
 
     // The task composer, on the first row.
     await leg("task composer", async (fail) => {
-      const turn = await before(api, where, ROWS[0].issue, "task");
+      const turn = await before(api, where, ROWS[0], "task");
       await page.getByTestId("nav-tasks").click();
       await page.locator(`[data-testid=task-row][data-task-id="${turn.row.id}"]`).click();
       await page.locator(`[data-testid=task-frame][data-task-id="${turn.row.id}"]`).waitFor();
       const input = page.getByTestId("task-composer-input");
       await page.waitForFunction(() => !(document.querySelector("[data-testid=task-composer-input]") as HTMLTextAreaElement | null)?.disabled);
       await input.fill(turn.line);
+      const other = (await api.rows(where.sessionId)).find((r) => r.id !== turn.row.id && r.run !== null);
       const sent = await sendAndWatch(page, "task-composer", () => api.holds(turn.row.run!.sessionId, "user", turn.line));
       await grade(api, where, turn, sent, fail, evidence);
+      if (other === undefined) fail("only that", "no second task was running beside it");
+      else if (await api.holds(other.run!.sessionId, "user", turn.line)) fail("only that", `the line also reached ${other.id}, which it was not typed on`);
     });
 
-    // @coder in the workstream, on the second row, chosen from the picker.
-    await leg("@coder", async (fail) => {
-      const turn = await before(api, where, ROWS[1].issue, "at-coder");
-      const other = (await api.rows(where.mailboxId, where.boardRef)).find((r) => r.id !== turn.row.id && r.run !== null)!;
-      await page.getByTestId(`nav-workstream-${where.mailboxId}`).click();
-      await page.locator("[role=tab][data-tab=stream]").click();
-      await page.getByTestId("composer-input").fill(`@${coder.id.split(".").at(-1)} ${turn.line}`);
-      const picker = page.getByTestId("composer-task-picker");
-      if (!(await picker.isVisible().catch(() => false))) {
-        fail("picker", "the composer asked nothing with two running tasks on the coder");
-        return;
-      }
-      const offered = (await picker.locator("option").evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).filter((v) => v !== "");
-      if (!offered.includes(turn.row.id) || !offered.includes(other.id)) fail("picker", `the picker offers [${offered.join(", ")}], wanted both of the coder's running tasks`);
-      await picker.selectOption(turn.row.id);
-      const sent = await sendAndWatch(page, "composer", () => api.holds(turn.row.run!.sessionId, "user", turn.line));
-      await grade(api, where, turn, sent, fail, evidence);
-      if (await api.holds(other.run!.sessionId, "user", turn.line)) fail("picker", `the line also reached ${other.id}, which was not chosen`);
-    });
-
-    // Inbox, on DevTeam's EM ask: every worker flow has a door, the EM's too. A
-    // line that names no feature files nothing, and the EM says so in its session.
+    // Inbox, on DevTeam's EM ask: every worker flow has a door, the EM's too. Its
+    // turn is scripted to say it filed nothing; the leg grades that it answered there.
     await leg("Inbox, EM door", async (fail) => {
       await open(page, served.devteam.origin, "/inbox");
       await page.getByTestId("inbox-item").first().click();
@@ -460,7 +457,9 @@ await runGoal(async (failures) => {
       const sent = await sendAndWatch(page, "inbox-reply", () => api.holds(emSession, "user", line));
       if (sent.state !== "delivered") fail("em door", `the reply never read delivered: ${sent.state}${sent.error === null ? "" : `, "${sent.error}"`}`);
       if (!(await api.holds(emSession, "user", line))) fail("em door", `${emSession} holds no user item with the reply`);
-      if (!(await api.holds(emSession, "assistant", "Nothing filed"))) fail("em door", `${em.id} never answered the line in ${emSession}`);
+      let answered = false;
+      for (const until = Date.now() + 15_000; !answered && Date.now() < until; await sleep(250)) answered = await api.holds(emSession, "assistant", EM_ANSWER);
+      if (!answered) fail("em door", `${em.id} never answered the line in ${emSession}`);
       evidence.push(`Inbox reply on ${em.id}: ${sent.state}, in ${emSession}, answered`);
     });
 
