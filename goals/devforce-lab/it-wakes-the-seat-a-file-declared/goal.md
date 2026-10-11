@@ -25,21 +25,25 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
-   chief of staff on the `coordinator` kind its file names, two documents and one mailbox; a tree naming an unregistered kind refuses the **whole** roster by name, and its
-   corrected twin hires cleanly *(BR-1, BR-2)*;
+   chief of staff and project coordinator on `coordinator` and its workstream coordinator on `agent`,
+   the teams' two coordinator workers (`eng.triage`, `ops.oncall`) on `coordinator`, two documents
+   and no mailbox (the feature and release work are workstreams the EM leads); a tree naming an
+   unregistered kind refuses the **whole** roster by name, and its corrected twin hires cleanly
+   *(BR-1, BR-2)*;
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
    running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
-3. one row, claimed once, handed to the seat the board's assignee names — graded on the **dispatch
+3. one row, under the id the EM session's board minted and naming its issue and phase in its
+   payload, claimed once, handed to the seat the board's assignee names — graded on the **dispatch
    record**, by the `workerId` each child session names — with the third seat absent from it, and a second drain claiming nothing
    *(BR-5, BR-6, BR-8, BR-9)*;
 4. the prompt carries all four held-out tokens, the run's `cwd` is the checkout the framework itself
-   derives for this row (and that derivation is injective over its components), and the row settles
-   `completed` *(BR-10, BR-11, BR-13)*;
-5. a hand-off naming an instance no seat minted errors the row `flow-not-found`, by id, and
-   provisions nothing *(BR-7)*;
-6. a run that finishes cleanly and leaves no commit re-pends the row with its reason attached, and
-   errors it once the retry budget is spent *(BR-14)*;
-7. a `boards/` folder added to the tree changes nothing the loader produces while the `mailboxes/`
+   derives for this row on the board it sits on (and that derivation is injective over its
+   components), and the row settles `completed` *(BR-10, BR-11, BR-13)*;
+5. a hand-off naming an instance no seat minted errors the row by that id (it is not one the EM's
+   session hands to), and provisions nothing *(BR-7)*;
+6. a run that finishes cleanly and leaves no commit is retried with its reason in the next
+   prompt, and the row errors once the retry budget is spent *(BR-14)*;
+7. a `boards/` folder added to the tree changes nothing the loader produces while the `workers/`
    folder beside it loads, and an org-less read is refused at the transport door while the same read
    through the same door, carrying the lab's verified bearer, lands with the seat's own facts
    *(BR-16, BR-17)*.
@@ -70,6 +74,9 @@ handed every skill in the tree.
 | `drop-own-skill` | the working seat's resolved skill union | set equality, and the skill's token in the prompt |
 | `stopped-at-limit` | the stop report the run makes | the row does not settle done |
 
+The lab runs with no judge: a row on a session's board is judged before it closes, and the stub
+answers nothing a judge could pass. The judge is `it-answers-a-conversations-task`'s to grade.
+
 **Model:** n/a — model-free by design. The model-backed half is the sibling goal,
 `it-commits-from-the-seats-own-file`, which drives the same tree, the same hire and the same wiring
 with a real coding harness in the one slot that differs.
@@ -98,3 +105,7 @@ is the sibling goal.
 | 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `address-the-reviewer`: the drain dispatched to ["eng.reviewer"] and the coder's tokens missing. `no-commit` and `stopped-at-limit`: the row settled pending. `swap-documents`: eng.coder reads engineering-handbook. `drop-own-skill`: eng.coder holds only commit-style. |
 | 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The lab on one copy per worker flow (`em`, `coder`, `agent`): the EM's board handed the row to a session on `coder` naming `eng.coder`, graded on the dispatch record's `workerId`; the reviewer on the same flow never reached; each seat's own files in its prompt. A tree naming `codr` registered nothing. |
 | 2026-10-09 | fix/closure-children-one-copy (main 57d2c10e9) | n/a | PASS | The fixture's chief of staff is on `coordinator`, the flow its `WORKER.md` names since FIX-1791 P1. Before, it failed on "chief-of-staff was hired into kind `coordinator`, not `agent`". All five controls FAIL at their named legs. |
+| 2026-10-10 | 2a5e9b1b+uncommitted (FIX-1792 P3) | n/a | PASS | DevTeam's `eng.triage` and `ops.oncall` are `WORKER.md`s on `coordinator` (delegates [eng.em], routing everyone), no longer mailboxes. Before the fixture change the converted tree failed (a) on hired [... eng.triage, ops.oncall, project-coordinator, workstream-coordinator] and mailboxes [eng.feature, ops.release]; the two org coordinators were already missing from the fixture since FIX-1793 P3, so the fixture now lists them too. 8 seats, 2 mailboxes. All five controls FAIL at their named legs: `address-the-reviewer` dispatched to [eng.reviewer], coder tokens missing; `no-commit` and `stopped-at-limit` settled pending; `swap-documents` eng.coder reads engineering-handbook; `drop-own-skill` eng.coder holds only commit-style. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | FAIL (control) | All five FAIL at their named legs: `address-the-reviewer` dispatched to ["eng.reviewer"], coder tokens missing; `no-commit` and `stopped-at-limit` settled "errored" ("the implement phase is still not done"); `swap-documents` eng.coder reads engineering-handbook, the brief's token missing; `drop-own-skill` eng.coder holds only commit-style, BRANCH-NAMING missing. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | PASS | Converted: the DevTeam declares no mailbox, and the EM files on its own session's board, under a minted id with `{issue, phase}` in the payload (the `FEATURE-CHARTER` token went with the feature `MAILBOX.md`). The checkout is derived from the row's id on that board (`runBoardSegment("tasks", partition)`). A hand-off to an unminted id is refused as not one of the session's delegates, by id. A session's board retries a not-done row at once, so leg f grades the retry's prompt and the spent budget, not a pending moment; `no-commit` and `stopped-at-limit` now settle `errored`, not `pending`. The lab runs `withoutJudge`. |
+| 2026-10-11 | `7af86476` (DevTeam off mailboxes, merged with FIX-1866 P3 `f4978593`) | n/a | PASS | Re-run on the merged tree: 8 seats on 2 kinds, no mailbox; the row handed to eng.coder by id; a hand-off naming no delegate errors the row by name. |

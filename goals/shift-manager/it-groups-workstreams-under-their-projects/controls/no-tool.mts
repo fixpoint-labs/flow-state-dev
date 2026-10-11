@@ -6,8 +6,8 @@
  * is that module, except that `openLab` opens the Lab with
  * `withoutProjectTools`: the catalog the agent turn is built with, which the
  * chief of staff's coordinator turn shares, lacks `createProject` and
- * `setWorkstreams`, and no seat's `tools:` names them, as before the chief of
- * staff had them. The Lab boots as before. The goal must fail at "cos".
+ * `setRepository`, and no worker's `tools:` names them, as before the chief
+ * of staff had them. The Lab boots as before. The goal must fail at "cos".
  */
 import { openLab as openLabWithTools } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 

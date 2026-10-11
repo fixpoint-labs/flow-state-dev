@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor, readStatus } from "../lib/columns";
-import { openRows, rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
+import { holderOf, openRows, rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
@@ -37,6 +37,11 @@ function useNow(running: boolean): number {
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
+/** A row's stream as the table writes it: `#<workstream>`, or a conversation's `@<worker>` as it is. */
+function streamLabel(holder: string): string {
+  return holder.startsWith("@") ? holder : `#${holder}`;
+}
+
 export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
   const { refresh } = useLab();
   const [showQueued, setShowQueued] = useState(false);
@@ -48,7 +53,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.mailboxId;
+    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : holderOf(snapshot, row);
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -179,7 +184,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         —
                       </td>
                       <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
-                        #{row.mailboxId}
+                        {streamLabel(holderOf(snapshot, row))}
                       </td>
                       <td className="truncate py-2 pr-3 text-[13px]" title={seat?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
                         {seat?.name ?? row.assignee ?? "—"}

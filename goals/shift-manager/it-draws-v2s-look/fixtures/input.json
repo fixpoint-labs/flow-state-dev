@@ -1,7 +1,8 @@
 {
   "devteam": {
     "issue": "release-notes-page",
-    "text": "Add a release notes page that lists the last three tags."
+    "text": "Add a release notes page that lists the last three tags.",
+    "workstream": "Release notes"
   },
   "desk": {
     "line": "What needs me first this shift?",

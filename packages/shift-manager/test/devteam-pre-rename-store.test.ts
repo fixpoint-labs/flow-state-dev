@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { MAILBOX_KIND, PRE_RENAME_NAMES } from "@flow-state-dev/workforce";
+import { PRE_RENAME_NAMES } from "@flow-state-dev/workforce";
 import { LAB_ORG_ID, LAB_USER_ID } from "../teams/devteam/host.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -77,14 +77,12 @@ function setsAsideAndStartsFresh(run: ReturnType<typeof bootOver>, mark: string)
     expect(log).toContain(mark);
   });
 
-  it("starts fresh: the feature mailbox is open on the mailbox kind, and nothing old is left", async () => {
+  it("starts fresh: nothing old is left", async () => {
     expect(existsSync(run.store)).toBe(true);
     const reread = createSQLiteStores({ filename: run.store });
-    const mailbox = await reread.session.get("eng.feature");
     const oldSessions = await reread.session.list({ flowKind: PRE_RENAME_NAMES.kind });
     const oldRows = await reread.resourceState.getByPrefix("org", LAB_ORG_ID, PRE_RENAME_NAMES.inventoryPrefix);
     reread.close();
-    expect(mailbox?.flowKind).toBe(MAILBOX_KIND);
     expect(oldSessions).toEqual([]);
     expect(Object.keys(oldRows)).toEqual([]);
   });

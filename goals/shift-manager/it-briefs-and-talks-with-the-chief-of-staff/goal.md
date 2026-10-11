@@ -6,22 +6,23 @@
 
 **Input:** two Labs, each served by Shift Manager's command.
 
-- The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `chief-of-staff` on the built-in `agent` kind with a real model, in one mailbox with one board. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
-- The same desk with no chief of staff (`lab-no-cos/`): the `asker` seat alone in its mailbox, for **no CoS**. DevTeam declares a chief of staff since FIX-1719, so it can no longer stand in for a Lab without one.
+- The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `chief-of-staff` on the built-in `agent` kind with a real model, both delegates of `front`, a worker on Workforce's `coordinator` flow (`routing: everyone`). Nothing files a task, so no conversation board holds a row. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
+- The same desk with no chief of staff (`lab-no-cos/`): the `asker` seat, `front`'s one delegate, for **no CoS**. DevTeam declares a chief of staff since FIX-1719, so it can no longer stand in for a Lab without one.
 
-The seat, mailbox and board names are read from the tree at run time. Tokens are fresh per run.
+The seat names are read from the tree at run time. Tokens are fresh per run.
 
 **Signal:** each failure is tagged `[<lab>] <leg>`.
 
 - **landing**: `/` and an unknown path draw the Chief of Staff view, its sidebar entry first and current.
-- **summary**: the needs-you count equals the store's pending asks, every one is listed, and the stream's running and needs-you counts equal its stored rows and its members' asks.
+- **summary**: the needs-you count equals the store's pending asks, every one is listed, the running line (`data-runs`) equals the running rows on the person's conversation boards (the `tasks` collection, read through the first of their sessions whose flow declares it), and the rail lists as many workstreams as the tree declares mailboxes: none.
+  - *Retired under BR-24 (FIX-1792):* the rail's per-stream running and needs-you counts for `desk.front`. `front` is now a coordinator worker, not a mailbox, so the desk has no workstream and the rail draws no `cos-stream` row to count. What the half proved is still graded: the asks the stream's members hold are the summary's needs-you count and list (above) and **inline**; the running rows are the summary's running line.
 - **inline**: Approve on one summary item leaves one fewer pending suspension in the store, and both the summary and Inbox drop it.
 - **talk**: a fresh token typed to the chief of staff is a user item in one of that seat's direct sessions the moment *delivered* is drawn, and the reply on screen is that session's next assistant item, by id. No reply is drawn that the session doesn't hold.
 - **again**: a reload draws the same line and reply.
 - **no CoS**: the Lab with no chief of staff lands on the view with its summary and the named state in place of the composer.
 - **reach**: the pages throw nothing.
 
-**Anti-game:** the check never reads Shift Manager's state. Its oracles are each Lab's store, read through the Lab's routes with the check's own requests: the asks' suspension items, the board's rows, the person's session listing and the chief of staff's session items. The model's words aren't graded, only that the screen shows the item the session stored. *Delivered* is graded at the instant it is drawn.
+**Anti-game:** the check never reads Shift Manager's state. Its oracles are each Lab's store, read through the Lab's routes with the check's own requests: the asks' suspension items, the conversation boards' rows, the person's session listing and the chief of staff's session items. The model's words aren't graded, only that the screen shows the item the session stored. *Delivered* is graded at the instant it is drawn.
 
 **Model:** real — `openai/gpt-5.4-mini` on the built-in `agent` kind, resolved from the environment. With none of `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set, the check fails and says so, rather than passing.
 
@@ -50,3 +51,7 @@ The seat, mailbox and board names are read from the tree at run time. Tokens are
 | 2026-10-09 | same (control `optimistic-reply`) | n/a | FAIL (stale control) | Fails at the build, not at **talk**: *"the build never imported …/packages/shift-manager/src/lib/cos.ts, so nothing was swapped"*. `lib/cos.ts` was folded into `lib/conversation.ts` by 260690140 (2026-10-07), which is on `main`, so the control is red at setup with or without this change. Re-pointing it at the conversation hook is follow-up work; until then **talk** has no working control. |
 | 2026-10-09 | fix/FIX-1824-goals-one-copy, the control re-pointed | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `optimistic-reply`, expected) | The control now stands in for `lib/conversation.ts` and `lib/send.ts`, the two modules a conversation runs through: it opens no session, sends nothing, and draws the typed line with a canned reply. Only `[desk] talk`: *"delivered was drawn while no session of desk.chief-of-staff held a user item with the token"*. |
 | 2026-10-09 | same | openai/gpt-5.4-mini (vercel gateway) | PASS, and FAIL (control `static-brief`, expected) | The build's swap now takes one or more modules. Green path: summary 2 / 2 pending, Approve 2 → 1 in store, summary and Inbox; line held in `conv_c29a81ba…` when *delivered* was drawn, reply drawn by id, again after a reload; no-coordinator state. `static-brief` only at `[desk] inline`. |
+| 2026-10-10 | 8d64a67b+uncommitted (FIX-1792 P3, before the check's rewrite) | n/a | FAIL (expected) | `front` converted to a coordinator `WORKER.md` (delegates `desk.asker`, `desk.chief-of-staff`; `routing: everyone`), on the old check: *"the desk tree declares no chief of staff, asker or mailbox"*, before any leg. |
+| 2026-10-10 | 8d64a67b+uncommitted (FIX-1792 P3) | openai/gpt-5.4-mini (vercel gateway) | PASS | Both desks run a `coordinator` worker `desk.front` and an `inventory-writer` flow, no mailbox. Summary 2 need you / 2 pending, running line 0 against 0 running rows on the person's conversation boards, 0 workstreams in the rail (the per-stream half retired under BR-24, above). Approve from the summary: store 2 → 1, summary 2 → 1, Inbox 1. The line held in `conv_2987c6a6…` when *delivered* was drawn, the reply drawn by id and again after a reload. The Lab with no chief of staff lands on the view with its no-coordinator line. |
+| 2026-10-10 | same (control `optimistic-reply`) | openai/gpt-5.4-mini (vercel gateway) | FAIL (expected) | Only `[desk] talk`: delivered was drawn while no session of desk.chief-of-staff held a user item with the token. |
+| 2026-10-10 | same (control `static-brief`) | openai/gpt-5.4-mini (vercel gateway) | FAIL (expected) | Only `[desk] inline`: after Approve the summary says 2 need you while the store holds 1, and still lists the answered ask. |

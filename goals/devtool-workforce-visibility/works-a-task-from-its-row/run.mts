@@ -7,9 +7,9 @@
  *
  * The subject is the `multi-seat-collab` hire, served by the ordinary
  * `fsdev dev` over that lab's own config, and read in Chromium on the shipped
- * DevTool bundle at 1280x800. The lab's driver files and drains over HTTP to
- * make the subject rows; every change this goal grades is made from a row on
- * screen.
+ * DevTool bundle at 1280x800. The lab's driver files on the planner's
+ * conversation's board over HTTP to make the subject rows; every change this
+ * goal grades is made from a row on screen.
  *
  * Legs (every failure line is tagged with its leg, so a control can prove it
  * went red where it says it does and nowhere else):
@@ -17,28 +17,27 @@
  *   read    collapsed, the parked row's status and 40px of its reason are in
  *           view; opened, every field the ledger holds is in the row and
  *           nothing overflows the pane
- *   answer  the seat's own `answer` action is offered on the row with the
- *           task id filled; after it runs the ledger row has left `parked`
- *           and the row on screen says so
- *   tool    on the mailbox's session, a board task tool run from a row
+ *   answer  on the planner's conversation, the board's `answerTask` action
+ *           is offered on the row with the task id filled; after it runs the
+ *           ledger row has left `parked` and the row on screen says so
+ *   tool    on the planner's conversation, a board task tool run from a row
  *           changes the ledger and the row
  *   refuse  the same tool on the now-settled row shows the refusal on the
  *           row, and the ledger is unchanged
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/works-a-task-from-its-row/run.mts
- * Controls: GOAL_CONTROL=mailbox-actions-off (must FAIL at tool and refuse only)
+ * Controls: none named; the red states are produced by hand (see goal.md).
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Locator, Page } from "playwright";
 import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchestration";
-import { MAILBOX_KIND } from "@flow-state-dev/workforce";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import { Scenario, actionOutputOf, serveLab } from "../../multi-seat-collab/run-scenario.mts";
-import { ANSWER_ENTRY, WORKER_KIND } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
+import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { Scenario, serveLab } from "../../multi-seat-collab/run-scenario.mts";
+import { WORKER_KIND } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string };
@@ -51,10 +50,11 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SHOTS = goalTmpDir("works-a-task-from-its-row");
 
-/** The legs each control must redden, and only those. */
-const EXPECTED: Record<string, readonly string[]> = {
-  "mailbox-actions-off": ["tool", "refuse"],
-};
+/** The legs each control must redden, and only those. None is named since the mailbox's board actions retired (goal.md). */
+const EXPECTED: Record<string, readonly string[]> = {};
+
+/** The conversation ledger's resource key, which names the board's task actions (`cancelTask_tasks`). */
+const LEDGER_KEY = "tasks";
 
 /** The window the whole check runs at: a laptop, where the reason used to fall off screen. */
 const VIEWPORT = { width: 1280, height: 800 };
@@ -86,6 +86,8 @@ const FIELD_LABELS: Record<string, string> = {
   input: "Input",
   output: "Output",
   metadata: "Metadata",
+  // Shown as the Attempts field's limit ("1 / 3").
+  maxAttempts: "Attempts",
   revision: "Revision",
   createdAt: "Created",
   updatedAt: "Updated",
@@ -101,6 +103,9 @@ function labelOf(key: string): string {
 
 /** Fields the ledger keeps and never sends to a client, so no screen can show them. */
 const SERVER_ONLY = new Set<string>(SERVER_ONLY_TASK_FIELDS);
+
+/** Where the driver found a row in the store (its partition and scope), added to the row it reads; not fields of the row. */
+const STORE_PLACEMENT = new Set(["partition", "scopeId"]);
 
 const failures: string[] = [];
 const notes: string[] = [];
@@ -282,6 +287,7 @@ function expectedText(key: string, value: unknown): string {
 /** Whether the open row's text for one field shows the ledger's value. */
 function shows(key: string, shown: string, value: unknown): boolean {
   if (key === "attempts") return shown.split("/")[0]!.trim() === String(value);
+  if (key === "maxAttempts") return shown.split("/")[1]?.trim() === String(value);
   // The caller skips null, so an "object" here is a record or an array. A
   // labelled list reads joined; every other structured value is
   // pretty-printed JSON, so compare it without whitespace.
@@ -380,13 +386,16 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
   const tree = await readLabTree();
   const owners = Object.entries(tree.declaredDesks).filter(([, desk]) => desk === fixture.piece.desk);
   if (owners.length !== 1) {
-    throw new Error(`the fixture's desk "${fixture.piece.desk}" must be answered for by exactly one seat; the tree declares ${JSON.stringify(tree.declaredDesks)}`);
+    throw new Error(`the fixture's desk "${fixture.piece.desk}" must be answered for by exactly one worker; the tree declares ${JSON.stringify(tree.declaredDesks)}`);
   }
   const [owner] = owners[0]!;
-  const tool = `cancelTask_${taskToolSuffix(tree.boardId)}`;
+  const plannerFlow = tree.seatFlows[tree.plannerId]!;
+  const answer = `answerTask_${taskToolSuffix(LEDGER_KEY)}`;
+  const tool = `cancelTask_${taskToolSuffix(LEDGER_KEY)}`;
 
   const served = await serveLab({ control: CONTROL, workDir: join(SHOTS, "server") });
-  const lab = new Scenario(served, tree);
+  // The app's own desk -> delegate map.
+  const lab = new Scenario(served, tree, routesFor(""));
   let browser: Browser | undefined;
   const evidence: string[] = [];
   try {
@@ -394,17 +403,29 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
 
     // ---- the subject: a row the hire parks on its own ------------------------
     const filed = await lab.file({ goal: fixture.piece.goal, desk: fixture.piece.desk, asks: fixture.piece.asks });
-    if (filed.status !== "completed") throw new Error(`filing the piece ended ${filed.status ?? filed.refusal}`);
-    await lab.drainAll();
+    if (filed.status !== "completed" || filed.output?.ok !== true) {
+      throw new Error(`filing the piece ended ${filed.status ?? filed.refusal}: ${JSON.stringify(filed.output)}`);
+    }
     const parked = await lab.waitForRow((row) => row.goal === fixture.piece.goal && row.status === "parked");
     const parkLine = lab.workLines().find((line) => line.taskId === parked?.id && line.event === "parked");
     // The positive record before anything on screen is judged: without a parked
     // row carrying a reason, in a known run, there is nothing for the screen
     // to show and blaming the view would blame it for the subject.
     if (parked === undefined || parkLine === undefined || typeof parked.feedback !== "string" || parked.feedback.length === 0) {
-      throw new Error(`the hire never parked the row with a reason (ledger: ${JSON.stringify((await lab.rows()).map((r) => [r.id, r.status, r.feedback]))})`);
+      throw new Error(`the hire never parked the row with a reason (ledger: ${JSON.stringify(lab.rows().map((r) => [r.id, r.status, r.feedback]))})`);
     }
     const parkedId = String(parked.id);
+    // The board writes the row once more after the park (its notice to the
+    // planner). Let that land before the page loads, so the open row is graded
+    // against the row as it stands rather than racing that write.
+    const stored = () => JSON.stringify(lab.rows().find((row) => row.id === parkedId));
+    let last = stored();
+    for (let still = 0, waited = 0; still < 1_000 && waited < SETTLE_MS; waited += 100) {
+      await new Promise((r) => setTimeout(r, 100));
+      const now = stored();
+      still = now === last ? still + 100 : 0;
+      last = now;
+    }
 
     browser = await launchChromium();
     const page = await browser.newPage({ viewport: VIEWPORT });
@@ -415,10 +436,9 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     await page.goto(served.origin, { waitUntil: "networkidle" });
 
     // ---- read: collapsed, then open, in the run the row parked in ------------
-    // A seat has no copy of its own: its session is on the one copy of the worker flow (a copy's id is its kind).
-    await openSession(page, WORKER_KIND, WORKER_KIND, lab.seatSession(owner));
-    await page.locator(`[data-session-id="${parkLine.session}"]`).click();
-    await waitForBadge(page, parkLine.session);
+    // The run is a task session the planner's board opened; the navigator
+    // lists it under the one copy of the worker flow (a copy's id is its kind).
+    await openSession(page, WORKER_KIND, WORKER_KIND, parkLine.session);
     await openTasksTab(page);
     const collapsed = await readCollapsed(page, parkedId, (read) => read.status === "parked");
     await page.screenshot({ path: join(SHOTS, "read-collapsed.png") });
@@ -441,10 +461,19 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       }
     }
 
-    if (collapsed !== undefined && !(await openRow(page, parkedId))) {
+    // Opened on the planner's conversation, the board's own session. A Tasks
+    // tab is a fold over its session's own items, and the board's last write
+    // to the parked row (its notice to the planner) is emitted there, not in
+    // the task session; so this is the one screen whose row is the ledger's
+    // row as it stands.
+    await openSession(page, plannerFlow, plannerFlow, lab.conversation);
+    await openTasksTab(page);
+    if (collapsed !== undefined && (await readCollapsed(page, parkedId)) === undefined) {
+      fail("read", `the planner's conversation ${lab.conversation} never showed row ${parkedId}`);
+    } else if (collapsed !== undefined && !(await openRow(page, parkedId))) {
       fail("read", `row ${parkedId} does not open in place`);
     } else if (collapsed !== undefined) {
-      const ledgerNow = (await lab.rows()).find((row) => row.id === parkedId) ?? {};
+      const ledgerNow = lab.rows().find((row) => row.id === parkedId) ?? {};
       const open = await readOpen(page, parkedId);
       await page.screenshot({ path: join(SHOTS, "read-open.png") });
       const missing: string[] = [];
@@ -452,7 +481,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       const serverOnly: string[] = [];
       let checked = 0;
       for (const [key, value] of Object.entries(ledgerNow)) {
-        if (value === undefined || value === null) continue;
+        if (value === undefined || value === null || STORE_PLACEMENT.has(key)) continue;
         if (SERVER_ONLY.has(key)) {
           serverOnly.push(key);
           continue;
@@ -474,21 +503,20 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       }
     }
 
-    // ---- answer: the seat's own action, from the row on the seat's session --
-    await page.locator(`[data-session-id="${lab.seatSession(owner)}"]`).click();
-    await waitForBadge(page, lab.seatSession(owner));
+    // ---- answer: the board's own action, from the row on the planner's conversation --
+    await openSession(page, plannerFlow, plannerFlow, lab.conversation);
     await openTasksTab(page);
-    const onSeat = await readCollapsed(page, parkedId);
-    if (onSeat === undefined) {
-      fail("answer", `${owner}'s own session never showed row ${parkedId}`);
+    const onBoard = await readCollapsed(page, parkedId);
+    if (onBoard === undefined) {
+      fail("answer", `the planner's conversation ${lab.conversation} never showed row ${parkedId}`);
     } else if (!(await openRow(page, parkedId))) {
-      fail("answer", `row ${parkedId} on ${owner}'s session does not open, so it offers no actions`);
+      fail("answer", `row ${parkedId} on the planner's conversation does not open, so it offers no actions`);
     } else {
       const offered = await offeredActions(page, parkedId);
-      if (!offered.includes(ANSWER_ENTRY)) {
-        fail("answer", `the parked row offers [${offered.join(", ")}], not the seat's own "${ANSWER_ENTRY}"`);
+      if (!offered.includes(answer)) {
+        fail("answer", `the parked row offers [${offered.join(", ")}], not the board's "${answer}"`);
       } else {
-        const ran = await runFromRow(page, parkedId, ANSWER_ENTRY, { feedback: fixture.answer });
+        const ran = await runFromRow(page, parkedId, answer, { answer: fixture.answer });
         await page.screenshot({ path: join(SHOTS, "answer.png") });
         if (ran.problem !== undefined) {
           fail("answer", ran.problem);
@@ -499,40 +527,30 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
           if (moved === undefined) {
             fail("answer", `after the answer the ledger row is still parked`);
           } else {
-            // The seats hand rows off: the answer's own request claims the row
-            // on this session and the attempt that finishes it runs in a child
-            // session of its own. So the row here shows the answer's claim, and
-            // the row's run link is where the finish shows. Both are read on
-            // screen, by following the row's own link, never by a typed URL.
+            // The answer puts the row back in the queue on this conversation,
+            // and the attempt that finishes it runs in the task session the
+            // row parked in. So the row here shows the board's own moves, and
+            // the finish shows in that session, which a reader reopens from
+            // the navigator (the row's run link decodes only a mailbox board's
+            // session key; see goal.md).
             const here = await readCollapsed(page, parkedId, (read) => read.status !== "parked", SETTLE_MS);
             const final = (await lab.waitForRow((row) => row.id === parkedId && row.status === "completed", SETTLE_MS)) ?? moved;
             if (here === undefined) {
               fail("answer", `the ledger row is now "${final.status}"; the row on screen still reads "parked"`);
             } else if (here.status === final.status) {
-              evidence.push(`answer: "${ANSWER_ENTRY}" run from the row with ${parkedId} locked in; ledger and row both "${final.status}"`);
+              evidence.push(`answer: "${answer}" run from the row with ${parkedId} locked in; ledger and row both "${final.status}"`);
             } else {
-              const link = rowLocator(page, parkedId).locator("[data-slot='run'] button[title^='Open dispatch run']").first();
-              if ((await link.count()) === 0) {
-                fail("answer", `the row reads "${here.status}", the ledger "${final.status}", and the row has no link to the run that finished it`);
+              await openSession(page, WORKER_KIND, WORKER_KIND, parkLine.session);
+              await openTasksTab(page);
+              const there = await readCollapsed(page, parkedId, (read) => read.status === final.status, SETTLE_MS);
+              await page.screenshot({ path: join(SHOTS, "answer-run.png") });
+              if (there === undefined) {
+                fail("answer", `the row reads "${here.status}"; the task session it ran in never showed the ledger's "${final.status}"`);
               } else {
-                await link.click();
-                await page.waitForFunction(
-                  (seatSession) =>
-                    ![...document.querySelectorAll("[title^='Session ID: ']")].some((el) => el.getAttribute("title")?.includes(seatSession)),
-                  lab.seatSession(owner),
-                  { timeout: 15_000 },
+                evidence.push(
+                  `answer: "${answer}" run from the row with ${parkedId} locked in; the row left parked ("${here.status}" on the planner's conversation) ` +
+                    `and the task session it ran in shows the ledger's "${final.status}"`,
                 );
-                await openTasksTab(page);
-                const there = await readCollapsed(page, parkedId, (read) => read.status === final.status, SETTLE_MS);
-                await page.screenshot({ path: join(SHOTS, "answer-run.png") });
-                if (there === undefined) {
-                  fail("answer", `the row reads "${here.status}"; the run its link opens never showed the ledger's "${final.status}"`);
-                } else {
-                  evidence.push(
-                    `answer: "${ANSWER_ENTRY}" run from the row with ${parkedId} locked in; the row left parked ("${here.status}", the answer's claim) ` +
-                      `and the run its link opens shows the ledger's "${final.status}"`,
-                  );
-                }
               }
             }
           }
@@ -540,33 +558,27 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       }
     }
 
-    // ---- tool: a board task tool, from a row on the mailbox's session --------
-    // The row is filed through the mailbox's own `fileTask`, which every
-    // mailbox with a board has whether or not it opted in to task actions, so
-    // the mailbox's Tasks tab has it in both runs. Filed after the answer,
-    // whose drain would otherwise take it.
-    const mailboxSession = tree.mailbox.id;
-    const spare = await lab.act(MAILBOX_KIND, mailboxSession, "fileTask", {
-      board: tree.boardName,
-      goal: fixture.spare.goal,
-    });
-    const spareId = (actionOutputOf(String(spare.requestId), spare.items) as { taskId?: string } | undefined)?.taskId;
+    // ---- tool: a board task tool, from a row on the planner's conversation --------
+    // The spare row is filed for nobody, so the board keeps it waiting for an
+    // assignee and nothing runs it: it stays open for the tool to settle.
+    const spare = await lab.onConversation("addTask_tasks", { goal: fixture.spare.goal });
+    const spareId = typeof spare.output?.taskId === "string" ? (spare.output.taskId as string) : undefined;
     if (spare.status !== "completed" || spareId === undefined) {
-      throw new Error(`filing the spare row on the mailbox ended ${spare.status ?? spare.refusal}`);
+      throw new Error(`filing the spare row on the planner's conversation ended ${spare.status ?? spare.refusal}: ${JSON.stringify(spare.output)}`);
     }
-    await openSession(page, MAILBOX_KIND, MAILBOX_KIND, mailboxSession);
+    await openSession(page, plannerFlow, plannerFlow, lab.conversation);
     await openTasksTab(page);
     let settled: Record<string, unknown> | undefined;
     let toolRowOpen = false;
     if ((await readCollapsed(page, spareId)) === undefined) {
-      fail("tool", `the mailbox's session never showed row ${spareId}, found by its task id`);
+      fail("tool", `the planner's conversation never showed row ${spareId}, found by its task id`);
     } else if (!(await openRow(page, spareId))) {
       fail("tool", `row ${spareId} does not open, so it offers no actions`);
     } else {
       toolRowOpen = true;
       const offered = await offeredActions(page, spareId);
       if (!offered.includes(tool)) {
-        fail("tool", `the mailbox's row offers [${offered.join(", ")}], not the board's "${tool}"`);
+        fail("tool", `the planner's row offers [${offered.join(", ")}], not the board's "${tool}"`);
       } else {
         const ran = await runFromRow(page, spareId, tool, { reason: fixture.cancelReason });
         await page.screenshot({ path: join(SHOTS, "tool.png") });
@@ -577,11 +589,11 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
         } else {
           settled = await lab.waitForRow((row) => row.id === spareId && row.status === "cancelled", SETTLE_MS);
           if (settled === undefined) {
-            fail("tool", `after "${tool}" the ledger row is "${(await lab.rows()).find((row) => row.id === spareId)?.status}", not cancelled`);
+            fail("tool", `after "${tool}" the ledger row is "${lab.rows().find((row) => row.id === spareId)?.status}", not cancelled`);
           } else if ((await readCollapsed(page, spareId, (read) => read.status === "cancelled", SETTLE_MS)) === undefined) {
             fail("tool", `the ledger row is cancelled; the row on screen still reads "${(await readCollapsed(page, spareId))?.status}"`);
           } else {
-            evidence.push(`tool: "${tool}" run from the mailbox's row; ledger and row both "cancelled"`);
+            evidence.push(`tool: "${tool}" run from the planner's row; ledger and row both "cancelled"`);
           }
         }
       }
@@ -589,19 +601,19 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
 
     // ---- refuse: the same tool on the row it just settled --------------------
     if (!toolRowOpen) {
-      notes.push("refuse not graded: the mailbox's row never opened, which is the tool leg's failure");
+      notes.push("refuse not graded: the planner's row never opened, which is the tool leg's failure");
     } else {
-      const before = JSON.stringify((await lab.rows()).find((row) => row.id === spareId));
+      const before = JSON.stringify(lab.rows().find((row) => row.id === spareId));
       const offered = await offeredActions(page, spareId);
       if (!offered.includes(tool)) {
-        fail("refuse", `the mailbox's row offers [${offered.join(", ")}], so "${tool}" cannot be tried on it`);
+        fail("refuse", `the planner's row offers [${offered.join(", ")}], so "${tool}" cannot be tried on it`);
       } else if (settled === undefined) {
         fail("refuse", `the row never settled, so there is no settled row to refuse on`);
       } else {
         const ran = await runFromRow(page, spareId, tool, { reason: fixture.cancelReason });
         await page.screenshot({ path: join(SHOTS, "refuse.png") });
         await page.waitForTimeout(500);
-        const after = JSON.stringify((await lab.rows()).find((row) => row.id === spareId));
+        const after = JSON.stringify(lab.rows().find((row) => row.id === spareId));
         if (ran.problem !== undefined) {
           fail("refuse", ran.problem);
         } else if (ran.outcome !== "refused") {

@@ -4,4 +4,4 @@ flow: worker
 answersFor: review
 ---
 
-You work the rows the board holds for the review desk, and no others.
+You work the rows filed for you, which are the review desk's, and no others.

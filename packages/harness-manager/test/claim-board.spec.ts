@@ -13,7 +13,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runTopic } from "../src";
 import { runBoardSegment } from "../src/workspace";
-import { CONVERSATIONS, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
+import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);
 
@@ -57,18 +57,63 @@ describe("a manager reading its board from the claim", () => {
     expect(await lab.record(runTopic(CONVERSATIONS, "t1", PHASE))).toBeNull();
   }, 60_000);
 
-  it("still refuses a feature row whose id is not the one its payload derives", async () => {
+  // A conversation's board mints its task ids (`addTask` takes none), so a
+  // worker filing feature work there can never write the id the payload
+  // derives. If this refused, no feature task filed from a conversation could
+  // ever run, and the commit rule that comes with naming an issue and a phase
+  // would be unreachable off the fixed board.
+  it("runs a feature row under the id its board minted, keyed by that task id in the row's phase", async () => {
     const lab = claimHost({ mode: "claim" });
     await lab.seed({
       ledgerId: CONVERSATIONS,
       partition: "conv-a",
-      id: "not-the-canonical-id",
+      id: "task_minted",
       goal: "the feature",
       input: { issue: "FIX-1", phase: PHASE },
     });
-    const { result } = await lab.runAttempt(CONVERSATIONS, "not-the-canonical-id", "conv-a");
+    const { result } = await lab.runAttempt(CONVERSATIONS, "task_minted", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect(lab.seen).toHaveLength(1);
+    expect((await lab.row(CONVERSATIONS, "task_minted", "conv-a")).status).toBe("completed");
+    const segment = runBoardSegment(CONVERSATIONS, "conv-a");
+    expect((await lab.record(runTopic(segment, "task_minted", PHASE)))?.outcome).toBe("succeeded");
+    // Not under the issue: two tasks naming it would share that key.
+    expect(await lab.record(runTopic(segment, "FIX-1", PHASE))).toBeNull();
+  }, 60_000);
+
+  // What the derived-id check guards on a fixed board, held here by the task id.
+  it("keeps two feature rows naming one issue in one conversation apart: checkout, branch and run record", async () => {
+    const lab = claimHost({ mode: "claim" });
+    for (const id of ["task_first", "task_second"]) {
+      await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id, goal: "the feature", input: { issue: "FIX-1", phase: PHASE } });
+      const { result } = await lab.runAttempt(CONVERSATIONS, id, "conv-a");
+      expect(result.error, messageOf(result.error)).toBeUndefined();
+    }
+    const segment = runBoardSegment(CONVERSATIONS, "conv-a");
+    const [a, b] = await Promise.all(["task_first", "task_second"].map((id) => lab.record(runTopic(segment, id, PHASE))));
+    expect(lab.seen[0]!.cwd).not.toBe(lab.seen[1]!.cwd);
+    expect(a!.workspacePath).toBe(lab.seen[0]!.cwd);
+    expect(b!.workspacePath).toBe(lab.seen[1]!.cwd);
+    expect(a!.branch).not.toBe(b!.branch);
+  }, 60_000);
+
+  it("still refuses a feature row in another phase than the manager's", async () => {
+    const lab = claimHost({ mode: "claim" });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "task_review", goal: "the review", input: { issue: "FIX-1", phase: "review" } });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "task_review", "conv-a");
     expect(lab.seen).toHaveLength(0);
-    const row = await lab.row(CONVERSATIONS, "not-the-canonical-id", "conv-a");
+    const row = await lab.row(CONVERSATIONS, "task_review", "conv-a");
+    expect(`${row.feedback} ${messageOf(result.error)}`).toContain(`is a "review" row on a manager configured for "${PHASE}"`);
+  }, 60_000);
+});
+
+describe("a fixed board's feature rows", () => {
+  it("still refuses a row whose id is not the one its payload derives, and runs nothing", async () => {
+    const lab = claimHost({ mode: "fixed" });
+    await lab.seed({ ledgerId: FIXED_BOARD, id: "not-the-canonical-id", goal: "the feature", input: { issue: "FIX-1", phase: PHASE } });
+    const { result } = await lab.runAttempt(FIXED_BOARD, "not-the-canonical-id");
+    expect(lab.seen).toHaveLength(0);
+    const row = await lab.row(FIXED_BOARD, "not-the-canonical-id");
     expect(`${row.feedback} ${messageOf(result.error)}`).toContain("carries the payload for fix-1--implement");
   }, 60_000);
 });

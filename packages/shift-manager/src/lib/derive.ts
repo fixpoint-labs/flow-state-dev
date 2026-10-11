@@ -13,6 +13,7 @@ import {
   type Section,
   type Seat,
   type Workstream,
+  workerOf,
 } from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
@@ -21,6 +22,18 @@ export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unrea
 /** Every row on every attached board that loaded, across workstreams. */
 export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
   return Object.values(snapshot.boards).flatMap((boards) => (boards.ok ? boards.value.rows : []));
+}
+
+/**
+ * What a row's board is called on a screen: the workstream's id, or, for a
+ * conversation's board, the worker that conversation is with (`@<worker>`),
+ * else the conversation's id.
+ */
+export function holderOf(snapshot: LoadedSnapshot, row: BoardRow): string {
+  if (snapshot.inventory.ok && snapshot.inventory.value.workstreams.some((w) => w.id === row.mailboxId)) return row.mailboxId;
+  const session = snapshot.sessions.find((s) => s.id === row.mailboxId);
+  const worker = session === undefined ? null : workerOf(session);
+  return worker === null ? row.mailboxId : `@${worker}`;
 }
 
 /** The rows Tasks shows: every attached board's, excluding done ones (BR-15). */
@@ -249,24 +262,14 @@ export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Se
   return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
 }
 
-/**
- * One workstream a project lists: its id as the row holds it, and the
- * workstream the inventory registers under that id. `undefined` when the
- * mailbox has left the tree: the id stays on the row, and is shown as gone.
- */
-export type ListedWorkstream = { id: string; workstream: Workstream | undefined };
-
-/** A project with the workstreams its row lists, in the row's order. */
-export type ProjectGroup = { project: Project; workstreams: ListedWorkstream[] };
-
-/** PROJECTS: every project, then the workstreams no project lists. */
-export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] };
+/** PROJECTS: every project, then the mailbox workstreams, which sit under No project. */
+export type ProjectsView = { projects: Project[]; noProject: Workstream[] };
 
 /**
  * PROJECTS (BR-22, D3): every project the person reads, shared ones and their
- * own private ones, with the mailbox workstreams its row lists, a project
- * that lists none included, and then every mailbox workstream no row lists,
- * which is No project.
+ * own private ones, then every mailbox workstream the inventory registers,
+ * which is No project. A project lists no mailbox, including a row that still
+ * carries `workstreams`.
  *
  * Derived from the snapshot alone: no read of its own.
  * Fails when either read it groups did: the inventory's failure first, since
@@ -275,19 +278,7 @@ export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] }
 export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
   if (!snapshot.inventory.ok) return snapshot.inventory;
   if (!snapshot.projects.ok) return snapshot.projects;
-  const registered = new Map(snapshot.inventory.value.workstreams.map((w) => [w.id, w]));
-  const listed = new Set<string>();
-  const projects = snapshot.projects.value.rows.map((project) => ({
-    project,
-    workstreams: project.workstreams.map((id) => {
-      listed.add(id);
-      return { id, workstream: registered.get(id) };
-    }),
-  }));
-  return {
-    ok: true,
-    value: { projects, noProject: snapshot.inventory.value.workstreams.filter((w) => !listed.has(w.id)) },
-  };
+  return { ok: true, value: { projects: snapshot.projects.value.rows, noProject: snapshot.inventory.value.workstreams } };
 }
 
 

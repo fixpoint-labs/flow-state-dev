@@ -16,15 +16,13 @@
  *   with the progress worked out from them (BR-18, BR-19), and opens a new
  *   one led by a coordinator of its own (D2, `openWorkstreamWithCoordinator`).
  *   An entry opens on its own view: its owner talks with its lead in its
- *   workstream session; anyone else reads the entry (BR-12). Under them, the
- *   mailbox workstreams the row still lists, each linking to its own level.
+ *   workstream session; anyone else reads the entry (BR-12).
  * - **Brief** is the row's brief, under the repository its code lives in, or
  *   a line saying it has none and its coding work runs on its files.
  *
  * **What a project view reads** (BR-18): the row and the entries, by one
  * prefix, when it opens and each time the Lab is read again; never a read of
- * the whole Lab of its own. The title and the mailbox list come from the
- * snapshot every level shares.
+ * the whole Lab of its own. The title comes from the snapshot every level shares.
  *
  * No project holds the mailbox workstreams no project lists (D3): its Board
  * and Workstreams list them from the snapshot, and it has no coordinator and
@@ -41,7 +39,7 @@ import { Conversation } from "../components/Conversation";
 import { TasksPanel } from "../components/TasksPanel";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
 import { ActionRefused } from "../lib/action";
-import { projectsOf, seatStates, shiftCounts, teamsOf, type ListedWorkstream, type LoadedSnapshot } from "../lib/derive";
+import { projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import {
   openWorkstreamWithCoordinator,
@@ -93,7 +91,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
       </div>
     );
   } else if (projectId === NO_PROJECT && route.visibility === undefined) {
-    const listed = view.value.noProject.map((workstream) => ({ id: workstream.id, workstream }));
+    const listed = view.value.noProject;
     body =
       tab === "stream" ? (
         <EmptyState title="No project has no coordinator" testId="project-stream-none">
@@ -110,8 +108,8 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
         <WorkstreamList listed={listed} />
       );
   } else {
-    const group = view.value.projects.find((g) => g.project.id === projectId && g.project.visibility === address.visibility);
-    if (group === undefined) {
+    const found = view.value.projects.find((row) => row.id === projectId && row.visibility === address.visibility);
+    if (found === undefined) {
       title = projectId;
       body = (
         <EmptyState title="No such project" testId="project-missing">
@@ -128,17 +126,16 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
         </EmptyState>
       );
     } else {
-      title = group.project.title;
+      title = found.title;
       body = (
         <ProjectBody
           key={`${address.visibility}/${address.id}`}
           snapshot={snapshot}
           route={route}
           address={address}
-          listed={group.workstreams}
           gaps={gaps}
-          repository={group.project.repository}
-          brief={group.project.brief}
+          repository={found.repository}
+          brief={found.brief}
         />
       );
     }
@@ -231,7 +228,6 @@ function ProjectBody({
   snapshot,
   route,
   address,
-  listed,
   gaps,
   repository,
   brief,
@@ -239,7 +235,6 @@ function ProjectBody({
   snapshot: LoadedSnapshot;
   route: ProjectRoute;
   address: ProjectAddress;
-  listed: readonly ListedWorkstream[];
   gaps: Gaps;
   repository: string | null;
   brief: string | null;
@@ -318,12 +313,6 @@ function ProjectBody({
           <Progress read={read.value} />
           <EntryList entries={entries} route={route} />
           <OpenWorkstream address={address} setup={setup} readerSessionId={reader!} entries={entries} onOpened={reread} route={route} />
-          {listed.length === 0 ? null : (
-            <section aria-label="Mailbox workstreams">
-              <p className="pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">MAILBOX WORKSTREAMS</p>
-              <WorkstreamList listed={listed} />
-            </section>
-          )}
         </div>
       );
     }
@@ -755,8 +744,8 @@ function Repository({ repository }: { repository: string | null }) {
   );
 }
 
-/** Each listed mailbox workstream, linking to it; one that left the tree, as gone (BR-27). */
-function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
+/** No project's mailbox workstreams, each linking to its own level. */
+function WorkstreamList({ listed }: { listed: readonly Workstream[] }) {
   if (listed.length === 0) {
     return (
       <EmptyState title="No workstreams" testId="project-workstreams-none">
@@ -766,21 +755,15 @@ function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
   }
   return (
     <ul className="mx-auto w-full max-w-3xl space-y-1 p-4" data-testid="project-workstreams">
-      {listed.map(({ id, workstream }) => (
-        <li key={id} data-testid="project-workstream" data-mailbox-id={id} data-gone={workstream === undefined ? "true" : undefined}>
-          {workstream === undefined ? (
-            <span className="text-sm text-muted-foreground">
-              {id} · no longer in the Lab
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="text-sm underline-offset-2 hover:underline"
-              onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
-            >
-              {workstream.id}
-            </button>
-          )}
+      {listed.map((workstream) => (
+        <li key={workstream.id} data-testid="project-workstream" data-mailbox-id={workstream.id}>
+          <button
+            type="button"
+            className="text-sm underline-offset-2 hover:underline"
+            onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
+          >
+            {workstream.id}
+          </button>
         </li>
       ))}
     </ul>
@@ -788,12 +771,11 @@ function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
 }
 
 /** No project's Board: one lane per mailbox workstream that holds a board, in the workstream Board's columns (BR-26). */
-function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: readonly ListedWorkstream[]; gaps: Gaps }) {
+function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: readonly Workstream[]; gaps: Gaps }) {
   const { refresh } = useLab();
-  const lanes = listed.flatMap(({ workstream }): Workstream[] => {
-    if (workstream === undefined) return [];
+  const lanes = listed.filter((workstream) => {
     const boards = snapshot.boards[workstream.id];
-    return boards !== undefined && (!boards.ok || boards.value.refs.length > 0) ? [workstream] : [];
+    return boards !== undefined && (!boards.ok || boards.value.refs.length > 0);
   });
   if (lanes.length === 0) {
     return (

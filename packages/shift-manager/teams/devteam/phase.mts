@@ -58,20 +58,19 @@ type ValidatedWorkspace = { baseRef: string } | { host: true };
  * The task is the job, as the board handed it over (`run.task`): what a person
  * approved or posted, word for word. The seat's files are how this team works:
  * its instructions, its standing brief and its conventions. Where the two
- * disagree, the task wins, which is why it comes first. The mailbox's charter
- * follows when the woken seat is a declared member of the mailbox whose board
- * holds the task, and the run's terms close it.
+ * disagree, the task wins, which is why it comes first. The run's terms close
+ * it.
  *
- * Nothing else reaches the prompt: not the coordinator's session, not the
- * mailbox's transcript, not the environment.
+ * Nothing else reaches the prompt: not the filing session, not the
+ * environment.
  *
  * Exported because the honesty check grades the same prompt the gate does: one
  * builder, two harnesses, which is the only way "the prompt carried the seat's
  * own files" means the same thing in both halves.
  *
  * @param run What the manager hands a prompt builder for this attempt.
- * @param options The phase's options: how the run's worker is loaded, the
- *   mailbox's charter and members, and whether acceptance decides.
+ * @param options The phase's options: how the run's worker is loaded, and
+ *   whether acceptance decides.
  * @returns The prompt.
  * @throws If the seat declares a document it does not hold — a seat reading
  *   nothing is the silent pass this whole lab exists to refuse, so it is loud.
@@ -80,24 +79,11 @@ export async function buildSeatPrompt(
   run: PromptRunContext,
   options: ImplementPhaseOptions,
 ): Promise<string> {
-  const { config, seat } = await seatSections(run, options.seatOf);
-
-  // Membership is read off the declared tree and the woken worker's own id
-  // (imposed on its settings), never off the row: who may see a mailbox is not
-  // the filer's to say.
-  const charter =
-    options.mailbox !== undefined &&
-    config.seatId !== undefined &&
-    options.mailbox.members.includes(config.seatId)
-      ? options.mailbox
-      : undefined;
+  const { seat } = await seatSections(run, options.seatOf);
 
   return [
     ...(options.dropTask === true ? [] : taskSection(run.task)),
     ...seat,
-    ...(charter === undefined
-      ? []
-      : [`# The charter of ${charter.id}, the mailbox this task is on`, ``, charter.charter.trim(), ``]),
     `# Where and how to work`,
     ``,
     `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
@@ -124,7 +110,7 @@ export async function buildSeatPrompt(
 async function seatSections(
   run: PromptRunContext,
   seatOf: SeatOf,
-): Promise<{ config: Awaited<ReturnType<SeatOf>>["config"]; seat: string[] }> {
+): Promise<{ seat: string[] }> {
   const ctx = run.ctx;
   const { config } = await seatOf(ctx as never);
 
@@ -146,7 +132,6 @@ async function seatSections(
 
   const skills = config.seatSkills ?? [];
   return {
-    config,
     seat: [
       `# Your instructions`,
       ``,
@@ -310,12 +295,6 @@ export interface ImplementPhaseOptions {
    */
   requireAcceptance?: boolean;
   /**
-   * The mailbox whose board holds this phase's rows: its id, its charter, and
-   * its declared members. The charter reaches a run's prompt only when the
-   * woken seat is one of the members. Absent, no prompt carries a charter.
-   */
-  mailbox?: { id: string; charter: string; members: readonly string[] };
-  /**
    * Control only: build the prompt without the task the manager handed over,
    * as the builder did before it led with it. The red state of "a run is
    * handed the work a person approved".
@@ -327,8 +306,7 @@ export interface ImplementPhaseOptions {
  * Build the implement phase.
  *
  * @param options `seatOf` to load the run's worker, `requireAcceptance` to add
- *   the brief's condition to the done-condition, and `mailbox` to hand member
- *   seats its charter. See {@link ImplementPhaseOptions}.
+ *   the brief's condition to the done-condition. See {@link ImplementPhaseOptions}.
  * @returns The phase spec to hand the coder kind.
  */
 export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec {

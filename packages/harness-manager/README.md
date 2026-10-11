@@ -55,14 +55,14 @@ harnessManager({
 });
 ```
 
-For a mailbox board a project holds, `@flow-state-dev/workforce` provides the source: `projectWorkspace({ board: work })` answers with the repository of the project that holds the board's workstream, with the project's files beside the checkout, or the project's files alone when it has none. It reads its collections through `projectWorkspaceCapability`, which goes on the manager's `uses`:
+For a run on a Workforce project, `@flow-state-dev/workforce` provides the source: `projectWorkspace()` answers with the repository of the project the run works for (its workstream's, its conversation's, or the one its task names), with the project's files beside the checkout, or the project's files alone when it has none. It reads its collections through `projectWorkspaceCapability`, which goes on the manager's `uses`:
 
 ```ts
 import { projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
 
 harnessManager({
   // ...
-  workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
+  workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
   uses: [projectWorkspaceCapability],
 });
 ```
@@ -155,8 +155,11 @@ The manager calls `ledgers` on every checked write, not once per run, so keep it
 built with `ledgers` and no fixed board has no `messageDoor`: that door reads one board's rows. Build one with [`harnessMessageDoor`](#one-door-for-runs-from-more-than-one-board) instead.
 
 On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
-task id in their place, and a task naming only one of the two is refused. A fixed board still
-runs feature rows only.
+task id in their place, and a task naming only one of the two is refused. A task naming both is
+feature work in that phase, and its run is keyed by its task id, not by the issue: the board
+mints its own task ids, so its id needn't be the one `{ issue, phase }` derives, and two tasks
+naming one issue still get a tree each. A fixed board still runs feature rows only, and still
+refuses a row whose id isn't the one its payload derives.
 
 A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
 the run's `branch` (`null` for a run with only kept files), how many `commits` it made, and
@@ -303,7 +306,7 @@ Resolve each board from server state, such as the session's own fields, never fr
 - `tasks`: its rows, as the substrate resolves them. The door keys run records by the board's ledger id and partition, the same way the manager did.
 - `orgScoped`: the board is kept per organization, so only the run's own person may talk to it.
 - `drain`: the `internal` entry that runs this board's drain, and the flow that declares it. After a stop the door dispatches it into the session that claimed the row.
-- `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for rows that carry an `{ issue, phase }` payload. For a task with neither, return its task id and the phase of the manager that runs it.
+- `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for a fixed board's rows, which carry an `{ issue, phase }` payload. For a board read from the claim, return the task id with its payload's phase, or for a task with neither, the phase of the manager that runs it.
 
 The door takes the first board whose row links the calling session. It then behaves exactly like `messageDoor`, with the same answers and the same refusals.
 

@@ -5,11 +5,13 @@
  * Two doors, both durable, both ending in the framework's stock
  * `human_approval` suspension:
  *
- * - `onMailboxPost` — the internal entry `wakeMemberSeats` dispatches a
- *   mailbox's post to, with `session: { key }`. So an ask raised here lives in
- *   a dispatch-run session, which is what Shift Manager's listing has to ask for.
- * - `ask` — a public action a test calls directly, for a seat that sits in no
- *   mailbox.
+ * - `onDelegatedPost` — the internal entry a coordinator delivers a post to
+ *   (Workforce's `delegatedPostEntry`), into a session of the delegate's own
+ *   that the coordinator's dispatch opens. So an ask raised here lives in a
+ *   dispatch-run session, which is what Shift Manager's listing has to ask
+ *   for. Its answer, once a person decides, goes back to the coordinator.
+ * - `ask` — a public action a test calls directly, in a session a person
+ *   opened.
  *
  * And a door, `message`: a person's line into the seat's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
@@ -20,18 +22,26 @@
  * through the project writes' own `createProject`, the way a chief of staff's
  * tool does, so the turn writes the organization's `projects` collection.
  *
+ * Built with `inventory`, the kind also declares the organization's inventory
+ * collections for a browser to read, so a person who holds only a worker's
+ * session still finds the inventory.
+ *
  * No model anywhere: the ask is the point, not what the seat would do.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import { defineProjectBlocks, workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
+import {
+  DELEGATED_POST_ENTRY,
+  defineMailboxInventoryCollection,
+  defineProjectBlocks,
+  defineSeatInventoryCollection,
+  delegatedPostEntry,
+  workerConfigSchema,
+  type WorkerInstallation,
+} from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The kind a `WORKER.md` names in its `flow:` line. */
 export const ASKER_KIND = "asker";
-
-const postSchema = z
-  .object({ member: z.string(), mailboxId: z.string(), body: z.string() })
-  .passthrough();
 
 const askSchema = z.object({ what: z.string().min(1) });
 
@@ -99,11 +109,19 @@ const gate = handler({
   },
 });
 
+/** A delegated post's turn: ask about the line the coordinator handed over, then say what the person decided. */
 const fromPost = handler({
   name: "asker-from-post",
-  inputSchema: postSchema,
+  inputSchema: messageSchema,
   outputSchema: askSchema,
-  execute: (input) => ({ what: input.body }),
+  execute: (input) => ({ what: input.message }),
+});
+
+const decided = handler({
+  name: "asker-decided",
+  inputSchema: decisionSchema,
+  outputSchema: z.object({ text: z.string() }),
+  execute: (input) => ({ text: `${input.approved ? "Approved" : "Denied"}: ${input.what}` }),
 });
 
 /** `hear`, then, for a {@link startProjectLine}, `createProject` with that id. */
@@ -120,7 +138,7 @@ function hearAndStartProjects() {
     );
 }
 
-const onMailboxPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
+const onPost = sequencer({ name: "asker-on-post", inputSchema: messageSchema }).step(fromPost).step(gate).step(decided);
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
 /**
@@ -131,16 +149,25 @@ const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
  * @param resources The tree's declared documents, as `resourcesFromDocs`
  *   built them, so a document that opts in to browser reads is served.
  * @param options.projects Let the `message` door start projects ({@link startProjectLine}).
+ * @param options.inventory Declare the organization's inventory for a browser to read.
  */
 export function defineAskerFlow(
   installation: WorkerInstallation,
   resources: Record<string, unknown> = {},
-  options: { projects?: boolean } = {},
+  options: { projects?: boolean; inventory?: boolean } = {},
 ) {
+  // The project writes declare the mailbox half themselves, so a kind that starts projects has it already.
+  const inventory =
+    options.inventory === true
+      ? {
+          inventorySeats: defineSeatInventoryCollection(),
+          ...(options.projects === true ? {} : { inventoryMailboxes: defineMailboxInventoryCollection() }),
+        }
+      : {};
   return defineFlow({
     kind: ASKER_KIND,
     session: installation.session(),
-    resources: { ...resources, ...installation.resources },
+    resources: { ...resources, ...inventory, ...installation.resources },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {
@@ -154,7 +181,7 @@ export function defineAskerFlow(
     },
     internal: {
       actions: {
-        onMailboxPost: { block: onMailboxPost, durable: true },
+        [DELEGATED_POST_ENTRY]: { ...delegatedPostEntry(onPost), durable: true },
       },
     },
   } as never);

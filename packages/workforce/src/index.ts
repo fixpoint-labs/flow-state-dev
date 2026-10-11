@@ -75,6 +75,7 @@ export {
   type WorkerTaskEntryOptions,
   type MailboxListDeclaration
 } from "./conversation-board/task-entry";
+export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
   createWorkerLookup,
   type WorkerLookup,

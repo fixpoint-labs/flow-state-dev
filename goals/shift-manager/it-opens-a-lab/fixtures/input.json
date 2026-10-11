@@ -1,8 +1,12 @@
 {
-  "line": "Shift Manager check: this line is posted from the composer and should be kept by the mailbox.",
+  "line": "Shift Manager check: this line is posted from the composer and should be kept by the workstream.",
   "devteam": {
     "issue": "release-notes-page",
-    "text": "Add a release notes page that lists the last three tags."
+    "text": "Add a release notes page that lists the last three tags.",
+    "followUp": {
+      "issue": "release-notes-link",
+      "text": "Link the release notes page from the footer once it exists."
+    }
   },
   "multiSeatCollab": {
     "goal": "split the quarterly report export into one file per region",

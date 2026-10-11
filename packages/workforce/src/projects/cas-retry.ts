@@ -4,8 +4,8 @@
  * The engine's resource CAS driver already retries a conflicting write three
  * times and then gives up with `concurrent_modification`. On a hot row that is
  * not enough. This helper keeps going past the engine's budget, with jittered
- * backoff, for the writes that contend by design: a project row's workstream
- * list (`setWorkstreams` in `project-writes.ts`) and a workstream's entry
+ * backoff, for the writes that contend by design: a project row's repository
+ * (`setRepository` in `project-writes.ts`) and a workstream's entry
  * (`workstream-writes.ts`).
  *
  * In a module of its own so a test can swap it for a single attempt and show

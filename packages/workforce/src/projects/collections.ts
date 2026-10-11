@@ -1,14 +1,12 @@
 /**
- * Projects — the `projects` rows, and the collections a project's workstream
- * claims and its files live in.
+ * Projects — the `projects` rows, and the collection a project's files live in.
  *
- *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, repository
- *   workstream-claims/<mailboxId>       which project holds a mailbox workstream; one shared key, written with `create`
+ *   projects/<id>                       one row per project: title, brief, owner, members, repository
  *   project-files/<projectId>/<path>    one row per file the project keeps: notes, memory, a no-repository project's code
  *
  * A project is runtime data. It is created after the tree was read, so no
- * `MAILBOX.md` and no inventory row can name it; the row is the project's one
- * record, and it lists the workstreams (declared mailboxes) it holds.
+ * file in the tree names it; the row is the project's one record. Its
+ * workstreams are entries of their own (`workstream-collections.ts`).
  *
  * **Shared and private.** A shared project is a row of the organization's
  * `projects`. A private project is the same row, with the same schema, kept in
@@ -18,7 +16,7 @@
  * visibility, never a field on the row, so the two can't disagree, and a
  * project's address is its visibility plus its id ({@link projectAddressSchema}):
  * a user's private `apollo` and the organization's shared `apollo` are two
- * projects. Claims are shared projects' only.
+ * projects.
  *
  * Every collection here is shared across flows (`flowIsolation: false`,
  * spelled out for the reason the inventory spells it out: left undefined, an
@@ -39,8 +37,6 @@ import { z } from "zod";
 
 /** The resource-map ref of the projects collection. Pinned: Shift Manager reads it by this name. */
 export const PROJECTS_RESOURCE = "projects";
-/** The resource-map ref of the workstream claims. */
-export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
 /** The resource-map ref of the project files. */
 export const PROJECT_FILES_RESOURCE = "project-files";
 /** The resource-map ref of the private projects: `projects/*` at the owner's user scope. */
@@ -83,8 +79,8 @@ export type ProjectAddress = z.infer<typeof projectAddressSchema>;
  * carries a default so a row written by an earlier version still reads
  * (BP-023, BP-030).
  *
- * `members` decides who opens workstreams in a shared project and changes its
- * workstream list. It is written only by trusted code — the creator's own
+ * `members` decides who opens workstreams in a shared project. It is written
+ * only by trusted code — the creator's own
  * grant at create — and nothing a member does adds to it.
  */
 export const projectRowSchema = z.object({
@@ -98,12 +94,10 @@ export const projectRowSchema = z.object({
   /** The user who created it, as the engine recorded the creating session's owner. */
   ownerUserId: z.string().min(1),
   /**
-   * On a shared project, who may open workstreams and change its workstream
-   * list. Always includes the owner. A private project has only its owner.
+   * On a shared project, who may open workstreams in it. Always includes the
+   * owner. A private project has only its owner.
    */
   members: z.array(z.string()).default([]),
-  /** Full mailbox ids of the declared mailboxes this project holds, from any team. */
-  workstreams: z.array(z.string()).default([]),
   /**
    * The git remote the project's code lives in, as a member wrote it (for
    * example `https://github.com/acme/storefront.git` or
@@ -114,14 +108,7 @@ export const projectRowSchema = z.object({
    * state is not re-parsed on read: read rows through this schema, or guard
    * with `== null` (BP-030).
    */
-  repository: z.string().nullable().default(null),
-  /**
-   * The token each listed workstream's claim carried when this row was written.
-   * A write that drops a workstream deletes its claim only while the claim
-   * still carries this token, so a claim a later write has re-stamped survives.
-   * Server-side: not in the browser read.
-   */
-  claimTokens: z.record(z.string()).default({})
+  repository: z.string().nullable().default(null)
 });
 
 /** One stored project. @see projectRowSchema */
@@ -140,19 +127,8 @@ const PROJECT_CLIENT_FIELDS = [
   "status",
   "ownerUserId",
   "members",
-  "workstreams",
   "repository"
 ] as const;
-
-/**
- * Which project holds one workstream, and the token of the write that last
- * stamped the claim. The token is what a later release checks before it
- * deletes: a claim re-stamped since is someone else's to keep.
- */
-export const workstreamClaimSchema = z.object({ projectId: z.string().min(1), token: z.string().default("") });
-
-/** @see workstreamClaimSchema */
-export type WorkstreamClaim = z.infer<typeof workstreamClaimSchema>;
 
 /** Shared across flows on purpose; see the module header. */
 const SHARED_ACROSS_FLOWS = false;
@@ -211,24 +187,6 @@ const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
   flowIsolation: SHARED_ACROSS_FLOWS,
   stateSchema: projectRowSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
-});
-
-/**
- * Workstream claims, at `workstream-claims/<mailboxId>`. One shared key per
- * workstream, written with `create`, so of two projects claiming the same
- * workstream at once exactly one lands. No browser read: the project rows
- * already say which workstreams each holds.
- */
-export function defineWorkstreamClaimsCollection() {
-  return WORKSTREAM_CLAIMS_COLLECTION;
-}
-
-const WORKSTREAM_CLAIMS_COLLECTION = defineResourceCollection({
-  pattern: "workstream-claims/*",
-  scope: "org",
-  flowIsolation: SHARED_ACROSS_FLOWS,
-  prefetchMode: "lazy",
-  stateSchema: workstreamClaimSchema
 });
 
 /**

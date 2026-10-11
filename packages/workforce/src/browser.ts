@@ -35,6 +35,7 @@ export {
   type WorkerSessionCriteria
 } from "./workers/derive-session-id";
 export { PROJECT_STATE_KEY, ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
+export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
   parseProjectRef,
   parseWorkstreamRef,

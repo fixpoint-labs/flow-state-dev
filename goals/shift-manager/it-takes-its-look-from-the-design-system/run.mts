@@ -61,6 +61,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { stripImportsAndComments } from "../../../labs/design-system/test/theme.ts";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
@@ -113,17 +114,28 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const startLab = (pages: string, shift: "day" | "night"): Promise<ServedShiftManager> =>
   startShiftManager({ scratch: SCRATCH, label: `run-lab-${shift}`, config: join(RUN_LAB, "fsdev.config.mts"), pages, env: { SHIFT_MANAGER_SHIFT: shift } });
 
-/** A board row with a run, read through the Lab's own route. */
+/**
+ * A row with a run on the lead's conversation's board, read through the Lab's
+ * own routes: the lead is the worker whose file names delegates (no
+ * coordinator), and its board is the person's conversation ledger, read
+ * through that conversation and kept to its rows.
+ */
 async function rowWithRun(origin: string): Promise<string> {
   const roster = await readDeclaredRoster(join(RUN_LAB, "workforce"));
-  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0)!;
-  const board = `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`;
+  const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0)!;
   const enc = encodeURIComponent;
   for (let waited = 0; waited < 30_000; waited += 250) {
-    const response = await fetch(`${origin}/api/flows/sessions/${enc(mailbox.id)}/resources/${enc(board)}?limit=200`);
-    const body = (await response.json()) as { items?: Array<{ clientData?: { id?: string; status?: string; run?: unknown } }> };
-    const row = (body.items ?? []).map((i) => i.clientData ?? {}).find((r) => r.status === "in_progress" && r.run != null);
-    if (row?.id !== undefined) return row.id;
+    const listed = (await (await fetch(`${origin}/api/flows/sessions`)).json()) as { sessions?: Array<{ id: string; flowKind: string; parentSessionId?: string | null }> };
+    const conversation = (listed.sessions ?? []).find((s) => s.flowKind === lead.declared.flow && s.parentSessionId == null)?.id;
+    if (conversation !== undefined) {
+      const response = await fetch(`${origin}/api/flows/sessions/${enc(conversation)}/resources/tasks?limit=200`);
+      const body = (await response.json()) as { items?: Array<{ topic: string; clientData?: { id?: string; status?: string; run?: unknown } }> };
+      const row = (body.items ?? [])
+        .filter((i) => sessionIdOfFiling(decodeURIComponent(i.topic.split("/")[0] ?? "")) === conversation)
+        .map((i) => i.clientData ?? {})
+        .find((r) => r.status === "in_progress" && r.run != null);
+      if (row?.id !== undefined) return row.id;
+    }
     await sleep(250);
   }
   throw new Error("store: the run-lab's board never held a running row");

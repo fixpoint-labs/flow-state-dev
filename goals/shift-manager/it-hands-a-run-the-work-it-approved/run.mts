@@ -3,26 +3,25 @@
  * person approved.
  *
  * The DevTeam tree, opened through `openLab` the way the `devteam` profile
- * opens it: the EM seat's ask raised at boot, the feature mailbox's door on
- * and its members addressed. A person approves the pending ask the way Shift
- * Manager's Inbox does (the engine's resume route, with the lab's verified
- * bearer), or posts `slug: what to build` on the workstream. What is graded is
+ * opens it: the EM seat's ask raised at boot. A person approves the pending
+ * ask the way Shift Manager's Inbox does (the engine's resume route, with the
+ * lab's verified bearer), or posts `slug: what to build` in Storefront's
+ * `feature` workstream, which the EM leads. What is graded is
  * what the coding run received or produced, never the row.
  *
  * Legs (`GOAL_LEG=a` or `GOAL_LEG=b` runs one; unset runs both):
  *
  *   0   held-out    — the fixture's goals and posted line live in no lab code
- *                     and no tree file; the seat, charter and coordinator
+ *                     and no tree file; the seat and coordinator
  *                     tokens each live in exactly the file named for them
  *   a1  BR-1 BR-3 BR-5 BR-6 BR-7 BR-8 — Approve: the stub's recorded prompt
- *                     opens on the approved goal, carries the charter and the
- *                     coder seat's own tokens, names its checkout and branch,
- *                     and carries none of the coordinator's tokens nor the
- *                     line posted on the mailbox before the approval
+ *                     opens on the approved goal, carries the coder seat's
+ *                     own tokens, names its checkout and branch, and carries
+ *                     none of the coordinator's tokens nor the line posted in
+ *                     the workstream before the approval
  *   a2  BR-1        — a second held-out feature, filed by a post: its run's
  *                     prompt carries that goal and not the first one
- *   a3  BR-4        — the coder removed from the mailbox's `members` on a tree
- *                     copy: the prompt carries the goal and no charter
+ *   a3  retired     — a workstream has no charter or members to withhold
  *   a4  BR-6        — with acceptance required, the run's terms say the
  *                     acceptance check decides; without, they do not
  *   b   BR-1 BR-13  — a real coding harness (Claude Code through its Agent
@@ -45,16 +44,16 @@ import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inMemoryStores } from "@flow-state-dev/engine";
+import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
 import { harnessRunHandleSchema, harnessRunInputSchema, handler, sequencer } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { FlowInstance, GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
-import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
+import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { EM_TURN, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 
@@ -74,7 +73,6 @@ interface Fixture {
   assignedSeat: string;
   seatTokens: Record<string, string>;
   coordinatorTokens: Record<string, string>;
-  charterToken: Record<string, string>;
   wait: { timeoutMs: number; pollMs: number };
 }
 
@@ -98,7 +96,7 @@ if (LEG !== "" && LEG !== "a" && LEG !== "b") {
 }
 
 const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
-const CHARTER_TOKEN = Object.keys(fixture.charterToken)[0]!;
+const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
 const REAL_RUN_TIMEOUT_MS = 10 * 60_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -150,10 +148,6 @@ async function open(
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
     coderSeatId: fixture.assignedSeat,
     logger: silentLogger,
-    mailboxes: {
-      addresses: { [fixture.coordinatorSeat]: fixture.coordinatorSeat },
-      log: createNotifyLog(),
-    },
     inventory: true,
     ask,
     ...(CONTROL === "drop-task" ? { dropTask: true } : {}),
@@ -175,6 +169,68 @@ async function approve(lab: Lab): Promise<string | undefined> {
     body: { suspensionId: suspension.suspensionId, action: "approve" },
   });
   return approved.status === 202 ? undefined : `approve answered ${approved.status}`;
+}
+
+/**
+ * The EM's turn, scripted for leg a: a line of the form `slug: goal` it files
+ * for the coder with `addTask`, the goal as posted; any other line it answers
+ * without filing. It stands in for the EM's judgment, which is not under test:
+ * what is graded is what the run is handed once the task is filed.
+ */
+function scriptedEm(): ModelResolver {
+  let queue: Array<{ toolName: string; args: Record<string, unknown> }> = [];
+  let step = 0;
+  const em: GeneratorModel = {
+    modelId: "test/em",
+    async generate() {
+      throw new Error("the owned tool loop calls generateStep");
+    },
+    async generateStep(options: { messages: unknown[] }) {
+      const last = options.messages.at(-1) as { role?: string; content?: unknown } | undefined;
+      if (last?.role !== "tool") {
+        const text = typeof last?.content === "string" ? last.content : JSON.stringify(last?.content ?? "");
+        const line = /(?:^|["\n])([a-z0-9-]+): ([^"\\\n]+)/.exec(text);
+        queue =
+          line === null
+            ? []
+            : [{ toolName: "addTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
+      }
+      const call = queue.shift();
+      step += 1;
+      if (call === undefined) return { text: "Noted.", finishReason: "stop" };
+      return { toolCalls: [{ toolCallId: `em-${step}`, ...call }], finishReason: "tool-calls" };
+    },
+  };
+  return Object.assign((_id: string, block?: string) => (block === EM_TURN ? em : undefined), {
+    resolveId: (id: string) => id,
+  }) as unknown as ModelResolver;
+}
+
+/** What leg a opens with: Storefront's `feature` workstream, led by the EM, whose turn is scripted. */
+const withWorkstream: Partial<OpenLabOptions> = {
+  modelResolver: scriptedEm(),
+  // Model-free: a run the judge read as not done would be retried, and its retry graded as the next feature's.
+  withoutJudge: true,
+  projects: [{ id: STOREFRONT.id, title: "Storefront" }],
+  workstreams: [{ as: "owner", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: fixture.coordinatorSeat } }],
+};
+
+/** Post one line in Storefront's `feature` workstream session, as its owner, the way the app sends a turn. */
+async function postInWorkstream(lab: Lab, line: string): Promise<string | undefined> {
+  const runtime = await lab.state.getRuntime();
+  const [session] = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: "all", state: { workstreamId: `shared/${STOREFRONT.id}/feature` } });
+  if (session === undefined) return "opening Storefront's feature made no workstream session";
+  const result = (await runAction({
+    orgId: LAB_ORG_ID,
+    flow: lab.seats[fixture.coordinatorSeat] as FlowInstance,
+    actionName: MESSAGE_ENTRY,
+    input: { message: line },
+    userId: LAB_USER_ID,
+    sessionId: session.id,
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+  } as never)) as { error?: unknown };
+  return result.error === undefined ? undefined : JSON.stringify(result.error);
 }
 
 /** Wait until `count` runs have reached the harness. */
@@ -231,7 +287,7 @@ await runGoal(async (failures) => {
       const carriers = [...tree, ...code].filter(([, body]) => body.includes(text)).map(([p]) => p);
       if (carriers.length > 0) note("0", `the held-out "${text}" is spelled in ${carriers.join(", ")}`);
     }
-    const homes = { ...fixture.seatTokens, ...fixture.coordinatorTokens, ...fixture.charterToken };
+    const homes = { ...fixture.seatTokens, ...fixture.coordinatorTokens };
     for (const [token, home] of Object.entries(homes)) {
       const carriers = tree.filter(([, body]) => body.includes(token)).map(([p]) => p);
       if (carriers.length !== 1 || carriers[0] !== home) {
@@ -249,10 +305,10 @@ await runGoal(async (failures) => {
     {
       const seen: SeenRun[] = [];
       const stub = stubFor(seen);
-      const { lab } = await open("handed-a1", stub.slot, fixture.approved);
+      const { lab } = await open("handed-a1", stub.slot, fixture.approved, withWorkstream);
       try {
-        const chatter = await lab.post!(fixture.chatter);
-        if (chatter.error !== undefined) note("a1", `the mailbox refused a line — ${chatter.error}`);
+        const chatter = await postInWorkstream(lab, fixture.chatter);
+        if (chatter !== undefined) note("a1", `the workstream refused a line — ${chatter}`);
         const refused = await approve(lab);
         if (refused !== undefined) note("a1", refused);
         await runsReach(seen, 1);
@@ -262,69 +318,40 @@ await runGoal(async (failures) => {
         } else {
           const prompt = run.prompt;
           gradeTask("a1", prompt, fixture.approved.goal, "approved", note);
-          if (!prompt.includes(CHARTER_TOKEN)) note("a1", "the prompt does not carry the shared mailbox's charter");
           for (const token of Object.keys(fixture.seatTokens)) {
             if (!prompt.includes(token)) note("a1", `the prompt lost the coder seat's own ${token}`);
           }
           for (const token of Object.keys(fixture.coordinatorTokens)) {
             if (prompt.includes(token)) note("a1", `the prompt carries the coordinator seat's ${token}`);
           }
-          if (prompt.includes(fixture.chatter)) note("a1", "the prompt carries a line posted on the mailbox");
+          if (prompt.includes(fixture.chatter)) note("a1", "the prompt carries a line posted in the workstream");
           const terms = termsOf(prompt, run.cwd);
           if (terms === "") note("a1", `the prompt does not name the run's checkout ${run.cwd}`);
           else if (!terms.includes(run.branch)) note("a1", `the run's terms do not name its branch ${run.branch}`);
           else if (/acceptance/i.test(terms)) note("a1", "without acceptance required, the terms still name an acceptance check");
           evidence.push(
-            `Approve: the prompt opened on the approved goal, carried the charter and the coder's ${Object.keys(fixture.seatTokens).length} tokens, named checkout and branch, and carried no coordinator token or mailbox line`,
+            `Approve: the prompt opened on the approved goal, carried the coder's ${Object.keys(fixture.seatTokens).length} tokens, named checkout and branch, and carried no coordinator token or line said in the workstream`,
           );
         }
 
-        const posted = await lab.post!(`${fixture.posted.issue}: ${fixture.posted.goal}`);
-        if (posted.error !== undefined) note("a2", `the post was refused — ${posted.error}`);
-        await runsReach(seen, 2, () => lab.drain(fixture.coordinatorSeat));
+        const posted = await postInWorkstream(lab, `${fixture.posted.issue}: ${fixture.posted.goal}`);
+        if (posted !== undefined) note("a2", `the post was refused — ${posted}`);
+        await runsReach(seen, 2);
         const second = seen[1];
         if (second === undefined) {
           note("a2", "the posted feature never reached the coder seat");
         } else {
           gradeTask("a2", second.prompt, fixture.posted.goal, "posted", note);
           if (second.prompt.includes(fixture.approved.goal)) note("a2", "the posted run's prompt carries the other task's goal");
-          evidence.push("a post: its run's prompt carried the posted goal, and not the approved one");
+          evidence.push("a post in the workstream: its run's prompt carried the posted goal, and not the approved one");
         }
       } finally {
         await lab.dispose();
       }
     }
 
-    // a3: the coder is not a member of the mailbox holding the task.
-    {
-      const root = mkdtempSync(join(tmpdir(), "devteam-tree-no-coder-member-"));
-      cpSync(LAB_TREE, root, { recursive: true });
-      const charterFile = join(root, fixture.charterToken[CHARTER_TOKEN]!);
-      const before = readFileSync(charterFile, "utf8");
-      const after = before.replace(new RegExp(`\\s*${fixture.assignedSeat.replace(".", "\\.")},?`), "");
-      if (after === before) note("a3", "could not remove the coder from the mailbox's members");
-      writeFileSync(charterFile, after);
-      const seen: SeenRun[] = [];
-      const stub = stubFor(seen);
-      const { lab } = await open("handed-a3", stub.slot, fixture.approved, { root });
-      try {
-        const members = (lab.roster.mailboxes.find((c) => c.id === lab.mailboxId)?.declared.members as string[] | undefined) ?? [];
-        if (members.includes(fixture.assignedSeat)) note("a3", "the tree copy still lists the coder as a member");
-        const refused = await approve(lab);
-        if (refused !== undefined) note("a3", refused);
-        await runsReach(seen, 1);
-        const run = seen[0];
-        if (run === undefined) {
-          note("a3", "the coder seat was never reached after Approve");
-        } else {
-          gradeTask("a3", run.prompt, fixture.approved.goal, "approved", note);
-          if (run.prompt.includes(CHARTER_TOKEN)) note("a3", "a seat that is not a member was handed the charter");
-          evidence.push("a coder that is not a member got the goal and no charter");
-        }
-      } finally {
-        await lab.dispose();
-      }
-    }
+    // a3 is retired: it gave a coder that wasn't a member of the feature mailbox no charter. A
+    // workstream has no charter and no members, so nothing is left to withhold.
 
     // a4: with acceptance required, the terms say the acceptance check decides.
     {
