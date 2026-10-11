@@ -16,20 +16,22 @@
  *
  *   store     the store holds what the tree declares (a precondition)
  *   TEAMS     TEAMS equals the store's seats, each under its team
- *   PROJECTS  the workstreams equal the store's mailboxes
- *   Board     each workstream's Board equals its board's stored rows (BR-13)
  *   Tasks     Tasks equals the stored rows that aren't done: the queued ones
  *             once the Queued toggle is on, which says how many it hides.
- *             A conversation's own board (multi-seat-collab's planner files
- *             on one) is in no workstream, so its task level opens from here
+ *             Every row is on a conversation's own board, so the task level
+ *             opens from here
  *   Inbox     Inbox equals the stored pending asks, or says nothing needs you
  *             with the runs still going and the workers on call
  *   reach     every level, tab and panel opens, and each empty one is named
+ *   entry     (DevTeam) a workstream the person opens in a project is listed
+ *             on its Workstreams tab, and the project Board's lane for its
+ *             session draws exactly the rows its lead keeps on that board
  *   post      a composer post is drawn, and is in the stored transcript: the
- *             workstream's, or, in a tree with no workstream, the task
- *             composer's on an open row, into the session it ran in
- *   answer    an ask approved in its workstream's Stream is no longer pending
- *             in the store, and Inbox no longer lists it
+ *             workstream entry's conversation with its lead, or, in a Lab
+ *             with no workstream, the task composer's on an open row, into
+ *             the session it ran in
+ *   answer    an ask approved from Inbox is no longer pending in the store,
+ *             and Inbox no longer lists it
  *
  * Controls rebuild Shift Manager with source modules swapped for a module under
  * `controls/` (a Vite `resolveId` plugin; the build fails if a swap never
@@ -37,9 +39,9 @@
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-seat-collab.
- *   optimistic-post  the composer draws its own line and sends nothing, on
- *                    both its paths (`transcript.ts` and `send.ts`). Must
- *                    fail at "the post is in the stored transcript".
+ *   optimistic-post  the one send path (`send.ts`) reads delivered and
+ *                    sends nothing. Must fail at "the post is in the stored
+ *                    transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
  *                    answer lands in the store" on DevTeam.
  *   queued-shown     Tasks treats no row as queued, so the toggle hides
@@ -143,7 +145,7 @@ function swapFor(control: string): { targets: string[]; with: string } | undefin
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
-    return { targets: [lib("transcript.ts"), lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
+    return { targets: [lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
@@ -206,44 +208,25 @@ const startLab = (name: LabName, pages: string, env: Record<string, string>): Pr
 
 
 /** What the tree on disk declares: the oracle Shift Manager never reads. */
-type Tree = {
-  seats: string[];
-  mailboxes: Array<{ id: string; members: string[]; boardRefs: string[] }>;
-};
-
-/** The tree's one board-holding mailbox: where a row is filed, and where the composer posts. */
-function boardMailbox(tree: Tree): Tree["mailboxes"][number] {
-  const holding = tree.mailboxes.filter((c) => c.boardRefs.length > 0);
-  if (holding.length !== 1) throw new Error(`the tree holds ${holding.length} board-holding mailboxes, not one`);
-  return holding[0]!;
-}
+type Tree = { seats: string[] };
 
 async function readTree(root: string): Promise<Tree> {
   const roster = await readDeclaredRoster(root);
   if (roster.problems.length > 0) throw new Error(`the tree at ${root} did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
-  return {
-    seats: roster.workers.map((w) => w.id),
-    mailboxes: roster.mailboxes.map((c) => ({
-      id: c.id,
-      members: Array.isArray(c.declared.members) ? (c.declared.members as string[]) : [],
-      boardRefs: ((c.declared.boards as string[] | undefined) ?? []).map((b) => `${c.id}.${b}`),
-    })),
-  };
+  return { seats: roster.workers.map((w) => w.id) };
 }
 
 /** What the store holds, read through the Lab's routes by this script. */
 type Store = {
   seats: string[];
-  mailboxes: Array<{ id: string; kind: string; members: string[] }>;
   /**
-   * Board holder -> every stored row on its boards: a mailbox's declared
-   * boards, or a conversation's own board (`<sessionId>.tasks`), keyed by
-   * the conversation that filed it.
+   * Board holder -> every stored row on its board: a conversation's own
+   * board (`<sessionId>.tasks`), keyed by the conversation that filed it.
    */
   rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null; runSession: string | null }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
-  /** The organization's project rows, by id. A project lists no mailbox. */
+  /** The organization's project rows, by id. */
   projects: Array<{ id: string }>;
 };
 
@@ -327,55 +310,21 @@ async function conversationRows(api: LabApi, userId: string): Promise<Store["row
   return rows;
 }
 
-async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
-  // The inventory, by its published key patterns, through the first mailbox's
-  // session, or, in a tree that declares none, the first of the person's own
-  // sessions whose flow declares it.
-  let host = tree.mailboxes[0]?.id;
-  if (host === undefined) {
-    for (const sessionId of await topLevelSessions(api, userId)) {
-      if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")) {
-        host = sessionId;
-        break;
-      }
+async function readStore(api: LabApi, userId: string): Promise<Store> {
+  // The inventory's seats, by their published key pattern, through the first
+  // of the person's own sessions whose flow declares it.
+  let host: string | undefined;
+  for (const sessionId of await topLevelSessions(api, userId)) {
+    if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")) {
+      host = sessionId;
+      break;
     }
   }
   const declared = host === undefined ? [] : await declaredBy(api, host);
-  const refOf = (pattern: string) => declared.find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const workersRef = refOf("inventory/workers/*");
-  const mailboxesRef = refOf("inventory/mailboxes/*");
+  const workersRef = declared.find((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")?.ref;
   const seats = workersRef === undefined || host === undefined ? [] : (await api.collection(host, workersRef)).map((r) => String(r.id));
-  const mailboxes =
-    mailboxesRef === undefined || host === undefined
-      ? []
-      : (await api.collection(host, mailboxesRef)).map((r) => ({
-          id: String(r.id),
-          kind: String(r.kind),
-          members: Array.isArray(r.members) ? (r.members as string[]) : [],
-        }));
 
-  const rows: Store["rows"] = {};
-  for (const mailbox of tree.mailboxes) {
-    rows[mailbox.id] = [];
-    for (const ref of mailbox.boardRefs) {
-      for (const row of await api.collection(mailbox.id, ref)) {
-        rows[mailbox.id]!.push({
-          ref,
-          id: String(row.id),
-          status: String(row.status),
-          title: String(row.title ?? row.goal ?? row.id),
-          assignee: typeof row.assignee === "string" ? row.assignee : null,
-          // The session the row's whole run link (session, request, attempt) names; none for an unlinked row.
-          runSession:
-            row.run != null && typeof row.run.sessionId === "string" && typeof row.run.requestId === "string" && typeof row.run.attempt === "number"
-              ? row.run.sessionId
-              : null,
-        });
-      }
-    }
-  }
-
-  Object.assign(rows, await conversationRows(api, userId));
+  const rows = await conversationRows(api, userId);
 
   // Pending person-asks: a suspension with no resume, on a session that names a seat as its worker.
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
@@ -391,7 +340,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
       }
     }
   }
-  // Project rows, through the person's roster session at org scope (a mailbox session no longer publishes them).
+  // Project rows, through the person's roster session at org scope.
   const reader = await rosterSession(api, userId);
   const readerManifest = reader === undefined ? undefined : await api.get(`/sessions/${encodeURIComponent(reader)}/manifest`);
   const projectsRef = (readerManifest?.resources as Array<{ kind: string; ref: string; pattern: string; scope?: string }> | undefined)?.find(
@@ -401,7 +350,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
     projectsRef === undefined || reader === undefined
       ? []
       : (await api.collection(reader, projectsRef)).map((r) => ({ id: String(r.id) }));
-  return { seats, mailboxes, rows, asks, projects };
+  return { seats, rows, asks, projects };
 }
 
 // ---- putting a row on each board ---------------------------------------------
@@ -422,10 +371,10 @@ async function act(api: LabApi, flowId: string, sessionId: string, action: strin
   return "in_progress";
 }
 
-/** Wait until a mailbox's board holds a row, or give up. */
-async function waitForRow(api: LabApi, tree: Tree, predicate: (status: string) => boolean, userId: string) {
+/** Wait until a conversation's board holds a row, or give up. */
+async function waitForRow(api: LabApi, predicate: (status: string) => boolean, userId: string) {
   for (let waited = 0; waited < 30_000; waited += 250) {
-    const store = await readStore(api, tree, userId);
+    const store = await readStore(api, userId);
     if (Object.values(store.rows).flat().some((r) => predicate(r.status))) return true;
     await sleep(250);
   }
@@ -506,7 +455,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         throw new Error(`${name}: the planner's filing ended ${filed.status ?? filed.refusal}: ${JSON.stringify(filed.output)}`);
       }
       // The planner's board hands the row to its worker at once, and the worker parks it on its question.
-      if (!(await waitForRow(api, tree, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
+      if (!(await waitForRow(api, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
     } else {
       // The person opens a workstream in the organization's first project, led
       // by the tree's EM, through the projects flow Shift Manager opens one
@@ -515,7 +464,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const roster = await readDeclaredRoster(LABS.devteam.tree);
       const lead = roster.workers.find((w) => w.declared.flow === EM_FLOW)?.id;
       if (lead === undefined) throw new Error(`${name}: the tree declares no worker on the "${EM_FLOW}" flow to lead a workstream`);
-      const project = (await readStore(api, tree, userId)).projects[0]?.id;
+      const project = (await readStore(api, userId)).projects[0]?.id;
       if (project === undefined) throw new Error(`${name}: the Lab holds no project to open a workstream in`);
       const projects = await api.call("POST", `/${PROJECTS_FLOW}/sessions`, { userId });
       if (projects.status !== 201) throw new Error(`${name}: no ${PROJECTS_FLOW} session: ${projects.status} ${JSON.stringify(projects.body)}`);
@@ -526,11 +475,11 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       if (typeof session !== "string") throw new Error(`${name}: opening ${project}'s ${WORKSTREAM} made no workstream session of ${userId}'s`);
       const status = await act(api, EM_FLOW, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, userId);
       if (status !== "completed") throw new Error(`${name}: the filing ended ${status}`);
-      if (!(await waitForRow(api, tree, () => true, userId))) throw new Error(`${name}: the filing put no row on a board`);
+      if (!(await waitForRow(api, () => true, userId))) throw new Error(`${name}: the filing put no row on a board`);
       // A second piece that waits on the first, through the board's own task door: the board
       // hands a row on as soon as it can start, so only a row with an unfinished dependency
       // stays queued, and Tasks needs one to hide.
-      const first = Object.values((await readStore(api, tree, userId)).rows).flat()[0]!;
+      const first = Object.values((await readStore(api, userId)).rows).flat()[0]!;
       const followUp = await act(
         api,
         EM_FLOW,
@@ -545,19 +494,16 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         userId,
       );
       if (followUp !== "completed") throw new Error(`${name}: filing the follow-up ended ${followUp}`);
-      if (!(await waitForRow(api, tree, (s) => s === "pending" || s === "blocked", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
+      if (!(await waitForRow(api, (s) => s === "pending" || s === "blocked", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
       workstream = { project, id: WORKSTREAM, session, lead };
     }
 
-    const store = await readStore(api, tree, userId);
+    const store = await readStore(api, userId);
     const storedRows = Object.values(store.rows).flat();
     const key = (r: { ref: string; id: string }) => `${r.ref}/${r.id}`;
 
     // ---- store: the store holds what the tree declares --------------------
     if (!same(store.seats, tree.seats)) fail("store", `the inventory's seats are not the tree's: ${diff(tree.seats, store.seats)}`);
-    if (!same(store.mailboxes.map((c) => c.id), tree.mailboxes.map((c) => c.id))) {
-      fail("store", `the inventory's mailboxes are not the tree's: ${diff(tree.mailboxes.map((c) => c.id), store.mailboxes.map((c) => c.id))}`);
-    }
     if (storedRows.length === 0) fail("store", "no board holds a row, so the board legs would grade nothing");
 
     await open(page, served.origin, "/inbox");
@@ -572,14 +518,6 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       // A seat with no team (an org seat) sits in the Staff row.
       const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
       if (!same(under, want)) fail("TEAMS equals the store's seats", `team ${team} lists ${diff(want, under)}`);
-    }
-
-    // ---- PROJECTS ------------------------------------------------------------
-    const shownStreams = (await page.locator("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])").evaluateAll((els) =>
-      els.map((e) => e.getAttribute("data-testid") ?? ""),
-    )).map((t) => t.slice("nav-workstream-".length));
-    if (!same(shownStreams, store.mailboxes.map((c) => c.id))) {
-      fail("PROJECTS equals the store's mailboxes", diff(store.mailboxes.map((c) => c.id), shownStreams));
     }
 
     // ---- Inbox ---------------------------------------------------------------
@@ -627,87 +565,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (!(await visible(page, "cos-summary"))) fail("reach", "Chief of Staff draws no shift summary");
     if (!(await visible(page, "cos-panel"))) fail("reach", "Chief of Staff has no right panel");
 
-    // ---- Project level: PROJECTS' heading opens No project ------------------
-    // No project lists every workstream no project row names. It has no
-    // project coordinator and no brief, and says so; its Board draws a lane per
-    // board-holding one.
-    await page.getByTestId("projects-heading").click();
-    // A project lists no mailbox, so No project lists every one.
-    const unlisted = store.mailboxes.map((c) => c.id);
-    const unlistedBoards = tree.mailboxes.filter((c) => unlisted.includes(c.id) && c.boardRefs.length > 0).map((c) => c.id);
-    for (const tab of ["stream", "brief"]) {
-      await page.locator(`[role=tab][data-tab=${tab}]`).click();
-      if (!(await visible(page, `project-${tab}-none`))) fail("reach", `No project's ${tab} tab doesn't say it has none`);
-    }
-    await page.locator("[role=tab][data-tab=workstreams]").click();
-    if (unlisted.length === 0) {
-      if (!(await visible(page, "project-workstreams-none"))) fail("reach", "No project lists no workstream and its Workstreams tab doesn't say so");
-    } else {
-      await visible(page, "project-workstream");
-      const shown = await attr(page, "project-workstream", "data-mailbox-id");
-      if (!same(shown, unlisted)) fail("reach", `No project's Workstreams: ${diff(unlisted, shown)}`);
-    }
-    await page.locator("[role=tab][data-tab=board]").click();
-    if (unlistedBoards.length === 0) {
-      if (!(await visible(page, "project-board-none"))) fail("reach", "No project holds no board and its Board tab doesn't say so");
-    } else {
-      await visible(page, "project-lane");
-      const lanes = await attr(page, "project-lane", "data-mailbox-id");
-      if (!same(lanes, unlistedBoards)) fail("reach", `No project's Board lanes: ${diff(unlistedBoards, lanes)}`);
-    }
-
-    // ---- each workstream -----------------------------------------------------
-    for (const mailbox of tree.mailboxes) {
-      await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-      await page.locator(`[data-testid=workstream][data-mailbox-id="${mailbox.id}"]`).waitFor();
-      if (!(await visible(page, "workstream-panel"))) fail("reach", `${mailbox.id} has no right panel`);
-      const members = await attr(page, "panel-member", "data-worker-id");
-      if (!same(members, mailbox.members)) fail("PROJECTS equals the store's mailboxes", `${mailbox.id}'s panel team: ${diff(mailbox.members, members)}`);
-
-      await page.locator("[role=tab][data-tab=board]").click();
-      const rowsHere = (store.rows[mailbox.id] ?? []).map(key);
-      if (mailbox.boardRefs.length === 0) {
-        if (!(await visible(page, "board-none"))) fail("reach", `${mailbox.id} attaches no board and its Board tab doesn't say so`);
-      } else if (!(await visible(page, "board"))) {
-        fail("Board equals the store's rows", `${mailbox.id}'s Board tab shows no board`);
-      } else {
-        const cards = (await page.getByTestId("board-card").evaluateAll((els) =>
-          els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`),
-        )) as string[];
-        if (!same(cards, rowsHere)) fail("Board equals the store's rows", `${mailbox.id}: ${diff(rowsHere, cards)}`);
-        for (const row of store.rows[mailbox.id] ?? []) {
-          const card = page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`);
-          if (DONE.has(row.status)) {
-            // A done row is one line in DONE, its id and title (v2:547); it carries its stored status.
-            const inDone = await page.locator(`[data-testid=board-column][data-column=DONE] [data-testid=board-card][data-task-id="${row.id}"]`).count();
-            const status = await card.getAttribute("data-status");
-            if (inDone !== 1 || status !== row.status) fail("Board equals the store's rows", `${row.id} is ${inDone === 1 ? `in DONE as "${status}"` : "not in DONE"}, stored "${row.status}"`);
-          } else {
-            const status = await card.locator("[data-testid=board-card-status]").textContent();
-            if (status !== row.status) fail("Board equals the store's rows", `${row.id} shows "${status}", stored "${row.status}"`);
-          }
-        }
-      }
-
-      await page.locator("[role=tab][data-tab=brief]").click();
-      if (!(await visible(page, "brief", 5_000)) && !(await visible(page, "empty-state", 1_000))) {
-        fail("reach", `${mailbox.id}'s Brief shows neither a charter nor a named empty state`);
-      }
-      await page.locator("[role=tab][data-tab=results]").click();
-      if (!(await visible(page, "empty-state"))) fail("reach", `${mailbox.id}'s Results shows no named empty state`);
-
-      // The task level, from this workstream's first card.
-      const first = store.rows[mailbox.id]?.[0];
-      if (first !== undefined) {
-        await page.locator("[role=tab][data-tab=board]").click();
-        await page.locator(`[data-testid=board-card][data-task-id="${first.id}"]`).click();
-        await reachTaskFrame(first, "Board equals the store's rows");
-      }
-    }
-
-    // ---- each conversation's board: no workstream holds it, so its task level is reached from Tasks ----
-    const conversations = Object.keys(store.rows).filter((holder) => !tree.mailboxes.some((c) => c.id === holder));
-    for (const holder of conversations) {
+    // ---- each conversation's board: its task level is reached from Tasks ----
+    for (const holder of Object.keys(store.rows)) {
       const first = store.rows[holder]![0]!;
       await open(page, served.origin, "/tasks");
       await page.getByTestId("tasks-queued-toggle").click();
@@ -738,27 +597,10 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       }
     }
 
-    // ---- post: the composer, on the board-holding workstream ---------------
+    // ---- post: the composer, on the workstream entry or an open row ---------
     const line = `${fixture.line} (${name} ${RUN_STAMP})`;
     let kept: number;
-    if (tree.mailboxes.some((c) => c.boardRefs.length > 0)) {
-      const mailbox = boardMailbox(tree);
-      await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
-      await page.getByTestId("composer-input").fill(line);
-      await page.getByTestId("composer-send").click();
-      const drawn = page.getByTestId("transcript-line-body").filter({ hasText: line });
-      try {
-        await drawn.first().waitFor({ timeout: 30_000 });
-      } catch {
-        fail("the post appears on screen", `"${line}" was never drawn (${(await page.getByTestId("composer-status").textContent()) ?? ""})`);
-      }
-      kept = (await api.items(mailbox.id, ["component"])).filter((i) => i.component === "mailbox-post" && i.data?.body === line).length;
-      if (kept !== 1) fail("the post is in the stored transcript", `the mailbox's session holds ${kept} copies of "${line}"`);
-      // And it survives a reload, which only a stored line does.
-      await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
-      if (!(await visible(page, "transcript-line-body"))) fail("the post is in the stored transcript", "after a reload the transcript is empty");
-      else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
-    } else if (workstream !== undefined) {
+    if (workstream !== undefined) {
       // A workstream the person opened: its page is the conversation with its
       // lead, in its session, sent through the lead's door. The composer's line
       // is drawn, and the session holds it once, across a reload.
@@ -808,49 +650,32 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       }
     }
 
-    // ---- answer: an ask approved in its workstream's Stream is resumed in the store, and leaves Inbox ----
-    // A pending ask sits in its mailbox's Stream, inline at its time (BR-16).
-    // A Lab holding any pending ask must offer at least one to answer there:
-    // pick the first whose card has an enabled Approve. None at all is a failure.
+    // ---- answer: an ask approved from Inbox is resumed in the store, and leaves Inbox ----
+    // A Lab holding any pending ask must offer at least one to answer where
+    // Inbox draws it: pick the first whose card has an enabled Approve. None
+    // at all is a failure.
     let answered = "no ask to answer";
     if (store.asks.length > 0) {
       let picked: string | null = null;
-      for (const mailbox of tree.mailboxes) {
-        if (picked !== null) break;
-        await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
-        await page.getByTestId("feed-ask").first().waitFor({ timeout: 5_000 }).catch(() => undefined);
-        const asks = page.getByTestId("feed-ask");
-        for (let i = 0; i < (await asks.count()) && picked === null; i += 1) {
-          const approve = asks.nth(i).getByRole("button", { name: "Approve" });
-          if ((await approve.count()) > 0 && !(await approve.isDisabled())) {
-            picked = await asks.nth(i).getAttribute("data-suspension-id");
-            await approve.click();
-          }
-        }
-      }
-      // An ask no workstream's Stream holds (DevTeam's sits in the EM seat's own
-      // session) is answered where Inbox draws it, with the same card.
-      if (picked === null) {
-        await open(page, served.origin, "/inbox");
-        const items = page.getByTestId("inbox-item");
-        for (let i = 0; i < (await items.count()) && picked === null; i += 1) {
-          await items.nth(i).click();
-          const approve = page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" });
-          await approve.first().waitFor({ timeout: 5_000 }).catch(() => undefined);
-          if ((await approve.count()) > 0 && !(await approve.first().isDisabled())) {
-            picked = await items.nth(i).getAttribute("data-suspension-id");
-            await approve.first().click();
-          }
+      await open(page, served.origin, "/inbox");
+      const items = page.getByTestId("inbox-item");
+      for (let i = 0; i < (await items.count()) && picked === null; i += 1) {
+        await items.nth(i).click();
+        const approve = page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" });
+        await approve.first().waitFor({ timeout: 5_000 }).catch(() => undefined);
+        if ((await approve.count()) > 0 && !(await approve.first().isDisabled())) {
+          picked = await items.nth(i).getAttribute("data-suspension-id");
+          await approve.first().click();
         }
       }
       if (picked === null) {
-        fail("an answer lands in the store", `${store.asks.length} ask(s) pending and neither a workstream's Stream nor Inbox offers an answer on any`);
+        fail("an answer lands in the store", `${store.asks.length} ask(s) pending and Inbox offers an answer on none`);
         answered = "no ask answerable";
       } else {
         let left = store.asks;
         for (let waited = 0; waited < 20_000 && left.includes(picked); waited += 250) {
           await sleep(250);
-          left = (await readStore(api, tree, userId)).asks;
+          left = (await readStore(api, userId)).asks;
         }
         if (left.includes(picked) || left.length !== store.asks.length - 1) {
           fail("an answer lands in the store", `${store.asks.length} pending before Approve, ${left.length} after, the approved one ${left.includes(picked) ? "still" : "no longer"} pending`);
@@ -865,7 +690,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
 
     if (pageErrors.length > 0) fail("reach", `the page threw: ${pageErrors.join(" | ")}`);
     evidence.push(
-      `${name}: ${store.seats.length} seats, ${store.mailboxes.length} mailboxes, ${storedRows.length} row(s) [${storedRows.map((r) => r.status).join(", ")}], post kept ${kept}, ${answered}`,
+      `${name}: ${store.seats.length} seats, ${storedRows.length} row(s) [${storedRows.map((r) => r.status).join(", ")}], post kept ${kept}, ${answered}`,
     );
   } finally {
     await browser.close();

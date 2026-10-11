@@ -31,7 +31,6 @@
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import {
   DELEGATED_POST_ENTRY,
-  defineMailboxInventoryCollection,
   defineProjectBlocks,
   defineWorkerInventoryCollection,
   delegatedPostEntry,
@@ -156,14 +155,7 @@ export function defineAskerFlow(
   resources: Record<string, unknown> = {},
   options: { projects?: boolean; inventory?: boolean } = {},
 ) {
-  // The project writes declare the mailbox half themselves, so a kind that starts projects has it already.
-  const inventory =
-    options.inventory === true
-      ? {
-          inventoryWorkers: defineWorkerInventoryCollection(),
-          ...(options.projects === true ? {} : { inventoryMailboxes: defineMailboxInventoryCollection() }),
-        }
-      : {};
+  const inventory = options.inventory === true ? { inventoryWorkers: defineWorkerInventoryCollection() } : {};
   return defineFlow({
     kind: ASKER_FLOW,
     session: installation.session(),

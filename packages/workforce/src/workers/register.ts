@@ -8,10 +8,9 @@
  * an owner. Beside the worker flows sits the roster flow, through which an
  * app reads and writes a user's roster.
  */
-import { firstInProcess } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_FLOW } from "../agent-worker-flow";
-import { checkWorkerFlows, unattendedBoardWarnings } from "../hire";
+import { checkWorkerFlows } from "../hire";
 import type { InventoryWorker } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
@@ -29,13 +28,6 @@ export function runsWorkersOf(flow: { readonly session?: unknown }, installation
 
 /** What `hireWorkforce` takes beside the installation. */
 export interface HireWorkforceOptions {
-  /**
-   * The ledger ids of the boards the app's mailboxes declare
-   * (`mailboxBoardIds(mailboxes)`). A board no registered copy declares is
-   * named once per process in a warning: rows filed there sit pending until
-   * something drains them.
-   */
-  mailboxBoards?: readonly string[];
   /**
    * The most tasks one top task may have under it, at any depth, finished
    * ones included: a filing past it is refused as `total_task_cap_exceeded`.
@@ -94,11 +86,6 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
     fire: { inputSchema: fire.inputSchema, block: fire }
   });
   copies.push(roster() as unknown as FlowInstance);
-  for (const boardId of options.mailboxBoards ?? []) {
-    for (const warning of unattendedBoardWarnings([boardId], copies)) {
-      if (firstInProcess(`workforce/unattended-board/${boardId}`)) console.warn(warning);
-    }
-  }
   return copies;
 }
 

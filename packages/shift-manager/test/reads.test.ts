@@ -27,12 +27,8 @@ import { ASK_LAB_COORDINATORS, ASK_LAB_USER_ID, openAskLab } from "./fixtures/as
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
-/**
- * The two session opens a first visit makes: a reading session on the mailbox
- * kind and on the roster flow. The ask-lab serves no mailbox kind, so its own
- * answer to the first is a 404: nothing to open.
- */
-const READER_OPENS = ["/api/flows/mailbox/sessions", "/api/flows/workforce-roster/sessions"];
+/** The one session open a first visit makes: a reading session on the roster flow. */
+const READER_OPENS = ["/api/flows/workforce-roster/sessions"];
 
 const served: ServedLab[] = [];
 afterEach(async () => {
@@ -82,16 +78,20 @@ async function hire(clients: ReturnType<typeof createLabClients>, id: string) {
   await clients.actions(ROSTER_FLOW).sendAction("hire", { id, flow: ASKER_FLOW }, { sessionId: roster.id });
 }
 
-/** The refs a session's flow declares the inventory's worker and mailbox collections under, as its manifest lists them. */
-async function inventoryRefs(baseUrl: string, sessionId: string): Promise<string[]> {
-  const manifest = (await (await fetch(`${baseUrl}/api/flows/sessions/${sessionId}/manifest`)).json()) as {
-    resources: Array<{ kind: string; pattern?: string; ref: string }>;
-  };
-  const refs = ["inventory/workers/*", "inventory/mailboxes/*"].map(
-    (pattern) => manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern)?.ref,
-  );
-  if (refs.some((ref) => ref === undefined)) throw new Error(`session ${sessionId}'s flow declares no inventory`);
-  return refs as string[];
+/**
+ * The worker-inventory reads among `seen`: a read of the collection a listed
+ * session's flow declares `inventory/workers/*` under, through that session.
+ */
+async function workerReads(baseUrl: string, snapshot: LoadedSnapshot, seen: string[]): Promise<string[]> {
+  const reads = new Set<string>();
+  for (const session of snapshot.sessions) {
+    const manifest = (await (await fetch(`${baseUrl}/api/flows/sessions/${session.id}/manifest`)).json()) as {
+      resources?: Array<{ kind: string; pattern?: string; ref: string }>;
+    };
+    const ref = manifest.resources?.find((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")?.ref;
+    if (ref !== undefined) reads.add(`GET /api/flows/sessions/${session.id}/resources/${ref}`);
+  }
+  return seen.filter((line) => reads.has(line));
 }
 
 /** Count requests by method and path, through the real `fetch`. */
@@ -143,8 +143,8 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
     expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
-    expect(seen.slice(1, 3).sort()).toEqual(READER_OPENS.map((path) => `POST ${path}`));
-    expect(seen.slice(3).every((s) => s === "GET /api/flows/sessions")).toBe(true);
+    expect(seen.slice(1, 2)).toEqual(READER_OPENS.map((path) => `POST ${path}`));
+    expect(seen.slice(2).every((s) => s === "GET /api/flows/sessions")).toBe(true);
   });
 
   // FIX-1752: projects are org-wide, so a person the Lab verifies reaches them on a first
@@ -156,7 +156,7 @@ describe("the refusal (V2, BR-3)", () => {
     expect(await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).toEqual([]);
     const snapshot = loaded(await createLabReader(clients).read());
     expect(snapshot.orgId).toBe("org_first_visit");
-    // The Lab serves no mailbox kind, so the roster flow's is the one reading session opened.
+    // The roster flow's is the one reading session opened.
     expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["workforce-roster"]);
   });
 
@@ -211,8 +211,8 @@ describe("the refusal (V2, BR-3)", () => {
     const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused).toMatchObject({ httpStatus: 403, message: "not in this Lab" });
     expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
-    expect(seen.slice(1, 3).sort()).toEqual(READER_OPENS.map((path) => `POST ${path}`));
-    expect(seen.slice(3).every((s) => s === "GET /api/flows/sessions")).toBe(true);
+    expect(seen.slice(1, 2)).toEqual(READER_OPENS.map((path) => `POST ${path}`));
+    expect(seen.slice(2).every((s) => s === "GET /api/flows/sessions")).toBe(true);
   });
 
   it("refuses when the person's session carries no organization", async () => {
@@ -265,12 +265,10 @@ describe("one read per resource (V3, BR-11)", () => {
     const seen = countRequests();
     const snapshot = loaded(await reader.read());
 
-    // One listing, and one more after each reading session the refresh tried
-    // to open: the Lab serves no mailbox kind, so it answers each try 404.
-    const opens = seen.filter((line) => line === "POST /api/flows/mailbox/sessions");
-    expect(opens).toHaveLength(1);
-    expect(seen.filter((line) => line === "GET /api/flows/sessions")).toHaveLength(1 + opens.length);
-    // Manifests are cached by flow across refreshes.
+    // One listing, and no reading session to open: the person holds their roster session already.
+    expect(seen.filter((line) => line.startsWith("POST ") && line.endsWith("/sessions"))).toEqual([]);
+    expect(seen.filter((line) => line === "GET /api/flows/sessions")).toHaveLength(1);
+    // Manifests are cached by flow kind across refreshes.
     expect(seen.filter((line) => line.endsWith("/manifest"))).toEqual([]);
     // Both of the person's coordinator conversations keep a board, in one
     // ledger: it is read once, through one of them. Nothing filed on either.
@@ -300,7 +298,7 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.asks.ok).toBe(true);
   });
 
-  it("finds the inventory through the inventory writer's session, the one session of the person's whose flow declares it", async () => {
+  it("reads the worker inventory once, through one of the person's own sessions whose flow declares it", async () => {
     const { baseUrl } = await lab();
     const seen = countRequests();
     const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
@@ -308,15 +306,10 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.inventory.value.workers.map((worker) => worker.id).sort()).toEqual(
       ["ops.asker", "ops.desk", "ops.helper", "ops.loner", "ops.side"],
     );
-    // No workstream: nothing registers a mailbox.
-    expect(snapshot.inventory.value.workstreams).toEqual([]);
-    const refs = await inventoryRefs(baseUrl, "inventory-binder");
-    expect(seen.filter((line) => refs.some((ref) => line.endsWith(`/resources/${ref}`)))).toEqual(
-      refs.map((ref) => `GET /api/flows/sessions/inventory-binder/resources/${ref}`),
-    );
+    expect(await workerReads(baseUrl, snapshot, seen)).toHaveLength(1);
   });
 
-  it("finds the inventory through a worker's session for a person who holds only that one", async () => {
+  it("reads it for a person who holds only a worker's session, through a session of theirs that declares it", async () => {
     const { baseUrl } = await lab();
     const other = createLabClients({ baseUrl, userId: "u_other" });
     await other.sessions.createSession({ flowKind: ASKER_FLOW, userId: "u_other", sessionId: "s_other_asker", state: { workerId: "ops.asker" } });
@@ -324,18 +317,18 @@ describe("one read per resource (V3, BR-11)", () => {
     const snapshot = loaded(await createLabReader(other).read());
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     expect(snapshot.inventory.value.workers.map((worker) => worker.id)).toContain("ops.asker");
-    const refs = await inventoryRefs(baseUrl, "s_other_asker");
-    expect(seen.filter((line) => refs.some((ref) => line.endsWith(`/resources/${ref}`)))).toEqual(
-      refs.map((ref) => `GET /api/flows/sessions/s_other_asker/resources/${ref}`),
-    );
+    expect(snapshot.sessions.map((session) => session.id)).toContain("s_other_asker");
+    expect(await workerReads(baseUrl, snapshot, seen)).toHaveLength(1);
   });
 
-  it("a Lab booted without its inventory fails TEAMS and PROJECTS by name, and nothing else", async () => {
+  it("a Lab booted without its inventory fails TEAMS by name, and nothing else", async () => {
     const { baseUrl } = await lab({ inventory: false });
     const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     expect(snapshot.inventory).toMatchObject({ ok: false });
     if (snapshot.inventory.ok) return;
     expect(snapshot.inventory.failure.message).toMatch(/without opening its inventory/);
+    // Projects are read on their own, and still load.
+    expect(snapshot.projects.ok).toBe(true);
     expect(snapshot.sessions.length).toBeGreaterThan(0);
     expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
   });
@@ -351,13 +344,6 @@ describe("one read per resource (V3, BR-11)", () => {
   });
 });
 
-// A workstream's Stream used to draw the asks of its mailbox's members, and
-// these tests read each ask onto the Streams it belonged to. The ask-lab has
-// no mailbox, so it has no workstream to draw them on: those assertions are
-// retired (BR-24). Each ask is still in Inbox, read here; a coordinator
-// conversation draws the asks raised in it (shell.test.tsx, Chief of Staff);
-// and a project workstream's Stream is its owner's project coordinator
-// session (project-workstreams.test.tsx).
 describe("asks through a coordinator's delivery (V7)", () => {
   it("a post reaches each delegate, and each delegate's ask is in Inbox", async () => {
     const { baseUrl, tree } = await lab();

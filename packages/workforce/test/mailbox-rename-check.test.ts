@@ -27,11 +27,11 @@ const scan = (files: Record<string, string>, extra: { paths?: string[] } = {}): 
     published: new Set(["workforce", "bullmq"]),
   });
 
-/** A tree the guard passes: a survivor-only file, a renamed API file, an allowlisted one. */
+/** A tree the guard passes: a survivor-only file, an API file, an allowlisted one. */
 const GREEN = {
   "packages/bullmq/src/stream-bridge.ts": "const channel = eventChannel(requestId);\n// events to a channel per request\n",
-  "packages/workforce/src/mailbox/mailbox-flow.ts": "export const MAILBOX_KIND = \"mailbox\";\n",
-  "packages/workforce/src/mailbox/pre-rename.ts": "export const OLD = { kind: \"channel\" };\n",
+  "packages/workforce/src/agent-worker-flow.ts": "export const AGENT_FLOW = \"agent\";\n",
+  "scripts/check-mailbox-rename.mjs": "const OLD = { kind: \"channel\" };\n",
   "packages/workforce/README.md": "## Mailboxes\n\nOne conversation.\n\n### Upgrading from channels\n\nRename `CHANNEL.md`.\n",
 };
 

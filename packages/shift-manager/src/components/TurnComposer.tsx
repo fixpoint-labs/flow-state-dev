@@ -1,7 +1,6 @@
 /**
  * A composer that sends a person's line to a worker (S11): a task's, and
- * Inbox's reply box. The workstream composer, which also posts to its mailbox,
- * uses the same send state for its `@worker` lines: {@link useTurnSend} and
+ * Inbox's reply box. Its send state is {@link useTurnSend} and
  * {@link TurnSendStatus}.
  *
  * It only draws. Where the line goes, and whether it can go at all, is the
@@ -102,7 +101,7 @@ export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendStat
  * over a mono footer (or Chief of Staff's larger box), with the send state in
  * the footer and ⏎ at its end. It only draws: the draft, what Send does and
  * the state shown are the caller's. `lead` sits before the status in the
- * footer (the workstream's `@name` chips and task picker); `extra` sits beside
+ * footer; `extra` sits beside
  * ⏎ (a task's also-post toggle).
  */
 export function ComposerShell({

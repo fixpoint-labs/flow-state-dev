@@ -198,7 +198,6 @@ export type Tree = {
   root: string;
   seats: string[];
   teams: string[];
-  mailboxes: Array<{ id: string; members: string[]; boardRefs: string[] }>;
 };
 
 export async function readTree(root: string): Promise<Tree> {
@@ -209,11 +208,6 @@ export async function readTree(root: string): Promise<Tree> {
     root,
     seats,
     teams: [...new Set(seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))],
-    mailboxes: roster.mailboxes.map((c) => ({
-      id: c.id,
-      members: Array.isArray(c.declared.members) ? (c.declared.members as string[]) : [],
-      boardRefs: ((c.declared.boards as string[] | undefined) ?? []).map((b) => `${c.id}.${b}`),
-    })),
   };
 }
 
@@ -228,34 +222,28 @@ export type StoredAsk = { suspensionId: string; sessionId: string; seat: string 
 /** What the store holds, read through the Lab's routes by this script. */
 export type Store = {
   seats: string[];
-  mailboxes: Array<{ id: string; kind: string; members: string[] }>;
+  /** Board holder (the session that filed the rows) -> its stored rows. */
   rows: Record<string, StoredRow[]>;
   asks: StoredAsk[];
   /** The organizations the person's sessions are bound to. */
   orgs: string[];
-  /** The organization's projects; none when no flow declares the collection. A project lists no mailbox. */
+  /** The organization's projects; none when no flow declares the collection. */
   projects: Array<{ id: string; title: string; brief: string | null }>;
 };
 
-export async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
+export async function readStore(api: LabApi, userId: string): Promise<Store> {
   // The person's own session on the roster flow: it declares the projects and the worker inventory.
   const reader = await api.call("POST", "/workforce-roster/sessions", { userId });
   const readerId = reader.status === 201 ? String(reader.body.session.id) : undefined;
-  // The inventory, through the first mailbox's session, or the roster session in a tree with
-  // none, by its published key patterns.
-  const host = tree.mailboxes[0]?.id ?? readerId;
-  if (host === undefined) throw new Error(`no session to read the inventory through: the tree declares no mailbox and the roster session did not open (${reader.status})`);
+  // The inventory, through the roster session, by its published key pattern.
+  const host = readerId;
+  if (host === undefined) throw new Error(`no session to read the inventory through: the roster session did not open (${reader.status})`);
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const refOf = (pattern: string) =>
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
   const workersRef = refOf("inventory/workers/*");
-  const mailboxesRef = refOf("inventory/mailboxes/*");
   const workerRows = workersRef === undefined ? [] : (await api.collection(host, workersRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
   const seats = workerRows.map((s) => s.id);
-  const mailboxes =
-    mailboxesRef === undefined
-      ? []
-      : (await api.collection(host, mailboxesRef)).map((r) => ({ id: String(r.id), kind: String(r.kind), members: Array.isArray(r.members) ? (r.members as string[]) : [] }));
 
   // The projects, through the roster session, which declares them (Shift Manager reads them there).
   const readerManifest = readerId === undefined ? undefined : await api.get(`/sessions/${encodeURIComponent(readerId)}/manifest`);
@@ -272,21 +260,6 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
         }));
 
   const rows: Store["rows"] = {};
-  for (const mailbox of tree.mailboxes) {
-    rows[mailbox.id] = [];
-    for (const ref of mailbox.boardRefs) {
-      for (const row of await api.collection(mailbox.id, ref)) {
-        rows[mailbox.id]!.push({
-          ref,
-          id: String(row.id),
-          status: String(row.status),
-          title: String(row.title ?? row.goal ?? row.id),
-          run: row.run == null ? null : { sessionId: String(row.run.sessionId), requestId: String(row.run.requestId) },
-          raw: row,
-        });
-      }
-    }
-  }
 
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const sessions = (listing.sessions ?? []) as Array<Record<string, any>>;
@@ -315,7 +288,7 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
   const orgs = [...new Set(sessions.map((s) => s.orgId).filter((o): o is string => typeof o === "string" && o.length > 0))];
   // The seat an ask belongs to is the worker its session names, not the flow the session is on.
   const asks: StoredAsk[] = (await pendingSeatAsks(api, sessions, workerRows)).map((a) => ({ suspensionId: a.suspensionId, sessionId: a.sessionId, seat: a.seatId }));
-  return { seats, mailboxes, rows, asks, orgs, projects };
+  return { seats, rows, asks, orgs, projects };
 }
 
 /** Whether a session holds a resume for `suspensionId`. */

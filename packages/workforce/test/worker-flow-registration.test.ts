@@ -13,7 +13,6 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, executeBlock } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
-import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
@@ -98,12 +97,6 @@ describe("registering worker flows (V2)", () => {
   it("BR-10 · with no flows of its own, the app registers the built-in agent, which passes", () => {
     expect(mintWorkers([standard("support.ada")]).map((worker) => worker.kind)).toEqual(["agent"]);
     expect(mintWorkers([standard("support.ada")], { workerFlows: {} }).map((worker) => worker.kind)).toEqual(["agent"]);
-  });
-
-  it("BR-9 · registers the built-in agent with mailbox task lists, with no warning", () => {
-    const agent = defineAgentWorkerFlow({ taskLists: ["front-desk.queue"] });
-    const workers = mintWorkers([standard("support.ada")], { workerFlows: { agent } as never });
-    expect(workers.map((worker) => worker.kind)).toEqual(["agent"]);
   });
 });
 

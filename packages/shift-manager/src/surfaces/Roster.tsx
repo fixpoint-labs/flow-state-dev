@@ -7,7 +7,7 @@
  * hired or fired on a turn shows on the next read.
  *
  * Every status, slot and count is read from the one `workerStates` result over
- * the snapshot, the same one the sidebar and the workstream panel draw, so a
+ * the snapshot, the same one the sidebar and Chief of Staff draw, so a
  * worker reads the same everywhere. Nothing is polled: Roster draws the
  * snapshot and says when it was read.
  *

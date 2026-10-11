@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { pickedTeam, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { parseRoute, pathFor } from "../src/lib/routes";
-import { STAFF_TEAM, toBoardRow, toWorker, toWorkstream, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "acme";
 
@@ -21,14 +21,14 @@ describe("BR-13a, BR-13b: which group a worker sits in", () => {
   });
 });
 
-/** A loaded snapshot of `workers`, one workstream holding `rows`, and `asks` (or asks that failed). */
-function snapshotOf(workers: Worker[], rows: BoardRow[], asks: Ask[] | "failed" = [], members: string[] = workers.map((s) => s.id)) {
+/** A loaded snapshot of `workers`, one conversation's board holding `rows`, and `asks` (or asks that failed). */
+function snapshotOf(workers: Worker[], rows: BoardRow[], asks: Ask[] | "failed" = []) {
   return {
     readAt: 0,
     sessions: [],
     orgId: ORG,
-    inventory: { ok: true, value: { workers, workstreams: [toWorkstream({ id: "eng.desk", kind: "mailbox", members })!] } },
-    boards: { "eng.desk": { ok: true, value: { refs: ["eng.desk.work"], rows } } },
+    inventory: { ok: true, value: { workers } },
+    boards: { s_desk: { ok: true, value: { refs: ["s_desk.tasks"], rows } } },
     asks: asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: asks },
     resources: { ok: true, value: [] },
   } as unknown as LoadedSnapshot;
@@ -36,7 +36,7 @@ function snapshotOf(workers: Worker[], rows: BoardRow[], asks: Ask[] | "failed" 
 
 const worker = (id: string) => toWorker({ id, kind: "worker" })!;
 const row = (id: string, status: string, assignee: string | null): BoardRow =>
-  toBoardRow("eng.desk.work", "eng.desk", id, { id, title: id, status, assignee });
+  toBoardRow("s_desk.tasks", "s_desk", id, { id, title: id, status, assignee });
 const ask = (workerId: string | null, suspensionId: string): Ask =>
   ({ sessionId: `s_${suspensionId}`, workerId, flowId: workerId, parentSessionId: null, kind: "approval", item: { suspensionId }, since: 0, unanswerable: null }) as unknown as Ask;
 
@@ -78,9 +78,9 @@ describe("BR-1 to BR-5: the one status rule", () => {
 
   it("BR-5: an assignee that resolves to no single worker, or an ask with no worker, counts for nobody", () => {
     const ops = worker("ops.coder");
-    // `coder` names a worker in two teams, both members of the mailbox: no single worker.
+    // `coder` names a worker in two teams: no single worker.
     const states = workerStates(
-      snapshotOf([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")], ["eng.coder", "ops.coder"]),
+      snapshotOf([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")]),
     );
     expect([...states.workers.values()].map((s) => [s.status, s.held.length, s.asks.length])).toEqual([
       ["off shift", 0, 0],

@@ -1,7 +1,6 @@
 /**
  * The project level (BR-12, BR-18, BR-22 to BR-28, BR-35 to BR-37): one
- * project the person reads, shared or their own private one, or No project,
- * in four tabs.
+ * project the person reads, shared or their own private one, in four tabs.
  *
  * - **Stream** is the person's conversation with their project coordinator:
  *   a session of the standard coordinator worker the Lab's project setup
@@ -24,17 +23,12 @@
  * prefix, when it opens and each time the Lab is read again; never a read of
  * the whole Lab of its own. The title comes from the snapshot every level shares.
  *
- * No project holds the mailbox workstreams no project lists (D3): its Board
- * and Workstreams list them from the snapshot, and it has no coordinator and
- * no brief.
- *
  * Above the tabs, the team strip from the worker inventory, as design v2 draws
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
  * workers are on shift and on call.
  */
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
-import { Board } from "../components/Board";
 import { Conversation } from "../components/Conversation";
 import { TasksPanel } from "../components/TasksPanel";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
@@ -52,9 +46,9 @@ import {
   type ProjectSetup,
   type WorkstreamEntry,
 } from "../lib/projects";
-import { describeFailure, type Failure, type Worker, type Workstream } from "../lib/reads";
+import { describeFailure, type Failure, type Worker } from "../lib/reads";
 import { useRoster, withRoster } from "../lib/roster";
-import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
+import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
 import { useWorkforce } from "../lib/workforce";
 import type { Gaps } from "../gaps";
 
@@ -82,7 +76,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
   const view = projectsOf(snapshot);
   const address: ProjectAddress = { visibility: route.visibility ?? "shared", id: projectId };
 
-  let title = "No project";
+  let title = projectId;
   let body: ReactNode;
   if (!view.ok) {
     body = (
@@ -90,39 +84,13 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
         <SectionFailure what="Projects" failure={view.failure} onRetry={() => void refresh()} testId="project-failure" />
       </div>
     );
-  } else if (projectId === NO_PROJECT && route.visibility === undefined) {
-    const listed = view.value.noProject;
-    body =
-      tab === "stream" ? (
-        <EmptyState title="No project has no coordinator" testId="project-stream-none">
-          A project coordinator belongs to a project. These workstreams are in no project, so there is no one to talk to
-          here. Each workstream has its own Stream.
-        </EmptyState>
-      ) : tab === "brief" ? (
-        <EmptyState title="No project has no brief" testId="project-brief-none">
-          A brief belongs to a project. These workstreams are in no project.
-        </EmptyState>
-      ) : tab === "board" ? (
-        <Lanes snapshot={snapshot} listed={listed} gaps={gaps} />
-      ) : (
-        <WorkstreamList listed={listed} />
-      );
   } else {
     const found = view.value.projects.find((row) => row.id === projectId && row.visibility === address.visibility);
     if (found === undefined) {
-      title = projectId;
       body = (
         <EmptyState title="No such project" testId="project-missing">
-          {address.visibility === "private" ? "You have no private project" : "This Lab has no project"} "{projectId}".{" "}
-          <button
-            type="button"
-            className="underline"
-            data-testid="project-missing-link"
-            onClick={() => navigate({ level: "project", projectId: NO_PROJECT, tab: "workstreams" })}
-          >
-            See the Lab's workstreams
-          </button>
-          , or pick a project under PROJECTS.
+          {address.visibility === "private" ? "You have no private project" : "This Lab has no project"} "{projectId}". Pick a
+          project under PROJECTS.
         </EmptyState>
       );
     } else {
@@ -741,66 +709,5 @@ function Repository({ repository }: { repository: string | null }) {
         </>
       )}
     </p>
-  );
-}
-
-/** No project's mailbox workstreams, each linking to its own level. */
-function WorkstreamList({ listed }: { listed: readonly Workstream[] }) {
-  if (listed.length === 0) {
-    return (
-      <EmptyState title="No workstreams" testId="project-workstreams-none">
-        No workstream is listed here yet.
-      </EmptyState>
-    );
-  }
-  return (
-    <ul className="mx-auto w-full max-w-3xl space-y-1 p-4" data-testid="project-workstreams">
-      {listed.map((workstream) => (
-        <li key={workstream.id} data-testid="project-workstream" data-mailbox-id={workstream.id}>
-          <button
-            type="button"
-            className="text-sm underline-offset-2 hover:underline"
-            onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
-          >
-            {workstream.id}
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** No project's Board: one lane per mailbox workstream that holds a board, in the workstream Board's columns (BR-26). */
-function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: readonly Workstream[]; gaps: Gaps }) {
-  const { refresh } = useLab();
-  const lanes = listed.filter((workstream) => {
-    const boards = snapshot.boards[workstream.id];
-    return boards !== undefined && (!boards.ok || boards.value.refs.length > 0);
-  });
-  if (lanes.length === 0) {
-    return (
-      <EmptyState title="No board" testId="project-board-none">
-        None of these workstreams holds a board, so there are no tasks to show.
-      </EmptyState>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2" data-testid="project-board">
-      {lanes.map((workstream) => {
-        const boards = snapshot.boards[workstream.id]!;
-        return (
-          <section key={workstream.id} data-testid="project-lane" data-mailbox-id={workstream.id}>
-            <h3 className="px-4 pt-3 text-xs font-medium">{workstream.id}</h3>
-            {boards.ok ? (
-              <Board rows={boards.value.rows} inReviewGap={gaps.inReview} />
-            ) : (
-              <div className="p-4">
-                <SectionFailure what={`${workstream.id}'s boards`} failure={boards.failure} onRetry={() => void refresh()} />
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
   );
 }

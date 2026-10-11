@@ -33,7 +33,7 @@ Read it bottom-up.
 
 Hired workers are [Workforce](../workforce/overview): describe a roster, hire it, and register the copies. Those workers are addresses you open a session against, and names a task can be given to.
 
-**Mailboxes.** When several agents work one topic and each reads what the others said, that conversation needs a durable home. A mailbox is a named session on a flow kind the framework ships, carrying its own members, charter and transcript. Reach for one when the exchange is back-and-forth; a one-shot instruction is a dispatch, and work that needs a claim and a settlement is a task board row. See [Mailboxes](../workforce/mailboxes).
+**Coordinators.** A coordinator is a worker that hands each message to other workers, its delegates, and answers come back into the same conversation under each delegate's name. Work that has to be done rather than answered, it files as a task on the conversation's own board. See [Coordinators](../workforce/coordinators).
 
 **A worker built for coding agents.** Beside the patterns sits `@flow-state-dev/harness-manager`: a board worker that turns a task into a supervised coding run — its own checkout, a verdict read before the task settles, a question it can ask a person, and the coding agent itself as a slot you fill. See [Harness manager](./harness-manager) for the worker, and [Coding agents](../tools/coding-agents) for the agents it can drive and the handle they hand back.
 
@@ -67,6 +67,6 @@ A drain normally runs inside the request that mounted it, so every worker's task
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
 - [Agents](./agents) — board workers and personas.
 - [Workforce](../workforce/overview) — describing workers in folders and hiring them as addressable flow copies. A hired worker is an address you open a session against, and a name you can give a task to.
-- [Mailboxes](../workforce/mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row.
+- [Coordinators](../workforce/coordinators) — a worker that hands each message to its delegates, and files tasks for them.
 - [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.
 - [Coding agents](../tools/coding-agents) — the coding agents that worker drives, and the run handle they return.

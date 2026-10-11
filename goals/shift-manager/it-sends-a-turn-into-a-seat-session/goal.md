@@ -2,11 +2,11 @@
 
 **Issue:** FIX-1690
 
-**Outcome:** A person types a line to a worker in Shift Manager: in a task's composer, as `@worker` in a workstream, or as a reply under an ask in Inbox. The line lands in that worker's session, and Shift Manager says *delivered* only once it is there. A coding run that was working stops, and its next attempt continues the same coding session with the line, at no cost to the task's retries.
+**Outcome:** A person types a line to a worker in Shift Manager: in a task's composer, or as a reply under an ask in Inbox. The line lands in that worker's session, and Shift Manager says *delivered* only once it is there. A coding run that was working stops, and its next attempt continues the same coding session with the line, at no cost to the task's retries.
 
 **Input:** two Labs, each served by Shift Manager's command.
 
-- DevTeam's own tree and `openLab`, configured by `lab/fsdev.config.mts`. The coder seat's harness slot holds this goal's recording harness (`lab/recording-harness.mts`). There is no model. Every attempt writes down what it was handed and holds until it is stopped. At boot the Lab files two rows (`lab/rows.mts`) through the EM seat and drains them, so the coder has two running tasks. The store is a SQLite file. DevTeam raises the EM seat's ask, as its own config does.
+- DevTeam's own tree and `openLab`, configured by `lab/fsdev.config.mts`. The coder's harness slot holds this goal's recording harness (`lab/recording-harness.mts`). There is no model: the EM worker's turn is scripted to answer any line with one fixed sentence. Every attempt writes down what it was handed and holds until it is stopped. At boot the Lab files two rows (`lab/rows.mts`) through the EM worker's own `file` action, on its own session's board, which starts both on the coder, so the coder has two running tasks. The store is a SQLite file. DevTeam raises the EM worker's ask, as its own config does.
 - The fixture Lab under `lab/asker/`: one seat whose kind asks a person, and whose `message` door says what it heard.
 
 **Signal:** each failure is tagged `[<route>] <leg>`. A fresh token is typed for each route.
@@ -15,12 +15,14 @@
 - **stopped**: the attempt that was running has a request that reads `aborted` through the flow that owns its session.
 - **continued**: the harness's own record on disk has a next attempt on that row. Its prompt holds the token, and its resume id equals the coding session the previous attempt named.
 - **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments − turnReentries`).
-- **picker**: `@coder` asks which of the coder's two running tasks the line is for. The line reaches the chosen task, not the other.
-- **em door**: on DevTeam's EM ask, Inbox's reply is a user item in the EM's own session, and the EM answers there. The line names no feature, so the answer says nothing was filed. (Every worker flow has a door since FIX-1789, the EM's included; before it, this leg graded a disabled reply.)
+- **only that**: the line reaches the task it was typed on, not the coder's other running task.
+- **em door**: on DevTeam's EM ask, Inbox's reply is a user item in the EM's own session, and the EM answers there with its scripted sentence. (Every worker flow has a door since FIX-1789, the EM's included; before it, this leg graded a disabled reply. Since the DevTeam conversion the EM's door is a model turn, which this Lab scripts so the goal stays model-free.)
 - **heard**: on the fixture seat's ask, Inbox's reply is a user item in the ask's own session, the seat says *Heard: <token>* there, and Inbox then draws the reply under the ask as the person's own, read back from that session.
 - **reach**: the pages throw nothing.
 
-Routes: **task composer** (the first row, reached from Tasks by clicking), **@coder** (the second row, chosen from the picker in the feature workstream), **Inbox, EM door** and **Inbox reply**.
+Routes: **task composer** (the first row, reached from Tasks by clicking), **Inbox, EM door** and **Inbox reply**.
+
+The **@coder** route and its **picker** leg are gone (FIX-1792 P4). Their whole subject was the composer of a workstream that was a shared task list, and that level of Shift Manager is removed with no successor: no screen offers `@worker` with a choice of tasks. The second row stays so **only that** can fail.
 
 **Anti-game:** the check never reads Shift Manager's state.
 - Its oracles are the stores and the harness's record:
@@ -57,3 +59,6 @@ Routes: **task composer** (the first row, reached from Tasks by clicking), **@co
 | 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=optimistic-turn` | n/a | FAIL (expected) | **delivered** on the sending routes, and on the Inbox reply **heard** now also names the reply never drawn under the ask. |
 | 2026-10-09 | fix/closure-children-one-copy (main 57d2c10e9) | n/a | PASS | The asker Lab builds an installation and registers one copy of `asker`, and the ask is raised in a session on `asker` naming `desk.asker` (FIX-1788 P4). Before, the asker config failed to load: "installation.workerFlows is not a function". `optimistic-turn` FAILs at **delivered**; `fresh-session` only at **continued**. |
 | 2026-10-09 | `fix/FIX-1792-p1` on fix/closure-children-one-copy 55e02d269, uncommitted | n/a | PASS | FIX-1792 P1: the asker Lab's `front` is a coordinator `WORKER.md` (`delegates: [desk.asker]`, `routing: everyone`), its config registers Workforce's `coordinator` flow and writes the inventory from a flow of its own, and the check finds the asker by its flow rather than as the tree's first worker. Every route delivered; the Inbox reply on `desk.asker` was heard in the ask's session. `optimistic-turn` FAILs at **delivered** (and what follows from no delivery: stopped, continued, standing, em door, heard); `fresh-session` only at **continued**. |
+| 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | FAIL | The check as it stood, on HEAD: `SyntaxError: The requested module '@flow-state-dev/workforce' does not provide an export named` the mailbox board helper. Its Lab also read the roster's removed mailbox list and the removed DevTeam board and notify modules. |
+| 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | PASS | Converted: rows filed through the EM's `file` action on its own session's board (no drain: the held attempts never settle), the coder read as the EM's first delegate on the coder kind, rows read through the EM's conversation and found by their goal (the board mints ids), retry counters read from the lab user's `tasks/<topic>`, and the EM's turn scripted. Task composer: delivered with the line held, request `aborted`, the next attempt resumed the same coding session, standing 1 → 1 (attempts 2, 1 turn re-entry), the other task's session never held the line. EM door delivered into `s_eng_em` and answered; fixture reply heard. |
+| 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted (controls) | n/a | FAIL (expected) | `fresh-session`: only **continued** ("resumed nothing (the resume id)"). `optimistic-turn`: **delivered** on all three routes, and what follows from no delivery (stopped, continued, standing, em door, heard). **only that** has no named control. |

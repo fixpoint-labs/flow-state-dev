@@ -140,6 +140,8 @@ const KEPT_EXPORTS = {
 
 /** Where discovery's pinned domain list lives; `--after` requires it without `mailboxes` (S9). */
 const MANIFEST_DOMAINS_FILE = "packages/contracts/src/types/manifest.ts";
+/** Where `run` reads the domain list; the control points it at a plant, since the real file no longer lists mailboxes once P4 lands. */
+let domainsFile = MANIFEST_DOMAINS_FILE;
 
 /** A name that marks an export as part of the removed surface, wherever it is declared. */
 const SURFACE_NAME = /[Mm]ailbox|MAILBOX|[Ww]orkstreamClaim|WORKSTREAM_CLAIMS|[Ss]etWorkstreams/;
@@ -475,6 +477,7 @@ const GOALS = {
   "goals/README.md": "EDIT · the word, FIX-1796",
   "goals/lib/workers.mts": "EDIT · the hire's mailboxBoards option goes with S9",
   "goals/lib/shift-manager.mts": "EDIT · the word, in pendingSeatAsks's doc comment (FIX-1824's move); FIX-1796",
+  "goals/coordinators/every-coordinator-is-a-worker-file": "GATE · S11 · this issue's own goal check; it names the old file to plant it under its control",
   "goals/coordinators/hands-each-post-to-its-delegates": "CONVERT · FIX-1791's goal check reads the DevTeam's mailbox boards; it follows the DevTeam in P3 (S7)",
   "goals/agent-discovery/an-orchestrator-routes-a-task-by-asking": "EDIT · a roster literal's mailboxes field",
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
@@ -626,9 +629,9 @@ function run(mode) {
     for (const f of mailboxes) problems.push(`still a MAILBOX.md: ${f}`);
     for (const f of afterHits) problems.push(`names a removed export: ${f}`);
     // S9: discovery's `mailboxes` domain leaves the pinned list (a value, not an export).
-    const domains = /MANIFEST_DOMAINS\s*=\s*\[([^\]]*)\]/.exec(read(MANIFEST_DOMAINS_FILE) ?? "");
-    if (!domains) problems.push(`MANIFEST_DOMAINS not found in ${MANIFEST_DOMAINS_FILE}`);
-    else if (/["'`]mailboxes["'`]/.test(domains[1])) problems.push(`MANIFEST_DOMAINS still lists mailboxes: ${MANIFEST_DOMAINS_FILE}`);
+    const domains = /MANIFEST_DOMAINS\s*=\s*\[([^\]]*)\]/.exec(read(domainsFile) ?? "");
+    if (!domains) problems.push(`MANIFEST_DOMAINS not found in ${domainsFile}`);
+    else if (/["'`]mailboxes["'`]/.test(domains[1])) problems.push(`MANIFEST_DOMAINS still lists mailboxes: ${domainsFile}`);
   } else {
     for (const [k, v] of Object.entries(EXPECT)) if (census[k] !== v) problems.push(`census ${k}: want ${v}, got ${census[k]}`);
     problems.push(...exportProblems(files));
@@ -648,6 +651,8 @@ function report(r) {
 
 /** The control's left-behind old file; under the plant goal so the cleanup removes it. */
 const LEFT_MAILBOX = "goals/__fix1792-control__/tree/teams/desk/mailboxes/front/MAILBOX.md";
+/** The control's domain list that still names mailboxes; under the plant goal so the cleanup removes it. */
+const LEFT_DOMAINS = "goals/__fix1792-control__/manifest-domains.ts";
 
 if (MODE === "control") {
   const plants = [
@@ -661,11 +666,14 @@ if (MODE === "control") {
     ["apps/kitchen-sink/lib/__fix1792_after__.ts", "// MAILBOX_ROUTE_COMPONENT emitMailboxPostLine MAILBOX_KIND mailboxKinds\n"],
     // after: an old file left in the tree, which the conversion must delete
     [LEFT_MAILBOX, "---\nmembers: [desk.a]\n---\n"],
+    // after: a domain list that still names mailboxes, read in place of the real one
+    [LEFT_DOMAINS, 'export const MANIFEST_DOMAINS = ["seats", "skills", "mailboxes"] as const;\n'],
   ];
   for (const [p, t] of plants) { mkdirSync(p.split("/").slice(0, -1).join("/"), { recursive: true }); writeFileSync(p, t); }
   let census;
   let after;
-  try { census = run("census"); after = run("after"); } finally {
+  try { census = run("census"); domainsFile = LEFT_DOMAINS; after = run("after"); } finally {
+    domainsFile = MANIFEST_DOMAINS_FILE;
     for (const [p] of plants) rmSync(p, { force: true });
     rmSync("goals/__fix1792-control__", { recursive: true, force: true });
   }

@@ -1,55 +1,39 @@
 /**
- * The inventory's three org-scoped collections — what was registered in this
+ * The inventory's org-scoped worker collection — what was registered in this
  * organization, as opposed to what the tree declares. A row means *was
  * registered*, not *is open now*.
  *
  * The declared layer answers "what did somebody write down": a folder of
- * `WORKER.md` and `MAILBOX.md` files, read at boot. It cannot answer "which
- * mailboxes is this worker in", because a block does not walk folders, and it
- * cannot answer "which of these were registered", because a file has no idea.
- * These rows are that second answer. The two layers join on one thing, the record's
- * `id`, and nothing else — no mapping table, no second identity.
- *
- * Three collections rather than one, because they answer three questions, and a
- * question that cannot be expressed as a key prefix ends up as a loop over
- * everything:
+ * `WORKER.md` files, read at boot. It cannot answer "which of these were
+ * registered", because a file has no idea. These rows are that second answer.
+ * The two layers join on one thing, the record's `id`, and nothing else — no
+ * mapping table, no second identity.
  *
  *   inventory/workers/<workerId>                which workers were registered in this org
- *   inventory/mailboxes/<mailboxId>          which mailboxes were registered, and who was in them
- *   inventory/members/<workerId>/<mailboxId>  which mailboxes one worker is in
  *
- * The third is the second one indexed the other way round. Its key shape is the
- * whole point: the worker id is a complete path segment ahead of the mailbox id,
- * so "which mailboxes is this worker in" is answerable from the key rather than
- * from a `members` array inside a mailbox row's value. That is a statement
- * about what a prefix can reach, NOT about reading less — see
- * {@link membershipPrefix}, which measures it. {@link membershipPrefix} spells
- * that prefix; {@link membershipKey} spells the row.
- *
- * These keys are a public surface. Moving one is a breaking change for any app
+ * This key is a public surface. Moving it is a breaking change for any app
  * whose rows are already persisted. Nothing here deletes a row for going
- * missing. The one removal is `fire`'s, of a hired worker's own row in
- * `inventory/workers/`.
+ * missing. The one removal is `fire`'s, of a hired worker's own row.
  *
  * ## The browser read
  *
- * All three declare `client.state.read`, so the collection-state route
- * (`GET /sessions/:id/resources/:ref`) serves their rows to a browser instead
+ * The collection declares `client.state.read`, so the collection-state route
+ * (`GET /sessions/:id/resources/:ref`) serves its rows to a browser instead
  * of refusing with `403 State read not permitted`. That is how the DevTool's
  * Inventory tab — and any app's own browser code — names the organization's
- * workers, mailboxes and memberships.
+ * workers.
  *
  * What it opens is exactly the SESSION'S organization's rows and no other's.
  * The route resolves rows through the session's stored `orgId`, and a session
  * binds its org from the resolved principal when it is created — never from
  * the request body, query or headers. The axis is `scope`: an org-scoped row
  * is shared within its org by definition, so its own members reading it
- * reveals nothing they could not already be told. The roster beside
- * these carries the same read on the same terms, and
+ * reveals nothing they could not already be told. The hired roster beside
+ * it carries the same read on the same terms, and
  * `cross-org-collection-read.test.ts` fails if another org's rows come back
- * for any of them.
+ * for either.
  *
- * Each read names its fields with `expose` rather than the identity default
+ * The read names its fields with `expose` rather than the identity default
  * (BP-015), so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
  * open now*: nothing deletes one for going missing, so a reader must label it
@@ -114,58 +98,14 @@ export const workerInventoryRowSchema = z.object({
 export type WorkerInventoryRow = z.infer<typeof workerInventoryRowSchema>;
 
 /**
- * One registered mailbox: its identity, the kind that minted it, who was in it
- * when it registered, and when it first registered.
- *
- * `members` is the live set — read from the mailbox's own session state by the
- * mailbox itself, never copied from the tree. A member list taken from the
- * declared record would be a file-time answer wearing a live name.
- *
- * `members` and `openedAt` carry defaults so a row written before either
- * existed still reads (BP-030); `openedAt` is nullable with a `null` default
- * per BP-023, so consumers `== null`-guard it rather than parsing `""`.
- */
-export const mailboxInventoryRowSchema = z.object({
-  /** The mailbox's id, `"<teamId>.<name>"` — also its session id. The join key. */
-  id: z.string(),
-  /** The mailbox kind that minted it: the built-in `"mailbox"`, or an app's own. */
-  kind: z.string(),
-  /** Worker ids currently in the mailbox, from the mailbox's own session state. */
-  members: z.array(z.string()).default([]),
-  /** ISO timestamp of when the mailbox opened, or `null` on a row that predates the field. */
-  openedAt: z.string().nullable().default(null),
-});
-
-/** One row of the mailbox inventory. @see mailboxInventoryRowSchema */
-export type MailboxInventoryRow = z.infer<typeof mailboxInventoryRowSchema>;
-
-/**
- * One membership, keyed worker-first so a worker's mailboxes are a prefix read.
- *
- * Both fields are already in the key. They are on the row as well so a listed
- * row answers for itself without the caller re-parsing storage keys — the key
- * shape is the index, not the payload.
- */
-export const membershipIndexRowSchema = z.object({
-  /** The worker in the mailbox. The first path segment of the row's key. */
-  workerId: z.string(),
-  /** The mailbox it is in. The second. */
-  mailboxId: z.string(),
-});
-
-/** One row of the membership index. @see membershipIndexRowSchema */
-export type MembershipIndexRow = z.infer<typeof membershipIndexRowSchema>;
-
-/**
- * `flowIsolation: false`, spelled out on every collection here rather than
- * omitted.
+ * `flowIsolation: false`, spelled out here rather than omitted.
  *
  * The skills collection deliberately leaves it unset, so an app that isolates
  * its org state wholesale gets an isolated skills catalog too. That is right
  * for a catalog each flow may reasonably want its own copy of. It is wrong
  * here. An inventory read by only the flow that wrote it answers nothing: the
- * point of these rows is that a worker's flow, a mailbox's flow and an app's own
- * flow all see the same ones.
+ * point of these rows is that a worker's flow and an app's own flow all see the
+ * same ones.
  *
  * Left undefined, `effectiveStorageTuple` (`packages/core/src/flow/defineFlow.ts`)
  * promotes an org-scoped entry to isolated whenever the declaring flow sets
@@ -176,15 +116,11 @@ export type MembershipIndexRow = z.infer<typeof membershipIndexRowSchema>;
 const SHARED_ACROSS_FLOWS = false;
 
 /**
- * The fields each collection's browser read publishes — every field its row
+ * The fields the collection's browser read publishes — every field its row
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
 const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
-/** @see WORKER_INVENTORY_CLIENT_FIELDS */
-const MAILBOX_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
-/** @see WORKER_INVENTORY_CLIENT_FIELDS */
-const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["workerId", "mailboxId"] as const;
 
 /**
  * The worker inventory — one row per registered worker, at `inventory/workers/*`.
@@ -207,100 +143,4 @@ export function defineWorkerInventoryCollection() {
     stateSchema: workerInventoryRowSchema,
     client: { state: { read: true }, expose: WORKER_INVENTORY_CLIENT_FIELDS },
   });
-}
-
-/**
- * The mailbox inventory — one row per registered mailbox, at `inventory/mailboxes/*`.
- *
- * Install it under any block's `resources` map. Org-scoped and option-free on
- * the same terms as {@link defineWorkerInventoryCollection}.
- *
- * @example
- *   resources: { mailboxes: defineMailboxInventoryCollection() }
- */
-export function defineMailboxInventoryCollection() {
-  return defineResourceCollection({
-    pattern: "inventory/mailboxes/*",
-    scope: "org",
-    flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: mailboxInventoryRowSchema,
-    client: { state: { read: true }, expose: MAILBOX_INVENTORY_CLIENT_FIELDS },
-  });
-}
-
-/**
- * The membership index — one row per worker-in-mailbox, at
- * `inventory/members/<workerId>/<mailboxId>`.
- *
- * A deep pattern rather than a flat one because the key carries two segments,
- * and the first of them is what a worker's mailboxes are read by. Build keys with
- * {@link membershipKey} and prefixes with {@link membershipPrefix}.
- *
- * @example
- *   resources: { memberships: defineMembershipIndexCollection() }
- */
-export function defineMembershipIndexCollection() {
-  return defineResourceCollection({
-    pattern: "inventory/members/**",
-    scope: "org",
-    flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: membershipIndexRowSchema,
-    client: { state: { read: true }, expose: MEMBERSHIP_INDEX_CLIENT_FIELDS },
-  });
-}
-
-/**
- * The membership index key for one worker in one mailbox, relative to the
- * collection's prefix — what `upsert` and `get` take.
- *
- * @throws when either id is empty, contains a path separator, or is a dot
- * segment. A worker id with a slash in it would file the row under a different
- * worker's prefix and read back as that worker's membership, which no later check
- * would catch: the row is well-formed, just filed under the wrong worker.
- */
-export function membershipKey(workerId: string, mailboxId: string): string {
-  return `${idSegment(workerId, "workerId")}/${idSegment(mailboxId, "mailboxId")}`;
-}
-
-/**
- * The prefix that lists one worker's memberships, relative to the collection's
- * prefix — what `list` takes.
- *
- * The trailing slash is load-bearing. Without it, `"eng.lead"` also matches
- * `"eng.leadership"`, so a worker would read another worker's mailboxes.
- *
- * What this does *not* buy, measured rather than assumed: the narrowing is not
- * pushed into the store. The runtime loads the collection's own prefix and
- * applies this one in memory after — a `list(membershipPrefix("eng.lead"))`
- * issues a single `getByPrefix("inventory/members/")`. So this is not the
- * cheaper way to answer the question today.
- *
- * What the key shape buys is a read that CAN get narrower later. A `members`
- * array lives inside a mailbox row's value, where no prefix reaches it now or
- * after any storage change; a worker id in the key is something a store could
- * push down. Do not restate this as the index moving less data — whether it
- * does depends on how many members a mailbox has, and on a realistic roster it
- * moves more.
- *
- * @throws on the same ids {@link membershipKey} refuses.
- */
-export function membershipPrefix(workerId: string): string {
-  return `${idSegment(workerId, "workerId")}/`;
-}
-
-/** Reject an id that cannot be one whole path segment. */
-function idSegment(value: string, label: string): string {
-  if (value.length === 0) {
-    throw new Error(`Inventory ${label} must not be empty`);
-  }
-  if (value.includes("/") || value.includes("\\")) {
-    throw new Error(
-      `Inventory ${label} "${value}" must not contain a path separator — it is one whole ` +
-        `segment of the membership key, and a separator would file the row under another worker`,
-    );
-  }
-  if (value === "." || value === "..") {
-    throw new Error(`Inventory ${label} must not be "${value}"`);
-  }
-  return value;
 }

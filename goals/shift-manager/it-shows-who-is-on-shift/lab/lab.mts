@@ -225,7 +225,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   // The seat write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_FLOW,
-    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
+    internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -240,7 +240,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
 
   const runtime = await flowState.getRuntime();
   const inventory = await openInventory(
-    { workers: [...inventoryWorkers(installation), ORG_SEAT], mailboxes: [] },
+    { workers: [...inventoryWorkers(installation), ORG_SEAT] },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({

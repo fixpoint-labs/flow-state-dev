@@ -7,8 +7,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
-import { Composer } from "../src/surfaces/Stream";
-import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootTheme } from "../src/lib/theme";
 import { createLabClients } from "../src/lib/connection";
@@ -130,10 +128,10 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
-    // A Lab that holds no session of theirs and serves no reader flow to open one on.
+    // A Lab that holds no session of theirs and serves no roster flow to open one on.
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
-      /\/api\/flows\/(mailbox|workforce-roster)\/sessions$/.test(String(input instanceof Request ? input.url : input))
+      /\/api\/flows\/workforce-roster\/sessions$/.test(String(input instanceof Request ? input.url : input))
         ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
         : real(input, init),
     );
@@ -165,12 +163,13 @@ describe("a Lab Shift Manager can't reach", () => {
 });
 
 describe("a Lab booted without its inventory (V3, BR-4)", () => {
-  it("fails TEAMS and PROJECTS by name with Retry, and the rest still renders", async () => {
+  it("fails TEAMS by name with Retry, and the rest, PROJECTS included, still renders", async () => {
     await openApp("/inbox", { inventory: false });
     const teams = await screen.findByTestId("teams-failure");
     expect(teams.textContent).toMatch(/without opening its inventory/);
     expect(within(teams).getByRole("button", { name: "Retry" })).toBeTruthy();
-    expect(screen.getByTestId("projects-failure").textContent).toMatch(/without opening its inventory/);
+    // Projects are read on their own: an unread inventory leaves PROJECTS whole.
+    expect(screen.queryByTestId("projects-failure")).toBeNull();
     expect(screen.getByTestId("nav-tasks")).toBeTruthy();
     expect(screen.getByTestId("jump-to")).toBeTruthy();
   });
@@ -183,19 +182,6 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
   });
 });
 
-// A workstream's own screens (its Stream, its Board tab, its composer) are
-// drawn for a workstream the inventory registers, and only a mailbox ever
-// registered one. The ask-lab has none, so those tests are retired (BR-24):
-// "a workstream whose mailbox attaches no board says so", "a workstream's
-// Stream holds its members' asks", and the Stream composer's three (a post
-// drawn once the mailbox holds it, a refused post keeps its draft, @worker
-// with no task disables Send). What they proved is proved now by a project
-// workstream's tabs and its Stream, its owner's project coordinator session
-// (projects.test.tsx, project-workstreams.test.tsx); by an ask answered in
-// Inbox and in the Shift Coordinator (below); and by the composers' own
-// tests (composer.test.tsx: a draft kept through a slow read-back, the
-// @worker hint; conversation.test.tsx: a line drawn once the session holds
-// it, and a refused line kept with the reason).
 describe("empty states (BR-14, BR-28)", () => {
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
@@ -203,26 +189,6 @@ describe("empty states (BR-14, BR-28)", () => {
     expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
-  });
-});
-
-describe("the composer's @mentions", () => {
-  it("a new line started from an @mention is unsent, so it doesn't read delivered", async () => {
-    const row = { id: "only-task", title: "the coder's one task" } as BoardRow;
-    render(
-      <Composer
-        send={async () => {}}
-        onKept={async () => {}}
-        mentions={["coder"]}
-        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ suspended: false, stopped: null }) })}
-      />,
-    );
-    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
-    fireEvent.click(screen.getByTestId("composer-send"));
-    await waitFor(() => expect(screen.getByTestId("composer-status").getAttribute("data-state")).toBe("delivered"));
-    fireEvent.click(screen.getByTestId("composer-mention"));
-    expect((screen.getByTestId("composer-input") as HTMLInputElement).value).toBe("@coder ");
-    expect(screen.getByTestId("composer-status").getAttribute("data-state")).toBe("idle");
   });
 });
 
@@ -494,10 +460,6 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
   });
 
-  // The rail's STREAMS rows count a workstream's running rows and its
-  // members' asks; the ask-lab registers no workstream, so that half is
-  // retired (BR-24) with the screens above. A project's progress is its
-  // count now (project-workstreams.test.tsx).
   it("draws the workers on call in the rail (BR-19)", async () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
@@ -787,7 +749,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     });
     setURL(`${lab.baseUrl}/cos`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
-    const asks = await screen.findByTestId("cos-streams-asks-failure");
+    const asks = await screen.findByTestId("cos-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
     // The person's conversation boards are read once, through one of their

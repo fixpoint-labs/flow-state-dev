@@ -60,7 +60,6 @@ import {
   createWorkerInstallation,
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  defineMailboxInventoryCollection,
   defineWorkerInventoryCollection,
   hireWorkforce,
   inventoryWorkers,
@@ -925,14 +924,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
     },
     uses: [
-      // The worker and mailbox inventories, which the discovery door reads.
+      // The worker inventory, which the discovery door reads.
       defineCapability({
         name: "lab-inventory",
-        resources: { workerInventory: defineWorkerInventoryCollection(), mailboxInventory: defineMailboxInventoryCollection() },
+        resources: { workerInventory: defineWorkerInventoryCollection() },
       }),
       createWorkforceCapability({
-        roster: { workers: roster.workers, mailboxes: roster.mailboxes },
-        inventory: { workers: "workerInventory", mailboxes: "mailboxInventory" },
+        roster: { workers: roster.workers },
+        inventory: { workers: "workerInventory" },
       }),
     ],
   };
@@ -970,7 +969,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // caller-supplied rows, so it is internal only.
   const inventoryWriter =
     options.inventory === true
-      ? defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } } } as never)()
+      ? defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)()
       : undefined;
 
   if (options.workstreams !== undefined && options.projects === undefined) {
@@ -1066,7 +1065,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // The standard workers, the ones every member has. A person's own workers
     // are theirs, on their roster, and not listed here.
     const opened = await openInventory(
-      { workers: inventoryWorkers(installation), mailboxes: [] },
+      { workers: inventoryWorkers(installation) },
       { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {

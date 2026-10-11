@@ -174,3 +174,5 @@ Retired by FIX-1788, when workers became data on one copy per worker flow. Hirin
 Retired by FIX-1792, when a mailbox became a coordinator worker file:
 
 - `kitchen-sink-talk/lists-a-filed-case-without-a-reload`: the escalation feature is removed, not replaced (FIX-1792 BR-14; product owner, 2026-10-06), so nothing files a case and there is no list to show one (BR-24). It last passed on `main` at 57d2c10e9.
+- `workforce-conventions/a-mailbox-holds-the-work-a-seat-drains`: its mailbox subjects are gone (BR-24). The legs that still had a subject are proven elsewhere: V8's subset drain by `coordinators/files-tasks-down-the-owners-chain` leg c, and V14's writer half by `coordinators/hands-each-post-to-its-delegates`. V2's kind spread went with the generated map of mailbox kinds. V10's vocabulary table refused "worker" and "agent", which are now the product's words, so it is superseded rather than moved. The app half had been red since P1 removed its mailboxes folder.
+- `workforce-mailboxes/a-pre-rename-lab-is-refused-by-name`: the pre-rename refusal is removed, along with the mailboxes it guarded (D2, BR-24).

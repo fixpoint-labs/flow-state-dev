@@ -1,10 +1,9 @@
 /**
- * The live inventory: org-scoped rows for what is actually open.
+ * The live inventory: org-scoped rows for the workers registered in this org.
  *
- * `collections.ts` owns the explanation — what each collection answers, why
- * there are three, and what the membership index's key shape buys.
- * `open-inventory.ts` owns the other half: who writes each row, and why the
- * two writers are split the way they are. This file only re-exports.
+ * `collections.ts` owns the explanation — what the collection answers and who
+ * may read it. `open-inventory.ts` owns the boot binder that fills it, and
+ * `worker-writer.ts` the action it runs. This file only re-exports.
  */
 
 export {
@@ -19,15 +18,13 @@ export {
 } from "./open-inventory";
 
 export {
-  mailboxInventoryRowSchema,
-  defineMailboxInventoryCollection,
-  defineMembershipIndexCollection,
+  INVENTORY_REGISTER_WORKERS,
+  inventoryWorkersRegisteredSchema,
+  inventoryWriterActions
+} from "./worker-writer";
+
+export {
   defineWorkerInventoryCollection,
-  membershipIndexRowSchema,
-  membershipKey,
-  membershipPrefix,
   workerInventoryRowSchema,
-  type MailboxInventoryRow,
-  type MembershipIndexRow,
   type WorkerInventoryRow
 } from "./collections";

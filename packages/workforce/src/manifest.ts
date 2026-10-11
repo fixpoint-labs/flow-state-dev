@@ -6,8 +6,7 @@
  * consumers that turn a record into something runnable (which read nothing)
  * never hold two spellings of one record — and, for the same reason, so a
  * refusal reads the same whichever door a file arrives at. A worker is a
- * `WorkerManifest`; a mailbox is a `MailboxManifest`; a file-declared document
- * is a `ResourceDoc`.
+ * `WorkerManifest`; a file-declared document is a `ResourceDoc`.
  */
 
 import type { InitialSkill } from "@flow-state-dev/core";
@@ -87,8 +86,8 @@ export interface WorkerManifest {
 /**
  * One team, as read off disk.
  *
- * The record {@link TEAM_MD} produces, and the fourth in this dialect beside
- * {@link WorkerManifest}, {@link MailboxManifest} and {@link ResourceDoc}.
+ * The record {@link TEAM_MD} produces, beside {@link WorkerManifest} and
+ * {@link ResourceDoc} in this dialect.
  * Declared here with them for the reason they are: node-free, so the reader
  * (which reads folders) and the join (which reads nothing) never hold two
  * spellings of one record.
@@ -122,46 +121,6 @@ export interface TeamManifest {
    */
   instructions?: string;
 }
-
-/**
- * One mailbox, as declared on disk or hand-built.
- *
- * The same three-field record a worker is made of, and deliberately so: the
- * loader that reads a `MAILBOX.md` returns this type rather than declaring a
- * second one. Declared here, beside {@link WorkerManifest}, for the reason that
- * one is — node-free, so the binder (which reads nothing) and the reader (which
- * reads folders) never hold two spellings of one record.
- */
-export interface MailboxManifest {
-  /**
-   * Team-qualified identity, "<teamId>.<name>" — e.g. "engineering.standup".
-   * The mailbox's whole identity, and literally its session id. A frontmatter
-   * `id:` cannot reach it: the record's shape is what carries identity.
-   */
-  id: string;
-  /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
-  declared: Record<string, unknown>;
-  /** The mailbox's charter: Markdown body verbatim, frontmatter removed. */
-  body: string;
-}
-
-/**
- * A key a `MAILBOX.md` may not declare, refused by name wherever a record is
- * read.
- *
- * `system` is set from the declaration path, never from a file. Refused at this
- * package's binder as well as at the reader, because a hand-built record never
- * passes the reader.
- */
-export const REFUSED_SYSTEM_KEY = "system";
-
-/**
- * The one wording for {@link REFUSED_SYSTEM_KEY}. Names no subject — the caller
- * supplies what it can name.
- */
-export const REFUSED_SYSTEM_KEY_MESSAGE =
-  `declares \`${REFUSED_SYSTEM_KEY}:\`, which is not a setting a mailbox declares. ` +
-  `Where a mailbox is declared is what decides it.`;
 
 /**
  * The single setting name the worker factory imposes: where a worker's body

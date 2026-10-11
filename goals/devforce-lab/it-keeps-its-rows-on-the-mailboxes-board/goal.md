@@ -20,7 +20,8 @@ its storage key are read at run time, never typed in.
 
 **Signal:** five legs, read over the lab's HTTP routes with each person's own verified bearer.
 
-- **0** the tree declares no mailbox (`0:no-mailbox`).
+- **0** the tree holds no `MAILBOX.md` (`0:no-mailbox`). Nothing loads one any more, so the
+  files under the tree are read, not the loader's roster.
 - **a** Alice's read of her workstream session's board (`listTasks_tasks`) returns exactly one row
   (`a:the-row`), `completed` (`a:completed`), assigned `eng.coder` (`a:assignee`), and the coder's
   harness ran once (`a:ran-once`).
@@ -63,3 +64,5 @@ no row*.
 | 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | FAIL (control `em-session`) | Fails at `a:the-row`, *the workstream session's board holds no row*. As designed. |
 | 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | PASS | Rewritten: Alice's `feature` session's board holds one completed row by `eng.coder`; Bob and the outsider read her entry (led by `eng.em`, in her session) and are refused the rows; the org-less read answers 401; the row is stored once under `tasks/<workstream session>~…/<id>` in her storage with `{issue, phase}`, none in the org's. The kind-ledger control went with the option it set. |
 | 2026-10-11 | `7af86476` (DevTeam off mailboxes, merged with FIX-1866 P3 `f4978593`) | n/a | PASS; `em-session` FAIL (expected) | Re-run on the merged tree: Alice's workstream board holds one row completed by eng.coder; Bob and the outsider read her feature entry and are refused her board; a read with no verified organization answered 401; the row is stored once, under the workstream session. `em-session` fails at exactly `a:the-row` ("the workstream session's board holds no row"). |
+| 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | FAIL | REWRITE, the check as it stood on P4: leg 0 read the roster's mailbox list, which P4 removed from the loader, and the run threw `Cannot read properties of undefined (reading 'length')` before the lab opened. |
+| 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | PASS | Leg 0 now reads the tree's files for a `MAILBOX.md` (none); a planted one in a scratch tree is found. Alice's workstream session's board holds one row completed by eng.coder; Bob and the outsider read her feature entry, led by eng.em in her session, and are refused her board; the org-less read answered 401; the row is stored once under the workstream session's partition, naming its issue at implement, and nowhere in the org's storage. `em-session` targets leg a, which did not change, so it was not re-run. |

@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isBlocked, isDone } from "../src/lib/columns";
 import { openRows, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
-import { toBoardRow, toWorker, toWorkstream, type BoardRow } from "../src/lib/reads";
+import { toBoardRow, toWorker, type BoardRow } from "../src/lib/reads";
 
 /** Where BR-12 puts each shipped status. */
 const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
@@ -52,30 +52,26 @@ describe("BR-12: a row's column", () => {
 });
 
 const row = (status: string, assignee: string | null, id = status): BoardRow =>
-  toBoardRow("t.c.work", "t.c", id, { id, title: id, status, assignee });
+  toBoardRow("s_1.tasks", "s_1", id, { id, title: id, status, assignee });
 
 describe("which worker holds a row, when a bare name is in more than one team", () => {
   const ops = toWorker({ id: "ops.builder", kind: "worker" })!;
   const eng = toWorker({ id: "eng.builder", kind: "worker" })!;
-  const onMailbox = (mailboxId: string, members: string[]) => toWorkstream({ id: mailboxId, kind: "mailbox", members })!;
-  const rowOn = (mailboxId: string, assignee: string) =>
-    toBoardRow(`${mailboxId}.work`, mailboxId, "r", { id: "r", title: "r", status: "in_progress", assignee });
+  const rowFor = (assignee: string) => toBoardRow("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
 
-  it("resolves the name through the row's mailbox's members", () => {
-    const roster: Roster = { workers: [ops, eng], workstreams: [onMailbox("eng.feature", ["eng.builder"])] };
-    expect(workerFor(roster, rowOn("eng.feature", "builder"))?.id).toBe("eng.builder");
+  it("attributes the row to no worker, never to several", () => {
+    const roster: Roster = { workers: [ops, eng] };
+    expect(workerFor(roster, rowFor("builder"))).toBeUndefined();
   });
 
-  it("attributes the row to no worker when the mailbox doesn't settle it, never to several", () => {
-    const both: Roster = { workers: [ops, eng], workstreams: [onMailbox("x.shared", ["ops.builder", "eng.builder"])] };
-    expect(workerFor(both, rowOn("x.shared", "builder"))).toBeUndefined();
-    const neither: Roster = { workers: [ops, eng], workstreams: [] };
-    expect(workerFor(neither, rowOn("x.other", "builder"))).toBeUndefined();
+  it("resolves a name only one worker carries", () => {
+    const roster: Roster = { workers: [ops, toWorker({ id: "eng.reviewer", kind: "worker" })!] };
+    expect(workerFor(roster, rowFor("builder"))?.id).toBe("ops.builder");
   });
 
   it("a full worker id always wins", () => {
-    const roster: Roster = { workers: [ops, eng], workstreams: [] };
-    expect(workerFor(roster, rowOn("x.other", "ops.builder"))?.id).toBe("ops.builder");
+    const roster: Roster = { workers: [ops, eng] };
+    expect(workerFor(roster, rowFor("ops.builder"))?.id).toBe("ops.builder");
   });
 });
 
@@ -83,7 +79,7 @@ describe("BR-15: Tasks leaves done rows out, and a parked row with no ask is sti
   it("keeps every open row and drops done ones", () => {
     const rows = taskStatusSchema.options.map((s) => row(s, "builder"));
     const snapshot = {
-      boards: { "t.c": { ok: true, value: { refs: ["t.c.work"], rows } } },
+      boards: { s_1: { ok: true, value: { refs: ["s_1.tasks"], rows } } },
     } as unknown as LoadedSnapshot;
     expect(openRows(snapshot).map((r) => r.status).sort()).toEqual(["blocked", "errored", "in_progress", "parked", "pending"]);
   });

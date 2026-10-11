@@ -1,10 +1,10 @@
 /**
- * The three inventory collections — what they promise a reader that is not the
- * writer, and where the boundary around them actually falls.
+ * The worker inventory collection — what it promises a reader that is not the
+ * writer, and where the boundary around it actually falls.
  *
- * The collections are the floor the live inventory is written onto. Nothing
- * here writes a real row from a real mailbox or a real roster; that is the
- * binder's and the mailbox kind's job, and their own checks cover it. What has
+ * The collection is the floor the live inventory is written onto. Nothing
+ * here writes a real row from a real roster; that is the binder's job, and
+ * its own checks cover it. What has
  * to be true first is that a row written by one flow is readable by another in
  * the same org, is not readable from a different org, and does not quietly stop
  * being shared when an app flips an unrelated flag.
@@ -19,22 +19,14 @@ import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/c
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
-import {
-  mailboxInventoryRowSchema,
-  defineMailboxInventoryCollection,
-  defineMembershipIndexCollection,
-  defineWorkerInventoryCollection,
-  membershipKey,
-  membershipPrefix,
-  workerInventoryRowSchema
-} from "../src/index";
+import { defineWorkerInventoryCollection, workerInventoryRowSchema } from "../src/index";
 
 const ORG = "org_acme";
 const OTHER_ORG = "org_other";
 const USER = "u_boot";
 
 /**
- * A collection declared exactly as the three under test are, except that it
+ * A collection declared exactly as the one under test is, except that it
  * leaves `flowIsolation` unset. It is the live red state for BR-24: under
  * `isolateOrgState: true` its rows go private per flow while the real ones stay
  * shared, in the same process, on the same request.
@@ -46,65 +38,38 @@ const inheritsIsolation = defineResourceCollection({
 });
 
 const workers = defineWorkerInventoryCollection();
-const mailboxes = defineMailboxInventoryCollection();
-const memberships = defineMembershipIndexCollection();
 
 type Rows = {
   workers: unknown[];
-  mailboxes: unknown[];
-  memberships: unknown[];
   control: unknown[];
 };
 
 const writeBlock = handler({
   name: "inventory-write",
-  inputSchema: z.object({
-    workers: z.array(workerInventoryRowSchema),
-    mailboxes: z.array(mailboxInventoryRowSchema.partial().and(z.object({ id: z.string() }))),
-    memberships: z.array(z.tuple([z.string(), z.string()]))
-  }),
+  inputSchema: z.object({ workers: z.array(workerInventoryRowSchema) }),
   outputSchema: z.object({ written: z.number() }),
-  resources: { workers, mailboxes, memberships, control: inheritsIsolation },
+  resources: { workers, control: inheritsIsolation },
   execute: async (input: any, ctx: any) => {
     for (const row of input.workers) {
       await ctx.resources.workers.upsert(row.id, row);
     }
-    for (const row of input.mailboxes) {
-      await ctx.resources.mailboxes.upsert(row.id, row);
-    }
-    for (const [workerId, mailboxId] of input.memberships) {
-      await ctx.resources.memberships.upsert(membershipKey(workerId, mailboxId), {
-        workerId,
-        mailboxId
-      });
-    }
     await ctx.resources.control.upsert("probe", { id: "probe" });
-    return {
-      written: input.workers.length + input.mailboxes.length + input.memberships.length
-    };
+    return { written: input.workers.length };
   }
 });
 
 const readBlock = handler({
   name: "inventory-read",
-  inputSchema: z.object({ membershipsOf: z.string().optional() }),
+  inputSchema: z.object({}),
   outputSchema: z.object({
     workers: z.array(z.unknown()),
-    mailboxes: z.array(z.unknown()),
-    memberships: z.array(z.unknown()),
     control: z.array(z.unknown())
   }),
-  resources: { workers, mailboxes, memberships, control: inheritsIsolation },
-  execute: async (input: any, ctx: any) => {
+  resources: { workers, control: inheritsIsolation },
+  execute: async (_input: any, ctx: any) => {
     const state = (ref: any): unknown => ref.state;
-    const membershipRefs =
-      input.membershipsOf === undefined
-        ? await ctx.resources.memberships.list()
-        : await ctx.resources.memberships.list(membershipPrefix(input.membershipsOf));
     return {
       workers: (await ctx.resources.workers.list()).map(state),
-      mailboxes: (await ctx.resources.mailboxes.list()).map(state),
-      memberships: membershipRefs.map(state),
       control: (await ctx.resources.control.list()).map(state)
     };
   }
@@ -142,15 +107,7 @@ const SEED = {
   workers: [
     { id: "eng.lead", kind: "agent" },
     { id: "eng.analyst", kind: "agent" }
-  ],
-  mailboxes: [
-    { id: "eng.standup", kind: "mailbox", members: ["eng.lead", "eng.analyst"], openedAt: "2026-09-19T00:00:00.000Z" }
-  ],
-  memberships: [
-    ["eng.lead", "eng.standup"],
-    ["eng.lead", "eng.retro"],
-    ["eng.leadership", "eng.allhands"]
-  ] as Array<[string, string]>
+  ]
 };
 
 async function write(
@@ -170,26 +127,23 @@ async function write(
 
 async function read(
   ctx: ReturnType<typeof twoFlows>,
-  opts: { orgId?: string; tenantId?: string; membershipsOf?: string } = {}
+  opts: { orgId?: string; tenantId?: string } = {}
 ): Promise<Rows> {
-  const { membershipsOf, ...rest } = opts;
   const result: any = await runAction({
     flow: ctx.reader,
     actionName: "read",
-    input: membershipsOf === undefined ? {} : { membershipsOf },
+    input: {},
     userId: USER,
     stores: ctx.stores,
     runtimeConfig: {} as never,
-    ...rest
+    ...opts
   });
   return (result.output ?? result) as Rows;
 }
 
 describe("what the collections declare", () => {
-  it("pins the three storage patterns — public keys, breaking to move", () => {
+  it("pins the storage pattern — a public key, breaking to move", () => {
     expect(workers.pattern).toBe("inventory/workers/*");
-    expect(mailboxes.pattern).toBe("inventory/mailboxes/*");
-    expect(memberships.pattern).toBe("inventory/members/**");
   });
 
   it("declares flowIsolation as an explicit false, not an omission (BR-24)", () => {
@@ -197,10 +151,8 @@ describe("what the collections declare", () => {
     // whole mechanism: `effectiveStorageTuple` only consults the flow's
     // `isolateOrgState` when the entry left `flowIsolation` unset. A check
     // written as `toBeFalsy()` would pass on the omission and prove nothing.
-    for (const collection of [workers, mailboxes, memberships]) {
-      expect(collection.scope).toBe("org");
-      expect(collection.flowIsolation).toBe(false);
-    }
+    expect(workers.scope).toBe("org");
+    expect(workers.flowIsolation).toBe(false);
     // The control collection is the omission, so the assertion above is known
     // to discriminate rather than merely to hold.
     expect(inheritsIsolation.flowIsolation).toBeUndefined();
@@ -219,30 +171,6 @@ describe("a flow that did not write the rows", () => {
       "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
       "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
     });
-    expect(rows.mailboxes).toEqual([
-      {
-        id: "eng.standup",
-        kind: "mailbox",
-        members: ["eng.lead", "eng.analyst"],
-        openedAt: "2026-09-19T00:00:00.000Z"
-      }
-    ]);
-    // The third collection is asserted here too. The seed writes to all three,
-    // so without this a membership upsert could fail outright and the worker and
-    // mailbox assertions above would still pass — the case would be green about
-    // two thirds of what it claims to read back.
-    expect(rows.memberships).toHaveLength(3);
-    expect(
-      (rows.memberships as Array<{ workerId: string; mailboxId: string }>).map(
-        (row) => `${row.workerId}/${row.mailboxId}`
-      )
-    ).toEqual(
-      expect.arrayContaining([
-        "eng.lead/eng.standup",
-        "eng.lead/eng.retro",
-        "eng.leadership/eng.allhands"
-      ])
-    );
   });
 
   it("reads nothing at all under a different orgId (BR-15)", async () => {
@@ -256,8 +184,6 @@ describe("a flow that did not write the rows", () => {
     // same process reads the rows under the org that wrote them.
     expect(mine.workers).toHaveLength(2);
     expect(theirs.workers).toEqual([]);
-    expect(theirs.mailboxes).toEqual([]);
-    expect(theirs.memberships).toEqual([]);
   });
 
   it("still sees the rows when the app isolates its org state (BR-24)", async () => {
@@ -268,11 +194,10 @@ describe("a flow that did not write the rows", () => {
 
     expect(rows.workers).toHaveLength(2);
     expect(Object.keys(byId(rows.workers)).sort()).toEqual(["eng.analyst", "eng.lead"]);
-    expect(rows.mailboxes.map((row: any) => row.id)).toEqual(["eng.standup"]);
     // The red state, live in the same request: the control collection left
     // `flowIsolation` unset, so under this flag its row went private to the
-    // writer's flow and the reader sees none of it. That is what these three
-    // collections would do if they stopped spelling `false`.
+    // writer's flow and the reader sees none of it. That is what the worker
+    // collection would do if it stopped spelling `false`.
     expect(rows.control).toEqual([]);
   });
 
@@ -296,52 +221,17 @@ describe("a flow that did not write the rows", () => {
   });
 });
 
-describe("the membership index", () => {
-  it("lists one worker's mailboxes and stops at the segment boundary (BR-17)", async () => {
-    const ctx = twoFlows();
-    await write(ctx, { orgId: ORG });
-
-    const rows = await read(ctx, { orgId: ORG, membershipsOf: "eng.lead" });
-
-    // "eng.leadership" is seeded precisely so a prefix match without the
-    // trailing slash would drag it in. Asserting the mailbox ids rather than a
-    // count is what makes that visible when it breaks.
-    expect(rows.memberships).toEqual([
-      { workerId: "eng.lead", mailboxId: "eng.standup" },
-      { workerId: "eng.lead", mailboxId: "eng.retro" }
-    ]);
-  });
-
-  it("keeps the worker id as one whole path segment", () => {
-    expect(membershipKey("eng.lead", "eng.standup")).toBe("eng.lead/eng.standup");
-    expect(membershipPrefix("eng.lead")).toBe("eng.lead/");
-  });
-
-  it("refuses an id that would file the row under another worker", () => {
-    // A slash here is not a malformed key — it is a well-formed key under the
-    // wrong worker, which reads back as that worker's membership and which nothing
-    // downstream could notice.
-    expect(() => membershipKey("eng/lead", "eng.standup")).toThrow(/path separator/);
-    expect(() => membershipKey("eng.lead", "a/b")).toThrow(/path separator/);
-    expect(() => membershipPrefix("eng\\lead")).toThrow(/path separator/);
-    expect(() => membershipKey("", "eng.standup")).toThrow(/must not be empty/);
-    expect(() => membershipKey("..", "eng.standup")).toThrow(/must not be/);
-  });
-});
-
 describe("the row schemas", () => {
   it("drops a key the schema does not declare", () => {
-    const parsed = mailboxInventoryRowSchema.parse({
-      id: "eng.standup",
-      kind: "mailbox",
-      members: [],
-      openedAt: null,
+    const parsed = workerInventoryRowSchema.parse({
+      id: "eng.lead",
+      kind: "agent",
       postCount: 7
     });
     expect(parsed).not.toHaveProperty("postCount");
   });
 
-  it("fills door, members and openedAt on a row written before they existed (BP-030)", () => {
+  it("fills door, hired and incarnation on a row written before they existed (BP-030)", () => {
     // The tolerance BP-030 asks for, at the schema. Were these required rather
     // than defaulted, the framework's read path would fail the parse and hand
     // back the collection's default — so an older row would lose its `id` too,
@@ -352,12 +242,6 @@ describe("the row schemas", () => {
       door: null,
       hired: null,
       incarnation: null
-    });
-    expect(mailboxInventoryRowSchema.parse({ id: "eng.standup", kind: "mailbox" })).toEqual({
-      id: "eng.standup",
-      kind: "mailbox",
-      members: [],
-      openedAt: null
     });
   });
 });

@@ -99,7 +99,7 @@ export function withRoster(snapshot: LoadedSnapshot, read: RosterRead): { snapsh
   return {
     snapshot: {
       ...snapshot,
-      inventory: { ok: true, value: { ...(snapshot.inventory.ok ? snapshot.inventory.value : { workstreams: [] }), workers } },
+      inventory: { ok: true, value: { workers } },
     },
     workers,
     own,

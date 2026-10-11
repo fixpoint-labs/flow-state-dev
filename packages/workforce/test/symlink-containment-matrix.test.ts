@@ -12,8 +12,8 @@
  * The assertion is the same everywhere and it is about content, not wording: a
  * complete second workforce tree sits outside the configured root carrying a
  * canary string, and no door may return, throw or report anything holding it. A
- * door that followed a link would load a worker, mailbox, document, module or
- * skill from the outside tree, and the canary is what makes that visible without
+ * door that followed a link would load a worker, document, module or skill
+ * from the outside tree, and the canary is what makes that visible without
  * pinning any message text.
  *
  * The canary is in the outside tree's **filenames as well as its file contents**,
@@ -35,7 +35,6 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  readMailboxesDirectory,
   readPackagesDirectory,
   readResourcesDirectory,
   readWorkerSkills,
@@ -89,9 +88,6 @@ function buildTree(dir: string, tag: string): void {
   mkdirSync(join(dir, worker), { recursive: true });
   writeFileSync(join(dir, worker, "WORKER.md"), doc("worker"));
 
-  mkdirSync(join(dir, `teams/${TEAM}/mailboxes/standup`), { recursive: true });
-  writeFileSync(join(dir, `teams/${TEAM}/mailboxes/standup/MAILBOX.md`), doc("mailbox"));
-
   mkdirSync(join(dir, `teams/${TEAM}/resources`), { recursive: true });
   writeFileSync(join(dir, `teams/${TEAM}/resources/brief.md`), doc("document"));
   writeFileSync(join(dir, `teams/${TEAM}/resources/store.ts`), module_);
@@ -136,9 +132,6 @@ function buildTree(dir: string, tag: string): void {
   mkdirSync(join(dir, "flows/workers"), { recursive: true });
   writeFileSync(join(dir, "flows/workers/agent.ts"), module_);
   writeFileSync(join(dir, `flows/workers/${tag}-worker-flow.ts`), module_);
-  mkdirSync(join(dir, "flows/mailboxes"), { recursive: true });
-  writeFileSync(join(dir, "flows/mailboxes/room.ts"), module_);
-  writeFileSync(join(dir, `flows/mailboxes/${tag}-mailbox-flow.ts`), module_);
 }
 
 /** The configured tree and the tree outside it, side by side under `base`. */
@@ -159,7 +152,6 @@ function relink(root: string, outside: string, relative: string): void {
 /** Every reader that opens a workforce root, named for the failure message. */
 const DOORS: ReadonlyArray<{ name: string; open: (root: string) => Promise<unknown> }> = [
   { name: "readWorkforceDirectory", open: (root) => readWorkforceDirectory(root) },
-  { name: "readMailboxesDirectory", open: (root) => readMailboxesDirectory(root) },
   { name: "readResourcesDirectory", open: (root) => readResourcesDirectory(root) },
   { name: "readPackagesDirectory", open: (root) => readPackagesDirectory(root) },
   { name: "readWorkerSkills", open: (root) => readWorkerSkills(root, { team: TEAM, worker: WORKER }) },
@@ -322,7 +314,6 @@ describe("no door follows a symlink out of the configured root", () => {
   it.each([
     ["workers/ level", `teams/${TEAM}/workers`],
     ["resources/ slot", `teams/${TEAM}/resources`],
-    ["mailboxes/ slot", `teams/${TEAM}/mailboxes`],
     ["skills/ level", `teams/${TEAM}/skills`],
     ["packages/ slot", `teams/${TEAM}/packages`],
     ["package folder", `teams/${TEAM}/packages/escalation`],
@@ -353,7 +344,6 @@ describe("no door follows a symlink out of the configured root", () => {
     // own leaf to be fooled at.
     for (const leaf of [
       `teams/${TEAM}/workers/${WORKER}/WORKER.md`,
-      `teams/${TEAM}/mailboxes/standup/MAILBOX.md`,
       `teams/${TEAM}/resources/brief.md`,
       `teams/${TEAM}/resources/store.ts`,
       `teams/${TEAM}/skills/team-skill/SKILL.md`,

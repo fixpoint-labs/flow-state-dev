@@ -34,12 +34,12 @@ const sourceOf = (domain: BlockManifestSource["domain"]): BlockManifestSource =>
   entries: () => [{ id: `${domain}-one`, kind: domain, purpose: `A ${domain} entry.` }]
 });
 
-/** The capability under test, carrying three of the four domains. */
-function capabilityWithThreeDomains() {
+/** The capability under test, carrying two of the three domains. */
+function capabilityWithTwoDomains() {
   return createWorkforceCapability({
-    roster: { workers: [], mailboxes: [] },
+    roster: { workers: [] },
     inventory: {},
-    sources: [sourceOf("workers"), sourceOf("mailboxes"), sourceOf("skills")]
+    sources: [sourceOf("workers"), sourceOf("skills")]
   });
 }
 
@@ -66,7 +66,7 @@ function ctxForWorker(discover?: string[]): never {
  * green for a door nobody could call.
  */
 async function askDoor(
-  capability: ReturnType<typeof capabilityWithThreeDomains>,
+  capability: ReturnType<typeof capabilityWithTwoDomains>,
   discover?: string[],
   input: { domain?: string | null; detail?: "thin" | "full" } = {}
 ): Promise<{ domains: string[]; problem?: string; entries: string[] }> {
@@ -99,24 +99,24 @@ async function askDoor(
 
 describe("a worker narrows the discovery door with its own file", () => {
   it("BR-10 · sees every domain its scope carries when its file names none", async () => {
-    const answer = await askDoor(capabilityWithThreeDomains(), undefined);
-    expect(answer.domains).toEqual(["workers", "mailboxes", "skills"]);
-    expect(answer.entries).toEqual(["workers-one", "mailboxes-one", "skills-one"]);
+    const answer = await askDoor(capabilityWithTwoDomains(), undefined);
+    expect(answer.domains).toEqual(["workers", "skills"]);
+    expect(answer.entries).toEqual(["workers-one", "skills-one"]);
   });
 
   it("BR-9 · sees the domains it named and no others", async () => {
-    const answer = await askDoor(capabilityWithThreeDomains(), ["workers", "mailboxes"]);
-    expect(answer.domains).toEqual(["workers", "mailboxes"]);
+    const answer = await askDoor(capabilityWithTwoDomains(), ["workers"]);
+    expect(answer.domains).toEqual(["workers"]);
     // Absent, not empty-with-a-reason: the withheld domain does not appear at
     // all, so there is nothing for the model to ask about again.
     expect(answer.domains).not.toContain("skills");
   });
 
   it("BR-11 · does not reach a domain its scope lacks by naming it", async () => {
-    // `resources` is one of the four pinned names and is NOT in this scope.
+    // `resources` is one of the three pinned names and is NOT in this scope.
     // `workers` is in the same list and IS — so a run that returned nothing at
     // all would be a different failure than the one under test.
-    const answer = await askDoor(capabilityWithThreeDomains(), ["workers", "resources"]);
+    const answer = await askDoor(capabilityWithTwoDomains(), ["workers", "resources"]);
     expect(answer.domains).toEqual(["workers"]);
     expect(answer.entries).toEqual(["workers-one"]);
   });
@@ -125,20 +125,20 @@ describe("a worker narrows the discovery door with its own file", () => {
     // The gate is the registry, not the tool's filter (BP-031). The `domain`
     // argument is model-supplied, so this is the call a worker would make to
     // route around its own file.
-    const answer = await askDoor(capabilityWithThreeDomains(), ["workers"], { domain: "skills" });
+    const answer = await askDoor(capabilityWithTwoDomains(), ["workers"], { domain: "skills" });
     expect(answer.entries).toEqual([]);
     expect(answer.domains).toEqual(["skills"]);
   });
 
   it("sees nothing at all when its file names an empty list", async () => {
-    const answer = await askDoor(capabilityWithThreeDomains(), []);
+    const answer = await askDoor(capabilityWithTwoDomains(), []);
     expect(answer.domains).toEqual([]);
   });
 
   it("BR-4 · names the known domains rather than throwing on a domain that does not exist", async () => {
-    const answer = await askDoor(capabilityWithThreeDomains(), undefined, { domain: "boards" });
+    const answer = await askDoor(capabilityWithTwoDomains(), undefined, { domain: "boards" });
     expect(answer.problem).toMatch(/Unknown domain "boards"/);
-    expect(answer.problem).toMatch(/workers, mailboxes, skills, resources/);
+    expect(answer.problem).toMatch(/workers, skills, resources/);
   });
 });
 
@@ -150,15 +150,15 @@ describe("the `discover:` worker-file key", () => {
   });
 
   function hire(manifests: WorkerManifest[]) {
-    const flow = defineAgentWorkerFlow({ uses: [capabilityWithThreeDomains()] });
+    const flow = defineAgentWorkerFlow({ uses: [capabilityWithTwoDomains()] });
     return mintWorkers(manifests, { workerFlows: { agent: flow as never } });
   }
 
   it("carries a worker's list onto its settings", () => {
     const [worker] = hire([
-      record({ id: "engineering.lead", declared: { discover: ["workers", "mailboxes"] } })
+      record({ id: "engineering.lead", declared: { discover: ["workers", "skills"] } })
     ]);
-    expect((worker!.config as { discover?: string[] }).discover).toEqual(["workers", "mailboxes"]);
+    expect((worker!.config as { discover?: string[] }).discover).toEqual(["workers", "skills"]);
   });
 
   it("leaves the key absent when the file names none, which is today's reach", () => {
@@ -166,7 +166,7 @@ describe("the `discover:` worker-file key", () => {
     expect((worker!.config as { discover?: string[] }).discover).toBeUndefined();
   });
 
-  it("refuses a misspelled domain at the mint, naming the four", () => {
+  it("refuses a misspelled domain at the mint, naming the three", () => {
     let message = "";
     try {
       hire([record({ id: "engineering.lead", declared: { discover: ["seets"] } })]);
@@ -177,7 +177,7 @@ describe("the `discover:` worker-file key", () => {
     // author reading it learns only that something about their file is wrong.
     expect(message).toMatch(/discover/);
     expect(message).toMatch(/workers/);
-    expect(message).toMatch(/mailboxes/);
+    expect(message).toMatch(/skills/);
     expect(message).toMatch(/resources/);
   });
 
@@ -240,7 +240,7 @@ describe("the `discover:` worker-file key", () => {
     // beside a sibling that does not carry it.
     expect(lead!.id).toBe("engineering.lead");
     expect(await askThroughHiredWorker(lead!)).toEqual(["workers"]);
-    expect(await askThroughHiredWorker(scribe!)).toEqual(["workers", "mailboxes", "skills"]);
+    expect(await askThroughHiredWorker(scribe!)).toEqual(["workers", "skills"]);
   });
 
   it("accepts a domain the scope does not carry — narrowing is not a refusal", () => {
@@ -273,7 +273,7 @@ describe("the `discover:` worker-file key", () => {
 describe("one door per narrowing, however the worker wrote it", () => {
   /** The `discover` tool this worker would be offered, un-run. */
   async function resolveDoor(
-    capability: ReturnType<typeof capabilityWithThreeDomains>,
+    capability: ReturnType<typeof capabilityWithTwoDomains>,
     discover?: string[]
   ): Promise<unknown> {
     const gen = generator({
@@ -293,10 +293,10 @@ describe("one door per narrowing, however the worker wrote it", () => {
   it("hands two workers that named the same domains in different orders the same door", async () => {
     // One capability instance: the cache is per-capability, so two of them
     // would prove nothing.
-    const capability = capabilityWithThreeDomains();
+    const capability = capabilityWithTwoDomains();
 
-    const written = await resolveDoor(capability, ["workers", "mailboxes"]);
-    const writtenOther = await resolveDoor(capability, ["mailboxes", "workers"]);
+    const written = await resolveDoor(capability, ["workers", "skills"]);
+    const writtenOther = await resolveDoor(capability, ["skills", "workers"]);
 
     expect(writtenOther).toBe(written);
   });
@@ -304,21 +304,21 @@ describe("one door per narrowing, however the worker wrote it", () => {
   it("and the shared door answers each of them exactly as its own would", async () => {
     // The sort must normalize the KEY without touching the narrowing: a worker
     // that wrote its list the other way round still sees the same domains.
-    const capability = capabilityWithThreeDomains();
+    const capability = capabilityWithTwoDomains();
 
-    const forward = await askDoor(capability, ["workers", "mailboxes"]);
-    const reversed = await askDoor(capability, ["mailboxes", "workers"]);
+    const forward = await askDoor(capability, ["workers", "skills"]);
+    const reversed = await askDoor(capability, ["skills", "workers"]);
 
     expect(reversed).toEqual(forward);
-    expect(forward.domains).toEqual(["workers", "mailboxes"]);
+    expect(forward.domains).toEqual(["workers", "skills"]);
   });
 
   it("still keeps a differently-narrowed worker on its own door", async () => {
     // The guard against over-normalizing: sorting the key must not collapse
     // two genuinely different sets into one shared door.
-    const capability = capabilityWithThreeDomains();
+    const capability = capabilityWithTwoDomains();
 
-    const pair = await resolveDoor(capability, ["workers", "mailboxes"]);
+    const pair = await resolveDoor(capability, ["workers", "skills"]);
     const single = await resolveDoor(capability, ["workers"]);
 
     expect(single).not.toBe(pair);

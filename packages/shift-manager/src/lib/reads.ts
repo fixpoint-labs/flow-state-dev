@@ -8,29 +8,25 @@
  *
  * What a refresh reads, in order:
  *
- * 1. **The person's sessions**, dispatch runs included. A worker woken by a
- *    mailbox post runs in a dispatch-run session, which the default listing
- *    leaves out, so without `include: "dispatch-runs"` that worker's ask would
- *    be invisible. This is also Shift Manager's first read: when the Lab refuses it
+ * 1. **The person's sessions**, dispatch runs included. A worker a dispatch
+ *    woke runs in a dispatch-run session, which the default listing leaves
+ *    out, so without `include: "dispatch-runs"` that worker's ask would be
+ *    invisible. This is also Shift Manager's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
  *    and nothing else is read (BR-3).
  * 2. **The organization**, off a listed session. The listing only ever holds
  *    sessions in the organization the Lab resolved for the person, and a
  *    session records it. A person who holds no session of their own on the
- *    mailbox kind or the roster flow yet has one opened on each first
- *    (`withReaderSessions`), and the Lab stamps it with the organization it
+ *    roster flow yet has one opened on it first (`withReaderSessions`), and the Lab stamps it with the organization it
  *    resolves for them, so a member on a first visit is read like any other.
- *    A Lab that still lists the person no session (it serves neither) names
+ *    A Lab that still lists the person no session (it serves no roster) names
  *    no organization, and gets the refusal too: Shift Manager never draws a
  *    Lab under an unknown one (ER-4).
- * 3. **The inventory**: the organization's worker and mailbox collections, found
- *    by their published key patterns in the manifest of a listed session whose
- *    flow declares them (the mailbox kind does). Nothing about the tree is
- *    written in Shift Manager; this is where every worker, team and workstream name
- *    comes from.
- * 4. **Each workstream's attached boards**: the mailbox kind's manifest lists
- *    one collection per attached board, `<mailboxId>.<name>`, read through the
- *    mailbox's own session. **And every conversation's board**: the tasks a
+ * 3. **The inventory**: the organization's worker collection, found by its
+ *    published key pattern in the manifest of a listed session whose flow
+ *    declares it (the roster flow does). Nothing about the tree is written in
+ *    Shift Manager; this is where every worker and team name comes from.
+ * 4. **Every conversation's board**: the tasks a
  *    conversation filed sit in one collection at the person's own scope,
  *    each under its conversation's partition, so one read through any
  *    session whose flow declares it answers every board of theirs, grouped
@@ -57,8 +53,8 @@
  * Manifests are static per flow, so they are cached across refreshes by
  * flow, never re-read per screen.
  *
- * The one answer path, {@link LabReader.resume}, is here too, so Inbox and a
- * workstream's Stream resolve an ask the same way: through the flow the ask's
+ * The one answer path, {@link LabReader.resume}, is here too, so Inbox and
+ * Chief of Staff resolve an ask the same way: through the flow the ask's
  * session records as its owner (`flowId`), never the board's.
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
@@ -86,8 +82,7 @@ export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure 
 export type Worker = {
   /**
    * The worker's id: `<team>.<name>`, or a bare name for an org worker. Boards
-   * and mailboxes name the worker by it, and its sessions carry it as their
-   * `workerId`.
+   * name the worker by it, and its sessions carry it as their `workerId`.
    */
   id: string;
   /** The worker flow the worker runs on, which is also that flow's copy id; `null` on a row that has none. */
@@ -103,23 +98,13 @@ export type Worker = {
   name: string;
 };
 
-/** A workstream: a declared mailbox, as the mailbox inventory registers it (D2). */
-export type Workstream = {
-  /** The mailbox's id, which is its session id and its address in Shift Manager. */
-  id: string;
-  /** The mailbox's flow kind. */
-  kind: string | null;
-  /** The worker ids the mailbox declares as members. */
-  members: string[];
-};
-
 /** Where a project lives: the organization's, or the person's own. */
 export type ProjectVisibility = "shared" | "private";
 
 /**
  * A project: a row of the organization's `projects` collection (shared), or of
- * the person's own (private). It names no team, and lists no mailbox: its
- * workstreams are its entries, read on its screen. Its address is its
+ * the person's own (private). It names no team: its workstreams are its
+ * entries, read on its screen. Its address is its
  * visibility and its id: a private project and a shared one can share an id.
  */
 export type Project = {
@@ -157,12 +142,12 @@ export type Projects = {
  */
 export type RunLink = { sessionId: string; requestId: string; attempt: number };
 
-/** One row on an attached board, with the fields a board publishes to a browser. */
+/** One row on a conversation's board, with the fields a board publishes to a browser. */
 export type BoardRow = {
-  /** The board's ref, `<holder>.<name>`: a mailbox's board, or a conversation's (`<sessionId>.tasks`). */
+  /** The board's ref: `<sessionId>.tasks`, the conversation that holds it and the collection. */
   boardRef: string;
-  /** Who holds the board: the mailbox's id, or the conversation's session id. Both are session ids. */
-  mailboxId: string;
+  /** The session id of the conversation that holds the board. */
+  holderSessionId: string;
   id: string;
   title: string;
   /** The row's goal, as filed. */
@@ -186,8 +171,8 @@ export type BoardRow = {
   completedAt: number | null;
 };
 
-/** A workstream's attached boards and every row on them. */
-export type WorkstreamBoards = { refs: string[]; rows: BoardRow[] };
+/** A conversation's board and every row on it. */
+export type ConversationBoards = { refs: string[]; rows: BoardRow[] };
 
 /** A pending approval or question, and the session that holds it. */
 export type Ask = {
@@ -201,7 +186,7 @@ export type Ask = {
    * is shown, and its answer is unavailable.
    */
   flowId: string | null;
-  /** The session that started this run, for a dispatch run (a mailbox, when a post woke the worker). */
+  /** The session that started this run, for a dispatch run. */
   parentSessionId: string | null;
   kind: "approval" | "question";
   item: SuspensionItem;
@@ -231,13 +216,13 @@ export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "sc
 
 /** What an ask's card says when its run can't be reopened from outside the Lab. */
 export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a mailbox post waking a worker, a dispatch, a webhook) is never reopened from outside it.";
+  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a dispatch, a webhook) is never reopened from outside it.";
 
 /**
  * Why a Lab that lists the person no session, even after one was asked for on
  * the reader flows, is refused: nothing it serves says which organization they are in.
  */
-function noOrganization(userId: string, why = "it holds no session of theirs and serves no mailbox kind or roster flow to open one on"): string {
+function noOrganization(userId: string, why = "it holds no session of theirs and serves no roster flow to open one on"): string {
   return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
 }
 
@@ -251,11 +236,10 @@ export const UNOWNED_SESSION_UNANSWERABLE =
  */
 export type DeclaredResource = { ref: string; sessionId: string };
 
-/** The organization's workers and workstreams, as the inventory registers them. */
+/** The organization's workers, as the inventory registers them. */
 export type Inventory = {
   /** Every worker the inventory registers. */
   workers: Worker[];
-  workstreams: Workstream[];
 };
 
 /** Everything one refresh read. */
@@ -276,36 +260,24 @@ export type LabSnapshot =
       inventory: Section<Inventory>;
       /**
        * The organization's projects. A Lab whose flows declare no projects
-       * collection has none, which is not a failure: every workstream is then
-       * under No project.
+       * collection has none, which is not a failure.
        */
       projects: Section<Projects>;
-      /**
-       * Per board holder: a workstream's id, or the id of a conversation that
-       * keeps a board. Absent for a workstream when the inventory did not load.
-       */
-      boards: Record<string, Section<WorkstreamBoards>>;
+      /** Per board holder: the id of a conversation that keeps a board. */
+      boards: Record<string, Section<ConversationBoards>>;
       asks: Section<Ask[]>;
       /** The declared documents Jump to finds and opens read-only (BR-10). */
       resources: Section<DeclaredResource[]>;
     };
 
-/** The organization's inventory collections, by their published key patterns. */
-const INVENTORY_PATTERNS = { workers: "inventory/workers/*", mailboxes: "inventory/mailboxes/*" } as const;
+/** The organization's worker inventory, by its published key pattern. */
+const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
 
 /**
- * The flow kind a person's own session for reading the organization's
- * inventory is opened on, when they hold none: workforce's built-in mailbox
- * kind (`MAILBOX_KIND`), which declares the inventory until mailboxes become
- * workstreams. Spelled here because the workforce browser entry doesn't export
- * it; `static.test.ts` pins the two together.
- */
-export const INVENTORY_READER_FLOW = "mailbox";
-
-/**
- * The flow a person's own session for reading their projects and the
- * workstream entries is opened on, when they hold none: workforce's roster
- * flow, which declares the projects at both scopes and the entries.
+ * The flow a person's own session for reading the worker inventory, their
+ * projects and the workstream entries is opened on, when they hold none:
+ * workforce's roster flow, which declares the workers, the projects at both
+ * scopes and the entries.
  */
 export const PROJECT_READER_FLOW = ROSTER_FLOW;
 
@@ -406,18 +378,6 @@ export function toWorker(row: unknown): Worker | undefined {
   return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
 }
 
-/** A mailbox inventory row. A row written before `members` existed reads as none (BP-030). */
-export function toWorkstream(row: unknown): Workstream | undefined {
-  const id = text(field(row, "id"));
-  if (id === null) return undefined;
-  const members = field(row, "members");
-  return {
-    id,
-    kind: text(field(row, "kind")),
-    members: Array.isArray(members) ? members.filter((m): m is string => typeof m === "string") : [],
-  };
-}
-
 /**
  * A project row. A row missing its id, title or owner is not a project anyone
  * can address or own, and is left out; every other field reads as empty when
@@ -459,10 +419,10 @@ function strings(value: unknown): string[] {
 }
 
 /** A board row, from what the board publishes. */
-export function toBoardRow(boardRef: string, mailboxId: string, topic: string, data: unknown): BoardRow {
+export function toBoardRow(boardRef: string, holderSessionId: string, topic: string, data: unknown): BoardRow {
   return {
     boardRef,
-    mailboxId,
+    holderSessionId,
     id: text(field(data, "id")) ?? topic,
     title: text(field(data, "title")) ?? text(field(data, "goal")) ?? topic,
     goal: text(field(data, "goal")),
@@ -481,26 +441,6 @@ export function toBoardRow(boardRef: string, mailboxId: string, topic: string, d
 }
 
 /**
- * The board refs a mailbox's manifest lists for that mailbox: collections
- * keyed `<mailboxId>.<name>/**` where the name carries no dot. The split is
- * exact because a board name may not contain one, so `a.b.c` belongs to `a.b`
- * and never to `a`.
- */
-export function boardRefsFor(mailboxId: string, manifest: ResourceManifest): string[] {
-  const prefix = `${mailboxId}.`;
-  return manifest.resources
-    .filter(
-      (entry) =>
-        entry.kind === "collection" &&
-        entry.client.state?.read === true &&
-        entry.ref.startsWith(prefix) &&
-        !entry.ref.slice(prefix.length).includes(".") &&
-        entry.pattern === `${entry.ref}/**`,
-    )
-    .map((entry) => entry.ref);
-}
-
-/**
  * The collection every conversation's board keeps its rows in: Workforce's
  * conversation ledger (`CONVERSATION_LEDGER_ID`), which its browser entry
  * doesn't export. `static.test.ts` pins the two together.
@@ -508,8 +448,8 @@ export function boardRefsFor(mailboxId: string, manifest: ResourceManifest): str
 export const CONVERSATION_BOARD_COLLECTION = "tasks";
 
 /**
- * A conversation board's ref: `<sessionId>.tasks`, the shape a mailbox's
- * board ref has, so a task route and a row name their board one way.
+ * A conversation board's ref: `<sessionId>.tasks`, so a task route and a row
+ * name their board one way.
  */
 export function conversationBoardRef(sessionId: string): string {
   return `${sessionId}.${CONVERSATION_BOARD_COLLECTION}`;
@@ -517,8 +457,8 @@ export function conversationBoardRef(sessionId: string): string {
 
 /**
  * The collection a board's tasks are stamped with on their runs' items (the
- * `collectionId` of each `task-change`): a workstream board's ref, or, for a
- * conversation's board, the one collection every conversation shares.
+ * `collectionId` of each `task-change`): for a conversation's board, the one
+ * collection every conversation shares; any other ref names its own.
  */
 export function collectionOfBoard(boardRef: string): string {
   return boardRef.endsWith(`.${CONVERSATION_BOARD_COLLECTION}`) ? CONVERSATION_BOARD_COLLECTION : boardRef;
@@ -547,8 +487,8 @@ async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input:
 export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
-  /** Re-read one board, a workstream's or a conversation's, for a screen waiting on a row to move. */
-  readBoard(mailboxId: string, boardRef: string): Promise<BoardRow[]>;
+  /** Re-read one conversation's board, for a screen waiting on a row to move. */
+  readBoard(sessionId: string): Promise<BoardRow[]>;
   /**
    * Answer an ask through its session's owning flow. Rejects when the session
    * names no owner, or when the Lab refuses the answer.
@@ -607,15 +547,12 @@ export function createLabReader(clients: LabClients): LabReader {
   const readCollection = (sessionId: string, ref: string) =>
     readEveryCollectionPage(clients.resources, sessionId, ref, { limit: PAGE_SIZE });
 
-  const readBoard = async (mailboxId: string, boardRef: string): Promise<BoardRow[]> => {
-    if (boardRef !== conversationBoardRef(mailboxId)) {
-      return (await readCollection(mailboxId, boardRef)).map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
-    }
-    // A conversation's board: the person's whole ledger, read through the
-    // conversation, keeping its own partition's rows.
-    return (await readCollection(mailboxId, CONVERSATION_BOARD_COLLECTION))
-      .filter((row) => conversationOfTopic(row.topic) === mailboxId)
-      .map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
+  /** A conversation's board: the person's whole ledger, read through the conversation, keeping its own partition's rows. */
+  const readBoard = async (sessionId: string): Promise<BoardRow[]> => {
+    const boardRef = conversationBoardRef(sessionId);
+    return (await readCollection(sessionId, CONVERSATION_BOARD_COLLECTION))
+      .filter((row) => conversationOfTopic(row.topic) === sessionId)
+      .map((row) => toBoardRow(boardRef, sessionId, row.topic, row.clientData));
   };
 
   /**
@@ -628,7 +565,7 @@ export function createLabReader(clients: LabClients): LabReader {
    */
   const readConversationBoards = async (
     sessions: SessionSummary[],
-  ): Promise<Array<readonly [string, Section<WorkstreamBoards>]>> => {
+  ): Promise<Array<readonly [string, Section<ConversationBoards>]>> => {
     const byFlow = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
@@ -664,16 +601,14 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * Find the inventory through the first listed session whose flow declares
-   * it: workers and mailboxes, or, when no flow declares the mailboxes (a Lab
-   * that serves no mailbox kind), the workers alone, with no mailbox workstream.
+   * Find the worker inventory through the first listed session whose flow
+   * declares it, and read it there.
    */
   const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
     const byFlow = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
     }
-    let workersOnly: { sessionId: string; workersRef: string } | undefined;
     for (const [flow, sessionId] of byFlow) {
       let manifest: ResourceManifest;
       try {
@@ -681,47 +616,18 @@ export function createLabReader(clients: LabClients): LabReader {
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
-      const refOf = (pattern: string) =>
-        manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern && r.client.state?.read === true)
-          ?.ref;
-      const workersRef = refOf(INVENTORY_PATTERNS.workers);
-      const mailboxesRef = refOf(INVENTORY_PATTERNS.mailboxes);
+      const workersRef = manifest.resources.find(
+        (r) => r.kind === "collection" && r.pattern === WORKER_INVENTORY_PATTERN && r.client.state?.read === true,
+      )?.ref;
       if (workersRef === undefined) continue;
-      if (mailboxesRef === undefined) {
-        workersOnly ??= { sessionId, workersRef };
-        continue;
-      }
       try {
-        const [workerRows, mailboxRows] = await Promise.all([
-          readCollection(sessionId, workersRef),
-          readCollection(sessionId, mailboxesRef),
-        ]);
-        const workers = workerRows.map((r) => toWorker(r.clientData)).filter((worker): worker is Worker => worker !== undefined);
-        const workstreams = mailboxRows
-          .map((r) => toWorkstream(r.clientData))
-          .filter((w): w is Workstream => w !== undefined);
-        if (workers.length === 0 && workstreams.length === 0) {
-          return {
-            ok: false,
-            failure: {
-              message:
-                "The Lab's inventory is empty: it registers no workers and no mailboxes. The Lab booted without opening its inventory.",
-            },
-          };
-        }
-        return { ok: true, value: { workers, workstreams } };
-      } catch (error) {
-        return { ok: false, failure: describeFailure(error) };
-      }
-    }
-    if (workersOnly !== undefined) {
-      try {
-        const workers = (await readCollection(workersOnly.sessionId, workersOnly.workersRef))
+        const workers = (await readCollection(sessionId, workersRef))
           .map((r) => toWorker(r.clientData))
           .filter((worker): worker is Worker => worker !== undefined);
         // Every Workforce Lab's roster flow declares the workers, so none there is the Lab not having
         // opened its inventory, or these pages looking for keys it no longer writes: said below.
-        if (workers.length > 0) return { ok: true, value: { workers, workstreams: [] } };
+        if (workers.length > 0) return { ok: true, value: { workers } };
+        break;
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
@@ -730,7 +636,7 @@ export function createLabReader(clients: LabClients): LabReader {
       ok: false,
       failure: {
         message:
-          `No inventory to read: none of this person's sessions is on a flow that declares the organization's worker and mailbox inventory (${INVENTORY_PATTERNS.workers}, ${INVENTORY_PATTERNS.mailboxes}). Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
+          `No inventory to read: none of this person's sessions is on a flow that declares the organization's worker inventory (${WORKER_INVENTORY_PATTERN}) with a worker in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
       },
     };
   };
@@ -793,52 +699,39 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * This person's sessions, with one of their own on each reader flow: the
-   * mailbox kind, which declares the organization's inventory, and the roster
-   * flow, which declares the projects and the workstream entries. A person may
-   * hold only a worker's session, or none at all on a first visit, and nothing
-   * of theirs can read either. Each is opened once, under
+   * This person's sessions, with one of their own on the roster flow, which
+   * declares the worker inventory, the projects and the workstream entries. A
+   * person may hold only a worker's session, or none at all on a first visit,
+   * and nothing of theirs can read them. It is opened once, under
    * {@link readerSessionId} so overlapping first reads can't open two, and
    * listed from then on. One that can't be opened leaves the sessions as they
    * were, with why: `null` when there is nothing to open (the Lab serves no
-   * such flow, a 404), so nothing declares what it would have read.
+   * roster flow, a 404), so nothing declares what it would have read.
    */
-  const withReaderSessions = async (
-    sessions: SessionSummary[],
-  ): Promise<{ sessions: SessionSummary[]; inventory: Failure | null; projects: Failure | null }> => {
-    const missing = [INVENTORY_READER_FLOW, PROJECT_READER_FLOW].filter(
-      (flow) => !sessions.some((s) => s.parentSessionId == null && s.flowKind === flow),
-    );
-    if (missing.length === 0) return { sessions, inventory: null, projects: null };
-    const failures = new Map<string, Failure | null>();
-    await Promise.all(
-      missing.map(async (flow) => {
-        try {
-          let opening = openingReaders.get(clients);
-          if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
-          let open = opening.get(flow);
-          if (open === undefined) {
-            open = openReaderSession(flow).finally(() => opening!.delete(flow));
-            opening.set(flow, open);
-          }
-          await open;
-        } catch (error) {
-          const failure = describeFailure(error);
-          failures.set(flow, failure.httpStatus === 404 ? null : failure);
-        }
-      }),
-    );
+  const withReaderSessions = async (sessions: SessionSummary[]): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
+    const flow = PROJECT_READER_FLOW;
+    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === flow)) return { sessions, failure: null };
+    let failure: Failure | null = null;
+    try {
+      let opening = openingReaders.get(clients);
+      if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
+      let open = opening.get(flow);
+      if (open === undefined) {
+        open = openReaderSession(flow).finally(() => opening!.delete(flow));
+        opening.set(flow, open);
+      }
+      await open;
+    } catch (error) {
+      const described = describeFailure(error);
+      failure = described.httpStatus === 404 ? null : described;
+    }
     let listed = sessions;
     try {
       listed = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
     } catch {
-      // The opens landed or failed on their own; the next refresh lists them.
+      // The open landed or failed on its own; the next refresh lists it.
     }
-    return {
-      sessions: listed,
-      inventory: failures.get(INVENTORY_READER_FLOW) ?? null,
-      projects: failures.get(PROJECT_READER_FLOW) ?? null,
-    };
+    return { sessions: listed, failure };
   };
 
   /**
@@ -856,18 +749,6 @@ export function createLabReader(clients: LabClients): LabReader {
       const listed = await clients.sessions.listSessions({ userId: clients.userId });
       if (listed.some((s) => s.parentSessionId == null && s.flowKind === flow)) return;
       await clients.sessions.createSession({ flowKind: flow, userId: clients.userId });
-    }
-  };
-
-  /** A workstream's attached boards and their rows. */
-  const readWorkstreamBoards = async (workstream: Workstream): Promise<Section<WorkstreamBoards>> => {
-    try {
-      const manifest = await manifestFor(workstream.kind ?? workstream.id, workstream.id);
-      const refs = boardRefsFor(workstream.id, manifest);
-      const rows = (await Promise.all(refs.map((ref) => readBoard(workstream.id, ref)))).flat();
-      return { ok: true, value: { refs, rows } };
-    } catch (error) {
-      return { ok: false, failure: describeFailure(error) };
     }
   };
 
@@ -949,7 +830,7 @@ export function createLabReader(clients: LabClients): LabReader {
     let orgId: string | undefined;
     try {
       const first = sessions[0];
-      const opened = readers.inventory ?? readers.projects;
+      const opened = readers.failure;
       if (first === undefined) return opened === null ? { refused: { message: noOrganization(clients.userId) } } : firstFailure(opened);
       orgId = (await clients.sessions.getSession(first.id)).orgId;
     } catch (error) {
@@ -959,12 +840,7 @@ export function createLabReader(clients: LabClients): LabReader {
 
     const [inventory, ownWorkers] = await Promise.all([readInventory(sessions), readOwnWorkers()]);
 
-    const [boardEntries, conversationBoards, asks, resources, projects] = await Promise.all([
-      inventory.ok
-        ? Promise.all(
-            inventory.value.workstreams.map(async (w) => [w.id, await readWorkstreamBoards(w)] as const),
-          )
-        : Promise.resolve([] as Array<readonly [string, Section<WorkstreamBoards>]>),
+    const [conversationBoards, asks, resources, projects] = await Promise.all([
       readConversationBoards(sessions),
       (async (): Promise<Section<Ask[]>> => {
         if (!inventory.ok) {
@@ -997,7 +873,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
-      readProjects(sessions, readers.projects),
+      readProjects(sessions, readers.failure),
     ]);
 
     return {
@@ -1006,7 +882,7 @@ export function createLabReader(clients: LabClients): LabReader {
       orgId,
       inventory,
       projects,
-      boards: Object.fromEntries([...boardEntries, ...conversationBoards]),
+      boards: Object.fromEntries(conversationBoards),
       asks,
       resources,
     };

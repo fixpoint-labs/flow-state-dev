@@ -1,17 +1,16 @@
 /**
- * The Inventory tab's model: which of the organization's three inventory
- * collections a session's flow declares, and every row each one holds, read
- * through the production collection read.
+ * The Inventory tab's model: the ref of the organization's worker inventory,
+ * when a session's flow declares it as browser-readable, and every row it
+ * holds, read through the production collection read.
  *
- * The DevTool takes no dependency on the package that defines these
- * collections. It finds them by their three published key patterns in the
- * session's resource manifest, and uses whatever ref the flow gave each one.
- * The patterns are the contract; a ref is only the name one flow chose.
+ * The DevTool takes no dependency on the package that defines the collection.
+ * It finds it by its published key pattern in the session's resource
+ * manifest, and uses whatever ref the flow gave it. The pattern is the
+ * contract; a ref is only the name one flow chose.
  *
- * Three outcomes per collection, kept apart on purpose because a reader must
- * never confuse them:
+ * No readable collection means no tab. A read that runs is one of two
+ * outcomes, kept apart because a reader must never confuse them:
  *
- *  - **not installed** — the manifest lists no collection with that pattern.
  *  - **loaded** — every page was read. Zero rows is a real answer: the
  *    collection is there and nothing is registered in it.
  *  - **failed** — a page was refused or errored. Named with its status and how
@@ -23,55 +22,31 @@
 import type { ResourceClient, ResourceManifest } from "@flow-state-dev/client";
 import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } from "@flow-state-dev/client";
 
-/** The three published key patterns, by the section each one fills. */
-export const INVENTORY_PATTERNS = {
-  workers: "inventory/workers/*",
-  mailboxes: "inventory/mailboxes/*",
-  memberships: "inventory/members/**",
-} as const;
-
-/** One of the three inventory collections. */
-export type InventoryCollection = keyof typeof INVENTORY_PATTERNS;
-
-/** The three, in the order the tab shows them. */
-export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["workers", "mailboxes", "memberships"];
-
-/** Where one collection sits on this session's flow: its ref, and whether the browser may read it. */
-export type InventoryDeclaration = { ref: string; readable: boolean };
-
-/** Each collection's declaration on this flow, or `undefined` when the flow does not declare it. */
-export type InventoryDeclarations = Record<InventoryCollection, InventoryDeclaration | undefined>;
+/** The worker inventory's published key pattern. */
+export const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
 
 /** Page size for every read — the collection route's maximum. */
 const INVENTORY_PAGE_SIZE = 200;
 
 /**
- * Find the three collections in a session's manifest, by pattern.
+ * The ref of the browser-readable worker inventory on this flow.
  *
  * The manifest lists only collections with some client affordance, so one
  * declared with no browser read at all is indistinguishable here from one not
- * declared, and reads as not installed.
+ * declared. Either way there is no tab.
  */
-export function findInventoryCollections(manifest: ResourceManifest): InventoryDeclarations {
-  const found = {} as InventoryDeclarations;
-  for (const name of INVENTORY_COLLECTIONS) {
-    const entry = manifest.resources.find(
-      (resource) => resource.kind === "collection" && resource.pattern === INVENTORY_PATTERNS[name],
-    );
-    found[name] =
-      entry === undefined ? undefined : { ref: entry.ref, readable: entry.client.state?.read === true };
-  }
-  return found;
+export function workerInventoryRef(manifest: ResourceManifest): string | undefined {
+  const entry = manifest.resources.find(
+    (resource) =>
+      resource.kind === "collection" &&
+      resource.pattern === WORKER_INVENTORY_PATTERN &&
+      resource.client.state?.read === true,
+  );
+  return entry?.ref;
 }
 
-/** Whether the tab belongs on this session: any one of the three is readable. */
-export function hasReadableInventory(declarations: InventoryDeclarations): boolean {
-  return INVENTORY_COLLECTIONS.some((name) => declarations[name]?.readable === true);
-}
-
-/** The outcome of reading one collection. See the module header. */
+/** The outcome of reading the worker inventory. See the module header. */
 export type InventoryRead =
-  | { status: "not-installed" }
   | { status: "loaded"; rows: unknown[] }
   | {
       status: "failed";
@@ -131,10 +106,6 @@ export async function readEveryPage(
 
 /** A worker row as the tab shows it. */
 export type WorkerRow = { id: string; kind: string | null };
-/** A mailbox row as the tab shows it. `members` is empty and `registeredAt` null on a row that predates them. */
-export type MailboxRow = { id: string; kind: string | null; members: string[]; registeredAt: string | null };
-/** A membership row as the tab shows it. */
-export type MembershipRow = { workerId: string; mailboxId: string };
 
 function field(row: unknown, key: string): unknown {
   return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
@@ -147,40 +118,4 @@ function text(value: unknown): string | null {
 /** A worker row's fields, as stored. A missing kind reads as unknown, never throws. */
 export function toWorkerRow(row: unknown): WorkerRow {
   return { id: text(field(row, "id")) ?? "", kind: text(field(row, "kind")) };
-}
-
-/**
- * A mailbox row's fields, as stored. A row written before `members` or
- * `openedAt` existed reads as no members and an unknown time (BP-030).
- */
-export function toMailboxRow(row: unknown): MailboxRow {
-  const members = field(row, "members");
-  return {
-    id: text(field(row, "id")) ?? "",
-    kind: text(field(row, "kind")),
-    members: Array.isArray(members) ? members.filter((m): m is string => typeof m === "string") : [],
-    registeredAt: text(field(row, "openedAt")),
-  };
-}
-
-/** A membership row's fields, as stored. */
-export function toMembershipRow(row: unknown): MembershipRow {
-  return { workerId: text(field(row, "workerId")) ?? "", mailboxId: text(field(row, "mailboxId")) ?? "" };
-}
-
-/**
- * The mailboxes each worker's membership rows name, keyed by worker id.
- *
- * Read off the membership collection alone. A mailbox row's own `members` is
- * never consulted, so when the two disagree the tab shows both and the
- * mismatch stays visible.
- */
-export function mailboxesByWorker(memberships: readonly MembershipRow[]): Map<string, string[]> {
-  const byWorker = new Map<string, string[]>();
-  for (const row of memberships) {
-    const mailboxes = byWorker.get(row.workerId) ?? [];
-    mailboxes.push(row.mailboxId);
-    byWorker.set(row.workerId, mailboxes);
-  }
-  return byWorker;
 }

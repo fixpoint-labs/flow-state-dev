@@ -21,7 +21,6 @@ import { LabProvider, useLab } from "./lib/lab-data";
 import type { Failure } from "./lib/reads";
 import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
-import { EmptyState } from "./components/ui";
 import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
 import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
@@ -33,7 +32,6 @@ import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
 import { isTyping, usePanels } from "./lib/panels";
-import { findWorkstream, WorkstreamPanel, WorkstreamView } from "./surfaces/Workstream";
 
 /**
  * @param devtoolUrl The devtool a task's trace link opens: the one Shift Manager
@@ -171,27 +169,17 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
-    case "workstream": {
-      const workstream = findWorkstream(snapshot, route.mailboxId);
-      return workstream === undefined ? (
-        <EmptyState title="No such workstream" testId="workstream-missing">
-          This Lab's inventory registers no mailbox "{route.mailboxId}".
-        </EmptyState>
-      ) : (
-        <WorkstreamView key={workstream.id} snapshot={snapshot} workstream={workstream} tab={route.tab} gaps={gaps} />
-      );
-    }
   }
 }
 
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** What the collapsed right panel's strip names, per level that has a panel. */
-const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "STREAMS", workstream: "WORKSTREAM", task: "TASK DETAIL" };
+const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "ON CALL", task: "TASK DETAIL" };
 
 /**
- * The right panel's slot, per level: Chief of Staff's rail, the workstream's
- * panel, the task's slot, or nothing. v2's rail: 340px on the inspector
+ * The right panel's slot, per level: Chief of Staff's rail, the task's slot,
+ * or nothing. v2's rail: 340px on the inspector
  * surface (v2:26, 1219).
  *
  * Collapsed, it is a 43px strip with the handle that opens it and the panel's
@@ -219,9 +207,6 @@ function Panel({
   let content = null;
   if (route.level === "cos") {
     content = <ChiefOfStaffPanel snapshot={snapshot} gaps={gaps} />;
-  } else if (route.level === "workstream") {
-    const workstream = findWorkstream(snapshot, route.mailboxId);
-    if (workstream !== undefined) content = <WorkstreamPanel snapshot={snapshot} workstream={workstream} gaps={gaps} />;
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }

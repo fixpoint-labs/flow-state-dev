@@ -36,7 +36,7 @@ async function generate(root: string): Promise<WorkforceGeneratedModule> {
     await discoverWorkforceCode(root);
   const content = renderWorkforceCode(files, resourceModules, workerBlocks, packageBlocks);
 
-  const counts = { worker: 0, mailbox: 0, block: 0 };
+  const counts = { worker: 0, block: 0 };
   for (const file of files) counts[file.slot] += 1;
   // Per-worker blocks are counted and listed by FILE rather than by
   // registration: one team-level file registers for every worker on the team,
@@ -59,7 +59,7 @@ async function generate(root: string): Promise<WorkforceGeneratedModule> {
       ...packageBlocks.map((entry) => entry.path),
     ],
     summary:
-      `${counts.worker} worker flow(s), ${counts.mailbox} mailbox kind(s), ` +
+      `${counts.worker} worker flow(s), ` +
       `${counts.block} block(s), ${resourceModules.length} resource module(s), ` +
       `${workerBlockPaths.length} worker block(s), ${packageBlocks.length} package block(s)`,
   };

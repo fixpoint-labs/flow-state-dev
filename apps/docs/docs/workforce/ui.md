@@ -2,7 +2,7 @@
 title: Workforce components
 sidebar_label: Components
 sidebar_position: 13
-description: Render a roster, its mailboxes and its boards with components from @flow-state-dev/react.
+description: Render a roster, its coordinators and its boards with components from @flow-state-dev/react.
 ---
 
 # Workforce components
@@ -14,14 +14,14 @@ import { FlowNavigator, Roster, BoardColumns, BoardList } from "@flow-state-dev/
 
 <FlowNavigator
   sections={[
-    { label: "Mailboxes", kinds: ["mailbox"] },
+    { label: "Coordinators", kinds: ["coordinator"] },
     { label: "Workers", kinds: ["agent"] },
   ]}
   onSelectSession={setSessionId}
 />
 ```
 
-`mailbox` is the kind the framework ships for mailboxes. For workers, list the worker flows your workers run: `agent` is the built-in one, and a worker whose `WORKER.md` names a `flow:` runs on that flow instead. If your app declares a mailbox kind of its own, add its name to the Mailboxes list.
+`coordinator` is the flow a [coordinator](./coordinators.md) runs on: a worker that hands each message to other workers, called its delegates. For your other workers, list the worker flows they run: `agent` is the built-in one, and a worker whose `WORKER.md` names a `flow:` runs on that flow instead.
 
 A section is a label and a set of kind names. The navigator reads the rest of the shape from your flows. Conversation and item rendering come from the [component registry](../ui/overview), as they do in any other app.
 
@@ -31,29 +31,28 @@ The navigator starts at the kind. How many levels sit under it depends on how th
 
 A flow with `cardinality: "collection"` has many addressable copies, so it gets **three levels**: kind, then instances, then sessions. The built-in `agent` worker flow works this way. Open it and you see the workers hired on it; open a worker and you see that worker's sessions.
 
-A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it gets **two levels**: kind, then sessions. A mailbox kind works this way, because a mailbox is a session on that kind. A hundred mailboxes are a hundred sessions on one instance, so opening the kind lists the mailboxes directly.
+A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it gets **two levels**: kind, then sessions. The `coordinator` flow works this way: a hundred conversations with coordinators are a hundred sessions on one instance, so opening the kind lists the conversations directly.
 
 There is no prop for choosing the depth. What the navigator shows always matches the flow, so a flow that changes its cardinality changes the navigator with it.
 
 ## Showing the roster and the boards
 
-`Roster`, `BoardColumns` and `BoardList` read collections through a session you pass in. That session's flow has to declare the collections, under the keys the components read:
+`Roster`, `BoardColumns` and `BoardList` read collections through a session you pass in. `Roster` reads the `roster` collection, so its session's flow has to declare it:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { mailboxBoard, defineHiredRosterCollection } from "@flow-state-dev/workforce";
-
-const followups = mailboxBoard("support.desk", "followups");
+import { defineHiredRosterCollection } from "@flow-state-dev/workforce";
 
 export const shell = defineFlow({
   kind: "shell",
   resources: {
     roster: defineHiredRosterCollection(),
-    [followups.id]: followups,
   },
   actions: { /* ... */ },
 });
 ```
+
+A board is read through a session whose flow keeps it, by the key that flow keeps it under. Each conversation with a coordinator keeps its tasks under `tasks`, and so does any session on the built-in worker flow or a flow built with `defineSessionBoard`; [Showing a person's boards in your app](./delegating-work.md#showing-a-persons-boards-in-your-app) says which rows that read returns.
 
 ```tsx
 import { useMemo } from "react";
@@ -62,13 +61,15 @@ import { BoardColumns, Roster } from "@flow-state-dev/react";
 
 type ShellPanelsProps = {
   sessionId: string;
+  // A conversation with a coordinator: a session on the `coordinator` flow.
+  conversationId: string;
   bootProblems: readonly string[];
   // Your app's way of getting the signed-in user's token. Keep its identity
   // stable across renders, or the client is rebuilt and the panels re-read.
   getToken: () => Promise<string>;
 };
 
-export function ShellPanels({ sessionId, bootProblems, getToken }: ShellPanelsProps) {
+export function ShellPanels({ sessionId, conversationId, bootProblems, getToken }: ShellPanelsProps) {
   const fetcher = useMemo<typeof fetch>(
     () => async (input, init) => {
       const headers = new Headers(init?.headers);
@@ -82,7 +83,7 @@ export function ShellPanels({ sessionId, bootProblems, getToken }: ShellPanelsPr
   return (
     <>
       <Roster sessionId={sessionId} problems={bootProblems} resourceClient={resourceClient} />
-      <BoardColumns sessionId={sessionId} boardRef="support.desk.followups" resourceClient={resourceClient} />
+      <BoardColumns sessionId={conversationId} boardRef="tasks" resourceClient={resourceClient} />
     </>
   );
 }
@@ -102,21 +103,21 @@ A board column is grouped by task status. An empty board says so, and names the 
 import { BoardList } from "@flow-state-dev/react";
 
 <BoardList
-  sessionId="support.help"
-  boardRef="support.help.escalations"
+  sessionId={conversationId}
+  boardRef="tasks"
   resourceClient={resourceClient}
   fetcher={fetcher}
   live
 />
 ```
 
-With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed through a mailbox's `fileTask` is recorded in the mailbox's own session, so pass the mailbox's id, as above. Each new task then shows up in every tab that has the list open. Reading through the mailbox needs nothing extra in your shell's flow.
+With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed in a conversation is recorded in that conversation's session, so pass the conversation's id, as above. Each new task then shows up in every tab that has the list open.
 
 `fetcher` is the `fetch` the live stream is sent with. When you pass your own `resourceClient` and `live`, also pass the `fetcher` that client was built with, so the stream carries the same credential as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`. Pass neither and both go through the nearest `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads.
 
 Rows already on screen stay there while the list reads again.
 
-A change recorded in a different session does not reach a live list until something makes it read again: a remount, a reload, or the next change in the session it follows. A worker that claims and finishes tasks from its own conversation is the usual example. So `live` suits a board that is filed through its mailbox and read by people. For a board your workers work, read it on mount, as `BoardColumns` does.
+A change recorded in a different session does not reach a live list until something makes it read again: a remount, a reload, or the next change in the session it follows. A delegate working a task in its own task session is the usual example. So `live` suits watching tasks arrive as they're filed. To see where the work has got to, read the board on mount, as `BoardColumns` does.
 
 Each live list holds its own connection to its session's stream while it is mounted, the same kind [`useSession`'s `live`](../client/react.md#hearing-requests-you-didnt-send) opens. A page that also follows that session with `useSession(..., { live: true })` holds two connections to it. If the server doesn't offer the stream, or refuses it, the list reads once, as if you hadn't asked, with no error.
 
@@ -172,7 +173,7 @@ Change a token and every component follows. Nothing here needs a class override 
 
 ## Limits
 
-These components render; they don't administer. There is no create-mailbox or invite control.
+These components render; they don't administer. There is no create-worker or invite control.
 
 The roster and the board columns are scoped to an organization, because the collections behind them are. **The navigator is not.** It shows the flow kinds your server has registered, the instances under them, and the sessions the caller can see, with no organization filter. The flow list is answered without authentication, so every caller sees every flow your app defines and every worker declared in a `WORKER.md` file.
 

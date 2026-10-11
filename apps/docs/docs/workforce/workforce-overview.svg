@@ -47,13 +47,6 @@
   <text x="58" y="202" class="code">  workers/lead/</text>
   <text x="58" y="228" class="muted">Settings and instructions</text>
 
-  <rect x="44" y="258" width="216" height="110" rx="10" class="card"/>
-  <text x="58" y="282" class="h">MAILBOX.md</text>
-  <text x="58" y="302" class="code">teams/engineering/</text>
-  <text x="58" y="318" class="code">  mailboxes/standup/</text>
-  <text x="58" y="344" class="muted">Members and a charter.</text>
-  <text x="58" y="360" class="muted">Opens a session, not a worker.</text>
-
   <!-- Process -->
   <rect x="296" y="84" width="320" height="300" rx="14" class="wall-sess"/>
   <text x="312" y="108" class="h">Your app's process</text>
@@ -99,6 +92,6 @@
   <text x="44" y="428" class="h">One copy, many workers</text>
   <text x="44" y="452" class="p">A worker is an id and settings. Every worker on a flow shares its one registered copy.</text>
   <text x="44" y="472" class="p">A session names its worker when it is created, and nothing changes it. It runs on the worker's flow.</text>
-  <text x="44" y="492" class="p">A mailbox is a session on the shared mailbox kind. Its members are workers; the mailbox is not one.</text>
+  <text x="44" y="492" class="p">A coordinator is a worker too: its WORKER.md names flow: coordinator and the workers it hands work to.</text>
   <text x="44" y="520" class="muted">A task's assignee can name a standard worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
 </svg>

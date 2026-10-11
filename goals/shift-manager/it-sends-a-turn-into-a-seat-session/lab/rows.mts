@@ -1,6 +1,6 @@
 /**
- * The two rows the goal's DevTeam files on the coder seat at boot: one for
- * the task composer, and a second so `@coder` has two tasks to pick from.
+ * The two rows the goal's DevTeam files for the coder at boot: one for the
+ * task composer, and a second running beside it that the line must not reach.
  * Read by the Lab and by the check, which finds each by its issue.
  */
 export const ROWS = [
@@ -14,3 +14,6 @@ export const ROWS = [
  * the board's browser view, so the check reads them where they are stored.
  */
 export const STORE_ENV = "TURN_GOAL_STORE";
+
+/** What the goal's scripted EM turn answers any line with: it names no feature, so nothing was filed. */
+export const EM_ANSWER = "Nothing filed: that line names no feature.";

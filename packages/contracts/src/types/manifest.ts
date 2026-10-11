@@ -3,7 +3,7 @@
  * into, and the type of a source that produces them for one domain.
  *
  * An orchestrator that has to decide *who does this* asks one door what is in
- * scope for it right now. Workers, mailboxes, skills and resources already have
+ * scope for it right now. Workers, skills and resources already have
  * working readers; what they lacked is a shared shape to answer in. This is
  * that shape and nothing more: identity, what kind of thing it is, what it is
  * for, and an optional hint at how to work with it.
@@ -17,7 +17,7 @@
  * and no source stores a second copy of its domain's state.
  *
  * Not to be confused with `ResourceManifest` (client-facing, flow-static) or
- * `WorkerManifest` / `MailboxManifest` (on-disk records). Those keep the bare
+ * `WorkerManifest` (an on-disk record). Those keep the bare
  * word; this surface only ever says "manifest entry".
  */
 
@@ -25,13 +25,13 @@
  * The domains the door answers for, in the order a caller sees them.
  *
  * Pinned and model-facing: these strings appear in a tool argument and in a
- * worker's own file, so renaming one breaks prompts and files on disk. Four, not
- * six — a generator already gets its tool list from its provider, and what
- * another worker can do belongs on that worker's entry.
+ * worker's own file, so renaming one breaks prompts and files on disk. Three —
+ * a generator already gets its tool list from its provider, and what another
+ * worker can do belongs on that worker's entry.
  */
-export const MANIFEST_DOMAINS = ["workers", "mailboxes", "skills", "resources"] as const;
+export const MANIFEST_DOMAINS = ["workers", "skills", "resources"] as const;
 
-/** One of the four pinned discovery domains. */
+/** One of the three pinned discovery domains. */
 export type ManifestDomain = (typeof MANIFEST_DOMAINS)[number];
 
 /** True when `value` is one of the pinned domain names. */

@@ -3,9 +3,8 @@
  * puts a post, given who can be reached, the choices, the holder, the
  * fallback, the coordinator's own choice and its floor.
  *
- * The ladder is the one place best fit decides, shared by the coordinator
- * and the mailbox's route. A caller that names no coordinator and no floor
- * (the mailbox) must place exactly as before; one that names them gets the
+ * The ladder is the one place best fit decides. A caller that names no
+ * coordinator and no floor must place exactly as before; one that names them gets the
  * coordinator as an answer, not a miss, and a delegate pick it can't trust
  * sent down the ladder like any other miss.
  *
@@ -141,11 +140,11 @@ describe("best fit's ladder (V1)", () => {
     expect(placeBestFit(nobody, undefined)).toEqual({ by: "none", miss: { kind: "none-reachable" }, fallbackUnreachable: false });
   });
 
-  it("places exactly as before for a caller that names no coordinator and no floor (the mailbox's route)", () => {
-    const mailbox: BestFitCase = { reachable: ["a", "b"], options: { a: "A.", b: "B." }, fallback: "b" };
-    expect(placeBestFit(mailbox, answered("a", 0.01))).toEqual({ by: "evaluated", member: "a" });
-    expect(placeBestFit(mailbox, answered("a"))).toEqual({ by: "evaluated", member: "a" });
-    expect(placeBestFit(mailbox, answered("z"))).toEqual({ by: "fallback", member: "b", miss: { kind: "not-an-option", choice: "z" } });
-    expect(placeBestFit(mailbox, { failed: "x" })).toEqual({ by: "fallback", member: "b", miss: { kind: "evaluation-failed", message: "x" } });
+  it("places exactly as before for a caller that names no coordinator and no floor", () => {
+    const plain: BestFitCase = { reachable: ["a", "b"], options: { a: "A.", b: "B." }, fallback: "b" };
+    expect(placeBestFit(plain, answered("a", 0.01))).toEqual({ by: "evaluated", member: "a" });
+    expect(placeBestFit(plain, answered("a"))).toEqual({ by: "evaluated", member: "a" });
+    expect(placeBestFit(plain, answered("z"))).toEqual({ by: "fallback", member: "b", miss: { kind: "not-an-option", choice: "z" } });
+    expect(placeBestFit(plain, { failed: "x" })).toEqual({ by: "fallback", member: "b", miss: { kind: "evaluation-failed", message: "x" } });
   });
 });

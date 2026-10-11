@@ -1,8 +1,8 @@
 /**
  * Inbox (S10): every pending approval and question in the worker sessions the
  * Lab lists for this person, dispatch runs included, oldest first (BR-24).
- * A list and a detail pane; the detail draws the ask with the same card a
- * workstream's Stream uses, and answers it through the same resume (BR-25).
+ * A list and a detail pane; the detail draws the ask with the same card Chief
+ * of Staff uses, and answers it through the same resume (BR-25).
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the person), and a detail on the
@@ -21,7 +21,7 @@ import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
-import { doorOf, rosterOf, workstreamsOf, waited, type LoadedSnapshot } from "../lib/derive";
+import { doorOf, rosterOf, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -53,7 +53,6 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
   const asks = snapshot.asks.value;
   const shown = asks.filter((ask) => matches(filter, ask));
   const selected = asks.find((ask) => ask.item.suspensionId === suspensionId) ?? null;
-  const workstreams = snapshot.inventory.ok ? snapshot.inventory.value.workstreams : [];
   const now = snapshot.readAt;
 
   const oldest = asks.reduce<number | null>((min, ask) => (min === null || ask.since < min ? ask.since : min), null);
@@ -92,7 +91,6 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
         ) : (
           <ol className="min-h-0 flex-1 overflow-y-auto">
             {shown.map((ask) => {
-              const streams = workstreamsOf(ask, workstreams);
               const isSelected = ask === selected;
               return (
                 <li key={ask.item.suspensionId}>
@@ -120,8 +118,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                         {ask.item.message ?? "(no message)"}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {ask.workerId ?? "unknown worker"} · task — ·{" "}
-                        <span data-testid="inbox-item-workstream">{streams.length === 0 ? "no workstream" : streams.map((w) => w.id).join(", ")}</span>
+                        {ask.workerId ?? "unknown worker"} · task —
                       </Meta>
                     </span>
                     <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">

@@ -15,25 +15,21 @@ const ORG = "acme";
 
 type Lab = {
   workers: Array<{ id: string; kind: string }>;
-  /** The mailbox rows; one mailbox when omitted. */
-  mailboxes?: unknown[];
 };
 
 function clientsFor(lab: Lab): LabClients {
   const collections: Record<string, unknown[]> = {
     workers: lab.workers,
-    mailboxes: lab.mailboxes ?? [{ id: "eng.general", kind: "mailbox", members: [] }],
   };
   const manifest = {
     resources: [
       { kind: "collection", ref: "workers", pattern: "inventory/workers/*", scope: "org", client: { state: { read: true } } },
-      { kind: "collection", ref: "mailboxes", pattern: "inventory/mailboxes/*", scope: "org", client: { state: { read: true } } },
     ],
   };
   return {
     userId: "u1",
     sessions: {
-      listSessions: async () => [{ id: "s1", flowKind: "mailbox", parentSessionId: null, updatedAt: 0 }],
+      listSessions: async () => [{ id: "s1", flowKind: "workforce-roster", parentSessionId: null, updatedAt: 0 }],
       getSession: async () => ({ orgId: ORG }),
       getSessionState: async () => ({ items: [] }),
       listSessionRequests: async () => [],

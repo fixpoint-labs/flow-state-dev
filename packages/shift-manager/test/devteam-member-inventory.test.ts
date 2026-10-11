@@ -54,7 +54,6 @@ it("the member and the outsider read the organization's workers and projects, wi
     expect(snapshot.inventory, `${who.userId}'s inventory`).toMatchObject({ ok: true });
     expect(snapshot.projects, `${who.userId}'s projects`).toMatchObject({ ok: true });
     if (!snapshot.inventory.ok) continue;
-    expect(snapshot.inventory.value.workstreams).toEqual([]);
     seen[who.userId] = snapshot.inventory.value.workers.map((s) => s.id).sort();
   }
   // One organization, one inventory: each person reads the same workers, the EM and the coder among them.

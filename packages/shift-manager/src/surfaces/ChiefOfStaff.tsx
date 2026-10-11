@@ -1,7 +1,7 @@
 /**
  * Chief of Staff (FIX-1722): where Shift Manager opens. The shift summary,
  * then the person's conversation with the Lab's chief-of-staff worker; the right
- * panel lists each workstream's counts and who is on call.
+ * panel lists who is on call.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
@@ -33,7 +33,7 @@ import { useSessionItems } from "../components/flow-state/session-items-context"
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { chiefOfStaffOf, workerStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
+import { chiefOfStaffOf, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -67,10 +67,10 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   let status: string | undefined;
   let watching: string | null = null;
   if (snapshot.inventory.ok) {
-    const { workers, workstreams } = snapshot.inventory.value;
+    const { workers } = snapshot.inventory.value;
     const cos = chiefOfStaffOf(workers);
     status = cos.kind === "one" ? workerStates(snapshot).workers.get(cos.worker.id)?.status : undefined;
-    watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(workers.length, "worker", "workers")}`;
+    watching = `watching ${plural(workers.length, "worker", "workers")}`;
   }
   return (
     <header className="flex items-center gap-3" data-testid="cos-header">
@@ -218,7 +218,7 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
     );
   }
   return (
-    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions(snapshot)} />
+    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions()} />
   );
 }
 
@@ -293,10 +293,8 @@ function Talk({
   );
 }
 
-/** The right panel at Shift Coordinator: STREAMS (BR-19) and ON CALL, the workers Roster reads on call. */
+/** The right panel at Shift Coordinator: ON CALL, the workers Roster reads on call. */
 export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
-  const { refresh } = useLab();
-  const streams = streamCounts(snapshot);
   const states = workerStates(snapshot);
   const onCall = [...states.workers.values()].filter((state) => state.status === "on call");
   // The delegates and tasks panels: only for a chief of staff that runs on the coordinator flow.
@@ -304,40 +302,7 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
   const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
-      <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">STREAMS</p>
-      {snapshot.asks.ok ? null : (
-        <SectionFailure what="What needs you" failure={snapshot.asks.failure} onRetry={() => void refresh()} testId="cos-streams-asks-failure" />
-      )}
-      {streams.ok ? (
-        <ul data-testid="cos-streams">
-          {streams.value.map(({ workstream, running, needsYou }) => (
-            <li key={workstream.id}>
-              <button
-                type="button"
-                onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
-                className="flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
-                data-testid="cos-stream"
-                data-mailbox-id={workstream.id}
-              >
-                <span className="truncate">{workstream.id}</span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  <span data-testid="cos-stream-running">
-                    {running.ok ? running.value : "–"}
-                  </span>{" "}
-                  running ·{" "}
-                  <span data-testid="cos-stream-needs-you">{needsYou ?? "–"}</span> need you
-                </span>
-              </button>
-              {running.ok ? null : (
-                <SectionFailure what={`${workstream.id}'s boards`} failure={running.failure} onRetry={() => void refresh()} testId="cos-stream-failure" />
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <SectionFailure what="Workstreams" failure={streams.failure} onRetry={() => void refresh()} testId="cos-streams-failure" />
-      )}
-      <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
+      <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
         ON CALL
         {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
       </p>

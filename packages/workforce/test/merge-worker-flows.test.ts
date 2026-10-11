@@ -3,7 +3,7 @@
  * any flow already in it.
  *
  * An org worker's id is its bare folder name, so a folder named like one of the
- * app's flows (`mailbox`, `chatAgent`) would otherwise take that flow's key and
+ * app's flows (`coordinator`, `chatAgent`) would otherwise take that flow's key and
  * the flow would vanish from the server with nothing said.
  */
 import { describe, expect, it } from "vitest";
@@ -13,14 +13,14 @@ const flow = (id: string, flowName = id) => ({ id, kind: flowName }) as never;
 
 describe("mergeWorkerFlows", () => {
   it("adds each worker under its id beside the app's flows", () => {
-    const merged = mergeWorkerFlows({ mailbox: flow("mailbox") }, [flow("eng.em", "em"), flow("chief-of-staff", "agent")]);
-    expect(Object.keys(merged).sort()).toEqual(["chief-of-staff", "eng.em", "mailbox"]);
+    const merged = mergeWorkerFlows({ coordinator: flow("coordinator") }, [flow("eng.em", "em"), flow("chief-of-staff", "agent")]);
+    expect(Object.keys(merged).sort()).toEqual(["chief-of-staff", "coordinator", "eng.em"]);
   });
 
   it("refuses a worker whose id is already a flow's, naming both, and leaves the input alone", () => {
-    const flows = { mailbox: flow("mailbox") };
-    expect(() => mergeWorkerFlows(flows, [flow("mailbox", "agent")])).toThrow(/worker "mailbox".*flow "mailbox"/);
-    expect(Object.keys(flows)).toEqual(["mailbox"]);
+    const flows = { coordinator: flow("coordinator") };
+    expect(() => mergeWorkerFlows(flows, [flow("coordinator", "agent")])).toThrow(/worker "coordinator".*flow "coordinator"/);
+    expect(Object.keys(flows)).toEqual(["coordinator"]);
   });
 
   it("refuses two workers with one id", () => {

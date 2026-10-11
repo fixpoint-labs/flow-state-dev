@@ -132,7 +132,6 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
   it("generates no block and no worker flow of the app's own", async () => {
     const generated = await import("@/workforce/workforce.gen");
     expect(Object.keys(generated.workerFlows)).toEqual([]);
-    expect(Object.keys(generated.mailboxKinds)).toEqual([]);
     expect(Object.keys(generated.blocks)).toEqual([]);
   });
 });

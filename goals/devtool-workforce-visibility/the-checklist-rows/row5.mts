@@ -5,16 +5,16 @@
  *
  * The hire is `multi-seat-collab`'s, served by its own config, which opens the
  * inventory at boot exactly as the inventory docs show an app doing it. The
- * lab declares no mailbox, so its inventory holds workers and nothing else,
- * and who works with whom is the coordinator's `delegates:`. This file stands
- * nothing up: it plants another organization's rows, serves the lab, and
- * reads the store, the coordinator's delegates and the screen.
+ * inventory holds one collection, the organization's workers, and who works
+ * with whom is the coordinator's `delegates:`. This file stands nothing up: it
+ * plants another organization's worker row, serves the lab, and reads the
+ * store, the coordinator's delegates and the screen.
  *
  * Order of evidence, and why:
  *
- *  1. Another organization's rows are planted in the lab's database before the
- *     server starts, and read back — so "absent from the page" is about rows
- *     that exist.
+ *  1. Another organization's worker row is planted in the lab's database
+ *     before the server starts, and read back — so "absent from the page" is
+ *     about a row that exists.
  *  2. The lab is served with `FSDEV_DEBUG_ENDPOINTS=0`.
  *  3. The positive record: the store holds exactly the rows the TREE implies
  *     for the lab's organization, and a second boot over the same database
@@ -36,11 +36,9 @@ import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { LAB_DB_PATH, LAB_ORG_ID, LAB_USER_ID, routesFor, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
 
-/** The three published key patterns, by the tab's section names. */
+/** The published key pattern, by the tab's section name: the inventory's one collection, its workers. */
 const PATTERNS = {
   seats: "inventory/workers/*",
-  mailboxes: "inventory/mailboxes/*",
-  memberships: "inventory/members/**",
 } as const;
 type Section = keyof typeof PATTERNS;
 const SECTIONS = Object.keys(PATTERNS) as Section[];
@@ -72,8 +70,7 @@ async function readStore(dbFile: string, orgId: string): Promise<Stored> {
 
 /**
  * The rows the tree implies: one seat row per hired worker, with the flow it
- * was hired into. The tree declares no mailbox, so no mailbox or membership
- * row.
+ * was hired into, and nothing else.
  */
 function expectedFromTree(tree: LabTree): { keys: string[]; workerFlowNames: Map<string, string> } {
   const workerFlowNames = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
@@ -87,7 +84,7 @@ function coordinatorDelegates(tree: LabTree): string[] {
   return Array.isArray(declared) ? (declared as string[]) : [];
 }
 
-/** The session the boot wrote the organization's inventory through: the person's own session whose flow declares all three collections. */
+/** The session the boot wrote the organization's inventory through: the person's own session whose flow declares the workers collection. */
 async function inventorySession(origin: string): Promise<{ id: string; kind: string } | undefined> {
   const listing = (await (await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent(LAB_USER_ID)}&limit=100`)).json()) as {
     sessions?: Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
@@ -236,30 +233,22 @@ export async function gradeRow5(options: {
   const foreign = {
     org: `org-foreign-${randomUUID().slice(0, 8)}`,
     seat: `foreign-${randomUUID().slice(0, 8)}.seat`,
-    mailbox: `foreign-${randomUUID().slice(0, 8)}.room`,
   };
   const treeIds = tree.roster.workers.map((w) => w.id);
-  if (treeIds.some((id) => id === foreign.seat || id === foreign.mailbox)) {
+  if (treeIds.some((id) => id === foreign.seat)) {
     throw new Error("a planted foreign id collides with the tree");
   }
   {
     const stores = createSQLiteStores({ filename: dbFile });
     try {
       await stores.resourceState.set("org", foreign.org, `inventory/workers/${foreign.seat}`, { id: foreign.seat, kind: "worker" }, "any");
-      await stores.resourceState.set(
-        "org",
-        foreign.org,
-        `inventory/mailboxes/${foreign.mailbox}`,
-        { id: foreign.mailbox, kind: "mailbox", members: [foreign.seat], openedAt: new Date().toISOString() },
-        "any",
-      );
     } finally {
       stores.close();
     }
   }
   const planted = Object.keys(await readStore(dbFile, foreign.org)).sort();
-  if (JSON.stringify(planted) !== JSON.stringify([`inventory/mailboxes/${foreign.mailbox}`, `inventory/workers/${foreign.seat}`])) {
-    throw new Error(`the foreign rows did not store: ${JSON.stringify(planted)}`);
+  if (JSON.stringify(planted) !== JSON.stringify([`inventory/workers/${foreign.seat}`])) {
+    throw new Error(`the foreign row did not store: ${JSON.stringify(planted)}`);
   }
 
   // ---- step 2: serve, debug off ---------------------------------------------
@@ -276,7 +265,7 @@ export async function gradeRow5(options: {
     // The session the boot wrote the rows through: the one the screen opens.
     const host = await inventorySession(served.origin);
     if (host === undefined) {
-      fail("step 3", "none of the person's sessions is on a flow that declares the inventory's three collections, so nothing can show them");
+      fail("step 3", "none of the person's sessions is on a flow that declares the inventory's workers collection, so nothing can show it");
       return { failures, notes, evidence: "" };
     }
 
@@ -323,8 +312,6 @@ export async function gradeRow5(options: {
         .filter(([key]) => key.startsWith(prefix))
         .map(([, row]) => row);
     const storedSeats = under("inventory/workers/");
-    const storedMailboxes = under("inventory/mailboxes/");
-    const storedMemberships = under("inventory/members/");
 
     // Who works with whom: the coordinator's conversation lists exactly the
     // delegates its own file names, through its own production action, and
@@ -378,7 +365,7 @@ export async function gradeRow5(options: {
           undefined,
           { timeout: 10_000 },
         );
-        await page.waitForFunction(() => document.querySelectorAll("main [role='tabpanel'][data-state='active'] [data-inventory-section]").length === 3, undefined, { timeout: 15_000 });
+        await page.waitForFunction((count) => document.querySelectorAll("main [role='tabpanel'][data-state='active'] [data-inventory-section]").length === count, SECTIONS.length, { timeout: 15_000 });
         screen = await readTab(page);
         await page.screenshot({ path: join(options.shots, "row5-inventory.png") });
       }
@@ -386,9 +373,11 @@ export async function gradeRow5(options: {
       if (screen !== undefined) {
         if (screen.openExpanders !== 0) fail("step 4", `${screen.openExpanders} expander(s) were open when the tab was read`);
         const seats = screen.sections.workers;
-        const mailboxes = screen.sections.mailboxes;
-        const memberships = screen.sections.memberships;
-        for (const [name, section] of Object.entries({ seats, mailboxes, memberships })) {
+        const drawn = Object.keys(screen.sections).sort();
+        if (JSON.stringify(drawn) !== JSON.stringify([...SECTIONS].sort())) {
+          fail("step 4", `the tab draws the sections ${JSON.stringify(drawn)}; the inventory has ${JSON.stringify(SECTIONS)}`);
+        }
+        for (const [name, section] of Object.entries({ seats })) {
           if (section?.status !== "loaded") {
             fail("step 4", `the ${name} section reads "${section?.status ?? "missing"}", not loaded: ${JSON.stringify(section?.text ?? "")}`);
           }
@@ -396,44 +385,24 @@ export async function gradeRow5(options: {
         const rowById = (section: ScreenRead["sections"][string] | undefined, key: string, id: string) =>
           section?.rows.find((row) => row.cells[key] === id);
 
-        // Seats: each with its kind and the mailboxes its membership rows name.
+        // Workers: each with the kind its row holds, and no other row.
         if (seats?.status === "loaded") {
           if (seats.rows.length !== storedSeats.length) {
-            fail("step 4", `the tab lists ${seats.rows.length} seat(s); the store holds ${storedSeats.length}`);
+            fail("step 4", `the tab lists ${seats.rows.length} worker(s); the store holds ${storedSeats.length}`);
           }
           for (const seat of storedSeats) {
             const row = rowById(seats, "Id", String(seat.id));
-            const mailboxesOfSeat = storedMemberships.filter((m) => m.workerId === seat.id).map((m) => String(m.mailboxId));
-            const wantMailboxes = mailboxesOfSeat.length === 0 ? "none" : mailboxesOfSeat.join(", ");
-            if (row === undefined) fail("step 4", `seat ${seat.id} has no row in the tab`);
-            else if (row.cells.Kind !== seat.kind) fail("step 4", `seat ${seat.id}'s Kind cell reads ${JSON.stringify(row.cells.Kind)}; the store holds "${seat.kind}"`);
-            else if (row.cells.Mailboxes !== wantMailboxes) fail("step 4", `seat ${seat.id}'s Mailboxes cell reads ${JSON.stringify(row.cells.Mailboxes)}; its membership rows name "${wantMailboxes}"`);
+            if (row === undefined) fail("step 4", `worker ${seat.id} has no row in the tab`);
+            else if (row.cells.Kind !== seat.kind) fail("step 4", `worker ${seat.id}'s Kind cell reads ${JSON.stringify(row.cells.Kind)}; the store holds "${seat.kind}"`);
           }
         }
-        // Mailboxes: each with its kind, its members and its registration time.
-        if (mailboxes?.status === "loaded") {
-          if (mailboxes.rows.length !== storedMailboxes.length) {
-            fail("step 4", `the tab lists ${mailboxes.rows.length} mailbox(es); the store holds ${storedMailboxes.length}`);
-          }
-          for (const mailbox of storedMailboxes) {
-            const row = rowById(mailboxes, "Id", String(mailbox.id));
-            const members = (mailbox.members as string[]).join(", ");
-            if (row === undefined) fail("step 4", `mailbox ${mailbox.id} has no row in the tab`);
-            else if (row.cells.Members !== members) fail("step 4", `mailbox ${mailbox.id}'s Members cell reads ${JSON.stringify(row.cells.Members)}; the store holds "${members}"`);
-            else if (row.cells.Kind !== mailbox.kind) fail("step 4", `mailbox ${mailbox.id}'s Kind cell reads ${JSON.stringify(row.cells.Kind)}; the store holds "${mailbox.kind}"`);
-            else if (row.cells.Registered !== mailbox.openedAt) fail("step 4", `mailbox ${mailbox.id}'s Registered cell reads ${JSON.stringify(row.cells.Registered)}; the store holds "${mailbox.openedAt}"`);
-          }
-        }
-        if (memberships?.status === "loaded" && memberships.rows.length !== storedMemberships.length) {
-          fail("step 4", `the tab lists ${memberships.rows.length} membership(s); the store holds ${storedMemberships.length}`);
-        }
-        // Another organization's rows, planted and stored, appear nowhere.
-        for (const id of [foreign.seat, foreign.mailbox, foreign.org]) {
+        // Another organization's row, planted and stored, appears nowhere.
+        for (const id of [foreign.seat, foreign.org]) {
           if (screen.html.includes(id)) fail("step 4", `another organization's "${id}" is on the page`);
         }
 
         // ---- step 5: every graded cell is in view on both axes -----------
-        for (const [name, section] of Object.entries({ seats, mailboxes, memberships })) {
+        for (const [name, section] of Object.entries({ seats })) {
           for (const row of section?.rows ?? []) {
             const id = Object.values(row.cells)[0];
             if (row.minVisibleHeight < Math.min(MIN_VISIBLE_HEIGHT, row.minCellHeight)) {
@@ -484,10 +453,9 @@ export async function gradeRow5(options: {
           evidence:
             `row 5 read on the multi-seat-collab hire with the debug endpoints off: the inventory's session ${host.id} (${host.kind}), ` +
             `opened from the navigator, showed ${screen.sections.workers!.rows.length} registered worker(s) ` +
-            `(${screen.sections.workers!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind} in ${r.cells.Mailboxes}`).join("; ")}), ` +
-            `${screen.sections.mailboxes!.rows.length} mailbox(es) and ${screen.sections.memberships!.rows.length} membership(s), ` +
+            `(${screen.sections.workers!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind}`).join("; ")}), ` +
             `exactly as the store holds them, nothing expanded; the coordinator ${tree.coordinatorId} delegates to ${delegates.join(", ")}; ` +
-            `another organization's rows were stored and appeared nowhere; a second boot changed nothing`,
+            `another organization's worker row was stored and appeared nowhere; a second boot changed nothing`,
         };
       }
       return { failures, notes, evidence: "" };

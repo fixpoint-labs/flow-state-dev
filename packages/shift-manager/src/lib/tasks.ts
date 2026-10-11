@@ -30,7 +30,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 /**
  * Tasks' summary line (v2:1384): the rows in flight (open and not queued), the
  * asks waiting on the person, who is on shift and on call, and how many
- * workstreams the rows in flight run in.
+ * streams (the conversations holding their boards) the rows in flight run in.
  */
 export function tasksSummary(snapshot: LoadedSnapshot): string {
   const inFlight = openRows(snapshot).filter((row) => !isQueued(row));
@@ -41,7 +41,7 @@ export function tasksSummary(snapshot: LoadedSnapshot): string {
     `${asks} ${asks === 1 ? "needs" : "need"} you`,
     `${counts["on shift"]} on shift`,
     `${counts["on call"]} on call`,
-    plural(new Set(inFlight.map((row) => row.mailboxId)).size, "stream", "streams"),
+    plural(new Set(inFlight.map((row) => row.holderSessionId)).size, "stream", "streams"),
   ].join(" · ");
 }
 

@@ -203,7 +203,7 @@ export function hireLab(options: HireLabOptions): HiredLab {
   // The inventory's worker rows take caller-supplied rows, so the writer is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_FLOW,
-    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
+    internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   return {
     flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), [INVENTORY_WRITER_FLOW]: writer },
@@ -247,7 +247,7 @@ export async function openLab(server: LabServer, hired: HiredLab): Promise<void>
     return result;
   };
   const binding = await openInventory(
-    { workers: inventoryWorkers(hired.installation), mailboxes: [] },
+    { workers: inventoryWorkers(hired.installation) },
     { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
   );
   if (binding.problems.length > 0) {

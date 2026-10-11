@@ -107,7 +107,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Hire** | workforce | A user adds a worker of their own, as a row in their data. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Roster row |
 | **Roster** | workforce | A user's workers: their own, and the standard ones your files declare. See [Hiring and forking](./workforce/durable-hire.md). | User-scoped resource collection, standard workers from files |
 | **Fire** | workforce | Removes one of a user's own workers from their roster. A worker declared in a file leaves when its folder is deleted. | Roster row |
-| **Mailbox** | workforce | One `MAILBOX.md`: a named session on the shared `mailbox` flow, with members, a charter and a transcript. See [Mailboxes](./workforce/mailboxes.md). | Session, flow |
+| **Mailbox** | workforce | One `MAILBOX.md`: a named session on the shared `mailbox` flow, with members, a charter and a transcript. | Session, flow |
 | **Member** | workforce | A worker id on a mailbox's member list. A post wakes each member whose flow kind handles posts, or only the chosen one on a routed mailbox. | Worker address |
 | **Transcript** | workforce | The posts in a mailbox, rebuilt from the post items. | Items |
 | **Routed mailbox** | workforce | A mailbox that hands each post to one member, picked by a model call over the members' descriptions, or a fallback. | Mailbox, evaluator |

@@ -106,7 +106,8 @@ export function sidebarAndCosContent(read: SidebarAndCosRead, store: Store, scre
     else if (drawn.dot !== dotOf(held)) failures.push(`#${mailbox}'s dot is ${drawn.dot ?? "missing"}, the store gives ${dotOf(held)} (${held.needs ? "an ask waits" : "no ask waits"}, ${held.running} running) (v2:1183-1184)`);
   }
   if (screen === "cos") {
-    const watching = `watching ${plural(Object.keys(store.mailboxes).length, "stream", "streams")} and ${plural(store.seats, "worker", "workers")}`;
+    // v2 also counts streams; with no mailbox workstream (FIX-1792) the line counts the workers alone.
+    const watching = `watching ${plural(store.seats, "worker", "workers")}`;
     if (working) {
       if (read.sub !== "working…") failures.push(`Shift Coordinator's sub line says "${read.sub ?? ""}" while a line is in flight, v2 says "working…" (v2:1424)`);
     } else if (read.watching !== watching) {

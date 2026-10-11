@@ -70,11 +70,4 @@ describe("the shipped chat registry names every substrate component type", () =>
     // blob land in the thread the moment the loop concludes.
     expect(source).toMatch(/"goal-seek-loop-termination":\s*false/);
   });
-
-  it("suppresses a routed mailbox's route record: it is bookkeeping, never a line", () => {
-    // Every route a mailbox takes leaves one `mailbox-route` item on the
-    // mailbox's session. The lines are `mailbox-post` items; the record says
-    // who a post went to and why, and has no place in a thread.
-    expect(source).toMatch(/"mailbox-route":\s*false/);
-  });
 });

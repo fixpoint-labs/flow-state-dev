@@ -1,17 +1,17 @@
 /**
- * The workers and mailboxes manifest sources (FIX-817) — the workforce's two
- * projections into the discovery door.
+ * The workers manifest source (FIX-817) — the workforce's projection into the
+ * discovery door.
  *
  * ## Two layers, joined, because neither one alone is an honest answer
  *
- * The **declared** layer (a tree of `WORKER.md` and `MAILBOX.md`) is the only
- * place a *purpose* is written: a worker's `description:` is what an orchestrator
- * picks on. It cannot say what is live — a file has no idea whether its mailbox
- * was ever opened.
+ * The **declared** layer (a tree of `WORKER.md` files) is the only place a
+ * *purpose* is written: a worker's `description:` is what an orchestrator picks
+ * on. It cannot say what is live — a file has no idea whether its worker was
+ * ever registered.
  *
- * The **live** layer (FIX-1405's `inventory/workers/*` and `inventory/mailboxes/*`)
- * knows what actually got registered in this org. It cannot say what anything is
- * for: a row carries an id, a kind, and for a mailbox its members. And it is
+ * The **live** layer (FIX-1405's `inventory/workers/*`) knows what actually got
+ * registered in this org. It cannot say what anything is for: a row carries an
+ * id, a worker flow and a door. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
  * registered in this org*, not *still declared*", and nothing reconciles or
  * deletes a row for going missing. So a row on its own cannot mean *open*.
@@ -20,9 +20,8 @@
  * liveness filter (BR-12a) and it is also what makes a well-formed entry
  * possible at all: a row with no declaration behind it has no purpose line, and
  * an entry whose purpose reads "unknown" is exactly the entry an orchestrator
- * must not plan against. An orchestrator is never handed a mailbox that has
- * closed — closing removes the declaration, and the row alone no longer
- * qualifies.
+ * must not plan against. An orchestrator is never handed a worker whose file
+ * was removed — the row alone no longer qualifies.
  *
  * The direction of the error is deliberate. A partial roster (one boot's view
  * of a tree another process also writes to) under-reports rather than
@@ -48,8 +47,8 @@
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
-import type { MailboxManifest, WorkerManifest } from "./manifest";
-import type { MailboxInventoryRow, WorkerInventoryRow } from "./inventory/collections";
+import type { WorkerManifest } from "./manifest";
+import type { WorkerInventoryRow } from "./inventory/collections";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -63,24 +62,19 @@ import type { MailboxInventoryRow, WorkerInventoryRow } from "./inventory/collec
 export interface DeclaredWorkforce {
   /** One record per declared worker. */
   workers: readonly WorkerManifest[];
-  /** One record per declared mailbox. */
-  mailboxes: readonly MailboxManifest[];
 }
 
 /**
- * Which resource-registry keys the live inventory collections are mounted
- * under, on the block that carries the door.
+ * Which resource-registry key the live worker inventory is mounted under, on
+ * the block that carries the door.
  *
- * A key is how a source finds its collection at call time; a domain whose key
- * is omitted registers no source at all, so the door simply carries one domain
- * fewer. That is the ordinary state for an app that opened mailboxes but wired
- * no worker inventory, and it reads as "nothing here" rather than as a fault.
+ * A key is how a source finds its collection at call time; with the key
+ * omitted the door registers no source at all and carries one domain fewer,
+ * which reads as "nothing here" rather than as a fault.
  */
 export interface InventoryKeys {
   /** Registry key for the worker inventory (`defineWorkerInventoryCollection`). */
   workers?: string;
-  /** Registry key for the mailbox inventory (`defineMailboxInventoryCollection`). */
-  mailboxes?: string;
 }
 
 export interface WorkforceManifestSourceOptions {
@@ -94,8 +88,7 @@ export interface WorkforceManifestSourceOptions {
  * One line saying what a declared record is for — its `description:`, or
  * for a runtime hire its instructions.
  *
- * Required on a `MAILBOX.md` by the reader and conventional on a `WORKER.md`
- * (the hire step reserves the key). A record that carries none falls back to
+ * Conventional on a `WORKER.md` (the hire step reserves the key). A record that carries none falls back to
  * its id, which is all the declaration actually says.
  */
 function purposeOf(
@@ -125,15 +118,14 @@ function purposeOf(
  * **This lists the whole collection and keeps a subset, which is the thing
  * BP-033 tells you not to do.** Stated here rather than left for a reader to
  * find: an inventory row is never deleted, so the listed set grows with every
- * worker and mailbox ever registered in the org while the kept set stays bounded
+ * worker ever registered in the org while the kept set stays bounded
  * by what the tree currently declares — and this sits behind a tool a model may
  * call on every step.
  *
  * It is still the right read today. The alternative is a `getOptional` per
  * declared record, which trades one list for N point reads and is only cheaper
  * once the dead rows outnumber the live ones. Nothing in the framework pushes
- * a filter into the store for these keys (`membershipPrefix` says the same
- * about its own prefix), so there is no third option. Revisit it when an org's
+ * a filter into the store for these keys, so there is no third option. Revisit it when an org's
  * historical rows are an order of magnitude past its roster; until then the
  * list is one read and the join is in memory.
  */
@@ -195,61 +187,15 @@ function workersSource(
 }
 
 /**
- * The mailboxes domain: registered mailboxes that are still declared as mailboxes.
- *
- * `members` and `openedAt` are `== null`-guarded rather than assumed: both
- * carry defaults for rows written before they existed (BP-030), and a row that
- * predates them projects normally instead of failing the entry.
- *
- * **The contract states addressing, never liveness.** A manifest entry means
- * the mailbox is declared and has an inventory row — both survive a closed or
- * deleted session, because the declaration map is built at boot and the
- * inventory is append-only (FIX-1485: rows never close). So the entry says how
- * the mailbox is addressed and stops there. Telling the model to post to it
- * would be the catalog claiming something it cannot see, and the model has no
- * way to learn otherwise until the post fails. `openedAt` is kept because it is
- * a recorded past event rather than a claim about now.
- */
-function mailboxesSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
-  const declared = new Map(roster.mailboxes.map((mailbox) => [mailbox.id, mailbox]));
-  return {
-    domain: "mailboxes",
-    origin: "createWorkforceCapability",
-    entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
-      const entries: ManifestEntry[] = [];
-      for (const row of await listRows<MailboxInventoryRow>(ctx, key, "mailboxes")) {
-        const id = row.state?.id;
-        if (typeof id !== "string" || id === "") continue;
-        const mailbox = declared.get(id);
-        if (mailbox === undefined) continue;
-        const members = row.state.members ?? [];
-        const openedAt = row.state.openedAt;
-        entries.push({
-          id,
-          kind: "mailbox",
-          purpose: purposeOf(mailbox.declared, id, "mailbox"),
-          contract:
-            `${members.length} member${members.length === 1 ? "" : "s"}` +
-            `${members.length > 0 ? `: ${members.join(", ")}` : ""}. ` +
-            `${openedAt == null ? "Opened at an unrecorded time." : `Opened ${openedAt}.`} ` +
-            `Addressed by its id. Listed here means registered, not open.`,
-        });
-      }
-      return entries;
-    },
-  };
-}
-
-/**
- * The workforce's manifest sources — one per domain whose inventory key was
- * named.
+ * The workforce's manifest sources — the workers domain, when its inventory key
+ * was named.
  *
  * Exported beside `createWorkforceCapability` for an app that assembles its own
  * registry (a flow that is not a worker flow, say). The capability is the
  * ordinary door and calls this.
  *
  * @param options The boot-resolved roster and the inventory registry keys.
- * @returns Zero, one or two sources, workers first.
+ * @returns No source, or the workers source.
  */
 export function workforceManifestSources(
   options: WorkforceManifestSourceOptions,
@@ -257,9 +203,6 @@ export function workforceManifestSources(
   const sources: BlockManifestSource[] = [];
   if (options.inventory.workers !== undefined) {
     sources.push(workersSource(options.roster, options.inventory.workers));
-  }
-  if (options.inventory.mailboxes !== undefined) {
-    sources.push(mailboxesSource(options.roster, options.inventory.mailboxes));
   }
   return sources;
 }

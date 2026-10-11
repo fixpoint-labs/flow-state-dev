@@ -5,9 +5,9 @@
  * A person who tells a worker "I need a new laptop" and then asks "where can I
  * buy it?" is asking about the laptop. The worker can only answer that if the
  * model is handed the first turn along with the second. What it must never be
- * handed is another conversation's turns: a worker talks in one conversation per
- * mailbox and one per direct conversation, and a mailbox's worker that repeats
- * what a person told it in private is a leak, not memory.
+ * handed is another conversation's turns: a worker talks in one session per
+ * conversation, and a worker that repeats in one conversation what a person
+ * told it in another is a leak, not memory.
  *
  * What is graded is what the model was sent, read off the scripted model's
  * calls, never the stored items: a turn can be stored and still not reach the
@@ -17,22 +17,20 @@
  * `history` slot. The first and third checks fail (turn 2 sends the system
  * prompt and the new message only), and so do the positive halves of the
  * second. The second's negative halves pass on that red state because nothing
- * is sent at all, so their blast radius was taken separately: with the direct
- * conversation moved onto the worker's mailbox conversation, both go red and the
- * other two checks stay green.
+ * is sent at all, so their blast radius was taken separately: with the two
+ * conversations moved onto one session, both go red and the other two checks
+ * stay green.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { mailboxNotifyInputSchema, wakeMemberWorkers, type MailboxNotifyInput } from "../src/index";
 import { mintWorkers } from "../src/hire";
 
 const USER_ID = "u_person";
 const WORKER = "support.devices";
-const MAILBOX = "support.desk";
 
 type Sent = { role: string; text: string };
 
@@ -59,9 +57,7 @@ function turnOf(messages: unknown): string | undefined {
 
 /**
  * One worker on an in-process host, with a scripted model that answers the
- * laptop question by name and everything else with "noted", and a stand-in
- * for a mailbox's notify step built from the real `wakeMemberWorkers`, so a
- * post reaches the worker in the conversation a real mailbox would use.
+ * laptop question by name and everything else with "noted".
  */
 function boot() {
   const [worker] = mintWorkers([{ id: WORKER, declared: {}, body: "You answer device questions." }]);
@@ -72,16 +68,12 @@ function boot() {
       { when: () => true, then: { text: "noted" } }
     ]
   });
-  const mailbox = defineFlow({
-    kind: "mailbox-notify-stand-in",
-    actions: { deliver: { inputSchema: mailboxNotifyInputSchema, block: wakeMemberWorkers([worker!]) } }
-  })({ id: "mailbox-notify-stand-in" });
   const state = createFlowState({
-    flows: { [worker!.id]: worker!, [mailbox.id]: mailbox },
+    flows: { [worker!.id]: worker! },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({ generators: { "agent-answer": answer }, policy: "allow" })
   });
-  return { worker: worker!, mailbox, state, answer };
+  return { worker: worker!, state, answer };
 }
 
 /** One direct turn with the worker, in the conversation named `sessionId`. */
@@ -97,32 +89,6 @@ async function say(runtime: FlowStateRuntime, worker: FlowInstance, sessionId: s
     runtimeConfig: { ...runtime.runtimeConfig }
   });
   expect(result.error).toBeUndefined();
-}
-
-/** One mailbox post delivered to the worker; resolves once the worker has answered it. */
-async function post(runtime: FlowStateRuntime, mailbox: FlowInstance, postId: string, body: string) {
-  const delivery: MailboxNotifyInput = { mailboxId: MAILBOX, member: WORKER, postId, body, principal: "devuser" };
-  const result = await runAction({
-    orgId: DEFAULT_ORG_ID,
-    flow: mailbox,
-    actionName: "deliver",
-    input: delivery,
-    userId: USER_ID,
-    sessionId: MAILBOX,
-    stores: runtime.stores,
-    runtimeConfig: { ...runtime.runtimeConfig }
-  });
-  expect(result.error).toBeUndefined();
-  const handle = result.output as { sessionId: string; requestId: string };
-  for (let attempt = 0; attempt < 300; attempt += 1) {
-    const record = await runtime.stores.request.get(handle.requestId);
-    if (record !== undefined && record.status !== "in_progress") {
-      expect(record.status).toBe("completed");
-      return handle.sessionId;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error(`the worker never answered post ${postId}`);
 }
 
 describe("an agent worker's conversation", () => {
@@ -144,16 +110,16 @@ describe("an agent worker's conversation", () => {
     }
   });
 
-  it("keeps a worker's mailbox conversation and its direct conversation apart", async () => {
-    const { worker, mailbox, state, answer } = boot();
+  it("keeps two of a worker's conversations apart", async () => {
+    const { worker, state, answer } = boot();
     try {
       const runtime = await state.getRuntime();
       // Interleaved, so each conversation's second turn runs after the other
       // conversation already holds something it could leak.
       await say(runtime, worker, "direct-talk", "My badge number is 4417.");
-      await post(runtime, mailbox, "p_1", "The printer on floor 3 is jammed.");
+      await say(runtime, worker, "desk-talk", "The printer on floor 3 is jammed.");
       await say(runtime, worker, "direct-talk", "What is my badge number?");
-      await post(runtime, mailbox, "p_2", "Any update?");
+      await say(runtime, worker, "desk-talk", "Any update?");
 
       const callFor = (turn: string) => {
         const call = answer.calls.find((c) => turnOf(c.input) === turn);
@@ -161,14 +127,14 @@ describe("an agent worker's conversation", () => {
         return conversation(call!.input).map((m) => m.text).join("\n");
       };
       const directSecond = callFor("What is my badge number?");
-      const mailboxSecond = callFor("devuser in support.desk: Any update?");
+      const deskSecond = callFor("Any update?");
 
       // Each conversation remembers its own earlier turn...
       expect(directSecond).toContain("My badge number is 4417.");
-      expect(mailboxSecond).toContain("The printer on floor 3 is jammed.");
+      expect(deskSecond).toContain("The printer on floor 3 is jammed.");
       // ...and never hears the other one's.
       expect(directSecond).not.toContain("printer");
-      expect(mailboxSecond).not.toContain("badge");
+      expect(deskSecond).not.toContain("badge");
     } finally {
       await state.dispose();
     }

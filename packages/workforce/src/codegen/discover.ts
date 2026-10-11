@@ -1,5 +1,5 @@
 /**
- * The walk half of the code convention: what the three locked folders hold.
+ * The walk half of the code convention: what the two locked folders hold.
  *
  * Reads the **tree**, never the modules in it. Nothing here opens a discovered
  * file, and nothing here decides anything about registration — it names what a
@@ -48,10 +48,9 @@ import {
   type DiscoveredPackageBlock,
 } from "./discover-package-blocks";
 import { typescriptExtension } from "./typescript-module";
-import { PRE_RENAME_NAMES, preRenameKindNameProblem, preRenameKindsFolderProblem } from "../mailbox/pre-rename";
 
 /** Which locked folder a discovered file came from. */
-export type CodeSlotId = "worker" | "mailbox" | "block";
+export type CodeSlotId = "worker" | "block";
 
 /**
  * One locked folder, and what a file in it becomes.
@@ -69,13 +68,13 @@ export interface CodeSlot {
   /** Path under the workforce root, POSIX, relative. Owner-locked. */
   readonly dir: string;
   /** The map this slot's files are rendered onto. Public: an app imports it. */
-  readonly exportName: "workerFlows" | "mailboxKinds" | "blocks";
+  readonly exportName: "workerFlows" | "blocks";
   /** What a basename here names, for a refusal to say. */
   readonly label: SegmentLabel;
 }
 
 /**
- * The three locked folders, in the order their maps are rendered.
+ * The two locked folders, in the order their maps are rendered.
  *
  * Owner-locked paths, not derived — a best-practice tree rather than a
  * top-level `kinds/`, and one convention covering flows and blocks together
@@ -83,7 +82,6 @@ export interface CodeSlot {
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
   Object.freeze({ id: "worker", dir: "flows/workers", exportName: "workerFlows", label: "Kind" }),
-  Object.freeze({ id: "mailbox", dir: "flows/mailboxes", exportName: "mailboxKinds", label: "Kind" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
 
@@ -100,7 +98,7 @@ export interface DiscoveredFile {
 
 /** What one walk produced. */
 export interface DiscoveryResult {
-  /** Every file found in the three locked code folders, ordered by {@link DiscoveredFile.path}. */
+  /** Every file found in the two locked code folders, ordered by {@link DiscoveredFile.path}. */
   files: DiscoveredFile[];
   /** Every module found in a `resources/` folder, ordered by path. Door B's half. */
   resourceModules: DiscoveredResourceModule[];
@@ -162,7 +160,7 @@ function pathInTo(dir: string): string[] {
 }
 
 /**
- * Walk everything the convention reads under `root` — the three locked code
+ * Walk everything the convention reads under `root` — the two locked code
  * folders, and every `resources/` folder Door B's module walk covers — and
  * return what they hold.
  *
@@ -267,17 +265,9 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
         continue;
       }
 
-      // A kind named for the old built-in: every session on it would read as
-      // data from before the rename.
-      if (slot.id !== "block" && name === PRE_RENAME_NAMES.kind) {
-        problems.push(preRenameKindNameProblem(`"${relative}"`));
-        continue;
-      }
-
-      // One basename means one thing. Scoped so a worker flow and a block may
-      // share a name — they feed different maps on different calls — while the
-      // two FLOW folders share a scope, because one name meaning two flows is
-      // exactly the ambiguity this convention removes.
+      // One basename means one thing (`foo.ts` beside `foo.tsx` is two files
+      // claiming one name). Scoped so a worker flow and a block may share a
+      // name — they feed different maps on different calls.
       const scope = slot.id === "block" ? `block:${name}` : `kind:${name}`;
       const already = claimed.get(scope);
       if (already !== undefined) {
@@ -297,12 +287,6 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
       });
     }
   }
-
-  // Kinds left in the folder they sat in before the rename. Refused rather than
-  // skipped: a kind nobody generates is a mailbox that fails to open later,
-  // for a reason a long way from here.
-  const oldFlows = await classify(path.join(root, ...PRE_RENAME_NAMES.kindsFolder.split("/")));
-  if (oldFlows.kind !== "absent") problems.push(preRenameKindsFolderProblem());
 
   // Door B, over the same root. Run before anything is thrown, so an author
   // holding a bad block file AND a bad resource module sees both in one run —

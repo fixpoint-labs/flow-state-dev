@@ -37,7 +37,7 @@ function useNow(running: boolean): number {
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
-/** A row's stream as the table writes it: `#<workstream>`, or a conversation's `@<worker>` as it is. */
+/** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<conversation id>`. */
 function streamLabel(holder: string): string {
   return holder.startsWith("@") ? holder : `#${holder}`;
 }
@@ -105,10 +105,10 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-5">
-        {failed.map(([mailboxId, b]) =>
+        {failed.map(([holder, b]) =>
           b.ok ? null : (
-            <div key={mailboxId} className="mt-3">
-              <SectionFailure what={`The boards of ${mailboxId}`} failure={b.failure} onRetry={() => void refresh()} />
+            <div key={holder} className="mt-3">
+              <SectionFailure what={`The boards of ${holder}`} failure={b.failure} onRetry={() => void refresh()} />
             </div>
           ),
         )}

@@ -172,7 +172,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
       ? {
           [INVENTORY_WRITER_FLOW]: defineFlow({
             kind: INVENTORY_WRITER_FLOW,
-            internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
+            internal: { actions: { ...inventoryWriterActions() } },
           } as never)(),
         }
       : {}),
@@ -241,7 +241,6 @@ export async function openAskLab(options: AskLabOptions = {}) {
         workers: options.doors === false
           ? inventoryWorkers(installation).map((worker) => ({ ...worker, actions: {} }))
           : inventoryWorkers(installation),
-        mailboxes: [],
       },
       { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: ASK_LAB_USER_ID, orgId },
     );

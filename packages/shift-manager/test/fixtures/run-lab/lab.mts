@@ -295,7 +295,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   // The worker write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_FLOW,
-    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
+    internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -341,7 +341,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   };
 
   const inventory = await openInventory(
-    { workers: inventoryWorkers(installation), mailboxes: [] },
+    { workers: inventoryWorkers(installation) },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
       workerWriter: { flowKind: INVENTORY_WRITER_FLOW },
