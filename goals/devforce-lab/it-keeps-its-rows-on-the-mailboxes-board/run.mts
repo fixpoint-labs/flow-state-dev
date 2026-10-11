@@ -31,8 +31,7 @@
  *
  * Run: pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
