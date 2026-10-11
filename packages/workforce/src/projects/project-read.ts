@@ -135,6 +135,8 @@ export async function listProjectsOf(ctx: ResourcesContext, userId: string | und
   for (const visibility of ["shared", "private"] as const satisfies readonly ProjectVisibility[]) {
     const listed: ListProjectsOutput["projects"] = [];
     for (const ref of await projectRowsAt(ctx, visibility).list()) {
+      // A row that lost its id, title or owner is no project anyone can address: left
+      // out of the list, where `readProjectAt` refuses the one address loudly.
       const parsed = projectRowSchema.safeParse(ref.state);
       if (!parsed.success) continue;
       const row = parsed.data;

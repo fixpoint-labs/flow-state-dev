@@ -37,10 +37,10 @@ import { join } from "node:path";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
+import { listProjectsOutputSchema } from "@flow-state-dev/workforce";
 import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
 import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
@@ -164,7 +164,10 @@ async function ask(lab: Lab): Promise<Asked> {
 function listedIds(asked: Asked): string[] | undefined {
   const reads = asked.tools.filter((tool) => tool.name === LIST_PROJECTS);
   if (reads.length === 0) return undefined;
-  return reads.flatMap((tool) => ((tool.output as { projects?: Array<{ id: string }> } | null)?.projects ?? []).map((p) => p.id));
+  return reads.flatMap((tool) => {
+    const parsed = listProjectsOutputSchema.safeParse(tool.output);
+    return parsed.success ? parsed.data.projects.map((project) => project.id) : [];
+  });
 }
 
 await runGoal(async (failures) => {
@@ -172,7 +175,7 @@ await runGoal(async (failures) => {
   const note = (assertion: string, why: string): void => {
     failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);
   };
-  const blocked = [DEFAULT_MODEL, JUDGE_MODEL].filter((model) => !keysServing(model).some((key) => (process.env[key] ?? "") !== ""));
+  const blocked = [DEFAULT_MODEL].filter((model) => !keysServing(model).some((key) => (process.env[key] ?? "") !== ""));
   if (blocked.length > 0) {
     note("blocked", `no key here serves ${blocked.join(", ")}; the check did not run`);
     return { failures, evidence: "" };
