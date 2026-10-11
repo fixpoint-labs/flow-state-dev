@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { createLabClients } from "../src/lib/connection";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
+import { CONVERSATION_LEDGER_ID } from "@flow-state-dev/workforce/browser";
+import { conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -47,7 +48,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
 }
 
 /** Whether `url` is a read of the person's conversation boards: the snapshot's, or one task screen's. */
-const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith(`/resources/${CONVERSATION_BOARD_COLLECTION}`);
+const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith(`/resources/${CONVERSATION_LEDGER_ID}`);
 
 async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${baseUrl}${path}`);

@@ -17,6 +17,12 @@ import {
 } from "../workers/keys";
 
 /**
+ * The ledger's id: its resource key, and the board id its tasks are handed
+ * over under. **Pinned**: the task actions are named for it (`addTask_tasks`).
+ */
+export const CONVERSATION_LEDGER_ID = "tasks";
+
+/**
  * The workstream a session works for, from its server-written fields: the one
  * it leads (`workstreamId`), else the one it was filed from
  * (`filingWorkstreamId`), in `workstreamRef` form. `undefined` for neither.

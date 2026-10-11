@@ -4,16 +4,12 @@
  * its own board, so the read runs on the conversation's session; a refusal
  * comes back as an `ActionRefused` carrying its reason.
  */
+import { CONVERSATION_LEDGER_ID } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 import { runAction, ActionRefused } from "./action";
 
-/**
- * The action a coordinator conversation lists its tasks by: the task tools'
- * `listTasks`, named for the conversation board's id (`tasks`) by the task
- * tools' action rule. A Lab test calls it by this constant, so a rename can't
- * slip past.
- */
-export const LIST_TASKS_ACTION = "listTasks_tasks";
+/** `listTasks` named for the conversation ledger, by the task tools' action rule. */
+export const LIST_TASKS_ACTION = `listTasks_${CONVERSATION_LEDGER_ID}`;
 
 /** One task, as the conversation's read answers it. */
 export type ConversationTask = {

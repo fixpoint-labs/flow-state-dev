@@ -36,13 +36,9 @@ import {
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
 import { PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
-import { filingSessionIdOf } from "./filing-session";
+import { CONVERSATION_LEDGER_ID, filingSessionIdOf } from "./filing-session";
 
-/**
- * The ledger's id: its resource key, and the board id its tasks are handed
- * over under. **Pinned**: the task actions are named for it (`addTask_tasks`).
- */
-export const CONVERSATION_LEDGER_ID = "tasks";
+export { CONVERSATION_LEDGER_ID };
 
 /**
  * The partition a running session's board reads and writes: its

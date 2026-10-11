@@ -2355,7 +2355,8 @@ import {
 It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
 `ROSTER_FLOW_KIND`, `WORKER_ID_STATE_KEY`, `MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema`,
 `MailboxTranscriptLine`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE`, `COORDINATOR_JUDGMENT` (the
-coordinator's own turn's answer name, which its messages carry as `agentName`) and
+coordinator's own turn's answer name, which its messages carry as `agentName`),
+`CONVERSATION_LEDGER_ID` (the conversation board's collection) and
 `sessionIdOfFiling` (the conversation a board row was filed in), the same values
 the root exports, and reaches no Node built-in.
 

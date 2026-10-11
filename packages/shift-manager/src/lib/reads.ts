@@ -65,7 +65,7 @@ import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type S
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { CONVERSATION_LEDGER_ID, ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { workforceClientFor, type LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -501,18 +501,11 @@ export function boardRefsFor(mailboxId: string, manifest: ResourceManifest): str
 }
 
 /**
- * The collection every conversation's board keeps its rows in: Workforce's
- * conversation ledger (`CONVERSATION_LEDGER_ID`), which its browser entry
- * doesn't export. `static.test.ts` pins the two together.
- */
-export const CONVERSATION_BOARD_COLLECTION = "tasks";
-
-/**
  * A conversation board's ref: `<sessionId>.tasks`, the shape a mailbox's
  * board ref has, so a task route and a row name their board one way.
  */
 export function conversationBoardRef(sessionId: string): string {
-  return `${sessionId}.${CONVERSATION_BOARD_COLLECTION}`;
+  return `${sessionId}.${CONVERSATION_LEDGER_ID}`;
 }
 
 /**
@@ -521,7 +514,7 @@ export function conversationBoardRef(sessionId: string): string {
  * conversation's board, the one collection every conversation shares.
  */
 export function collectionOfBoard(boardRef: string): string {
-  return boardRef.endsWith(`.${CONVERSATION_BOARD_COLLECTION}`) ? CONVERSATION_BOARD_COLLECTION : boardRef;
+  return boardRef.endsWith(`.${CONVERSATION_LEDGER_ID}`) ? CONVERSATION_LEDGER_ID : boardRef;
 }
 
 /**
@@ -613,7 +606,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     // A conversation's board: the person's whole ledger, read through the
     // conversation, keeping its own partition's rows.
-    return (await readCollection(mailboxId, CONVERSATION_BOARD_COLLECTION))
+    return (await readCollection(mailboxId, CONVERSATION_LEDGER_ID))
       .filter((row) => conversationOfTopic(row.topic) === mailboxId)
       .map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
   };
@@ -638,7 +631,7 @@ export function createLabReader(clients: LabClients): LabReader {
       for (const [kind, sessionId] of byKind) {
         const manifest = await manifestFor(kind, sessionId);
         const declared = manifest.resources.some(
-          (r) => r.kind === "collection" && r.ref === CONVERSATION_BOARD_COLLECTION && r.client.state?.read === true,
+          (r) => r.kind === "collection" && r.ref === CONVERSATION_LEDGER_ID && r.client.state?.read === true,
         );
         if (declared) {
           carrier = sessionId;
@@ -648,7 +641,7 @@ export function createLabReader(clients: LabClients): LabReader {
       if (carrier === undefined) return [];
       const listed = new Set(sessions.map((s) => s.id));
       const byHolder = new Map<string, BoardRow[]>();
-      for (const row of await readCollection(carrier, CONVERSATION_BOARD_COLLECTION)) {
+      for (const row of await readCollection(carrier, CONVERSATION_LEDGER_ID)) {
         const holder = conversationOfTopic(row.topic);
         if (!listed.has(holder)) continue;
         const rows = byHolder.get(holder) ?? [];
@@ -659,7 +652,7 @@ export function createLabReader(clients: LabClients): LabReader {
         ([holder, rows]) => [holder, { ok: true, value: { refs: [conversationBoardRef(holder)], rows } }] as const,
       );
     } catch (error) {
-      return [[carrier ?? CONVERSATION_BOARD_COLLECTION, { ok: false, failure: describeFailure(error) }] as const];
+      return [[carrier ?? CONVERSATION_LEDGER_ID, { ok: false, failure: describeFailure(error) }] as const];
     }
   };
 
