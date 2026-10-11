@@ -178,3 +178,11 @@ anything rests on.
   supervised coding run and answer in the conversation. Nothing else in this closure runs that
   path end to end (b5 grades the EM's workstream, not an ask from a coordinator conversation), so
   its goal check joins part 3 as a required row, P3.11, with its three controls.
+- **Amended after merge (FIX-1883, 2026-10-11)**: the product owner decided that a workstream
+  is a new session on a worker already on the person's roster. Her project coordinator opens
+  it, and no form or separate hire is involved ([FIX-1793 D3](../FIX-1793/DECISIONS.md#d3),
+  which supersedes D2). In b5, Alice no longer opens `feature` herself. She asks her project
+  coordinator, which opens `feature` with the EM as lead and hands her ask over as its brief
+  (FIX-1793 BR-38). This removes the question of who picks the lead. The rest of b5 is
+  unchanged: it is graded at the EM's workstream session, with each result coming back once and
+  the EM updating the workstream entry. FIX-1883 (with FIX-1877) blocks this closure.
