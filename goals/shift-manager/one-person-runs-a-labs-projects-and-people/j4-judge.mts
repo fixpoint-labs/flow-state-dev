@@ -8,9 +8,13 @@
  * most words with it (a long one cut to its nearest paragraphs) are handed
  * to Jev beside the task and the line. Jev answers two choice questions:
  * whether those sections answer the step, the step is a gap, or it is outside
- * what the task asked for; and which section it read for that. A line is dropped only on *answered* or *outside* at
- * {@link JUDGE_FLOOR} or above. Anything else, a gap or an unsure verdict,
- * fails J4 and names the section Jev cited.
+ * what the task asked for; and which section it read for that. A *gap* fails J4. A
+ * sure *answered* or *outside*, at {@link JUDGE_FLOOR} or above, drops the
+ * line. An unsure one is noisy too: Jev's confidence on the same line swings
+ * across the floor from call to call. So an unsure line is judged
+ * {@link JUDGE_CALLS} times in all, and fails J4, naming the section Jev cited,
+ * only when most of those calls are not a sure drop. A line Jev is unsure
+ * about every time still fails, as a cut docs section does.
  *
  * The model is `typesafe-ai/jev` through the AI Gateway, as DevTeam's coder
  * judge runs it (FIX-1866 D4).
@@ -28,6 +32,9 @@ export const JUDGE_MODEL = "typesafe-ai/jev";
  * cut section's line below 0.3, and the same line on the full docs at 0.7.
  */
 export const JUDGE_FLOOR = 0.6;
+
+/** How many times in all an unsure line is judged; it fails when most of them aren't a sure drop. */
+export const JUDGE_CALLS = 3;
 
 /** How many sections of the docs Jev reads per line, and how much of each. */
 const SECTIONS_PER_LINE = 6;
@@ -56,7 +63,9 @@ export interface JudgedLine {
   gap?: number;
   /** The section Jev cited, `page § heading`. */
   cited: string;
-  /** Whether the line fails J4: anything but a sure *answered* or *outside*. */
+  /** Each call's verdict and confidence, when the first was unsure and the line was judged again. */
+  calls?: { verdict: keyof typeof VERDICTS; confidence: number }[];
+  /** Whether the line fails J4: a *gap*, or most of its calls not a sure *answered* or *outside*. */
   fails: boolean;
 }
 
@@ -159,10 +168,8 @@ export async function judgeSilent(task: string, lines: string[], sections: DocSe
   });
   const flow = defineFlow({ kind: "j4-judge", actions: { judge: { inputSchema, block: judge } } })();
   const resolver = createModelResolver();
-  const out: JudgedLine[] = [];
-  for (const [i, line] of lines.entries()) {
-    const picked = nearest(line, sections).map((s, j) => ({ id: `s${j + 1}`, from: `${s.page} § ${s.heading}`, text: excerpt(line, s) }));
-    const requestId = `req_j4_judge_${i}`;
+  const once = async (line: string, picked: { id: string; from: string; text: string }[], sessionId: string): Promise<JudgedLine> => {
+    const requestId = `req_${sessionId}`;
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -170,7 +177,7 @@ export async function judgeSilent(task: string, lines: string[], sections: DocSe
       input: { task, step: line, sections: picked },
       requestId,
       userId: "j4_judge",
-      sessionId: `j4_judge_${i}`,
+      sessionId,
       stores: createInMemoryStores(),
       responseEmitter: createResponseEmitter({ requestId, now: () => Date.now() }),
       runtimeConfig: { modelResolver: resolver },
@@ -183,7 +190,22 @@ export async function judgeSilent(task: string, lines: string[], sections: DocSe
     const sectionId = answers.section?.choice;
     const cited = picked.find((s) => s.id === sectionId)?.from ?? (picked.length === 0 ? "no section shares a word with the step" : "none of the sections it read");
     const gap = answers.verdict?.probabilities?.gap;
-    out.push({ line, verdict, confidence, gap, cited, fails: verdict === "gap" || confidence < JUDGE_FLOOR });
+    return { line, verdict, confidence, gap, cited, fails: verdict === "gap" || confidence < JUDGE_FLOOR };
+  };
+  const out: JudgedLine[] = [];
+  for (const [i, line] of lines.entries()) {
+    const picked = nearest(line, sections).map((s, j) => ({ id: `s${j + 1}`, from: `${s.page} § ${s.heading}`, text: excerpt(line, s) }));
+    const first = await once(line, picked, `j4_judge_${i}`);
+    if (first.verdict === "gap" || !first.fails) {
+      out.push(first);
+      continue;
+    }
+    const calls = [first];
+    for (let n = 1; n < JUDGE_CALLS; n++) calls.push(await once(line, picked, `j4_judge_${i}_${n}`));
+    const failing = calls.filter((c) => c.fails).length;
+    // The line reads as the call that decided it: the first failing call, or the first sure drop.
+    const shown = failing * 2 > calls.length ? first : calls.find((c) => !c.fails)!;
+    out.push({ ...shown, calls: calls.map((c) => ({ verdict: c.verdict, confidence: c.confidence })), fails: failing * 2 > calls.length });
   }
   return out;
 }

@@ -14,7 +14,8 @@
  * each step it took with the page that told it how, or *doc silent*. Jev
  * judges each doc-silent line against the docs as the writer saw them
  * (`j4-judge.mts`): a line fails J4, reason *doc silent* (QR-14), unless Jev
- * is sure the docs answer it or it is outside what the task asked for.
+ * is sure the docs answer it or it is outside what the task asked for. A line
+ * Jev is unsure about is judged three times and fails on the majority.
  *
  * `J4_CUT=store` is the control: it cuts the Shift Manager README's stores and
  * restarts from the writer's copy of the docs, a real gap J4 must fail on.
@@ -227,7 +228,8 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     // Jev reads each line against the docs as the writer saw them, the control's cut included.
     judged = await judgeSilent(TASK, silent, sectionsOf(seen));
     for (const j of judged) {
-      const read = `${j.verdict} ${j.confidence.toFixed(2)}, read ${j.cited}`;
+      const calls = j.calls === undefined ? "" : ` (calls: ${j.calls.map((c) => `${c.verdict} ${c.confidence.toFixed(2)}`).join(", ")})`;
+      const read = `${j.verdict} ${j.confidence.toFixed(2)}${calls}, read ${j.cited}`;
       if (j.fails) failures.push(`J4 doc silent (judge: ${read}): ${j.line.slice(0, 400)}`);
       else notes.push(`J4 doc-silent line dropped (judge: ${read}): ${j.line.slice(0, 300)}`);
     }
