@@ -44,9 +44,9 @@ existing task tools, and the actions are named for the board id, drafted `tasks`
 >
 > The conversation that filed a task hears once when it ends: completed, with what came back;
 > failed for good, with the error; or stopped on a question. A failed attempt with attempts left
-> just runs again. A coordinator that routes by judgment or by best fit reads the result in its
-> own turn and decides what to do next. One that routes round robin or to everyone shows it as a
-> line in the conversation.
+> just runs again. Every ending shows as a line under the delegate's name. A coordinator that
+> routes by judgment or by best fit also takes a turn to read it and decide what to do next; one
+> that routes round robin or to everyone shows the line and nothing more.
 >
 > | Action | What it does |
 > |---|---|
