@@ -14,22 +14,31 @@
  *      implementation that hired both onto one shared configuration gives both
  *      the same answer and fails; the two are also required to differ.
  *
+ *   e  the BUNDLE. `bundled-host.mts` reaches the same kind only through the
+ *      generated module; it is bundled and minified with esbuild, written to an
+ *      empty folder outside the repository and run there with plain node. Each
+ *      worker must still answer with its own file's desk, which it can only do
+ *      if the generated module's static imports were carried into the bundle.
+ *
  * Legs a to c ran on kitchen-sink's one piece of workforce code, the
  * `escalate` tool block. The escalation feature was removed (FIX-1792), the
- * app carries no workforce code now, and the three legs went with it; goal.md
- * says what that leaves unproved. The leg keeps its letter so the verdict log
- * reads straight.
+ * app carries no workforce code now, and the three legs went with it; leg e
+ * keeps their production-bundle guarantee on the fixture host. The letters
+ * stay so the verdict log reads straight.
  *
  * Model-free. See goal.md for the contract.
  *
  * Run:      pnpm tsx goals/workforce-conventions/code-comes-from-files-alone/run.mts
  * Controls: GOAL_CONTROL=shared-settings (this runner hires both fixture workers on the first worker's settings: must FAIL at d, and nothing else)
+ *           GOAL_CONTROL=runtime-scan (the bundle's host finds kinds by scanning flows/workers/ at run time: must FAIL at e, and nothing else)
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { build, type Plugin } from "esbuild";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -51,6 +60,9 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const EXPECTED: Record<string, string[]> = {
   // Read by this runner: both fixture workers are hired on the first worker's settings.
   "shared-settings": ["d"],
+  // Read by this runner: the bundle's host finds its kinds by scanning a folder at run time
+  // instead of through the generated module's static imports.
+  "runtime-scan": ["e"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -59,6 +71,34 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const TREE_KIND_MODULE = join(TREE, "flows", "workers", `${fixture.host.kind}.ts`);
 const CLI = join(REPO_ROOT, "packages", "cli", "src", "bin.ts");
+const HERE = dirname(fileURLToPath(import.meta.url));
+/** A name only the kind's own module carries: its answer block's. Present in the bundle means the kind was bundled. */
+const KIND_MARK = "desk-clerk-answer";
+
+/**
+ * The `runtime-scan` control: the generated module swapped, at bundle time, for
+ * one that finds kinds the way a run-time scan would — by listing
+ * `flows/workers/` beside the running code and importing what is there.
+ */
+const runtimeScan: Plugin = {
+  name: "runtime-scan",
+  setup(b) {
+    b.onResolve({ filter: /workforce\.gen\.ts$/ }, (args) => ({ path: args.path, namespace: "runtime-scan" }));
+    b.onLoad({ filter: /.*/, namespace: "runtime-scan" }, () => ({
+      loader: "js",
+      contents: [
+        `import { readdirSync } from "node:fs";`,
+        `import { dirname, join } from "node:path";`,
+        `import { fileURLToPath, pathToFileURL } from "node:url";`,
+        `const dir = join(dirname(fileURLToPath(import.meta.url)), "flows", "workers");`,
+        `let files = [];`,
+        `try { files = readdirSync(dir); } catch {}`,
+        `export const kinds = {};`,
+        `for (const f of files) kinds[f.replace(/\\.[^.]+$/, "")] = (await import(pathToFileURL(join(dir, f)).href)).default;`,
+      ].join("\n"),
+    }));
+  },
+};
 
 /**
  * Whether `source` (the text of `file`) pulls in the module at `target`.
@@ -198,6 +238,63 @@ await runGoal(async (failures) => {
     );
   } finally {
     await state.dispose();
+  }
+
+
+  // ---- (e) the kind, through a production bundle ----------------------------
+  // `bundled-host.mts` reaches the kind only through the generated module. It
+  // is bundled and minified into one file, written to an empty folder outside
+  // the repository, and run there with plain node: nothing beside it holds the
+  // fixture's source, so the workers answer only if the generated module's
+  // static imports were carried into the bundle.
+  const out = mkdtempSync(join(tmpdir(), "goal-code-from-files-"));
+  try {
+    const bundle = join(out, "host.mjs");
+    const built = await build({
+      entryPoints: [join(HERE, "bundled-host.mts")],
+      bundle: true,
+      minify: true,
+      platform: "node",
+      format: "esm",
+      outfile: bundle,
+      logLevel: "silent",
+      plugins: CONTROL === "runtime-scan" ? [runtimeScan] : [],
+      // Some dependencies are CommonJS and call require; an ESM bundle has none.
+      banner: { js: `import { createRequire as __goalRequire } from "node:module"; const require = __goalRequire(import.meta.url);` },
+    });
+    if (built.errors.length > 0) fail("e", `the bundle did not build: ${built.errors.map((e) => e.text).join("; ")}`);
+    const text = readFileSync(bundle, "utf8");
+    if (!text.includes(KIND_MARK)) fail("e", `the bundle carries no "${KIND_MARK}", so the kind's module was not bundled`);
+    const input = join(out, "workers.json");
+    writeFileSync(input, JSON.stringify({ ...fixture.host, workers: roster.workers }));
+    let printed = "";
+    try {
+      printed = execFileSync(process.execPath, [bundle, input], { cwd: out, stdio: "pipe", env: { PATH: process.env.PATH ?? "" } }).toString();
+    } catch (err) {
+      const e = err as { stderr?: Buffer };
+      const lines = String(e.stderr ?? "").split("\n");
+      // The bundle is minified, so the stack's first lines are code; the error's own line names the cause.
+      const cause = lines.find((l) => /^\w*Error\b/.test(l)) ?? lines[0] ?? "";
+      fail("e", `the bundled host exited non-zero: ${cause.slice(0, 300)}`);
+    }
+    const line = printed.trim().split("\n").pop() ?? "";
+    const result = (line.startsWith("{") ? JSON.parse(line) : { kinds: [], answers: {} }) as {
+      kinds: string[];
+      answers: Record<string, string>;
+    };
+    for (const seatId of fixture.host.seats) {
+      const said = result.answers[seatId] ?? "";
+      const desk = declaredDesk(seatId);
+      if (!said.includes(`[${desk} desk]`)) {
+        fail("e", `${seatId}, run from the bundle: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
+      }
+    }
+    evidence.push(
+      `from a ${Math.round(text.length / 1024)} KB minified bundle run outside the repository (kinds: ${result.kinds.join(", ") || "none"}): ` +
+        fixture.host.seats.map((seatId) => `${seatId} said ${JSON.stringify(result.answers[seatId] ?? "")}`).join(", ")
+    );
+  } finally {
+    rmSync(out, { recursive: true, force: true });
   }
 
   // A control must redden each leg it names, and only those.
