@@ -718,37 +718,9 @@ while it is in use. `taskToolActions` exposes the same nine as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
-`addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
-then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
-minutes by default). The option is in the schema only on a board that resumes asks and a host
-that can hold one: pass `createTaskToolsCapability(resolver, roster, { resumesAsks: true })`
-only when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn
-(a board run, a task's notice), and the host has durable execution and a running durability
-sweeper. `resumesAsks` defaults to `false`, so the standalone `taskTools` and a custom resolver
-never offer the option. A composing layer that builds its own capability gets the same per-turn
-list from `taskToolsForTurn(resolver, roster, { resumesAsks })`. `listTasks` marks an asked row
-`asked: true`. An ask is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
-returns true for those turns. See the task board page for limits and errors.
-
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
 claim clears it until the next run starts.
-
-Two functions sit under the option, for a layer that builds its own board surface:
-
-- `addTaskAndWait(ctx, collection, init, { timeoutMs? })`, from
-  `@flow-state-dev/orchestration/task-board`, files `init` as an ask from inside a generator's
-  tool call and waits for its answer. Call it from your own tool when you don't use the task
-  tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
-  on the same subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in
-  one step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
-  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too.
-- `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
-  it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
-  answer whose resume was lost to a crash is still delivered. It returns at once when nothing
-  is owed. It also cancels each task whose ask was stopped or timed out while the ask's own
-  cancel failed (`Task.cancelOwed`). Until something touches the board, that task's worker may
-  keep running.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
@@ -774,32 +746,6 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
 `session_has_unfinished_task`, and `task_awaiting_answer` — a coordinator
 rule like "when a tool returns `ok: false`, re-plan" covers all of them.
-
-`answerTask({ taskId, answer })` answers a task parked on its worker's question:
-the task goes back to `pending` with the answer, its next attempt gets it as
-`input.answer`, and the claim that follows isn't charged against `maxAttempts`.
-It takes only a task its worker parked with `parkOnQuestion`, for the question it
-is waiting on now. It declines any other task, one parked for a person's turn or
-waiting on its own sub-tasks included, and a late answer to a question the task has
-moved past (`not_parked_on_question: …`), and a finished one
-(`terminal_task_write_declined: …`). It
-doesn't drain the board: on a Workforce conversation's board the task starts on
-its own; on your own board, drain it afterwards. Until the answered task runs again, `assignTask`
-and `updateTask` refuse to move it to another worker (`task_awaiting_answer`), so
-the answer reaches the session that asked.
-
-`addTask` takes `followUpOf` to file new work on a finished task: the follow-up
-is a new task, with the same worker, that runs in the finished task's session. It
-keeps that worker: `assignTask` and `updateTask` won't move it
-(`follow_up_takes_no_assignee`). `addTask` refuses an `assignee` beside it
-(`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
-(`follow_up_of_unfinished`), and a session that still has an unfinished task
-(`session_has_unfinished_task`), all before anything is filed.
-
-`createParkOnQuestion({ resolve })` builds the worker's side.
-`parkOnQuestion({ question })` parks the task the current turn is working on.
-`offered(ctx)` says whether the turn gets the tool: it does on a task turn for a
-running task that wasn't filed with `waitForResponse`.
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
@@ -849,6 +795,69 @@ caller's history.
 
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface.
+
+#### Asking a task and waiting for the answer
+
+`addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
+then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
+minutes by default). `listTasks` marks an asked row `asked: true`. An ask is refused on a turn
+that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. See
+[Task board → Asking, and waiting for the answer](https://flow-state.dev/docs/orchestration/task-board#asking-and-waiting-for-the-answer)
+for limits and errors.
+
+The option is in the schema only on a board that resumes asks and a host
+that can hold one: pass `createTaskToolsCapability(resolver, roster, { resumesAsks: true })`
+only when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn
+(a board run, a task's notice), and the host has durable execution and a running durability
+sweeper. `resumesAsks` defaults to `false`, so the standalone `taskTools` and a custom resolver
+never offer the option. A composing layer that builds its own capability gets the same per-turn
+list from `taskToolsForTurn(resolver, roster, { resumesAsks })`.
+
+Two functions sit under the option, for a layer that builds its own board surface:
+
+- `addTaskAndWait(ctx, collection, init, { timeoutMs? })`, from
+  `@flow-state-dev/orchestration/task-board`, files `init` as an ask from inside a generator's
+  tool call and waits for its answer. Call it from your own tool when you don't use the task
+  tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
+  on the same subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in
+  one step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
+  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too.
+- `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
+  it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
+  answer whose resume was lost to a crash is still delivered. It returns at once when nothing
+  is owed. It also cancels each task whose ask was stopped or timed out while the ask's own
+  cancel failed (`Task.cancelOwed`). Until something touches the board, that task's worker may
+  keep running.
+
+#### When a task stops on a question
+
+A worker that can't go on without an answer parks its task on a question, and whoever
+filed the task answers it. `createParkOnQuestion({ resolve })` builds the worker's side:
+`parkOnQuestion({ question })` parks the task the current turn is working on, and
+`offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
+task that wasn't filed with `waitForResponse`.
+
+`answerTask({ taskId, answer })` answers a task parked on its worker's question:
+the task goes back to `pending` with the answer, its next attempt gets it as
+`input.answer`, and the claim that follows isn't charged against `maxAttempts`.
+It takes only a task its worker parked with `parkOnQuestion`, for the question it
+is waiting on now. It declines any other task (including one parked for a person's
+turn or waiting on its own sub-tasks), a late answer to a question the task has
+moved past (`not_parked_on_question: …`), and a finished task
+(`terminal_task_write_declined: …`). It doesn't drain the board: on a Workforce conversation's board the task starts on
+its own; on your own board, drain it afterwards. Until the answered task runs again, `assignTask`
+and `updateTask` refuse to move it to another worker (`task_awaiting_answer`), so
+the answer reaches the session that asked.
+
+#### Following up on a finished task
+
+`addTask` takes `followUpOf` to file new work on a finished task: the follow-up
+is a new task, with the same worker, that runs in the finished task's session. It
+keeps that worker: `assignTask` and `updateTask` won't move it
+(`follow_up_takes_no_assignee`). `addTask` refuses an `assignee` beside it
+(`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
+(`follow_up_of_unfinished`), and a session that still has an unfinished task
+(`session_has_unfinished_task`), all before anything is filed.
 
 ### skillsManifestSource
 
