@@ -67,7 +67,7 @@ const work = handler({
   execute: async () => ({ ok: true }),
 });
 
-function kindWith(resources: DeclaredResources) {
+function flowWith(resources: DeclaredResources) {
   return defineFlow({
     kind: KIND,
     cardinality: "collection",
@@ -119,7 +119,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
 
   const [worker] = mintWorkers(
     [{ id: WORKER, declared: { flow: KIND, description: WORKER }, body: "" }],
-    { workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never }, documents, references },
+    { workerFlows: { [KIND]: flowWith({ ...documents, ...references }) as never }, documents, references },
   );
 
   const stores = createInMemoryStores();

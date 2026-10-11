@@ -15,7 +15,7 @@ import type { FlowInstance, InitialSkill, ResolvePrincipalFn } from "@flow-state
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { mintWorkers } from "../src/hire";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import type { WorkerManifest } from "../src/manifest";
 
 const USER_ID = "u_caller";
@@ -100,7 +100,7 @@ async function ask(worker: FlowInstance, sessionId: string): Promise<Turn> {
 
 function hireWorker(authentication?: FlowInstance["authentication"]): FlowInstance {
   const kind = defineAgentWorkerFlow();
-  const [worker] = mintWorkers([record()], { workerFlows: { [AGENT_KIND]: kind } });
+  const [worker] = mintWorkers([record()], { workerFlows: { [AGENT_FLOW]: kind } });
   if (authentication !== undefined) {
     Object.assign(worker!, { authentication });
   }

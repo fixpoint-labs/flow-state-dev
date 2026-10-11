@@ -152,7 +152,7 @@ import {
 } from "./coordinator-state";
 import {
   COORDINATOR_JUDGMENT,
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
   DELEGATE_ANSWER_ACTION,
   DELEGATE_MISSED_ACTION,
@@ -396,7 +396,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const sessionBoard = defineSessionBoard({
     installation,
-    flowKind: COORDINATOR_KIND,
+    flowKind: COORDINATOR_FLOW,
     postFlows,
     // A project's coordinator starts with its user's open workstreams there.
     seed: (ctx) => workstreamDelegateSeed(ctx as never)
@@ -410,7 +410,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * that names none.
    */
   const coordinatorOf = async (ctx: BlockContext) => {
-    const worker = await installation.resolveWorker(ctx, COORDINATOR_KIND);
+    const worker = await installation.resolveWorker(ctx, COORDINATOR_FLOW);
     const config = worker.config as unknown as CoordinatorConfig;
     const records = (ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] == null
       ? await workstreamDelegateSeed(ctx as never)
@@ -833,7 +833,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {
-      kind: COORDINATOR_KIND,
+      kind: COORDINATOR_FLOW,
       answerName: COORDINATOR_JUDGMENT,
       extraTools: [...sessionBoard.delegates.tools, handOffTool],
       board: sessionBoard,
@@ -1622,7 +1622,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .tapIf(hasRouteOns, sendOn);
 
   const flow = defineFlow({
-    kind: COORDINATOR_KIND,
+    kind: COORDINATOR_FLOW,
     configSchema: coordinatorConfigSchema(turn.settings),
     // The agent turn's binding: the documents a worker may be granted, the
     // per-turn visibility rule, and the request `onStarted` that loads this

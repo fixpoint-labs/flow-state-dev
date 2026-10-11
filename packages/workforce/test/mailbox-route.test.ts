@@ -72,7 +72,7 @@ const MEMBERS = [...Object.keys(DESCRIPTIONS), "support.notes"];
 type Heard = { worker: string; body: string; routed?: boolean; recent?: string[] };
 
 /** A listening kind that records each delivery; `failOn` makes one member's run throw. */
-function listeningKinds(failOn?: string) {
+function listeningFlows(failOn?: string) {
   const heard: Heard[] = [];
   const listen = handler({
     name: "test-listen",
@@ -154,7 +154,7 @@ function host(
     withoutRoute?: boolean;
   } = {}
 ) {
-  const { heard, kinds } = listeningKinds(options.failOn);
+  const { heard, kinds } = listeningFlows(options.failOn);
   const minted = mintWorkers(workers(options.pinGeneralTo, options.undescribed), { workerFlows: kinds });
   const route = scriptedRoute();
   const [mailbox] = mailboxInstances(options.mailboxes ?? manifests(), {

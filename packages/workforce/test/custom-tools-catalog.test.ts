@@ -29,7 +29,7 @@ import { mintWorkers, type HireOptions } from "../src/hire";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation } from "../src/workers/installation";
 import type { WorkerManifest } from "../src/manifest";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
   return { declared: {}, body: "", ...over };
@@ -149,7 +149,7 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
     const seen = { outcome: "never ran" };
     const kind = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
     const [worker] = hire([record({ id: "support.auditor", declared: { tools: ["write-audit"] } })], {
-      [AGENT_KIND]: kind,
+      [AGENT_FLOW]: kind,
     });
 
     // The static half: the action block the flow walks now carries the
@@ -179,7 +179,7 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
     const kind = defineAgentWorkerFlow({ uses: [ledgerWork] });
     const [worker] = hire(
       [record({ id: "support.picker", declared: { capabilities: { "ledger-work": ["audit"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(worker!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
@@ -193,7 +193,7 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
   it("installs the store for a worker whose `tools:` never names the block", () => {
     const seen = { outcome: "never ran" };
     const kind = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
-    const [worker] = hire([record({ id: "support.ghost" })], { [AGENT_KIND]: kind });
+    const [worker] = hire([record({ id: "support.ghost" })], { [AGENT_FLOW]: kind });
 
     expect(Object.keys((worker as unknown as { resources?: object }).resources ?? {})).toContain(
       "auditLog",
@@ -286,8 +286,8 @@ describe("a block renamed with .as() to its catalog key", () => {
     const installation = createWorkerInstallation({ workerFlows: () => flows as never });
     const renamed = createWorkerHireBlocks(installation).hire.as({ name: "hire", description });
     const kind = defineAgentWorkerFlow({ installation, catalog: { hire: renamed } });
-    flows = { [AGENT_KIND]: kind };
-    const [worker] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_KIND]: kind });
+    flows = { [AGENT_FLOW]: kind };
+    const [worker] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_FLOW]: kind });
 
     // A step model that calls `hire` once, recording what it was offered and
     // what the call returned.

@@ -124,7 +124,7 @@ export interface MailboxInstancesOptions {
    *
    * It reaches the built-in only. A kind passed under `kinds` is the caller's
    * to build, and it carries the writer by spreading
-   * `inventoryWriterActions(itsOwnKindName)` into its own actions — the same
+   * `inventoryWriterActions(itsOwnFlowName)` into its own actions — the same
    * way it already carries `cardinality: "singleton"`. There is nowhere to hand
    * this to one: a custom kind is zero-arg by contract.
    */
@@ -244,7 +244,7 @@ export function orderedById<T extends { id: string }>(records: readonly T[]): T[
  * shared with the worker door. This adapter supplies the mailbox default and
  * words both refusal cases the one way the mailbox door always has.
  */
-export function kindOf(declared: Record<string, unknown>): { kind: string } | { problem: string } {
+export function workerFlowOf(declared: Record<string, unknown>): { kind: string } | { problem: string } {
   const read = readDeclaredFlow(declared, MAILBOX_KIND);
   if ("kind" in read) return read;
   return { problem: "declares a `flow:` that is not a kind name" };
@@ -348,7 +348,7 @@ function validate(
   const routing = routingOf(declared);
   if (routing !== undefined && "problem" in routing) return routing;
 
-  const selected = kindOf(declared);
+  const selected = workerFlowOf(declared);
   if ("problem" in selected) return selected;
 
   // `hasOwn` rather than a bare lookup: `flow` is author-supplied, and
@@ -550,11 +550,11 @@ export function mailboxInstances(
   /** Ledger id → the mailbox that minted it. A collision names both. */
   const minted = new Map<string, string>();
   /** The minted ids each selected kind must be built holding. */
-  const boardsByKind = new Map<string, string[]>();
+  const boardsByFlow = new Map<string, string[]>();
   /** Each selected kind's routed mailboxes: mailbox id → its `routing:`. */
-  const routingByKind = new Map<string, Record<string, MailboxRouting>>();
+  const routingByFlow = new Map<string, Record<string, MailboxRouting>>();
   /** Each selected kind's mailboxes that declared `boardActions: true`. */
-  const boardActionsByKind = new Map<string, string[]>();
+  const boardActionsByFlow = new Map<string, string[]>();
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -578,10 +578,10 @@ export function mailboxInstances(
 
     selected.add(result.kind);
     if (result.routing !== undefined) {
-      routingByKind.set(result.kind, { ...routingByKind.get(result.kind), [manifest.id]: result.routing });
+      routingByFlow.set(result.kind, { ...routingByFlow.get(result.kind), [manifest.id]: result.routing });
     }
     if (manifest.declared[BOARD_ACTIONS_KEY] === true) {
-      boardActionsByKind.set(result.kind, [...(boardActionsByKind.get(result.kind) ?? []), manifest.id]);
+      boardActionsByFlow.set(result.kind, [...(boardActionsByFlow.get(result.kind) ?? []), manifest.id]);
     }
 
     // Minted here rather than in `validate`, because uniqueness is a fact
@@ -610,7 +610,7 @@ export function mailboxInstances(
         continue;
       }
       minted.set(id, manifest.id);
-      boardsByKind.set(result.kind, [...(boardsByKind.get(result.kind) ?? []), id]);
+      boardsByFlow.set(result.kind, [...(boardsByFlow.get(result.kind) ?? []), id]);
     }
   }
 
@@ -624,14 +624,14 @@ export function mailboxInstances(
 
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
-    const boards = boardsByKind.get(kind);
-    const routing = routingByKind.get(kind);
+    const boards = boardsByFlow.get(kind);
+    const routing = routingByFlow.get(kind);
     // A kind holding nothing is built exactly as it was before boards existed,
     // and `validate` has already refused the third case — boards named on a
     // kind that cannot hold them. Routing likewise: only a kind
     // this package built gets here holding any.
     if (!holdsBoards(factory)) return factory();
-    const boardActions = boardActionsByKind.get(kind);
+    const boardActions = boardActionsByFlow.get(kind);
     const withBoards = boards === undefined ? factory : factory.withBoards(boards);
     const withRouting = routing === undefined ? withBoards : withBoards.withRouting(routing);
     const withBoardActions = boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions);
@@ -812,7 +812,7 @@ export async function openMailboxes(
   // the authority to choose one.
 
   for (const manifest of orderedById(manifests)) {
-    const selected = kindOf(manifest.declared);
+    const selected = workerFlowOf(manifest.declared);
     if ("problem" in selected) {
       throw new Error(`mailbox "${manifest.id}" — ${selected.problem}`);
     }

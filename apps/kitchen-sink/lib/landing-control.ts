@@ -20,7 +20,7 @@
  */
 import { defineFlow, generator, handler, type BlockDefinition } from "@flow-state-dev/core";
 import {
-  AGENT_KIND,
+  AGENT_FLOW,
   delegatedPostSchema,
   workerConfigOf,
   workerConfigSchema,
@@ -67,11 +67,11 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
     inputSchema: z.unknown(),
     resources: { ...installation.resources },
     execute: async (_input, ctx) => {
-      await installation.resolveWorker(ctx, AGENT_KIND);
+      await installation.resolveWorker(ctx, AGENT_FLOW);
     },
   });
   return defineFlow({
-    kind: AGENT_KIND,
+    kind: AGENT_FLOW,
     cardinality: "collection",
     configSchema: settings,
     session: installation.session(),

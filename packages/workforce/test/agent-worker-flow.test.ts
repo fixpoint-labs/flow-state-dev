@@ -19,7 +19,7 @@ import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
   return { declared: {}, body: "", ...over };
@@ -52,7 +52,7 @@ describe("the built-in agent kind", () => {
       record({ id: "engineering.lead", declared: { description: "Holds the board." }, body: "You are the lead." })
     ]);
 
-    expect(worker!.kind).toBe(AGENT_KIND);
+    expect(worker!.kind).toBe(AGENT_FLOW);
     expect(worker!.config).toMatchObject({ instructions: "You are the lead." });
   });
 
@@ -60,19 +60,19 @@ describe("the built-in agent kind", () => {
   it("hires a record with neither `flow:` nor a body, carrying no instructions", () => {
     const [worker] = hire([record({ id: "engineering.ghost", declared: { description: "Says little." } })]);
 
-    expect(worker!.kind).toBe(AGENT_KIND);
+    expect(worker!.kind).toBe(AGENT_FLOW);
     expect(Object.hasOwn(worker!.config, "instructions")).toBe(false);
   });
 
   // A roster of records that name no kind needs no `kinds` at all.
   it("hires with no options passed", () => {
     const [worker] = mintWorkers([record({ id: "engineering.lead", body: "You are the lead." })]);
-    expect(worker!.kind).toBe(AGENT_KIND);
+    expect(worker!.kind).toBe(AGENT_FLOW);
   });
 
   it("hires a record that names `agent` explicitly into the same built-in", () => {
-    const [worker] = hire([record({ id: "engineering.lead", declared: { flow: AGENT_KIND }, body: "Hello." })]);
-    expect(worker!.kind).toBe(AGENT_KIND);
+    const [worker] = hire([record({ id: "engineering.lead", declared: { flow: AGENT_FLOW }, body: "Hello." })]);
+    expect(worker!.kind).toBe(AGENT_FLOW);
   });
 
   // The two defaults a zero-configuration worker is judged on, plus the model.
@@ -102,7 +102,7 @@ describe("the built-in agent kind", () => {
 
     expect(message).toContain('worker "engineering.scribe"');
     expect(message).toContain('"note-taker"');
-    expect(message).toContain(`"${AGENT_KIND}"`);
+    expect(message).toContain(`"${AGENT_FLOW}"`);
   });
 });
 
@@ -125,7 +125,7 @@ describe("the built-in agent kind's tools", () => {
 
   it("accepts a tool the app's catalog carries", () => {
     const [worker] = hire([record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })], {
-      [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { board } })
+      [AGENT_FLOW]: defineAgentWorkerFlow({ catalog: { board } })
     });
 
     expect(worker!.config).toMatchObject({ tools: ["board"] });
@@ -183,7 +183,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
     const kind = defineAgentWorkerFlow({ catalog: { board, secret } });
     const [worker] = hire(
       [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const runtime = await contextFor(worker!, {
@@ -218,7 +218,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
 
     const kind = defineAgentWorkerFlow({ catalog: { board, secret } });
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_KIND]: kind
+      [AGENT_FLOW]: kind
     });
 
     const runtime = await contextFor(worker!, {
@@ -304,7 +304,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
     const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
     const [worker] = hire(
       [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const runtime = await contextFor(worker!, {
@@ -328,7 +328,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
     const { tool: board, calls } = countedBoard();
     const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_KIND]: kind
+      [AGENT_FLOW]: kind
     });
 
     const runtime = await contextFor(worker!, {
@@ -365,7 +365,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
     const { tool: board, calls } = countedBoard();
     const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_KIND]: kind
+      [AGENT_FLOW]: kind
     });
 
     const answer = mockGenerator({
@@ -402,7 +402,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
 describe("replacing the built-in agent kind", () => {
   const replacement = defineFlow({
-    kind: AGENT_KIND,
+    kind: AGENT_FLOW,
     cardinality: "collection",
     // A caller's own `agent` is a hireable kind like any other, so it composes
     // the contract too — replacing the built-in does not exempt it.
@@ -429,16 +429,16 @@ describe("replacing the built-in agent kind", () => {
       [
         record({ id: "engineering.intake", declared: { desk: "side" } }),
         record({ id: "engineering.lead", body: "You are the lead." }),
-        record({ id: "engineering.scribe", declared: { flow: AGENT_KIND }, body: "You take notes." })
+        record({ id: "engineering.scribe", declared: { flow: AGENT_FLOW }, body: "You take notes." })
       ],
-      { [AGENT_KIND]: replacement }
+      { [AGENT_FLOW]: replacement }
     );
 
     expect(workers).toHaveLength(3);
     // Read each worker's own settings rather than counting instances: asserting
     // "three workers came back" passes even when every one of them is ours.
     for (const worker of workers) {
-      expect(worker.kind).toBe(AGENT_KIND);
+      expect(worker.kind).toBe(AGENT_FLOW);
       expect(Object.hasOwn(worker.config, "desk")).toBe(true);
       expect(Object.hasOwn(worker.config, "model")).toBe(false);
     }
@@ -511,7 +511,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
 
   it("runs slash activation on every turn even with the classifier switch OFF (default)", async () => {
     const kind = defineAgentWorkerFlow({ skills: knownSkill });
-    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
+    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_FLOW]: kind });
 
     const runtime = await contextFor(worker!, {
       "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })
@@ -536,7 +536,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
     const kind = defineAgentWorkerFlow({ skills: knownSkill });
     const [worker] = hire(
       [record({ id: "engineering.lead", declared: { skills: { enableLlmClassifier: true } }, body: "Hello." })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const classifier = mockGenerator({
@@ -584,7 +584,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
       }
     ];
     const kind = defineAgentWorkerFlow({ skills: keywordOnlySkill });
-    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_KIND]: kind });
+    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_FLOW]: kind });
 
     const runtime = await contextFor(worker!, {
       "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })

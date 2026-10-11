@@ -23,7 +23,7 @@ export {
 } from "./coordinator-config";
 export {
   COORDINATOR_JUDGMENT,
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
   MAX_ROUNDS
 } from "./coordinator-keys";

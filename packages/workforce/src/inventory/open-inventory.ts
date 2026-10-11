@@ -34,7 +34,7 @@
  * deletes the row of the hired worker it removes, which it knows exactly.
  */
 
-import { kindOf, orderedById } from "../mailbox/mailbox-binder";
+import { workerFlowOf, orderedById } from "../mailbox/mailbox-binder";
 import { INVENTORY_REGISTER_MAILBOX, INVENTORY_REGISTER_WORKERS } from "../mailbox/mailbox-flow";
 import type { MailboxManifest } from "../manifest";
 import { workerDoorOf } from "../worker-door";
@@ -321,7 +321,7 @@ export async function openInventory(
 
   let mailboxesWritten = 0;
   for (const manifest of mailboxes) {
-    const selected = kindOf(manifest.declared);
+    const selected = workerFlowOf(manifest.declared);
     if ("problem" in selected) {
       problems.push(`mailbox "${manifest.id}" — ${selected.problem}`);
       continue;

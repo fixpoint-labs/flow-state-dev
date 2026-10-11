@@ -287,7 +287,7 @@ async function hasNewCommit(workspacePath: string, baseRef: string): Promise<boo
  * its own.
  */
 export interface ImplementPhaseOptions {
-  /** How a run loads the worker its session names: `workerOf(installation, CODER_KIND)`. */
+  /** How a run loads the worker its session names: `workerOf(installation, CODER_FLOW)`. */
   workerOf: WorkerOf;
   /**
    * Also require the brief's acceptance check to pass before the row settles.
@@ -382,7 +382,7 @@ export const ANSWER_PHASE = "answer";
 
 /** What the answer phase is built from. */
 export interface AnswerPhaseOptions {
-  /** How a run loads the worker its session names: `workerOf(installation, CODER_KIND)`. */
+  /** How a run loads the worker its session names: `workerOf(installation, CODER_FLOW)`. */
   workerOf: WorkerOf;
 }
 

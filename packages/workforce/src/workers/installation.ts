@@ -29,7 +29,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
   mintWorkers,
@@ -57,7 +57,7 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "./keys";
-import { COORDINATOR_KIND } from "../coordinator/coordinator-keys";
+import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE } from "../projects/collections";
 import {
   PRIVATE_WORKSTREAMS_RESOURCE,
@@ -331,7 +331,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (standard.has(manifest.id)) {
       throw new Error(`createWorkerInstallation: standard worker "${manifest.id}" is declared twice.`);
     }
-    if (standardWorkerFlow(manifest, AGENT_KIND) === undefined) {
+    if (standardWorkerFlow(manifest, AGENT_FLOW) === undefined) {
       throw new Error(
         `createWorkerInstallation: standard worker "${manifest.id}" declares a \`flow:\` that names no flow.`
       );
@@ -361,10 +361,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           `Name one the installation's files declare.`
       );
     }
-    if (standardWorkerFlow(manifest, AGENT_KIND) !== COORDINATOR_KIND) {
+    if (standardWorkerFlow(manifest, AGENT_FLOW) !== COORDINATOR_FLOW) {
       throw new Error(
         `createWorkerInstallation: the project coordinator "${projectCoordinator}" runs on flow ` +
-          `"${standardWorkerFlow(manifest, AGENT_KIND)}"; a project coordinator runs on "${COORDINATOR_KIND}".`
+          `"${standardWorkerFlow(manifest, AGENT_FLOW)}"; a project coordinator runs on "${COORDINATOR_FLOW}".`
       );
     }
   }
@@ -388,9 +388,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const read = typeof options.workerFlows === "function" ? options.workerFlows() : options.workerFlows;
     const given =
       read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([kind, entry]) => [kind, buildOf(entry)]));
-    if (given !== undefined && Object.hasOwn(given, AGENT_KIND)) return given;
+    if (given !== undefined && Object.hasOwn(given, AGENT_FLOW)) return given;
     boundAgent ??= defineAgentWorkerFlow({ installation });
-    return { [AGENT_KIND]: boundAgent as never, ...given };
+    return { [AGENT_FLOW]: boundAgent as never, ...given };
   };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
   const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
@@ -409,7 +409,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(),
-    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND),
+    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW),
     ...WORKSTREAM_RESOURCES
   } as const;
 
@@ -512,7 +512,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
     const file = standard.get(workerId);
     if (file === undefined) return { found: "none" };
-    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_KIND)! };
+    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_FLOW)! };
   };
 
   const configurationProblems = (id: string, row: WorkerRow): string[] => {
@@ -832,7 +832,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     projectCoordinator: () =>
       projectCoordinator === undefined
         ? undefined
-        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_KIND)! },
+        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_FLOW)! },
     configurationProblems,
     standardWorkerProblems
   };

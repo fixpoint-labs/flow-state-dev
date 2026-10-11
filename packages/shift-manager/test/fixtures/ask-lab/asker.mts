@@ -41,7 +41,7 @@ import {
 import { z } from "zod";
 
 /** The kind a `WORKER.md` names in its `flow:` line. */
-export const ASKER_KIND = "asker";
+export const ASKER_FLOW = "asker";
 
 const askSchema = z.object({ what: z.string().min(1) });
 
@@ -165,7 +165,7 @@ export function defineAskerFlow(
         }
       : {};
   return defineFlow({
-    kind: ASKER_KIND,
+    kind: ASKER_FLOW,
     session: installation.session(),
     resources: { ...resources, ...inventory, ...installation.resources },
     cardinality: "collection",

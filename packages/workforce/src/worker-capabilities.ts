@@ -160,7 +160,7 @@ interface SelectableCapability {
    * these is naming what it already has, so it is carried once: it stays on
    * the static path and never joins the delta.
    */
-  activeForKind: Set<string>;
+  activeForFlow: Set<string>;
   /**
    * Presets the app turned OFF where it installed the capability.
    *
@@ -254,7 +254,7 @@ export function catalogWorkerCapabilities(uses: UsesSlot | undefined): WorkerCap
       // Asked of the framework rather than re-derived: which presets a ref
       // resolves to is one rule, and a second reading of it here is how a
       // worker's idea of "already on" drifts from the block's.
-      activeForKind: new Set(resolveActivePresets(entry).map((preset) => preset.name)),
+      activeForFlow: new Set(resolveActivePresets(entry).map((preset) => preset.name)),
       disabledByApp: new Set(
         Object.entries(overrides)
           .filter(([, value]) => value === false)
@@ -317,7 +317,7 @@ export function workerCapabilityProblems(
       // Already carried: nothing to add and nothing to refuse. Skipped here so
       // the three refusals below only ever fire on a preset that would really
       // travel the per-worker path.
-      if (capability.activeForKind.has(preset)) continue;
+      if (capability.activeForFlow.has(preset)) continue;
 
       if (capability.disabledByApp.has(preset)) {
         problems.push(
@@ -486,7 +486,7 @@ export function resolveWorkerCapabilities(
     if (!capability) continue;
 
     const additions = presets.filter(
-      (preset) => capability.declared.includes(preset) && !capability.activeForKind.has(preset)
+      (preset) => capability.declared.includes(preset) && !capability.activeForFlow.has(preset)
     );
     if (additions.length === 0) continue;
 

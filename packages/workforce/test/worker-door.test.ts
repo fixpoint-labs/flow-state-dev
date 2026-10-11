@@ -24,7 +24,7 @@ const note = z.object({ note: z.string() });
 const work = handler({ name: "door-work", inputSchema: note, outputSchema: note, execute: (i) => i });
 
 /** A kind with no door: its one action takes `{ note }` and writes no user item. */
-const quietKind = defineFlow({
+const quietFlow = defineFlow({
   kind: "quiet",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
@@ -36,7 +36,7 @@ const quietKind = defineFlow({
 });
 
 /** A kind with two doors. */
-const twoDoorKind = defineFlow({
+const twoDoorFlow = defineFlow({
   kind: "two-door",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
@@ -49,7 +49,7 @@ const twoDoorKind = defineFlow({
 });
 
 /** A kind with one door, under a name other than the built-in's. */
-const deskKind = defineFlow({
+const deskFlow = defineFlow({
   kind: "desk",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
@@ -59,7 +59,7 @@ const deskKind = defineFlow({
   },
 });
 
-const kinds = { desk: deskKind };
+const kinds = { desk: deskFlow };
 
 function record(id: string, flow?: string): WorkerManifest {
   return { id, declared: { description: id, ...(flow === undefined ? {} : { flow }) }, body: "" };
@@ -89,7 +89,7 @@ describe("a worker's door (BR-1, BR-2)", () => {
   });
 
   it("refuses a kind with no door when it is registered, and hires nothing", () => {
-    const message = refusalOf(() => mintWorkers([record("eng.quiet", "quiet")], { workerFlows: { quiet: quietKind } }));
+    const message = refusalOf(() => mintWorkers([record("eng.quiet", "quiet")], { workerFlows: { quiet: quietFlow } }));
     expect(message).toContain('worker flow "quiet" has no door');
     expect(message).toContain("nothing was hired");
   });
@@ -97,7 +97,7 @@ describe("a worker's door (BR-1, BR-2)", () => {
   it("refuses a kind with two doors when it is registered, naming both, and prints no warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const message = refusalOf(() =>
-      mintWorkers([record("eng.chatty", "two-door")], { workerFlows: { "two-door": twoDoorKind } }),
+      mintWorkers([record("eng.chatty", "two-door")], { workerFlows: { "two-door": twoDoorFlow } }),
     );
     expect(message).toContain('worker flow "two-door" has 2 doors ("message", "say")');
     expect(warn).not.toHaveBeenCalled();

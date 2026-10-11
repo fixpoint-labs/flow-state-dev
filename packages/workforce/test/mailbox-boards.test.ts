@@ -26,7 +26,7 @@ function record(id: string, declared: Record<string, unknown> = {}): MailboxMani
 }
 
 /** A mailbox kind that is NOT `defineMailboxFlow`'s — the BR-6 subject. */
-const customKind = Object.assign(
+const customFlow = Object.assign(
   () => defineMailboxFlow()(),
   { kind: "custom-mailbox" }
 ) as unknown as MailboxKind;
@@ -118,7 +118,7 @@ describe("declaring a board", () => {
     let thrown: unknown;
     try {
       mailboxInstances([record("eng.feature", { boards: ["triage"], flow: "custom-mailbox" })], {
-        kinds: { "custom-mailbox": customKind }
+        kinds: { "custom-mailbox": customFlow }
       });
     } catch (error) {
       thrown = error;

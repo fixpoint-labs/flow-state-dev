@@ -9,7 +9,7 @@
  */
 
 /** The coordinator flow's kind. **Pinned**: a worker's `flow:` names it. */
-export const COORDINATOR_KIND = "coordinator";
+export const COORDINATOR_FLOW = "coordinator";
 
 /**
  * The component every routing decision is recorded under, and the name of

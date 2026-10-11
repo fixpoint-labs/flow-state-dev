@@ -25,7 +25,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createWorkforceClient } from "../src/browser";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   defineCoordinatorFlow,
   defineProjectBlocks,
   defineSessionBoard,
@@ -99,8 +99,8 @@ function takerFlow(installation: WorkerInstallation, asked: Asked[]) {
 }
 
 const standardWorkers: WorkerManifest[] = [
-  { id: PROJECT_COORDINATOR, declared: { flow: COORDINATOR_KIND, delegates: ["eng.taker"] }, body: "", skills: [] },
-  { id: "chief", declared: { flow: COORDINATOR_KIND, delegates: ["eng.taker"] }, body: "", skills: [] },
+  { id: PROJECT_COORDINATOR, declared: { flow: COORDINATOR_FLOW, delegates: ["eng.taker"] }, body: "", skills: [] },
+  { id: "chief", declared: { flow: COORDINATOR_FLOW, delegates: ["eng.taker"] }, body: "", skills: [] },
   { id: "eng.taker", declared: { flow: "taker", description: "Takes tasks." }, body: "", skills: [] }
 ];
 
@@ -118,7 +118,7 @@ async function boot() {
     flows: (installation) => ({
       filer: filerFlow(installation),
       taker: takerFlow(installation, asked),
-      [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: "typesafe-ai/jev" })
+      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: "typesafe-ai/jev" })
     }),
     models: { generators: { "coordinator-judgment": mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] }) } }
   });
@@ -137,7 +137,7 @@ async function boot() {
   const projectConversation = async (user: string, project: { visibility: "shared" | "private"; id: string }) =>
     (await createWorkforceClient({ userId: user, fetcher: h.fetcherFor(user) }).ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: project })).id;
   /** `user`'s conversation with no project. */
-  const plainConversation = (user: string) => h.openSession(user, COORDINATOR_KIND, { workerId: "chief" });
+  const plainConversation = (user: string) => h.openSession(user, COORDINATOR_FLOW, { workerId: "chief" });
   /** `user` opens workstream `id` in `project`, led by a filer of theirs, and returns its session. */
   const workstreamConversation = async (user: string, project: { visibility: "shared" | "private"; id: string }, id: string) => {
     const roster = await h.openSession(user, "workforce-roster");
@@ -146,7 +146,7 @@ async function boot() {
     return opened.workstream.sessionId as string;
   };
   /** File a task for the taker from `session`, and wait for its run. */
-  const file = async (user: string, session: string, input: Record<string, unknown> = {}, flow = COORDINATOR_KIND) => {
+  const file = async (user: string, session: string, input: Record<string, unknown> = {}, flow = COORDINATOR_FLOW) => {
     const filed = (await h.ok(user, flow, session, "addTask_tasks", { goal: "Look at the repo", assignee: "eng.taker", ...input })) as any;
     expect(filed).toMatchObject({ ok: true });
     await settled();

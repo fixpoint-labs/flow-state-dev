@@ -8,7 +8,7 @@
  * cases fail on that drift.
  *
  * Red states produced before these were trusted:
- *   - add a kind to the tree and not to `WORKER_KINDS` or `COORDINATOR_KINDS`:
+ *   - add a kind to the tree and not to `WORKER_FLOWS` or `COORDINATOR_FLOWS`:
  *     the worker-flow case fails.
  *   - drop `agent`'s entry from `WORKER_ASKS`: the answering-action case fails,
  *     naming the kind with no entry.
@@ -19,17 +19,17 @@
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
-import { COORDINATOR_KIND } from "@flow-state-dev/workforce";
+import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 import { buildKitchenSinkWorkforce, workforceRoot } from "../workforce/hire";
 import {
   COORDINATOR_ASK,
-  COORDINATOR_KINDS,
+  COORDINATOR_FLOWS,
   defaultConversation,
   delegateOfRun,
   WORKER_ASKS,
-  WORKER_KINDS,
+  WORKER_FLOWS,
   SHELL_COORDINATORS,
   workerAskFor,
 } from "../lib/workforce-shell";
@@ -37,14 +37,14 @@ import {
 describe("the shell's names match the workforce tree", () => {
   it("lists every worker flow the app runs workers on, the coordinator's apart", async () => {
     const { installation } = await buildKitchenSinkWorkforce();
-    expect([...WORKER_KINDS, ...COORDINATOR_KINDS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
-    expect([...COORDINATOR_KINDS]).toEqual([COORDINATOR_KIND]);
+    expect([...WORKER_FLOWS, ...COORDINATOR_FLOWS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
+    expect([...COORDINATOR_FLOWS]).toEqual([COORDINATOR_FLOW]);
   });
 
   it("lists every coordinator the tree declares, by its worker id", async () => {
     const { workers, errors } = await readWorkforce(workforceRoot);
     expect(errors).toEqual([]);
-    const declared = workers.filter((worker) => worker.declared.flow === COORDINATOR_KIND).map((worker) => worker.id);
+    const declared = workers.filter((worker) => worker.declared.flow === COORDINATOR_FLOW).map((worker) => worker.id);
     // Not vacuous: the tree does declare a coordinator.
     expect(declared.length).toBeGreaterThan(0);
     expect([...SHELL_COORDINATORS].sort()).toEqual(declared.sort());
@@ -73,10 +73,10 @@ async function oneStringActions(kind: string): Promise<Record<string, string>> {
 
 describe("each worker kind's composer sends to an action the kind declares", () => {
   it("names every worker kind, and no other", () => {
-    expect(Object.keys(WORKER_ASKS).sort()).toEqual([...WORKER_KINDS].sort());
+    expect(Object.keys(WORKER_ASKS).sort()).toEqual([...WORKER_FLOWS].sort());
   });
 
-  it.each([...WORKER_KINDS])("%s: the named action takes exactly the named one string field, or it has none", async (kind) => {
+  it.each([...WORKER_FLOWS])("%s: the named action takes exactly the named one string field, or it has none", async (kind) => {
     const ask = workerAskFor(kind);
     if (ask === undefined) throw new Error(`WORKER_ASKS has no entry for "${kind}"`);
     const actions = await oneStringActions(kind);
@@ -92,7 +92,7 @@ describe("each worker kind's composer sends to an action the kind declares", () 
 
 describe("a coordinator's composer sends to the coordinator flow's door", () => {
   it("names the action that takes exactly the post, one string field", async () => {
-    const actions = await oneStringActions(COORDINATOR_KIND);
+    const actions = await oneStringActions(COORDINATOR_FLOW);
     expect(actions[COORDINATOR_ASK.action], `the coordinator's one-string actions: ${JSON.stringify(actions)}`).toBe(COORDINATOR_ASK.field);
   });
 });

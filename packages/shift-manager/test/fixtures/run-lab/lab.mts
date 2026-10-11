@@ -56,7 +56,7 @@ import {
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineCoordinatorFlow,
   defineSessionBoard,
@@ -82,7 +82,7 @@ export const RUN_LAB_USER_ID = "u_run_lab";
 /** The conversation with the lead the tasks are filed on. */
 const RUN_LAB_LEAD_SESSION = "s_run_lab_lead";
 /** The flow the inventory's worker rows are written from: the Lab's own, carrying the writer. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 /**
  * The model the coordinator's best-fit call would run on. `desk` routes to
  * everyone and never makes that call, but the flow names no default.
@@ -199,7 +199,7 @@ const scriptedRun = handler({
       const now = Date.now();
       await plan.upsert(`${run}/1`, { title: "Read the task", status: "completed", previousStatus: "in_progress", lastOutcome: "applied", lastTouchedAt: now });
       await plan.upsert(`${run}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
-      await files.upsert(`${run}/notes/audit.md`, { lastKind: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
+      await files.upsert(`${run}/notes/audit.md`, { lastFlow: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
       ctx.emit.message("Wrote notes/audit.md");
     }
 
@@ -236,7 +236,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   // Its delegates are the workers it files for, each on the flow its own file names.
   const byId = new Map(tree.workers.map((w) => [w.id, w]));
   const lead = tree.workers.find(
-    (w) => w.declared.flow !== COORDINATOR_KIND && ((w.declared.delegates as string[] | undefined) ?? []).length > 0,
+    (w) => w.declared.flow !== COORDINATOR_FLOW && ((w.declared.delegates as string[] | undefined) ?? []).length > 0,
   );
   if (lead === undefined) throw new Error("the run-lab tree declares no worker that files for delegates");
   const leadFlow = String(lead.declared.flow);
@@ -260,7 +260,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   // conversation the task tools and actions, and the board hands each task
   // to a task session on its worker's flow.
   const board = defineSessionBoard({ installation, flowKind: leadFlow });
-  const leadKind = defineFlow({
+  const leadWorkerFlow = defineFlow({
     kind: leadFlow,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
@@ -271,7 +271,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   } as never);
   // Each worker's flow takes tasks through Workforce's task entry; the one on
   // a flow of its own also declares the collections a recording harness writes.
-  const workerKind = (kind: string, records: boolean) =>
+  const workerFlowName = (kind: string, records: boolean) =>
     defineFlow({
       kind,
       cardinality: "collection",
@@ -287,19 +287,19 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL });
 
   workerFlows = {
-    [leadFlow]: leadKind,
-    [COORDINATOR_KIND]: coordinator,
-    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerKind(kind, kind === ownWorker?.flow)])),
+    [leadFlow]: leadWorkerFlow,
+    [COORDINATOR_FLOW]: coordinator,
+    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerFlowName(kind, kind === ownWorker?.flow)])),
   };
   const copies = hireWorkforce(installation);
   // The worker write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
-    kind: INVENTORY_WRITER_KIND,
-    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+    kind: INVENTORY_WRITER_FLOW,
+    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    [INVENTORY_WRITER_KIND]: writer,
+    [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
     flows,
@@ -344,7 +344,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     { workers: inventoryWorkers(installation), mailboxes: [] },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
-      workerWriter: { flowKind: INVENTORY_WRITER_KIND },
+      workerWriter: { flowKind: INVENTORY_WRITER_FLOW },
       userId: RUN_LAB_USER_ID,
       orgId,
     },

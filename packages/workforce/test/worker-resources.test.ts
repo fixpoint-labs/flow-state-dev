@@ -101,7 +101,7 @@ const work = handler({
   execute: async () => ({ ok: true })
 });
 
-const DESK_KIND = "desk";
+const DESK_FLOW = "desk";
 
 /**
  * The realistic kind: every document AND the app's own store in one flow-level
@@ -110,14 +110,14 @@ const DESK_KIND = "desk";
  * while the approach was wrong.
  */
 const deskFlow = defineFlow({
-  kind: DESK_KIND,
+  kind: DESK_FLOW,
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   resources: { ...CATALOG, "audit-log": auditLog } as DeclaredResources,
   actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
 });
 
-const COLLIDING_KIND = "colliding-desk";
+const COLLIDING_FLOW = "colliding-desk";
 
 /**
  * The kind BR-8 is about: a block that names its own resource with a string
@@ -125,7 +125,7 @@ const COLLIDING_KIND = "colliding-desk";
  * at flow level. Nothing is wrong with it until a worker grants that ref.
  */
 const collidingFlow = defineFlow({
-  kind: COLLIDING_KIND,
+  kind: COLLIDING_FLOW,
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   // Payroll IS installed here, so the control below grants something this kind
@@ -148,12 +148,12 @@ const collidingFlow = defineFlow({
 
 /** A worker record, as the loader produces one. `declared` is frontmatter verbatim. */
 function worker(id: string, declared: Record<string, unknown> = {}): WorkerManifest {
-  return { id, declared: { flow: DESK_KIND, description: id, ...declared }, body: "" };
+  return { id, declared: { flow: DESK_FLOW, description: id, ...declared }, body: "" };
 }
 
 function hire(manifests: WorkerManifest[], options: Partial<HireOptions> = {}): FlowInstance[] {
   return mintWorkers(manifests, {
-    workerFlows: { [DESK_KIND]: deskFlow as never },
+    workerFlows: { [DESK_FLOW]: deskFlow as never },
     documents: CATALOG,
     ...options
   });
@@ -389,7 +389,7 @@ describe("V5 · the second path — a worker that declares nothing is untouched 
   });
 
   it("hires with no `documents` passed at all, the way every caller before this did", () => {
-    const workers = mintWorkers([worker("eng.unrestricted")], { workerFlows: { [DESK_KIND]: deskFlow as never } });
+    const workers = mintWorkers([worker("eng.unrestricted")], { workerFlows: { [DESK_FLOW]: deskFlow as never } });
 
     expect(workers).toHaveLength(1);
     expect([...workers[0]!.flowLevelResourceKeys].sort()).toEqual(
@@ -422,13 +422,13 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
         [
           {
             id: "eng.lead",
-            declared: { flow: COLLIDING_KIND, description: "d", [WORKER_RESOURCES_KEY]: [HANDBOOK] },
+            declared: { flow: COLLIDING_FLOW, description: "d", [WORKER_RESOURCES_KEY]: [HANDBOOK] },
             body: ""
           }
         ],
-        { workerFlows: { [COLLIDING_KIND]: collidingFlow as never }, documents: CATALOG }
+        { workerFlows: { [COLLIDING_FLOW]: collidingFlow as never }, documents: CATALOG }
       )
-    ).toThrow(new RegExp(`eng\\.lead[\\s\\S]*${COLLIDING_KIND}`));
+    ).toThrow(new RegExp(`eng\\.lead[\\s\\S]*${COLLIDING_FLOW}`));
   });
 
   it("the same kind hires a worker whose grant does NOT collide, and keeps the block's resource", async () => {
@@ -438,11 +438,11 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
       [
         {
           id: "eng.lead",
-          declared: { flow: COLLIDING_KIND, description: "d", [WORKER_RESOURCES_KEY]: [PAYROLL] },
+          declared: { flow: COLLIDING_FLOW, description: "d", [WORKER_RESOURCES_KEY]: [PAYROLL] },
           body: ""
         }
       ],
-      { workerFlows: { [COLLIDING_KIND]: collidingFlow as never }, documents: CATALOG }
+      { workerFlows: { [COLLIDING_FLOW]: collidingFlow as never }, documents: CATALOG }
     );
     const ctx = await contextFor(byId(workers, "eng.lead"), "sess_v6_control_ok");
 
@@ -528,7 +528,7 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
   it("a worker declaring `resources:` with no documents supplied refuses, naming what is missing (BR-18)", () => {
     expect(() =>
       mintWorkers([worker("eng.lead", { [WORKER_RESOURCES_KEY]: [HANDBOOK] })], {
-        workerFlows: { [DESK_KIND]: deskFlow as never }
+        workerFlows: { [DESK_FLOW]: deskFlow as never }
       })
     ).toThrow(/no documents to resolve it against/);
   });

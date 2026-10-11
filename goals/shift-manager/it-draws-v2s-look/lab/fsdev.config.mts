@@ -23,8 +23,8 @@ import { defineFlow, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
-  AGENT_KIND,
-  COORDINATOR_KIND,
+  AGENT_FLOW,
+  COORDINATOR_FLOW,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
   inventoryWorkers,
@@ -45,7 +45,7 @@ export const USER_ID = "u_look_goal";
 const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
 
 /** The flow the inventory's worker rows are written from. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 const fixture = JSON.parse(readFileSync(fileURLToPath(new URL("../fixtures/input.json", import.meta.url)), "utf8")) as {
   desk: { reply: string };
@@ -60,18 +60,18 @@ if (modelId === undefined) throw new Error("the desk tree's chief of staff names
 const { installation, copies } = installWorkers(tree.workers, (installation) => {
   const agent = defineAgentWorkerFlow({ installation });
   return {
-    [AGENT_KIND]: agent,
-    [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
+    [AGENT_FLOW]: agent,
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
   };
 });
 // The worker-row write takes caller-supplied rows, so it is internal only.
 const writer = defineFlow({
-  kind: INVENTORY_WRITER_KIND,
-  internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+  kind: INVENTORY_WRITER_FLOW,
+  internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
 } as never) as unknown as FlowInstance;
 const flows: Record<string, FlowInstance> = {
   ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-  [INVENTORY_WRITER_KIND]: writer,
+  [INVENTORY_WRITER_FLOW]: writer,
 };
 const flowState = createFlowState({
   flows,
@@ -102,7 +102,7 @@ const opened = await openInventory(
       if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
       return result;
     },
-    workerWriter: { flowKind: INVENTORY_WRITER_KIND },
+    workerWriter: { flowKind: INVENTORY_WRITER_FLOW },
     userId: USER_ID,
     orgId: DEFAULT_ORG_ID,
   },

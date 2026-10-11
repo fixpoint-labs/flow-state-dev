@@ -24,7 +24,7 @@ import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing"
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
-  AGENT_KIND,
+  AGENT_FLOW,
   mailboxBoard,
   mailboxBoardTaskTools,
   mailboxInstances,
@@ -110,8 +110,8 @@ async function lab(script: Array<Record<string, unknown>>) {
   const triage = mailboxBoard("eng.feature", "triage");
 
   const [worker] = mintWorkers(
-    [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
-    { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
+    [{ id: "eng.coder", declared: { flow: AGENT_FLOW, tools: [] }, body: "Coder." }],
+    { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
   );
 
   const state = createFlowState({
@@ -244,10 +244,10 @@ describe("a worker holding two boards", () => {
     // impossible: the capability collides at build, and the tools collide at
     // the generator's own uniqueness assert.
     const [worker] = mintWorkers(
-      [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
+      [{ id: "eng.coder", declared: { flow: AGENT_FLOW, tools: [] }, body: "Coder." }],
       {
         workerFlows: {
-          [AGENT_KIND]: defineAgentWorkerFlow({
+          [AGENT_FLOW]: defineAgentWorkerFlow({
             uses: [mailboxBoardTaskTools(triage), mailboxBoardTaskTools(review)]
           })
         }
@@ -335,10 +335,10 @@ describe("the worker's `tools:` fence", () => {
     // This one states the claim directly, on the hired worker, so a reader does
     // not have to infer it from a passing tool call.
     const [worker] = mintWorkers(
-      [{ id: "eng.fenced", declared: { flow: AGENT_KIND, tools: [] }, body: "Fenced." }],
+      [{ id: "eng.fenced", declared: { flow: AGENT_FLOW, tools: [] }, body: "Fenced." }],
       {
         workerFlows: {
-          [AGENT_KIND]: defineAgentWorkerFlow({
+          [AGENT_FLOW]: defineAgentWorkerFlow({
             uses: [mailboxBoardTaskTools(mailboxBoard("eng.fenced-mailbox", "triage"))]
           })
         }
@@ -485,8 +485,8 @@ describe("a mailbox-board tool colocated in a worker's own folder", () => {
 
     let message = "";
     try {
-      mintWorkers([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      mintWorkers([{ id: "eng.colo", declared: { flow: AGENT_FLOW }, body: "Colo." }], {
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
         workerBlocks: { "eng.colo": { "file-triage": colocated } }
       });
     } catch (error) {

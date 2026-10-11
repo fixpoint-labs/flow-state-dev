@@ -38,7 +38,7 @@ import type { BlockContext, BlockDefinition, FlowInstance } from "@flow-state-de
 import { z } from "zod";
 import { WORKER_ID_KEY } from "../manifest";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
-import { AGENT_KIND } from "../agent-worker-flow";
+import { AGENT_FLOW } from "../agent-worker-flow";
 import type { WorkerInstallation } from "../workers/installation";
 import { runsWorkersOf } from "../workers/register";
 import { standardWorkerFlow } from "../workers/standard-workers";
@@ -102,7 +102,7 @@ export function hearingWorkersById(
     if (!hearsPosts(instance)) continue;
     if (installation !== undefined && runsWorkersOf(instance, installation)) {
       for (const worker of installation!.standardWorkers()) {
-        if (standardWorkerFlow(worker, AGENT_KIND) === instance.kind) add(worker.id, instance);
+        if (standardWorkerFlow(worker, AGENT_FLOW) === instance.kind) add(worker.id, instance);
       }
       continue;
     }

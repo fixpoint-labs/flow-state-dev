@@ -60,7 +60,7 @@ const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && 
  * `suspensionShape` in `@flow-state-dev/react`; it is written out here because
  * that package's only entry loads React, which goals don't depend on.
  */
-function kindOf(item: Record<string, any>): "approval" | "question" {
+function workerFlowOf(item: Record<string, any>): "approval" | "question" {
   return item.reason !== "human_input" || !Array.isArray(item.allow) || !item.allow.includes("submit") ? "approval" : "question";
 }
 
@@ -130,7 +130,7 @@ export async function readScreensStore(
         sessionId: String(session.id),
         // The worker the session runs, as its state names it.
         seatId: typeof session.state?.workerId === "string" ? session.state.workerId : null,
-        kind: kindOf(ask),
+        kind: workerFlowOf(ask),
         message: String(ask.message ?? ""),
         since: Number(ask.ts),
         calls: all

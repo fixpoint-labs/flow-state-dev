@@ -625,7 +625,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     concurrency: 1,
     workers: { coder: noteRan },
   });
-  const emKind = defineFlow({
+  const emFlow = defineFlow({
     kind: "em",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
@@ -642,7 +642,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
       },
     },
   } as never);
-  const coderKind = defineFlow({
+  const coderFlow = defineFlow({
     kind: "coder",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
@@ -659,7 +659,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
   };
   let seats;
   try {
-    workerFlows = { em: emKind, coder: coderKind };
+    workerFlows = { em: emFlow, coder: coderFlow };
     seats = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(mailboxes) });
   } finally {
     console.warn = realWarn;

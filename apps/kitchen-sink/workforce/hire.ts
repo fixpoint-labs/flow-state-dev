@@ -26,7 +26,7 @@
  * person's conversation with the coordinator under its name.
  */
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
@@ -108,7 +108,7 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
     // posts on `agent`, and best fit's one evaluator call runs on ROUTE_MODEL.
     // Its judgment turn, for a post best fit can't place, is the agent's own
     // turn, built from the same catalog.
-    [COORDINATOR_KIND]: defineCoordinatorFlow({
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
       delegateFlows: delegateFlowsUnderControl([agent]),
       routeModel: ROUTE_MODEL,

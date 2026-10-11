@@ -27,7 +27,7 @@ import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineCoordinatorFlow,
   hireWorkforce,
@@ -39,8 +39,8 @@ import {
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { fileURLToPath } from "node:url";
-import { PLANNER_KIND, definePlannerFlow } from "./workforce/flows/workers/planner.mts";
-import { WORKER_KIND, defineWorkerFlow, type WorkerControl } from "./workforce/flows/workers/worker.mts";
+import { PLANNER_FLOW, definePlannerFlow } from "./workforce/flows/workers/planner.mts";
+import { WORKER_FLOW, defineWorkerFlow, type WorkerControl } from "./workforce/flows/workers/worker.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -55,7 +55,7 @@ export const LAB_DB_PATH = ".fsdev/data/multi-worker-collab.db";
 export const LAB_ORG_ID = DEFAULT_ORG_ID;
 
 /** The flow the inventory's worker rows are written from: the lab's own, carrying the writer. */
-export const INVENTORY_WRITER_KIND = "inventory-writer";
+export const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
  * The model a best-fit coordinator's evaluator would run on. The queue
@@ -119,13 +119,13 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
   // Exactly the declared topology — one coordinator, one planner, two
   // workers, nothing else. A stray third worker would still hire and run, and
   // the proof would be about a different team than the one it names.
-  const coordinators = roster.workers.filter((worker) => worker.declared.flow === COORDINATOR_KIND);
-  const planners = roster.workers.filter((worker) => worker.declared.flow === PLANNER_KIND);
-  const workers = roster.workers.filter((worker) => worker.declared.flow === WORKER_KIND);
+  const coordinators = roster.workers.filter((worker) => worker.declared.flow === COORDINATOR_FLOW);
+  const planners = roster.workers.filter((worker) => worker.declared.flow === PLANNER_FLOW);
+  const workers = roster.workers.filter((worker) => worker.declared.flow === WORKER_FLOW);
   if (coordinators.length !== 1 || planners.length !== 1 || workers.length !== 2 || roster.workers.length !== 4) {
     throw new Error(
-      `the tree at ${root} hires ${coordinators.length} "${COORDINATOR_KIND}", ${planners.length} "${PLANNER_KIND}" ` +
-        `and ${workers.length} "${WORKER_KIND}" worker(s) among ${roster.workers.length}; this lab is exactly one ` +
+      `the tree at ${root} hires ${coordinators.length} "${COORDINATOR_FLOW}", ${planners.length} "${PLANNER_FLOW}" ` +
+        `and ${workers.length} "${WORKER_FLOW}" worker(s) among ${roster.workers.length}; this lab is exactly one ` +
         `coordinator, one planner and two workers (${roster.workers.map((worker) => worker.id).join(", ")})`,
     );
   }
@@ -151,9 +151,9 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
     delegates,
     workerIds,
     workerFlows: {
-      [coordinators[0]!.id]: COORDINATOR_KIND,
-      [planner.id]: PLANNER_KIND,
-      ...Object.fromEntries(workerIds.map((id) => [id, WORKER_KIND])),
+      [coordinators[0]!.id]: COORDINATOR_FLOW,
+      [planner.id]: PLANNER_FLOW,
+      ...Object.fromEntries(workerIds.map((id) => [id, WORKER_FLOW])),
     },
     declaredDesks,
   };
@@ -189,24 +189,24 @@ export function hireLab(options: HireLabOptions): HiredLab {
     workerFlows: () => workerFlows as never,
   });
   workerFlows = {
-    [WORKER_KIND]: defineWorkerFlow({
+    [WORKER_FLOW]: defineWorkerFlow({
       installation,
       outbox: options.outbox,
       ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
     }),
-    [PLANNER_KIND]: definePlannerFlow({ installation }),
+    [PLANNER_FLOW]: definePlannerFlow({ installation }),
     // The planner and the workers take no delegated post, so a post to the
     // queue reaches nobody; its rows are the planner's to file.
-    [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL }),
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL }),
   };
   const copies = hireWorkforce(installation);
   // The inventory's worker rows take caller-supplied rows, so the writer is internal only.
   const writer = defineFlow({
-    kind: INVENTORY_WRITER_KIND,
-    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+    kind: INVENTORY_WRITER_FLOW,
+    internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
   } as never) as unknown as FlowInstance;
   return {
-    flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), [INVENTORY_WRITER_KIND]: writer },
+    flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), [INVENTORY_WRITER_FLOW]: writer },
     installation,
   };
 }
@@ -248,7 +248,7 @@ export async function openLab(server: LabServer, hired: HiredLab): Promise<void>
   };
   const binding = await openInventory(
     { workers: inventoryWorkers(hired.installation), mailboxes: [] },
-    { run, workerWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+    { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
   );
   if (binding.problems.length > 0) {
     throw new Error(

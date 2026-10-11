@@ -48,8 +48,8 @@ import { createFlowState } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   COORDINATOR_JUDGMENT,
-  COORDINATOR_KIND,
-  ROSTER_FLOW_KIND,
+  COORDINATOR_FLOW,
+  ROSTER_FLOW,
   createWorkerInstallation,
   defineCoordinatorFlow,
   hireWorkforce,
@@ -242,7 +242,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   let workers: WorkerManifest[] = roster.workers.map((worker) => {
     const declared = { ...worker.declared };
     if (Object.hasOwn(kindOverrides, worker.id)) declared.flow = kindOverrides[worker.id];
-    if (options.managerTools !== undefined && declared.flow === COORDINATOR_KIND) {
+    if (options.managerTools !== undefined && declared.flow === COORDINATOR_FLOW) {
       declared.tools = options.managerTools;
     }
     return { ...worker, declared };
@@ -264,9 +264,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     );
   }
 
-  const managerRecord = workers.find((worker) => worker.declared.flow === COORDINATOR_KIND);
+  const managerRecord = workers.find((worker) => worker.declared.flow === COORDINATOR_FLOW);
   if (managerRecord === undefined) {
-    throw new Error(`the tree at ${LAB_TREE} hired no worker onto the "${COORDINATOR_KIND}" flow`);
+    throw new Error(`the tree at ${LAB_TREE} hired no worker onto the "${COORDINATOR_FLOW}" flow`);
   }
 
   // The hold: a turn waits while it is set.
@@ -301,13 +301,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     routeModel: model,
     agent: { catalog: { [NOTE_TOOL]: noteTool() } as never, model },
   });
-  workerFlows = { [COORDINATOR_KIND]: coordinator, [BUILDER_KIND]: builder };
+  workerFlows = { [COORDINATOR_FLOW]: coordinator, [BUILDER_KIND]: builder };
 
   // Refuses the WHOLE roster when any worker would be refused on its turn,
   // naming the worker. Nothing is registered partially.
   const copies = hireWorkforce(installation);
   const instances: Record<string, FlowInstance> = Object.fromEntries(
-    copies.map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy]),
+    copies.map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy]),
   );
   const hired = Object.fromEntries(workers.map((worker) => [worker.id, String(worker.declared.flow)]));
 
@@ -337,11 +337,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // Every action after goes through the same router, as the user's app sends
   // it (`httpActions`), and its answer is read back from the ended request.
   const http = httpActions(await state.getRouter(), LAB_USER_ID);
-  const conversation = await http.open(COORDINATOR_KIND, { workerId: managerRecord.id });
+  const conversation = await http.open(COORDINATOR_FLOW, { workerId: managerRecord.id });
 
   const act = async (actionName: string, input: unknown): Promise<{ output?: any; error?: string }> => {
     try {
-      return { output: await http.act(COORDINATOR_KIND, conversation, actionName, input) };
+      return { output: await http.act(COORDINATOR_FLOW, conversation, actionName, input) };
     } catch (error) {
       return { error: messageOf(error) };
     }
@@ -358,7 +358,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     say: async (message: string) => {
       // Sent and left to run: a model's turn may outlast `act`'s wait, so the
       // caller waits for the host to go idle instead.
-      const sent = await http.call("POST", [COORDINATOR_KIND, conversation, "actions", "run"], {
+      const sent = await http.call("POST", [COORDINATOR_FLOW, conversation, "actions", "run"], {
         userId: LAB_USER_ID,
         input: { message },
       });

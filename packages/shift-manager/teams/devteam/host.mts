@@ -53,8 +53,8 @@ import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
-  AGENT_KIND,
-  COORDINATOR_KIND,
+  AGENT_FLOW,
+  COORDINATOR_FLOW,
   defineCoordinatorFlow,
   createWorkerHireBlocks,
   createWorkerInstallation,
@@ -101,10 +101,10 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_COMPONENT, workerOf } from "./worker-config.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import { defineCoderJudge } from "./judge.mts";
-import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
+import { CODER_FLOW, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
-  EM_KIND,
+  EM_FLOW,
   FILE_ENTRY,
   defineEmWorkerFlow,
   featureIssueOf,
@@ -125,7 +125,7 @@ import {
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
 /** The flow kind the lab creates projects through at open. */
-export const PROJECTS_KIND = "projects";
+export const PROJECTS_FLOW = "projects";
 
 /** The session the lab's own project writes run in, as the owner. */
 export const PROJECTS_SESSION = "devforce-projects";
@@ -137,7 +137,7 @@ export const PROJECTS_SESSION = "devforce-projects";
 const SESSION_BOARD_COLLECTION = "tasks";
 
 /** The flow the inventory's worker rows are written from: the lab's own, carrying the writer. */
-export const INVENTORY_WRITER_KIND = "inventory-writer";
+export const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
  * The standard worker every person's project coordinator runs as: the
@@ -282,7 +282,7 @@ function projectSetup(installation: WorkerInstallation) {
  * workstream's session. Read before the flows are built, which need the
  * writes' tools in their catalogs.
  */
-const LEAD_FLOWS = [AGENT_KIND, EM_KIND].map((kind) => ({ kind, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
+const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((kind) => ({ kind, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "openWorkstream", "listProjects"];
@@ -839,12 +839,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
-    (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_KIND;
+    (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_FLOW;
   // A worker of either kind reads its brief by the document it names; one that
   // names none would pass every isolation check trivially, so it never boots.
   for (const worker of workers) {
     const kind = worker.declared.flow;
-    if ((kind === EM_KIND || kind === CODER_KIND) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
+    if ((kind === EM_FLOW || kind === CODER_FLOW) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
       throw new Error(`worker "${worker.id}" runs on "${kind}" and names no \`${DOCUMENT_KEY}:\`; every worker of this kind reads one`);
     }
   }
@@ -852,7 +852,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The EM: its doors file for the worker the caller names, and its turn holds
   // the lead's tool, which updates the workstream its session leads. A worker
   // that isn't one of its delegates is refused at the hand-over.
-  const emKind = defineEmWorkerFlow({
+  const emFlow = defineEmWorkerFlow({
     installation,
     coderWorker: options.coderWorkerId,
     resources,
@@ -861,7 +861,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   });
   // The EM worker the lab's doors and its ask run as, read off the tree. Two
   // would be a guess, so the lab refuses.
-  const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_KIND);
+  const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_FLOW);
   if (emRecords.length > 1) {
     throw new Error(`the tree declares ${emRecords.length} EM workers; this lab runs one`);
   }
@@ -869,10 +869,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // refused when it is registered. An open asked to raise the ask names that
   // step instead, since it is the one that has nothing to ask from.
   if (emRecords.length === 0 && options.ask !== undefined) {
-    throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_KIND}" worker to ask from, found 0`);
+    throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found 0`);
   }
-  const coderWorkerOf = workerOf(installation, CODER_KIND);
-  const coderKind = defineCoderWorkerFlow({
+  const coderWorkerOf = workerOf(installation, CODER_FLOW);
+  const coderFlow = defineCoderWorkerFlow({
     installation,
     answerWorkspace: answerHost,
     answerPhase: defineAnswerPhase({ workerOf: coderWorkerOf }),
@@ -936,19 +936,19 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       }),
     ],
   };
-  const agentKind = defineAgentWorkerFlow({ installation, ...agentTurn });
+  const agentFlow = defineAgentWorkerFlow({ installation, ...agentTurn });
   kinds = {
-    [EM_KIND]: emKind as never,
-    [CODER_KIND]: coderKind as never,
-    [AGENT_KIND]: agentKind as never,
+    [EM_FLOW]: emFlow as never,
+    [CODER_FLOW]: coderFlow as never,
+    [AGENT_FLOW]: agentFlow as never,
     // The chief of staff's flow. A delivery reaches a delegate on a flow that
     // takes a delegated post: here, `agent` and the EM's `em`, so the chief of
     // staff can hand feature work to its EM delegate. `coder` takes tasks, not
     // posts. Best fit's evaluator runs on Jev, through the AI Gateway: it
     // reports the confidence the chief of staff's `minConfidence:` reads.
-    [COORDINATOR_KIND]: defineCoordinatorFlow({
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
-      delegateFlows: [agentKind, emKind as never],
+      delegateFlows: [agentFlow, emFlow as never],
       routeModel: "typesafe-ai/jev",
       agent: coordinatorMemory(agentTurn, {
         model: "openai/gpt-5.4-mini",
@@ -970,7 +970,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // caller-supplied rows, so it is internal only.
   const inventoryWriter =
     options.inventory === true
-      ? defineFlow({ kind: INVENTORY_WRITER_KIND, internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } } } as never)()
+      ? defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } } } as never)()
       : undefined;
 
   if (options.workstreams !== undefined && options.projects === undefined) {
@@ -981,7 +981,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // it at open, and Shift Manager opens a person's workstreams through it.
   // The chief of staff calls the same writes as tools.
   const projectsFlow = defineFlow({
-    kind: PROJECTS_KIND,
+    kind: PROJECTS_FLOW,
     actions: {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
@@ -1007,8 +1007,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // `mergeWorkerFlows` refuses it, by name.
   const flows: Record<string, unknown> = mergeWorkerFlows(
     {
-      ...(inventoryWriter === undefined ? {} : { [INVENTORY_WRITER_KIND]: inventoryWriter }),
-      [PROJECTS_KIND]: projectsFlow,
+      ...(inventoryWriter === undefined ? {} : { [INVENTORY_WRITER_FLOW]: inventoryWriter }),
+      [PROJECTS_FLOW]: projectsFlow,
     },
     copies,
   );
@@ -1067,7 +1067,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // are theirs, on their roster, and not listed here.
     const opened = await openInventory(
       { workers: inventoryWorkers(installation), mailboxes: [] },
-      { run, workerWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+      { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {
       await state.dispose();
@@ -1189,12 +1189,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     try {
       if (emRecords.length !== 1) {
         throw new Error(
-          `${RAISE_ASK_STEP}: wanted one "${EM_KIND}" worker to ask from, found ${emRecords.length}`,
+          `${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found ${emRecords.length}`,
         );
       }
       ask = await raiseAsk({
         state,
-        emFlow: copyOf(EM_KIND),
+        emFlow: copyOf(EM_FLOW),
         emWorker: emRecords[0]!.id,
         feature: options.ask,
         principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },

@@ -18,7 +18,7 @@ import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
@@ -146,7 +146,7 @@ describe("a worker with no `tools:` line can call what its file picked", () => {
         record({ id: "eng.surveyor", declared: { capabilities: { fieldwork: ["survey"] } } }),
         record({ id: "eng.ghost" })
       ],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork] }) }
     );
 
     expect(await offered(worker("eng.surveyor"))).toEqual(["lookup"]);
@@ -169,7 +169,7 @@ describe("a written `tools:` line is the whole grant", () => {
           declared: { tools: ["own-block"], capabilities: { fieldwork: ["survey"] } }
         })
       ],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork] }) },
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork] }) },
       { "eng.builder": { "own-block": ownBlock } }
     );
 
@@ -186,7 +186,7 @@ describe("a written `tools:` line is the whole grant", () => {
           declared: { tools: ["ledger"], capabilities: { fieldwork: ["survey"] } }
         })
       ],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork], catalog: { ledger } }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork], catalog: { ledger } }) }
     );
 
     expect(await offered(worker("eng.clerk"))).toEqual(["ledger"]);
@@ -195,7 +195,7 @@ describe("a written `tools:` line is the whole grant", () => {
   it("gives a worker with `tools: []` no tool, whatever it picked (BR-5)", async () => {
     const worker = hire(
       [record({ id: "eng.mute", declared: { tools: [], capabilities: { fieldwork: ["survey"] } } })],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork] }) }
     );
 
     expect(await offered(worker("eng.mute"))).toEqual([]);
@@ -206,7 +206,7 @@ describe("only what the worker's own file picked grants", () => {
   it("offers a picked preset's tools when the preset lists them as a function (BR-6)", async () => {
     const worker = hire(
       [record({ id: "eng.caller", declared: { capabilities: { phone: ["line"] } } })],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [phone] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [phone] }) }
     );
 
     expect(await offered(worker("eng.caller"))).toEqual(["dial"]);
@@ -231,7 +231,7 @@ describe("only what the worker's own file picked grants", () => {
     });
     const worker = hire(
       [record({ id: "eng.counter", declared: { capabilities: { counted: ["line"] } } })],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [counted] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [counted] }) }
     );
 
     const before = resolved;
@@ -249,7 +249,7 @@ describe("only what the worker's own file picked grants", () => {
         record({ id: "eng.plain" }),
         record({ id: "eng.quiet", declared: { capabilities: { radar: ["quiet"] } } })
       ],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [radar] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [radar] }) }
     );
 
     expect(await offered(worker("eng.plain"))).toEqual([]);
@@ -262,7 +262,7 @@ describe("only what the worker's own file picked grants", () => {
   it("offers a picked preset's tools even when the kind already switches it on (BR-31)", async () => {
     const worker = hire(
       [record({ id: "eng.watch", declared: { capabilities: { radar: ["sweep"] } } })],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [radar] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [radar] }) }
     );
 
     expect(await offered(worker("eng.watch"))).toEqual(["scan"]);
@@ -272,7 +272,7 @@ describe("only what the worker's own file picked grants", () => {
   // picks nothing and lists nothing. Exactly what it was offered before.
   it("offers a worker that picks nothing and lists nothing no tool at all (BR-7)", async () => {
     const worker = hire([record({ id: "eng.plain", body: "Plain." })], {
-      [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, radar], catalog: { ledger } })
+      [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork, radar], catalog: { ledger } })
     });
 
     expect(await offered(worker("eng.plain"))).toEqual([]);
@@ -288,7 +288,7 @@ describe("a preset's control is outside the list, with or without a line", () =>
         record({ id: "eng.open", declared: { capabilities: { dispatch: ["radio"] } } }),
         record({ id: "eng.shut", declared: { tools: [], capabilities: { dispatch: ["radio"] } } })
       ],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [dispatch] }) }
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [dispatch] }) }
     );
 
     expect(await offered(worker("eng.open"))).toEqual(["ping"]);
@@ -304,7 +304,7 @@ describe("omitted and empty stay apart after the schema", () => {
         record({ id: "eng.empty", declared: { tools: [], capabilities: { fieldwork: ["survey"] } } }),
         record({ id: "eng.own", declared: { tools: ["own-block"] } })
       ],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork] }) },
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork] }) },
       { "eng.own": { "own-block": ownBlock } }
     );
 
@@ -340,7 +340,7 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
             declared: { capabilities: { fieldwork: ["survey"], archive: ["shelf"] }, ...extra }
           })
         ],
-        { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
+        { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
       );
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
@@ -369,7 +369,7 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
         })
       ],
       {
-        [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other], catalog: { ledger } })
+        [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [fieldwork, other], catalog: { ledger } })
       }
     );
 

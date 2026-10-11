@@ -20,7 +20,7 @@ import { defineSessionBoard, workerConfigSchema, type WorkerInstallation } from 
 import { hearingDoor } from "../../../../hearing-door.mts";
 
 /** The flow the planner's `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
-export const PLANNER_KIND = "planner";
+export const PLANNER_FLOW = "planner";
 
 export interface PlannerFlowOptions {
   /** The installation whose workers run on this flow, and whose delegates take its tasks. */
@@ -33,9 +33,9 @@ export interface PlannerFlowOptions {
  */
 export function definePlannerFlow(options: PlannerFlowOptions) {
   const { installation } = options;
-  const kit = defineSessionBoard({ installation, flowKind: PLANNER_KIND });
+  const kit = defineSessionBoard({ installation, flowKind: PLANNER_FLOW });
   return defineFlow({
-    kind: PLANNER_KIND,
+    kind: PLANNER_FLOW,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: { ...installation.session(kit.sessionStateShape), serverOwned: [...kit.serverOwned] },

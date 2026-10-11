@@ -13,7 +13,7 @@
 import type { SessionClient, SessionSummary } from "@flow-state-dev/client";
 import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
 
-import { isCoordinatorKind, SHELL_COORDINATORS } from "./workforce-shell";
+import { isCoordinatorFlow, SHELL_COORDINATORS } from "./workforce-shell";
 
 /**
  * The session source the rail's navigator reads through.
@@ -29,7 +29,7 @@ export function railSessions(
   return {
     listSessions: async (options) => {
       const kind = options?.flowKind;
-      if (kind === undefined || !isCoordinatorKind(kind)) return await client.listSessions(options);
+      if (kind === undefined || !isCoordinatorFlow(kind)) return await client.listSessions(options);
       return await Promise.all(
         SHELL_COORDINATORS.map(
           async (worker): Promise<SessionSummary> => ({

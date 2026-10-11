@@ -75,10 +75,10 @@ async function readStore(dbFile: string, orgId: string): Promise<Stored> {
  * was hired into. The tree declares no mailbox, so no mailbox or membership
  * row.
  */
-function expectedFromTree(tree: LabTree): { keys: string[]; workerKinds: Map<string, string> } {
-  const workerKinds = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
-  const keys = [...workerKinds.keys()].map((id) => `inventory/seats/${id}`).sort();
-  return { keys, workerKinds };
+function expectedFromTree(tree: LabTree): { keys: string[]; workerFlowNames: Map<string, string> } {
+  const workerFlowNames = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
+  const keys = [...workerFlowNames.keys()].map((id) => `inventory/seats/${id}`).sort();
+  return { keys, workerFlowNames };
 }
 
 /** The delegates the coordinator's own `WORKER.md` names. */
@@ -116,7 +116,7 @@ function judgeStore(tree: LabTree, stored: Stored): string | undefined {
   if (JSON.stringify(keys) !== JSON.stringify(expected.keys)) {
     return `the store holds ${JSON.stringify(keys)} for the lab's organization; the tree implies ${JSON.stringify(expected.keys)}`;
   }
-  for (const [id, kind] of expected.workerKinds) {
+  for (const [id, kind] of expected.workerFlowNames) {
     const row = stored[`inventory/seats/${id}`]!;
     if (row.id !== id || row.kind !== kind) return `seat row ${id} holds ${JSON.stringify(row)}; the tree hired it as "${kind}"`;
   }

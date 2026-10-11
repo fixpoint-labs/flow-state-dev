@@ -18,7 +18,7 @@ import { mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testi
 import { z } from "zod";
 import { createWorkforceClient } from "../src/browser";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
   defineCoordinatorFlow,
   defineProjectBlocks,
@@ -31,7 +31,7 @@ import {
   workstreamOpenedEntry
 } from "../src/index";
 import type { WorkerManifest } from "../src/manifest";
-import { ROSTER_FLOW_KIND } from "../src/workers/keys";
+import { ROSTER_FLOW } from "../src/workers/keys";
 import { bootProjectsHost, countingStores, OTHER_ORG, refusal } from "./projects-harness";
 
 const apollo = { visibility: "shared" as const, id: "apollo" };
@@ -102,7 +102,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
         return { [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(), onDelegatedPost: delegatedPostEntry(turn) };
       },
       flows: (installation) => ({
-        [COORDINATOR_KIND]: defineCoordinatorFlow({
+        [COORDINATOR_FLOW]: defineCoordinatorFlow({
           installation,
           delegateFlows: [leadFlowRef],
           routeModel: "typesafe-ai/jev",
@@ -121,7 +121,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
   /** `user` hires `lead` (once) and opens `id` in `project` with it. */
   const open = async (user: string, id: string, lead: string, project: { visibility: "shared" | "private"; id: string } = apollo) => {
     // Hiring an id already on the roster is refused, and that's fine here.
-    await h.act(user, ROSTER_FLOW_KIND, await h.openSession(user, ROSTER_FLOW_KIND), "hire", { id: lead, flow: "lead" });
+    await h.act(user, ROSTER_FLOW, await h.openSession(user, ROSTER_FLOW), "hire", { id: lead, flow: "lead" });
     return h.ok(user, "lab", await lab(user), "openWorkstream", { project, id, title: `${user}'s ${id}`, lead });
   };
   /** Mark `user`'s workstream `id` with `status`, from the app. */
@@ -132,7 +132,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
     (await client(user, org).ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: project })).id;
   /** The coordinator conversation's delegate records, as `listDelegates` answers them. */
   const delegates = async (user: string, sessionId: string) =>
-    ((await h.ok(user, COORDINATOR_KIND, sessionId, "listDelegates", {})) as { delegates: Array<{ worker: string; target?: string }> })
+    ((await h.ok(user, COORDINATOR_FLOW, sessionId, "listDelegates", {})) as { delegates: Array<{ worker: string; target?: string }> })
       .delegates.map(({ worker, target }) => ({ worker, ...(target === undefined ? {} : { target }) }));
   /** Wait until `check` passes, or fail with its last error. */
   const eventually = async (check: () => Promise<void>, ms = 5_000) => {
@@ -149,7 +149,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
   /** Run the coordinator's internal entry for workstream records, as an entry path does. */
   const internal = async (user: string, sessionId: string, input: unknown) =>
     runAction({
-      flow: h.instances[COORDINATOR_KIND]!,
+      flow: h.instances[COORDINATOR_FLOW]!,
       actionName: WORKSTREAM_DELEGATE_ACTION,
       input,
       userId: user,
@@ -191,7 +191,7 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     const first = await h.coordinator("alice");
     expect(await h.coordinator("alice")).toBe(first);
     const record = await h.sessionRecord(first);
-    expect(record).toMatchObject({ userId: "alice", flowKind: COORDINATOR_KIND });
+    expect(record).toMatchObject({ userId: "alice", flowKind: COORDINATOR_FLOW });
     expect(record!.state).toMatchObject({ workerId: PROJECT_COORDINATOR, projectId: "shared/apollo" });
     // One per project: her private project has its own.
     const mine = await h.coordinator("alice", notes);
@@ -206,7 +206,7 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     const his = await h.coordinator("bob");
     expect(his).not.toBe(hers);
     expect((await h.sessionRecord(his))!.userId).toBe("bob");
-    const reached = await h.act("bob", COORDINATOR_KIND, hers, "run", { message: "what's going on?" });
+    const reached = await h.act("bob", COORDINATOR_FLOW, hers, "run", { message: "what's going on?" });
     expect(reached.settled).not.toBe("completed");
     expect(reached.http).toBeGreaterThanOrEqual(400);
   });
@@ -240,7 +240,7 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     const chief = await refusedWith(h.client("alice").ensureWorkerSession({ worker: "chief", projectId: apollo }));
     expect(chief.body).toContain(PROJECT_COORDINATOR);
     // Nor can a session created at an id of the caller's choosing.
-    const byHand = await h.tryOpenSession("alice", COORDINATOR_KIND, { workerId: PROJECT_COORDINATOR, projectId: "shared/apollo" });
+    const byHand = await h.tryOpenSession("alice", COORDINATOR_FLOW, { workerId: PROJECT_COORDINATOR, projectId: "shared/apollo" });
     expect(byHand.status).toBe(400);
     expect(JSON.stringify(byHand.json)).toContain("one session per user per project");
     expect(await h.sessionsWith("projectId", "shared/nope")).toEqual([]);
@@ -348,7 +348,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     const opened = await h.open("alice", "checkout", "alice-lead");
     await h.open("alice", "search", "alice-lead");
     const id = await h.coordinator("alice");
-    const posted = await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Please add guest checkout." });
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." });
     expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
     await h.settled();
     expect(h.heard).toEqual([
@@ -370,7 +370,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     await h.open("bob", "billing", "bob-lead");
     await h.open("alice", "checkout", "alice-lead");
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Get billing to fix the invoice." });
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Get billing to fix the invoice." });
     await h.settled();
     expect(h.heard).toEqual([]);
     const [record] = (await h.items(id)).records;
@@ -386,7 +386,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     await h.open("bob", "billing", "bob-lead");
     await h.mark("bob", "billing", "PERIWINKLE-7319");
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_KIND, id, "run", { message: "How is Apollo going?" });
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "How is Apollo going?" });
     await h.settled();
     expect(await h.delegates("alice", id)).toEqual([]);
     // The tool's answer reached the model: Bob's held-out status word with it.
@@ -410,7 +410,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     await h.open("bob", "billing", "bob-lead");
     const id = await h.coordinator("alice");
     h.counting!.reads.length = 0;
-    await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Status, then hand checkout the copy." });
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Status, then hand checkout the copy." });
     await h.settled();
     expect(h.heard).toHaveLength(1);
     const lists = h.counting!.reads.filter((read) => read.includes("prefix") && read.includes("workstreams/"));

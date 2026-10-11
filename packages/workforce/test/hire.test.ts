@@ -123,11 +123,11 @@ function hireOne(manifest: WorkerManifest): FlowInstance {
 
 function refusalOf(
   manifests: WorkerManifest[],
-  withKinds: HireOptions["workerFlows"] = kinds
+  withFlows: HireOptions["workerFlows"] = kinds
 ): string {
   let workers: FlowInstance[] | undefined;
   try {
-    workers = mintWorkers(manifests, { workerFlows: withKinds });
+    workers = mintWorkers(manifests, { workerFlows: withFlows });
   } catch (error) {
     expect(workers).toBeUndefined();
     return error instanceof Error ? error.message : String(error);
@@ -491,13 +491,13 @@ describe("hireWorkforce", () => {
       }),
       actions: { run: { inputSchema, block: work }, ...workerDoor }
     });
-    const withKind = { ...kinds, "optional-no-default": optionalNoDefault as never };
+    const withFlow = { ...kinds, "optional-no-default": optionalNoDefault as never };
 
     // It really does accept the bag — without this the test below would pass
     // for a kind that is genuinely missing the door.
     const [ok] = mintWorkers(
       [record({ id: "engineering.ok", declared: { flow: "optional-no-default" }, body: "Work." })],
-      { workerFlows: withKind }
+      { workerFlows: withFlow }
     );
     expect(ok!.config).toMatchObject({ instructions: "Work.", workerSkills: [] });
 
@@ -511,7 +511,7 @@ describe("hireWorkforce", () => {
             body: "Work."
           })
         ],
-        { workerFlows: withKind }
+        { workerFlows: withFlow }
       );
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);

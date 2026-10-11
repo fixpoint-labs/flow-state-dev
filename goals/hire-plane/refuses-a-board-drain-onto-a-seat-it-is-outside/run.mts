@@ -78,7 +78,7 @@ const seatWork = handler({
   },
 });
 
-const workerKind = defineFlow({
+const workerFlowName = defineFlow({
   kind: "seat",
   cardinality: "collection",
   configSchema: z.object({ marker: z.string().nullable().default(null) }),
@@ -139,11 +139,11 @@ await runGoal(async (failures) => {
       stores: { default: { primary: inMemoryStores() } },
     });
     state.register(
-      workerKind({ id: fixture.orgWorker, config: { marker: fixture.marker } }) as unknown as FlowInstance,
+      workerFlowName({ id: fixture.orgWorker, config: { marker: fixture.marker } }) as unknown as FlowInstance,
       { pin: { orgId: fixture.ownerOrg } },
     );
     state.register(
-      workerKind({ id: fixture.privateSeat, config: { marker: fixture.marker } }) as unknown as FlowInstance,
+      workerFlowName({ id: fixture.privateSeat, config: { marker: fixture.marker } }) as unknown as FlowInstance,
       { pin: { orgId: fixture.ownerOrg, userId: fixture.ownerUser } },
     );
     const router = (await state.getRouter()) as {

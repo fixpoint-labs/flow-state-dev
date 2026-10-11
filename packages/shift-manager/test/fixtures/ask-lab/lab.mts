@@ -28,7 +28,7 @@ import {
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineCoordinatorFlow,
   hireWorkforce,
@@ -44,7 +44,7 @@ import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workfor
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ASKER_KIND, defineAskerFlow } from "./asker.mts";
+import { ASKER_FLOW, defineAskerFlow } from "./asker.mts";
 
 /** The tree this Lab reads. */
 export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -97,7 +97,7 @@ export const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
 const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
 
 /** The flow the inventory is written from: the Lab's own, carrying the writer. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /** How to open the ask-lab. */
 export type AskLabOptions = {
@@ -146,7 +146,7 @@ export type AskLabOptions = {
 };
 
 /** The flow kind the ask-lab creates projects through. */
-const PROJECTS_KIND = "projects";
+const PROJECTS_FLOW = "projects";
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
@@ -161,8 +161,8 @@ export async function openAskLab(options: AskLabOptions = {}) {
     inventory: declared,
   });
   workerFlows = {
-    [ASKER_KIND]: asker,
-    [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [asker], routeModel: ROUTE_MODEL }),
+    [ASKER_FLOW]: asker,
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [asker], routeModel: ROUTE_MODEL }),
   };
   const copies = hireWorkforce(installation);
   const flows: Record<string, FlowInstance> = {
@@ -170,16 +170,16 @@ export async function openAskLab(options: AskLabOptions = {}) {
     // The worker write takes caller-supplied rows, so it is internal only.
     ...(declared
       ? {
-          [INVENTORY_WRITER_KIND]: defineFlow({
-            kind: INVENTORY_WRITER_KIND,
-            internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
+          [INVENTORY_WRITER_FLOW]: defineFlow({
+            kind: INVENTORY_WRITER_FLOW,
+            internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_FLOW) } },
           } as never)(),
         }
       : {}),
     ...(options.projects === undefined
       ? {}
       : {
-          [PROJECTS_KIND]: defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)(),
+          [PROJECTS_FLOW]: defineFlow({ kind: PROJECTS_FLOW, actions: defineProjectBlocks().actions } as never)(),
         }),
   };
   const primary = inMemoryStores();
@@ -209,7 +209,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   };
   if (options.conversations === false) return { flowState, tree, flows };
   for (const workerId of ASK_LAB_COORDINATORS) {
-    const { status, body } = await call("POST", [COORDINATOR_KIND, "sessions"], {
+    const { status, body } = await call("POST", [COORDINATOR_FLOW, "sessions"], {
       userId: ASK_LAB_USER_ID,
       sessionId: workerId,
       state: { workerId },
@@ -243,13 +243,13 @@ export async function openAskLab(options: AskLabOptions = {}) {
           : inventoryWorkers(installation),
         mailboxes: [],
       },
-      { run, workerWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: ASK_LAB_USER_ID, orgId },
+      { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 
     for (const { owner = ASK_LAB_USER_ID, ...input } of options.projects ?? []) {
       const result = (await runAction({
-        flow: flows[PROJECTS_KIND],
+        flow: flows[PROJECTS_FLOW],
         actionName: "createProject",
         input,
         userId: owner,

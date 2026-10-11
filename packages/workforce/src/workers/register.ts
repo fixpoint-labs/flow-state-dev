@@ -10,7 +10,7 @@
  */
 import { firstInProcess } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { AGENT_KIND } from "../agent-worker-flow";
+import { AGENT_FLOW } from "../agent-worker-flow";
 import { checkWorkerFlows, unattendedBoardWarnings } from "../hire";
 import type { InventoryWorker } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
@@ -111,7 +111,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
 export function inventoryWorkers(installation: WorkerInstallation): InventoryWorker[] {
   const flows = installation.workerFlows();
   return installation.standardWorkers().map((worker) => {
-    const kind = standardWorkerFlow(worker, AGENT_KIND)!;
+    const kind = standardWorkerFlow(worker, AGENT_FLOW)!;
     const actions = (flows[kind]?.flow as { actions?: Readonly<Record<string, unknown>> } | undefined)?.actions ?? {};
     return { id: worker.id, kind, actions };
   });

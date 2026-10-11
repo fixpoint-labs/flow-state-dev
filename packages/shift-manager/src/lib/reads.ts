@@ -65,7 +65,7 @@ import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type S
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { workforceClientFor, type LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -300,14 +300,14 @@ const INVENTORY_PATTERNS = { workers: "inventory/workers/*", mailboxes: "invento
  * workstreams. Spelled here because the workforce browser entry doesn't export
  * it; `static.test.ts` pins the two together.
  */
-export const INVENTORY_READER_KIND = "mailbox";
+export const INVENTORY_READER_FLOW = "mailbox";
 
 /**
  * The flow a person's own session for reading their projects and the
  * workstream entries is opened on, when they hold none: workforce's roster
  * flow, which declares the projects at both scopes and the entries.
  */
-export const PROJECT_READER_KIND = ROSTER_FLOW_KIND;
+export const PROJECT_READER_FLOW = ROSTER_FLOW;
 
 /**
  * The projects, by their published key pattern: one pattern, at the
@@ -329,7 +329,7 @@ const ASK_READ_BATCH = 6;
  * roster flow: the engine's unknown-flow message. Matched exactly, so any
  * other 404 (the roster session's own reads) is a failure, not "no roster".
  */
-const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW_KIND}"`;
+const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
 /** The suspension reasons that are a person's ask: the only ones Inbox lists. */
 export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
@@ -629,13 +629,13 @@ export function createLabReader(clients: LabClients): LabReader {
   const readConversationBoards = async (
     sessions: SessionSummary[],
   ): Promise<Array<readonly [string, Section<WorkstreamBoards>]>> => {
-    const byKind = new Map<string, string>();
+    const byFlow = new Map<string, string>();
     for (const session of sessions) {
-      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+      if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
     }
     let carrier: string | undefined;
     try {
-      for (const [kind, sessionId] of byKind) {
+      for (const [kind, sessionId] of byFlow) {
         const manifest = await manifestFor(kind, sessionId);
         const declared = manifest.resources.some(
           (r) => r.kind === "collection" && r.ref === CONVERSATION_BOARD_COLLECTION && r.client.state?.read === true,
@@ -669,12 +669,12 @@ export function createLabReader(clients: LabClients): LabReader {
    * that serves no mailbox kind), the workers alone, with no mailbox workstream.
    */
   const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
-    const byKind = new Map<string, string>();
+    const byFlow = new Map<string, string>();
     for (const session of sessions) {
-      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+      if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
     }
     let workersOnly: { sessionId: string; workersRef: string } | undefined;
-    for (const [kind, sessionId] of byKind) {
+    for (const [kind, sessionId] of byFlow) {
       let manifest: ResourceManifest;
       try {
         manifest = await manifestFor(kind, sessionId);
@@ -806,7 +806,7 @@ export function createLabReader(clients: LabClients): LabReader {
   const withReaderSessions = async (
     sessions: SessionSummary[],
   ): Promise<{ sessions: SessionSummary[]; inventory: Failure | null; projects: Failure | null }> => {
-    const missing = [INVENTORY_READER_KIND, PROJECT_READER_KIND].filter(
+    const missing = [INVENTORY_READER_FLOW, PROJECT_READER_FLOW].filter(
       (kind) => !sessions.some((s) => s.parentSessionId == null && s.flowKind === kind),
     );
     if (missing.length === 0) return { sessions, inventory: null, projects: null };
@@ -836,8 +836,8 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     return {
       sessions: listed,
-      inventory: failures.get(INVENTORY_READER_KIND) ?? null,
-      projects: failures.get(PROJECT_READER_KIND) ?? null,
+      inventory: failures.get(INVENTORY_READER_FLOW) ?? null,
+      projects: failures.get(PROJECT_READER_FLOW) ?? null,
     };
   };
 
@@ -981,11 +981,11 @@ export function createLabReader(clients: LabClients): LabReader {
         // their own worker's and nobody else's. Another flow's session that
         // merely names it in its state is not.
         const workerIds = new Set(inventory.value.workers.map((s) => s.id));
-        const workerKinds = new Set(inventory.value.workers.map((s) => s.kind).filter((k): k is string => k !== null));
+        const workerFlowNames = new Set(inventory.value.workers.map((s) => s.kind).filter((k): k is string => k !== null));
         const workerSessions = sessions.flatMap((s): Array<{ session: SessionSummary; workerId: string | null }> => {
           const workerId = workerOf(s);
           if (workerId !== null && ownWorkers.value.get(workerId) === s.flowKind) return [{ session: s, workerId: workerId }];
-          if (!workerKinds.has(s.flowKind)) return [];
+          if (!workerFlowNames.has(s.flowKind)) return [];
           if (workerId === null) return [{ session: s, workerId: null }];
           return workerIds.has(workerId) ? [{ session: s, workerId: workerId }] : [];
         });

@@ -1,8 +1,8 @@
 /**
- * A board drain cannot hand a claimed row to a hired assignee its session is
+ * A board drain cannot hand a claimed row to a hired worker its session is
  * outside.
  *
- * A hired assignee is a flow instance registered with a pin, `{ orgId, userId? }`.
+ * A hired worker is a flow instance registered with a pin, `{ orgId, userId? }`.
  * A board assignee that names that instance hands its rows off through the
  * dispatch seam. The session running the drain is the principal the child
  * would run as, so a board in another organization, or a teammate's board
@@ -41,7 +41,7 @@ const MALLORY: Who = { userId: "mallory", orgId: "globex" };
 /** One org-scoped ledger, the same logical board on the board flow and on the assignee. */
 const ledger = () => defineTaskCollection({ id: LEDGER_ID, scope: "org" });
 
-/** The hired assignee kind. Its own board exists to bind the claim gate on `work`. */
+/** The hired worker kind. Its own board exists to bind the claim gate on `work`. */
 function assigneeKind(ran: string[]) {
   const worker = handler({
     name: "assignee-work",
@@ -129,7 +129,7 @@ async function boot() {
     }
   };
 
-  /** Session records minted on a hired assignee for `who`, by any drain. */
+  /** Session records minted on a hired worker for `who`, by any drain. */
   const assigneeSessions = async (who: Who, assigneeId: string) =>
     (await runtime.stores.session.list({ userId: who.userId, parentage: "all" })).filter((s) => s.flowId === assigneeId);
 
@@ -146,7 +146,7 @@ async function expectRefused(h: Awaited<ReturnType<typeof boot>>, who: Who, task
   return settled;
 }
 
-describe("a board drain onto a hired assignee", () => {
+describe("a board drain onto a hired worker", () => {
   it("refuses another organization's board, and the row is not held by the assignee", async () => {
     const h = await boot();
     try {

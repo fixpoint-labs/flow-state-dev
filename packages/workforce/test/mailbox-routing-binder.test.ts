@@ -51,7 +51,7 @@ const workers = mintWorkers(
 const route = routeByPurpose(workers, { model: mockEvaluationModel() });
 
 /** The built-in mailbox kind with the wake and the route: a routed host's kind. */
-const routedKind = defineMailboxFlow({ notify: wakeMemberWorkers(workers), route });
+const routedFlow = defineMailboxFlow({ notify: wakeMemberWorkers(workers), route });
 
 function record(id: string, declared: Record<string, unknown>): MailboxManifest {
   return { id, declared, body: "Ask the support team." };
@@ -60,7 +60,7 @@ function record(id: string, declared: Record<string, unknown>): MailboxManifest 
 const MEMBERS = ["support.devices", "support.general", "support.notes"];
 
 /** The refusal `mailboxInstances` throws for this roster, or undefined when it binds. */
-function refusal(manifests: MailboxManifest[], kind = routedKind): string | undefined {
+function refusal(manifests: MailboxManifest[], kind = routedFlow): string | undefined {
   try {
     mailboxInstances(manifests, { kinds: { mailbox: kind as never } });
     return undefined;
@@ -136,7 +136,7 @@ describe("routing: in a MAILBOX.md", () => {
     expect(() =>
       mailboxInstances(
         [record("support.help", { flow: "briefing", members: MEMBERS, routing: { fallback: "support.general" } })],
-        { kinds: { mailbox: routedKind as never, briefing: custom as never } }
+        { kinds: { mailbox: routedFlow as never, briefing: custom as never } }
       )
     ).toThrow(/mailbox "support\.help" — declares `routing:` and runs on mailbox kind "briefing", which was built without a route/);
   });
@@ -179,7 +179,7 @@ describe("defineMailboxFlow({ route })", () => {
   });
 
   it("keeps its route when the binder rebuilds it holding boards", () => {
-    const kind = routedKind.withBoards(["support.help.escalations"]);
+    const kind = routedFlow.withBoards(["support.help.escalations"]);
     expect(
       refusal(
         [

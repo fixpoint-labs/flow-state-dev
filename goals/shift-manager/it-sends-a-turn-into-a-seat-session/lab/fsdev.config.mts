@@ -29,8 +29,8 @@ import { ASSIGNEE } from "../../../../packages/shift-manager/teams/devteam/board
 import { LAB_TREE, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 import { createNotifyLog } from "../../../../packages/shift-manager/teams/devteam/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { CODER_KIND } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
-import { EM_KIND } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { EM_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { recordingHarness } from "./recording-harness.mts";
 import { ROWS, STORE_ENV } from "./rows.mts";
 
@@ -44,11 +44,11 @@ const ASK_FEATURE = (
 ).feature;
 
 const roster = await readDeclaredRoster(LAB_TREE);
-const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
-const coderWorkerId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
+const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
+const coderWorkerId = roster.workers.find((w) => w.declared.flow === CODER_FLOW && w.id.endsWith(`.${ASSIGNEE}`))?.id;
 if (coderWorkerId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
 const members = (roster.mailboxes[0]?.declared.members as string[] | undefined) ?? [];
-const emSeats = members.filter((m) => kindOf(m) === EM_KIND);
+const emSeats = members.filter((m) => workerFlowOf(m) === EM_FLOW);
 if (emSeats.length !== 1) throw new Error(`wanted one EM seat in the mailbox, found ${emSeats.length}`);
 const emSeatId = emSeats[0]!;
 

@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { COORDINATOR_ASK, delegateOfRun, isCoordinatorKind, workerAskFor } from "@/lib/workforce-shell";
+import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
 
@@ -97,7 +97,7 @@ export function PickedSessionPanel({
   // Each composer is keyed by the session it talks to, so a draft, a pending
   // send or a failure never carries over to the next pick.
   const composerKey = session.sessionId ?? "none";
-  if (isCoordinatorKind(kind)) {
+  if (isCoordinatorFlow(kind)) {
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
         <CoordinatorTranscript session={session} person={person} />

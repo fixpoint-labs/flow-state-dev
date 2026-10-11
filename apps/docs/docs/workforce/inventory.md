@@ -82,7 +82,7 @@ Leave both out and mailboxes work without an inventory. Nothing is declared, not
 ```ts
 const run = async (request) => {
   const result = await runAction({
-    flow: byKind[request.flowKind],
+    flow: byFlow[request.flowKind],
     actionName: request.action,
     input: request.input,
     userId: request.userId,
@@ -262,7 +262,7 @@ import {
 
 const writer = inventoryWriterActions("briefing");
 
-const briefingKind = defineFlow({
+const briefingFlow = defineFlow({
   kind: "briefing",
   cardinality: "singleton",
   session: { stateSchema: mailboxSessionStateSchema },

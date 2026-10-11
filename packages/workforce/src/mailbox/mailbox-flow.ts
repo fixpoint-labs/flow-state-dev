@@ -1212,7 +1212,7 @@ export function holdsBoards(kind: unknown): kind is MailboxFlowFactory {
 }
 
 /** The key a kind {@link defineMailboxFlow} built with a route carries that route under. */
-const KIND_ROUTE = Symbol("mailbox-kind-route");
+const FLOW_ROUTE = Symbol("mailbox-kind-route");
 
 /**
  * The route a mailbox kind was built with, or `undefined` for a kind built
@@ -1220,7 +1220,7 @@ const KIND_ROUTE = Symbol("mailbox-kind-route");
  * it to check a `routing:` line. Not re-exported from the package root.
  */
 export function routeOf(kind: unknown): MailboxRoute | undefined {
-  return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: MailboxRoute })[KIND_ROUTE] : undefined;
+  return typeof kind === "function" ? (kind as { [FLOW_ROUTE]?: MailboxRoute })[FLOW_ROUTE] : undefined;
 }
 
 /**
@@ -1568,7 +1568,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     withBoardActions: (boardActions: readonly string[]) =>
       defineMailboxFlow({ ...options, boardActions })
   }) as MailboxFlowFactory;
-  if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
+  if (options.route !== undefined) Object.assign(factory, { [FLOW_ROUTE]: options.route });
   return factory;
 }
 

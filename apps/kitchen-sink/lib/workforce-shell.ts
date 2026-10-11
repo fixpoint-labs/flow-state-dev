@@ -18,18 +18,18 @@
  */
 
 /** The flow the stream talks to. */
-export const SHELL_FLOW_KIND = "chat-agent";
+export const SHELL_FLOW = "chat-agent";
 
 /**
  * The coordinator flow's kind: a worker whose `flow:` names it hands each post
  * to its delegates. Its panel shows the conversation's lines, each under who
  * wrote it, rather than a conversation with one worker.
  */
-export const COORDINATOR_KINDS = ["coordinator"] as const;
+export const COORDINATOR_FLOWS = ["coordinator"] as const;
 
 /** Whether a picked flow kind is a coordinator's, whose panel shows lines under their writers' names. */
-export function isCoordinatorKind(kind: string): boolean {
-  return (COORDINATOR_KINDS as readonly string[]).includes(kind);
+export function isCoordinatorFlow(kind: string): boolean {
+  return (COORDINATOR_FLOWS as readonly string[]).includes(kind);
 }
 
 /**
@@ -47,7 +47,7 @@ export const COORDINATOR_ASK = { action: "run", field: "message" } as const;
  * every flow under `workforce/flows/workers/`, of which this app has none. Each
  * runs as one copy, holding every worker's conversations on it.
  */
-export const WORKER_KINDS = ["agent"] as const;
+export const WORKER_FLOWS = ["agent"] as const;
 
 /**
  * What a worker's composer sends: the one action its kind answers a person with,
@@ -66,7 +66,7 @@ export type WorkerAsk =
  */
 export const WORKER_ASKS = {
   agent: { action: "run", field: "message" },
-} as const satisfies Record<(typeof WORKER_KINDS)[number], WorkerAsk>;
+} as const satisfies Record<(typeof WORKER_FLOWS)[number], WorkerAsk>;
 
 /**
  * The delegate a coordinator handed a post to, read off the run's `topic`: the

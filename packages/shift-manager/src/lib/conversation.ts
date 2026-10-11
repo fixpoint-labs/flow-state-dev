@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClientHttpError, type SessionSummary } from "@flow-state-dev/client";
-import { COORDINATOR_JUDGMENT, COORDINATOR_KIND, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
@@ -21,7 +21,7 @@ import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
 import { readSessionItems, RunReadError, type SessionItems } from "./run";
 
 /** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
-export const COORDINATOR_FLOW = COORDINATOR_KIND;
+export { COORDINATOR_FLOW };
 
 /**
  * The delegate a message in a coordinator's conversation came from, by its

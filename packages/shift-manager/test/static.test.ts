@@ -108,10 +108,10 @@ describe("V8", () => {
   });
 
   it("reads the inventory on workforce's built-in mailbox kind, and projects on its roster flow", async () => {
-    const { MAILBOX_KIND, ROSTER_FLOW_KIND } = await import("@flow-state-dev/workforce");
-    const { INVENTORY_READER_KIND, PROJECT_READER_KIND } = await import("../src/lib/reads");
-    expect(INVENTORY_READER_KIND).toBe(MAILBOX_KIND);
-    expect(PROJECT_READER_KIND).toBe(ROSTER_FLOW_KIND);
+    const { MAILBOX_KIND, ROSTER_FLOW } = await import("@flow-state-dev/workforce");
+    const { INVENTORY_READER_FLOW, PROJECT_READER_FLOW } = await import("../src/lib/reads");
+    expect(INVENTORY_READER_FLOW).toBe(MAILBOX_KIND);
+    expect(PROJECT_READER_FLOW).toBe(ROSTER_FLOW);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {

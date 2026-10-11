@@ -146,7 +146,7 @@ async function write(workspace: string, labCopy: string, log: (s: string) => voi
  * writer installed allows it, otherwise the one other kind it allows. Its
  * `allowKinds`, when set, is read as written: string literals, and constants
  * declared in the Lab's own files or exported by the workspace's packages
- * (`AGENT_KIND`). Left out, every kind is hireable, the built-in `agent`
+ * (`AGENT_FLOW`). Left out, every kind is hireable, the built-in `agent`
  * among them. `error` when no file installs the capability, or when what it
  * allows can't be read well enough to pick.
  */

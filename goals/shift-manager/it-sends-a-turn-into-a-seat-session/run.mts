@@ -58,7 +58,7 @@ import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/a
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { ASKER_KIND, heardLine } from "./lab/asker/asker.mts";
+import { ASKER_FLOW, heardLine } from "./lab/asker/asker.mts";
 import type { RecordedAttempt } from "./lab/recording-harness.mts";
 import { ROWS, STORE_ENV } from "./lab/rows.mts";
 
@@ -385,7 +385,7 @@ await runGoal(async (failures) => {
   const coder = devteam.workers.find((w) => w.declared.flow === "coder" && (mailbox.declared.members as string[]).includes(w.id) && w.id.endsWith(".coder"))!;
   const em = devteam.workers.find((w) => w.declared.flow === "em")!;
   // The asker lab's one worker on the asker kind; its coordinator, `desk.front`, is another worker file.
-  const asker = (await readDeclaredRoster(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_KIND)!;
+  const asker = (await readDeclaredRoster(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_FLOW)!;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];

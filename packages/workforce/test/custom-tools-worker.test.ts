@@ -22,7 +22,7 @@ import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
   return { declared: {}, body: "", ...over };
@@ -85,7 +85,7 @@ describe("a worker's own blocks are registered, not granted", () => {
     const [worker] = mintWorkers(
       [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
         workerBlocks: { "support.clerk": { "check-inventory": check } },
       },
     );
@@ -105,7 +105,7 @@ describe("a worker's own blocks are registered, not granted", () => {
   it("does NOT let a worker call a registered block its `tools:` never named", async () => {
     const check = countingBlock("check-inventory");
     const [worker] = mintWorkers([record({ id: "support.quiet", body: "Quiet." })], {
-      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
       workerBlocks: { "support.quiet": { "check-inventory": check } },
     });
 
@@ -121,7 +121,7 @@ describe("a worker's own blocks are registered, not granted", () => {
     const [worker] = mintWorkers(
       [record({ id: "support.empty", declared: { tools: [] }, body: "Empty." })],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
         workerBlocks: { "support.empty": { "check-inventory": check } },
       },
     );
@@ -152,7 +152,7 @@ describe("a worker's own blocks are registered, not granted", () => {
         record({ id: "support.beta", declared: { tools: ["summarize"] }, body: "B." }),
       ],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
         workerBlocks: {
           "support.alpha": { summarize: mine },
           "support.beta": { summarize: yours },
@@ -184,7 +184,7 @@ describe("a worker's own blocks are registered, not granted", () => {
     const [worker] = mintWorkers(
       [record({ id: "support.desk", declared: { tools: ["desk-note"] }, body: "Desk." })],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
         workerBlocks: { "support.desk": { "desk-note": own } },
       },
     );
@@ -198,7 +198,7 @@ describe("a worker's own blocks are registered, not granted", () => {
   // keeping the catalog refusal it already has.
   it("changes nothing for a worker with no folder", () => {
     const [worker] = mintWorkers([record({ id: "support.plain", body: "Plain." })], {
-      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
     });
     expect(worker!.config).toMatchObject({ workerTools: [] });
     // No `tools:` line stays no line: an omitted list is never rewritten to `[]`,
@@ -209,7 +209,7 @@ describe("a worker's own blocks are registered, not granted", () => {
   it("still refuses a `tools:` name that resolves nowhere, naming both doors", () => {
     const message = refusalOf(
       [record({ id: "support.lost", declared: { tools: ["nowhere"] }, body: "Lost." })],
-      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() }, workerBlocks: {} },
+      { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() }, workerBlocks: {} },
     );
     expect(message).toContain('"nowhere"');
     expect(message).toContain("defineAgentWorkerFlow");
@@ -228,7 +228,7 @@ describe("what a worker's own map is refused for", () => {
     }) as BlockDefinition;
 
     const message = refusalOf([record({ id: "support.clerk", body: "Clerk." })], {
-      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
       workerBlocks: { "support.clerk": { "check-inventory": mismatched } },
     });
 
@@ -242,7 +242,7 @@ describe("what a worker's own map is refused for", () => {
   it("does not refuse when the key and the block's name agree", () => {
     expect(() =>
       mintWorkers([record({ id: "support.clerk", body: "Clerk." })], {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
         workerBlocks: { "support.clerk": { "check-inventory": countingBlock("check-inventory") } },
       }),
     ).not.toThrow();
@@ -267,7 +267,7 @@ describe("what a worker's own map is refused for", () => {
     expect(needsAStore.declaredResources?.ledger).toBe(ledger);
 
     const message = refusalOf([record({ id: "support.ledger", body: "Ledger." })], {
-      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
       workerBlocks: { "support.ledger": { "read-ledger": needsAStore } },
     });
 
@@ -311,7 +311,7 @@ describe("what a worker's own map is refused for", () => {
     });
     const [worker] = mintWorkers(
       [record({ id: "support.reader", declared: { tools: ["read-shared"] }, body: "Reader." })],
-      { workerFlows: { [AGENT_KIND]: kind }, workerBlocks: { "support.reader": { "read-shared": reads } } },
+      { workerFlows: { [AGENT_FLOW]: kind }, workerBlocks: { "support.reader": { "read-shared": reads } } },
     );
 
     const result = await runWorker(worker!, "read-shared");
@@ -322,7 +322,7 @@ describe("what a worker's own map is refused for", () => {
   it("refuses a worker file that writes `workerTools:` itself", () => {
     const message = refusalOf(
       [record({ id: "support.sneaky", declared: { workerTools: [] }, body: "Sneaky." })],
-      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() } },
+      { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() } },
     );
     expect(message).toContain('worker "support.sneaky"');
     expect(message).toContain("workerTools");
@@ -345,7 +345,7 @@ describe("what a worker's own map is refused for", () => {
     const [worker] = mintWorkers(
       [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
         workerBlocks: {
           "support.clerk": { "check-inventory": countingBlock("check-inventory") },
           // Not on this roster — a sibling that failed to load, or a
@@ -376,7 +376,7 @@ describe("what a worker's own map is refused for", () => {
     }) as BlockDefinition;
 
     const message = refusalOf([record({ id: "support.clerk", body: "Clerk." })], {
-      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow() },
       workerBlocks: {
         "support.clerk": { "read-ledger": needsAStore },
         "support.absent": { "read-ledger": needsAStore },
@@ -403,7 +403,7 @@ describe("a colocated tool stays off the catalog list", () => {
         }),
       ],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
         workerBlocks: { "support.clerk": { "check-inventory": own } },
       },
     );

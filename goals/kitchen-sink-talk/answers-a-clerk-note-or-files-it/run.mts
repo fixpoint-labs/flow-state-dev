@@ -51,7 +51,7 @@ interface Specialist {
 interface Fixture {
   port: number;
   coordinator: { kind: string; id: string; description: string };
-  workerKind: string;
+  workerFlowName: string;
   specialists: Specialist[];
   seat: string;
   answer: { marker: string; replyMarker: string };
@@ -209,15 +209,15 @@ async function gradeRoster(page: Page, origin: string, failLeg: Fail, evidence: 
     fail("roster", `the rail's Coordinators section opens on the conversations ${JSON.stringify(conversations)} (want ["${COORDINATOR}"])`);
   }
 
-  const workerKinds = await sectionKinds(page, "Workers");
-  if (JSON.stringify(workerKinds) !== JSON.stringify([fixture.workerKind])) {
-    fail("roster", `the rail's Workers section lists the kinds ${JSON.stringify(workerKinds)} (want ["${fixture.workerKind}"])`);
+  const workerFlowNames = await sectionKinds(page, "Workers");
+  if (JSON.stringify(workerFlowNames) !== JSON.stringify([fixture.workerFlowName])) {
+    fail("roster", `the rail's Workers section lists the kinds ${JSON.stringify(workerFlowNames)} (want ["${fixture.workerFlowName}"])`);
   }
 
   const rows = await readUntil(() => rosterRows(page), (rs) => rs.length > 0, 10_000);
   const want = [
     { id: COORDINATOR, flow: fixture.coordinator.kind, description: fixture.coordinator.description },
-    ...fixture.specialists.map((s) => ({ id: s.id, flow: fixture.workerKind, description: s.description })),
+    ...fixture.specialists.map((s) => ({ id: s.id, flow: fixture.workerFlowName, description: s.description })),
   ];
   const ids = rows.map((r) => r.id);
   if (JSON.stringify([...ids].sort()) !== JSON.stringify(want.map((w) => w.id).sort())) {
@@ -236,7 +236,7 @@ async function gradeRoster(page: Page, origin: string, failLeg: Fail, evidence: 
   if (hireButtons > 0) fail("roster", `the page draws ${hireButtons} "Hire another" button(s) (want none)`);
   if (clean) {
     evidence.push(
-      `roster: the rail lists "${coordinatorKinds.join(",")}" opening on ${JSON.stringify(conversations)} and "${workerKinds.join(",")}"; ` +
+      `roster: the rail lists "${coordinatorKinds.join(",")}" opening on ${JSON.stringify(conversations)} and "${workerFlowNames.join(",")}"; ` +
         `the roster panel lists ${rows.map((r) => `${r.id} (${r.flow}): ${JSON.stringify(r.description)}`).join("; ")}; no "Hire another"`,
     );
   }

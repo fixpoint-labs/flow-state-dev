@@ -27,7 +27,7 @@ import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
-import { ROSTER_FLOW_KIND } from "../src/workers/keys";
+import { ROSTER_FLOW } from "../src/workers/keys";
 
 export const ORG = "acme";
 export const OTHER_ORG = "beta";
@@ -110,7 +110,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     lead: lead() as unknown as FlowInstance,
     lead2: lead2() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
-    [ROSTER_FLOW_KIND]: roster() as unknown as FlowInstance,
+    [ROSTER_FLOW]: roster() as unknown as FlowInstance,
     ...Object.fromEntries(
       Object.entries(more).map(([kind, flow]) => [kind, (flow as () => unknown)() as unknown as FlowInstance])
     )
@@ -202,8 +202,8 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
 
   /** Hire a worker on `flow` onto `user`'s roster, through the roster flow. */
   const hire = async (user: string, id: string, flow: string, org = ORG) => {
-    const rosterSession = await openSession(user, ROSTER_FLOW_KIND, undefined, org);
-    return ok(user, ROSTER_FLOW_KIND, rosterSession, "hire", { id, flow, description: `${user}'s ${id}` }, org);
+    const rosterSession = await openSession(user, ROSTER_FLOW, undefined, org);
+    return ok(user, ROSTER_FLOW, rosterSession, "hire", { id, flow, description: `${user}'s ${id}` }, org);
   };
 
   /** A session record as stored. */

@@ -67,7 +67,7 @@ import {
 } from "../../../worker-config.mts";
 
 /** The kind id the coordinating `WORKER.md` names. **Pinned** — the basename must match. */
-export const EM_KIND = "em";
+export const EM_FLOW = "em";
 
 /** The action that turns one feature into one row on the session's board. */
 export const FILE_ENTRY = "file";
@@ -171,8 +171,8 @@ export interface EmWorkerFlowOptions {
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;
-  const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_KIND));
-  const kit = defineSessionBoard({ installation, flowKind: EM_KIND });
+  const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_FLOW));
+  const kit = defineSessionBoard({ installation, flowKind: EM_FLOW });
   const toolNames = Object.keys(options.catalog);
   const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
 
@@ -336,11 +336,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     inputSchema: z.unknown(),
     outputSchema: z.object({ worker: z.string() }),
     resources: { ...installation.resources },
-    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, EM_KIND)).id }),
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, EM_FLOW)).id }),
   });
 
   return defineFlow({
-    kind: EM_KIND,
+    kind: EM_FLOW,
     // Registered once, at its kind; every EM worker's session runs on it.
     cardinality: "collection",
     // A worker's `model:` and the tools its `tools:` line names from the catalog.

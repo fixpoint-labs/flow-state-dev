@@ -117,7 +117,7 @@ const unmatchedWorkerResourceMessage = (ref: string): string =>
  * the one direction a grant may never move (BP-031), so it refuses here rather
  * than resolving to a document the app chose not to give this kind.
  */
-const workerResourceNotOnKindMessage = (ref: string, kind: string): string =>
+const workerResourceNotOnFlowMessage = (ref: string, kind: string): string =>
   `grants "${ref}", which this app declared but did not install on the \`${kind}\` kind. ` +
   `A grant narrows what a worker's kind already holds; it cannot add a document the kind was not ` +
   `given. Install it on the kind, or drop the grant.`;
@@ -142,7 +142,7 @@ const duplicateWorkerResourceMessage = (ref: string, modes: readonly string[]): 
  * `defineFlow`. Refused here first, by name, so the author reads that a worker
  * file cannot repoint its kind's wiring rather than a bare resource conflict.
  */
-const workerResourceCollidesWithKindMessage = (ref: string, kind: string): string =>
+const workerResourceCollidesWithFlowMessage = (ref: string, kind: string): string =>
   `grants "${ref}", and the \`${kind}\` kind's own blocks already declare a resource under that ` +
   `name. The worker's grant is installed at flow level, where it would REPLACE the kind's — a worker ` +
   `file cannot repoint its kind's wiring. Rename the document, or the kind's accessor.`;
@@ -305,9 +305,9 @@ export interface ResolveWorkerResourcesInput {
    */
   catalog: DeclaredResources | undefined;
   /** The kind's MERGED resource map — its own flow-level entries plus what its blocks declare. */
-  kindResources: DeclaredResources;
+  workerFlowResources: DeclaredResources;
   /** The accessor keys the kind declared at FLOW level, which is the subset a worker's map replaces. */
-  kindFlowLevelKeys: ReadonlySet<string>;
+  flowLevelKeys: ReadonlySet<string>;
   /** The kind's name, for the collision refusal. */
   kind: string;
 }
@@ -344,7 +344,7 @@ export interface ResolvedWorkerResources {
  * @returns The worker's flow-level map, or every problem with the grants.
  */
 export function resolveWorkerResources(input: ResolveWorkerResourcesInput): ResolvedWorkerResources {
-  const { grants, catalog, kindResources, kindFlowLevelKeys, kind } = input;
+  const { grants, catalog, workerFlowResources, flowLevelKeys, kind } = input;
 
   if (catalog === undefined) {
     return { problems: [workerResourcesWithoutCatalogMessage()] };
@@ -363,7 +363,7 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
   // about it. Every case where honouring a grant would newly take a name away
   // from the kind's own wiring is in this set.
   const blockAccessors = new Set(
-    Object.keys(kindResources).filter((key) => !kindFlowLevelKeys.has(key)),
+    Object.keys(workerFlowResources).filter((key) => !flowLevelKeys.has(key)),
   );
 
   const problems: string[] = [];
@@ -376,10 +376,10 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
   // to move — a worker's list is supposed to leave the app's stores and boards
   // alone. Refused for the whole kind rather than per grant, because the
   // ambiguity is in the app's wiring and not in anything the worker wrote.
-  for (const key of kindFlowLevelKeys) {
+  for (const key of flowLevelKeys) {
     if (!Object.hasOwn(catalog, key)) continue;
-    if (!Object.hasOwn(kindResources, key)) continue;
-    if (kindResources[key] === catalog[key]) continue;
+    if (!Object.hasOwn(workerFlowResources, key)) continue;
+    if (workerFlowResources[key] === catalog[key]) continue;
     problems.push(catalogRefHoldsSomethingElseMessage(key, kind));
   }
 
@@ -389,16 +389,16 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
       continue;
     }
     if (blockAccessors.has(ref)) {
-      problems.push(workerResourceCollidesWithKindMessage(ref, kind));
+      problems.push(workerResourceCollidesWithFlowMessage(ref, kind));
       continue;
     }
     // Checked AFTER the collision so a block accessor — which is never a
     // flow-level key — keeps the refusal that names what actually went wrong.
-    if (!kindFlowLevelKeys.has(ref)) {
-      problems.push(workerResourceNotOnKindMessage(ref, kind));
+    if (!flowLevelKeys.has(ref)) {
+      problems.push(workerResourceNotOnFlowMessage(ref, kind));
       continue;
     }
-    if (mode === WORKER_RESOURCE_MODE_WRITE && isUnwritable(kindResources[ref])) {
+    if (mode === WORKER_RESOURCE_MODE_WRITE && isUnwritable(workerFlowResources[ref])) {
       problems.push(workerResourceRwOnUnwritableMessage(ref));
     }
   }
@@ -406,19 +406,19 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
   if (problems.length > 0) return { problems };
 
   const resources: DeclaredResources = emptyMap();
-  const documents = documentKeys(catalog, kindResources);
+  const documents = documentKeys(catalog, workerFlowResources);
   // The subtraction: the kind's flow-level entries that are not documents.
-  for (const key of kindFlowLevelKeys) {
+  for (const key of flowLevelKeys) {
     if (documents.has(key)) continue;
-    if (!Object.hasOwn(kindResources, key)) continue;
-    resources[key] = kindResources[key]!;
+    if (!Object.hasOwn(workerFlowResources, key)) continue;
+    resources[key] = workerFlowResources[key]!;
   }
   // The grants, from the definition the KIND was installed with — which the
   // check above has already established is there. Not the catalog's copy: the
   // catalog says which entries are documents, and the kind says which of them
   // this worker's flow actually holds.
   for (const { ref, mode } of grants) {
-    const declared = kindResources[ref]!;
+    const declared = workerFlowResources[ref]!;
     resources[ref] = mode === WORKER_RESOURCE_MODE_READ ? readOnly(declared) : declared;
   }
 
@@ -443,12 +443,12 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
  */
 function documentKeys(
   catalog: DeclaredResources,
-  kindResources: DeclaredResources,
+  workerFlowResources: DeclaredResources,
 ): ReadonlySet<string> {
   const definitions = new Set<unknown>(Object.values(catalog));
   const keys = new Set<string>();
-  for (const key of Object.keys(kindResources)) {
-    if (Object.hasOwn(catalog, key) || definitions.has(kindResources[key])) keys.add(key);
+  for (const key of Object.keys(workerFlowResources)) {
+    if (Object.hasOwn(catalog, key) || definitions.has(workerFlowResources[key])) keys.add(key);
   }
   for (const key of Object.keys(catalog)) keys.add(key);
   return keys;

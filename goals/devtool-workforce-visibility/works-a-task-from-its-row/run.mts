@@ -37,7 +37,7 @@ import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { Scenario, serveLab } from "../../multi-seat-collab/run-scenario.mts";
-import { WORKER_KIND } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
+import { WORKER_FLOW } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string };
@@ -438,7 +438,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     // ---- read: collapsed, then open, in the run the row parked in ------------
     // The run is a task session the planner's board opened; the navigator
     // lists it under the one copy of the worker flow (a copy's id is its kind).
-    await openSession(page, WORKER_KIND, WORKER_KIND, parkLine.session);
+    await openSession(page, WORKER_FLOW, WORKER_FLOW, parkLine.session);
     await openTasksTab(page);
     const collapsed = await readCollapsed(page, parkedId, (read) => read.status === "parked");
     await page.screenshot({ path: join(SHOTS, "read-collapsed.png") });
@@ -540,7 +540,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
             } else if (here.status === final.status) {
               evidence.push(`answer: "${answer}" run from the row with ${parkedId} locked in; ledger and row both "${final.status}"`);
             } else {
-              await openSession(page, WORKER_KIND, WORKER_KIND, parkLine.session);
+              await openSession(page, WORKER_FLOW, WORKER_FLOW, parkLine.session);
               await openTasksTab(page);
               const there = await readCollapsed(page, parkedId, (read) => read.status === final.status, SETTLE_MS);
               await page.screenshot({ path: join(SHOTS, "answer-run.png") });

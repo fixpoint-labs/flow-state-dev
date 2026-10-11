@@ -121,7 +121,7 @@ import type { WorkerInstallation } from "./workers/installation";
  * The kind name the hire step resolves a record to when it names none, and the
  * key an app registers its own flow under to replace this one.
  */
-export const AGENT_KIND = "agent";
+export const AGENT_FLOW = "agent";
 
 /**
  * The stock model, used when neither the app nor the worker names one.
@@ -651,7 +651,7 @@ function catalogToolsFromUses(uses: UsesSlot | undefined): ToolCatalog {
  * rather than a silent overlay — the worker's `tools:` would otherwise name
  * one tool and call the other.
  */
-function mergeKindCatalog(
+function mergeFlowCatalog(
   uses: UsesSlot | undefined,
   catalog: ToolCatalog | undefined
 ): ToolCatalog {
@@ -804,7 +804,7 @@ export interface AgentTurnShare {
   readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
 }
 
-const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer" };
+const AGENT_TURN: AgentTurnShare = { kind: AGENT_FLOW, answerName: "agent-answer" };
 
 /**
  * The built-in agent's turn, built once per flow that runs it: its settings
@@ -828,7 +828,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     given.installation === undefined
       ? given
       : { ...given, uses: given.uses?.map((use) => (use === mailboxPostCapability ? workerMailboxPostCapability : use)) };
-  const catalog = mergeKindCatalog(options.uses, options.catalog);
+  const catalog = mergeFlowCatalog(options.uses, options.catalog);
   // Before anything is built from it. A catalog key that disagrees with its
   // block's own name would hand the model a tool no worker's `tools:` can
   // authorize, and the kind is the door that holds the map.
@@ -1423,7 +1423,7 @@ function defineAgentFlowAround(
   });
 
   const flow = defineFlow({
-    kind: AGENT_KIND,
+    kind: AGENT_FLOW,
     // Required by contract C2. A plain singleton's workers mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
     // this kind reaches the registry rather than stopping at the mint.

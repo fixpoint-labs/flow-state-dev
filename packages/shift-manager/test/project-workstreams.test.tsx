@@ -43,7 +43,7 @@ import {
   type ProjectAddress,
   type ProjectSetup,
 } from "../src/lib/projects";
-import { createLabReader, PROJECT_READER_KIND, readerSessionId } from "../src/lib/reads";
+import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../src/lib/reads";
 import { readSessionItems } from "../src/lib/run";
 import { workforceClientFor } from "../src/lib/workforce";
 import { selectHarness } from "../teams/devteam/harness.mts";
@@ -138,7 +138,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
     // The Lab read opens the person's reading session on the roster flow, as the app does.
     await createLabReader(clients).read();
     const workforce = workforceClientFor(clients);
-    return { clients, reader: readerSessionId(user.userId, PROJECT_READER_KIND), roster: () => workforce.roster() };
+    return { clients, reader: readerSessionId(user.userId, PROJECT_READER_FLOW), roster: () => workforce.roster() };
   };
   const setup = await readProjectSetup((await as(ALICE)).clients);
   if (setup === null) throw new Error("the DevTeam Lab answers no project setup");
@@ -249,7 +249,7 @@ describe("opening a workstream from a project (V8a: BR-35 to BR-37)", () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
     const lead = workstreamCoordinatorId(APOLLO, "checkout");
-    await runAction(alice.clients, PROJECT_READER_KIND, alice.reader, "hire", { id: lead });
+    await runAction(alice.clients, PROJECT_READER_FLOW, alice.reader, "hire", { id: lead });
     await expect(openAs(alice, setup, "checkout")).rejects.toThrow(new RegExp(`"${lead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" is already a worker of yours`));
     expect((await readProject(alice.clients, alice.reader, APOLLO))!.entries).toEqual([]);
   });

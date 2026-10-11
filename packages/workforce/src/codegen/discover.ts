@@ -301,8 +301,8 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   // Kinds left in the folder they sat in before the rename. Refused rather than
   // skipped: a kind nobody generates is a mailbox that fails to open later,
   // for a reason a long way from here.
-  const oldKinds = await classify(path.join(root, ...PRE_RENAME_NAMES.kindsFolder.split("/")));
-  if (oldKinds.kind !== "absent") problems.push(preRenameKindsFolderProblem());
+  const oldFlows = await classify(path.join(root, ...PRE_RENAME_NAMES.kindsFolder.split("/")));
+  if (oldFlows.kind !== "absent") problems.push(preRenameKindsFolderProblem());
 
   // Door B, over the same root. Run before anything is thrown, so an author
   // holding a bad block file AND a bad resource module sees both in one run —

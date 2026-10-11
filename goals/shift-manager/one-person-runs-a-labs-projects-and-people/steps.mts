@@ -14,7 +14,7 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { PROJECTS_KIND } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import {
   labRoutes,
   openShiftManager,
@@ -241,9 +241,9 @@ async function pageRows(routes: LabRoutes, sessionId: string, ref: string): Prom
 /** The worker each person's project coordinator runs as, and its flow, as the Lab's projects flow names them (`projectSetup`). */
 export async function projectCoordinatorOf(world: World): Promise<{ worker: string; flow: string } | { error: string }> {
   const owner = world.routes.owner;
-  const made = await owner.call("POST", `/${PROJECTS_KIND}/sessions`, { userId: owner.user.userId });
-  if (made.status !== 201) return { error: `no ${PROJECTS_KIND} session: ${made.status} ${JSON.stringify(made.body)}` };
-  const setup = await owner.act(PROJECTS_KIND, String(made.body.session.id), "projectSetup", {});
+  const made = await owner.call("POST", `/${PROJECTS_FLOW}/sessions`, { userId: owner.user.userId });
+  if (made.status !== 201) return { error: `no ${PROJECTS_FLOW} session: ${made.status} ${JSON.stringify(made.body)}` };
+  const setup = await owner.act(PROJECTS_FLOW, String(made.body.session.id), "projectSetup", {});
   const worker = (setup.output as { projectCoordinator?: unknown } | undefined)?.projectCoordinator;
   if (setup.status !== "completed" || typeof worker !== "string") return { error: `the Lab names no project coordinator: ${setup.status} ${JSON.stringify(setup.output ?? setup.error)}` };
   const flow = (await treeWorkers(world)).find((w) => w.id === worker)?.declared.flow;

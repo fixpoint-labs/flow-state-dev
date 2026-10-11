@@ -18,7 +18,7 @@ import { defineCapability, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
@@ -213,7 +213,7 @@ describe("a worker picks presets from what its kind carries", () => {
         record({ id: "engineering.reader", declared: { capabilities: { research: ["briefing"] } } }),
         record({ id: "engineering.scout", declared: { capabilities: { research: ["ledger"] } } })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const read = await turn(worker("engineering.reader"));
@@ -231,7 +231,7 @@ describe("a worker picks presets from what its kind carries", () => {
   // this file: it must behave as it did before the key existed.
   it("gives a worker that names nothing the capability's own defaults, and nothing else", async () => {
     const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
-    const worker = hire([record({ id: "engineering.ghost" })], { [AGENT_KIND]: kind });
+    const worker = hire([record({ id: "engineering.ghost" })], { [AGENT_FLOW]: kind });
 
     const said = await turn(worker("engineering.ghost"));
 
@@ -250,7 +250,7 @@ describe("a worker picks presets from what its kind carries", () => {
     const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { "house-style": ["tone"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -268,7 +268,7 @@ describe("a worker picks presets from what its kind carries", () => {
     const kind = defineAgentWorkerFlow({ uses: [desk, research] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -288,7 +288,7 @@ describe("a worker picks presets from what its kind carries", () => {
           declared: { capabilities: { "house-style": ["tone", "extra"] } }
         })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -322,7 +322,7 @@ describe("a worker picks presets from what its kind carries", () => {
         }),
         record({ id: "engineering.ghost" })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const surveyed = await turn(worker("engineering.surveyor"), callsTool("lookup"));
@@ -354,7 +354,7 @@ describe("a worker picks presets from what its kind carries", () => {
         }),
         record({ id: "engineering.ghost" })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const operated = await turn(worker("engineering.operator"), callsTool("ping"));
@@ -375,7 +375,7 @@ describe("a worker picks presets from what its kind carries", () => {
     const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { "house-style": [] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -407,7 +407,7 @@ describe("a worker picks presets from what its kind carries", () => {
         record({ id: "engineering.ghost" }),
         record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     // The control: a worker that named nothing gets the nested surface once, from
@@ -445,7 +445,7 @@ describe("a worker picks presets from what its kind carries", () => {
     const kind = defineAgentWorkerFlow({ uses: [composing] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -461,7 +461,7 @@ describe("a worker picks presets from what its kind carries", () => {
     const kind = defineAgentWorkerFlow({ uses: [research.presets({ ledger: true })] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -478,7 +478,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     const kind = defineAgentWorkerFlow({ uses: [research] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { memory: ["recall"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain("engineering.lead");
@@ -501,7 +501,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     const kind = defineAgentWorkerFlow({ uses: [research] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["breifing"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain('"breifing"');
@@ -518,7 +518,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
           declared: { capabilities: { research: ["breifing"], memory: ["recall"] } }
         })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain('"breifing"');
@@ -532,7 +532,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     const kind = defineAgentWorkerFlow({ uses: [research.presets({ briefing: false })] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain('"briefing"');
@@ -559,7 +559,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
           declared: { capabilities: { "briefing-service": ["summary"] } }
         })
       ],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain('"summary"');
@@ -582,7 +582,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     const kind = defineAgentWorkerFlow({ uses: [stateful] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { casework: ["history"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain('"history"');
@@ -606,10 +606,10 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     const kind = defineAgentWorkerFlow({ uses: [stateful] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { casework: ["history"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
-    expect(worker("engineering.lead").kind).toBe(AGENT_KIND);
+    expect(worker("engineering.lead").kind).toBe(AGENT_FLOW);
   });
 
   // Same capability listed twice — which the framework resolves off the FIRST
@@ -622,7 +622,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: kind }
     );
 
     expect(message).toContain("turned off");

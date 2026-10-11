@@ -60,8 +60,8 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
-import { PROJECTS_KIND as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { EM_KIND as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { PROJECTS_FLOW as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { EM_FLOW as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";

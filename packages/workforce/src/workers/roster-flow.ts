@@ -19,7 +19,7 @@ import type { ActionConfig } from "@flow-state-dev/core/types";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
-import { ROSTER_FLOW_KIND } from "./keys";
+import { ROSTER_FLOW } from "./keys";
 
 /**
  * Define the roster flow over `installation`. Register what it returns.
@@ -33,7 +33,7 @@ export function defineWorkerRosterFlow(
   actions: Record<string, ActionConfig> = {}
 ) {
   return defineFlow({
-    kind: ROSTER_FLOW_KIND,
+    kind: ROSTER_FLOW,
     resources: { ...installation.resources, ...PROJECT_ROW_RESOURCES, inventoryWorkers: defineWorkerInventoryCollection() },
     actions
   });

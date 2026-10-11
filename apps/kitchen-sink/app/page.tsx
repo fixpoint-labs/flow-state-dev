@@ -58,7 +58,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
-import { COORDINATOR_KINDS, defaultConversation, isCoordinatorKind, WORKER_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
@@ -98,9 +98,9 @@ const panelFetch: ClientFetch = (input, init) => fetch(input, init);
  * away.
  */
 const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
-  { label: "Coordinators", kinds: COORDINATOR_KINDS },
-  ...(SHOW_WORKERS_IN_RAIL ? [{ label: "Workers", kinds: WORKER_KINDS }] : []),
-  { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
+  { label: "Coordinators", kinds: COORDINATOR_FLOWS },
+  ...(SHOW_WORKERS_IN_RAIL ? [{ label: "Workers", kinds: WORKER_FLOWS }] : []),
+  { label: "Assistant", kinds: [SHELL_FLOW] },
 ];
 
 /** The rail's theme: the navigator's custom properties, set to this app's tokens. */
@@ -376,7 +376,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   const handleSelectSession = useCallback(
     (id: string, leaf: FlowNavigatorLeaf) => {
-      if (leaf.kind === SHELL_FLOW_KIND) {
+      if (leaf.kind === SHELL_FLOW) {
         flow.selectSession(id);
         setPicked(null);
       } else {
@@ -402,7 +402,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       // the rail opens the person's one conversation with each. A conversation
       // with a worker starts from the roster.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
-        leaf.kind === SHELL_FLOW_KIND ? (
+        leaf.kind === SHELL_FLOW ? (
           <AssistantLeafToolbar
             leaf={leaf}
             refreshRef={assistantLeafRefresh}
@@ -491,7 +491,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         person={KITCHEN_SINK_USER_ID}
         requestStatus={pickedRequestStatus}
         conversation={
-          isCoordinatorKind(picked.kind) ? null : (
+          isCoordinatorFlow(picked.kind) ? null : (
           <Conversation className="min-h-0 flex-1" data-testid="conversation">
             <ConversationBody
               items={pickedSession.items}

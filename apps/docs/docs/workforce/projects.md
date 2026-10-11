@@ -154,14 +154,14 @@ A workstream is one area of a project with one owner. It's two things:
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
 import {
-  AGENT_KIND,
+  AGENT_FLOW,
   defineProjectBlocks,
   defineWorkstreamBlocks,
   WORKSTREAM_OPENED_ENTRY,
 } from "@flow-state-dev/workforce";
 
 // Describes the built-in agent flow (see below).
-const agentLeads = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+const agentLeads = { kind: AGENT_FLOW, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
 
 const projects = defineProjectBlocks();
 const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentLeads] });

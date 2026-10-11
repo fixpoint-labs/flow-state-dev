@@ -391,7 +391,7 @@ export function part4(base: string, report: Report): void {
   const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\[INVENTORY_READER_KIND, PROJECT_READER_KIND\]/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kinds");
+  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\[INVENTORY_READER_FLOW, PROJECT_READER_FLOW\]/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kinds");
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));

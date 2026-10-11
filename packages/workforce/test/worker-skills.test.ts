@@ -18,7 +18,7 @@ import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 
@@ -267,7 +267,7 @@ describe("a worker's skills at the mint", () => {
   it("refuses a name that arrives from both the app and the worker's folders", () => {
     const message = refusalOf(
       [record({ id: "qa.tester", body: "You test.", skills: [houseStyle] })],
-      { [AGENT_KIND]: defineAgentWorkerFlow({ skills: [houseStyle] }) },
+      { [AGENT_FLOW]: defineAgentWorkerFlow({ skills: [houseStyle] }) },
     );
 
     expect(message).toContain('worker "qa.tester"');
@@ -322,7 +322,7 @@ describe("two workers on one roster", () => {
   it("carries the app's own skills onto every worker alongside its own", async () => {
     const kind = defineAgentWorkerFlow({ skills: [houseStyle] });
     const [worker] = hire([record({ id: "qa.tester", body: "You test.", skills: [writeRegression] })], {
-      [AGENT_KIND]: kind,
+      [AGENT_FLOW]: kind,
     });
 
     const { runtime } = await runTurn(worker!, "hello");
@@ -529,7 +529,7 @@ describe("the tools fence, against a worker's own skill", () => {
     const kind = defineAgentWorkerFlow({ catalog: { secret } });
     const [worker] = hire(
       [record({ id: "qa.tester", body: "You test.", skills: [held] })],
-      { [AGENT_KIND]: kind },
+      { [AGENT_FLOW]: kind },
     );
 
     const { result } = await runTurn(

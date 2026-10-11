@@ -161,7 +161,7 @@ test("the header names the assistant's model on the assistant only, never on a c
 });
 
 /** The assistant's kind: its row is the leaf that carries "New session". */
-const SHELL_KIND = "chat-agent";
+const SHELL_FLOW = "chat-agent";
 /** A worker name that runs past any rail. */
 const LONG_WORKER = "support.escalations-overnight-weekend-queue";
 /** A conversation title that runs past any rail. */
@@ -610,7 +610,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   // Every level indents inside ONE scroll container: nested scrollbars in 256px are the failure.
   expect((await measureRows(shellNav)).scrollers).toBe(1);
   await checkRail(page, shellNav, "/", {
-    hoverRow: `[data-kind="${SHELL_KIND}"]`,
+    hoverRow: `[data-kind="${SHELL_FLOW}"]`,
     quietRow: '[data-kind="coordinator"]',
     container: rail(page),
     file: "rail-kitchen-sink.png",

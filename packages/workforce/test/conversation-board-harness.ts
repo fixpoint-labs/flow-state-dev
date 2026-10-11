@@ -33,7 +33,7 @@ import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
-import { ROSTER_FLOW_KIND } from "../src/workers/keys";
+import { ROSTER_FLOW } from "../src/workers/keys";
 import { hireWorkforce, type HireWorkforceOptions } from "../src/workers/register";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 
@@ -253,7 +253,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   // One copy per worker flow, and the roster flow, as an app registers them.
   const instances: Record<string, FlowInstance> = Object.fromEntries(
-    hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy])
+    hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
   const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });

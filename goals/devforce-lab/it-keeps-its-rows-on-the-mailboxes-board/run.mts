@@ -42,11 +42,11 @@ import { runGoal, silentLogger } from "../../lib/index.mts";
 import { labApi, labRoutes } from "../../lib/shift-manager.mts";
 import { createLabClients } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { readProject } from "../../../packages/shift-manager/src/lib/projects.ts";
-import { createLabReader, PROJECT_READER_KIND, readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { DRAIN_ENTRY, EM_KIND, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { DRAIN_ENTRY, EM_FLOW, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["em-session"] as const;
@@ -127,18 +127,18 @@ await runGoal(async (failures) => {
         await lab.drain(EM);
       }
     } else {
-      const filed = await alice.act(EM_KIND, workstream, FILE_ENTRY, { issue: ISSUE, goal: GOAL, maxAttempts: 1 });
+      const filed = await alice.act(EM_FLOW, workstream, FILE_ENTRY, { issue: ISSUE, goal: GOAL, maxAttempts: 1 });
       if (filed.error !== undefined) throw new Error(`filing was refused — ${filed.error}`);
     }
     const rowsAt = async (): Promise<Task[]> => {
-      const read = await alice.act(EM_KIND, workstream, LIST_TASKS, {});
+      const read = await alice.act(EM_FLOW, workstream, LIST_TASKS, {});
       if (read.error !== undefined) throw new Error(`Alice's read of her workstream's board failed — ${read.error}`);
       return ((read.output as { tasks?: Task[] } | undefined)?.tasks ?? []) as Task[];
     };
     let rows: Task[] = await rowsAt();
     for (const deadline = Date.now() + SETTLE_BUDGET_MS; Date.now() < deadline && CONTROL === ""; ) {
       if (rows.length > 0 && rows.every((r) => SETTLED.has(r.status))) break;
-      if (rows.some((r) => r.status === "pending")) await alice.act(EM_KIND, workstream, DRAIN_ENTRY, {});
+      if (rows.some((r) => r.status === "pending")) await alice.act(EM_FLOW, workstream, DRAIN_ENTRY, {});
       await sleep(200);
       rows = await rowsAt();
     }
@@ -163,7 +163,7 @@ await runGoal(async (failures) => {
     for (const [label, user] of [["Bob", LAB_USERS.member], ["the outsider", LAB_USERS.outsider]] as const) {
       const clients = createLabClients({ userId: user.userId, baseUrl: origin, bearerToken: user.bearer });
       await createLabReader(clients).read();
-      const read = await readProject(clients, readerSessionId(user.userId, PROJECT_READER_KIND), STOREFRONT);
+      const read = await readProject(clients, readerSessionId(user.userId, PROJECT_READER_FLOW), STOREFRONT);
       const entry = read?.entries.find((e) => e.owner === LAB_USERS.owner.userId && e.id === "feature");
       if (entry === undefined) {
         note("b:reads-the-entry", `${label} reads Storefront's entries as ${show(read?.entries.map((e) => [e.owner, e.id]))}, without Alice's feature`);
@@ -180,7 +180,7 @@ await runGoal(async (failures) => {
     // ---- (c) only the owner reads the rows ----------------------------------
     const beforeC = failures.length;
     for (const [label, user] of [["Bob", LAB_USERS.member], ["the outsider", LAB_USERS.outsider]] as const) {
-      const read = await labRoutes(origin, user).act(EM_KIND, workstream, LIST_TASKS, {});
+      const read = await labRoutes(origin, user).act(EM_FLOW, workstream, LIST_TASKS, {});
       const seen = ((read.output as { tasks?: Task[] } | undefined)?.tasks ?? []).length;
       if (read.status === "completed" || seen > 0) {
         note("c:rows-refused", `${label}'s read of Alice's workstream board ended ${read.status} with ${seen} row(s)`);

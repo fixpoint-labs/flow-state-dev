@@ -22,7 +22,7 @@ import {
   openMailboxes,
   type MailboxManifest
 } from "../src/index";
-import { kindOf } from "../src/mailbox/mailbox-binder";
+import { workerFlowOf } from "../src/mailbox/mailbox-binder";
 
 /** The principal every mailbox in these tests is opened for. */
 const OWNER = "u_42";
@@ -46,7 +46,7 @@ function record(
 }
 
 /** A custom kind under the same contract the built-in carries. */
-function customKind(kind: string) {
+function customFlow(kind: string) {
   return defineFlow({
     kind,
     cardinality: "singleton",
@@ -89,7 +89,7 @@ describe("mailboxInstances", () => {
         record("eng.a", { flow: "my-mailbox" }),
         record("eng.b", { flow: "my-mailbox" })
       ],
-      { kinds: { "my-mailbox": customKind("my-mailbox") } }
+      { kinds: { "my-mailbox": customFlow("my-mailbox") } }
     );
 
     expect(instances.map((i) => i.id)).toEqual(["my-mailbox"]);
@@ -98,7 +98,7 @@ describe("mailboxInstances", () => {
   it("yields one instance per distinct kind, the built-in included", () => {
     const instances = mailboxInstances(
       [record("eng.a"), record("eng.b", { flow: "my-mailbox" })],
-      { kinds: { "my-mailbox": customKind("my-mailbox") } }
+      { kinds: { "my-mailbox": customFlow("my-mailbox") } }
     );
 
     expect(instances.map((i) => i.id).sort()).toEqual(["mailbox", "my-mailbox"]);
@@ -129,7 +129,7 @@ describe("mailboxInstances", () => {
   it("refuses a factory filed under a key that is not its own kind", () => {
     expect(() =>
       mailboxInstances([record("eng.a", { flow: "mine" })], {
-        kinds: { mine: customKind("actually-other") }
+        kinds: { mine: customFlow("actually-other") }
       })
     ).toThrow(/run a different mailbox's graph/);
   });
@@ -502,7 +502,7 @@ describe("openMailboxes", () => {
 
 /**
  * The mailbox door's reading of `flow:`, one row per shape a value can take —
- * through `mailboxInstances` (the build path) and through `kindOf` directly
+ * through `mailboxInstances` (the build path) and through `workerFlowOf` directly
  * (the reader `openMailboxes` and the inventory writer share).
  *
  * Characterization: every row is what the door does today, and the worker
@@ -512,10 +512,10 @@ describe("openMailboxes", () => {
  * same way; the worker door words them differently, on purpose.
  */
 describe("the mailbox door reads `flow:` (one row per value)", () => {
-  const NOT_A_KIND = "declares a `flow:` that is not a kind name";
+  const NOT_A_FLOW = "declares a `flow:` that is not a kind name";
 
   it("opens a record with no `flow` key on the built-in `mailbox` kind", () => {
-    expect(kindOf({})).toEqual({ kind: MAILBOX_KIND });
+    expect(workerFlowOf({})).toEqual({ kind: MAILBOX_KIND });
     expect(mailboxInstances([record("eng.a")]).map((i) => i.kind)).toEqual([MAILBOX_KIND]);
   });
 
@@ -527,23 +527,23 @@ describe("the mailbox door reads `flow:` (one row per value)", () => {
     ["a number", 42],
     ["an object", {}]
   ])("refuses %s as not a kind name", (_label, value) => {
-    expect(kindOf({ flow: value })).toEqual({ problem: NOT_A_KIND });
-    expect(() => mailboxInstances([record("eng.a", { flow: value })])).toThrow(NOT_A_KIND);
+    expect(workerFlowOf({ flow: value })).toEqual({ problem: NOT_A_FLOW });
+    expect(() => mailboxInstances([record("eng.a", { flow: value })])).toThrow(NOT_A_FLOW);
   });
 
   it("selects the kind a `flow:` names when that kind was passed", () => {
-    expect(kindOf({ flow: "my-mailbox" })).toEqual({ kind: "my-mailbox" });
+    expect(workerFlowOf({ flow: "my-mailbox" })).toEqual({ kind: "my-mailbox" });
     const instances = mailboxInstances([record("eng.a", { flow: "my-mailbox" })], {
-      kinds: { "my-mailbox": customKind("my-mailbox") }
+      kinds: { "my-mailbox": customFlow("my-mailbox") }
     });
     expect(instances.map((i) => i.kind)).toEqual(["my-mailbox"]);
   });
 
   it("does not trim a named kind: a padded name is a kind that was not passed", () => {
-    expect(kindOf({ flow: " my-mailbox " })).toEqual({ kind: " my-mailbox " });
+    expect(workerFlowOf({ flow: " my-mailbox " })).toEqual({ kind: " my-mailbox " });
     expect(() =>
       mailboxInstances([record("eng.a", { flow: " my-mailbox " })], {
-        kinds: { "my-mailbox": customKind("my-mailbox") }
+        kinds: { "my-mailbox": customFlow("my-mailbox") }
       })
     ).toThrow(/" my-mailbox ".*not passed to mailboxInstances/s);
   });

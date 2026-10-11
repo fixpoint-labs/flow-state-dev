@@ -20,7 +20,7 @@ import type { BlockDefinition, GeneratorModel, ModelResolver } from "@flow-state
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import { resolveHeldPackages } from "../src/worker-packages";
 import { WORKER_PACKAGES_KEY, type PackageManifest, type WorkerManifest } from "../src/manifest";
@@ -243,7 +243,7 @@ describe("a package in a worker's own folder", () => {
         })
       ],
       {
-        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) },
+        workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ catalog: { ledger } }) },
         packageBlocks: {
           ...packageBlocks,
           "teams/support/workers/auditor/packages/refunds": { "issue-refund": issueRefund, "void-refund": voidRefund }
@@ -264,7 +264,7 @@ describe("a package in a worker's own folder", () => {
     const worker = hire([
       record({ id: "support.clerk", packages: clerkReach }),
       record({ id: "support.lister", declared: { tools: ["ledger"] }, packages: siblingReach })
-    ], { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } });
+    ], { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ catalog: { ledger } }) } });
 
     // No line: nothing listed, so `tools` stays absent.
     expect(worker("support.clerk").config).not.toHaveProperty("tools");
@@ -278,7 +278,7 @@ describe("a package in a worker's own folder", () => {
   it("keeps a listed package block off the fenced list too, like a worker's own block", () => {
     const worker = hire(
       [record({ id: "support.clerk", declared: { tools: ["issue-refund", "ledger"] }, packages: clerkReach })],
-      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } }
+      { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ catalog: { ledger } }) } }
     );
     expect(worker("support.clerk").config).toMatchObject({ tools: ["ledger"] });
     const own = (worker("support.clerk").config as { workerTools: BlockDefinition[] }).workerTools;
@@ -463,7 +463,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     });
     const message = refusal(
       [record({ id: "support.clerk", declared: { capabilities: { billing: ["refunds"] } }, packages: clerkReach })],
-      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [refundsCap] }) } }
+      { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [refundsCap] }) } }
     );
     expect(message).toContain('worker "support.clerk"');
     expect(message).toContain('"issue-refund"');
@@ -478,7 +478,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     });
     const worker = hire(
       [record({ id: "support.clerk", declared: { capabilities: { phone: ["line"] } }, packages: clerkReach })],
-      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [perTurn] }) } }
+      { workerFlows: { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [perTurn] }) } }
     );
     const got = await turn(worker("support.clerk"));
     expect(String((got.error as Error | undefined)?.message)).toContain('two tools named "issue-refund"');
@@ -488,7 +488,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
     const message = refusal(
       [record({ id: "support.clerk", declared: { tools: ["issue-refund"] }, packages: clerkReach })],
-      { workerFlows: { [AGENT_KIND]: agent } }
+      { workerFlows: { [AGENT_FLOW]: agent } }
     );
     expect(message).toContain('worker "support.clerk"');
     expect(message).toContain('"issue-refund"');
@@ -500,7 +500,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
     const worker = hire(
       [record({ id: "support.clerk", declared: { tools: ["void-refund"] }, packages: clerkReach })],
-      { workerFlows: { [AGENT_KIND]: agent } }
+      { workerFlows: { [AGENT_FLOW]: agent } }
     );
     expect(worker("support.clerk").id).toBe("support.clerk");
   });

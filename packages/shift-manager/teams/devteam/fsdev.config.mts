@@ -55,8 +55,8 @@ import type { AskFeature } from "./ask.mts";
 import { selectHarness } from "./harness.mts";
 import { LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
-import { CODER_KIND } from "./workforce/flows/workers/coder.mts";
-import { EM_KIND } from "./workforce/flows/workers/em.mts";
+import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
+import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
 
 /**
@@ -111,10 +111,10 @@ const DEFAULT_PROJECTS = [
 // Read off the tree: the EM, and the coder its doors file for, its first
 // delegate on the coder kind.
 const roster = await readDeclaredRoster(LAB_TREE);
-const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
-const em = roster.workers.find((w) => w.declared.flow === EM_KIND);
+const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
+const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");
-const coderWorkerId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => kindOf(id) === CODER_KIND);
+const coderWorkerId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);
 if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder kind`);
 
 /**

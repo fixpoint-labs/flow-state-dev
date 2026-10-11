@@ -68,7 +68,7 @@ import {
 } from "../src/index";
 
 const BOARD_REF = "eng.feature.triage";
-const FLOW_KIND = "workforce-panels";
+const FLOW_NAME = "workforce-panels";
 
 const boardLedger = mailboxBoard("eng.feature", "triage");
 
@@ -115,7 +115,7 @@ const seed = handler({
 /** Identity from a verified header — never from the body. Stands in for a real verifier. */
 function panelFlow() {
   return defineFlow({
-    kind: FLOW_KIND,
+    kind: FLOW_NAME,
     resources: { [BOARD_REF]: boardLedger },
     actions: {
       seed: { inputSchema: z.object({ workerId: z.string(), goal: z.string() }), block: seed }
@@ -137,7 +137,7 @@ type Answer = { status: number; json: any };
 
 async function buildHarness(): Promise<Harness> {
   const state = createFlowState({
-    flows: { [FLOW_KIND]: panelFlow() },
+    flows: { [FLOW_NAME]: panelFlow() },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({})
   });
@@ -171,7 +171,7 @@ async function buildHarness(): Promise<Harness> {
 /** Creates a session as `org`, while the BODY claims `claimsOrg`. */
 async function openSession(h: Harness, org: string, claimsOrg: string): Promise<string> {
   const { status, json } = await h.post(
-    [FLOW_KIND, "sessions"],
+    [FLOW_NAME, "sessions"],
     { userId: `user-of-${org}`, orgId: claimsOrg },
     { "x-verified-org": org }
   );
@@ -191,7 +191,7 @@ async function openSession(h: Harness, org: string, claimsOrg: string): Promise<
 async function plant(h: Harness, org: string, workerId: string, goal: string): Promise<void> {
   const sessionId = await openSession(h, org, org);
   const { status, json } = await h.post(
-    [FLOW_KIND, sessionId, "actions", "seed"],
+    [FLOW_NAME, sessionId, "actions", "seed"],
     { userId: `user-of-${org}`, input: { workerId, goal } },
     { "x-verified-org": org }
   );
@@ -200,7 +200,7 @@ async function plant(h: Harness, org: string, workerId: string, goal: string): P
   const requestId = json.request?.id;
   if (requestId === undefined) throw new Error(`no request id in ${JSON.stringify(json)}`);
   for (let attempt = 0; attempt < 300; attempt++) {
-    const polled = await h.get([FLOW_KIND, "requests", requestId, "status"], "", {
+    const polled = await h.get([FLOW_NAME, "requests", requestId, "status"], "", {
       "x-verified-org": org
     });
     const seen = polled.json?.status;
@@ -430,11 +430,11 @@ async function buildInventoryHarness(
     body: "Charter."
   }));
   const instances = mailboxInstances(records, { inventory: options.inventory ?? true });
-  const byKind: Record<string, any> = Object.fromEntries(
+  const byFlow: Record<string, any> = Object.fromEntries(
     instances.map((instance) => [instance.kind, instance])
   );
   const state = createFlowState({
-    flows: byKind,
+    flows: byFlow,
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
     // Host-level, because the built-in mailbox kind carries no authentication
@@ -482,7 +482,7 @@ async function buildInventoryHarness(
       {
         run: async (request) => {
           const result: any = await runAction({
-            flow: byKind[request.flowKind],
+            flow: byFlow[request.flowKind],
             actionName: request.action,
             input: request.input,
             userId: request.userId,

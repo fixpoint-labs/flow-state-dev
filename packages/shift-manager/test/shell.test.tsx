@@ -12,7 +12,7 @@ import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootTheme } from "../src/lib/theme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_GATED_LINE, ASKER_KIND, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_GATED_LINE, ASKER_FLOW, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -28,11 +28,11 @@ async function workerAction(
   sessionId: string,
 ) {
   await clients.sessions
-    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: workerId } })
+    .createSession({ flowKind: ASKER_FLOW, userId: clients.userId, sessionId, state: { workerId: workerId } })
     .catch((error: unknown) => {
       if ((error as { status?: number }).status !== 409) throw error;
     });
-  return clients.actions(ASKER_KIND).sendAction(action, input, { sessionId });
+  return clients.actions(ASKER_FLOW).sendAction(action, input, { sessionId });
 }
 
 const served: ServedLab[] = [];
@@ -545,7 +545,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     // The session the door opened is the worker's, and holds the line and the reply drawn.
     const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
     const opened = await clients.sessions.getSession(sessionId);
-    expect(opened.flowId).toBe(ASKER_KIND);
+    expect(opened.flowId).toBe(ASKER_FLOW);
     expect(opened.state?.workerId).toBe("ops.chief-of-staff");
     const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"] });
     const stored = (state.items ?? []) as Array<{ id: string; role?: string; content?: unknown }>;
@@ -756,7 +756,7 @@ describe("Chief of Staff (FIX-1722)", () => {
       suspension = (state.items ?? [])[0] as typeof suspension;
       expect(suspension).toBeDefined();
     });
-    await clients.recovery.resumeSuspension(ASKER_KIND, suspension!.requestId, {
+    await clients.recovery.resumeSuspension(ASKER_FLOW, suspension!.requestId, {
       suspensionId: suspension!.suspensionId,
       action: "approve",
       resumedBy: ASK_LAB_USER_ID,

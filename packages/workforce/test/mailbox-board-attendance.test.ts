@@ -22,7 +22,7 @@ const noop = handler({
 });
 
 /** A worker kind declaring one mailbox board as a flow resource — an attended board. */
-function workerKindHolding(boardIds: string[]) {
+function workerFlowHolding(boardIds: string[]) {
   return defineFlow({
     kind: "coder",
     cardinality: "collection",
@@ -54,7 +54,7 @@ describe("a mailbox folder that was renamed", () => {
       // the old key. Nothing migrates them and nothing refuses (BR-23) — the
       // worker below is the one that did not move.
       mintWorkers([worker("eng.coder")], {
-        workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
+        workerFlows: { coder: workerFlowHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.renamed.triage"]
       });
 
@@ -78,7 +78,7 @@ describe("a mailbox board nobody declared", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const workers = mintWorkers([worker("eng.coder")], {
-        workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
+        workerFlows: { coder: workerFlowHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.feature.triage", "eng.feature.review"]
       });
 
@@ -105,7 +105,7 @@ describe("a mailbox board nobody declared", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       mintWorkers([worker("eng.coder")], {
-        workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
+        workerFlows: { coder: workerFlowHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.feature.triage"]
       });
       expect(warn).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe("a mailbox board nobody declared", () => {
     try {
       const hire = (mailboxBoards: string[]) =>
         mintWorkers([worker("eng.coder")], {
-          workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
+          workerFlows: { coder: workerFlowHolding(["eng.feature.triage"]) as never },
           mailboxBoards
         });
 
@@ -149,7 +149,7 @@ describe("a mailbox board nobody declared", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       mintWorkers([worker("eng.coder")], {
-        workerFlows: { coder: workerKindHolding([]) as never }
+        workerFlows: { coder: workerFlowHolding([]) as never }
       });
       expect(warn).not.toHaveBeenCalled();
     } finally {

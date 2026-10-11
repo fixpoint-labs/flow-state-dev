@@ -126,7 +126,7 @@ const work = handler({
   execute: async () => ({ ok: true }),
 });
 
-function kindWith(resources: DeclaredResources) {
+function flowWith(resources: DeclaredResources) {
   return defineFlow({
     kind: KIND,
     cardinality: "collection",
@@ -182,7 +182,7 @@ async function workerOn(root: string, workerRecord: WorkerManifest = worker(ENG_
   const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
   const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
   const hired = mintWorkers([workerRecord], {
-    workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
+    workerFlows: { [KIND]: flowWith({ ...documents, ...references }) as never },
     documents,
     references,
   });
@@ -372,7 +372,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const before = mintWorkers([worker(ENG_WORKER)], {
-      workerFlows: { [KIND]: kindWith(documents) as never },
+      workerFlows: { [KIND]: flowWith(documents) as never },
       documents,
     });
     const era1 = await ctxFor(before[0]!, stores);
@@ -630,7 +630,7 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const hired = mintWorkers([worker(ENG_WORKER)], {
-      workerFlows: { [KIND]: kindWith(documents) as never },
+      workerFlows: { [KIND]: flowWith(documents) as never },
       documents,
     });
     const { ctx } = await ctxFor(hired[0]!);
@@ -690,7 +690,7 @@ describe("BR-15 · a ref claimed by both slots is refused at both doors", () => 
     });
     expect(() =>
       mintWorkers([worker(ENG_WORKER)], {
-        workerFlows: { [KIND]: kindWith({ [ORG_HANDBOOK]: shared }) as never },
+        workerFlows: { [KIND]: flowWith({ [ORG_HANDBOOK]: shared }) as never },
         documents: { [ORG_HANDBOOK]: shared },
         references: { [ORG_HANDBOOK]: shared },
       }),
@@ -744,7 +744,7 @@ describe("the wall places a reference by its minted ref, not by its accessor key
       companyHandbook: references[ENG_HANDBOOK]!,
     };
     const hired = mintWorkers([worker(workerId)], {
-      workerFlows: { [KIND]: kindWith({ ...documents, ...aliased }) as never },
+      workerFlows: { [KIND]: flowWith({ ...documents, ...aliased }) as never },
       documents,
       references: aliased,
     });
@@ -925,7 +925,7 @@ describe("the wall cannot be turned off by omission", () => {
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
     return mintWorkers([workerRecord], {
-      workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
+      workerFlows: { [KIND]: flowWith({ ...documents, ...references }) as never },
       documents,
       // `references` deliberately NOT passed. This is the whole case.
     });
@@ -950,7 +950,7 @@ describe("the wall cannot be turned off by omission", () => {
     );
     expect(() =>
       mintWorkers([worker(ENG_WORKER)], {
-        workerFlows: { [KIND]: kindWith({ ...documents, ...all }) as never },
+        workerFlows: { [KIND]: flowWith({ ...documents, ...all }) as never },
         documents,
         references: partial,
       }),
@@ -965,7 +965,7 @@ describe("the wall cannot be turned off by omission", () => {
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const hired = mintWorkers([worker(ENG_WORKER)], {
-      workerFlows: { [KIND]: kindWith(documents) as never },
+      workerFlows: { [KIND]: flowWith(documents) as never },
       documents,
     });
     const { ctx } = await ctxFor(hired[0]!);

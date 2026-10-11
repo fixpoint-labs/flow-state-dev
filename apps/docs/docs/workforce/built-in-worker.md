@@ -197,7 +197,7 @@ You turn it on by composing it into your own copy of the kind. A *capability* is
 It rides on two options in the table above: `uses` and `afterAnswer`. Here is the whole recipe:
 
 ```ts
-import { AGENT_KIND, createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { AGENT_FLOW, createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { system } from "@flow-state-dev/memory";
 import { boardTool, searchTool } from "./tools";
@@ -213,7 +213,7 @@ const { workers } = await readWorkforce("./workforce");
 
 const installation = createWorkerInstallation({
   standardWorkers: workers,
-  workerFlows: () => ({ [AGENT_KIND]: remembers }),
+  workerFlows: () => ({ [AGENT_FLOW]: remembers }),
 });
 
 const remembers = defineAgentWorkerFlow({

@@ -32,7 +32,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { system } from "@flow-state-dev/memory";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
@@ -65,11 +65,11 @@ function memory(semantic: { flowIsolation?: boolean } | true = true) {
  */
 /**
  * The same kind with memory's tool-bearing presets left ON, so the capability
- * actually contributes a tool for the fence to act on. `rememberingKind` turns
+ * actually contributes a tool for the fence to act on. `rememberingFlow` turns
  * `recall`/`connect` off — which is the documented recipe, but it also means a
  * fence test built on it has nothing to observe and passes either way.
  */
-function toolBearingKind(mem: ReturnType<typeof memory>) {
+function toolBearingFlow(mem: ReturnType<typeof memory>) {
   return defineAgentWorkerFlow({
     uses: [
       mem.capability.presets({
@@ -84,7 +84,7 @@ function toolBearingKind(mem: ReturnType<typeof memory>) {
   });
 }
 
-function rememberingKind(mem: ReturnType<typeof memory>, isolateUserState: boolean) {
+function rememberingFlow(mem: ReturnType<typeof memory>, isolateUserState: boolean) {
   return defineAgentWorkerFlow({
     uses: [
       mem.capability.presets({
@@ -199,9 +199,9 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   // the check that looks green while the promise is broken.
   it("records what it is told in one conversation and reads it back in the next, with nothing seeded", async () => {
     const mem = memory();
-    const kind = rememberingKind(mem, false);
+    const kind = rememberingFlow(mem, false);
     const [worker] = hire([record({ id: "engineering.lead", body: "You are the lead." })], {
-      [AGENT_KIND]: kind
+      [AGENT_FLOW]: kind
     });
     const stores = createInMemoryStores();
     await seedOwnedSession(stores, "first-conversation", worker!);
@@ -237,7 +237,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   it("declares the memory stores and the capture step once memory is attached", () => {
     const mem = memory();
     const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], {
-      [AGENT_KIND]: rememberingKind(mem, true)
+      [AGENT_FLOW]: rememberingFlow(mem, true)
     });
 
     expect(Object.keys(worker!.resources ?? {})).toEqual(
@@ -262,7 +262,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
       }
     });
     const [worker] = hire([record({ id: "engineering.lead", body: "Lead." })], {
-      [AGENT_KIND]: defineAgentWorkerFlow({ afterAnswer: exploding })
+      [AGENT_FLOW]: defineAgentWorkerFlow({ afterAnswer: exploding })
     });
 
     const answer = mockGenerator({ name: "agent-answer", script: [{ text: "answered anyway" }] });
@@ -305,7 +305,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     // capability contributes nothing and this test cannot fail — it would
     // observe an empty list whether the fence worked or not.
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_KIND]: toolBearingKind(mem)
+      [AGENT_FLOW]: toolBearingFlow(mem)
     });
 
     const seen: string[] = [];
@@ -352,13 +352,13 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   it("gives each worker its own memory when isolation is on, and one shared memory when it is off", async () => {
     async function twoWorkers(isolateUserState: boolean): Promise<string> {
       const mem = memory();
-      const kind = rememberingKind(mem, isolateUserState);
+      const kind = rememberingFlow(mem, isolateUserState);
       const [lead, designer] = hire(
         [
           record({ id: "engineering.lead", body: "Lead." }),
           record({ id: "engineering.designer", body: "Designer." })
         ],
-        { [AGENT_KIND]: kind }
+        { [AGENT_FLOW]: kind }
       );
       const stores = createInMemoryStores();
       await seedOwnedSession(stores, "sess-lead", lead!);
@@ -389,7 +389,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
           record({ id: "engineering.lead", body: "Lead." }),
           record({ id: "engineering.designer", body: "Designer." })
         ],
-        { [AGENT_KIND]: rememberingKind(mem, true) }
+        { [AGENT_FLOW]: rememberingFlow(mem, true) }
       );
       const stores = createInMemoryStores();
       await seedOwnedSession(stores, "sess-lead", lead!);
@@ -430,7 +430,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
       afterAnswer: mem.captureFromItems
     });
     const [worker] = hire([record({ id: "engineering.lead", body: "Lead." })], {
-      [AGENT_KIND]: kind
+      [AGENT_FLOW]: kind
     });
 
     const answer = mockGenerator({ name: "agent-answer", script: [{ text: "done" }] });

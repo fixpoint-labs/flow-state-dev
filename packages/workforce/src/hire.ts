@@ -55,7 +55,7 @@ import {
   oneNameMessage,
   type WorkerManifest
 } from "./manifest";
-import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "./agent-worker-flow";
 import { readDeclaredFlow } from "./declared-flow";
 import {
   WORKER_RESOURCES_KEY,
@@ -123,7 +123,7 @@ export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean };
 export function resolveWorkerFlows(
   workerFlows: HireOptions["workerFlows"]
 ): Record<string, ResolvedWorkerFlow> {
-  const all: Record<string, WorkerFlowEntry> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...workerFlows };
+  const all: Record<string, WorkerFlowEntry> = { [AGENT_FLOW]: builtInAgentWorkerFlow, ...workerFlows };
   const resolved: Record<string, ResolvedWorkerFlow> = {};
   for (const [name, entry] of Object.entries(all)) {
     if (isWorkerFlowBuilder(entry)) {
@@ -182,11 +182,11 @@ export function checkWorkerFlows(flows: Record<string, ResolvedWorkerFlow>): voi
   );
 }
 
-function availableKinds(kindNames: readonly string[]): string {
-  return kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
+function availableFlows(flowNames: readonly string[]): string {
+  return flowNames.length > 0 ? flowNames.map((k) => `"${k}"`).join(", ") : "(none)";
 }
 
-function missingKindReason(kind: string, available: string): string {
+function missingFlowReason(kind: string, available: string): string {
   return `names flow "${kind}", which is not in the worker flows passed to hireWorkforce. Worker flows passed: ${available}`;
 }
 
@@ -209,7 +209,7 @@ export function standardOnlyReason(kind: string, defaulted: boolean): string {
  * the ordinary refusal; the type lets a runtime hire say the caller can
  * correct the settings and try again, which no framework refusal allows.
  */
-export class KindRefusedHireError extends Error {}
+export class WorkerFlowRefusedHireError extends Error {}
 
 function hireRefusalMessage(refused: number, total: number, problems: readonly string[]): string {
   return (
@@ -253,8 +253,8 @@ export function missingWorkerFlowRefusal(
   kind: string,
   workerFlows: HireOptions["workerFlows"]
 ): string {
-  const available = availableKinds(Object.keys(resolveWorkerFlows(workerFlows)));
-  return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingKindReason(kind, available)}`]);
+  const available = availableFlows(Object.keys(resolveWorkerFlows(workerFlows)));
+  return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingFlowReason(kind, available)}`]);
 }
 
 export interface HireOptions {
@@ -541,12 +541,12 @@ export function mintWorkers(
   // has: a hand-built catalog never passes the loader. Thrown rather than
   // collected — it is the app's wiring, not one worker's file, so there is no
   // worker to report it against and no roster that hires correctly around it.
-  const bothKinds = Object.keys(options.references ?? {}).filter((ref) =>
+  const bothFlows = Object.keys(options.references ?? {}).filter((ref) =>
     Object.hasOwn(options.documents ?? {}, ref)
   );
-  if (bothKinds.length > 0) {
+  if (bothFlows.length > 0) {
     throw new Error(
-      `hireWorkforce was given ${bothKinds.map((ref) => `"${ref}"`).join(", ")} as both a ` +
+      `hireWorkforce was given ${bothFlows.map((ref) => `"${ref}"`).join(", ")} as both a ` +
         `document and a reference. One ref is one accessor, and the two behave differently — a ` +
         `reference is read from its file and sealed, a document seeds a row and then evolves — ` +
         `so whichever won would be a coin flip. Keep one: leave the file in \`resources/\`, or ` +
@@ -554,7 +554,7 @@ export function mintWorkers(
     );
   }
 
-  const available = availableKinds(Object.keys(flows));
+  const available = availableFlows(Object.keys(flows));
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const workers: FlowInstance[] = [];
@@ -564,7 +564,7 @@ export function mintWorkers(
   // and counting sentences is how `refused 2 of 1 worker` gets printed.
   const refusedWorkers = new Set<string>();
   // The workers whose one refusal came from their kind's own minter.
-  const kindRefusedWorkers = new Set<string>();
+  const flowRefusedWorkers = new Set<string>();
   const seen = new Set<string>();
   const workerBlocks = options.workerBlocks ?? {};
   const packageBlocks = options.packageBlocks ?? {};
@@ -668,7 +668,7 @@ export function mintWorkers(
     // Which case the `flow:` is in is `readDeclaredFlow`'s call, shared with
     // the mailbox door (its doc carries why a key holding `null` is present,
     // not absent). The sentences stay here: they are this door's words.
-    const declaredFlow = readDeclaredFlow(manifest.declared, AGENT_KIND);
+    const declaredFlow = readDeclaredFlow(manifest.declared, AGENT_FLOW);
 
     if ("refused" in declaredFlow && declaredFlow.refused === "blank") {
       // A whitespace-only value keeps refusing, because whitespace is a typo or a
@@ -701,7 +701,7 @@ export function mintWorkers(
     // hand us something that is not a flow factory at all.
     const entry = Object.hasOwn(flows, kind) ? flows[kind] : undefined;
     if (entry === undefined) {
-      refuse(missingKindReason(kind, available));
+      refuse(missingFlowReason(kind, available));
       continue;
     }
 
@@ -831,16 +831,16 @@ export function mintWorkers(
         for (const problem of parsed.problems) refuse(problem);
         continue;
       }
-      const kindResources = (factory.resources ?? {}) as DeclaredResources;
+      const workerFlowResources = (factory.resources ?? {}) as DeclaredResources;
       const resolved = resolveWorkerResources({
         grants: parsed.grants ?? [],
         catalog: options.documents,
-        kindResources,
+        workerFlowResources,
         // The kind's own flow-level keys, which is the subset a worker's map
         // replaces. Falling back to every key would read the kind's BLOCK
         // resources as flow-level ones and copy them onto the worker's map,
         // where they would override the blocks that declared them.
-        kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
+        flowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
         kind
       });
       if (resolved.problems.length > 0) {
@@ -870,8 +870,8 @@ export function mintWorkers(
       declared: manifest.declared[WORKER_REFERENCES_KEY],
       hasDeclared: Object.hasOwn(manifest.declared, WORKER_REFERENCES_KEY),
       catalog: options.references,
-      kindResources: (factory.resources ?? {}) as DeclaredResources,
-      kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
+      workerFlowResources: (factory.resources ?? {}) as DeclaredResources,
+      flowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
       base: workerResources
     });
     if (wall.problems.length > 0) {
@@ -940,7 +940,7 @@ export function mintWorkers(
       // The flow's own refusal, with the worker's id in front of it. The flow
       // already met the contract, so this is about the worker's own settings.
       refuse(messageOf(error));
-      if (minting) kindRefusedWorkers.add(manifest.id);
+      if (minting) flowRefusedWorkers.add(manifest.id);
     }
   }
 
@@ -964,8 +964,8 @@ export function mintWorkers(
     // the roster and the whole error stays the framework's.
     // A kind-refused worker contributes exactly one problem (the catch is its
     // last step), so the counts match only when nothing else was refused.
-    throw problems.length === kindRefusedWorkers.size
-      ? new KindRefusedHireError(message)
+    throw problems.length === flowRefusedWorkers.size
+      ? new WorkerFlowRefusedHireError(message)
       : new Error(message);
   }
 

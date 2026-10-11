@@ -406,9 +406,9 @@ export interface ApplyReferenceWallInput {
   /** The app's references, keyed by ref — the map `referencesFromDocs` returns. */
   catalog: DeclaredResources | undefined;
   /** The kind's MERGED resource map — its own flow-level entries plus what its blocks declare. */
-  kindResources: DeclaredResources;
+  workerFlowResources: DeclaredResources;
   /** The accessor keys the kind declared at FLOW level, which is the subset a worker's map replaces. */
-  kindFlowLevelKeys: ReadonlySet<string>;
+  flowLevelKeys: ReadonlySet<string>;
   /**
    * The map this worker would otherwise be minted with — `resolveWorkerResources`'
    * output when the worker also declares `resources:`, or `undefined` when it
@@ -455,13 +455,13 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   // it. The wall is about where a worker SITS, and `hireWorkforce` already
   // prefixes every refusal with the worker's id. The kind is named only by
   // `verifyWorkerReferenceWall`, whose refusal is about a block on that kind.
-  const { workerId, declared, hasDeclared, catalog, kindResources, kindFlowLevelKeys, base } = input;
+  const { workerId, declared, hasDeclared, catalog, workerFlowResources, flowLevelKeys, base } = input;
 
   // Which of the kind's accessors hold one of the app's references. By name OR
   // by definition identity, the way `worker-resources` recognises a document: an
   // app may expose one definition under a second key, and matching names alone
   // would leave that alias outside the wall.
-  const references = referenceKeys(catalog, kindResources);
+  const references = referenceKeys(catalog, workerFlowResources);
 
   // **Before the wall can be applied, check it is not simply absent.**
   //
@@ -481,8 +481,8 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   // Recognised by IDENTITY, not by shape: see `isReferenceDefinition`. A
   // partial catalog is refused for the same reason and by the same check —
   // one unrecognised reference is one document the wall does not cover.
-  const unwalled = Object.keys(kindResources).filter(
-    (key) => isReferenceDefinition(kindResources[key]) && !references.has(key),
+  const unwalled = Object.keys(workerFlowResources).filter(
+    (key) => isReferenceDefinition(workerFlowResources[key]) && !references.has(key),
   );
   if (unwalled.length > 0) {
     return { reachable: new Set<string>(), problems: [referencesNotDeclaredMessage(unwalled)] };
@@ -509,7 +509,7 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   // the case that would otherwise widen.
   const reachable = new Set<string>();
   for (const key of references) {
-    const place = placeOfEntry(kindResources[key] ?? catalog?.[key]);
+    const place = placeOfEntry(workerFlowResources[key] ?? catalog?.[key]);
     if (place !== undefined && referenceReachableByWorker(worker, place)) reachable.add(key);
   }
 
@@ -544,10 +544,10 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
       resources[key] = entry;
     }
   } else {
-    for (const key of kindFlowLevelKeys) {
-      if (!Object.hasOwn(kindResources, key)) continue;
+    for (const key of flowLevelKeys) {
+      if (!Object.hasOwn(workerFlowResources, key)) continue;
       if (references.has(key) && !allowed.has(key)) continue;
-      resources[key] = kindResources[key]!;
+      resources[key] = workerFlowResources[key]!;
     }
   }
 
@@ -565,16 +565,16 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
  */
 function referenceKeys(
   catalog: DeclaredResources | undefined,
-  kindResources: DeclaredResources,
+  workerFlowResources: DeclaredResources,
 ): ReadonlySet<string> {
   const keys = new Set<string>();
   if (catalog === undefined) return keys;
   const definitions = new Set<unknown>(Object.values(catalog));
-  for (const key of Object.keys(kindResources)) {
-    if (Object.hasOwn(catalog, key) || definitions.has(kindResources[key])) keys.add(key);
+  for (const key of Object.keys(workerFlowResources)) {
+    if (Object.hasOwn(catalog, key) || definitions.has(workerFlowResources[key])) keys.add(key);
   }
   for (const key of Object.keys(catalog)) {
-    if (Object.hasOwn(kindResources, key)) keys.add(key);
+    if (Object.hasOwn(workerFlowResources, key)) keys.add(key);
   }
   return keys;
 }

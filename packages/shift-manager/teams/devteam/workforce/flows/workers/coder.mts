@@ -72,7 +72,7 @@ import {
 } from "../../../worker-config.mts";
 
 /** The kind id the working `WORKER.md` names. **Pinned** — the basename must match. */
-export const CODER_KIND = "coder";
+export const CODER_FLOW = "coder";
 
 /** The answer manager's name: its blocks are named apart from the implement manager's. */
 const ANSWER_MANAGER = "harness-manager-answer";
@@ -130,7 +130,7 @@ function namesFeatureWork(input: unknown): boolean {
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const { installation } = options;
-  const readOwnFacts = defineReadOwnFacts(workerOf(installation, CODER_KIND));
+  const readOwnFacts = defineReadOwnFacts(workerOf(installation, CODER_FLOW));
   const judge = options.judge === undefined ? {} : { judge: options.judge };
 
   // Feature work: a task that names an issue and a phase.
@@ -163,7 +163,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   // `workerTaskEntry` keeps the turn's skill state on the session, which lets
   // a harness through that would. Refused here, at startup, naming the entry.
   for (const manager of [implement, answer]) {
-    assertHandOffBlockSupported({ name: CODER_KIND, target: WORKER_TASK_ENTRY, block: manager });
+    assertHandOffBlockSupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
   }
 
   const byTask = router({
@@ -197,7 +197,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   });
 
   return defineFlow({
-    kind: CODER_KIND,
+    kind: CODER_FLOW,
     // Registered once, at its kind, which is what the coordinator's
     // dispatcher names in `flowKind`; the worker is named by the row's session.
     cardinality: "collection",
@@ -219,7 +219,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // The one door: any session's tasks, handed over under its board's id.
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_KIND}-${WORKER_TASK_ENTRY}`, block: byTask }),
+        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_FLOW}-${WORKER_TASK_ENTRY}`, block: byTask }),
       },
     },
   } as never);

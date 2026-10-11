@@ -46,9 +46,9 @@ const ORG_ID = DEFAULT_ORG_ID;
 const OTHER_ORG = "org_other";
 
 /** The kind a hand-rolled mailbox runs on when a case needs a second one. */
-const BRIEFING_KIND = "briefing";
+const BRIEFING_FLOW = "briefing";
 /** A hand-rolled kind that deliberately does NOT carry the inventory writer. */
-const SILENT_KIND = "silent";
+const SILENT_FLOW = "silent";
 
 function record(id: string, declared: Record<string, unknown> = {}): MailboxManifest {
   return { id, declared: { members: ["eng.lead", "eng.coder"], ...declared }, body: "Charter." };
@@ -115,25 +115,25 @@ const readerFlow = defineFlow({
 } as never);
 
 /** A hand-rolled mailbox kind, carrying the writer the way it carries the singleton contract. */
-function briefingKind() {
+function briefingFlow() {
   const flow = defineFlow({
-    kind: BRIEFING_KIND,
+    kind: BRIEFING_FLOW,
     cardinality: "singleton",
     session: { stateSchema: mailboxSessionStateSchema },
-    actions: { ...inventoryWriterActions(BRIEFING_KIND) }
+    actions: { ...inventoryWriterActions(BRIEFING_FLOW) }
   } as never);
-  return Object.assign(() => (flow as any)(), { kind: BRIEFING_KIND });
+  return Object.assign(() => (flow as any)(), { kind: BRIEFING_FLOW });
 }
 
 /**
- * The control kind: identical to {@link briefingKind} but for the one line that
+ * The control kind: identical to {@link briefingFlow} but for the one line that
  * carries the registration.
  *
  * Its mailbox opens, holds members and behaves like any other — it simply has
  * nowhere for the binder's run to land. That is what makes "the row is there"
  * an assertion about the writer rather than about the roster.
  */
-function silentKind() {
+function silentFlow() {
   const noop = handler({
     name: "silent-noop",
     inputSchema: z.object({}),
@@ -141,12 +141,12 @@ function silentKind() {
     execute: async () => ({ ok: true })
   });
   const flow = defineFlow({
-    kind: SILENT_KIND,
+    kind: SILENT_FLOW,
     cardinality: "singleton",
     session: { stateSchema: mailboxSessionStateSchema },
     actions: { ping: { block: noop } }
   } as never);
-  return Object.assign(() => (flow as any)(), { kind: SILENT_KIND });
+  return Object.assign(() => (flow as any)(), { kind: SILENT_FLOW });
 }
 
 type HostOptions = {
@@ -176,12 +176,12 @@ async function host(roster: MailboxManifest[], options: HostOptions = {}) {
     ...(options.inventory === undefined ? {} : { inventory: options.inventory }),
     ...(options.resources === undefined ? {} : { resources: options.resources })
   });
-  const byKind: Record<string, any> = Object.fromEntries(
+  const byFlow: Record<string, any> = Object.fromEntries(
     instances.map((instance) => [instance.kind, instance])
   );
   const reader = (readerFlow as any)();
   const state = createFlowState({
-    flows: { ...byKind, [reader.kind]: reader },
+    flows: { ...byFlow, [reader.kind]: reader },
     stores: { default: { primary: options.adapter ?? inMemoryStores() } }
   } as never);
   const runtime = await state.getRuntime();
@@ -208,7 +208,7 @@ async function host(roster: MailboxManifest[], options: HostOptions = {}) {
     sessionId: string;
     source?: string;
   }): Promise<unknown> => {
-    const flow = byKind[request.flowKind];
+    const flow = byFlow[request.flowKind];
     if (flow === undefined) {
       throw new Error(`no flow registered under kind "${request.flowKind}"`);
     }
@@ -278,7 +278,7 @@ async function host(roster: MailboxManifest[], options: HostOptions = {}) {
     act: async (sessionId: string, actionName: string, input: unknown) => {
       try {
         return (await runAction({
-          flow: byKind[MAILBOX_KIND],
+          flow: byFlow[MAILBOX_KIND],
           actionName,
           input,
           userId: USER_ID,
@@ -361,7 +361,7 @@ function bind(
     workers?: InventoryWorker[];
     mailboxes?: MailboxManifest[];
     orgId?: string | undefined;
-    workerWriterKind?: string;
+    workerWriterFlow?: string;
   } = {}
 ): Promise<InventoryBinding> {
   return openInventory(
@@ -370,7 +370,7 @@ function bind(
       run: lab.run as never,
       userId: USER_ID,
       orgId: "orgId" in options ? options.orgId : ORG_ID,
-      workerWriter: { flowKind: options.workerWriterKind ?? MAILBOX_KIND }
+      workerWriter: { flowKind: options.workerWriterFlow ?? MAILBOX_KIND }
     }
   );
 }
@@ -641,12 +641,12 @@ describe("a custom mailbox kind", () => {
   it("gets rows like the built-in's, and one that cannot register is named (BR-22, BR-12)", async () => {
     const roster = [
       record("eng.standup"),
-      record("eng.brief", { flow: BRIEFING_KIND, members: ["eng.lead"] }),
-      record("eng.quiet", { flow: SILENT_KIND, members: ["eng.coder"] })
+      record("eng.brief", { flow: BRIEFING_FLOW, members: ["eng.lead"] }),
+      record("eng.quiet", { flow: SILENT_FLOW, members: ["eng.coder"] })
     ];
     const lab = await host(roster, {
       inventory: true,
-      kinds: { [BRIEFING_KIND]: briefingKind(), [SILENT_KIND]: silentKind() }
+      kinds: { [BRIEFING_FLOW]: briefingFlow(), [SILENT_FLOW]: silentFlow() }
     });
     try {
       const result = await bind(lab, { mailboxes: roster });
@@ -660,7 +660,7 @@ describe("a custom mailbox kind", () => {
       expect(byId["eng.standup"].kind).toBe(MAILBOX_KIND);
       expect(byId["eng.brief"]).toMatchObject({
         id: "eng.brief",
-        kind: BRIEFING_KIND,
+        kind: BRIEFING_FLOW,
         members: ["eng.lead"]
       });
 

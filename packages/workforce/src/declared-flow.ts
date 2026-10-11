@@ -1,7 +1,7 @@
 /**
  * What a record's `flow:` line selects — the one rule both doors read it by.
  *
- * Workers (`hireWorkforce`) and mailboxes (`kindOf` in the mailbox binder) each
+ * Workers (`hireWorkforce`) and mailboxes (`workerFlowOf` in the mailbox binder) each
  * turn a record's frontmatter into a kind. They differ in their default kind
  * and in how they word a refusal, and those stay with each door. What they
  * share is the classification: an absent key takes the door's default, a blank
@@ -27,7 +27,7 @@ export type DeclaredFlow =
   | { refused: "not-a-string"; value: unknown };
 
 /**
- * Classify a record's `flow:`, falling back to `defaultKind` only when the key
+ * Classify a record's `flow:`, falling back to `defaultFlow` only when the key
  * is absent. Returns the case; never throws and never words a refusal.
  *
  * `hasOwn` rather than a bare read of `.flow`: a `flow:` key parsed from a file
@@ -41,9 +41,9 @@ export type DeclaredFlow =
  */
 export function readDeclaredFlow(
   declared: Record<string, unknown>,
-  defaultKind: string
+  defaultFlow: string
 ): DeclaredFlow {
-  if (!Object.hasOwn(declared, "flow")) return { kind: defaultKind };
+  if (!Object.hasOwn(declared, "flow")) return { kind: defaultFlow };
   const value = declared.flow;
   if (typeof value !== "string") return { refused: "not-a-string", value };
   if (value.trim().length === 0) return { refused: "blank" };

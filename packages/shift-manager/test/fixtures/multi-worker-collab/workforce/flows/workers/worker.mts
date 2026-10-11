@@ -62,7 +62,7 @@ import { pieceInputSchema } from "../piece.mts";
 import { hearingDoor } from "../../../../hearing-door.mts";
 
 /** The flow every worker `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
-export const WORKER_KIND = "worker";
+export const WORKER_FLOW = "worker";
 
 /** The task entry a filed row is handed over through. */
 export const WORK_ENTRY = "work";
@@ -126,7 +126,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
   const { installation, outbox, control } = options;
   // Only for the conversation ledger's declaration: a worker here files
   // nothing (no `delegates:`), so the flow carries none of the kit's actions.
-  const { resources: ledgerResources } = defineSessionBoard({ installation, flowKind: WORKER_KIND });
+  const { resources: ledgerResources } = defineSessionBoard({ installation, flowKind: WORKER_FLOW });
 
   /** The conversation's ledger at the partition this task session was opened for. */
   const ledgerOf = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
@@ -162,7 +162,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
       if (row === undefined) throw new Error(`row ${taskId} is not on this conversation's board`);
       const piece = pieceInputSchema.parse(row.input ?? {});
       const answer = row.answered === true ? (row.feedback ?? null) : null;
-      const worker = await installation.resolveWorker(ctx as never, WORKER_KIND);
+      const worker = await installation.resolveWorker(ctx as never, WORKER_FLOW);
       const base = {
         worker: worker.id,
         declaredDesk: String((worker.config as { answersFor?: unknown }).answersFor),
@@ -201,7 +201,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
   });
 
   return defineFlow({
-    kind: WORKER_KIND,
+    kind: WORKER_FLOW,
     cardinality: "collection",
     // Optional so the shared copy, which carries no worker's settings, builds;
     // the host refuses a worker whose file names no `answersFor`.
