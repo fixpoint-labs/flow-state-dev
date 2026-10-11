@@ -480,6 +480,7 @@ const GOALS = {
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
   "goals/devforce-lab/it-answers-a-conversations-task": "CONVERT · the lab opens with no mailbox; its feature-board control goes with the board",
   "goals/devforce-lab/it-commits-from-the-seats-own-file": "EDIT · its row is read by issue off the EM's own board",
+  "goals/devforce-lab/it-names-the-project-a-coders-task-works-in": "EDIT · its Lab is opened with no mailbox and no eng.feature workstream",
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
   "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
   "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature workstream",
