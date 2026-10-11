@@ -3,18 +3,20 @@
  *
  * A writer that sees only the pages DOCS.md lists, the pentest Lab's README
  * and a scratch copy of `goals/pentest-lab/lab/` (S5) adds the chief of staff,
- * the hire capability with `askBefore: ["fire"]`, the `projects` collection
- * and the project tools. The writer is an isolated Claude
+ * its `hire` and `fire` tools from `createWorkerHireBlocks` with the fire
+ * asking first, the `projects` collection and the project tools. The writer
+ * is an isolated Claude
  * Code agent (the Agent SDK) whose only tools read and write inside its own
  * workspace: the docs and the copy, nothing else of the repository. Every
  * step it reports no page covered is a failed step, reason *doc silent*
  * (QR-14).
  *
  * Then Shift Manager serves the copy, and the person asks its chief of staff
- * for a project and a seat in the Chief of Staff view: PROJECTS must list the
- * project, TEAMS the worker it hired, and a
- * fire of that worker must suspend on one `human_approval` in the store (askBefore). The copy is
- * deleted after the run; `packages/shift-manager` is left untouched.
+ * for a project and a worker in the Chief of Staff view: PROJECTS must list
+ * the project; the person's roster must hold the worker it hired, and Roster
+ * list it as theirs; and a fire of that worker must suspend on one
+ * `human_approval` in the store naming it. The copy is deleted after the run;
+ * `packages/shift-manager` is left untouched.
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -22,13 +24,13 @@ import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { labRoutes, personPage, startShiftManager, openShiftManager } from "../../lib/shift-manager.mts";
-import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, RunRecord, sleep, teamsSeats, World } from "./steps.mts";
+import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, readWorkers, RunRecord, rosterOwn, sleep, World } from "./steps.mts";
 
 /** The pages D3's writer sees, as published on the commit (DOCS.md). */
 export const J4_PAGES = [
   "apps/docs/docs/workforce/overview.md",
   "apps/docs/docs/workforce/projects.md",
-  "apps/docs/docs/workforce/mailboxes.md",
+  "apps/docs/docs/workforce/coordinators.md",
   "apps/docs/docs/workforce/chief-of-staff.md",
   "apps/docs/docs/workforce/durable-hire.md",
   "apps/docs/docs/workforce/workers-on-disk.md",
@@ -41,8 +43,8 @@ const TASK = `You are setting up the Lab in \`lab/\` so that Shift Manager can r
 Read only the pages under \`docs/\` (and the Lab's own files) to learn how. Nothing else is available to you.
 
 What the Lab must get:
-1. A chief of staff: the org seat Shift Manager talks to, on the built-in agent kind, able to hire seats at once and
-   fire them only after a person approves (the hire capability installed with askBefore: ["fire"]).
+1. A chief of staff: the org worker Shift Manager talks to, able to hire workers of the person's own at once and
+   fire them only after the person approves.
 2. Projects: the organization's \`projects\` collection, and the project tools on the chief of staff so a person can
    ask it to create a project.
 
@@ -141,40 +143,19 @@ async function write(workspace: string, labCopy: string, log: (s: string) => voi
 }
 
 /**
- * The kind J4 names when it asks the chief of staff to hire, read from the
- * writer's files, never from the model: `agent` when the hire capability the
- * writer installed allows it, otherwise the one other kind it allows. Its
- * `allowKinds`, when set, is read as written: string literals, and constants
- * declared in the Lab's own files or exported by the workspace's packages
- * (`AGENT_KIND`). Left out, every kind is hireable, the built-in `agent`
- * among them. `error` when no file installs the capability, or when what it
- * allows can't be read well enough to pick.
+ * The flow J4 names when it asks the chief of staff to hire, read from the
+ * writer's files, never from the model: the built-in `agent`, which takes a
+ * hire with no settings unless the Lab marks it `standardOnly`. `error` when
+ * no file builds the hire blocks, or when the Lab keeps `agent` for its
+ * declared workers.
  */
-export function hireableKind(lab: string): { kind: string; allowed: string[] } | { error: string } {
+export function hireableFlow(lab: string): { flow: string } | { error: string } {
   const walk = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => (["node_modules", "dist", "test"].includes(e.name) ? [] : e.isDirectory() ? walk(join(dir, e.name)) : /\.m?ts$/.test(e.name) ? [join(dir, e.name)] : []));
-  const read = (paths: string[]) => paths.map((path) => readFileSync(path, "utf8"));
-  const files = read(walk(lab));
-  if (!files.some((t) => /createSeatHireCapability\s*\(/.test(t))) return { error: "no file in the writer's Lab calls createSeatHireCapability, so nothing can be hired" };
-  const lists = files.flatMap((t) => [...t.matchAll(/allowKinds\s*:\s*\[([^\]]*)\]/g)].map((m) => m[1]!));
-  if (lists.length === 0) return { kind: "agent", allowed: ["agent (no allowKinds: every kind)"] };
-  let packages: string[] | undefined;
-  const declared = (name: string, texts: string[]) => texts.map((t) => new RegExp(`const\\s+${name}\\s*(?::[^=]+)?=\\s*["'\`]([^"'\`]+)["'\`]`).exec(t)?.[1]).find((v) => v !== undefined);
-  const constant = (name: string) =>
-    declared(name, files) ??
-    declared(name, (packages ??= read(readdirSync(join(REPO_ROOT, "packages")).flatMap((p) => (existsSync(join(REPO_ROOT, "packages", p, "src")) ? walk(join(REPO_ROOT, "packages", p, "src")) : [])))));
-  const allowed = new Set<string>();
-  const unread: string[] = [];
-  for (const entry of lists.flatMap((l) => l.split(",")).map((e) => e.trim()).filter(Boolean)) {
-    const literal = /^["'`]([^"'`]+)["'`]$/.exec(entry)?.[1];
-    const value = literal ?? (/^[A-Za-z_$][\w$]*$/.test(entry) ? constant(entry) : undefined);
-    if (value === undefined) unread.push(entry);
-    else allowed.add(value);
-  }
-  const kinds = [...allowed].sort();
-  if (allowed.has("agent")) return { kind: "agent", allowed: kinds };
-  if (unread.length > 0 || kinds.length === 0) return { error: `the writer's allowKinds can't be read well enough to pick a kind (${lists.map((l) => `[${l.trim()}]`).join(", ")}; read [${kinds.join(", ")}], unread [${unread.join(", ")}])` };
-  return { kind: kinds[0]!, allowed: kinds };
+  const files = walk(lab).map((path) => readFileSync(path, "utf8"));
+  if (!files.some((t) => /createWorkerHireBlocks\s*\(/.test(t))) return { error: "no file in the writer's Lab calls createWorkerHireBlocks, so nothing can be hired" };
+  if (files.some((t) => /\bagent\s*:\s*\{[^{}]*standardOnly\s*:\s*true/.test(t))) return { error: "the writer's Lab marks the agent flow standardOnly, so a person can't hire onto it" };
+  return { flow: "agent" };
 }
 
 export async function j4(browser: Browser, scratch: string, pages: string, shots: string, log: (s: string) => void): Promise<J4Result> {
@@ -183,8 +164,9 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
   const notes: string[] = [];
   const source = join(REPO_ROOT, "goals", "pentest-lab", "lab");
   // The workspace sits in the repository so the copy resolves the workspace's packages, and the copy is a real
-  // directory in it: the writer's Glob doesn't follow a symlink, and would report a linked `lab/` empty.
-  const workspace = join(REPO_ROOT, "goals", "pentest-lab", `j4-${hex(3)}`);
+  // directory in it: the writer's Glob doesn't follow a symlink, and would report a linked `lab/` empty. The copy
+  // sits as deep as the Lab itself, so the Lab's relative imports of `goals/lib` still resolve.
+  const workspace = join(REPO_ROOT, "goals", `j4-${hex(3)}`);
   const copy = join(workspace, "lab");
   const smBefore = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "packages/shift-manager"], { encoding: "utf8" });
   cpSync(source, copy, { recursive: true });
@@ -206,7 +188,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     const silent = steps.filter((l) => /doc silent/i.test(l));
     for (const s of silent) failures.push(`J4 doc silent: ${s.replace(/^\s*-\s+/, "").slice(0, 400)}`);
 
-    // ---- Shift Manager over the copy: the person asks CoS for a project and a seat ----
+    // ---- Shift Manager over the copy: the person asks CoS for a project and a worker ----
     let served;
     try {
       served = await startShiftManager({ scratch, label: "j4", config: join(copy, "fsdev.config.mts"), pages, timeoutMs: 120_000 });
@@ -241,27 +223,32 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
           if (id === undefined) failures.push(`J4: PROJECTS doesn't list "${title}" (lists [${ids.join(", ")}])`);
           else notes.push(`J4: PROJECTS lists ${id} ("${title}")`);
         }
-        const seat = `helper-${hex()}`;
-        // Name the kind, so the chief of staff isn't left to ask which one: the writer's Lab says which it may hire.
-        const hireable = hireableKind(copy);
-        const hire = "error" in hireable ? undefined : await askCos(world, "J4", `Please hire a seat with the seat id "${seat}" on the "${hireable.kind}" kind.${hireable.kind === "agent" ? " It needs no settings." : ""}`);
-        if ("error" in hireable) failures.push(`J4: no kind to hire: ${hireable.error}`);
+        const worker = `helper-${hex()}`;
+        // Name the flow, so the chief of staff isn't left to ask which one: the writer's Lab says whether `agent` takes a hire.
+        const hireable = hireableFlow(copy);
+        const hire = "error" in hireable ? undefined : await askCos(world, "J4", `Please hire a worker with the id "${worker}" on the "${hireable.flow}" flow. It needs no settings.`);
+        if ("error" in hireable) failures.push(`J4: no flow to hire on: ${hireable.error}`);
         else if (hire === undefined) failures.push("J4: asked for a worker, the Chief of Staff view draws no chief of staff to ask");
         else {
           await sleep(500);
-          const teams = await teamsSeats(world);
-          if (!teams.some((t) => t === seat || t.endsWith(`.${seat}`))) failures.push(`J4: asked for a seat, TEAMS doesn't list "${seat}": ${quote(hire)}`);
+          // A worker the person hires is theirs: a row on their own roster, which Roster lists as theirs.
+          const row = (await readWorkers(world.routes.owner)).find((w) => w.id === worker);
+          const own = (await rosterOwn(world)).some((w) => w.id === worker);
+          if (row === undefined || !own) failures.push(`J4: asked for a worker, "${worker}" is roster row ${row !== undefined}, listed in Roster as the person's ${own}: ${quote(hire)}`);
+          else if (row.flow !== hireable.flow) failures.push(`J4: asked for a worker on "${hireable.flow}", "${worker}" was hired on "${row.flow}": ${quote(hire)}`);
           else {
-            notes.push(`J4: TEAMS lists ${teams.find((t) => t.endsWith(seat))}, hired on "${hireable.kind}" (the writer allows [${hireable.allowed.join(", ")}])`);
-            // askBefore: ["fire"]: a fire of that worker suspends on the person's approval, read from the store. Left unanswered.
-            const fire = await askCos(world, "J4", `Please fire the seat "${seat}".`);
+            notes.push(`J4: the person's roster holds "${worker}" on "${row.flow}", and Roster lists it as theirs`);
+            // The fire asks first: a fire of that worker suspends on the person's approval, read from the store. Left unanswered.
+            const fire = await askCos(world, "J4", `Please fire the worker "${worker}".`);
             if (fire === undefined || fire.sessionId === null || fire.requestId === null) failures.push(`J4: the fire was not asked: ${quote(fire)}`);
             else {
               const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
-              const data = asks[0]?.data as { verb?: string; seatId?: string } | undefined;
-              if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${seat}", the turn ended ${fire.status} with ${asks.length} human_approval ask(s), not suspended on one: ${quote(fire)}`);
-              else if (data?.verb !== "fire" || data?.seatId !== seat) failures.push(`J4: the fire's ask names ${JSON.stringify(data)}, not fire "${seat}"`);
-              else notes.push(`J4: asked to fire "${seat}", the turn suspended on one human_approval ${JSON.stringify(data)}; left unanswered`);
+              const named = (asks[0]?.data as { worker?: string } | undefined)?.worker;
+              if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${worker}", the turn ended ${fire.status} with ${asks.length} human_approval ask(s), not suspended on one: ${quote(fire)}`);
+              else if (named !== worker || !/fire/i.test(asks[0]!.message ?? "")) failures.push(`J4: the fire's ask says "${asks[0]!.message}" naming ${JSON.stringify(asks[0]!.data)}, not a fire of "${worker}"`);
+              // Nothing is removed before the person answers: a fire that writes first and asks after still raises the same ask.
+              else if (!(await readWorkers(world.routes.owner)).some((w) => w.id === worker)) failures.push(`J4: asked to fire "${worker}", the turn suspended on its ask, but the person's roster no longer holds it: the fire ran before anyone approved`);
+              else notes.push(`J4: asked to fire "${worker}", the turn suspended on one human_approval "${asks[0]!.message}" ${JSON.stringify(asks[0]!.data)}; left unanswered, and the worker is still on the roster`);
             }
           }
         }
