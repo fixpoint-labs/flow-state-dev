@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
 import { SHIFT_MANAGER, SHIFT_MANAGER_COMMAND, buildShiftManagerCopy, labApi as labRoutes, pendingSeatAsks, servedAddresses, type Patch } from "../../lib/shift-manager.mts";
 
@@ -289,6 +290,28 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
 
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const sessions = (listing.sessions ?? []) as Array<Record<string, any>>;
+  // A seat session's own board (`<sessionId>.tasks`), where a worker that names delegates files:
+  // the organization keeps every session's rows in one `tasks` collection, each under a topic
+  // naming the session that filed it.
+  const seatIds = new Set(seats);
+  for (const session of sessions) {
+    const id = String(session.id);
+    if (session.parentSessionId != null || !seatIds.has(String(session.state?.workerId)) || rows[id] !== undefined) continue;
+    const { status, body } = await api.call("GET", `/sessions/${encodeURIComponent(id)}/resources/tasks?limit=200`);
+    if (status !== 200) continue;
+    const own = ((body?.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>)
+      .filter((i) => sessionIdOfFiling(decodeURIComponent(i.topic.split("/")[0] ?? "")) === id)
+      .map((i) => i.clientData ?? {});
+    if (own.length === 0) continue;
+    rows[id] = own.map((row) => ({
+      ref: `${id}.tasks`,
+      id: String(row.id),
+      status: String(row.status),
+      title: String(row.title ?? row.goal ?? row.id),
+      run: row.run == null ? null : { sessionId: String(row.run.sessionId), requestId: String(row.run.requestId) },
+      raw: row,
+    }));
+  }
   const orgs = [...new Set(sessions.map((s) => s.orgId).filter((o): o is string => typeof o === "string" && o.length > 0))];
   // The seat an ask belongs to is the worker its session names, not the flow the session is on.
   const asks: StoredAsk[] = (await pendingSeatAsks(api, sessions, seatRows)).map((a) => ({ suspensionId: a.suspensionId, sessionId: a.sessionId, seat: a.seatId }));

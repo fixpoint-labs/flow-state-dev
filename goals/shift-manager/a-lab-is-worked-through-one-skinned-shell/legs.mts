@@ -556,7 +556,9 @@ export async function legA(ctx: LegCtx): Promise<void> {
       report.fail("a2", approved ? `no row was running with a run link within ${RUN_STARTS_MS / 60_000} min of Approve` : "no ask was approved, so no task runs");
       report.fail("a4", "no task of the coder's is running, so there is nothing to talk to");
     } else {
-      const mailbox = tree.mailboxes.find((c) => c.boardRefs.includes(row.ref))!;
+      // The row's board: a mailbox's, or a seat session's own (`<sessionId>.tasks`) in a tree with none.
+      const mailbox = tree.mailboxes.find((c) => c.boardRefs.includes(row.ref));
+      const holder = mailbox?.id ?? row.ref.replace(/\.tasks$/, "");
       const assignee = String(row.raw.assignee ?? "");
       const seat = tree.seats.find((s) => s === assignee || s.endsWith(`.${assignee}`)) ?? assignee;
       // The turn goes in mid-run: once the harness has had A4_SETTLE_MS to open and
@@ -566,12 +568,21 @@ export async function legA(ctx: LegCtx): Promise<void> {
       await sleep(A4_SETTLE_MS);
       const working = (await api.items(row.run!.sessionId)).filter((i) => i.requestId === row.run!.requestId && (i.type === "tool_output" || i.type === "reasoning" || (i.type === "message" && i.role === "assistant"))).length;
       const line = token("a4");
-      await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-      await page.locator("[role=tab][data-tab=stream]").click();
-      await page.getByTestId("composer-input").fill(`@${seat.split(".").at(-1)} ${line}`);
-      const picker = page.getByTestId("composer-task-picker");
-      if (await picker.isVisible().catch(() => false)) await picker.selectOption(row.id);
-      const sent = await sendAndWatch(page, "composer", () => api.holds(row.run!.sessionId, "user", line));
+      let sent: Awaited<ReturnType<typeof sendAndWatch>>;
+      if (mailbox !== undefined) {
+        await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
+        await page.locator("[role=tab][data-tab=stream]").click();
+        await page.getByTestId("composer-input").fill(`@${seat.split(".").at(-1)} ${line}`);
+        const picker = page.getByTestId("composer-task-picker");
+        if (await picker.isVisible().catch(() => false)) await picker.selectOption(row.id);
+        sent = await sendAndWatch(page, "composer", () => api.holds(row.run!.sessionId, "user", line));
+      } else {
+        // No mailbox workstream to post in: the line goes through the task's own composer, from Tasks.
+        await page.getByTestId("nav-tasks").click();
+        await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
+        await page.getByTestId("task-composer-input").fill(line);
+        sent = await sendAndWatch(page, "task-composer", () => api.holds(row.run!.sessionId, "user", line));
+      }
       if (sent.state !== "delivered") report.fail("a4", `the composer never read delivered: ${sent.state}${sent.error === null ? "" : `, "${sent.error}"`}`);
       else if (sent.heldAtDelivered !== true) report.fail("a4", `the composer read delivered while ${seat}'s running task session ${row.run!.sessionId} held no person's turn with the token`);
       // The seat answers in that session: an assistant message, after the person's turn, from the next
@@ -582,7 +593,7 @@ export async function legA(ctx: LegCtx): Promise<void> {
       for (const until = Date.now() + ANSWER_MS; Date.now() < until && answer === undefined; await sleep(2_000)) {
         const messages = await api.items(row.run!.sessionId, ["message"]);
         turnAt = messages.findIndex((m) => m.role === "user" && JSON.stringify(m.content ?? m.text ?? m).includes(line));
-        const linked = (await readStore(api, tree, userId)).rows[mailbox.id]?.find((r) => r.id === row.id)?.run;
+        const linked = (await readStore(api, tree, userId)).rows[holder]?.find((r) => r.id === row.id)?.run;
         if (linked != null && linked.requestId !== row.run!.requestId) nextRequest = linked.requestId;
         if (turnAt >= 0 && nextRequest !== undefined) answer = messages.slice(turnAt + 1).find((m) => m.role === "assistant" && m.requestId === nextRequest);
         if (sent.state !== "delivered") break;
@@ -591,18 +602,20 @@ export async function legA(ctx: LegCtx): Promise<void> {
       else if (sent.state === "delivered" && nextRequest === undefined) report.fail("a4", `no next attempt took the line within ${ANSWER_MS / 60_000} min (not retried)`);
       else if (sent.state === "delivered" && answer === undefined) report.fail("a4", `the next attempt ${nextRequest} did not answer in ${row.run!.sessionId} within ${ANSWER_MS / 60_000} min of the turn (not retried)`);
       const answerText = answer === undefined ? "" : JSON.stringify(answer.content ?? answer.text ?? "").slice(0, 160);
-      report.note(`a4: @${seat.split(".").at(-1)} ${line} sent after ${working} harness item(s) in the attempt → ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}${sent.error === null ? "" : ` "${sent.error}"`} in ${row.run!.sessionId}; next attempt ${nextRequest ?? "none"}; answer ${answer === undefined ? "none" : `${String(answer.id)}: ${answerText}`}`);
+      report.note(`a4: ${mailbox === undefined ? `${seat}'s task composer:` : `@${seat.split(".").at(-1)}`} ${line} sent after ${working} harness item(s) in the attempt → ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}${sent.error === null ? "" : ` "${sent.error}"`} in ${row.run!.sessionId}; next attempt ${nextRequest ?? "none"}; answer ${answer === undefined ? "none" : `${String(answer.id)}: ${answerText}`}`);
 
-      // a2: the task, from Tasks and again from the workstream's Board.
-      const current = (await readStore(api, tree, userId)).rows[mailbox.id]!.find((r) => r.id === row.id) ?? row;
+      // a2: the task, from Tasks and again from the workstream's Board (a mailbox's; a tree with none has no Board to open it from).
+      const current = (await readStore(api, tree, userId)).rows[holder]?.find((r) => r.id === row.id) ?? row;
       const linked = current.run === null ? row : current;
       await page.getByTestId("nav-tasks").click();
       await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
       await taskJourney(page, api, linked, served.devtool, "a2", report, "Tasks");
-      await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-      await page.locator("[role=tab][data-tab=board]").click();
-      await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
-      await taskJourney(page, api, linked, served.devtool, "a2", report, "Board");
+      if (mailbox !== undefined) {
+        await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
+        await page.locator("[role=tab][data-tab=board]").click();
+        await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
+        await taskJourney(page, api, linked, served.devtool, "a2", report, "Board");
+      }
     }
 
     // a3: every surface, against the store as it stands now.
