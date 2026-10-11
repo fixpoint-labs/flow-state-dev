@@ -663,12 +663,17 @@ export function createLabReader(clients: LabClients): LabReader {
     }
   };
 
-  /** Find the inventory through the first listed session whose flow declares it. */
+  /**
+   * Find the inventory through the first listed session whose flow declares
+   * it: seats and mailboxes, or, when no flow declares the mailboxes (a Lab
+   * that serves no mailbox kind), the seats alone, with no mailbox workstream.
+   */
   const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
     const byKind = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
     }
+    let seatsOnly: { sessionId: string; seatsRef: string } | undefined;
     for (const [kind, sessionId] of byKind) {
       let manifest: ResourceManifest;
       try {
@@ -681,7 +686,11 @@ export function createLabReader(clients: LabClients): LabReader {
           ?.ref;
       const seatsRef = refOf(INVENTORY_PATTERNS.seats);
       const mailboxesRef = refOf(INVENTORY_PATTERNS.mailboxes);
-      if (seatsRef === undefined || mailboxesRef === undefined) continue;
+      if (seatsRef === undefined) continue;
+      if (mailboxesRef === undefined) {
+        seatsOnly ??= { sessionId, seatsRef };
+        continue;
+      }
       try {
         const [seatRows, mailboxRows] = await Promise.all([
           readCollection(sessionId, seatsRef),
@@ -701,6 +710,22 @@ export function createLabReader(clients: LabClients): LabReader {
           };
         }
         return { ok: true, value: { seats, workstreams } };
+      } catch (error) {
+        return { ok: false, failure: describeFailure(error) };
+      }
+    }
+    if (seatsOnly !== undefined) {
+      try {
+        const seats = (await readCollection(seatsOnly.sessionId, seatsOnly.seatsRef))
+          .map((r) => toSeat(r.clientData))
+          .filter((seat): seat is Seat => seat !== undefined);
+        if (seats.length === 0) {
+          return {
+            ok: false,
+            failure: { message: "The Lab's inventory is empty: it registers no seats. The Lab booted without opening its inventory." },
+          };
+        }
+        return { ok: true, value: { seats, workstreams: [] } };
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
