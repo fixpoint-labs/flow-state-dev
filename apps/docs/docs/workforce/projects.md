@@ -43,15 +43,29 @@ Each workstream is its own entry, not part of the row, so two owners can update 
 
 ## Declaring the collections
 
-Declare the shared projects once, at the organization level, in `workforce/org/resources/projects.ts`:
+Usually you don't declare anything. Shared projects live in the org's `projects` collection and private ones in each user's `privateProjects`, and three things declare both for you:
+
+- `hireWorkforce` returns a [roster flow](./durable-hire.md#hiring-a-worker), `workforce-roster`, with your worker flows, and you register it with them. It declares both collections, and a client lists a person's projects and reads a project's workstreams through it.
+- The blocks `defineProjectBlocks()` returns, and `openWorkstream` from `defineWorkstreamBlocks()`, declare both on themselves. A flow that holds one has the collections, whether you spread it as an action or put it in a worker flow's tool `catalog`.
+- `defineCoordinatorFlow` declares both on the coordinator flow.
+
+Otherwise, on a flow of your own that reads or writes project rows without those blocks, put both in its `resources`, where you build the flow, under the keys the workforce's own flows use:
 
 ```ts
-import { defineProjectsCollection } from "@flow-state-dev/workforce";
+import {
+  definePrivateProjectsCollection,
+  defineProjectsCollection,
+  PRIVATE_PROJECTS_RESOURCE,
+  PROJECTS_RESOURCE,
+} from "@flow-state-dev/workforce";
 
-export default defineProjectsCollection();
+const resources = {
+  [PROJECTS_RESOURCE]: defineProjectsCollection(),
+  [PRIVATE_PROJECTS_RESOURCE]: definePrivateProjectsCollection(),
+};
 ```
 
-`defineProjectsCollection()` is the org's `projects` collection. `definePrivateProjectsCollection()` is the same row at each user's own scope. The project and workstream blocks below declare both, so most apps never declare the private one themselves. You can call either function anywhere you need it: every call returns the same declaration, so they never conflict. Both are shared across flows and readable from the browser, where a user reads the org's shared projects and their own private ones.
+Every call returns the same declaration, so declaring the collections on several flows never conflicts. Both are shared across flows and readable from the browser, where a user reads the org's shared projects and their own private ones.
 
 ## Creating a project
 

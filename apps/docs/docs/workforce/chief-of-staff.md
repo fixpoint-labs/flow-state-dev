@@ -54,8 +54,9 @@ don't answer for it. When no delegate does the work, hire a worker for it,
 add it with `addDelegate`, and hand it on.
 
 To add a worker for the person, call `hire`. It lands at once. To remove one
-of theirs, call `fire`. The person approves every fire before it happens; if
-they deny it, say so and don't try again unless they ask.
+of theirs, call `fire` as soon as they ask. Don't ask them to confirm in chat
+first: `fire` asks them for approval itself, and nothing is removed until they
+approve. If they deny it, say so and don't try again unless they ask.
 
 To hire a worker on `coder`, pass `settings: { "document": "teams/eng/feature-brief" }`.
 A worker on `agent` needs no settings, and is the one to hire for work you hand off.

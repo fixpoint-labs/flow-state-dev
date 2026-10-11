@@ -6,9 +6,10 @@ Two questions and one decision are the sign-off surface, all decided: Jake answe
 2026-10-06 ("yes to all recommendations"). Q1 is the epic's own ask
 ([epic Q2](../../epics/FIX-1786/DECISIONS.md#q2)), put here as it said. Q2 is the Architect's.
 D1 answers the epic's cost check. D2 is the product owner's call after merge, on 2026-10-07: in
-Shift Manager, every workstream comes with its own coordinator. The model itself (a workstream is
-an entry plus its lead's session, rooms removed, progress computed) is the epic's, and is not
-reopened.
+Shift Manager, every workstream comes with its own coordinator. D3 supersedes it, the product
+owner's call on 2026-10-11: a workstream is a session on a worker already on the roster, and a
+coordinator opens it. The model itself (a workstream is an entry plus its lead's session, rooms
+removed, progress computed) is the epic's, and is not reopened.
 
 ## The tree
 
@@ -20,9 +21,9 @@ flowchart TD
   Q2 -.->|"rejected"| XQ2["anyone in the org"]
   I --> D1["D1 · a private project is the same row in user scope"]
   D1 -.->|"rejected"| X1["an org row under the owner-private fence · no browser read"]
-  I --> D2["D2 · decided · each workstream in Shift Manager gets its own new coordinator"]
-  D2 -.->|"rejected"| X2["no default · the owner names a lead"]
-  D2 -.->|"rejected"| X2b["one coordinator for all of an owner's workstreams"]
+  I --> D3["D3 · decided · a workstream is a session on an existing worker, opened by the project coordinator"]
+  D3 -.->|"superseded"| D2["D2 · each workstream in Shift Manager gets its own new coordinator"]
+  D3 -.->|"rejected"| X3["a lead picker in Shift Manager's open form"]
   I --> E1["engineering · the owner rule is a mode of the owner-key fence"]
   E1 -.->|"rejected"| XE1["the owner stamped in state · a Workforce-only gate"]
 ```
@@ -119,7 +120,9 @@ Layer 1 changes on an owner-only browser read and `**` under the fence; then pri
 don't wait on FIX-1790.
 
 <a name="d2"></a>
-## D2 · decided · In Shift Manager, every workstream comes with its own coordinator
+## D2 · superseded by D3 · In Shift Manager, every workstream comes with its own coordinator
+
+*Superseded on 2026-10-11 by [D3](#d3). Kept as the record of what was decided and why.*
 
 **The product owner, 2026-10-07:** every workstream in Shift Manager comes with its own
 coordinator by default. Recorded after merge ([EVOLUTION.md](EVOLUTION.md#amendment-default-coordinator)).
@@ -139,6 +142,33 @@ Then a picker, or a roster that groups these coordinators, earns its cost.
 
 **If wrong:** rosters cluttered with coordinators nobody tunes, fired one by one. It is Shift
 Manager's alone, and flips in the view.
+
+<a name="d3"></a>
+## D3 · decided · A workstream is a session on an existing worker, opened by the project coordinator
+
+**The product owner, 2026-10-11:** a workstream coordinator need not be its own worker: "if not, and
+we just have a coordinator, and then the coordinator just uses the task description and the work
+stream brief as its own understanding of how it should coordinate in any kind of special way, then
+it's really just a new session on an existing coordinator that handles that." A form doesn't open
+a workstream: "A work stream should open because a coordinator has opened it." Standing
+instructions for one workstream are "not overriding the base prompt, but more so appending it",
+through the workstream's brief or a skill the coordinator writes. And: "we're probably unifying
+and removing code here more so than adding anything."
+
+| | |
+|---|---|
+| **Instead of** | D2: a new coordinator forked onto the roster for every workstream · a lead picker added to Shift Manager's open form · one standard workstream coordinator leading every workstream and handing pieces to the EM (put to the product owner on 2026-10-11; they kept the EM as lead) |
+| **Because** | The forks start identical and nothing in the product edits them, so D2 bought a worker per workstream and nothing else. The framework already gives one worker a session per workstream (`ensureWorkerSession` with a `workstreamId` criterion), and the project coordinator already keeps one record per workstream, so two workstreams with one lead are two delegates (BR-21a). What was missing is who opens: the person's project coordinator, in the conversation where they ask for the work, naming a lead from their roster, such as the EM for a feature. A picker would keep the form and still leave opening to the person |
+| **Locks in** | Shift Manager has no open form and forks nothing. The standard workstream coordinator worker, `openWorkstreamWithCoordinator` and the setup's `workstreamCoordinator` go. The project coordinator gains `openWorkstream` and opens a workstream when the work asks for one, naming a worker on the person's roster as lead. One worker leads many workstreams, one session each, so Shift Manager tells them apart by workstream, not by lead (BR-40, FIX-1877). The ask that opens a workstream is handed into its session and stays in its history: that is its brief. A workstream's own standing instructions are added to the lead's, never in place of them; a skill the coordinator writes for one session is a follow-up, built when a workstream needs more than its brief |
+
+It comes down to who opens a workstream: the coordinator the person is already asking, with a lead
+they already have.
+
+**What would change my mind:** workstreams that routinely need standing instructions longer than
+the ask that opened them. Then the coordinator-written skill earns its build, still appended.
+
+**If wrong:** a workstream whose lead coordinates it badly for want of its own instructions. The
+skill follow-up fixes that without bringing per-workstream workers back.
 
 <a name="decided-not-asked"></a>
 ## Decided, not asked
@@ -184,23 +214,20 @@ Engineering calls, recorded so nobody re-derives them.
   ([FIX-1789 D1](../FIX-1789/DECISIONS.md#d1), epic ER-11). Who may write stays the owner rule.
 - **A workstream's lead is chosen when it opens and doesn't change**, because a session's
   worker never does (FIX-1788). A workstream id is unique per project and owner.
-- **A workstream's own coordinator is kept when the workstream is done** ([D2](#d2), BR-37):
-  the smaller rule, since it is what happens to any worker. Firing would be a new path, and it
-  would break moving the workstream back out of done: restoring the delegate record runs
-  FIX-1791's roster check on the lead, and a fired worker's session takes no new turn (FIX-1788
-  BR-7). The owner can fire it like any worker.
-- **A workstream's own coordinator runs on `agent`, not the coordinator flow.** A workstream's
-  lead must take the project coordinator's delegated post (S3, FIX-1791 BR-4, FIX-1794 BR-4), and
-  FIX-1791 S9 gives that entry to `agent` and to app flows that declare it, not to the coordinator
-  flow; FIX-1792 found the same and moved the DevTeam's workstreams to the EM. Coordinating is the
-  delegates, not the flow (epic D8): a worker whose `delegates:` take a task files for them
-  (FIX-1802 D1). Making the coordinator flow take a delegated post would be FIX-1791's change, a
-  routing flow answering upstream, and nothing here needs it.
-- **Its id is derived from the workstream's address**, so a repeated or concurrent open forks
-  once (BR-36) with no second record of who leads what: the entry's `lead` says it. The
-  encoding is the implementer's, if no two of one owner's workstreams share an id.
-- **The chief of staff's `openWorkstream` tool still names a lead** (S9). The product owner's
-  default is the view's (S8); giving the tool the same default is a follow-up.
+- **A workstream's lead runs on `agent` or an app flow that declares the entry, not the
+  coordinator flow.** A workstream's lead must take the project coordinator's delegated post (S3,
+  FIX-1791 BR-4, FIX-1794 BR-4), and FIX-1791 S9 gives that entry to `agent` and to app flows that
+  declare it; FIX-1792 moved the DevTeam's workstreams to the EM, on `em`, for this. Coordinating is
+  the delegates, not the flow (epic D8). S3's lead-flow check already refuses any other lead.
+- **A lead must declare delegates** (BR-42, the product owner's "limit who can be assigned as lead", 2026-10-11). It adds to S3's lead-flow check rather than a new marker in `WORKER.md`: a worker that runs a workstream does it through its delegates (epic D8). Any app's `openWorkstream` gets the same refusal.
+- **The project coordinator picks the lead from the worker descriptions on the person's roster**
+  (read when the ask arrives, so hired workers count), and says so rather than opening when none fits (BR-39). It doesn't hire: hiring
+  stays the chief of staff's.
+- **The project coordinator and the chief of staff open workstreams through the same
+  `openWorkstream` block** (S9), which names a lead. No default lead remains anywhere.
+- *Superseded by [D3](#d3):* a workstream's own coordinator kept when it is done (BR-37), and its id
+  derived from the workstream's address (BR-36). Nothing is forked, so neither rule has anything to
+  govern.
 - **Out of scope:** changing members after create, private to shared, and waking a lead on a
   schedule. A quiet entry shows as stale.
 
@@ -256,5 +283,11 @@ their READMEs.
   post, so the standard workstream coordinator runs on `agent` with task-taking delegates; V8a
   checks a post reaches it. The `usually a coordinator` docs line follows
   ([EVOLUTION.md](EVOLUTION.md#amendment-lead-flow)).
+- **Amended after merge (a workstream is a session on an existing worker, 2026-10-11)** — the
+  product owner reversed D2 ([D3](#d3)) while FIX-1797's leg b5 was blocked: Shift Manager could
+  not make the EM a workstream's lead. The open form, the fork and the standard workstream
+  coordinator go; the project coordinator opens workstreams with a lead from the roster; BR-35 to
+  BR-37 and V8a are struck for BR-38 to BR-40 and V8b, which take in FIX-1877
+  ([EVOLUTION.md](EVOLUTION.md#amendment-session-not-worker)).
 
 **Open: none.**
