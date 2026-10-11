@@ -234,12 +234,14 @@ The incentive gradient of this workflow pulls toward producing a spec: that's th
 
 6. **Path-of-least-resistance test.** If we ship this, will the next similar issue have a stronger case for shipping the same way? If yes, picture where that path leads — a public config grab-bag of one field per vendor beta, an escape hatch that becomes vestigial. Are we comfortable with that destination? Specs that set a precedent should be evaluated against the precedent's logical extension, not just the immediate ask.
 
-7. **Which methods already do this job?** Question 1 asks what serves *this request*; this one asks what serves *the job*. Name the job in a few words (deliver work, wait for a result, answer a question, report an ending) and list every public method, tool, action and entry that already does it, **across packages**, not only the one you are touching. Then compare the change to the closest one:
-   - **It differs only by a flag, or only in what the caller does** → it is a parameter on that method, not a new method or a new kind. Extend the closest one, or fold both into one.
-   - **It differs in what the recipient or the mechanism does** → it may earn its own name. Say what that difference is.
-   - **Two existing entries already do the job the same way** → say so, and put the fold in `PLAN.md → Follow-ups` even when it is out of scope.
+7. **Which methods already do this job?** Question 1 asks what serves *this request*; this one asks what serves *the job*. Name the job in a few words (deliver work, wait for a result, answer a question, report an ending) and list every public method, tool, action and entry that already does it, **across packages**, not only the one you are touching.
+   - **How to find them.** Search by what the code does, not where it lives: `graft` for callers and similar signatures, then the job's nouns and verbs across `packages/` (for "wait for a result": `wait`, `park`, `resume`, `await`, `answer`). The package you are touching is the one place you can't stop.
+   - **Record the list in `DECISIONS.md`**, with the closest entry named. "None" is a claim like any other (BP-003): it carries the searches that found nothing.
 
-   **Name the variable, not the scenario.** A name taken from a use case (`ask`) hides that it is an existing method plus one setting (a task the caller `wait`s on). Before a spec declares N *kinds* of something, it shows the difference each kind makes to the recipient or the mechanism; a difference only the caller sees is a parameter.
+   Then compare the change to the closest entry:
+   - **It differs only by a flag, or only in what the caller does** → it is a parameter on that entry, not a new method or a new kind. Extend it, or fold both into one. Name it by the variable, not the scenario: `wait`, not `ask`.
+   - **It differs in what the recipient or the mechanism does** → it may earn its own name. Say what that difference is.
+   - **Two existing entries already do the job the same way** → say so, and add a `PLAN.md → Follow-ups` line to run `audit-coherence` with that job as the scope.
 
 **The required output of this step: a verdict** — one of:
 

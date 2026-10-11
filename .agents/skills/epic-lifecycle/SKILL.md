@@ -310,6 +310,14 @@ The epic-specific delta:
    unsettled, verdicts, settleRequests, dispatched, deferred, converged, crossSpecGate, moreWorkNow,
    mayWrap, suspectOwnerApprovals }` — persist `epic` and `issues` verbatim.
 
+   **A row that turned cancelled since the last wake** (its `linearState` now cancelled,
+   duplicate, dropped or won't do, where the persisted record had it open) is yours to account
+   for in this wake. The wake only observes the cancel; a human usually made it in Linear. If the
+   row carried out a decision recorded in the epic-spec, you post a note on the epic issue saying
+   whether that decision still stands and why the child went, or put the question to the user
+   when only they know. Otherwise the epic keeps a decision nothing implements, and the next
+   reader trusts it. A row cancelled with no such decision behind it needs no note.
+
    **`suspectOwnerApprovals`** is an owner-login GitHub review or approving comment with no
    agent-mailbox header. It is not sign-off. Tell the user which PR, and that the gate is still
    their message in this conversation. Do not dispatch implementation because of it. A separate
@@ -753,13 +761,20 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   ledger is where that becomes visible. This is also where the Fable-escalation trial is
   *measured* — the ledger's `design-off` trend is the evidence it's earning its cost.
 
-  **The same worker maps the jobs the batch grew.** For each job the epic added a public
-  method, tool or action to (deliver work, wait for a result, answer, report an ending…), it
-  runs `audit-coherence` with that **job** as the scope, across packages, and puts the surface
-  map's fold candidates in the lessons PR as proposed follow-ups. Per-spec review and
-  `cross-spec-review` both stop at the epic's edge; a job's surface grows across epics and
-  projects, and wrap is the cheapest moment to fold what just landed. No job grew → write
-  `job audit: none grew` in the lessons PR body and move on.
+  **The same worker maps the jobs the batch grew.** Per-spec review and `cross-spec-review`
+  both stop at the epic's edge; a job's surface grows across epics and projects, and wrap is
+  the cheapest moment to fold what just landed. The worker:
+  1. **Derives the added surface** from the merged impl PRs' diffs: new or changed package
+     exports, subpath re-exports, and tool, action and internal-entry registrations.
+  2. **Names the job** each addition does (deliver work, wait for a result, answer, report an
+     ending…).
+  3. **Runs `audit-coherence` with each job as the scope**, across packages, and puts the
+     surface map's fold candidates in the lessons PR as proposed follow-ups.
+
+  The lessons PR body **lists every addition it considered and the job it named**, even when
+  no audit ran. `job audit: none grew` alone can't be told from "didn't look", so it is only
+  valid under that list. The job audit runs whether or not the grounding proposal below is
+  skipped; it is part of the rows, not the proposal.
 
   **The skip is partial, and the split is deliberate.** An epic with no rework worth measuring
   skips the *grounding-proposal* pass — no tenet/BP sharpening, and the lessons PR carries rows
@@ -1008,10 +1023,6 @@ step. So:
   epic to get parallelism — run those as independent `issue-lifecycle` sessions.
 - Composes `issue-lifecycle` (one lifecycle definition, reused per issue). It does
   not reimplement the lifecycle.
-- **A child that carries out an epic decision doesn't leave quietly.** Canceling or descoping
-  it requires a note on the epic, in the same step, saying whether the decision still stands
-  and why the child went. Otherwise the epic keeps a decision nothing implements, and the next
-  reader trusts it.
 - **A standing engineering-manager posture over this skill — engineering forks decided
   rather than surfaced — is [`epic-em`](../epic-em/SKILL.md).** Opt-in, and it moves no gate.
 - **A product-manager posture on top of that one — the epic shaped to a provable outcome and
