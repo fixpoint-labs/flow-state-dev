@@ -68,7 +68,7 @@ lead, and an app may call it directly.
 | BR-24 | Alice asks about the project | The coordinator reads every entry, Bob's included, and answers from them | VG leg c |
 | BR-25 | Alice asks for work | It goes only to a lead of a workstream she owns here, delivered into that workstream session, once: FIX-1791's ledger resolves the session from the delegate record ([#2821](https://github.com/fixpoint-labs/flow-state-dev/pull/2821) BR-20a) | VG leg c |
 | BR-26 | The coordinator picks Bob's workstream | Refused like a missing delegate, and recorded | CI · VG under its control |
-| BR-27 | Alice owns no workstream in the project | It answers from the entries and says it has nobody to hand work to. Nothing is opened for her | CI |
+| BR-27 | Alice owns no workstream in the project and asks how it is going | It answers from the entries. *Amended by [D3](DECISIONS.md#d3):* an ask for work opens a workstream (BR-38), unless nobody on her roster can lead it, when it says so and opens nothing (BR-39) | CI |
 | BR-28 | A coordinator turn finishes in Shift Manager | The Lab is read again, so a project or workstream it made shows. No tool name is special-cased | CI |
 
 ## Rooms removed, and what stays

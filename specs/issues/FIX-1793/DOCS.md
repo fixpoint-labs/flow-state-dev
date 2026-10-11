@@ -135,8 +135,8 @@ example with:
 > you have open in the project is one of its delegates, added when you open it and dropped when
 > you mark it done. When you ask it for work, it hands the request to the lead of one of **your**
 > workstreams, inside that workstream session. It never hands work to another member's workstream. To get something
-> from theirs, read their entry or ask them. If you own no workstream in the project, it says so
-> and opens nothing for you.
+> from theirs, read their entry or ask them. If none of your workstreams covers the work, it
+> opens one for it, unless nobody on your roster can lead it; then it says so and opens nothing.
 
 ## UPDATE · `projects.md` · "A project's code and files"
 
