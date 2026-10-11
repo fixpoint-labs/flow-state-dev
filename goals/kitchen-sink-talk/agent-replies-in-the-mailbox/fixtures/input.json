@@ -8,6 +8,6 @@
     { "kind": "agent", "id": "support.general" }
   ],
   "route": "[route:support.devices]",
-  "marker": "[scenario:reply-in-mailbox]",
-  "lineMarker": "[reply:in-mailbox]"
+  "marker": "[scenario:reply-in-conversation]",
+  "lineMarker": "[reply:in-conversation]"
 }

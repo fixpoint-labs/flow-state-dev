@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * Shift Manager's theme: Day, Evening and Night. The page opens on, by
- * precedence: the theme a person picked (kept for that browser), else the theme
+ * precedence: the theme a user picked (kept for that browser), else the theme
  * it was served with (`--shift`), else the one the clock calls for: Day from
  * 06:00, Evening from 16:00, Night from 19:00. The clock then only moves the
  * sundial.
@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootTheme, nextTheme, readServedTheme, themeAt } from "../src/lib/theme";
 
-/** The browser storage key a person's pick is kept under. */
+/** The browser storage key a user's pick is kept under. */
 const KEY = "shift-manager:shift";
 
 /** A clock the test sets, as local `hour:minute`. */

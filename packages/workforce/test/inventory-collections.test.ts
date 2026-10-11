@@ -12,7 +12,7 @@
  * That last one is why every case here uses TWO flows. A collection read back
  * by the flow that wrote it proves nothing about sharing — it is green whether
  * the rows are shared or private, which is the exact shape of a check that
- * cannot fail. The reader flow is a different kind throughout.
+ * cannot fail. The reader flow is a different flow kind throughout.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";

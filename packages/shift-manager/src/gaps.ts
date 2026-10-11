@@ -66,7 +66,7 @@ export const GAPS = {
   },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
-    "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another member's sessions are not listed; an organization-wide view is FIX-1652's call.",
+    "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another user's sessions are not listed; an organization-wide view is FIX-1652's call.",
 } as const;
 
 export type Gaps = typeof GAPS;

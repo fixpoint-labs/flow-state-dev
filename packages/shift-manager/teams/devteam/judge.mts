@@ -4,12 +4,12 @@
  * slot).
  *
  * Jev answers two choice questions the lab wrote: the verdict (done, not
- * done, or ask the person), with how sure it is, and why an answer isn't
+ * done, or ask the user), with how sure it is, and why an answer isn't
  * done. Only the verdict's confidence is read against the floor. A *not done*
  * verdict's `reason` is the description of the why Jev picked: Jev gives no
  * reason of its own, and the description is what it chose. An *ask* turns
- * into a question to the person that names the goal and quotes the start of
- * the answer, since a person can only judge what they can see.
+ * into a question to the user that names the goal and quotes the start of
+ * the answer, since a user can only judge what they can see.
  *
  * The model is a string the flow's model resolver resolves through its
  * evaluation hook, `typesafe-ai/jev` through the AI Gateway, exactly as best
@@ -46,7 +46,7 @@ export const JUDGE_WHY_QUESTION = "why";
 const OUTCOMES = {
   done: "The answer does what the goal asks.",
   "not-done": "The answer does not do what the goal asks.",
-  ask: "Whether the answer meets the goal depends on something only the person who asked can say.",
+  ask: "Whether the answer meets the goal depends on something only the user who asked can say.",
 } as const;
 
 /** Why an answer isn't done, asked beside the verdict and read only for *not done*: the reason a retry is handed. */
@@ -56,7 +56,7 @@ const WHY = {
   "change-missing": "The goal asks for a change, and the run's commits do not make it.",
 } as const;
 
-/** How much of the answer a question to the person quotes. */
+/** How much of the answer a question to the user quotes. */
 const QUOTED_ANSWER_CHARS = 500;
 
 /**

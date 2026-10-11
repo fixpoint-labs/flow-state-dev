@@ -77,11 +77,11 @@ export interface CodeSlot {
  * The two locked folders, in the order their maps are rendered.
  *
  * Owner-locked paths, not derived — a best-practice tree rather than a
- * top-level `kinds/`, and one convention covering flows and blocks together
+ * top-level folder per flow, and one convention covering flows and blocks together
  * rather than a flows-only one the blocks half would later have to match.
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
-  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "workerFlows", label: "Kind" }),
+  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "workerFlows", label: "Worker flow" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
 

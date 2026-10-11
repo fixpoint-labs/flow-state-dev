@@ -35,7 +35,7 @@ export const DOCUMENT_KEY = "document";
 export const INSPECT_ENTRY = "inspect";
 
 /**
- * The EM worker's asking door: pause on a person's approval, then file and run
+ * The EM worker's asking door: pause on a user's approval, then file and run
  * the board. Here rather than in `em.mts` so the raise step (`ask.mts`) can
  * name it without depending on the worker flow module.
  */

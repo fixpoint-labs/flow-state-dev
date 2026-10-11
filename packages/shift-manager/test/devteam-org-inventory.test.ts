@@ -1,11 +1,11 @@
 /**
  * Everyone in the DevTeam's organization reads its workers, not just the
- * person whose boot wrote them.
+ * user whose boot wrote them.
  *
- * The DevTeam Lab serves no mailbox kind, so a person's only way to read the
+ * A user's only way to read the
  * organization's worker inventory is a session of their own whose flow
- * declares it: the roster flow every person reads their roster through. The
- * owner also holds the inventory writer's session from boot; the member and
+ * declares it: the roster flow every user reads their roster through. The
+ * owner also holds the inventory writer's session from boot; the project member and
  * the outsider hold none, and without the roster's declaration every screen
  * that groups by the inventory (PROJECTS among them) fails for them.
  */
@@ -33,8 +33,8 @@ afterEach(async () => {
   root = undefined;
 });
 
-it("the member and the outsider read the organization's workers and projects, with no mailbox to read them through", async () => {
-  root = mkdtempSync(join(tmpdir(), "sm-member-inventory-"));
+it("the project member and the outsider read the organization's workers and projects through their own roster session", async () => {
+  root = mkdtempSync(join(tmpdir(), "sm-project-inventory-"));
   lab = await openLab({
     stores: inMemoryStores(),
     harness: harnessStub({}).slot,
@@ -56,7 +56,7 @@ it("the member and the outsider read the organization's workers and projects, wi
     if (!snapshot.inventory.ok) continue;
     seen[who.userId] = snapshot.inventory.value.workers.map((s) => s.id).sort();
   }
-  // One organization, one inventory: each person reads the same workers, the EM and the coder among them.
+  // One organization, one inventory: each user reads the same workers, the EM and the coder among them.
   const owner = seen[LAB_USERS.owner.userId]!;
   expect(owner).toEqual(expect.arrayContaining(["eng.coder", "eng.em"]));
   expect(seen[LAB_USERS.member.userId]).toEqual(owner);

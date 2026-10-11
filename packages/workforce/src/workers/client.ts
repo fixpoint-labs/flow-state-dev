@@ -182,7 +182,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       // a dispatch run of the session that opened it, and a conversation's
       // board opens a task's session as a dispatch run of the conversation, so
       // a lookup for any of them includes those. A lookup that names none
-      // keeps to the sessions a person started.
+      // keeps to the sessions a user started.
       ...(criteria.filingSessionId === undefined &&
       criteria.workstreamId === undefined &&
       criteria.taskId === undefined

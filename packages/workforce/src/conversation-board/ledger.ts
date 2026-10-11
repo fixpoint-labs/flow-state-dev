@@ -84,10 +84,10 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
  * The ledger's one declaration. Every flow that keeps a conversation's board,
  * or works its tasks, declares this object under {@link CONVERSATION_LEDGER_ID}.
  *
- * A browser may read it: the rows sit at the person's own user scope, so a
+ * A browser may read it: the rows sit at the user's own user scope, so a
  * read through any of their sessions answers their own boards and nobody
  * else's, every conversation's at once, each row keyed under its
- * conversation's partition. That is how an app lists the tasks its person's
+ * conversation's partition. That is how an app lists the tasks its user's
  * conversations filed, and what a task screen reads.
  */
 export const conversationLedger = Object.assign(

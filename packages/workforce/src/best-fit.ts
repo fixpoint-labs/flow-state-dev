@@ -4,7 +4,7 @@
  *
  * The order, and nothing else:
  *
- * 1. **Held.** The person's last post went to someone who hasn't answered
+ * 1. **Held.** The user's last post went to someone who hasn't answered
  *    since, and that someone can still be reached: this post goes there too,
  *    with no model call.
  * 2. **Coordinator.** The one call picked the coordinator itself, when the
@@ -33,7 +33,7 @@ import { z } from "zod";
 
 /** What a best-fit post is placed from. */
 export interface BestFitCase {
-  /** Who is still on the person's last post, when that one can be reached. */
+  /** Who is still on the user's last post, when that one can be reached. */
   held?: string;
   /** Everyone this post can go to. The fallback and the holder must be among them to take it. */
   reachable: readonly string[];
@@ -68,25 +68,25 @@ export type BestFitMiss =
 
 /** Where the ladder put the post. */
 export type BestFitPlacement =
-  | { readonly by: "held"; readonly member: string }
-  /** The call picked the coordinator: `member` is its option, `confidence` what the model reported, if anything. */
-  | { readonly by: "coordinator"; readonly member: string; readonly confidence?: number }
-  | { readonly by: "evaluated"; readonly member: string }
-  | { readonly by: "fallback"; readonly member: string; readonly miss: BestFitMiss }
+  | { readonly by: "held"; readonly worker: string }
+  /** The call picked the coordinator: `worker` is its option, `confidence` what the model reported, if anything. */
+  | { readonly by: "coordinator"; readonly worker: string; readonly confidence?: number }
+  | { readonly by: "evaluated"; readonly worker: string }
+  | { readonly by: "fallback"; readonly worker: string; readonly miss: BestFitMiss }
   | { readonly by: "none"; readonly miss: BestFitMiss; readonly fallbackUnreachable: boolean };
 
 /** What a failed evaluator call leaves: the reason, as a value. */
 export const failedEvaluationSchema = z.object({ failed: z.string() });
 
 /**
- * What an answered call leaves, as far as the ladder reads it: the `member`
+ * What an answered call leaves, as far as the ladder reads it: the `worker`
  * question's {@link ChoiceAnswer}, its choice unchecked (anything; the ladder
  * checks it against the options) and its confidence only when the model
  * reported one (the ladder reads one outside [0, 1] as none).
  */
 const answeredEvaluationSchema = z.object({
   answers: z.object({
-    member: z.object({
+    worker: z.object({
       choice: z.unknown(),
       confidence: z.number().finite().optional()
     } satisfies Record<keyof Pick<ChoiceAnswer, "choice" | "confidence">, z.ZodTypeAny>)
@@ -108,14 +108,14 @@ export function needsBestFitCall(bestFit: BestFitCase): boolean {
 
 /**
  * What the evaluator step left, read one way: the call's own failure, or what
- * it chose for `member` and the confidence it reported, if any.
+ * it chose for `worker` and the confidence it reported, if any.
  */
 function evaluationOutcome(answer: unknown): { failed: string } | { choice: unknown; confidence?: number } {
   const failed = failedEvaluationSchema.safeParse(answer);
   if (failed.success) return failed.data;
   const answered = answeredEvaluationSchema.safeParse(answer);
   if (!answered.success) return { choice: undefined };
-  const { choice, confidence } = answered.data.answers.member;
+  const { choice, confidence } = answered.data.answers.worker;
   // Outside [0, 1] is no reported confidence, as core's cascading gate reads it.
   return confidence === undefined || confidence < 0 || confidence > 1 ? { choice } : { choice, confidence };
 }
@@ -128,7 +128,7 @@ function evaluationOutcome(answer: unknown): { failed: string } | { choice: unkn
  *   value, or nothing when the call was skipped.
  */
 export function placeBestFit(bestFit: BestFitCase, answer: unknown): BestFitPlacement {
-  if (bestFit.held !== undefined) return { by: "held", member: bestFit.held };
+  if (bestFit.held !== undefined) return { by: "held", worker: bestFit.held };
 
   let miss: BestFitMiss;
   if (bestFit.reachable.length === 0) {
@@ -145,22 +145,22 @@ export function placeBestFit(bestFit: BestFitCase, answer: unknown): BestFitPlac
     } else if (outcome.choice === bestFit.coordinator) {
       return {
         by: "coordinator",
-        member: outcome.choice,
+        worker: outcome.choice,
         ...(outcome.confidence === undefined ? {} : { confidence: outcome.confidence })
       };
     } else if (floor === undefined) {
-      return { by: "evaluated", member: outcome.choice };
+      return { by: "evaluated", worker: outcome.choice };
     } else if (outcome.confidence === undefined) {
       miss = { kind: "no-confidence", choice: outcome.choice, minConfidence: floor };
     } else if (outcome.confidence < floor) {
       miss = { kind: "below-floor", choice: outcome.choice, confidence: outcome.confidence, minConfidence: floor };
     } else {
-      return { by: "evaluated", member: outcome.choice };
+      return { by: "evaluated", worker: outcome.choice };
     }
   }
 
   if (bestFit.fallback !== undefined && bestFit.reachable.includes(bestFit.fallback)) {
-    return { by: "fallback", member: bestFit.fallback, miss };
+    return { by: "fallback", worker: bestFit.fallback, miss };
   }
   return { by: "none", miss, fallbackUnreachable: bestFit.fallback !== undefined };
 }

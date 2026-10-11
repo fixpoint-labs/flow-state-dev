@@ -32,12 +32,12 @@ describe("a tool call is a quiet line", () => {
   });
 
   it("a run of calls is one line with a count, and opens to one row per call", () => {
-    render(<ToolLineGroup items={[call("discover"), call("createProject"), call("readMailbox")]} />);
+    render(<ToolLineGroup items={[call("discover"), call("createProject"), call("readNotes")]} />);
     expect(screen.getAllByTestId("tool-group")).toHaveLength(1);
     expect(screen.queryByText("Used createProject")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Used 3 tools/ }));
     expect(screen.getByText("Used createProject")).toBeTruthy();
-    expect(screen.getByText("Used readMailbox")).toBeTruthy();
+    expect(screen.getByText("Used readNotes")).toBeTruthy();
   });
 
   it("says so in words while a call runs, and when it failed", () => {

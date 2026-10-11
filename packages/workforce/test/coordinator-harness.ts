@@ -163,11 +163,11 @@ function scriptedRoute() {
       const text = (state as { post: { text: string } }).post.text;
       const marks = [...text.matchAll(/\[route:([a-z.-]+)\]/g)].map((match) => match[1]!);
       if (marks.length === 0) throw new Error("the scripted route has no answer for this post");
-      const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
+      const offered = (questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {};
       const picked = marks.find((mark) => Object.hasOwn(offered, mark)) ?? marks[0]!;
       const confidence = /\[conf:([0-9.]+)\]/.exec(text)?.[1];
       return {
-        member: {
+        worker: {
           type: "choice",
           choice: picked === "none" ? "nobody.here" : picked,
           ...(confidence === undefined ? {} : { confidence: Number(confidence) })

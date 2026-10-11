@@ -1,5 +1,5 @@
 /**
- * The `shift-manager` command, as a person runs it: `fsdev dev`'s app hook
+ * The `shift-manager` command, as a user runs it: `fsdev dev`'s app hook
  * with Shift Manager as the app. One process serves the Lab's API and the
  * pages on one port and the DevTool on a port of its own (BR-1); bad input
  * stops it with exit code 3 before anything listens (BR-2, BR-3, BR-6, BR-11);

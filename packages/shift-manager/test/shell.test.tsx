@@ -15,7 +15,7 @@ import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 /**
- * Run a worker's action as a person would: in a session of the asker flow's one
+ * Run a worker's action as a user would: in a session of the asker flow's one
  * copy, opened naming the worker's worker first.
  */
 async function workerAction(
@@ -127,7 +127,7 @@ describe("the refusal (V2, BR-3)", () => {
     expect(seen).toEqual(["/api/flows/sessions"]);
   });
 
-  it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
+  it("a Lab that names no organization for the user gets the refusal, never an unknown one", async () => {
     // A Lab that holds no session of theirs and serves no roster flow to open one on.
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
@@ -174,7 +174,7 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
     expect(screen.getByTestId("jump-to")).toBeTruthy();
   });
 
-  it("a Lab whose flows declare no inventory still names the organization it binds the person to", async () => {
+  it("a Lab whose flows declare no inventory still names the organization it binds the user to", async () => {
     await openApp("/inbox", { inventoryDeclared: false });
     expect((await screen.findByTestId("teams-failure")).textContent).toMatch(/without opening its inventory/);
     expect(screen.getByTestId("org-switcher").textContent).toContain(DEFAULT_ORG_ID);
@@ -237,7 +237,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
     expect(input.value).toBe("");
     expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
-    // Read back from the session, the line is drawn under the ask as the person's reply.
+    // Read back from the session, the line is drawn under the ask as the user's reply.
     await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual(["a reply line"]));
     expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
     // The ask is untouched: a reply isn't an answer.
@@ -245,7 +245,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   });
 
   // FIX-1773: the same for a worker that isn't the coordinator.
-  it("clears a reply into the thread under the ask as soon as the worker's session holds it, before the worker answers", async () => {
+  it("clears a reply into the conversation under the ask as soon as the worker's session holds it, before the worker answers", async () => {
     const { clients } = await openOnAsk();
     const input = screen.getByTestId("inbox-reply-input") as HTMLInputElement;
     expect(input.getAttribute("aria-label")).toBe("Reply to ops.asker");
@@ -454,7 +454,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(await screen.findAllByTestId("inbox-item")).toHaveLength(1);
   });
 
-  it("says nothing needs the person when nothing does, with the running counts still there (BR-7)", async () => {
+  it("says nothing needs the user when nothing does, with the running counts still there (BR-7)", async () => {
     await openCos("/cos");
     expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
     expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
@@ -524,12 +524,12 @@ describe("Chief of Staff (FIX-1722)", () => {
     await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
   });
 
-  // FIX-1773: the person follows the conversation, not the composer. A line the session holds
+  // FIX-1773: the user follows the conversation, not the composer. A line the session holds
   // is the conversation's, so it leaves the draft and is drawn while the reply is still coming.
   it("names the coordinator on Send, clears a held line into the conversation at once, and shows it working until the reply", async () => {
     await openCos("/", { chiefOfStaff: true });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLInputElement;
-    // The worker's id stays chief-of-staff; what the person sees is its name.
+    // The worker's id stays chief-of-staff; what the user sees is its name.
     expect(input.getAttribute("aria-label")).toBe("Message Shift Coordinator");
     expect(input.placeholder).toBe("Message Shift Coordinator…");
     const release = holdSlowLines();
@@ -573,7 +573,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(input.value).toBe(ASKER_REFUSED_LINE);
   });
 
-  // A gated change (fire, retire) stops the worker's turn on the person's approval. The line
+  // A gated change (fire, retire) stops the worker's turn on the user's approval. The line
   // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
   it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
@@ -706,7 +706,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.queryByTestId("cos-conversation-failure")).toBeNull();
   });
 
-  it("draws an answered ask in the conversation as answered, not as waiting on the person", async () => {
+  it("draws an answered ask in the conversation as answered, not as waiting on the user", async () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
@@ -752,7 +752,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const asks = await screen.findByTestId("cos-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
-    // The person's conversation boards are read once, through one of their
+    // The user's conversation boards are read once, through one of their
     // coordinator conversations: Tasks names it, with what the Lab answered.
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     const board = await screen.findByTestId("section-failure");

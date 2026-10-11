@@ -269,8 +269,8 @@ one for yourself, [fork it](./durable-hire.md#forking-a-worker).
 Each flow a worker names runs as one copy, shared by every worker that names it. A hundred
 workers on `agent` are one registered flow, not a hundred. What makes them different is their
 configuration, which the flow reads on each turn, and, on `agent`, their skills, which are kept
-per worker. Long-term memory on `agent` is kept per person and shared by that person's workers on
-it; it never reaches another person.
+per worker. Long-term memory on `agent` is kept per user and shared by that user's workers on
+it; it never reaches another user.
 
 Hand the records to an installation, then ask `hireWorkforce` for the flows to register:
 
@@ -448,8 +448,8 @@ expect(workerFlowProblems("triage", triageFlow)).toEqual([]);
 
 #### Where a worker's data lives
 
-Session, request and user state belong to one user. Org scope is shared with every member of the
-org: anything a flow writes there, every member's runs can read. A worker flow can write there
+Session, request and user state belong to one user. Org scope is shared with every user in the
+org: anything a flow writes there, every user's runs can read. A worker flow can write there
 when that is what it's built to do, and nothing stops it.
 
 The built-in `agent` keeps its own working state, such as its skills, in its user's scope. Write
@@ -495,7 +495,7 @@ session with no worker never reads every worker's skills.
 
 #### Sharing something from a worker
 
-To let a worker write something every member can read, declare a shared resource and write
+To let a worker write something every user in the org can read, declare a shared resource and write
 through the helper. The entry records the user and the worker the turn loaded with
 [`resolveWorker`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/workforce/README.md#workers-as-data),
 as `{ userId, workerId }`. A turn that loaded no worker records `{ userId }` only.
@@ -516,7 +516,7 @@ whoever calls your flow can't sign as someone else. The worker it records is the
 was created with. A block that writes the resource directly can
 set any value, so trust `writtenBy` as far as you trust your worker flows' code. An entry written
 without it is refused by the resource's own schema. A second write to the same key replaces the
-entry, `writtenBy` included. Every member can read an entry.
+entry, `writtenBy` included. Every user in the org can read an entry.
 
 Use `writtenBy` for display and audit, not to decide who may write. Who may write an entry comes
 from the resource's scope and its ownership rules.

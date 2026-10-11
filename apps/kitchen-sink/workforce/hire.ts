@@ -21,9 +21,9 @@
  * and untested (FIX-1429).
  *
  * `support.help` is a coordinator on `routing: best-fit`: each post from a
- * person reaches the one specialist whose `description:` fits it (one
+ * user reaches the one specialist whose `description:` fits it (one
  * evaluator call on `ROUTE_MODEL`), and that specialist's answer lands in the
- * person's conversation with the coordinator under its name.
+ * user's conversation with the coordinator under its name.
  */
 import {
   COORDINATOR_FLOW,

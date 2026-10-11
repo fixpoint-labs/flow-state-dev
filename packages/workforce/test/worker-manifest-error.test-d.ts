@@ -56,7 +56,7 @@ export const refused: WorkerManifestError = {
 // @ts-expect-error an untagged entry is not a WorkerManifestError — the point of S5.
 export const untagged: WorkerManifestError = {
   path: "teams/engineering/workers/lead",
-  error: new Error("no kind"),
+  error: new Error("no flow"),
 };
 
 /** The union is closed: a condition it does not have is not admitted. */

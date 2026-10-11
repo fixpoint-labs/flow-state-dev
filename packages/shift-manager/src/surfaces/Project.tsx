@@ -1,15 +1,15 @@
 /**
  * The project level (BR-12, BR-18, BR-22 to BR-28, BR-35 to BR-37): one
- * project the person reads, shared or their own private one, in four tabs.
+ * project the user reads, shared or their own private one, in four tabs.
  *
- * - **Stream** is the person's conversation with their project coordinator:
+ * - **Stream** is the user's conversation with their project coordinator:
  *   a session of the standard coordinator worker the Lab's project setup
  *   names, linked to this project, found or started when the tab opens. It
- *   hands a line to the person's own workstreams in the project. A finished
+ *   hands a line to the user's own workstreams in the project. A finished
  *   turn reads the Lab again (BR-28), as every conversation does.
- * - **Board** draws the tasks of the person's own workstream sessions in the
+ * - **Board** draws the tasks of the user's own workstream sessions in the
  *   project, one panel per session, each read from that session alone. Another
- *   person's workstream sessions, and the Lab-wide inventory of boards, are
+ *   user's workstream sessions, and the Lab-wide inventory of boards, are
  *   never read here.
  * - **Workstreams** lists the project's workstreams as their entries say,
  *   with the progress worked out from them (BR-18, BR-19), and opens a new
@@ -150,7 +150,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
  * The project's own read, row and entries (BR-18), when the view opens and
  * each time the Lab is read again (`readAt`); `reread` reads it now, as after
  * an open. A read again keeps the last one on screen until it lands. No read
- * while `readerSessionId` is `null`: the person holds no reader session yet,
+ * while `readerSessionId` is `null`: the user holds no reader session yet,
  * or the tab on screen draws no entries.
  */
 function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
@@ -288,7 +288,7 @@ function ProjectBody({
 }
 
 /**
- * The person's conversation with their project coordinator (S5): found or
+ * The user's conversation with their project coordinator (S5): found or
  * started for this project when the tab opens, then the shared conversation
  * component pinned to it.
  */
@@ -497,7 +497,7 @@ function EntryView({
   return <EntryDetails address={address} entry={entry} readerSessionId={readerSessionId} back={back} />;
 }
 
-/** Another person's entry, as anyone who reads the project reads it (BR-12). */
+/** Another user's entry, as anyone who reads the project reads it (BR-12). */
 function EntryDetails({
   address,
   entry,
@@ -555,7 +555,7 @@ function EntryDetails({
   );
 }
 
-/** The worker a workstream's lead talks through: its worker on the person's roster, on the flow the roster names. */
+/** The worker a workstream's lead talks through: its worker on the user's roster, on the flow the roster names. */
 function leadWorker(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, workers: readonly Worker[]): Worker | undefined {
   const onRoster = roster !== undefined && "entries" in roster ? roster.entries.find((r: RosterEntry) => r.id === entry.lead) : undefined;
   if (onRoster === undefined) return undefined;
@@ -563,7 +563,7 @@ function leadWorker(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>
 }
 
 /**
- * The Board: the tasks of each of the person's own workstream sessions in the
+ * The Board: the tasks of each of the user's own workstream sessions in the
  * project, read from that session alone. Nobody else's sessions are read.
  */
 function OwnBoards({

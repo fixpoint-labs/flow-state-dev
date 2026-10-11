@@ -1,10 +1,10 @@
 /**
- * The person's workers, through Workforce's client: their roster (their own
+ * The user's workers, through Workforce's client: their roster (their own
  * workers and the standard ones, each naming the flow it runs on) and their
  * sessions with each worker, found or started with `ensureWorkerSession`.
  *
  * The client is built from the Lab connection every other read uses, so it
- * acts as the same person and carries the same credential on every request.
+ * acts as the same user and carries the same credential on every request.
  *
  * `useWorkforce` lives in Shift Manager, not in a package: `@flow-state-dev/react`
  * may import only `contracts`, `core` and `client`, and `@flow-state-dev/workforce`

@@ -13,7 +13,7 @@ import { z } from "zod";
 export const pieceInputSchema = z.object({
   /** The desk the piece is for, in the vocabulary each worker's own `answersFor:` uses. */
   desk: z.string().min(1).optional(),
-  /** What only a person can settle before this row can finish. */
+  /** What only a user can settle before this row can finish. */
   asks: z.string().min(1).optional(),
   /** On a row that follows another: the row it follows. */
   follows: z.string().min(1).optional(),

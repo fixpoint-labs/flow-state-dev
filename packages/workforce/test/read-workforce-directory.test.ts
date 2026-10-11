@@ -137,7 +137,7 @@ Body.
         "teams/engineering/workers/lead/WORKER.md": `---
 description: The lead.
 __proto__:
-  flow: injected-kind
+  flow: injected-flow
 ---
 Body.
 `,

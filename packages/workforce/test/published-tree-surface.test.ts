@@ -517,7 +517,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     // The level with no worker below it: documents here load and are minted, and
     // no worker can be hired at this address, so nothing reaches them. Tabled
     // anyway — the pages publish the shape, and a shape that reaches nobody is
-    // exactly the kind this suite must not let go unnoticed.
+    // exactly the sort this suite must not let go unnoticed.
     shape: "org/workers/<worker>/references/<name>.md",
     publishedIn: {
       file: "packages/workforce/README.md",

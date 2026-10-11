@@ -1,5 +1,5 @@
 /**
- * A turn on the shared `agent` copy that waits for a person runs as its
+ * A turn on the shared `agent` copy that waits for a user runs as its
  * worker again when the answer arrives.
  *
  * Every setting a turn reads comes from the worker the turn loaded. A resumed
@@ -18,10 +18,10 @@ import { z } from "zod";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { createWorkerInstallation } from "../src/workers/installation";
 
-/** A tool that waits for a person's approval, then says what it did. */
+/** A tool that waits for a user's approval, then says what it did. */
 const approveRefund = handler({
   name: "approveRefund",
-  description: "Refund an order, once a person approves it.",
+  description: "Refund an order, once a user approves it.",
   inputSchema: z.object({ order: z.string() }),
   outputSchema: z.object({ refunded: z.string() }),
   execute: async (input, ctx) => {

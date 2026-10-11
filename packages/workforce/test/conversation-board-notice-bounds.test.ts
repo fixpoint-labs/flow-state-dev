@@ -65,7 +65,7 @@ describe("a notice that has waited out its patience", () => {
 
   /**
    * The filing reply (the first model call) is held until `first` opens, and
-   * the person's next reply (the second) until `second` opens. The next
+   * the user's next reply (the second) until `second` opens. The next
    * message is sent `nextAfterMs` after the notice arrives.
    */
   const twoReplies = async (nextAfterMs: number) => {
@@ -88,7 +88,7 @@ describe("a notice that has waited out its patience", () => {
     await sleep(nextAfterMs);
     await host.post("alice", conv, "run", { message: "and our workers?" });
     expect(await until(() => calls === 2)).toBe(true);
-    // The filing reply ends; the person's next reply is still running.
+    // The filing reply ends; the user's next reply is still running.
     first.open();
     const landedBesideNextReply = await until(async () => (await linesAbout(host, conv, "Count licenses")).length > 0, 500);
     second.open();
@@ -111,7 +111,7 @@ describe("a notice that has waited out its patience", () => {
     try {
       // The engine's rule against a stream of replies holding a notice back
       // forever: past its patience, a notice waits only for the replies it
-      // found, so the person's later reply is still running when it lands.
+      // found, so the user's later reply is still running when it lands.
       expect(landedBesideNextReply).toBe(true);
       expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
     } finally {

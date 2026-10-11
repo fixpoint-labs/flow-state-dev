@@ -220,7 +220,7 @@ describe("readWorkerSkills — one name twice in one worker's view", () => {
   });
 
   it("keys a collision by where the name was first seen, not by the innermost level", async () => {
-    // `path` names the thing that failed on every other kind, so on this one it
+    // `path` names the thing that failed on every other error kind, so on this one it
     // must not read as the copy that won — a worker-level file keyed as *the*
     // path is exactly the local-wins rule this refusal denies. Keyed by first
     // sighting instead, the same rule the rest of the array is ordered by.
@@ -397,7 +397,7 @@ describe("readWorkerSkills — which condition each report is", () => {
   // Six conditions land in one flat `errors` array. Before `kind`, the only way
   // to tell them apart was a regex over the message, so a caller could not
   // tolerate one class while refusing another. Each case below pins one
-  // specific kind to one specific scenario — asserting only that some kind is
+  // specific error kind to one specific scenario — asserting only that some error kind is
   // present would pass with every entry mistagged the same way.
 
   it("tags a level that exists and cannot be listed", async () => {
@@ -522,7 +522,7 @@ describe("readWorkerSkills — which condition each report is", () => {
     expect(names(skills)).toEqual([]);
   });
 
-  it("carries the message text unchanged beside the kind", async () => {
+  it("carries the message text unchanged beside the error kind", async () => {
     // `kind` is additive: a caller still reading the message keeps working.
     await writeSkill("org/skills", "triage", body("org triage"));
     await writeSkill("teams/pentest/skills", "triage", body("team triage"));

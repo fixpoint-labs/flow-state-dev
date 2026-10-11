@@ -1,18 +1,18 @@
 /**
- * The ask-lab — a small Lab Shift Manager's tests open, whose workers ask a person
+ * The ask-lab — a small Lab Shift Manager's tests open, whose workers ask a user
  * before they act.
  *
  * Neither goal tree raises an ask on `main` today, so this is the tree the
  * ask paths (Inbox, the shared resume) are proved on. It is an ordinary Lab
  * config: read the tree, build the installation and register one copy of the
- * asker flow and of Workforce's `coordinator` flow, open the person's
+ * asker flow and of Workforce's `coordinator` flow, open the user's
  * conversations with the two coordinators (`ops.desk` and `ops.side`, each
  * under its worker's id), then the inventory, written from a small flow of the
  * Lab's own that carries the inventory writer. In-memory stores, so every load
  * is a fresh Lab.
  *
  * A post to a coordinator conversation reaches each of its delegates, which
- * asks a person in a session the delivery opened: a dispatch run. Nothing
+ * asks a user in a session the delivery opened: a dispatch run. Nothing
  * files a task, so each conversation's board is empty.
  *
  * `fsdev.config.mts` beside this file is the config the `shift-manager` command
@@ -52,7 +52,7 @@ export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workf
 /** One more worker, `ops.chief-of-staff`, that {@link AskLabOptions.chiefOfStaff} adds to the tree. */
 const CHIEF_OF_STAFF_TREE = join(dirname(fileURLToPath(import.meta.url)), "with-chief-of-staff");
 
-/** The one person this Lab runs as. */
+/** The one user this Lab runs as. */
 export const ASK_LAB_USER_ID = "u_ask_lab";
 
 /** Read the tree, refusing it whole if anything did not load. */
@@ -64,7 +64,7 @@ export async function readAskLabTree(root: string = ASK_LAB_TREE): Promise<Decla
   return roster;
 }
 
-/** The organization a bearer-gated ask-lab binds its person to. */
+/** The organization a bearer-gated ask-lab binds its user to. */
 export const ASK_LAB_ORG_ID = "org_ask_lab";
 
 /**
@@ -87,7 +87,7 @@ function bearerOnly(secret: string, orgId: string): PrincipalResolver {
   };
 }
 
-/** The coordinators whose conversations the Lab opens for its person at boot, each under the worker's own id. */
+/** The coordinators whose conversations the Lab opens for its user at boot, each under the worker's own id. */
 export const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
 
 /**
@@ -102,10 +102,10 @@ const INVENTORY_WRITER_FLOW = "inventory-writer";
 /** How to open the ask-lab. */
 export type AskLabOptions = {
   /**
-   * Open the person's coordinator conversations at boot. Default true.
-   * `false` opens nothing, so the person holds no session: a Lab with nothing
+   * Open the user's coordinator conversations at boot. Default true.
+   * `false` opens nothing, so the user holds no session: a Lab with nothing
    * to say which organization they are in. The inventory, whose writes run in
-   * a session of the person's, stays shut too.
+   * a session of the user's, stays shut too.
    */
   conversations?: boolean;
   /** Open the inventory at boot. Default true. */
@@ -124,12 +124,12 @@ export type AskLabOptions = {
    */
   inventoryDeclared?: boolean;
   /**
-   * Require this bearer secret on every HTTP read, and bind the person to
+   * Require this bearer secret on every HTTP read, and bind the user to
    * {@link ASK_LAB_ORG_ID}. Absent: the development organization, no credential.
    */
   bearer?: string;
   /**
-   * With `bearer`, the organization the person is bound to instead of
+   * With `bearer`, the organization the user is bound to instead of
    * {@link ASK_LAB_ORG_ID}. `"ops"` names the organization like the Lab's
    * declared team, so a declared worker's id reads as an address in it.
    */
@@ -140,7 +140,7 @@ export type AskLabOptions = {
   workersStartProjects?: boolean;
   /**
    * Projects to create once the inventory is open, each as `owner` (default
-   * the Lab's person) through the project writes' own `createProject`.
+   * the Lab's user) through the project writes' own `createProject`.
    */
   projects?: Array<CreateProjectInput & { owner?: string }>;
 };

@@ -61,7 +61,7 @@
   <g id="server">
     <rect class="wall-proc" x="630" y="80" width="286" height="300" rx="14"/>
     <text class="h" x="646" y="104">Your server's flow list</text>
-    <text class="muted" x="646" y="122">The kinds and copies it serves</text>
+    <text class="muted" x="646" y="122">The flow kinds and copies it serves</text>
     <rect class="card" x="642" y="138" width="262" height="98" rx="10"/>
     <text class="lbl" x="656" y="158">READ BY</text>
     <text class="code" x="656" y="180">FlowNavigator</text>

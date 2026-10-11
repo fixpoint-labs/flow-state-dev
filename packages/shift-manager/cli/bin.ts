@@ -15,7 +15,7 @@
  * meta (and, for an older build of the pages, `shift-manager-color-scheme`).
  * `--assets <dir>` is fsdev's `--app <dir>` under the name this command
  * has always had: it serves another build of the pages (the tests' stand-in
- * build, or a person's own) in place of the package's.
+ * build, or a user's own) in place of the package's.
  *
  * `scripts/checkout.mts` (the repository's `start` and `dev`) reads `--dev`,
  * `--assets` and `--config` from the same arguments before it hands them here,

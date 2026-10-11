@@ -7,7 +7,7 @@
  *
  * Which theme the page opens on, in order:
  *
- * 1. The one a person picked with the mark in the sidebar header. It's kept in
+ * 1. The one a user picked with the mark in the sidebar header. It's kept in
  *    this browser's storage, so it holds across reloads and restarts.
  * 2. One forced at start (`--shift day|evening|night`, or
  *    `SHIFT_MANAGER_SHIFT`), which reaches the page as a meta tag.
@@ -15,7 +15,7 @@
  *    from 19:00 until the next morning.
  *
  * After that the clock only moves the mark's sundial; it never changes the
- * theme. A change a person picks fades in over a third of a second.
+ * theme. A change a user picks fades in over a third of a second.
  *
  * Browser storage can be missing or throw (a private window, blocked site
  * data); then a pick still changes the look, it just isn't kept.
@@ -34,7 +34,7 @@ const STARTS: Record<Theme, number> = { day: 6, evening: 16, night: 19 };
 export const THEME_META = "shift-manager-theme";
 
 /**
- * The browser storage key a person's pick is kept under. It is the key the
+ * The browser storage key a user's pick is kept under. It is the key the
  * two-look build already used, so a pick made then still reads.
  */
 const PICK_KEY = "shift-manager:shift";
@@ -90,7 +90,7 @@ export interface ThemeLook {
   current(): Theme;
   /** Minutes since midnight, the sundial's position. It moves on a minute boundary, not within one. */
   minute(): number;
-  /** A person's pick: shown at once and kept for this browser. */
+  /** A user's pick: shown at once and kept for this browser. */
   choose(theme: Theme): void;
   /** Move to the theme after this one (`nextTheme`). */
   cycle(): void;
@@ -146,7 +146,7 @@ export function bootTheme(
   }, TICK_MS);
 
   const choose = (next: Theme) => {
-    // Any pick is kept, even the theme already showing: the person chose it,
+    // Any pick is kept, even the theme already showing: the user chose it,
     // so it wins over the clock from then on.
     try {
       win.localStorage.setItem(PICK_KEY, next);

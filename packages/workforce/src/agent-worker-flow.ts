@@ -12,7 +12,7 @@
  * same call with arguments is how an app replaces it. A finished flow value
  * could not carry the app's tool catalog or its skills, which would force a
  * second configuration door onto the hire step — see the contract's C1 in
- * `docs/architecture/workforce-default-worker-kind.md`.
+ * `docs/architecture/workforce-default-worker-flow.md`.
  *
  * {@link AgentWorkerFlowOptions} is the single enumeration of what only the
  * app can supply — its tool catalog, its skills, and its model choices. The
@@ -287,11 +287,11 @@ export interface AgentWorkerFlowOptions {
   uses?: UsesSlot;
   /**
    * Key this flow's user-scoped storage by the flow copy's id, instead of one
-   * cell the person's other flows share. Default: false, matching the
+   * cell the user's other flows share. Default: false, matching the
    * framework (BP-027).
    *
    * Forwarded to the flow untouched. On an installation every worker runs on
-   * the one `agent` copy, so its workers still share one cell per person;
+   * the one `agent` copy, so its workers still share one cell per user;
    * only the skills drawer is kept per worker. On a copy minted for one
    * worker, the key is that worker's id, so renaming it leaves its isolated
    * data behind under the old name — and so does flipping this flag on a
@@ -737,7 +737,7 @@ function catalogDeclaredResources(
  * per hire or per request.
  *
  * @param options What only the app can supply — see {@link AgentWorkerFlowOptions}.
- * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
+ * @returns A `defineFlow` result whose flow kind is `agent`, cardinality `collection`.
  */
 export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
   const turn = agentWorkerTurn(given);
@@ -1154,7 +1154,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
    * one included. A step of the turn would not: a resumed request injects a
    * completed step's recorded output rather than running it again, so the
    * worker would be loaded on the first run only, and a tool that waited for
-   * a person would be gone when the answer arrived.
+   * a user would be gone when the answer arrived.
    */
   const resolveTurnWorker = handler({
     name: "agent-resolve-worker",

@@ -133,7 +133,7 @@ export function TaskProvider({
   const holder = holderSessionOf(boardRef);
   const holderBoards = snapshot.boards[holder];
   const [boardRead, setBoardRead] = useState(false);
-  // A conversation's board is known once its conversation is the person's,
+  // A conversation's board is known once its conversation is the user's,
   // since a task filed a moment ago is on no snapshot yet.
   const boardKnown =
     boardRead ||
@@ -240,7 +240,7 @@ export function TaskProvider({
   const reportStatus = useCallback(
     (next: string) => {
       if (openRun === undefined) return;
-      // A run that stops to ask a person: re-read the Lab, so its ask reaches
+      // A run that stops to ask a user: re-read the Lab, so its ask reaches
       // the Session, the activity line and the inspector with no reload.
       const before = lastReported.current;
       lastReported.current = { requestId: openRun.requestId, status: next };

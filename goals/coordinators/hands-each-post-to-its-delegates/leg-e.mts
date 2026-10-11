@@ -112,15 +112,15 @@ const helper = core.defineFlow({
 const route = mockEvaluationModel({
   answers: ({ state, questions }) => {
     const text = (state as { post: { text: string } }).post.text;
-    const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
+    const offered = (questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {};
     const pick = [...text.matchAll(/\[route:([a-z.-]+)\]/g)].map((m) => m[1]!).find((mark) => Object.hasOwn(offered, mark));
     if (pick === undefined) throw new Error("the scripted evaluation has no pick for this post");
     const confidence = /\[conf:([0-9.]+)\]/.exec(text)?.[1];
-    return { member: { type: "choice", choice: pick, ...(confidence === undefined ? {} : { confidence: Number(confidence) }) } };
+    return { worker: { type: "choice", choice: pick, ...(confidence === undefined ? {} : { confidence: Number(confidence) }) } };
   },
 });
 /** The choices each evaluator call was offered, in order. */
-const offeredChoices = () => route.calls.map((call) => Object.keys((call.questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {}));
+const offeredChoices = () => route.calls.map((call) => Object.keys((call.questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {}));
 
 /** The judgment turn: a `[judge]` post goes to `desk.alpha` twice; `[judge-fail]` fails; anything else it answers. */
 let judgmentTurns = 0;

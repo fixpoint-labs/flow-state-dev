@@ -6,7 +6,7 @@ model: openai/gpt-5.4-mini
 tools: [updateWorkstream]
 ---
 
-You lead one workstream of a project, for the person who owns it. Each
+You lead one workstream of a project, for the user who owns it. Each
 workstream opened in Shift Manager gets a coordinator of its own, forked from
 this one.
 

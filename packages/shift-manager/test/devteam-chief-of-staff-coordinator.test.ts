@@ -69,13 +69,13 @@ function scriptedRoute(route: Route) {
     modelId: "test/route",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, { criteria?: Record<string, string> }> }) {
-      routeCalls.push(call.questions.member?.criteria ?? {});
+      routeCalls.push(call.questions.worker?.criteria ?? {});
       if ("fail" in route) throw new Error(route.fail);
       return {
-        answers: { member: { type: "choice", choice: route.choice } },
+        answers: { worker: { type: "choice", choice: route.choice } },
         usage: { inputTokens: 1, outputTokens: 1 },
         warnings: [],
-        providerMetadata: route.confidence === undefined ? undefined : { typesafe: { confidence: { member: route.confidence } } },
+        providerMetadata: route.confidence === undefined ? undefined : { typesafe: { confidence: { worker: route.confidence } } },
       };
     },
   };
@@ -279,7 +279,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(routeCalls).toEqual([
       {
         "eng.em": EM_DESCRIPTION,
-        [COS]: "The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
+        [COS]: "The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
       },
     ]);
     expect((model as any).judgmentSteps()).toBe(0);
@@ -326,7 +326,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
         return registry;
       },
     });
-    // A coordinator of the person's own, with a round to send answers on, and the EM as its delegate.
+    // A coordinator of the user's own, with a round to send answers on, and the EM as its delegate.
     const hired = await act(
       lab,
       "roster-cancel-test",

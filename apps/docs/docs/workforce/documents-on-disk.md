@@ -302,18 +302,18 @@ A worker's folder is also only part of the name. Putting a `resources/` document
 
 Filtering decides what a whole flow installs. To narrow one worker within a flow, the worker's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). Its model then reaches only those, on every turn: a document it isn't granted answers as one that doesn't exist. A worker whose file has no `resources:` key reaches every document the app passed as `documents`, and writes the ones that allow writes. A worker naming a document the app didn't declare is refused, so the filter holds.
 
-### Keeping a document per person
+### Keeping a document per user
 
-A `resources/` document whose frontmatter carries `flowIsolation: true` gets one row per person, per flow, instead of one the person's other flows share:
+A `resources/` document whose frontmatter carries `flowIsolation: true` gets one row per user, per flow, instead of one the user's other flows share:
 
 ```md
 ---
-description: Working notes, one copy per person.
+description: Working notes, one copy per user.
 flowIsolation: true
 ---
 ```
 
-A person's workers on one flow share that row, since they share the flow's copy. To keep a document to one worker, grant it in that worker's `resources:` and leave it out of the others'. A `references/` file cannot declare `flowIsolation`; its boundary is where the file sits.
+A user's workers on one flow share that row, since they share the flow's copy. To keep a document to one worker, grant it in that worker's `resources:` and leave it out of the others'. A `references/` file cannot declare `flowIsolation`; its boundary is where the file sits.
 
 ### Letting a model read a document
 

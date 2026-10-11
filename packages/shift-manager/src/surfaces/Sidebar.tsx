@@ -8,7 +8,7 @@
  * opens always agree; every status and status count from its one
  * `workerStates` result, so they agree with Roster. PROJECTS lists each project;
  * TEAMS is one row per
- * team with a status square per worker, the person's own workers included,
+ * team with a status square per worker, the user's own workers included,
  * opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
  *
@@ -17,7 +17,7 @@
  * Coordinator is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
  * Inbox's count wears the highlighter only while an ask waits, and Tasks' is
  * blue; the current row is v2's blue tint at 700; TEAMS says what its counts are; and the
- * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
+ * footer ends its counts with the user's initials (v2:52-113, 1173-1188).
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
  * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
@@ -140,7 +140,7 @@ function Heading({ children, aside, testId }: { children: string; aside?: string
   );
 }
 
-/** The organization this person's sessions are bound to. One per Lab principal. */
+/** The organization this user's sessions are bound to. One per Lab principal. */
 function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -339,7 +339,7 @@ export function Sidebar({
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
-  // The person's own workers are on their roster, not in the inventory: joined as Roster joins them.
+  // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster(loaded?.readAt);
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
@@ -387,7 +387,7 @@ export function Sidebar({
                 label="Inbox"
                 icon={<NavIcon name="inbox" />}
                 mark={
-                  // v2's badge (v2:60): the highlighter only while an ask waits on the person.
+                  // v2's badge (v2:60): the highlighter only while an ask waits on the user.
                   <span
                     className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
                     data-look="meta-count"

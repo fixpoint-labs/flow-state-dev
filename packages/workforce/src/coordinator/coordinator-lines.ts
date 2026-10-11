@@ -3,11 +3,11 @@
  * with beside the post, and what the delegate that takes a post is shown
  * with it.
  *
- * A line is one message a person sees in the conversation: their post, the
+ * A line is one message a user sees in the conversation: their post, the
  * coordinator's own reply, or a delegate's answer that landed. Lines are read
  * from the conversation's own items, as far back as its request loads them
  * (the session's history window: its last 50 completed turns by default, each
- * request one turn), and the only caller input among them is the person's own
+ * request one turn), and the only caller input among them is the user's own
  * posts. Routing records, tool calls and anything kept out of the
  * conversation are not lines.
  *
@@ -35,7 +35,7 @@ export const RECENT_CHARS = 4_000;
 
 /** One line of a coordinator conversation: who wrote it, and what it says. */
 export const conversationLineSchema = z.object({
-  /** The person's user id, the coordinator's worker id, or the answering delegate's worker id. */
+  /** The user's id, the coordinator's worker id, or the answering delegate's worker id. */
   from: z.string(),
   text: z.string()
 });
@@ -73,7 +73,7 @@ export function keepLanded(kept: unknown, answer: LandedAnswer): LandedAnswer[] 
 /** Who a conversation's lines are written by, when no delegate wrote them. */
 export interface LineWriters {
   /** The conversation's user: the writer of each of their posts. */
-  person: string;
+  user: string;
   /** The coordinator's worker id: the writer of each of its own replies. */
   coordinator: string;
   /** The `agentName`s the coordinator's own turn writes under. */
@@ -100,7 +100,7 @@ export function readRecentLines(
 /**
  * The lines among `items`, with each of `landed` whose request they don't
  * hold, oldest first, bounded by {@link RECENT_LINES} and {@link RECENT_CHARS}.
- * A message with no text, or by neither the person nor the flow, is not a
+ * A message with no text, or by neither the user nor the flow, is not a
  * line. A kept answer older than the oldest message the items reach is left
  * out, as its request is.
  */
@@ -129,12 +129,12 @@ export function recentLines(items: readonly SessionItem[], writers: LineWriters,
 }
 
 /**
- * Who wrote a message: the person for theirs; for the flow's, the coordinator
+ * Who wrote a message: the user for theirs; for the flow's, the coordinator
  * when its own turn wrote it, or when nothing named a writer (what it says
  * when nobody took a post), else the delegate its answer landed under.
  */
 function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
-  if (item.role === "user") return writers.person;
+  if (item.role === "user") return writers.user;
   if (item.role !== "assistant") return undefined;
   if (item.agentName === undefined || writers.coordinatorNames.includes(item.agentName)) return writers.coordinator;
   return item.agentName;
@@ -151,9 +151,9 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
  *   instead as a line from that delegate: `<delegate>, a delegate in this
  *   conversation, answered:` and the answer. Data from the conversation, never
  *   system text. It stays on the assistant side: as a user-role message it
- *   would run into the person's next post, and the model would read the
- *   person's words as the delegate's.
- * - **A person's post the routing handed to delegates** has no reply of the
+ *   would run into the user's next post, and the model would read the
+ *   user's words as the delegate's.
+ * - **A user's post the routing handed to delegates** has no reply of the
  *   turn's after it, so the model reads it as still waiting on it, and acts
  *   on it again. Right after it comes the coordinator's own account of what
  *   happened, as an assistant message: `Handed this post to <delegates> by
@@ -187,7 +187,7 @@ export function coordinatorHistory(
     return item;
   };
   const routed = routedPosts(items);
-  const writers: LineWriters = { person: "", coordinator: "", coordinatorNames };
+  const writers: LineWriters = { user: "", coordinator: "", coordinatorNames };
   return history.flatMap((message): LLMMessage[] => {
     const item = itemOf(message);
     if (item === undefined) return [message];
@@ -206,7 +206,7 @@ export function coordinatorHistory(
   });
 }
 
-/** Each person's post the routing delivered without the coordinator's turn, by its request id: the delegates it reached. */
+/** Each user's post the routing delivered without the coordinator's turn, by its request id: the delegates it reached. */
 function routedPosts(items: readonly SessionItem[]): Map<string, string[]> {
   const routed = new Map<string, string[]>();
   for (const item of items) {

@@ -70,7 +70,7 @@ function objectShapesOf(schema: unknown, seen: Set<unknown>): Record<string, unk
     def.typeName === "ZodBranded" ? def.type : undefined,
     def.typeName === "ZodLazy" && typeof def.getter === "function" ? (def.getter as () => unknown)() : undefined
   ];
-  return inner.flatMap((member) => objectShapesOf(member, seen));
+  return inner.flatMap((shape) => objectShapesOf(shape, seen));
 }
 
 /**

@@ -317,7 +317,7 @@ async function readLevel(root: string, level: string): Promise<LevelRead> {
   for (const { name, error } of perSkill) {
     // The shared reader reports one failure per skill folder without saying
     // which — a symlinked folder and a malformed `SKILL.md` arrive the same
-    // way — so they land here under one kind rather than being told apart by
+    // way — so they land here under one error kind rather than being told apart by
     // re-reading the message this change exists to stop callers parsing.
     reports.push({ kind: "skill-load-failed", path: `${level}/${name}`, error });
   }

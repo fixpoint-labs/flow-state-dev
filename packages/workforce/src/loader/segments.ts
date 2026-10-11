@@ -1,5 +1,5 @@
 /**
- * What a name in the tree is allowed to be — a team, worker or mailbox folder,
+ * What a name in the tree is allowed to be — a team or worker folder,
  * or a document file.
  *
  * One rule, shared by every reader that names a level of the tree, because the
@@ -43,7 +43,7 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
  * the one whose identity is joined with a `/` rather than a `.`, because a
  * document's ref is a storage-key namespace and never routes.
  *
- * `Kind` and `Block` are the other two file-named levels: a flow file's
+ * `Worker flow` and `Block` are the other two file-named levels: a flow file's
  * basename under `workforce/flows/`, which becomes a flow name on the map an
  * app registers, and a block file's basename under `workforce/blocks/`, which
  * becomes the name a task board assigns by. They obey the same rule as every
@@ -58,7 +58,7 @@ export type SegmentLabel =
   | "Team"
   | "Worker"
   | "Document"
-  | "Kind"
+  | "Worker flow"
   | "Block"
   | "Package";
 
@@ -66,7 +66,7 @@ export type SegmentLabel =
  * Labels whose segment is a *file* rather than a folder. Held as a set rather
  * than as a comparison so adding a label cannot leave the wording behind.
  */
-const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document", "Kind", "Block"]);
+const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document", "Worker flow", "Block"]);
 
 /** Validate one path segment against the naming rules. Throws on a break. */
 export function validateSegment(segment: string, label: SegmentLabel): void {
@@ -82,8 +82,8 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
     const identity =
       label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
-        : label === "Kind"
-          ? `it becomes the worker flow's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
+        : label === "Worker flow"
+          ? `it becomes the worker flow's name, which a worker file's \`flow:\` names`
           : label === "Block"
             ? `it becomes the name the block registers under, which a task board assigns by`
             : label === "Package"

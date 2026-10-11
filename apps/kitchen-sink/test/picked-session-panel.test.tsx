@@ -8,8 +8,8 @@
  * call catches it. The browser half (the line survives a reload, the worker
  * keeps both sides) is `e2e/talk-from-page.spec.ts` and the goal check.
  *
- * Checks, by the spec's ids (`specs/issues/FIX-1585/PLAN.md` V5), moved from
- * the mailbox onto the coordinator by FIX-1792. Red states produced before
+ * Checks, by the spec's ids (`specs/issues/FIX-1585/PLAN.md` V5), on the
+ * coordinator since FIX-1792. Red states produced before
  * these were trusted:
  *   - label a line by its role before its `agentName`: the label case fails.
  *   - drop the `text.length === 0` guard on Send: the whitespace case fails.
@@ -94,7 +94,7 @@ afterEach(() => {
 
 function panel(kind: string, s: never) {
   return render(
-    <PickedSessionPanel session={s} kind={kind} person="devuser" requestStatus={requestStatus} conversation={<div data-testid="stream-items" />} />,
+    <PickedSessionPanel session={s} kind={kind} user="devuser" requestStatus={requestStatus} conversation={<div data-testid="stream-items" />} />,
   );
 }
 
@@ -103,7 +103,7 @@ async function type(label: string, text: string) {
 }
 
 describe("a coordinator's panel", () => {
-  it("shows the lines oldest first: a delegate's answer under its name, the person's post under theirs, the coordinator's own word under it", () => {
+  it("shows the lines oldest first: a delegate's answer under its name, the user's post under theirs, the coordinator's own word under it", () => {
     panel(
       "coordinator",
       session({
@@ -167,7 +167,7 @@ describe("a coordinator's panel", () => {
           items: [{ id: "e", type: "error", requestId: "req-refused", message: "No post is being routed in this request." }],
         })}
         kind="coordinator"
-        person="devuser"
+        user="devuser"
         requestStatus={requestStatus}
         conversation={null}
       />,
@@ -194,7 +194,7 @@ describe("a coordinator's panel", () => {
           items: [line("k", "please keep me")],
         })}
         kind="coordinator"
-        person="devuser"
+        user="devuser"
         requestStatus={requestStatus}
         conversation={null}
       />,
@@ -220,7 +220,7 @@ describe("a send settles on its own request", () => {
       <PickedSessionPanel
         session={session({ sendAction, isStreaming: false })}
         kind="coordinator"
-        person="devuser"
+        user="devuser"
         requestStatus={requestStatus}
       />,
     );
@@ -245,7 +245,7 @@ describe("switching picks", () => {
     const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
     await type("Message this worker", "meant for the first worker");
 
-    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} kind="agent" person="devuser" requestStatus={requestStatus} />);
+    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} kind="agent" user="devuser" requestStatus={requestStatus} />);
     expect((screen.getByLabelText("Message this worker") as HTMLTextAreaElement).value).toBe("");
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -280,7 +280,7 @@ describe("a worker's panel", () => {
 describe("who is working", () => {
   const rows = () => screen.queryAllByTestId("working-row").map((el) => el.textContent);
   const rerender = (view: ReturnType<typeof panel>, kind: string, s: never) =>
-    view.rerender(<PickedSessionPanel session={s} kind={kind} person="devuser" requestStatus={requestStatus} conversation={null} />);
+    view.rerender(<PickedSessionPanel session={s} kind={kind} user="devuser" requestStatus={requestStatus} conversation={null} />);
 
   it.each(["coordinator", "agent"])("a %s panel names each unfinished run by the delegate it was handed to, else its flow", (kind) => {
     panel(kind, session({ childSessions: [delegateRun("run-1", "support.devices", "active"), { id: "run-2", flowId: "agent", status: "active" }] }));

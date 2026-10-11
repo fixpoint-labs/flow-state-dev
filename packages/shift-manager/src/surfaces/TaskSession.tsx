@@ -4,7 +4,7 @@
  *
  * One read of the run session's stored items, then one stream: the run's
  * request, through the flow its session names. Mounted only while the tab is
- * open, so a person reading Brief pays for no stream. A session shared with
+ * open, so a user reading Brief pays for no stream. A session shared with
  * other tasks shows only the items stamped with this task's id, and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
@@ -192,7 +192,7 @@ function RunItems({ run }: { run: OpenRun }) {
 
 /**
  * A suspension in the run. Pending, it is the ask itself, inline (v2:404-423):
- * its kind on the highlighter, because it waits on the person, and the one
+ * its ask kind on the highlighter, because it waits on the user, and the one
  * ask card Inbox draws, answered the same way. Otherwise, a way to Inbox.
  */
 function PendingAsk({ ask }: { ask: Ask | undefined }) {

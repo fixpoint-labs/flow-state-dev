@@ -233,7 +233,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const addDelegateTool = handler({
     name: ADD_DELEGATE,
     description:
-      "Add a worker on this person's roster to this conversation's delegates, by its id, with an optional note on what it's good at.",
+      "Add a worker on this user's roster to this conversation's delegates, by its id, with an optional note on what it's good at.",
     inputSchema: addInputSchema,
     outputSchema: toolOutputSchema,
     ...blockBase,

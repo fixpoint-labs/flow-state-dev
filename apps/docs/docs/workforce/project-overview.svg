@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 520" role="img" aria-labelledby="title desc">
   <title id="title">Shared and private projects, and their workstreams</title>
-  <desc id="desc">A project is runtime data, addressed by its visibility and its id. A shared project, such as visibility shared, id apollo, lives in the organization: everyone in it lists and reads the project, and its members open workstreams in it. A private project, such as visibility private, id notes, lives with its creator: nobody else lists, opens or reads it. Each workstream is one entry on the project with one owner. In the example, alice owns checkout and docs and bob owns payments. Everyone who reads the project reads every entry; only its owner writes it. Each person talks to a project through their own project coordinator, which hands work only to that person's open workstreams: alice's to checkout, since docs is done, and bob's to payments.</desc>
+  <desc id="desc">A project is runtime data, addressed by its visibility and its id. A shared project, such as visibility shared, id apollo, lives in the organization: everyone in it lists and reads the project, and its members open workstreams in it. A private project, such as visibility private, id notes, lives with its creator: nobody else lists, opens or reads it. Each workstream is one entry on the project with one owner. In the example, alice owns checkout and docs and bob owns payments. Everyone who reads the project reads every entry; only its owner writes it. Each user talks to a project through their own project coordinator, which hands work only to that user's open workstreams: alice's to checkout, since docs is done, and bob's to payments.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
@@ -63,6 +63,6 @@
   <text x="40" y="398" class="p">Everyone who reads the project reads every entry. Only its owner writes it, from any flow.</text>
 
   <rect x="40" y="420" width="800" height="62" rx="10" class="out"/>
-  <text x="56" y="446" class="p">Each person talks to a project through their own project coordinator.</text>
+  <text x="56" y="446" class="p">Each user talks to a project through their own project coordinator.</text>
   <text x="56" y="468" class="p">Alice's hands work only to her open workstreams, here checkout. Bob's only to payments.</text>
 </svg>

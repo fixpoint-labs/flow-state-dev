@@ -3,19 +3,19 @@
  * Lab's project setup, and opening a workstream with a coordinator of its own.
  *
  * **What a project view reads** (BR-18): the project's row and its workstream
- * entries by one prefix, through the person's own session on the roster flow,
+ * entries by one prefix, through the user's own session on the roster flow,
  * which declares both. Never a Lab read. Progress is worked out from the
  * entries here, by Workforce's own `projectProgress`, so the view and the
  * project coordinator count the same way; nothing is stored.
  *
  * **The project setup.** Which flow writes workstreams, and which two standard
- * workers stand behind a project: the coordinator each person talks to it
+ * workers stand behind a project: the coordinator each user talks to it
  * through, and the coordinator Shift Manager forks to lead each workstream a
- * person opens. Shift Manager names neither: the Lab's projects flow answers
+ * user opens. Shift Manager names neither: the Lab's projects flow answers
  * `projectSetup` with them, read once per connection.
  *
  * **Opening a workstream** (D2, BR-35, BR-36): Shift Manager forks the standard
- * workstream coordinator onto the person's roster, under an id derived from
+ * workstream coordinator onto the user's roster, under an id derived from
  * the workstream's address, and opens the workstream naming it as the lead. A
  * worker already at that id, forked from the standard workstream coordinator,
  * is used, not forked again; any other worker there refuses the open, naming
@@ -73,7 +73,7 @@ export type ProjectRead = {
 export type ProjectSetup = {
   /** The flow `openWorkstream`, `updateWorkstream` and `projectSetup` are actions of. */
   flow: string;
-  /** The standard worker each person's project coordinator runs as, or `null`. */
+  /** The standard worker each user's project coordinator runs as, or `null`. */
   projectCoordinator: string | null;
   /** The standard worker Shift Manager forks to lead a workstream, or `null`. */
   workstreamCoordinator: string | null;
@@ -86,7 +86,7 @@ export const PROJECT_SETUP_ACTION = "projectSetup";
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50;
 
-/** The person's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
+/** The user's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
 export function projectReaderOf(sessions: readonly SessionSummary[]): string | null {
   return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
 }
@@ -123,8 +123,8 @@ const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "pri
 
 /**
  * Read a project as its view opens: its row, and its entries by the
- * project's one prefix, through the person's reader session. `null` when the
- * person can't read a row at that address: none there, or another person's
+ * project's one prefix, through the user's reader session. `null` when the
+ * user can't read a row at that address: none there, or another user's
  * private project.
  */
 export async function readProject(clients: LabClients, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
@@ -222,10 +222,10 @@ export type OpenWorkstreamInput = {
 };
 
 /**
- * Open a workstream for the person, led by a coordinator of its own (D2,
+ * Open a workstream for the user, led by a coordinator of its own (D2,
  * BR-35, BR-36). See the file's header for the rules.
  *
- * @param readerSessionId The person's roster session, which forks and fires.
+ * @param readerSessionId The user's roster session, which forks and fires.
  * @returns The opened entry as `openWorkstream` answered it, and whether this call forked its coordinator.
  * @throws ActionRefused naming why, with nothing left written by this call.
  */
@@ -285,7 +285,7 @@ export async function openWorkstreamWithCoordinator(
   }
 }
 
-/** The person's own session on the projects flow, which their workstream writes run in. */
+/** The user's own session on the projects flow, which their workstream writes run in. */
 function projectsSessionOf(clients: LabClients, setup: ProjectSetup): string {
   return readerSessionId(clients.userId, setup.flow);
 }

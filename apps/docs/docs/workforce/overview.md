@@ -7,9 +7,21 @@ description: Describe a roster of workers, run each on one shared copy of the fl
 
 # Workforce
 
-`@flow-state-dev/workforce` runs a roster of workers on flows you already defined. A worker is a configuration: a `WORKER.md` your files declare, or one a user hires or forks for themselves. Each flow a worker names is registered once, as one shared copy, and every worker on it runs there.
+`@flow-state-dev/workforce` gives each user a roster of workers: agents, or deterministic workflows, that work for that user and act as them.
 
-A conversation with a worker is a session of its flow that names the worker when it is created. One session, one worker, for the session's whole life.
+One rule covers who sees what: a worker's own state and your user data are private to you, while shared resources and org-scope data are shared with your org, and a flow writes to org scope only when its author built it to. Your workers, your private projects and every session are yours alone. A shared project and its workstream entries are shared, and each entry names the user who wrote it, and the worker when a worker did.
+
+A **worker** is a configuration with an owner: its instructions, skills, tools, and the flow that runs it. Each worker names its own flow: the built-in agent, a coordinator, or a flow your app registers. A flow is registered once, and every worker that names it shares that copy. Each piece of work gets its own session: one per conversation, one per task, and one lasting session for a workstream it leads.
+
+Some workers are **standard**. Your installation's files define them, every user has them, and nobody can edit them. To change one for yourself, fork it: you get a worker of your own that starts from its configuration.
+
+A worker can hand work to other workers on your roster, its **delegates**. That is **delegation**, and every hand-over is checked against your roster. A **coordinator** is the worker built for it: it picks a delegate for each message by its own judgment, by best fit, in turn, or sends to everyone.
+
+![One org, two users. The installation's files define the standard workers every user starts with. A shared area in the org holds a shared project, whose workstreams have one owner each, and org-scope data. Alice's private area holds her standard researcher, a private project, a coordinator and an analyst; Bob's holds his own standard researcher, a writer he forked, a coordinator and a private project. Alice owns a workstream of the shared project.](./private-and-shared.svg)
+
+For example, Alice and Bob each have the standard researcher. They are two workers, not one: Alice's answers for Alice, and Bob can't open her sessions, name her researcher as a delegate, or read what it remembers about her.
+
+**What this doesn't do.** Users don't message each other through Workforce, and there are no shared conversations between users yet. A worker never acts for anyone but its owner.
 
 ## Workforce or orchestration
 
@@ -65,7 +77,7 @@ flowRegistry.registerMany(flows);
 
 That worker file names no `flow:`, so it runs on the built-in worker flow, `agent`. `hireWorkforce` gives back one copy of `agent`, however many workers run on it, and the roster flow an app [hires and forks](./durable-hire) through. Its body becomes its instructions, and it talks. It sees the recent turns of the conversation it's in, and nothing it's told there reaches any other conversation.
 
-A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each person keeps their own copy of a worker's skills. To talk to a worker, open a session that names it, as [Talking to a worker](./workers-on-disk.md#talking-to-a-worker) shows, and send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
+A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each user keeps their own copy of a worker's skills. To talk to a worker, open a session that names it, as [Talking to a worker](./workers-on-disk.md#talking-to-a-worker) shows, and send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 
@@ -89,7 +101,7 @@ const installation = createWorkerInstallation({
 const flows = hireWorkforce(installation);
 ```
 
-`requestTriageFlow` is your own flow, built on the installation, and `"request-triage"` is its `kind`. A record that names no `flow:` runs on the built-in, so one roster can run both. You get back one copy per flow, ordered by kind, and the roster flow.
+`requestTriageFlow` is your own flow, built on the installation, and `"request-triage"` is its `kind`. A record that names no `flow:` runs on the built-in, so one roster can run both. You get back one copy per flow, ordered by flow kind, and the roster flow.
 
 Pass a flow under a key that is not its own `kind` and it is refused. [Workers on disk](./workers-on-disk.md#when-a-worker-needs-more-than-settings) walks through writing a worker flow of your own.
 
@@ -101,9 +113,9 @@ Pass a flow under a key that is not its own `kind` and it is refused. [Workers o
 
 A **project** is a body of work, private to you or shared with your organization. It's a row your app creates while it runs, not a file.
 
-A **workstream** is one area of a project with one owner: an entry on the project that everyone who reads the project can see, and a lasting session of one of the owner's workers that does the work. Each person talks to a project through their own project coordinator, which hands work only to their own workstreams. See [Projects](./projects).
+A **workstream** is one area of a project with one owner: an entry on the project that everyone who reads the project can see, and a lasting session of one of the owner's workers that does the work. Each user talks to a project through their own project coordinator, which hands work only to their own workstreams. See [Projects](./projects).
 
-The **chief of staff** is an org-level worker a person asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the person who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
+The **chief of staff** is an org-level worker a user asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the user who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
 
 ## Giving a task to a worker
 
@@ -133,7 +145,7 @@ Filing a task for a worker that isn't one of the filer's delegates, or that take
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
 - [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
-- [The chief of staff](./chief-of-staff) — the one worker a person asks to hire or fire workers of their own, with a fire waiting for their approval.
+- [The chief of staff](./chief-of-staff) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

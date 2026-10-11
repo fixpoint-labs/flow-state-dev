@@ -168,7 +168,7 @@ export const STATE_OF_COLUMN: Record<Column, TaskState> = {
 };
 
 const STATE_SQUARE: Record<TaskState, string> = {
-  // The highlighter, only because the row waits on a person.
+  // The highlighter, only because the row waits on a user.
   needs: "border-solid border-foreground bg-attention",
   run: "border-solid border-info bg-info",
   review: "border-solid border-info",

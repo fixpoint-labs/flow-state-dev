@@ -18,18 +18,18 @@ pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/packages/shift-man
 
 ## How it is wired
 
-![How the lab is wired: the Markdown tree under lab/workforce/teams/eng on the left (a coordinator, the planner with its delegates, two workers), the lab's code in the middle (host.mts with the app's desk-to-delegate map, the planner and worker flows under flows/workers, the driver), and what runs on the right (fsdev.config.mts, the shipped fsdev dev, the shipped DevTool). The person's answer enters only through the planner's conversation's answerTask_tasks.](figures/setup.svg)
+![How the lab is wired: the Markdown tree under lab/workforce/teams/eng on the left (a coordinator, the planner with its delegates, two workers), the lab's code in the middle (host.mts with the app's desk-to-delegate map, the planner and worker flows under flows/workers, the driver), and what runs on the right (fsdev.config.mts, the shipped fsdev dev, the shipped DevTool). The user's answer enters only through the planner's conversation's answerTask_tasks.](figures/setup.svg)
 
 Read it left to right: files on disk, code, what runs. No file declares a board. The planner's
 `WORKER.md` names the two workers as its `delegates:`, and because both take tasks, a conversation
 with the planner has the task actions. The one arrow that crosses from a desk to a worker goes
 through `ROUTES` in `host.mts`, which the filer reads to name a row's assignee, never through a
-`WORKER.md`: each worker's `answersFor` is only what the checks grade against. The person reaches
+`WORKER.md`: each worker's `answersFor` is only what the checks grade against. The user reaches
 the board by one door, the planner's conversation's `answerTask_tasks`.
 
 ## How a run moves
 
-![How one run moves: four lanes against time (eng.planner, eng.builder, the person, eng.reviewer) with the check that grades each step, and below them the three DevTool screens that read it.](figures/flow.svg)
+![How one run moves: four lanes against time (eng.planner, eng.builder, the user, eng.reviewer) with the check that grades each step, and below them the three DevTool screens that read it.](figures/flow.svg)
 
 The crossing from `eng.builder`'s lane to `eng.reviewer`'s is the handoff: a second row on the same
 board, which the planner filed waiting on the first, run by the other worker. Each step carries the
@@ -71,6 +71,6 @@ row starting from `eng.builder`'s lane) and wants a redraw.
   task session's shows why it waited and what it was told, and the ledger collection in the
   Resources panel shows both rows as they stand.
 - **No run link on the planner's Tasks tab.** The DevTool links a task row to its run by decoding
-  the run's session key, and it decodes a mailbox board's key, not a conversation board's. The row
+  the run's session key, and it decodes a dispatched board's key, not a conversation board's. The row
   still names its run session (`run`), and the navigator lists that session under the worker's flow,
   which is how the check opens it.

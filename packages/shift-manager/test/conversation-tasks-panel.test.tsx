@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the person's
+ * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the user's
  * conversation filed, read through the conversation's own `listTasks` action.
  *
  * What it lists is what that read answered: the conversation's own board, never
  * a store or a Lab-wide walk. It reads again each time the Lab is read again,
- * which is after each turn the person sends (the reload floor), and on no
+ * which is after each turn the user sends (the reload floor), and on no
  * tool's name.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -122,7 +122,7 @@ describe("the tasks panel (S11)", () => {
     expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
   });
 
-  describe("a task that ends between the person's lines", () => {
+  describe("a task that ends between the user's lines", () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
     afterEach(() => vi.useRealTimers());
     const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));

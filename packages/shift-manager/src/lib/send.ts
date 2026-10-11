@@ -1,5 +1,5 @@
 /**
- * The one way Shift Manager sends a person's line into a worker's session (S10).
+ * The one way Shift Manager sends a user's line into a worker's session (S10).
  *
  * Every composer that talks to a worker (a task's, `@worker` in a workstream,
  * Inbox's reply) calls {@link sendTurn}, and nothing else in Shift Manager writes a
@@ -13,13 +13,13 @@
  * request's user item. The HTTP answer alone never says so: it only says the
  * request started. A `suspended` request stopped short of finishing, with the
  * line in: the send resolves with `suspended` set, and `stopped` saying on
- * what. `ask` is a person's ask Inbox lists, such as a chief of staff's
+ * what. `ask` is a user's ask Inbox lists, such as a chief of staff's
  * approval to fire a worker; `wait` is any other suspension, which Inbox
  * doesn't list. `suspended`, not `stopped`, is what tells a caller to read
  * the Lab again: `stopped` only picks the words, so a stop it reads wrong,
  * or reads as gone, never keeps an ask out of Inbox.
  *
- * **Held comes first.** The person's line lands in the session as soon as the
+ * **Held comes first.** The user's line lands in the session as soon as the
  * door's request starts, long before the worker answers. A caller that passes
  * `onHeld` hears the moment the session holds the line, so it can draw the
  * line and say the worker is on it while the reply is in flight. Delivered
@@ -44,7 +44,7 @@ import { deriveSuspensions } from "@flow-state-dev/react";
 import { describeFailure, PERSON_REASONS } from "./reads";
 
 /**
- * Why a delivered line's request stopped short of finishing: on a person's ask
+ * Why a delivered line's request stopped short of finishing: on a user's ask
  * that Inbox lists (`ask`), on anything else (`wait`), or not at all (`null`).
  */
 export type TurnStop = "ask" | "wait" | null;
@@ -102,7 +102,7 @@ async function call<T>(op: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Whether the session holds the person's line from `requestId`, read from the
+ * Whether the session holds the user's line from `requestId`, read from the
  * newest page back. `undefined` when the page budget ran out first.
  */
 async function sessionHoldsLine(clients: LabClients, sessionId: string, requestId: string): Promise<boolean | undefined> {
@@ -129,7 +129,7 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
  * one call however much history the session holds. Only its still-pending suspensions count
  * (`deriveSuspensions`, as Inbox derives them):
  *
- * - one whose reason is a person's ask: `ask`.
+ * - one whose reason is a user's ask: `ask`.
  * - any other pending one, such as a stop on something else after an ask
  *   that was answered: `wait`.
  * - none, or the request no longer listed as suspended (resumed since the

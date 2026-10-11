@@ -1,7 +1,7 @@
 /**
  * A specialist best fit picked answers in the person's conversation with
  * `support.help`, under its own name, once, and its answer wakes nobody, on
- * this app's own wiring: the real config, the hired roster, and the scripted
+ * this app's own wiring: the real config, the roster, and the scripted
  * model and best-fit evaluation.
  *
  * The line is read the way the page reads it (the conversation's kept
@@ -11,7 +11,7 @@
  * Checks, by the spec's ids (`specs/issues/FIX-1594/PLAN.md`, V2 and V3),
  * re-pointed onto the routed roster by FIX-1611 (BR-6) and onto the
  * coordinator by FIX-1792 (BR-8):
- *   BR-2   a post carrying `[scenario:reply-in-mailbox]`, picked for
+ *   BR-2   a post carrying `[scenario:reply-in-conversation]`, picked for
  *          `support.devices`, runs it, and its answer lands as one line in
  *          the person's conversation under `support.devices`.
  *   BR-9   the line runs no specialist: the specialist heard the token once,
@@ -36,7 +36,7 @@ const USER = "devuser";
 const COORDINATOR = "support.help";
 const WORKER = "support.devices";
 const OTHERS = ["support.accounts", "support.fsd", "support.general"];
-const LINE_MARKER = "[reply:in-mailbox]";
+const LINE_MARKER = "[reply:in-conversation]";
 
 afterEach(async () => {
   const hmr = globalThis as { __fsdFlowstate?: FlowState };
@@ -108,7 +108,7 @@ async function until(predicate: () => Promise<boolean>, label: string, tries = 4
 const token = () => `reply-token-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /** The post each case sends, routed to the specialist. */
-const postBody = (mark: string) => `[route:${WORKER}] [scenario:reply-in-mailbox] ${mark} when do refunds post?`;
+const postBody = (mark: string) => `[route:${WORKER}] [scenario:reply-in-conversation] ${mark} when do refunds post?`;
 
 /** Post as the page does, wait for the specialist's line, and give a wrongly woken specialist time to run. */
 async function postAndSettle(router: Router, mark: string): Promise<string> {

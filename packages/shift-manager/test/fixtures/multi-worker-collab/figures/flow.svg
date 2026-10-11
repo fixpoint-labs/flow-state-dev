@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 420" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="How one run moves, as four lanes against time, with the check that grades each step. Lane one, eng.planner, files on its own conversation's board: a row for the build desk and a row for the review desk waiting on it, graded by V1. Lane two, eng.builder: the planner's board run claims the build row and hands it to eng.builder's task session, where the row parks with the question as its reason and nothing stays running, graded by V3. Lane three is the person. A second person's answer, sent to the planner's conversation, does not land, graded by V4. The person's answer goes through the planner's conversation's answerTask_tasks, which re-queues the row; the same task session finishes it, which frees the review row, graded by V3; moving the parked row's assignee is refused, graded by V5. Lane four, eng.reviewer: the board run claims the review row and eng.reviewer finishes it in its own task session, graded by V5. Every attempt is graded against the WORKER.md of the worker that ran it, V2. Last, the planner files a row for nobody, which waits, handed to nobody, graded by V1. Below a dashed fence, the three DevTool screens that read the run, all graded by VB: screen one, the planner's session Tasks tab with the row and its assignee; screen two, the task session the row names, opened from the navigator, its Tasks tab with the question in the reason slot and then the answer; screen three, the Resources panel's tasks collection, with both rows, their assignees and the task session each ran in.">
+     aria-label="How one run moves, as four lanes against time, with the check that grades each step. Lane one, eng.planner, files on its own conversation's board: a row for the build desk and a row for the review desk waiting on it, graded by V1. Lane two, eng.builder: the planner's board run claims the build row and hands it to eng.builder's task session, where the row parks with the question as its reason and nothing stays running, graded by V3. Lane three is the user. A second user's answer, sent to the planner's conversation, does not land, graded by V4. The user's answer goes through the planner's conversation's answerTask_tasks, which re-queues the row; the same task session finishes it, which frees the review row, graded by V3; moving the parked row's assignee is refused, graded by V5. Lane four, eng.reviewer: the board run claims the review row and eng.reviewer finishes it in its own task session, graded by V5. Every attempt is graded against the WORKER.md of the worker that ran it, V2. Last, the planner files a row for nobody, which waits, handed to nobody, graded by V1. Below a dashed fence, the three DevTool screens that read the run, all graded by VB: screen one, the planner's session Tasks tab with the row and its assignee; screen two, the task session the row names, opened from the navigator, its Tasks tab with the question in the reason slot and then the answer; screen three, the Resources panel's tasks collection, with both rows, their assignees and the task session each ran in.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -30,7 +30,7 @@
     <line class="lane" x1="16" y1="62" x2="924" y2="62"/>
     <text class="t-lbl" x="16" y="100">eng.builder</text>
     <line class="lane" x1="16" y1="118" x2="924" y2="118"/>
-    <text class="t-lbl" x="16" y="156">the person</text>
+    <text class="t-lbl" x="16" y="156">the user</text>
     <line class="lane" x1="16" y1="174" x2="924" y2="174"/>
     <text class="t-lbl" x="16" y="212">eng.reviewer</text>
     <line class="lane" x1="16" y1="230" x2="924" y2="230"/>
@@ -64,7 +64,7 @@
     <text class="t-v" x="782" y="109" text-anchor="end">V3 V5</text>
   </g>
 
-  <g id="person">
+  <g id="user">
     <rect class="n-no" x="414" y="138" width="150" height="32" rx="5"/>
     <text class="t-b" x="424" y="153">a second principal</text>
     <text class="t-s" x="424" y="165">answer does not land</text>

@@ -14,7 +14,7 @@
     "textAnswer": "[scenario:wake-after-a-hold]",
     "textReply": "[reply:wake]",
     "toolAnswer": "[scenario:reply-after-a-hold]",
-    "toolReply": "[reply:in-mailbox]",
+    "toolReply": "[reply:in-conversation]",
     "talk": "[scenario:talk-to-worker]",
     "talkReply": "[reply:talk-to-worker]",
     "recall": "[scenario:recall]",

@@ -100,7 +100,7 @@ function localName(file: DiscoveredFile): string {
  * hyphenated one must be and a rule with an exception is a rule that drifts.
  *
  * An empty map carries no `satisfies`, and so needs no type imported: there is
- * no member for a type to catch, and an app with no custom code of this kind
+ * no export for a type to catch, and an app with no custom code of this kind
  * should not acquire an import because of a folder it does not have.
  */
 function renderMap(files: DiscoveredFile[], exportName: string, expression: string): string {

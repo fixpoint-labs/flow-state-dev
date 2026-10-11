@@ -4,8 +4,8 @@
  * The substrate emits two component item types per task collection:
  *
  *   - `task-change` (FIX-444 / FIX-446): per-task lifecycle events keyed by
- *     `${collectionId}/${taskId}`. `data` carries `{ collectionId, taskId,
- *     kind, task, prevStatus? }`.
+ *     `${collectionId}/${taskId}`. `data` carries
+ *     `{ collectionId, taskId, kind, task, prevStatus? }`.
  *   - `task-board-meta` (FIX-446): board-level aggregate state keyed by
  *     `${collectionId}`. `data` carries `{ collectionId, status, counts? }`
  *     where `status` is open-ended (substrate emits `"active" | "completed"`;
@@ -77,7 +77,7 @@ export type Task = {
   completedAt?: number;
 };
 
-/** Lifecycle transition kinds from the substrate. Open-ended at the boundary. */
+/** Lifecycle change kinds from the substrate. Open-ended at the boundary. */
 export type TaskChangeKind =
   | "added"
   | "claimed"

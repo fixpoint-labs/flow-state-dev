@@ -39,8 +39,8 @@ describe("the scripted model's scenario dispatcher", () => {
   it("matches the latest user turn only, not an earlier turn in the conversation", () => {
     agentWorkerMock.reset();
     const history = [
-      user("devuser, through support.help: [scenario:reply-in-mailbox] reply-token-bbb when do refunds post?"),
-      assistant("[reply:in-mailbox] reply-token-bbb Refunds post on Fridays."),
+      user("devuser, through support.help: [scenario:reply-in-conversation] reply-token-bbb when do refunds post?"),
+      assistant("[reply:in-conversation] reply-token-bbb Refunds post on Fridays."),
       user("[scenario:talk-to-worker] where is my refund?"),
     ];
     const step = agentWorkerMock.next(history);
@@ -94,7 +94,7 @@ describe("a worker that answers naming the post's token", () => {
     user(`devuser, through support.help: ${marker} reply-token-abc123 when do refunds post?`),
   ];
   const held = () => heard("[scenario:reply-after-a-hold]");
-  const plain = () => heard("[scenario:reply-in-mailbox]");
+  const plain = () => heard("[scenario:reply-in-conversation]");
 
   afterEach(() => {
     vi.useRealTimers();
@@ -104,7 +104,7 @@ describe("a worker that answers naming the post's token", () => {
     agentWorkerMock.reset();
     const step = agentWorkerMock.next(plain());
     expect(step?.toolCalls).toBeUndefined();
-    expect(step?.text).toBe("[reply:in-mailbox] reply-token-abc123 Refunds post on Fridays.");
+    expect(step?.text).toBe("[reply:in-conversation] reply-token-abc123 Refunds post on Fridays.");
   });
 
   it("holds the agent worker about three seconds for the held scenario, and nothing else", () => {
@@ -115,7 +115,7 @@ describe("a worker that answers naming the post's token", () => {
     expect(holdBeforeAnswer("assistant-generator", held())).toBe(0);
   });
 
-  it("answers exactly as reply-in-mailbox does once the hold ends", () => {
+  it("answers exactly as reply-in-conversation does once the hold ends", () => {
     agentWorkerMock.reset();
     expect(agentWorkerMock.next(held())).toEqual(agentWorkerMock.next(plain()));
   });
@@ -134,7 +134,7 @@ describe("a worker that answers naming the post's token", () => {
 
     await vi.advanceTimersByTimeAsync(200);
     await answer;
-    expect(answered).toContain("[reply:in-mailbox] reply-token-abc123");
+    expect(answered).toContain("[reply:in-conversation] reply-token-abc123");
   });
 
   it("does not hold a post that names no hold", async () => {
@@ -144,7 +144,7 @@ describe("a worker that answers naming the post's token", () => {
     let answered: string | undefined;
     void model.generate({ messages: plain() } as Parameters<typeof model.generate>[0]).then((result) => (answered = result.text));
     await vi.advanceTimersByTimeAsync(0);
-    expect(answered).toContain("[reply:in-mailbox]");
+    expect(answered).toContain("[reply:in-conversation]");
   });
 });
 
@@ -202,7 +202,7 @@ describe("the scripted best-fit evaluation", () => {
 
   it("picks the delegate a post names with [route:<worker>]", async () => {
     const result = await route("[route:support.devices] my laptop won't join the wifi");
-    expect(result.answers).toEqual({ member: { type: "choice", choice: "support.devices" } });
+    expect(result.answers).toEqual({ worker: { type: "choice", choice: "support.devices" } });
   });
 
   it("fails the call for a post that names no delegate, so the coordinator's fallback takes it", async () => {

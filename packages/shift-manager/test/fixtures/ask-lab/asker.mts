@@ -1,5 +1,5 @@
 /**
- * The ask-lab's one worker kind: a worker that asks a person before it does
+ * The ask-lab's one worker kind: a worker that asks a user before it does
  * anything.
  *
  * Two doors, both durable, both ending in the framework's stock
@@ -9,11 +9,11 @@
  *   (Workforce's `delegatedPostEntry`), into a session of the delegate's own
  *   that the coordinator's dispatch opens. So an ask raised here lives in a
  *   dispatch-run session, which is what Shift Manager's listing has to ask
- *   for. Its answer, once a person decides, goes back to the coordinator.
- * - `ask` — a public action a test calls directly, in a session a person
+ *   for. Its answer, once a user decides, goes back to the coordinator.
+ * - `ask` — a public action a test calls directly, in a session a user
  *   opened.
  *
- * And a door, `message`: a person's line into the worker's session, which the
+ * And a door, `message`: a user's line into the worker's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
  * assistant item of its own ({@link heardLine}), refuses a line that asks to
  * be refused, takes its time over a line that asks it to, or stops on a stock approval for a line that asks for one, the
@@ -23,7 +23,7 @@
  * tool does, so the turn writes the organization's `projects` collection.
  *
  * Built with `inventory`, the worker flow also declares the organization's inventory
- * collections for a browser to read, so a person who holds only a worker's
+ * collections for a browser to read, so a user who holds only a worker's
  * session still finds the inventory.
  *
  * No model anywhere: the ask is the point, not what the worker would do.
@@ -51,7 +51,7 @@ const messageSchema = z.object({ message: z.string() });
 /** The line a test sends to be refused. */
 export const ASKER_REFUSED_LINE = "refuse me";
 
-/** The line a test sends to have the worker stop on a person's approval before it answers. */
+/** The line a test sends to have the worker stop on a user's approval before it answers. */
 export const ASKER_GATED_LINE = "ask me first";
 
 /**
@@ -108,7 +108,7 @@ const gate = handler({
   },
 });
 
-/** A delegated post's turn: ask about the line the coordinator handed over, then say what the person decided. */
+/** A delegated post's turn: ask about the line the coordinator handed over, then say what the user decided. */
 const fromPost = handler({
   name: "asker-from-post",
   inputSchema: messageSchema,
@@ -163,12 +163,12 @@ export function defineAskerFlow(
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {
-      ask: { block: ask, durable: true, description: "Ask a person to approve something." },
+      ask: { block: ask, durable: true, description: "Ask a user to approve something." },
       message: {
         block: options.projects === true ? hearAndStartProjects() : hear,
         inputSchema: messageSchema,
         userMessage: (input: { message: string }) => input.message,
-        description: "A person's line into this worker's session.",
+        description: "A user's line into this worker's session.",
       },
     },
     internal: {

@@ -143,7 +143,7 @@ describe("devteam: an approved task's run", () => {
   beforeAll(async () => {
     delete process.env.AI_GATEWAY_API_KEY;
     // Settling is what this checks, so the scripted run does not wait out the
-    // pacing a person watching needs. The it-shows-and-stops goal keeps it.
+    // pacing a user watching needs. The it-shows-and-stops goal keeps it.
     process.env[STEP_MS_ENV] = "0";
     try {
       opened = await open("packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce");

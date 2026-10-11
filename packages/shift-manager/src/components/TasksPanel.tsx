@@ -1,11 +1,11 @@
 /**
- * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the person's
+ * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the user's
  * conversation filed for its delegates, as the conversation's own
  * `listTasks` answers them (`lib/conversation-tasks.ts`). Each conversation
  * keeps a board of its own, so this reads that one board and nothing else.
  *
  * It reads when it opens and again each time the Lab is read again
- * (`readAt`), which is after each turn the person sends: a task filed or
+ * (`readAt`), which is after each turn the user sends: a task filed or
  * reassigned in that turn shows then. A task ends between those turns, and
  * its ending wakes a coordinator turn of its own, so while a task is open the
  * panel reads again every {@link TASKS_POLL_MS}; when a read shows a task

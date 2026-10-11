@@ -75,7 +75,7 @@ const chatAgentRenderers: RendererRegistry = {
 type MobilePanel = "chat" | "artifacts";
 
 /**
- * Whether the rail lists the person's conversations with workers: the
+ * Whether the rail lists the user's conversations with workers: the
  * sessions on the one `agent` copy every worker runs on. A conversation is
  * started from the roster panel's "Talk", which names its worker. Set this to
  * `false` to ship the rail with coordinators only.
@@ -83,7 +83,7 @@ type MobilePanel = "chat" | "artifacts";
 const SHOW_WORKERS_IN_RAIL = true;
 
 /**
- * The `fetch` the roster and the person's conversations with workers are read
+ * The `fetch` the roster and the user's conversations with workers are read
  * with. This app sends no credential; a host that does adds it here, once.
  */
 const panelFetch: ClientFetch = (input, init) => fetch(input, init);
@@ -91,7 +91,7 @@ const panelFetch: ClientFetch = (input, init) => fetch(input, init);
 /**
  * The rail's sections. How deep each flow goes is read off the flow's declared
  * cardinality, never written here: the coordinator flow opens straight into
- * the person's conversations with its workers, and so does `agent`, whose one
+ * the user's conversations with its workers, and so does `agent`, whose one
  * copy holds every worker's.
  *
  * "Assistant" is this app's own chat flow, so its conversations stay one click
@@ -238,8 +238,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   // panel has a composer of its own, which calls the picked flow's own action
   // on this session; the assistant's composer stays wired to the assistant.
   // It follows the whole session (`live`), because others write here too: a
-  // delegate's answer landing, a person in another tab. The assistant's session
-  // (`session`, above) is not live: only this person writes there, and their
+  // delegate's answer landing, a user in another tab. The assistant's session
+  // (`session`, above) is not live: only this user writes there, and their
   // own requests already stream.
   const pickedSession = useSession(picked?.sessionId, {
     flowKind: picked?.address,
@@ -256,14 +256,14 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     return async (requestId: string) => (await client.getRequestStatus(requestId)).status;
   }, [pickedAddress]);
 
-  // The person's roster and their conversations with workers.
+  // The user's roster and their conversations with workers.
   const workforce = useMemo(
     () => createWorkforceClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }),
     [],
   );
 
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
-  // What the rail lists: under the coordinator flow, the person's conversation
+  // What the rail lists: under the coordinator flow, the user's conversation
   // with each coordinator the tree declares. Stable, so the navigator's reads
   // stay fenced on it.
   const railSessionSource = useMemo(() => railSessions(sessionClient, workforce), [sessionClient, workforce]);
@@ -363,7 +363,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     [flow]
   );
 
-  // "Talk" on a worker in the roster: the person's conversation with that
+  // "Talk" on a worker in the roster: the user's conversation with that
   // worker, found or started on the worker's flow, opened in the panel.
   const handleTalk = useCallback(
     async (worker: RosterEntry) => {
@@ -399,7 +399,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const railSlots = useMemo(
     () => ({
       // "New session" sits on the assistant's own row. Coordinators get none:
-      // the rail opens the person's one conversation with each. A conversation
+      // the rail opens the user's one conversation with each. A conversation
       // with a worker starts from the roster.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW ? (
@@ -488,7 +488,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       <PickedSessionPanel
         session={pickedSession}
         kind={picked.kind}
-        person={KITCHEN_SINK_USER_ID}
+        user={KITCHEN_SINK_USER_ID}
         requestStatus={pickedRequestStatus}
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (

@@ -19,11 +19,11 @@
  *   delegates with its `handOff` tool, or answers itself. It reads its
  *   delegates with its `listDelegates` tool; the list is never in its prompt.
  * - `best-fit`: best fit's ladder (`best-fit.ts`): the delegate still on the
- *   person's last post, else one evaluator call, else the fallback delegate,
+ *   user's last post, else one evaluator call, else the fallback delegate,
  *   else the coordinator's own judgment turn. Only when that turn fails is the
  *   post unplaced, recorded and said in the conversation.
  * - `round-robin`: the next delegate in list order after the one the
- *   person's last post went to.
+ *   user's last post went to.
  * - `everyone`: each delegate.
  *
  * Every pick is checked against the user's roster when the post arrives
@@ -65,10 +65,10 @@
  * as it lands, never to its author; everyone and judgment send a round's
  * answers on when the round closes. Either way the next round runs on the
  * internal {@link ROUTE_ON_ACTION}, which the conversation dispatches into
- * itself, through the same policy steps as a person's post. A delegate with
+ * itself, through the same policy steps as a user's post. A delegate with
  * no answer says so on {@link DELEGATE_MISSED_ACTION}, so a round doesn't wait
  * on a failed or cancelled turn, and closes at its deadline whatever is still
- * out. Every wake of the conversation (a person's post, an answer, a missed
+ * out. Every wake of the conversation (a user's post, an answer, a missed
  * report, the end of a routing) also closes each round past its deadline, so
  * a delegate that never reports holds its round only until the next wake.
  */
@@ -239,7 +239,7 @@ const ROUTE_QUESTION =
   "Who should take the post? Read it with the recent lines before it: " +
   "a post that follows up on a delegate's answer goes to that delegate.";
 
-/** The door's input: what the person says. */
+/** The door's input: what the user says. */
 const doorInputSchema = z.object({ message: z.string() });
 
 type DoorInput = z.infer<typeof doorInputSchema>;
@@ -248,7 +248,7 @@ type DoorInput = z.infer<typeof doorInputSchema>;
 const POST_STATE = "coordinatorPost";
 
 const postStateSchema = z.object({
-  /** The person's post. Answers going back out keep its id, in a later round. */
+  /** The user's post. Answers going back out keep its id, in a later round. */
   postId: z.string(),
   body: z.string(),
   from: z.string(),
@@ -262,7 +262,7 @@ const postStateSchema = z.object({
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
   /** What each hand-off of the judgment turn came to. */
   handOffs: z.array(routedDelegateSchema),
-  /** In a round after the person's post: the answers going back out. */
+  /** In a round after the user's post: the answers going back out. */
   answers: z.array(roundAnswerSchema).optional(),
   /** Who they never go back to: their author, under best fit and round robin. */
   exclude: deliveryDelegateSchema.optional(),
@@ -345,7 +345,7 @@ function fitOf(placed: Exclude<BestFitPlacement, { by: "held" | "evaluated" }>, 
   if (placed.by === "coordinator") {
     return {
       reason: "coordinator",
-      choice: placed.member,
+      choice: placed.worker,
       ...(placed.confidence === undefined ? {} : { confidence: placed.confidence }),
       ...floor
     };
@@ -647,7 +647,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...(post.note === undefined ? {} : { note: post.note })
   });
 
-  /** What the judgment turn reads: the person's post, or the answers going back out. */
+  /** What the judgment turn reads: the user's post, or the answers going back out. */
   const turnMessage = (post: PostState): string =>
     post.answers === undefined ? post.body : wakeMessage(post.round - 1, post.answers);
 
@@ -665,7 +665,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       filingSessionId: await filingSessionIdOf(ctx.session),
       // Read once, from the conversation's own items, and carried to best fit and every delivery.
       recent: readRecentLines(ctx.session, {
-        person: ctx.session.identity.userId ?? "",
+        user: ctx.session.identity.userId ?? "",
         coordinator: worker.id,
         coordinatorNames: turn.answerNames
       }),
@@ -949,9 +949,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /**
    * One roster read per post: every delegate checked now, the options, the
    * holder and the fallback. An answer going back out is never offered to its
-   * own author, and holds nothing: the hold is about a person's posts.
+   * own author, and holds nothing: the hold is about a user's posts.
    *
-   * On a person's post, the coordinator is a choice too, keyed by its worker
+   * On a user's post, the coordinator is a choice too, keyed by its worker
    * id and picked by its description, when it has one. Its floor, from its
    * configuration, applies on every round. Both come from the worker and the
    * roster, never from the post.
@@ -1012,7 +1012,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     model: options.routeModel,
     inputSchema: bestFitCaseSchema,
     state: (bestFit: BestFitCaseValue) => ({ recent: bestFit.recent, post: bestFit.post }),
-    questions: (bestFit: BestFitCaseValue) => ({ member: choice(ROUTE_QUESTION, bestFit.ladder.options) })
+    questions: (bestFit: BestFitCaseValue) => ({ worker: choice(ROUTE_QUESTION, bestFit.ladder.options) })
   });
 
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
@@ -1032,7 +1032,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   type Placed = z.infer<typeof placedSchema>;
 
   /**
-   * Place the post on best fit's ladder, and note who now holds the person's
+   * Place the post on best fit's ladder, and note who now holds the user's
    * next post. A post the judgment turn takes, picked for the coordinator or
    * missed, carries why in request state, for the turn's record.
    */
@@ -1046,7 +1046,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const bestFit = bestFitCaseSchema.parse(ctx.parent?.input);
       const post = postOf(ctx as never);
       const placed = placeBestFit(bestFit.ladder as BestFitCase, answer);
-      // Only a person's post moves the hold.
+      // Only a user's post moves the hold.
       const holds = post.round === 0;
       if (placed.by === "none" || placed.by === "coordinator") {
         if (holds) await ctx.session.patchState({ [HOLD_STATE]: null } as never);
@@ -1058,7 +1058,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
             : missReason(placed.miss) + (placed.fallbackUnreachable ? "; the fallback delegate can't be reached" : "");
         return { place: "judgment", reason, skipped: bestFit.skipped };
       }
-      const target = bestFit.byLabel[placed.member]!;
+      const target = bestFit.byLabel[placed.worker]!;
       if (holds) {
         await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
       }
@@ -1123,7 +1123,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         delegates: [],
         none: why
       });
-      // A person's post is answered in the conversation; answers going back out aren't.
+      // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
       return { unplaced: why };
     }
@@ -1134,7 +1134,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   );
 
   /**
-   * A fixed policy found nobody to take the post: recorded, and on a person's
+   * A fixed policy found nobody to take the post: recorded, and on a user's
    * post said in the conversation.
    */
   const recordNobody = handler({
@@ -1176,7 +1176,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     list.findIndex((record) => sameDelegate(record, delegate));
 
   /**
-   * Round robin's turns for a person's post, each claimed before it is
+   * Round robin's turns for a user's post, each claimed before it is
    * checked: one versioned write moves the turn to the next delegate after
    * where it stands now, so two posts at once never take the same turn. A
    * delegate already tried is passed over; the turns end once each has been
@@ -1202,7 +1202,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   }
 
   /**
-   * The next delegate in list order that can be reached. For a person's post
+   * The next delegate in list order that can be reached. For a user's post
    * the turn goes on from the delegate the last one went to, and moves on;
    * for an answer going back out it goes on from the answer's author, never
    * to it, and stays where it was.
@@ -1217,7 +1217,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const post = postOf(ctx as never);
       const list = currentDelegates(ctx.session.state, post.defaults).delegates;
       const author = post.exclude;
-      // A person's post claims each turn before checking it, so two posts at
+      // A user's post claims each turn before checking it, so two posts at
       // once take two turns; an answer going back out goes on from its author
       // and leaves the turn where it is.
       const order =
@@ -1250,7 +1250,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // --- everyone ------------------------------------------------------------
 
   /**
-   * Each delegate that can be reached. On a person's post each gets the post;
+   * Each delegate that can be reached. On a user's post each gets the post;
    * when a round's answers go back out, each gets the others' answers from it,
    * and one with no other answer to get is skipped.
    */
@@ -1432,7 +1432,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .tap(finishRouting);
 
   /**
-   * Open a round after the person's post: the answers going back out, routed
+   * Open a round after the user's post: the answers going back out, routed
    * by the conversation's policy now. When none of the closed round's
    * deliveries was answered, nothing goes on: recorded, and done.
    */

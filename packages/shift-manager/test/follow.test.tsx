@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * A conversation keeps its latest turn in view while the person is at its
+ * A conversation keeps its latest turn in view while the user is at its
  * end, and leaves them where they are once they scroll up to read (FIX-1773).
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -52,7 +52,7 @@ function Feed({
 /** Let the MutationObserver's callback run. */
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
-/** Scroll the feed to `top` as the person would. */
+/** Scroll the feed to `top` as the user would. */
 function scrollTo(top: number) {
   const feed = screen.getByTestId("feed");
   feed.scrollTop = top;
@@ -70,7 +70,7 @@ describe("following a conversation's latest turn", () => {
     expect(feed.scrollTop).toBe(8 * LINE - VIEW);
   });
 
-  it("stays where the person scrolled up to, and follows again once they are back at the end", async () => {
+  it("stays where the user scrolled up to, and follows again once they are back at the end", async () => {
     const { rerender } = render(<Feed lines={5} />);
     await settle();
     const feed = screen.getByTestId("feed");
@@ -84,7 +84,7 @@ describe("following a conversation's latest turn", () => {
     expect(feed.scrollTop).toBe(10 * LINE - VIEW);
   });
 
-  it("opened at the start, follows from the person's next line on", async () => {
+  it("opened at the start, follows from the user's next line on", async () => {
     let follow!: () => void;
     const { rerender } = render(<Feed lines={5} startAtEnd={false} onFollow={(f) => (follow = f)} />);
     await settle();

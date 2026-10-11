@@ -3,7 +3,7 @@
  * The task screen against a real Lab, in a DOM (V1 to V5). The run-lab's lead
  * files tasks on its own conversation's board for scripted runs that hold
  * until stopped; what the screen draws is compared with what the Lab's routes
- * and stores hold. A conversation's board is read as the person's whole
+ * and stores hold. A conversation's board is read as the user's whole
  * `tasks` collection, through one of their sessions, and the screen keeps its
  * conversation's rows.
  */
@@ -46,7 +46,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
   return { lab, served: s, clients, rows, boardRef };
 }
 
-/** Whether `url` is a read of the person's conversation boards: the snapshot's, or one task screen's. */
+/** Whether `url` is a read of the user's conversation boards: the snapshot's, or one task screen's. */
 const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith(`/resources/${CONVERSATION_BOARD_COLLECTION}`);
 
 async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
@@ -431,7 +431,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
   }, 30_000);
 });
 
-describe("a task whose run waits on a person (BR-17)", () => {
+describe("a task whose run waits on a user (BR-17)", () => {
   it("draws the ask inline in the Session, on the highlighter in the activity line and the inspector, and no Inbox detour", async () => {
     const opened = await openLab({ asking: true });
     const filed = opened.lab.filed.find((f) => f.kind === "asking")!;
@@ -445,7 +445,7 @@ describe("a task whose run waits on a person (BR-17)", () => {
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
 
     const ask = await screen.findByTestId("session-ask", {}, { timeout: 10_000 });
-    // Its kind on the highlighter, and the one ask card Inbox draws.
+    // Its ask kind on the highlighter, and the one ask card Inbox draws.
     expect(within(ask).getByText("APPROVAL").getAttribute("data-look")).toBe("ask-kind");
     expect(within(ask).getByTestId("ask-card").textContent).toContain(RUN_LAB_ASK);
     expect(screen.queryByText("Waiting on you: answer it in Inbox")).toBeNull();

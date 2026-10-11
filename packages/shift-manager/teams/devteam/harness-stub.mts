@@ -77,7 +77,7 @@ export interface HarnessStubOptions {
    */
   steps?: readonly string[];
   /**
-   * How long the run pauses before each of its `steps`, so a person watching
+   * How long the run pauses before each of its `steps`, so a user watching
    * the run's session sees them arrive. Abortable: an interrupt ends the wait.
    * Default 0.
    */

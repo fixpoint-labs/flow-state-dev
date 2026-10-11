@@ -1,8 +1,8 @@
 /**
- * A worker's door: the one public action its worker flow declares for a person's
+ * A worker's door: the one public action its worker flow declares for a user's
  * message (FIX-1690).
  *
- * An app that wants to send a person's line into a worker's session has to know
+ * An app that wants to send a user's line into a worker's session has to know
  * which action takes it, and it must not know the worker's flow to find out. So
  * the hire answers once, from the worker flow's own declaration, and the answer rides
  * on the worker's inventory row as `door`.
@@ -10,7 +10,7 @@
  * The door is the public action (`flow.actions`, never `internal` or `task`)
  * that both:
  *
- * - declares `userMessage`, so the engine writes the person's line into the
+ * - declares `userMessage`, so the engine writes the user's line into the
  *   session as a user item before the block runs; and
  * - takes `{ message: string }`, so the app builds the input without knowing
  *   the worker flow.
@@ -24,7 +24,7 @@ import type { FlowInstance } from "@flow-state-dev/core";
 
 /** What the hire found for one worker. */
 export type WorkerDoor = {
-  /** The action that takes a person's message, or `null` when there is none (or two). */
+  /** The action that takes a user's message, or `null` when there is none (or two). */
   door: string | null;
   /** Set when the worker flow declares two or more such actions. */
   problem?: string;
@@ -49,7 +49,7 @@ function isDoor(action: ActionLike): boolean {
 /**
  * The door of a hired worker, read off its flow's public actions.
  *
- * @param worker A worker `hireWorkforce` returned (or any flow instance).
+ * @param worker A worker `hireWorkforce` returned (or any registered flow).
  * @returns The door's action name, `null` when the worker flow has none, and a
  *   problem naming both when it has two.
  */
@@ -63,7 +63,7 @@ export function workerDoorOf(worker: Pick<FlowInstance, "id" | "kind"> & { actio
     door: null,
     problem:
       `worker "${worker.id}" (flow "${worker.kind}") declares ${doors.length} actions that take a ` +
-      `person's message (${doors.map((d) => `"${d}"`).join(", ")}), so it is published with no ` +
+      `user's message (${doors.map((d) => `"${d}"`).join(", ")}), so it is published with no ` +
       `door and takes no message. Keep one: a door is the one public action with \`userMessage\` ` +
       `and a \`{ message }\` input.`,
   };

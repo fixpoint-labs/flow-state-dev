@@ -172,15 +172,15 @@ export function doorOf(workers: readonly Worker[], flowId: string): string | nul
 export function teamsOf(workers: readonly Worker[]): Array<{ team: string; workers: Worker[] }> {
   const teams = new Map<string, Worker[]>();
   for (const worker of workers) teams.set(worker.team, [...(teams.get(worker.team) ?? []), worker]);
-  const all = [...teams].map(([team, members]) => ({ team, workers: members }));
+  const all = [...teams].map(([team, workers]) => ({ team, workers }));
   return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
 }
 
-/** PROJECTS: every project the person reads. */
+/** PROJECTS: every project the user reads. */
 export type ProjectsView = { projects: Project[] };
 
 /**
- * PROJECTS (BR-22): every project the person reads, shared ones and their own
+ * PROJECTS (BR-22): every project the user reads, shared ones and their own
  * private ones. Derived from the snapshot alone: no read of its own. Fails when
  * the projects read did.
  */
@@ -243,7 +243,7 @@ function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
 }
 
 /**
- * The shift summary's numbers (D1, BR-4): the asks waiting on the person, as
+ * The shift summary's numbers (D1, BR-4): the asks waiting on the user, as
  * Inbox lists them, and the runs going with how many workstreams they run in,
  * from the rows Tasks reads. Each line fails on its own read (BR-8).
  */
