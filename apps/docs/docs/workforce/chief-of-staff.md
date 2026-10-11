@@ -159,7 +159,7 @@ export const flows = hireWorkforce(installation);
 
 The capabilities each add one part:
 
-- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on both flows `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the seat and mailbox inventories on both flows. Passing the keys as `inventory` lets `discover` answer who works here and who is in a mailbox.
+- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on both flows `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the worker and mailbox inventories on both flows. Passing the keys as `inventory` lets `discover` answer who works here and who is in a mailbox.
 - **Posting.** `workerMailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can post in a mailbox it is a member of, signed as the worker its turn runs as. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`.
 - **Hiring.** The catalog holds `hire` and `fire`. Asking first is yours to add, as `askFire` does: the blocks themselves write at once.
 

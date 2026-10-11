@@ -81,7 +81,7 @@ no opinion at that spot — not because a convention is missing.
 
 | File | Why it is the lab's |
 |---|---|
-| `workforce/flows/workers/em.mts` | The coordinator kind. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM seat does no harness work" is a fact about the kind, not about one run. |
+| `workforce/flows/workers/em.mts` | The coordinator kind. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM worker does no harness work" is a fact about the kind, not about one run. |
 | `workforce/flows/workers/coder.mts` | The working kind. One task entry, taking the feature board's rows and any conversation's tasks, with two `harnessManager`s behind it (feature work, which needs a commit, and a person's ask, which needs an answer), one message door over both, and the harness itself passed in as a slot. |
 | `judge.mts` | What the coder's judge asks Jev about a conversation's task, and the confidence floor it reads the verdict against: the same model and floor the chief of staff's best fit runs on. |
 | `host.mts` | Read the tree, build the installation and the kinds, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
@@ -109,7 +109,7 @@ installed.
 ## The ask
 
 Nothing in this tree asked a person anything, so an Inbox pointed at it had nothing to show.
-The EM seat now has a third door beside `file` and a person's line in a workstream: it pauses on a stock
+The EM worker now has a third door beside `file` and a person's line in a workstream: it pauses on a stock
 approval before it files, and files only if a person approves. Deny files nothing and says so.
 
 The door is off unless the host asks for it. `openLab` takes the feature to ask about, turns on
