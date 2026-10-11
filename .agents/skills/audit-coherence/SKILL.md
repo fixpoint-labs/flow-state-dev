@@ -79,6 +79,8 @@ Hunt all three. They differ in where the fix lands.
    shapes: how blocks are composed, how state is modeled, how errors are handled, how
    resources are wired, naming conventions, boundary rules. Use `zoom-out` shape
    if the area is unfamiliar. Fan out with `Explore` sub-agents for a wide scope.
+   For a **job** scope, the surface map is this step: don't survey composition, state or
+   errors as well. Step 3 looks for disagreements between the map's entries.
 3. **Find the disagreements.** For each pattern, look for a second place that does it
    differently. For each tenet, look for code that strains it. For each architecture
    doc in scope, spot-check that the code still matches it (a doc/code mismatch is a

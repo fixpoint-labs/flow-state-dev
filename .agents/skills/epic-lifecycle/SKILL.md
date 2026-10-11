@@ -764,12 +764,17 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   **The same worker maps the jobs the batch grew.** Per-spec review and `cross-spec-review`
   both stop at the epic's edge; a job's surface grows across epics and projects, and wrap is
   the cheapest moment to fold what just landed. The worker:
-  1. **Derives the added surface** from the merged impl PRs' diffs: new or changed package
-     exports, subpath re-exports, and tool, action and internal-entry registrations.
+  1. **Derives the added surface.** It starts from the jobs the merged issue specs already
+     named under `issue-spec` question 7 (their `DECISIONS.md`), then checks the merged impl
+     PRs' diffs for additions no spec recorded: new or changed package exports, subpath
+     re-exports, and tool, action and internal-entry registrations.
   2. **Names the job** each addition does (deliver work, wait for a result, answer, report an
-     ending…).
-  3. **Runs `audit-coherence` with each job as the scope**, across packages, and puts the
-     surface map's fold candidates in the lessons PR as proposed follow-ups.
+     ending…), and dedupes: one entry per job, however many issues touched it.
+  3. **Runs `audit-coherence` once per job** with that job as the scope, across packages, and
+     puts the surface map's fold candidates in the lessons PR as proposed follow-ups. A job whose
+     only addition a merged spec already compared against the closest entry, finding no fold,
+     needs no audit; list it as cleared by that spec. Two or more additions to one job always
+     get the audit, because no single spec saw both.
 
   The lessons PR body **lists every addition it considered and the job it named**, even when
   no audit ran. `job audit: none grew` alone can't be told from "didn't look", so it is only
