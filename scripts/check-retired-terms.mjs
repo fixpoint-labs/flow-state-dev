@@ -355,7 +355,10 @@ export function census({ files, paths }, { extraExceptions = [] } = {}) {
       continue;
     }
     areaCounts[area.id] = (areaCounts[area.id] ?? 0) + 1;
-    if (!area.scope || BINARY.test(path)) continue;
+    if (!area.scope) continue;
+    // A file left under its old name can be silent in its text, so the path counts too.
+    for (const hit of scanFile(path, path, exceptions, stripped)) hits.push({ path, area: area.id, ...hit, line: 0 });
+    if (BINARY.test(path)) continue;
     const text = files.get(path);
     if (text === undefined) continue;
     for (const hit of scanFile(path, text, exceptions, stripped)) hits.push({ path, area: area.id, ...hit });

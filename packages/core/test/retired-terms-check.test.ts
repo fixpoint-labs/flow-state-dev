@@ -85,6 +85,11 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
     expect(r.hits).toEqual([]);
   });
 
+  it("counts a retired word in an in-scope path, since a renamed file's text can be silent", () => {
+    const r = run({ "packages/workforce/src/mailbox/entry.ts": "export const entry = 1;\n" });
+    expect(counted(r)).toEqual(["packages/workforce/src/mailbox/entry.ts:0:mailbox"]);
+  });
+
   it("still counts a second retired word on a line an exception strips", () => {
     // The goal path is kept (goals keep their words); the mailbox beside it is not.
     const r = run({
