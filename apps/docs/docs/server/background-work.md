@@ -140,7 +140,7 @@ block.
 A task board worker can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and that run lands in the same listings. See [Task board →
-Workers that hand off](../orchestration/task-board.md#workers-that-hand-off).
+Workers that hand off](../orchestration/task-board.md#assignees-that-hand-off).
 
 ### Starting a job on another flow
 

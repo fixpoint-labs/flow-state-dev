@@ -173,7 +173,7 @@ Tasks are seeded here to keep the example in one piece. A row added later with `
 
 A board with a worker that hands off needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
 
-Read next: **[Workers that hand off](/docs/orchestration/task-board#workers-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
+Read next: **[Workers that hand off](/docs/orchestration/task-board#assignees-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
 Handing off comes with bounds:
 
