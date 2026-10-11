@@ -64,6 +64,7 @@ import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import type { TaskDelegates } from "../delegates/worker-delegates";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_PROJECT_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   TASK_CHAIN_STATE_KEY,
@@ -83,7 +84,7 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import { filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
+import { filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
@@ -267,7 +268,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // each a readonly field the worker flow's create check confirms; all
     // from server-written data. A filer that works for a workstream (its
     // lead's session, or a task filed from one) passes the workstream down,
-    // so a coding run in the task session finds its project (FIX-1793 S6).
+    // so a coding run in the task session finds its project (FIX-1793 S6);
+    // one that belongs to a project (a project's conversation, or a task
+    // filed from one) passes the project down the same way.
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
       const flow = (await options.delegates(ctx)).available.get(task.assignee);
@@ -275,6 +278,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
       const workstream = filingWorkstreamOf(ctx.session.state);
+      const project = filingProjectOf(ctx.session.state);
       return {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
@@ -282,7 +286,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [TASK_ID_STATE_KEY]: taskId,
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
         ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
-        ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream })
+        ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
+        ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project })
       };
     }
   };

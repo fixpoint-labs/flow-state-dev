@@ -443,9 +443,33 @@ harnessManager({
 });
 ```
 
-A run in a workstream's session, or in a task session filed from one, works for that workstream's project. A run works for the workstream's owner: one whose owner is anyone else is refused with `not-the-owner`. For a [mailbox board](#mailboxes-on-a-project) a shared project lists, pass the board as `projectWorkspace({ board })`, and the run works in the project that lists the board's mailbox, for its members only (`not-a-member` otherwise).
+`projectWorkspace` finds the project a run works in, in this order:
 
-Every refusal comes before any file is read: `no-project` when the run's session leads no workstream and no project holds its board, `no-such-workstream` and `no-such-project` when what it names is gone. The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+1. The workstream the task came from, when it was filed from one.
+2. The project the task came from, when it was filed from a project's conversation.
+3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the person's own coordinator.
+4. For a [mailbox board](#mailboxes-on-a-project) a shared project lists, passed as `projectWorkspace({ board })`, the project that lists the board's mailbox.
+
+The run is refused, before any file is read, when:
+
+| Refusal | When |
+|---|---|
+| `other-project` | The task names a project other than the one its conversation belongs to. The refusal names both. |
+| `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
+| `no-project` | None of the four steps finds a project. The message says the task can name one in `input.project`. |
+| `not-a-member` | The person the run belongs to isn't one of the project's members. |
+| `not-the-owner` | The run is in a workstream whose owner is someone else. |
+| `no-such-workstream`, `no-such-project` | What the task or its session names is gone. |
+
+Membership is read from the person the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+
+A coordinator filing for a coding worker from a conversation with no project names one:
+
+```json
+{ "goal": "Take a look at our repo and tell me what the checkout flow does", "assignee": "eng.coder", "input": { "project": { "visibility": "shared", "id": "storefront" } } }
+```
+
+Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
 
 ### The project's own files
 

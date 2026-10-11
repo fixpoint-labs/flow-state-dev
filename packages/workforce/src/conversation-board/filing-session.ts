@@ -5,10 +5,16 @@
  * partition its task board keeps its rows in, and the task sessions its board
  * hands work to (FIX-1794). Any two spellings would drift.
  *
- * And the workstream a session works for, which a task session's hand-over
- * carries down from the session that filed it (FIX-1793 S6).
+ * And the workstream a session works for, and the project, which a task
+ * session's hand-over carries down from the session that filed it (FIX-1793
+ * S6, FIX-1866 S5).
  */
-import { FILING_WORKSTREAM_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
+import {
+  FILING_PROJECT_STATE_KEY,
+  FILING_WORKSTREAM_STATE_KEY,
+  PROJECT_STATE_KEY,
+  WORKSTREAM_STATE_KEY
+} from "../workers/keys";
 
 /**
  * The workstream a session works for, from its server-written fields: the one
@@ -20,6 +26,19 @@ export function filingWorkstreamOf(state: unknown): string | undefined {
   const led = fields?.[WORKSTREAM_STATE_KEY];
   if (typeof led === "string") return led;
   const filed = fields?.[FILING_WORKSTREAM_STATE_KEY];
+  return typeof filed === "string" ? filed : undefined;
+}
+
+/**
+ * The project a session works in, from its server-written fields: the one it
+ * is the conversation of (`projectId`), else the one it was filed from
+ * (`filingProjectId`), in `projectRef` form. `undefined` for neither.
+ */
+export function filingProjectOf(state: unknown): string | undefined {
+  const fields = state as Record<string, unknown> | undefined;
+  const own = fields?.[PROJECT_STATE_KEY];
+  if (typeof own === "string") return own;
+  const filed = fields?.[FILING_PROJECT_STATE_KEY];
   return typeof filed === "string" ? filed : undefined;
 }
 

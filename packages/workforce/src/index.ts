@@ -66,7 +66,13 @@ export { unattendedBoardWarnings, type HireOptions, type WorkerFlowEntry } from 
 export { workerFlowProblems } from "./worker-flow-contract";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
 export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
-export { workerTaskEntry, type WorkerTaskEntryOptions } from "./conversation-board/task-entry";
+export {
+  conversationLedgers,
+  workerTaskEntry,
+  type WorkerTaskBlockInput,
+  type WorkerTaskClaim,
+  type WorkerTaskEntryOptions
+} from "./conversation-board/task-entry";
 export {
   createWorkerLookup,
   type WorkerLookup,
