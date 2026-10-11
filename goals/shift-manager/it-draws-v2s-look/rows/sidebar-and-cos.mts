@@ -70,7 +70,6 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
 export const SIDEBAR_AND_COS_EXCEPTIONS: Exception[] = [
   { id: "registry ask card", select: "[data-testid=cos] [data-testid=ask-card], [data-testid=cos] [data-testid=ask-card] *", why: "the registry's approval and question cards, unedited (ER-6); their Approve and Reject stay v1's by decision" },
   { id: "registry item", select: "[data-look=registry-item], [data-look=registry-item] *", why: "the registry's message, reasoning and tool cards, unedited (ER-6; audit C5, T4, T6)" },
-  { id: "workstream gone", select: "[data-testid=nav-workstream-gone]", why: "a workstream a project lists whose mailbox left the Lab, shown with no link; v2's Labs never lose one" },
   { id: "no single chief of staff", select: "[data-testid=cos-none], [data-testid=cos-none] *, [data-testid=cos-several], [data-testid=cos-several] *", why: "the named state a Lab without one chief of staff gets; v2 always has one" },
   { id: "conversation not yet read", select: "[data-testid=cos-conversation-empty], [data-testid=cos-conversation-reading], [data-testid=cos-truncated]", why: "Shift Manager's named states for a conversation not started, being read, or longer than one read; v2 draws one under way" },
 ];
