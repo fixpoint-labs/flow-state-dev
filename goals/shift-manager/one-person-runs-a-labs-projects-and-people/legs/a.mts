@@ -60,7 +60,7 @@ export async function legA(world: World): Promise<LegA | undefined> {
   const titles = [`Launch ${hex(2)}`, `Research ${hex(2)}`];
   const words =
     `Please create two projects for me. The first is called "${titles[0]}": add ${member.userId} as a member. ` +
-    `The second is called "${titles[1]}", with nobody else.`;
+    `The second is called "${titles[1]}": a shared project too, with only me as a member.`;
   const turn = await askCos(world, "a1", words);
   if (turn === undefined) {
     r.fail("a1", "no CoS seat: the Chief of Staff view draws no chief of staff to ask");

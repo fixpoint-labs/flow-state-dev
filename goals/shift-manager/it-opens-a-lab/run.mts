@@ -44,7 +44,7 @@
  *                    answer lands in the store" on DevTeam.
  *   queued-shown     Tasks treats no row as queued, so the toggle hides
  *                    nothing. Must fail at "Tasks equals the store's open
- *                    rows" on DevTeam, whose filed row is queued.
+ *                    rows" on DevTeam, whose follow-up row is queued.
  *
  * Run:      pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
@@ -62,6 +62,7 @@ import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.m
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
 import { PROJECTS_KIND as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_KIND as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks", "queued-shown"] as const;
@@ -76,7 +77,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 
 const fixture = loadFixture<{
   line: string;
-  devteam: { issue: string; text: string };
+  devteam: { issue: string; text: string; followUp: { issue: string; text: string } };
   multiSeatCollab: { goal: string; desk: string; asks: string };
 }>(import.meta.url);
 
@@ -510,7 +511,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       // The person opens a workstream in the organization's first project, led
       // by the tree's EM, through the projects flow Shift Manager opens one
       // with; then files one feature on that workstream session's board through
-      // the EM's own `file` door. Filed, not run: the row waits, queued.
+      // the EM's own `file` door, where it runs at once; then a follow-up waiting on it, queued.
       const roster = await readDeclaredRoster(LABS.devteam.tree);
       const lead = roster.workers.find((w) => w.declared.flow === EM_FLOW)?.id;
       if (lead === undefined) throw new Error(`${name}: the tree declares no worker on the "${EM_FLOW}" flow to lead a workstream`);
@@ -521,11 +522,30 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const address = { visibility: "shared", id: project };
       const openedStatus = await act(api, PROJECTS_FLOW, String(projects.body.session.id), "openWorkstream", { project: address, id: WORKSTREAM, title: "Feature", lead }, userId);
       if (openedStatus !== "completed") throw new Error(`${name}: opening ${project}'s ${WORKSTREAM} ended ${openedStatus}`);
-      const session = (await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&state.workstreamId=${encodeURIComponent(`shared/${project}/${WORKSTREAM}`)}`)).sessions?.[0]?.id;
+      const session = (await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&flowKind=${encodeURIComponent(EM_FLOW)}&state.workstreamId=${encodeURIComponent(`shared/${project}/${WORKSTREAM}`)}`)).sessions?.[0]?.id;
       if (typeof session !== "string") throw new Error(`${name}: opening ${project}'s ${WORKSTREAM} made no workstream session of ${userId}'s`);
       const status = await act(api, EM_FLOW, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, userId);
       if (status !== "completed") throw new Error(`${name}: the filing ended ${status}`);
       if (!(await waitForRow(api, tree, () => true, userId))) throw new Error(`${name}: the filing put no row on a board`);
+      // A second piece that waits on the first, through the board's own task door: the board
+      // hands a row on as soon as it can start, so only a row with an unfinished dependency
+      // stays queued, and Tasks needs one to hide.
+      const first = Object.values((await readStore(api, tree, userId)).rows).flat()[0]!;
+      const followUp = await act(
+        api,
+        EM_FLOW,
+        session,
+        "addTask_tasks",
+        {
+          goal: fixture.devteam.followUp.text,
+          assignee: first.assignee ?? undefined,
+          deps: [first.id],
+          input: { issue: fixture.devteam.followUp.issue, phase: PHASE },
+        },
+        userId,
+      );
+      if (followUp !== "completed") throw new Error(`${name}: filing the follow-up ended ${followUp}`);
+      if (!(await waitForRow(api, tree, (s) => s === "pending" || s === "blocked", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
       workstream = { project, id: WORKSTREAM, session, lead };
     }
 

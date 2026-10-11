@@ -114,7 +114,7 @@ export const SLICE_C_ROWS: Row[] = [
   { id: "team strip meta", audit: "P2", v2: { line: 518, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=team-strip-team] > span:nth-child(2)", on: ["project"], min: ({ store }) => store.teams, want: { family: "mono", size: 11 } },
 
   // The project's Board, as shipped: one lane per workstream session the person opened in it, its title over its
-  // tasks. The sweep opens one, and its conversation has filed none.
+  // tasks. The sweep opens one led by the EM, which holds the one running row it filed.
   {
     id: "project lane title",
     audit: "P5",
@@ -130,8 +130,17 @@ export const SLICE_C_ROWS: Row[] = [
     shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-empty">', ref: OWN_BOARDS },
     select: "[data-testid=project-lane] > [data-testid=cos-tasks-empty]",
     on: ["project"],
-    min: 1,
+    min: 0,
     want: { family: "sans", size: 12 },
+  },
+  {
+    id: "project lane running square",
+    audit: "P5",
+    shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />', ref: OWN_BOARDS },
+    select: "[data-testid=project-lane] [data-testid=cos-task] > [data-state-square=run]",
+    on: ["project"],
+    min: ({ store }) => (store.running > 0 ? 1 : 0),
+    want: { square: "run" },
   },
 ];
 
@@ -143,6 +152,11 @@ export const SLICE_C_EXCEPTIONS: Exception[] = [
   { id: "load older", select: "[data-testid=load-older]", why: "pages a long transcript in; v2's feed is one page" },
   { id: "empty feed", select: "[data-testid=feed-empty]", why: "v2 draws no empty feed" },
   { id: "reading", select: "[data-testid=transcript] > p", why: "the feed's loading line; v2 draws no loading state" },
+  {
+    id: "project lane task",
+    select: "[data-testid=project-lane] [data-testid=cos-task], [data-testid=project-lane] [data-testid=cos-task] > span, [data-testid=project-lane] [data-testid=cos-task] > span *",
+    why: "a lane's task, drawn as the shipped task list (b2f2d4c2): v2 has no lane, and its task cards wait on FIX-1651's step (P6), like the board card",
+  },
 ];
 
 /** The regions these screens add to those graded whole. */
