@@ -2,11 +2,11 @@
  * An agent worker hears the earlier turns of its own conversation, and only
  * those.
  *
- * A person who tells a worker "I need a new laptop" and then asks "where can I
+ * A user who tells a worker "I need a new laptop" and then asks "where can I
  * buy it?" is asking about the laptop. The worker can only answer that if the
  * model is handed the first turn along with the second. What it must never be
  * handed is another conversation's turns: a worker talks in one session per
- * conversation, and a worker that repeats in one conversation what a person
+ * conversation, and a worker that repeats in one conversation what a user
  * told it in another is a leak, not memory.
  *
  * What is graded is what the model was sent, read off the scripted model's

@@ -1,6 +1,5 @@
 /**
- * The manager on a board a mailbox holds — an organization-scoped ledger whose
- * id carries dots.
+ * The manager on an organization-scoped ledger whose id carries dots.
  *
  * Driven end to end, in process: a real `createFlowState`, a real task board
  * and its same-flow hand-off, the real fenced settlement and a real git
@@ -14,9 +13,9 @@
  *    `completed`. Before the board-id grammar widened, the manager refused the
  *    id on the first attempt.
  * 2. **Whose run it is.** The ledger is kept per organization, so a second
- *    member can drain it. A row whose run the first member started is refused
+ *    user can drain it. A row whose run the first user started is refused
  *    to the second, naming the first, with no attempt charged and the row's
- *    status untouched; the first member's own retry lands in the same checkout,
+ *    status untouched; the first user's own retry lands in the same checkout,
  *    branch, run record and agent session.
  */
 import { afterAll, describe, expect, it } from "vitest";
@@ -41,9 +40,9 @@ import {
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
-/** A board a mailbox holds: `<mailbox id>.<board name>`, as the workforce mints it. */
-const MAILBOX_BOARD_ID = "eng.feature.work";
-const ORG_ID = "org_mailbox_board";
+/** A board id with dots in it, on a board kept per organization. */
+const DOTTED_BOARD_ID = "eng.feature.work";
+const ORG_ID = "org_dotted_board";
 const ALICE = "alice";
 const BOB = "bob";
 const ISSUE = "FIX-1";
@@ -106,21 +105,21 @@ function scriptedHarness(script: Array<"finished" | "failed">, seen: SeenRun[]) 
  * board's same-flow hand-off — the conductor lab's shape, on an org ledger.
  */
 function host(options: { script: Array<"finished" | "failed">; gate: boolean }) {
-  const dir = mkdtempSync(join(tmpdir(), "harness-manager-mailbox-board-"));
+  const dir = mkdtempSync(join(tmpdir(), "harness-manager-dotted-board-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
   mkdirSync(sourceRepo, { recursive: true });
   seedRepo(sourceRepo);
 
   const ledger = defineTaskCollection({
-    id: MAILBOX_BOARD_ID,
+    id: DOTTED_BOARD_ID,
     scope: "org" as const,
     stateSchema: harnessTaskInputSchema,
   });
   const seen: SeenRun[] = [];
   const branches: string[] = [];
   const manager = harnessManager({
-    boardCollectionId: MAILBOX_BOARD_ID,
+    boardCollectionId: DOTTED_BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
     phase: {
@@ -137,22 +136,22 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     harness: scriptedHarness(options.script, seen),
   });
   const board = taskBoard({
-    name: "mailbox-board",
-    boardId: "mailbox-board",
+    name: "dotted-board",
+    boardId: "dotted-board",
     collection: ledger,
     concurrency: 1,
     ...(options.gate ? { dispatcher: runOwnerDispatcher() } : {}),
     workers: {
-      coder: dispatcher({ name: "mailbox-board-hand-off", action: "work", session: "per-task" }),
+      coder: dispatcher({ name: "dotted-board-hand-off", action: "work", session: "per-task" }),
     },
   });
   const seed = handler({
-    name: "mailbox-board-seed",
+    name: "dotted-board-seed",
     inputSchema: z.object({}),
     outputSchema: z.object({ id: z.string() }),
     uses: [board.capability],
     execute: async (_input, ctx) => {
-      const tasks = (ctx as { cap: Record<string, any> }).cap["mailbox-board"];
+      const tasks = (ctx as { cap: Record<string, any> }).cap["dotted-board"];
       if ((await tasks.getTask(TASK_ID)) === undefined) {
         await tasks.addTask({
           id: TASK_ID,
@@ -166,12 +165,12 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     },
   });
   const flow = defineFlow({
-    kind: "mailbox-board-host",
+    kind: "dotted-board-host",
     actions: { seed: { block: seed }, drain: { block: board.drain } },
     task: { actions: { work: { block: manager } } },
-  } as never)({ id: "mailbox-board-host" } as never);
+  } as never)({ id: "dotted-board-host" } as never);
   const state = createFlowState({
-    flows: { "mailbox-board-host": flow },
+    flows: { "dotted-board-host": flow },
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
@@ -201,7 +200,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     const record = await runtime.stores.resourceState.get(
       "org",
       ORG_ID,
-      `${MAILBOX_BOARD_ID}/${TASK_ID}`,
+      `${DOTTED_BOARD_ID}/${TASK_ID}`,
     );
     return record?.state as Task;
   };
@@ -221,7 +220,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     }
   };
 
-  /** One member's run record for this row — user-scoped, keyed by the run topic. */
+  /** One user's run record for this row — user-scoped, keyed by the run topic. */
   const runRecord = async (userId: string) => {
     const runtime = await (state as unknown as {
       getRuntime(): Promise<{ stores: any }>;
@@ -229,7 +228,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     const record = await runtime.stores.resourceState.get(
       "user",
       `${userId}:~org:${ORG_ID}`,
-      `runs/${runTopic(MAILBOX_BOARD_ID, ISSUE, PHASE)}`,
+      `runs/${runTopic(DOTTED_BOARD_ID, ISSUE, PHASE)}`,
     );
     return record?.state as { attempt?: number; outcome?: string; sessionId?: string | null } | undefined;
   };
@@ -243,7 +242,7 @@ function messageOf(error: unknown): string {
   return `${String(e?.message ?? "")} ${String(e?.cause?.message ?? "")} ${JSON.stringify(error)}`;
 }
 
-describe("a row on a mailbox's board", () => {
+describe("a row on a dotted, organization-scoped board", () => {
   it("runs through the manager to completed, on an organization-scoped ledger", async () => {
     const lab = host({ script: ["finished"], gate: true });
     expect((await lab.act(ALICE, "seed")).error).toBeUndefined();
@@ -257,12 +256,12 @@ describe("a row on a mailbox's board", () => {
     // The checkout the harness ran in carries the board's id as is — no
     // translation of the dots.
     expect(lab.seen).toHaveLength(1);
-    expect(lab.seen[0]!.cwd).toContain(`/${MAILBOX_BOARD_ID}/`);
+    expect(lab.seen[0]!.cwd).toContain(`/${DOTTED_BOARD_ID}/`);
   }, 60_000);
 });
 
-describe("a run on a shared board belongs to the member who started it", () => {
-  it("refuses another member's drain without charging it, and resumes for the starter", async () => {
+describe("a run on a shared board belongs to the user who started it", () => {
+  it("refuses another user's drain without charging it, and resumes for the starter", async () => {
     const lab = host({ script: ["failed", "finished"], gate: true });
     expect((await lab.act(ALICE, "seed")).error).toBeUndefined();
 

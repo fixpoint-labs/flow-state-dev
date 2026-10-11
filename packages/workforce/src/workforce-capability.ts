@@ -4,8 +4,7 @@
  *
  * Compose it into a worker flow's `uses` and every worker on that flow gains one
  * tool: `discover`, which answers what is in scope for it right now. The
- * capability installs the workforce's own two domains (workers and mailboxes,
- * projected from the declared roster (files, and when asked the durable
+ * capability installs the workforce's own domain (workers, projected from the declared roster (files, and when asked the durable
  * roster) joined to FIX-1405's live inventory rows —
  * see `./manifest-sources`) and carries whatever other domains the app hands
  * it, so there is ONE registration point and one door rather than a second
@@ -114,7 +113,7 @@ export interface WorkforceCapabilityOptions {
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
-  // One registration point (tenet 5). The workforce's own two domains and the
+  // One registration point (tenet 5). The workforce's own domain and the
   // app's go into the same call, so a duplicate is refused in one place with
   // both sites named rather than discovered when a worker asks.
   const registry: ManifestRegistry = createManifestRegistry([
@@ -136,7 +135,7 @@ export function createWorkforceCapability(
   const doors = new Map<string, ReturnType<typeof discoveryTools>["discover"]>();
   const doorFor = (selection: readonly ManifestDomain[] | undefined) => {
     // Sorted, because the key stands for a SET: a worker that writes
-    // `discover: [workers, mailboxes]` and one that writes `[mailboxes, workers]`
+    // `discover: [workers, skills]` and one that writes `[skills, workers]`
     // narrow to the same door, and an order-sensitive key would build and hold
     // a second identical `discoveryTools` instance for the same scope.
     const key = selection === undefined ? "*" : [...selection].sort().join(",");

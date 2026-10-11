@@ -85,7 +85,7 @@ const sharerFlow = defineFlow({
   }
 });
 
-/** An app flow no worker runs on: a person writing through the app. */
+/** An app flow no worker runs on: a user writing through the app. */
 const appFlow = defineFlow({ kind: "app", actions: { share: { inputSchema: writeInput, block: share } } });
 
 async function withRuntime(
@@ -226,7 +226,7 @@ describe("a shared resource", () => {
     });
   });
 
-  it("BR-23 · a person writing through the app, with no worker, is named alone", async () => {
+  it("BR-23 · a user writing through the app, with no worker, is named alone", async () => {
     const app = appFlow();
     await withRuntime([app], async (run, read) => {
       await run(app, "share", "alice", { message: "from the app", key: "app" });

@@ -1,20 +1,20 @@
 "use client";
 
 /**
- * The right-hand panel: the person's workers.
+ * The right-hand panel: the user's workers.
  *
- * The workers are the person's roster: the coordinator and the specialists the
- * app's files declare, which everyone has, and any worker the person hired or
- * forked, each with the flow it runs on. "Talk" opens the person's
+ * The workers are the user's roster: the coordinator and the specialists the
+ * app's files declare, which everyone has, and any worker the user hired or
+ * forked, each with the flow it runs on. "Talk" opens the user's
  * conversation with that worker, or starts one, through Workforce's client.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import type { RosterEntry, WorkforceClient } from "@flow-state-dev/workforce/browser";
 
 export interface TeamPanelProps {
-  /** The person's workforce client. Pass a stable one: the roster is read again only when it changes. */
+  /** The user's workforce client. Pass a stable one: the roster is read again only when it changes. */
   workforce: WorkforceClient;
-  /** Open the person's conversation with a worker. */
+  /** Open the user's conversation with a worker. */
   onTalk: (worker: RosterEntry) => Promise<void>;
   /** Anything the host puts above the roster, such as build mode's artifacts. */
   top?: ReactNode;
@@ -32,7 +32,7 @@ export function TeamPanel({ workforce, onTalk, top }: TeamPanelProps) {
   );
 }
 
-/** The person's roster, each worker with its flow, what it handles, and "Talk". */
+/** The user's roster, each worker with its flow, what it handles, and "Talk". */
 function WorkerRoster({ workforce, onTalk }: { workforce: WorkforceClient; onTalk: (worker: RosterEntry) => Promise<void> }) {
   const roster = useRoster(workforce);
   const [talkError, setTalkError] = useState<{ id: string; message: string } | null>(null);

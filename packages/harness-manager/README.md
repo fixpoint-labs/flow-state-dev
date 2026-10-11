@@ -1,6 +1,6 @@
 # @flow-state-dev/harness-manager
 
-A task-board worker that turns a row into a **supervised coding run**: its own checkout, a verdict read before the row settles, a question it can ask a person, and the coding agent itself as a slot you fill.
+A task-board worker that turns a row into a **supervised coding run**: its own checkout, a verdict read before the row settles, a question it can ask a user, and the coding agent itself as a slot you fill.
 
 A *harness* is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing the run. This package imports none of them.
 
@@ -110,7 +110,7 @@ branch name, such as one ending in `.lock`. Two boards whose ids differ other th
 never share a checkout.
 
 The board is kept per organization, so everyone in the organization sees its rows. A row's
-coding run belongs to the person who started it: a drain by anyone else in the organization is
+coding run belongs to the user who started it: a drain by anyone else in the organization is
 refused, naming whose run it is. Their own retry picks up the same checkout, branch and agent
 session. With `runOwnerDispatcher()` on the draining board, the refusal happens before the row
 is claimed and costs it no attempt. Without it the manager still refuses to run someone else's
@@ -169,7 +169,7 @@ On a board read from the claim:
 - **A refused run fails the task for good** (`errored`, never retried), so the conversation
   hears why. On a fixed board it is cancelled, as before.
 - **A question parks the task on the board**, the way the conversation parks any task. The
-  person answers there, and the next attempt gets the answer in its prompt, in the same
+  user answers there, and the next attempt gets the answer in its prompt, in the same
   checkout and agent session.
 - **A judge, when you give one, reads the run** after the phase's own check passes, for a task
   with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
@@ -263,7 +263,7 @@ defineFlow({
 });
 ```
 
-Sent `{ message }` on a run's own session, it writes the message into that session as a user item and keeps it in the manager's `turns` collection. A running attempt stops, and the next attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. The message doesn't count against `maxAttempts`.
+Sent `{ message }` on a run's own session, it writes the message into that session as a user item and keeps it in the manager's `turns` collection. A running attempt stops, and the next attempt resumes the same coding session with the message appended to its prompt, marked as the user's words. The message doesn't count against `maxAttempts`.
 
 The door starts that next attempt by dispatching `drain` into the session that claimed the row, which keeps every attempt in the run's own session. `defineFlow` refuses a flow that doesn't declare the entry. When another flow drains the board and hands rows to this one, declare the entry on that flow and pass that flow's id as `flowKind` (for a flow with one instance, its name).
 
@@ -303,7 +303,7 @@ defineFlow({
 Resolve each board from server state, such as the session's own fields, never from the request. For each board you give:
 
 - `tasks`: its rows, as the substrate resolves them. The door keys run records by the board's ledger id and partition, the same way the manager did.
-- `orgScoped`: the board is kept per organization, so only the run's own person may talk to it.
+- `orgScoped`: the board is kept per organization, so only the run's own user may talk to it.
 - `drain`: the `internal` entry that runs this board's drain, and the flow that declares it. After a stop the door dispatches it into the session that claimed the row.
 - `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for a fixed board's rows, which carry an `{ issue, phase }` payload. For a board read from the claim, return the task id with its payload's phase, or for a task with neither, the phase of the manager that runs it.
 

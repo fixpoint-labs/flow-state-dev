@@ -6,7 +6,7 @@
  *
  * - `judgment`: the coordinator's own turn decided, handing off with its tool
  *   or answering itself.
- * - `held`: best fit, and the person's last post went to a delegate that
+ * - `held`: best fit, and the user's last post went to a delegate that
  *   hasn't answered since. No model call.
  * - `evaluated`: best fit's one evaluator call picked the delegate.
  * - `fallback`: best fit couldn't place it, and the fallback delegate took it.
@@ -75,7 +75,7 @@ export type RoutedDelegate = z.infer<typeof routedDelegateSchema>;
 export const coordinatorRouteRecordSchema = z.object({
   /** The post routed. */
   postId: z.string(),
-  /** The round it was routed in: 0 for a person's post, one more each time answers go back out. */
+  /** The round it was routed in: 0 for a user's post, one more each time answers go back out. */
   round: z.number().int().min(0),
   /** The conversation's routing policy. */
   policy: z.string(),

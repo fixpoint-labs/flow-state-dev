@@ -259,7 +259,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
   const models = createMockModelResolver({
     evaluators: {
-      [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { member: { type: "choice", choice: "eng.tasker" } } })
+      [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { worker: { type: "choice", choice: "eng.tasker" } } })
     },
     generators: { "coordinator-judgment": judgment, "agent-answer": agentAnswer, ...(options.generators ?? {}) }
   });

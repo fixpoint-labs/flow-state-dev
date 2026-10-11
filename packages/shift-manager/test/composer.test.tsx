@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The turn composer keeps what the person typed after they pressed Send. A send
+ * The turn composer keeps what the user typed after they pressed Send. A send
  * that finishes clears the draft only if it is still the line that was sent.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -83,7 +83,7 @@ describe("a delivered line that stopped the worker says on what", () => {
     return status.textContent;
   };
 
-  it("points at Inbox only for a person's ask; any other stop reads as waiting, and no stop as plain delivered", async () => {
+  it("points at Inbox only for a user's ask; any other stop reads as waiting, and no stop as plain delivered", async () => {
     expect(await sendAs("ask")).toMatch(/Delivered\..*in Inbox/);
     const wait = await sendAs("wait");
     expect(wait).toMatch(/Delivered\..*waiting/);

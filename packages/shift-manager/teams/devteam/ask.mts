@@ -1,6 +1,6 @@
 /**
  * Raising the EM worker's ask — the one step a host calls to put an approval in
- * front of a person, before anyone has done anything.
+ * front of a user, before anyone has done anything.
  *
  * Its own module because two kinds of host call it:
  * `openLab` (the goal checks) and a host that builds its own flow state rather
@@ -10,7 +10,7 @@
  * What it does, and nothing else: in the EM worker's own session (`s_<worker id>`,
  * the one `file` and `drain` run in, and which a session listing returns),
  * opened naming the EM worker if it isn't there yet ({@link openWorkerSession}),
- * run the asking door as the given person until it suspends on a stock
+ * run the asking door as the given user until it suspends on a stock
  * `human_approval`. The answer is not this module's business: it arrives
  * through the engine's resume route, the one Shift Manager's Inbox uses.
  *
@@ -23,9 +23,9 @@
  * - pending (`suspended`), being acted on (`in_progress`) or answered
  *   (`completed`, which an ask only reaches through Approve or Deny) — nothing
  *   is raised. A denied feature stays denied until the store is fresh: asking
- *   again on every restart would put back in a person's Inbox an ask they
+ *   again on every restart would put back in a user's Inbox an ask they
  *   already declined. The Deny is read off the request, not recorded twice.
- * - `failed`, `interrupted`, `aborted` or `incomplete` — no person ever decided
+ * - `failed`, `interrupted`, `aborted` or `incomplete` — no user ever decided
  *   it, so the claim is taken over (a compare-and-set on its version, so two
  *   hosts cannot both take it) and a fresh ask is raised.
  *
@@ -52,18 +52,18 @@ import { ASK_ENTRY } from "./worker-config.mts";
 export const RAISE_ASK_STEP = "raiseAsk";
 
 /**
- * Where a feature's claim lives in the person's resource state. Outside the
+ * Where a feature's claim lives in the user's resource state. Outside the
  * board's prefix, so enumerating the board's rows never sees it.
  */
 export const ASK_CLAIM_PREFIX = "devforce-lab-asks/";
 
 /**
- * Request statuses that mean a person has the ask, or has answered it. Any
+ * Request statuses that mean a user has the ask, or has answered it. Any
  * other status means nobody decided, and a fresh ask may take the claim over.
  */
 const HELD_STATUSES: ReadonlySet<string> = new Set(["suspended", "in_progress", "completed"]);
 
-/** The feature a person is asked to approve. */
+/** The feature a user is asked to approve. */
 export interface AskFeature {
   /** The feature's identity: the issue slug its row names. */
   issue: string;
@@ -82,7 +82,7 @@ export interface RaiseAskOptions {
   emWorker: string;
   /** What to ask about. */
   feature: AskFeature;
-  /** The person the ask runs as, and whose Inbox lists it. */
+  /** The user the ask runs as, and whose Inbox lists it. */
   principal: { userId: string; orgId: string };
   /**
    * Read the row filed for a feature, by its issue, off the board of the EM's
@@ -159,7 +159,7 @@ function messageOf(error: unknown): string {
  * Raise the ask once, in the EM worker's own session, and return once it is
  * pending.
  *
- * @param options The flow state, the EM worker, the feature and the person.
+ * @param options The flow state, the EM worker, the feature and the user.
  * @returns `raised: true` with the request id, or `raised: false` naming the
  *   claim, request or row that made another ask wrong.
  * @throws If durable execution is off, the worker has no asking door, a store
@@ -269,14 +269,14 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   }
 
   // Graded on what the store recorded rather than on what came back: a
-  // pending ask is a fact about the request a person's Inbox reads.
+  // pending ask is a fact about the request a user's Inbox reads.
   const request = await guarded("reading the new ask", () => stores.request.get(requestId));
   if (request === undefined) {
     await release();
     return refuse("no request was recorded in the worker's session");
   }
   if (request.status !== "suspended") {
-    return refuse(`the request ended "${request.status}" instead of waiting on a person`);
+    return refuse(`the request ended "${request.status}" instead of waiting on a user`);
   }
   return { raised: true, requestId, sessionId };
 }

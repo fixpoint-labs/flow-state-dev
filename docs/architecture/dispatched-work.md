@@ -227,8 +227,8 @@ gate reads its one ledger, this one reads the ledger the dispatch names. An id
 row is read, which keeps what the board-scoped input schema protects; then the
 arms below run on that ledger in the same order. The id travels on the
 envelope, so `resolve` must answer only for ledgers the running context may
-read — Workforce's mailbox-list source resolves only declared, org-scoped
-lists in the run's organization — and the row re-read there authorizes the
+read — a source that resolves only declared, org-scoped lists in the run's
+organization, say — and the row re-read there authorizes the
 run. The gate records the ledger id beside the claim (`currentLedger` on the
 worker-body state) so its recorders settle on the ledger they read from.
 `defineFlow` gates such an entry with no board in the flow; one a same-flow

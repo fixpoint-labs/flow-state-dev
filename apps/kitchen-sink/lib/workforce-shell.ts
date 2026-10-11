@@ -6,7 +6,7 @@
  * is server code, and both import these. Nothing here imports anything, so the
  * page gets the names without pulling the flow into the browser.
  *
- * The workers themselves are not here: the right panel reads the person's
+ * The workers themselves are not here: the right panel reads the user's
  * roster through Workforce's client (`@flow-state-dev/workforce/browser`),
  * which answers with each worker's flow and description.
  *
@@ -34,23 +34,23 @@ export function isCoordinatorFlow(flow: string): boolean {
 
 /**
  * The coordinators the tree declares, by worker id: what the rail lists under
- * the coordinator flow. Each is the person's own conversation with that
+ * the coordinator flow. Each is the user's own conversation with that
  * coordinator, found or started by its id (`lib/rail-sessions.ts`).
  */
 export const SHELL_COORDINATORS = ["support.help"] as const;
 
-/** What a coordinator's composer sends: the person's post, through the flow's door. */
+/** What a coordinator's composer sends: the user's post, through the flow's door. */
 export const COORDINATOR_ASK = { action: "run", field: "message" } as const;
 
 /**
- * The worker flows a person talks to one worker on: the built-in `agent`, plus
+ * The worker flows a user talks to one worker on: the built-in `agent`, plus
  * every flow under `workforce/flows/workers/`, of which this app has none. Each
  * runs as one copy, holding every worker's conversations on it.
  */
 export const WORKER_FLOWS = ["agent"] as const;
 
 /**
- * What a worker's composer sends: the one action its worker flow answers a person with,
+ * What a worker's composer sends: the one action its worker flow answers a user with,
  * and that action's one input field. A worker flow with nothing to answer with says
  * so instead, and its workers get no composer, only this reason.
  */

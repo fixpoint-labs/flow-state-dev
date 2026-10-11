@@ -7,7 +7,7 @@
  * records, and the delivery ledger, never a router's internal decision.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1791/BUSINESS-RULES.md`, V3 and V5):
- *   BR-17  round robin: the next delegate in list order takes each person's post, skipping one
+ *   BR-17  round robin: the next delegate in list order takes each user's post, skipping one
  *          that can't be reached; the turn survives an edit to the list;
  *   BR-18  everyone: each delegate that can be reached gets the post once;
  *   BR-19  a conversation with no delegate that can be reached: nobody runs, recorded and said;
@@ -61,7 +61,7 @@ async function act(host: Host, sessionId: string, action: string, input: unknown
 }
 
 describe("round robin (V3)", () => {
-  it("hands each person's post to the next delegate in list order, with no model call (BR-17, BR-28)", async () => {
+  it("hands each user's post to the next delegate in list order, with no model call (BR-17, BR-28)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { routing: "round-robin" } }) });
     const id = await host.conversation("alice", "desk");
     for (const message of ["one", "two", "three", "four"]) await post(host, id, message);
@@ -296,8 +296,8 @@ describe("rounds (V5)", () => {
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);
     expect(host.heard[1]!.message).toMatch(/^eng\.em, through desk: eng\.em heard: /);
     expect(host.route.calls).toHaveLength(2);
-    const offered = (call: number) => Object.keys((host.route.calls[call]!.questions as any).member.criteria);
-    // The coordinator is a choice on the person's post only (FIX-1833 BR-3).
+    const offered = (call: number) => Object.keys((host.route.calls[call]!.questions as any).worker.criteria);
+    // The coordinator is a choice on the user's post only (FIX-1833 BR-3).
     expect(offered(0)).toEqual(["eng.em", "eng.coder", "support.general", "desk"]);
     expect(offered(1)).toEqual(["eng.coder", "support.general"]);
     const { records } = await host.items(id);
@@ -308,7 +308,7 @@ describe("rounds (V5)", () => {
     expect(await answers(host, id)).toHaveLength(2);
   });
 
-  it("under best fit, holds nobody for the person's next post on an answer going back out (BR-14)", async () => {
+  it("under best fit, holds nobody for the user's next post on an answer going back out (BR-14)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { rounds: 1 } }) });
     const id = await host.conversation("alice", "desk");
     // The EM answers; the coder, handed the EM's answer in round 1, never does.
@@ -316,7 +316,7 @@ describe("rounds (V5)", () => {
     await quiet(host);
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);
 
-    // The person's next post is theirs to place: an evaluator call, not held for the coder.
+    // The user's next post is theirs to place: an evaluator call, not held for the coder.
     await post(host, id, "and the budget? [route:support.general] [fail:support.general]");
     await quiet(host);
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder", "support.general"]);
@@ -327,7 +327,7 @@ describe("rounds (V5)", () => {
     ]);
   });
 
-  it("under round robin, routes an answer to the delegate after its author, and the person's turn doesn't move (BR-24, BR-17)", async () => {
+  it("under round robin, routes an answer to the delegate after its author, and the user's turn doesn't move (BR-24, BR-17)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { routing: "round-robin", rounds: 1 } }) });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "one");
@@ -557,7 +557,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     });
   }
 
-  it("closes an overdue round when the person's post is the only wake", async () => {
+  it("closes an overdue round when the user's post is the only wake", async () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
@@ -595,7 +595,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(silent).toMatchObject({ answered: false });
     expect(silent.missed).toBeUndefined();
 
-    // Past the deadline, the person posts again.
+    // Past the deadline, the user posts again.
     await untilOverdue(host, id);
     await post(host, id, "and the release?");
     await quiet(host);

@@ -8,7 +8,7 @@
  * tool calls as quiet lines), following the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
- * coordinator's, a workstream's lead's; otherwise the person's latest with
+ * coordinator's, a workstream's lead's; otherwise the user's latest with
  * the worker), the name over the worker's messages, the text for an empty conversation, what
  * sits above the feed (`lead`), a line to hand in (`autoSend`), suggestions,
  * the composer's `scale`, and `renderItem` to draw an item its own way (read
@@ -83,7 +83,7 @@ export function Conversation({
   testId = "conversation",
 }: {
   worker: Worker;
-  /** The session this conversation is, when the view found it: every line goes there. Absent, the person's latest with the worker. */
+  /** The session this conversation is, when the view found it: every line goes there. Absent, the user's latest with the worker. */
   session?: string;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
@@ -110,7 +110,7 @@ export function Conversation({
 }) {
   const { clients, refresh } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
-  // The feed opens where it starts, and follows once the person reaches the end or sends a line.
+  // The feed opens where it starts, and follows once the user reaches the end or sends a line.
   const feed = useFollowLatest({ startAtEnd: false });
   const { sessionId, opened, read, failure, reread } = conversation;
 

@@ -69,7 +69,7 @@ async function postToOtto(answer: MockGeneratorInstance, message: string, desk: 
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": answer },
       evaluators: {
-        "coordinator-route": mockEvaluationModel({ answers: { member: { type: "choice", choice: "otto" } } })
+        "coordinator-route": mockEvaluationModel({ answers: { worker: { type: "choice", choice: "otto" } } })
       }
     }),
     resolvePrincipal: (context: any) => ({ userId: context.request.headers.get("x-user"), orgId: "acme" })

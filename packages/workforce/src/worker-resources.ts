@@ -31,7 +31,7 @@ import { emptyMap } from "./empty-map";
 /**
  * The key a worker's file names its documents under.
  *
- * Public: a person types it, and it matches the `resources/` folder the
+ * Public: a user types it, and it matches the `resources/` folder the
  * documents come from. Read from here by every door, never spelled as a
  * literal — a renamed key with a literal left behind is an access grant that
  * silently does not apply.
@@ -496,8 +496,8 @@ export function verifyWorkerNarrowing(input: VerifyWorkerNarrowingInput): string
   // **Identity, not name.** The question here is whether this accessor holds
   // one of the app's documents, and a block resource that merely shares a
   // document's ref is not that document — `BR-8`'s collision refusal is what
-  // governs the grant naming it. Flagging by name would refuse the kind that
-  // check exists for. What identity cannot see is a block declaring its own
+  // governs the grant naming it. Flagging by name would refuse the very case
+  // that check exists for. What identity cannot see is a block declaring its own
   // COPY of a document; there is no sound test for "a copy of", and the
   // subtraction already drops such an entry by name at flow level.
   for (const key of Object.keys(minted)) {

@@ -2,7 +2,7 @@
  * `readProjectFiles`: a member's read of the files a project keeps.
  *
  * The `project-files` collections have no browser read, so this is how a
- * person reads them. It finds the project by its address (a private one only
+ * user reads them. It finds the project by its address (a private one only
  * in the caller's own user scope), checks the session's owner against the
  * row's `members` (`membership-gate.ts`), then lists only
  * `project-files/<projectId>/…` at that visibility, filtered at the source

@@ -6,7 +6,7 @@
  * The delegates are `agent` workers, or workers on an app's own flow whose
  * generator reads `delegatedPostHistory`, so what is graded is what their
  * model was handed, with each message's role, and what landed in the
- * person's conversation. The models are scripted, and answer only from what
+ * user's conversation. The models are scripted, and answer only from what
  * they are handed:
  *
  * - best fit's evaluation: a post marked `[follow-up]` goes to whichever
@@ -85,14 +85,14 @@ function scriptedRoute() {
         recent?: Array<{ from: string; text: string }>;
         post: { from: string; text: string };
       };
-      const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
+      const offered = (questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {};
       if (post.text.includes("[follow-up]")) {
         const last = [...recent].reverse().find((line) => Object.hasOwn(offered, line.from));
-        if (last !== undefined) return { member: { type: "choice", choice: last.from } };
+        if (last !== undefined) return { worker: { type: "choice", choice: last.from } };
       }
       const mark = [...post.text.matchAll(/\[route:([a-z.-]+)\]/g)].map((m) => m[1]!).find((m) => Object.hasOwn(offered, m));
       if (mark === undefined) throw new Error("the scripted route has no pick for this post");
-      return { member: { type: "choice", choice: mark } };
+      return { worker: { type: "choice", choice: mark } };
     }
   });
 }
@@ -377,12 +377,12 @@ describe("a follow-up keeps its conversation's context", () => {
 });
 
 describe("recentLines", () => {
-  const who = { person: "alice", coordinator: "desk", coordinatorNames: ["coordinator-judgment", "coordinator-judgment-with-activate-tool"] };
+  const who = { user: "alice", coordinator: "desk", coordinatorNames: ["coordinator-judgment", "coordinator-judgment-with-activate-tool"] };
   let index = 0;
   const message = (role: string, text: string, extra: Partial<SessionItem> = {}): SessionItem =>
     ({ id: `i${index}`, type: "message", status: "completed", requestId: `r${index}`, itemIndex: index++, payload: text, role, ...extra }) as SessionItem;
 
-  it("names each line's writer: the person, the coordinator, or the delegate that answered", () => {
+  it("names each line's writer: the user, the coordinator, or the delegate that answered", () => {
     const lines = recentLines(
       [
         message("user", "hello"),

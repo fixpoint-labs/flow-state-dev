@@ -100,10 +100,10 @@ function scriptedRoute() {
         post: { from: string; text: string };
       };
       const named = /\[route:([^\]\s]+)\]/.exec(post.text)?.[1];
-      if (named !== undefined) return { member: { type: "choice", choice: named } };
+      if (named !== undefined) return { worker: { type: "choice", choice: named } };
       if (post.text.includes("[follow-up]")) {
         const last = [...recent].reverse().find((line) => line.from !== post.from);
-        if (last !== undefined) return { member: { type: "choice", choice: last.from } };
+        if (last !== undefined) return { worker: { type: "choice", choice: last.from } };
       }
       throw new Error("the scripted route has no delegate for this post");
     }

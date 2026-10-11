@@ -44,7 +44,7 @@ const workerControl: WorkerControl | undefined =
 
 /**
  * Where each attempt leaves its line. The goal check points it at its own
- * scratch file; a person running the server by hand gets one in the temp dir.
+ * scratch file; a user running the server by hand gets one in the temp dir.
  */
 const outbox = process.env.MULTI_WORKER_COLLAB_OUTBOX ?? join(tmpdir(), "multi-worker-collab-work.ndjson");
 

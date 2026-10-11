@@ -7,13 +7,13 @@ description: "A project is a body of work, private to one user or shared with th
 
 # Projects
 
-A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a person.
+A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a user.
 
 The work inside a project is split into **workstreams**. Each workstream has one owner and a lead worker from that owner's roster. Everyone who can read the project can read every workstream's entry, so anyone can see how the project is going. Only the owner can change their workstream or hand it work.
 
-Each person talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that person's workstreams.
+Each user talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that user's workstreams.
 
-![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each person's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
+![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each user's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
 
 ## Private and shared
 
@@ -112,7 +112,7 @@ If your app should start with some projects already there, create them from its 
 
 ### Giving the writes to a worker
 
-A worker on the built-in `agent` worker flow can create projects and open workstreams for the person talking to it. Put the blocks in the flow's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
+A worker on the built-in `agent` worker flow can create projects and open workstreams for the user talking to it. Put the blocks in the flow's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
 
 ```ts
 import { defineAgentWorkerFlow, defineProjectBlocks } from "@flow-state-dev/workforce";
@@ -125,19 +125,19 @@ const agent = defineAgentWorkerFlow({
   catalog: {
     createProject: projects.createProject.as({
       name: "createProject",
-      description: "Create a project for the person you're talking to. They own it; `members` adds the user ids they name.",
+      description: "Create a project for the user you're talking to. They own it; `members` adds the user ids they name.",
     }),
     openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
-      description: "Open a workstream the person owns in a project, led by a worker on their roster.",
+      description: "Open a workstream the user owns in a project, led by a worker on their roster.",
     }),
   },
 });
 ```
 
-[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a person's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
+[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a user's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
 
-A worker calls them only when its own `tools:` names them. The owner is the person whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
+A worker calls them only when its own `tools:` names them. The owner is the user whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
 
 
 [The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
@@ -338,7 +338,7 @@ routing: judgment
 tools: [readProject]
 ---
 
-When the person asks how the project is going, call `readProject` and answer
+When the user asks how the project is going, call `readProject` and answer
 from what it returns. When they ask for work, hand it to the delegate whose
 workstream it belongs to.
 ```
@@ -428,7 +428,7 @@ harnessManager({
 
 1. The workstream the task came from, when it was filed from one.
 2. The project the task came from, when it was filed from a project's conversation.
-3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the person's own coordinator.
+3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
 
 The run is refused, before any file is read, when:
 
@@ -437,11 +437,11 @@ The run is refused, before any file is read, when:
 | `other-project` | The task names a project other than the one its conversation belongs to. The refusal names both. |
 | `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
 | `no-project` | None of the three steps finds a project. The message says the task can name one in `input.project`. |
-| `not-a-member` | The person the run belongs to isn't one of the project's members. |
+| `not-a-member` | The user the run belongs to isn't one of the project's members. |
 | `not-the-owner` | The run is in a workstream whose owner is someone else. |
 | `no-such-workstream`, `no-such-project` | What the task or its session names is gone. |
 
-Membership is read from the person the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried. When the task came from a conversation, the task fails and the conversation hears why, in a line under the worker's name.
+Membership is read from the user the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried. When the task came from a conversation, the task fails and the conversation hears why, in a line under the worker's name.
 
 A coordinator filing for a coding worker from a conversation with no project names one:
 

@@ -158,7 +158,7 @@ the convention derives them, the last two because the body is already the instru
 
 A hired worker then receives **two** instruction settings, never merged: `instructions` (its own
 body) and `teamInstructions` (its team's). Both are absent rather than empty when there are none.
-The [built-in worker flow](../../docs/architecture/workforce-default-worker-kind.md) composes them
+The [built-in worker flow](../../docs/architecture/workforce-default-worker-flow.md) composes them
 into its prompt in a fixed order — the team's first, the worker's own last.
 
 The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
@@ -354,7 +354,7 @@ whose name breaks the naming rules.
 
 `createWorkerInstallation` takes the standard workers and the worker flows your app defined, and
 `hireWorkforce` gives back the flows to register: **one copy of each worker flow**, at the flow's own
-kind, and the roster flow (`workforce-roster`). Every worker on a flow shares its one copy. A hire,
+flow kind, and the roster flow (`workforce-roster`). Every worker on a flow shares its one copy. A hire,
 fork or fire is a write to the user's data. Every process sees it on the next turn.
 
 ```ts
@@ -389,7 +389,7 @@ session names its worker in a readonly `workerId`, checked when the session is c
 that worker on every turn with `installation.resolveWorker(ctx, flowKind)`. `hireWorkforce` refuses a
 worker flow that doesn't declare it.
 
-A worker takes a person's message through its flow's **door**: the one public action the flow
+A worker takes a user's message through its flow's **door**: the one public action the flow
 declares with `userMessage` and a `{ message }` input. `openInventory` writes it on the worker's
 [inventory row](#the-inventory) as `door`. Every worker flow has exactly one: a flow with none, or
 with two, is refused when `hireWorkforce` checks its worker flows, naming the flow.
@@ -492,7 +492,7 @@ A worker flow is an ordinary flow. What makes it *hireable* is that its `configS
 | `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
 | `teamInstructions?` | The instructions its team wrote — read from that team's [`TEAM.md`](#the-optional-team-file). Imposed when its team wrote any, absent when the team wrote none or has no file. Never merged with `instructions`. |
 | `workerSkills` | The skills its folders resolved for it, in level order. Imposed on every worker, present and empty when there are none. |
-| `workerTools` | The blocks this worker's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every worker, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
+| `workerTools` | The blocks this worker's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every worker, present and empty when there are none. Live blocks, not names — names that resolved to the worker flow's catalog stay on the worker flow's own `tools` setting. |
 | `workerPackages?` | The [packages](#packages-from-files) this worker holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the worker holds at least one, absent otherwise. |
 | `workerId` | The worker's own id, the one a coordinator's `delegates:` and a task's `assignee` name it by. Imposed on every worker. A block reads it from the worker the turn loaded (`installation.resolveWorker(ctx, flow).config.workerId`), never from `ctx.flow.config`, which the shared copy holds once for every worker. |
 
@@ -605,7 +605,7 @@ worker.
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
-| `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the person's other flows. Every worker on `agent` shares the one copy, so a person's workers on it still share the same user-scoped storage. Default `false`. |
+| `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the user's other flows. Every worker on `agent` shares the one copy, so a user's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
 whatever it selected under `capabilities:`. The worker flow maps those names against the catalog and hands
@@ -684,8 +684,8 @@ lists `memory/recall` in its `tools:`. The key has to match the tool's own name;
 doesn't is refused when the worker flow is built.
 
 Every worker on `agent` shares the one copy. Long-term memory (episodic, semantic and digest) is
-kept in the person's user scope, so one person's workers on `agent` share it, and it never reaches
-another person or organization. Working memory is kept per conversation, and each conversation runs
+kept in the user's own scope, so one user's workers on `agent` share it, and it never reaches
+another user or organization. Working memory is kept per conversation, and each conversation runs
 one worker. Skills are kept per worker. Keeping a capability's data apart per worker is the app's,
 as for any data a worker flow keeps per user ([Workers as data](#workers-as-data)).
 
@@ -1163,7 +1163,7 @@ A user's own workers are rows on their roster ([Workers as data](#workers-as-dat
 roster flow's `hire`, `fork`, `edit` and `fire` actions, which `hireWorkforce` registers. A hire,
 fork or fire is a write to the user's data. Every process sees it on the next turn.
 
-To let a worker hire or fire for the person it talks to, hand the same blocks to a model as tools.
+To let a worker hire or fire for the user it talks to, hand the same blocks to a model as tools.
 A catalog key is the tool's own name, so give each block that name and what the model reads about
 it: `hire` with `.as()`, and `fire` as a sequencer when it should wait for an approval first. Put
 the pair in the worker flow's catalog:
@@ -1174,9 +1174,9 @@ import { createWorkerHireBlocks, defineAgentWorkerFlow } from "@flow-state-dev/w
 
 const { hire, fire } = createWorkerHireBlocks(installation);
 const rosterTools = {
-  hire: hire.as({ name: "hire", description: "Hire a worker of the person's own." }),
-  fire: sequencer({ name: "fire", description: "Fire one of the person's own workers.", inputSchema: fire.inputSchema, outputSchema: fire.outputSchema })
-    .tap(askFire) // your own `human_approval` suspension, if a fire should wait for the person
+  hire: hire.as({ name: "hire", description: "Hire a worker of the user's own." }),
+  fire: sequencer({ name: "fire", description: "Fire one of the user's own workers.", inputSchema: fire.inputSchema, outputSchema: fire.outputSchema })
+    .tap(askFire) // your own `human_approval` suspension, if a fire should wait for the user
     .step(fire),
 };
 
@@ -1184,7 +1184,7 @@ const agent = defineAgentWorkerFlow({ installation, catalog: rosterTools });
 ```
 
 A worker holds `hire` or `fire` only when its own `tools:` names them. Each write goes to the roster
-of the person whose turn it is: a worker can't hire for anyone else. The blocks write at once; an
+of the user whose turn it is: a worker can't hire for anyone else. The blocks write at once; an
 approval before a fire is yours to add as a step before it, as the chief of staff guide shows.
 
 ## The inventory
@@ -1203,7 +1203,7 @@ where it is when a later roster no longer names the worker. The rows are the sta
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a person's message, or `null`), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
+| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
 
 The collection is readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares it: the
@@ -1317,8 +1317,8 @@ The row schema is closed, so a key it does not declare is dropped on the way in 
 A project is a row with a title, a brief, an owner, its `members` and the git remote its code
 lives in (`repository`, or `null`). A **shared** project is a row of the organization's
 `projects` collection, which everyone in the org lists and reads. A **private** project is the same
-row in its creator's own user scope, which nobody else lists or reads, with its creator as its only
-member. A project's address is `{ visibility, id }`, and every read and write after the create takes
+row in its creator's own user scope, which nobody else lists or reads, with its creator alone in its
+`members`. A project's address is `{ visibility, id }`, and every read and write after the create takes
 one; another user's private project is refused as `no-such-project`. Declare the shared collection
 once in `workforce/org/resources/projects.ts` with `defineProjectsCollection()`. The guide is the
 docs site's Workforce → Projects page.
@@ -1333,9 +1333,9 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
 
 - **`createProject { id, title, brief?, visibility?, members?, repository? }`** writes a
   row with `create` and returns `{ project, visibility, created }`. `visibility` defaults to
-  `"shared"`. The owner is the calling session's owner, and is always a member. An id another owner's
+  `"shared"`. The owner is the calling session's owner, and is always in `members`. An id another owner's
   shared project holds (`project-id-held`), `unassigned` (`invalid-project-id`) and a private project
-  naming other members (`private-has-members`) are each refused, and nothing is written. The same
+  naming anyone else in `members` (`private-has-members`) are each refused, and nothing is written. The same
   owner re-sending an id gets the row back (`created: false`). A project's workstreams are the
   entries `openWorkstream` writes, not a list on its row.
 - **`openWorkstream { project, id, title, lead, due?, objectives? }`** opens a workstream the caller
@@ -1359,10 +1359,10 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   `parseWorkstreamEntry` from `./browser`.
 - **`listProjects {}`** returns `{ projects }`: the projects the caller is a member of, each as
   `{ visibility, id, title, repository }` (`repository` is `null` when it has none). Shared ones
-  come first, then the caller's private ones, each by id. A shared project the caller isn't a member
-  of is left out, though its row is readable in the organization.
+  come first, then the caller's private ones, each by id. A shared project whose `members` leave the caller
+  out is left out, though its row is readable in the organization.
 - **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
-  returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
+  returns `{ project }`. Members only. Nothing else on the row moves, and of two project members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
   or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
@@ -1391,7 +1391,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
 - **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so give each that name with
   `projects.createProject.as({ name: "createProject", description: "…" })`. The owner is the session the worker
-  answers in, so the project or workstream belongs to the person who asked.
+  answers in, so the project or workstream belongs to the user who asked.
 
 Refusals are `ProjectRefusedError`, with a `reason`.
 
@@ -1442,7 +1442,7 @@ const flows = hireWorkforce(installation); // research, agent, and the roster fl
 
 Register every flow `hireWorkforce` returns: one copy of each worker flow, and the roster flow,
 `workforce-roster`, which carries the `hire`, `fork`, `edit` and `fire` actions below. A session
-of it also reads the organization's worker inventory (`inventory/workers/*`), so a person can see
+of it also reads the organization's worker inventory (`inventory/workers/*`), so a user can see
 who the organization's workers are.
 `createWorkerHireBlocks(installation)` returns the same four as blocks, to mount elsewhere or hand
 to a model as [tools](#hire-fork-and-fire-as-tools).
@@ -1457,7 +1457,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   skills and packages against what the installation registers. Read the worker's settings from
   `worker.config`: `ctx.flow.config` is the flow's own config, the same for every worker on it.
   Load it in the flow's `request.onStarted`, or in the block that reads it. A request that waited
-  for a person runs again when the answer arrives, and a step that already finished isn't run
+  for a user runs again when the answer arrives, and a step that already finished isn't run
   again: its recorded output is reused, so a worker loaded in an earlier step is gone on the
   resumed run. The built-in `agent` loads it in `request.onStarted`.
   When the turn can't run, `resolveWorker` throws `WorkerTurnRefusedError` and nothing is written:
@@ -1529,7 +1529,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   `ensureWorkerSession` returns the user's most recent session with the worker, or creates one.
   Two calls at once get the same session. `findWorkerSession` takes the same argument and returns
   the session or `undefined`, creating nothing. The roster flow keeps one session per user, of the
-  kind `workforce-roster`; if you list every flow's sessions, filter out
+  flow kind `workforce-roster`; if you list every flow's sessions, filter out
   `flowKind === "workforce-roster"`. Two first calls at once may create two roster sessions, which
   is harmless: the roster lives in the user's scope, not in either session.
 
@@ -1591,7 +1591,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 
 - **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
   `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
-  person's last post, else makes one evaluator call over each delegate's note or description and
+  user's last post, else makes one evaluator call over each delegate's note or description and
   the coordinator's own description, reading the post with the conversation's recent lines. A
   pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
   fails, answers with something that isn't a choice, has no one to pick, or picks a delegate
@@ -1604,8 +1604,8 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   reached. `everyone` sends it to each delegate that can be reached. When no delegate can be
   reached, nobody takes the post, and the conversation says so.
 - **Recent lines.** Every post is routed and delivered with the conversation's recent lines: the
-  person's posts, the coordinator's own replies and the delegates' answers that landed, oldest
-  first, each under who wrote it (the person's user id, the coordinator's worker id, or the
+  user's posts, the coordinator's own replies and the delegates' answers that landed, oldest
+  first, each under who wrote it (the user's id, the coordinator's worker id, or the
   answering delegate's worker id). They are the last 10, at most 4,000 characters of text in all,
   counted back from the newest; the line that crosses the cap is cut short with `…`, and older ones
   are left out. They come from this conversation's own messages, as far back as the session's
@@ -1631,7 +1631,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   turn still running at the deadline, and, with `delegatedPostOnFinished` as its request
   `onFinished`, a cancelled run. A delegate that says nothing at all, because its process stopped
   or it was cancelled before its turn started, holds its round only until the conversation next
-  wakes after the deadline: a person's post, an answer, or another delegate's report. That wake
+  wakes after the deadline: a user's post, an answer, or another delegate's report. That wake
   closes the round and sends its answers on. With no later activity in the conversation, the
   answers that landed stay, and nothing goes on.
 - **Open rounds.** A conversation keeps at most 50 rounds open at once. A post that would open one
@@ -1717,9 +1717,9 @@ the task picks up in its own session with the answer as its next message, withou
 retry. A task's session stays open after the task finishes: message its worker there, or file a
 follow-up with `addTask`'s `followUpOf`, which runs in the same session with the same worker.
 
-A browser reads its person's boards through the ordinary collection read: `tasks`, fetched through
-any of that person's sessions on a flow that carries the session board, answers every one of their
-conversations' rows in one listing, paged like any collection read, and none of another person's. Each row's key starts with the
+A browser reads its user's boards through the ordinary collection read: `tasks`, fetched through
+any of that user's sessions on a flow that carries the session board, answers every one of their
+conversations' rows in one listing, paged like any collection read, and none of another user's. Each row's key starts with the
 conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that conversation's
 session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
 and the like), never a task's input, output or metadata.
@@ -1768,7 +1768,6 @@ the root exports, and reaches no Node built-in.
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
 | `WORKER_ID_STATE_KEY`, `WORKERS_RESOURCE`, `STANDARD_WORKERS_RESOURCE`, `ROSTER_FLOW` | The readonly session-state field naming a session's worker (`"workerId"`), the accessors the two worker collections are declared under, and the roster flow's name. |
-| `HiredWorkerOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |
 | `WORKER_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one worker sees, out of what its scope carries. Narrows only: a worker can never reach a domain the app did not install. |
 | `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams and documents — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
 | `readWorkforce(root)` | Read the tree into worker records that already carry their own skills and the packages in their reach — `readWorkforceDirectory` joined with `readWorkerSkills` per worker and `readPackagesDirectory`. Returns `{ workers, errors, skillErrors, teams, teamErrors, packageErrors }`. Reach for it when workers are all you need. Ships from the `./loader` subpath (Node only). |
@@ -1777,7 +1776,7 @@ the root exports, and reaches no Node built-in.
 | `readWorkerSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Leave `team` out for an org worker: it reads `org/skills` and `org/workers/<worker>/skills`. Ships from the `./loader` subpath (Node only). |
 | `parseDeclaredWorkerId(id)` | Read a declared worker's id back into its folders: `"<name>"` is an org worker, `{ name }`; `"<teamId>.<name>"` a team worker, `{ team, name }`. `undefined` for an id that matches neither shape. For a runtime-hired worker, pass `workerId`, not `id`: its `id` is the `<orgId>.<workerId>` address, which would parse as a team worker. Ships from the package root. |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
-| `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
+| `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's entry kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `workerBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
@@ -1815,7 +1814,6 @@ the root exports, and reaches no Node built-in.
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
 | `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there, for a message door over the session's run. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |
-| `HiredRosterReload` / `HiredRosterOrgReload` / `HiredRosterStores` / `ReloadHiredWorkersOptions` / `RowProblem` | What the reload returns, one organization's share of it, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineWorkerInventoryCollection()` | The worker inventory: one org-scoped row per registered worker, at `inventory/workers/<workerId>`. Takes no options; install what it returns under a block's `resources`. |
 | `WorkerInventoryRow` | One row of the inventory. |
 | `workerInventoryRowSchema` | The Zod schema behind the row type. Closed: an undeclared key is dropped on the way in. |

@@ -13,7 +13,7 @@ export const writtenBySchema = z
   .object({
     /** The user whose session wrote the entry. */
     userId: z.string().min(1),
-    /** The worker that wrote it. Absent when a person wrote it through the app. */
+    /** The worker that wrote it. Absent when a user wrote it through the app. */
     workerId: z.string().min(1).optional()
   })
   .strict();

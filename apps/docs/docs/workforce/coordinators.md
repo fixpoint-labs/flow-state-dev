@@ -127,7 +127,7 @@ Best fit asks its evaluation model one question: who should take this post? The 
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
-description: The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team.
+description: The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team.
 flow: coordinator
 routing: best-fit
 minConfidence: 0.7
@@ -258,7 +258,7 @@ Removing checks only the list, so you can remove a delegate that has since been 
 
 ## Letting delegates answer each other
 
-With `rounds: 0`, the default, a delegate's answer lands in the conversation and goes no further. Set `rounds:` to 1, 2 or 3 and each answer goes back out to the other delegates, by the same policy, for that many rounds. The person's post is round 0.
+With `rounds: 0`, the default, a delegate's answer lands in the conversation and goes no further. Set `rounds:` to 1, 2 or 3 and each answer goes back out to the other delegates, by the same policy, for that many rounds. The user's post is round 0.
 
 - `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
 - `everyone` waits for the round to close, then hands each delegate the other delegates' answers from it in one delivery. A delegate with no other answer to get is skipped.
@@ -289,8 +289,8 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 
 | Field | What it holds |
 | --- | --- |
-| `postId` | The post: the id of the request that carried the person's message. Answers going back out keep it. |
-| `round` | `0` for the person's post, one more each time answers go back out. |
+| `postId` | The post: the id of the request that carried the user's message. Answers going back out keep it. |
+| `round` | `0` for the user's post, one more each time answers go back out. |
 | `policy` | The conversation's `routing:`. |
 | `by` | How the delegates were found: `judgment` (the coordinator's own turn, chosen by `routing: judgment` or handed the post by best fit), `held` (best fit, still on your last post), `evaluated` (best fit's call), `fallback`, `round-robin`, `everyone`, or `unplaced` (nobody took it). |
 | `delegates` | Each delegate the decision touched: `worker`, `outcome` (`delivered`, `skipped` or `failed`), and `reason` when it wasn't delivered. |
@@ -464,7 +464,7 @@ const researchFlow = defineFlow({
 });
 ```
 
-Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the person's user id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
+Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the user's id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
 
 `delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
@@ -542,4 +542,4 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 - [The built-in worker](./built-in-worker.md): the `agent` flow, whose turn a coordinator runs when it routes by judgment.
 - [Delegating work](./delegating-work.md): how any worker files tasks for its delegates, splits a task, and how far a chain goes.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
-- [Hiring, forking and firing workers](./durable-hire.md): how a person's own workers get onto their roster.
+- [Hiring, forking and firing workers](./durable-hire.md): how a user's own workers get onto their roster.

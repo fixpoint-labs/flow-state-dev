@@ -10,7 +10,7 @@
 /**
  * Add `workers` to `flows` under their ids, refusing any collision.
  *
- * @param flows The app's own flows, by id (a mailbox kind, an app flow).
+ * @param flows The app's own flows, by id (an app's worker flow, or any other flow).
  * @param workers The hired workers, from `hireWorkforce`.
  * @returns A new record holding both; `flows` is not changed.
  * @throws If a worker's id is already a key of `flows`, or two workers share an id.

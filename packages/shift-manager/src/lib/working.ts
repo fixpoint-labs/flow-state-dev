@@ -1,5 +1,5 @@
 /**
- * Whether the chief of staff is working on a line the person sent it: true
+ * Whether the chief of staff is working on a line the user sent it: true
  * from the moment a line goes out until every line sent has settled.
  *
  * Three places show it, v2's way (v2:52-56, 127, 167-169): the sidebar

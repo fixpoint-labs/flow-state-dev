@@ -6,12 +6,12 @@
  *
  * 1. **Configuration.** The flow takes the configuration a real hire supplies.
  *    Judged by the flow's own refusal of a full bag — every key of
- *    `workerConfigSchema()`, each with a value of the kind a hire hands over
+ *    `workerConfigSchema()`, each with a value of the type a hire hands over
  *    and every list non-empty — not by the names it declares. A key it leaves
  *    undeclared and a key it types differently (`workerId` as a number) both
  *    count; a refusal of the flow's OWN settings does not, because every
  *    worker supplies those and no probe can.
- * 2. **One door.** Exactly one public action takes a person's message, so an
+ * 2. **One door.** Exactly one public action takes a user's message, so an
  *    app can talk to any worker without knowing its flow. "Door" is
  *    `workerDoorOf`'s definition, read here and not restated.
  * 3. **Attribution.** A resource that declares `writtenBy` was built by
@@ -199,7 +199,7 @@ function doorProblem(name: string, flow: WorkerFlowDefinition): string | undefin
   if (found.problem === undefined) {
     return (
       `worker flow "${name}" has no door: no public action declares \`userMessage\` and takes ` +
-      `\`{ message }\`, so no worker on it could take a person's message. Give it one.`
+      `\`{ message }\`, so no worker on it could take a user's message. Give it one.`
     );
   }
   // Two or more. Each action is asked on its own, so "door" keeps one definition.

@@ -7,7 +7,7 @@
  * shapes. This fails on concrete coupling anywhere under `src/`:
  *
  *   1. an import or re-export from `@flow-state-dev/workforce`;
- *   2. a roster symbol: `HIRED_ROSTER_*`, `*HiredRosterPrivateCollection`,
+ *   2. a roster symbol: `WORKERS_PATTERN`, `STANDARD_WORKERS_PATTERN`,
  *      `assertRosterCollectionIsNotDeep`, or Engine's deleted roster helpers
  *      (`privateRosterAdmits`, `scopePrivateRosterToCaller`,
  *      `assertFlowRosterPatterns`);
@@ -55,8 +55,8 @@ const RULES: Rule[] = [
   {
     name: "a roster symbol",
     pattern:
-      /\bHIRED_ROSTER_\w*|\w*HiredRosterPrivateCollection\b|\b(?:assertRosterCollectionIsNotDeep|privateRosterAdmits|scopePrivateRosterToCaller|assertFlowRosterPatterns)\b/,
-    sample: 'import { HIRED_ROSTER_PRIVATE_PATTERN } from "@flow-state-dev/core";',
+      /\b(?:STANDARD_)?WORKERS_PATTERN\b|\b(?:assertRosterCollectionIsNotDeep|privateRosterAdmits|scopePrivateRosterToCaller|assertFlowRosterPatterns)\b/,
+    sample: 'const key = `${WORKERS_PATTERN}`;',
   },
   {
     name: "the workforce/roster key",

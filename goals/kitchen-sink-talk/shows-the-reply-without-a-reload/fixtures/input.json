@@ -4,7 +4,7 @@
   "replier": { "kind": "agent", "id": "support.devices" },
   "route": "[route:support.devices]",
   "marker": "[scenario:reply-after-a-hold]",
-  "lineMarker": "[reply:in-mailbox]",
+  "lineMarker": "[reply:in-conversation]",
   "lineWithinMs": 15000,
   "maxSnapshotReads": 2
 }

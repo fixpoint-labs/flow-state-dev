@@ -85,8 +85,8 @@ export type BoardColumnsProps = {
   /** The session the read is addressed to. Its organization is the one read. */
   readonly sessionId: string;
   /**
-   * The key the session's flow declares this board's ledger under — the minted
-   * `<mailboxId>.<boardName>`. One path segment, so it carries no slash.
+   * The key the session's flow declares this board's ledger under, such as
+   * `eng.feature.work`. One path segment, so it carries no slash.
    */
   readonly boardRef: string;
   /**

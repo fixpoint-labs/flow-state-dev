@@ -10,10 +10,10 @@
  *     `support.general` on one copy of `agent`, and `support.help` on one copy
  *     of `coordinator`, and no copy per worker;
  *   - it serves the coordinator flow beside the app's own flows, and no
- *     mailbox flow;
+ *     other worker flow;
  *   - the generated map holds no block and no worker flow of the app's own (the
  *     `escalate` block went with the escalation feature);
- *   - the rail lists `support.help` under the coordinator flow as the person's
+ *   - the rail lists `support.help` under the coordinator flow as the user's
  *     one conversation with it, found by the coordinator's id (BR-7a). Red:
  *     the rail reading the flow's whole listing, which on a fresh store lists
  *     nothing.
@@ -89,7 +89,7 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
     expect(flows.filter((flow) => roster.some((worker) => worker.id === flow.id))).toEqual([]);
   });
 
-  it("serves the coordinator flow beside the app's own flows, and no mailbox flow", async () => {
+  it("serves the coordinator flow beside the app's own flows, and no other worker flow", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
     // The workforce's worker flows are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows.
@@ -103,7 +103,7 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
     ]);
   });
 
-  it("lists support.help in the rail as the person's one conversation with it, a session on coordinator naming it", async () => {
+  it("lists support.help in the rail as the user's one conversation with it, a session on coordinator naming it", async () => {
     const { sessions, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
     // Not vacuous: on a fresh store the coordinator flow's own listing holds nothing.

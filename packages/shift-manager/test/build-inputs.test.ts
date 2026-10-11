@@ -23,8 +23,8 @@ async function builtApp(options: { editDuringBuild?: boolean } = {}): Promise<{ 
   mkdirSync(join(app, "src"), { recursive: true });
   // The key lives in a second module, as the inventory pattern lives in reads.ts.
   const keys = join(app, "src/keys.ts");
-  writeFileSync(keys, 'export const MAILBOXES = "inventory/mailboxes/*";\n');
-  writeFileSync(join(app, "src/main.ts"), 'import { MAILBOXES } from "./keys";\ndocument.title = MAILBOXES;\n');
+  writeFileSync(keys, 'export const WORKERS = "inventory/workers/*";\n');
+  writeFileSync(join(app, "src/main.ts"), 'import { WORKERS } from "./keys";\ndocument.title = WORKERS;\n');
   writeFileSync(join(app, "index.html"), '<!doctype html><script type="module" src="/src/main.ts"></script>\n');
   // A config file of its own, so the record has one to vouch for.
   const config = join(app, "vite.config.mjs");
@@ -34,7 +34,7 @@ async function builtApp(options: { editDuringBuild?: boolean } = {}): Promise<{ 
   const editor = {
     name: "edit-during-build",
     transform(_code: string, id: string) {
-      if (options.editDuringBuild === true && id === keys) writeFileSync(keys, 'export const MAILBOXES = "inventory/edited/*";\n');
+      if (options.editDuringBuild === true && id === keys) writeFileSync(keys, 'export const WORKERS = "inventory/edited/*";\n');
     },
   };
   await build({ root: app, logLevel: "silent", configFile: config, plugins: [editor, recordBuildInputs({ repoRoot: repo })] });
@@ -49,13 +49,13 @@ describe("a page build's record of its source", () => {
 
   it("names an imported source file that changed since the build, the way a rename leaves the old key in the bundle", async () => {
     const { dist, keys } = await builtApp();
-    writeFileSync(keys, 'export const MAILBOXES = "inventory/renamed/*";\n');
+    writeFileSync(keys, 'export const WORKERS = "inventory/renamed/*";\n');
     expect(staleBuildInputs(dist, repo)).toBe("app/src/keys.ts changed since it was built");
   });
 
   it("names a source file that is gone, and ignores one rewritten with the same contents", async () => {
     const { dist, keys } = await builtApp();
-    writeFileSync(keys, 'export const MAILBOXES = "inventory/mailboxes/*";\n');
+    writeFileSync(keys, 'export const WORKERS = "inventory/workers/*";\n');
     expect(staleBuildInputs(dist, repo)).toBeUndefined();
     unlinkSync(keys);
     expect(staleBuildInputs(dist, repo)).toBe("app/src/keys.ts is gone since it was built");

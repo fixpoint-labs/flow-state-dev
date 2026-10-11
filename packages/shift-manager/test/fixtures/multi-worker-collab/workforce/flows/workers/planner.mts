@@ -8,7 +8,7 @@
  * `assignTask_tasks`, `answerTask_tasks`, `listTasks_tasks`, …) while one of
  * the planner's `delegates:` takes a task. A row filed there names its
  * delegate by worker id, and the board hands it to that worker's task
- * session at once. A person answers a row parked on its worker's question
+ * session at once. A user answers a row parked on its worker's question
  * through the same conversation's `answerTask_tasks`.
  *
  * No model: the planner's own turn says it heard a line, and a task's notice

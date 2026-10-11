@@ -5,7 +5,7 @@
  *   turn in that session is handed what it was asked; a turn re-entered by an
  *   answer is handed the answer as its message, labelled, never the task again.
  * - V2, V5 (S1, S7): a task turn on `agent` is offered `parkOnQuestion`, a
- *   person's turn and an asked row's turn are not, and a turn carries one set
+ *   user's turn and an asked row's turn are not, and a turn carries one set
  *   of task tools.
  * - V3 (S2, S3): the conversation answers with `answerTask_tasks`; the task
  *   re-enters the same session, unspent, and is heard once when it ends.
@@ -63,7 +63,7 @@ const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) 
 };
 
 describe("V1 · the task session keeps its prompt (S5)", () => {
-  it("F1 · a person's later question into a finished task's session is handed the task as filed", async () => {
+  it("F1 · a user's later question into a finished task's session is handed the task as filed", async () => {
     const h = host([
       {
         when: (input) => textOf(input).includes("GOAL-audit") && !textOf(input).includes("KESTREL-41"),
@@ -352,7 +352,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
     }
   });
 
-  it("a person's message into the task session is not a task turn: no parkOnQuestion (BR-2)", async () => {
+  it("a user's message into the task session is not a task turn: no parkOnQuestion (BR-2)", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
     const h = host([{ when: () => true, then: { text: "OK." } }], {
       observeTools: (block, names, input) => seen.push({ block, names, input: textOf(input) })
@@ -364,8 +364,8 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       await h.settled();
       const sessionId = (await h.row("alice", filing, filed.taskId!))!.run!.sessionId;
       seen.length = 0;
-      await h.act("alice", sessionId, "run", { message: "PERSON-asks what you did" }, "agent");
-      const turn = seen.filter((s) => s.input.includes("PERSON-asks"));
+      await h.act("alice", sessionId, "run", { message: "USER-asks what you did" }, "agent");
+      const turn = seen.filter((s) => s.input.includes("USER-asks"));
       expect(turn.length).toBeGreaterThan(0);
       for (const t of turn) expect(t.names).not.toContain("parkOnQuestion");
     } finally {

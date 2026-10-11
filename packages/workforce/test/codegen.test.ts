@@ -115,7 +115,7 @@ describe("the root the caller configured", () => {
     roots.push(holder);
 
     // Absent FOLDERS are silent, because an app may have no custom code of
-    // that kind. An absent ROOT is a wiring mistake, and reading it as "no
+    // that sort. An absent ROOT is a wiring mistake, and reading it as "no
     // custom code" would hand back empty maps for a path nobody configured.
     await expect(discoverWorkforceCode(join(holder, "does-not-exist"))).rejects.toThrow(
       /Failed to read workforce directory/,
@@ -272,7 +272,7 @@ describe("what the walk refuses", () => {
 
     // These pass the lowercase-and-hyphens rule, so without a refusal the tree
     // generates and commits cleanly on macOS or Linux and the repository then
-    // cannot be checked out on Windows at all. The person it breaks is not the
+    // cannot be checked out on Windows at all. The user it breaks is not the
     // one who added the file, and it reads as a broken clone rather than as a
     // naming mistake — so it is caught in the walk, where the name is chosen.
     // Refusals come back in slot order (worker, block) — the order
@@ -312,7 +312,7 @@ describe("what the walk refuses", () => {
     const problems = await refusalsOf(root);
 
     expect(problems).toEqual([
-      expect.stringContaining('both declare "standup" — one basename, one kind'),
+      expect.stringContaining('both declare "standup" — one basename, one worker flow'),
     ]);
   });
 
@@ -471,7 +471,7 @@ describe("the rendered module", () => {
     const rendered = await renderTree(root);
 
     // An app with no custom worker flows should not acquire an import because of a
-    // folder it does not have — and there is no member for a type to catch.
+    // folder it does not have — and there is no export for a type to catch.
     expect(rendered).toContain("export const workerFlows = {};");
     expect(rendered).not.toContain("HireOptions");
   });

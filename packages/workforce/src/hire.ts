@@ -376,7 +376,7 @@ type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
  * A flow of either shape: one that declares settings, and one that declares
  * none.
  *
- * **Do not collapse this to a single member.** It reads redundant and is not:
+ * **Do not collapse this union to one shape.** It reads redundant and is not:
  * a flow's settings schema sits in an invariant position (`config` is a
  * deferred conditional on it), so neither half accepts the other's flows, and
  * both sorts are hired here. Each collapse fails a different way, and both were

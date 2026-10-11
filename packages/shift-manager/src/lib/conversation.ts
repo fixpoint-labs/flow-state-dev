@@ -1,12 +1,12 @@
 /**
- * One person's conversation with one worker, read from the worker's session.
+ * One user's conversation with one worker, read from the worker's session.
  *
  * The session is the newest direct one the snapshot lists on the worker's flow
  * naming the worker's worker, or the one a first line just opened, until the
  * snapshot lists it (BR-14). Its items are read when the view opens and after
  * each line, never on the snapshot's refresh. Nothing is sent into a
  * conversation the screen hasn't read; one a line opened here holds nothing
- * the person hasn't seen.
+ * the user hasn't seen.
  *
  * Used by `<Conversation>`; a view that wants a conversation with a worker draws
  * that component, and calls this only to build its own.
@@ -37,7 +37,7 @@ export function delegateOf(worker: Pick<Worker, "kind">, item: { readonly agentN
 }
 
 /**
- * The id of the person's conversation with `worker`: their newest session on
+ * The id of the user's conversation with `worker`: their newest session on
  * the worker's flow that names the worker's worker and has no parent session, or
  * `null` when they have none. A store that nulls absent keys hands back
  * `null` for a parent, so the guard is `== null`.

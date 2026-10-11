@@ -1,7 +1,7 @@
 /**
  * Keep a conversation's latest turn in view (FIX-1773).
  *
- * A scrolling feed follows what is added to it while the person is at its
+ * A scrolling feed follows what is added to it while the user is at its
  * end: a line sent, a reply read back, a streamed item growing. Once they
  * scroll up to read history it stays where they put it, and it follows again
  * when they scroll back to the end, or when they send a line ({@link follow}).
@@ -16,7 +16,7 @@ const AT_END_SLACK = 32;
  * Follow the latest content of the scrolling element `ref` is attached to.
  *
  * @param options.startAtEnd open at the end, following (the default); `false`
- * opens where the element starts, and follows once the person reaches the end
+ * opens where the element starts, and follows once the user reaches the end
  * or {@link follow} is called.
  * @returns `ref`, to attach to the scrolling element; `follow`, which jumps
  * to the end and follows from there; and `stay`, which stops following, for a

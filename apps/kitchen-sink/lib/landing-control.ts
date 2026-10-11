@@ -4,14 +4,14 @@
  * Swaps the built-in `agent` flow for one that takes a coordinator's delegated
  * post and answers it with the worker's instructions and the tools its
  * `tools:` names, in its own conversation, and hands nothing back: the answer
- * stays in the specialist's conversation and never reaches the person's
+ * stays in the specialist's conversation and never reaches the user's
  * conversation with the coordinator. That is all it takes away. A check that
  * the specialist's answer lands under its name must FAIL under it.
  *
  * Everything else a check reads stays as the real flow has it: the
  * specialist's answers are drawn and kept in its own conversation, and a
- * person's direct conversation with a specialist still answers. With no answer
- * landing, best fit's hold stays on the specialist that took the person's
+ * user's direct conversation with a specialist still answers. With no answer
+ * landing, best fit's hold stays on the specialist that took the user's
  * first post.
  *
  * Honoured only under `KITCHEN_SINK_TEST_MODE=1` (`goalControl`), so a control

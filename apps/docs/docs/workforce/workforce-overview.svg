@@ -76,7 +76,7 @@
 
   <rect x="652" y="142" width="224" height="104" rx="10" class="card"/>
   <text x="666" y="166" class="h">Sessions naming a worker</text>
-  <text x="666" y="188" class="p">Each person's conversation,</text>
+  <text x="666" y="188" class="p">Each user's conversation,</text>
   <text x="666" y="206" class="p">its state and resources</text>
   <text x="666" y="230" class="muted">Never written into the file</text>
 

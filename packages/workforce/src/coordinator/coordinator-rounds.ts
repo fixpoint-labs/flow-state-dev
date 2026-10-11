@@ -1,7 +1,7 @@
 /**
  * Rounds: how far a delegate's answer goes back out (`rounds:`).
  *
- * A person's post is round 0. An answer that lands in round r, below the
+ * A user's post is round 0. An answer that lands in round r, below the
  * coordinator's limit, goes back out in round r + 1:
  *
  * - **best fit and round robin** route each answer again as it lands, never
@@ -56,12 +56,12 @@ import { roundAnswerSchema, type OpenRound, type RoundAnswer } from "./coordinat
 export const MAX_OPEN_ROUNDS = 50;
 
 /**
- * Answers going back out in a round after the person's post: what the
+ * Answers going back out in a round after the user's post: what the
  * conversation's own code hands its route-on entry.
  */
 export const routeOnSchema = z
   .object({
-    /** The person's post the answers came from. */
+    /** The user's post the answers came from. */
     postId: z.string().min(1),
     /** The round they go out in. */
     round: z.number().int().min(1).max(MAX_ROUNDS),
@@ -169,7 +169,7 @@ export function closeRound(
 
 /**
  * Close every open round whose deadline has passed, whatever is still out.
- * Each wake of the conversation runs it (a person's post, an answer, a missed
+ * Each wake of the conversation runs it (a user's post, an answer, a missed
  * report, the end of a routing), so a round whose delegate never reported,
  * because its run was cancelled or its process stopped, still closes once
  * the conversation next wakes after its deadline.

@@ -107,9 +107,9 @@ const AGENT_WORKER_SCRIPTS: ScenarioScript[] = [
   {
     // A post the worker answers naming the post's `reply-token-…` (FIX-1594): the
     // answer that lands in the person's conversation carries the token and
-    // `[reply:in-mailbox]`, never the scenario marker, so a worker handed the
+    // `[reply:in-conversation]`, never the scenario marker, so a worker handed the
     // answer does not answer it again.
-    match: (turn) => turn.includes("[scenario:reply-in-mailbox]"),
+    match: (turn) => turn.includes("[scenario:reply-in-conversation]"),
     steps: replyWithToken,
   },
   {
@@ -143,12 +143,12 @@ const AGENT_WORKER_SCRIPTS: ScenarioScript[] = [
 
 /**
  * A worker's answer naming the post's `reply-token-…`, so a check can tell which
- * post a landed line answers. It carries `[reply:in-mailbox]`, never a scenario
+ * post a landed line answers. It carries `[reply:in-conversation]`, never a scenario
  * marker, so a worker handed the answer does not answer it again.
  */
 function replyWithToken(turn: string): MockGeneratorScriptStep[] {
   const token = /reply-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
-  return [{ text: `[reply:in-mailbox] ${token} Refunds post on Fridays.` }];
+  return [{ text: `[reply:in-conversation] ${token} Refunds post on Fridays.` }];
 }
 
 /** A token a check mints into a post, and the only thing recall names. */
@@ -289,11 +289,11 @@ export function holdBeforeAnswer(generator: string, input: unknown): number {
 export const coordinatorRouteMock = mockEvaluationModel({
   answers: ({ state }) => {
     const text = (state as { post?: { text?: unknown } }).post?.text;
-    const member = typeof text === "string" ? /\[route:([^\]\s]+)\]/.exec(text)?.[1] : undefined;
-    if (member === undefined) {
+    const worker = typeof text === "string" ? /\[route:([^\]\s]+)\]/.exec(text)?.[1] : undefined;
+    if (worker === undefined) {
       throw new Error("coordinator-route (test mode): the post names no [route:<worker>], so the call fails");
     }
-    return { member: { type: "choice", choice: member } };
+    return { worker: { type: "choice", choice: worker } };
   },
 });
 

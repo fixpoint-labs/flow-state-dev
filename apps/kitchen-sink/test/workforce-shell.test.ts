@@ -52,7 +52,7 @@ describe("the shell's names match the workforce tree", () => {
 });
 
 /**
- * The actions of a flow a person could answer through: the public ones whose
+ * The actions of a flow a user could answer through: the public ones whose
  * input is exactly one required string field. Keyed by action, valued by that
  * field's name.
  */
@@ -100,7 +100,7 @@ describe("a coordinator's composer sends to the coordinator flow's door", () => 
 describe("the conversation the page opens on", () => {
   // A store kept across the upgrade still holds the session an earlier page's
   // "Hire another" ran on, tagged `worker-hires`. Opening it by default would
-  // put the person's turns in that administrative session.
+  // put the user's turns in that administrative session.
   it("is the most recent, passing over the session an earlier page's hire ran on", () => {
     const hires = { id: "sess-hires", tags: ["worker-hires"] };
     const chat = { id: "sess-chat", tags: [] };
@@ -117,7 +117,7 @@ describe("the conversation the page opens on", () => {
 describe("a coordinator's working row names the delegate it handed the post to", () => {
   // Every worker runs on the one `agent` copy, so a run's flow id is `agent`
   // for all of them; only the delivery's key says which worker it is. The key
-  // a real delivery carries is held in `test/mailbox-wake.test.ts`.
+  // a real delivery carries is held in `test/coordinator-wake.test.ts`.
   it("reads the worker off the delivery's key, and nothing off any other run", () => {
     expect(delegateOfRun({ topic: `delegate:${JSON.stringify(["support.devices", null])}` })).toBe("support.devices");
     expect(delegateOfRun({ topic: "delegate:not json" })).toBeUndefined();

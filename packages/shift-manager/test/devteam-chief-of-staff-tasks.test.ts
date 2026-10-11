@@ -1,7 +1,7 @@
 /**
  * The DevTeam's chief of staff files tasks (FIX-1794 S11), on the real Lab:
  * its turn carries Orchestration's task tools once each, and a task it files
- * for one of its delegates runs in a task session of the person's and is
+ * for one of its delegates runs in a task session of the user's and is
  * heard back in the conversation once.
  *
  * The model is scripted by block: the chief of staff's judgment
@@ -189,7 +189,7 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("files a task for an agent delegate, which runs it in a task session of the person's, and hears it complete once", async () => {
+  it("files a task for an agent delegate, which runs it in a task session of the user's, and hears it complete once", async () => {
     const goal = `audit the licenses of ${globalThis.crypto.randomUUID().slice(0, 8)}`;
     // The task tools come with a delegate that takes a task, so the filing is the next turn's (FIX-1802 D1).
     const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "addTask", args: { goal, assignee: "licenses" } }]));
@@ -207,7 +207,7 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
     const taskId = listed.tasks[0]!.id as string;
     await quiet(lab);
 
-    // It ran in a session of its own: the person's, a child of the conversation, on `agent`, born naming its worker and task.
+    // It ran in a session of its own: the user's, a child of the conversation, on `agent`, born naming its worker and task.
     const runtime = await lab.state.getRuntime();
     const runs = (await runtime.stores.request.list({})).filter((r) => r.actionName === "work");
     const taskSessions = [...new Set(runs.map((r) => r.sessionId!))];
@@ -331,7 +331,7 @@ async function coderLines(lab: Lab, id: string, taskId: string) {
   return (await messages(lab, id)).filter((m) => m.agentName === CODER && m.text.includes(`(${taskId})`));
 }
 
-/** The task's row as stored on the conversation's board, in the person's scope. */
+/** The task's row as stored on the conversation's board, in the user's scope. */
 async function storedTask(lab: Lab, taskId: string): Promise<Record<string, any> | undefined> {
   const rows = await lab.stored("user", "tasks/");
   return Object.entries(rows).find(([key]) => key.endsWith(`/${taskId}`))?.[1] as Record<string, any> | undefined;
@@ -488,7 +488,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await storedTask(lab, taskId))?.output?.judged).toBe(false);
   });
 
-  it("parks on the judge's question, and the person's answer reaches the next attempt in the same session", async () => {
+  it("parks on the judge's question, and the user's answer reaches the next attempt in the same session", async () => {
     const reply = `the checkout flow ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     const stub = readsMarker();
     const { lab } = await openCoderLab(
@@ -516,7 +516,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(stub.runs[1]!.resume).toBe("sess_stub_1");
   });
 
-  it("parks on the run's own question, and the person's answer reaches the next attempt", async () => {
+  it("parks on the run's own question, and the user's answer reaches the next attempt", async () => {
     const reply = `use the main branch ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     const stub = readsMarker({
       duringRun: (run) => {
@@ -648,7 +648,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     ).rejects.toThrow(/task entry "work".*sessionStateSchema/);
   });
 
-  it("takes a person's message into a running run, and the next attempt's prompt carries it", async () => {
+  it("takes a user's message into a running run, and the next attempt's prompt carries it", async () => {
     const said = `also check the tests ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     // The first attempt holds until the test lets it go; the next one answers at once.
     let started: () => void = () => {};

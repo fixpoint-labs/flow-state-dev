@@ -1,6 +1,6 @@
 /**
  * Chief of Staff (FIX-1722): where Shift Manager opens. The shift summary,
- * then the person's conversation with the Lab's chief-of-staff worker; the right
+ * then the user's conversation with the Lab's chief-of-staff worker; the right
  * panel lists who is on call.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
@@ -98,7 +98,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   );
 }
 
-/** The highlighter tag v2 sets on what waits on the person (v2:142): an ask, here. */
+/** The highlighter tag v2 sets on what waits on the user (v2:142): an ask, here. */
 function NeedsYouTag() {
   return (
     <span
@@ -111,7 +111,7 @@ function NeedsYouTag() {
 }
 
 /**
- * The summary: what waits on the person, and what is running (D1). Drawn as
+ * The summary: what waits on the user, and what is running (D1). Drawn as
  * v2 draws the opening of the feed, unboxed 16px prose under a mono label
  * (v2:135-136), with the asks as v2's one bordered list (v2:138-153). The
  * label says whose summary it is: Shift Manager's, not the worker's.
@@ -224,7 +224,7 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
 
 /**
  * An ask the worker raised: a needs-you line that opens Inbox, where it is
- * answered, until the person has answered it (the session holds its resume).
+ * answered, until the user has answered it (the session holds its resume).
  * Answered, it is the registry's own card.
  */
 function renderAsk(item: OutputItem) {

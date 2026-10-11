@@ -1,7 +1,7 @@
 /**
  * What a record's `flow:` line selects — the one rule both doors read it by.
  *
- * Workers (`hireWorkforce`) and mailboxes (`workerFlowOf` in the mailbox binder) each
+ * Workers (`hireWorkforce`) and coordinators (`workerFlowOf`) each
  * turn a record's frontmatter into a flow. They differ in their default flow
  * and in how they word a refusal, and those stay with each door. What they
  * share is the classification: an absent key takes the door's default, a blank

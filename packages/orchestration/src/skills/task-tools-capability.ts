@@ -1393,7 +1393,7 @@ export const taskTools = createTaskToolsCapability();
  * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
  * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
  *
- * **Pinned.** It is the name a model is told about on a mailbox board and the
+ * **Pinned.** It is the name a model is told about on a dotted board and the
  * name an action carries under {@link taskToolActions}, and the DevTool scopes
  * a row's actions to its board by it.
  */
@@ -1430,8 +1430,8 @@ export interface TaskToolActionsBoard {
  *   reached through the board's own resolver, and each action composes the
  *   board's capability, so the flow need not declare the collection again.
  * - `taskToolActions(collectionId, resolve, roster?)` — for a caller that
- *   resolves a durable ledger itself (a Workforce mailbox does, to fence each
- *   action to its own session).
+ *   resolves a durable ledger itself, to fence each action to its own
+ *   session.
  *
  * Pass a `roster` and the actions check assignees the way the model's tools
  * do: `addTask`, `assignTask` and `updateTask` refuse one the roster does not

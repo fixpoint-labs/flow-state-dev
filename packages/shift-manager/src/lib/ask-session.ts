@@ -1,7 +1,7 @@
 /**
  * What Inbox's detail draws from the session an ask waits in, besides the ask
  * itself: *From the session*, the last tool calls the worker made before it
- * asked (BR-18), and the person's own lines sent into that session after it.
+ * asked (BR-18), and the user's own lines sent into that session after it.
  *
  * Both are read off the session's stored items, ordered the way the store
  * orders them, never the order a read happened to return.
@@ -14,7 +14,7 @@ export const FROM_THE_SESSION = 3;
 
 /** One tool call: the tool, what it was pointed at, and what came back. */
 export type SessionCall = { id: string; tool: string; target: string; result: string };
-/** One line the person sent into the session, and when the session stored it. */
+/** One line the user sent into the session, and when the session stored it. */
 export type SessionReply = { id: string; text: string; at: number };
 
 type ToolOutput = Extract<OutputItem, { type: "tool_output" }>;
@@ -46,7 +46,7 @@ function textOf(message: Message): string {
 
 /**
  * The ask's session around the ask: the last {@link FROM_THE_SESSION} tool
- * calls stored before it, oldest first, and the person's lines stored after
+ * calls stored before it, oldest first, and the user's lines stored after
  * it. `null` when the read doesn't hold the ask (a session longer than the
  * read): nothing in it can then be placed before or after the ask.
  */

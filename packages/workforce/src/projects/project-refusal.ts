@@ -1,7 +1,7 @@
 /**
  * The refusals a project or workstream write gives, as one error type with a
  * `reason` a caller can branch on without matching message text — the same
- * shape the mailbox's own refusals use.
+ * shape Workforce's other refusals use.
  */
 
 /**

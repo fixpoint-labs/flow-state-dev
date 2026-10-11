@@ -8,18 +8,18 @@
  *
  * What a refresh reads, in order:
  *
- * 1. **The person's sessions**, dispatch runs included. A worker a dispatch
+ * 1. **The user's sessions**, dispatch runs included. A worker a dispatch
  *    woke runs in a dispatch-run session, which the default listing leaves
  *    out, so without `include: "dispatch-runs"` that worker's ask would be
  *    invisible. This is also Shift Manager's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
  *    and nothing else is read (BR-3).
  * 2. **The organization**, off a listed session. The listing only ever holds
- *    sessions in the organization the Lab resolved for the person, and a
- *    session records it. A person who holds no session of their own on the
+ *    sessions in the organization the Lab resolved for the user, and a
+ *    session records it. A user who holds no session of their own on the
  *    roster flow yet has one opened on it first (`withReaderSessions`), and the Lab stamps it with the organization it
- *    resolves for them, so a member on a first visit is read like any other.
- *    A Lab that still lists the person no session (it serves no roster) names
+ *    resolves for them, so a user on a first visit is read like any other.
+ *    A Lab that still lists the user no session (it serves no roster) names
  *    no organization, and gets the refusal too: Shift Manager never draws a
  *    Lab under an unknown one (ER-4).
  * 3. **The inventory**: the organization's worker collection, found by its
@@ -27,21 +27,21 @@
  *    declares it (the roster flow does). Nothing about the tree is written in
  *    Shift Manager; this is where every worker and team name comes from.
  * 4. **Every conversation's board**: the tasks a
- *    conversation filed sit in one collection at the person's own scope,
+ *    conversation filed sit in one collection at the user's own scope,
  *    each under its conversation's partition, so one read through any
  *    session whose flow declares it answers every board of theirs, grouped
  *    here by the conversation that holds it (`<sessionId>.tasks`).
  * 5. **Pending asks**: for each listed session a worker owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
  *    pending. Not the transcript. A worker is one the inventory registers, or
- *    one of the person's own workers: those are on their roster, never in the
+ *    one of the user's own workers: those are on their roster, never in the
  *    inventory, so the roster is read first, through Workforce's `roster()`,
  *    which answers for the caller only.
  * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
- * 7. **The projects the person reads**: every row of the organization's
+ * 7. **The projects the user reads**: every row of the organization's
  *    `projects` collection and of their own private one, found by the
- *    published key pattern and scope on a flow the person holds a session of
+ *    published key pattern and scope on a flow the user holds a session of
  *    (the roster flow declares both). PROJECTS lists them. A project's
  *    workstream entries are never read here: a project's view reads them, by
  *    its one prefix, when it opens (`projects.ts`).
@@ -88,7 +88,7 @@ export type Worker = {
   /** The worker flow the worker runs on, which is also that flow's copy id; `null` on a row that has none. */
   kind: string | null;
   /**
-   * The action that takes a person's message into this worker's sessions, as
+   * The action that takes a user's message into this worker's sessions, as
    * the hire published it; `null` when its worker flow takes none, or on a row
    * written before doors were published.
    */
@@ -98,12 +98,12 @@ export type Worker = {
   name: string;
 };
 
-/** Where a project lives: the organization's, or the person's own. */
+/** Where a project lives: the organization's, or the user's own. */
 export type ProjectVisibility = "shared" | "private";
 
 /**
  * A project: a row of the organization's `projects` collection (shared), or of
- * the person's own (private). It names no team: its workstreams are its
+ * the user's own (private). It names no team: its workstreams are its
  * entries, read on its screen. Its address is its
  * visibility and its id: a private project and a shared one can share an id.
  */
@@ -127,7 +127,7 @@ export type Project = {
   repository: string | null;
 };
 
-/** The projects the person reads: the organization's, and their own private ones. */
+/** The projects the user reads: the organization's, and their own private ones. */
 export type Projects = {
   /** Every row: the shared ones in the collection's order, then the private ones. */
   rows: Project[];
@@ -216,10 +216,10 @@ export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "sc
 
 /** What an ask's card says when its run can't be reopened from outside the Lab. */
 export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a dispatch, a webhook) is never reopened from outside it.";
+  "This ask can't be answered from Shift Manager. The Lab reopens only runs a user, an MCP caller or a schedule started; a run it started by itself (a dispatch, a webhook) is never reopened from outside it.";
 
 /**
- * Why a Lab that lists the person no session, even after one was asked for on
+ * Why a Lab that lists the user no session, even after one was asked for on
  * the reader flows, is refused: nothing it serves says which organization they are in.
  */
 function noOrganization(userId: string, why = "it holds no session of theirs and serves no roster flow to open one on"): string {
@@ -253,9 +253,9 @@ export type LabSnapshot =
       unreachable?: undefined;
       /** When this refresh finished, epoch ms. */
       readAt: number;
-      /** The person's listed sessions, dispatch runs included. */
+      /** The user's listed sessions, dispatch runs included. */
       sessions: SessionSummary[];
-      /** The organization the Lab bound this person's sessions to. */
+      /** The organization the Lab bound this user's sessions to. */
       orgId: string;
       inventory: Section<Inventory>;
       /**
@@ -274,7 +274,7 @@ export type LabSnapshot =
 const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
 
 /**
- * The flow a person's own session for reading the worker inventory, their
+ * The flow a user's own session for reading the worker inventory, their
  * projects and the workstream entries is opened on, when they hold none:
  * workforce's roster flow, which declares the workers, the projects at both
  * scopes and the entries.
@@ -283,7 +283,7 @@ export const PROJECT_READER_FLOW = ROSTER_FLOW;
 
 /**
  * The projects, by their published key pattern: one pattern, at the
- * organization's scope for the shared ones and the person's for their own.
+ * organization's scope for the shared ones and the user's for their own.
  */
 const PROJECT_PATTERN = "projects/*";
 
@@ -303,7 +303,7 @@ const ASK_READ_BATCH = 6;
  */
 const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
-/** The suspension reasons that are a person's ask: the only ones Inbox lists. */
+/** The suspension reasons that are a user's ask: the only ones Inbox lists. */
 export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
 
 /** One still-pending suspension, as `deriveSuspensions` reduces it. */
@@ -497,7 +497,7 @@ export type LabReader = {
 };
 
 /**
- * The id of `userId`'s own reading session on `flow`: one per person per flow,
+ * The id of `userId`'s own reading session on `flow`: one per user per flow,
  * so two first visits at once (two tabs) open the same session rather than two.
  */
 export function readerSessionId(userId: string, flow: string): string {
@@ -516,7 +516,7 @@ export function createLabReader(clients: LabClients): LabReader {
   const workforce = workforceClientFor(clients);
 
   /**
-   * The person's own workers, off their roster: each id with the flow it runs
+   * The user's own workers, off their roster: each id with the flow it runs
    * on. A Lab that serves no roster flow, so refuses to open a session on it,
    * has nobody's own workers. Any other failure, a 404 from the roster's own
    * reads included, is the roster not loading.
@@ -547,7 +547,7 @@ export function createLabReader(clients: LabClients): LabReader {
   const readCollection = (sessionId: string, ref: string) =>
     readEveryCollectionPage(clients.resources, sessionId, ref, { limit: PAGE_SIZE });
 
-  /** A conversation's board: the person's whole ledger, read through the conversation, keeping its own partition's rows. */
+  /** A conversation's board: the user's whole ledger, read through the conversation, keeping its own partition's rows. */
   const readBoard = async (sessionId: string): Promise<BoardRow[]> => {
     const boardRef = conversationBoardRef(sessionId);
     return (await readCollection(sessionId, CONVERSATION_BOARD_COLLECTION))
@@ -556,7 +556,7 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * Every board the person's conversations keep, by conversation: one read of
+   * Every board the user's conversations keep, by conversation: one read of
    * the conversation ledger through the first listed session whose flow lets
    * a browser read it, its rows grouped by the conversation that filed them.
    * Only listed conversations' boards are kept. A Lab no flow of which keeps
@@ -636,18 +636,18 @@ export function createLabReader(clients: LabClients): LabReader {
       ok: false,
       failure: {
         message:
-          `No inventory to read: none of this person's sessions is on a flow that declares the organization's worker inventory (${WORKER_INVENTORY_PATTERN}) with a worker in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
+          `No inventory to read: none of this user's sessions is on a flow that declares the organization's worker inventory (${WORKER_INVENTORY_PATTERN}) with a worker in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
       },
     };
   };
 
   /**
-   * The projects the person reads, once, through a session of their own whose
+   * The projects the user reads, once, through a session of their own whose
    * flow declares `projects/*` with a browser read: the organization's (org
    * scope) and their own private ones (user scope), each from the first flow
    * that declares it. A project needs no workstream, so neither does this read.
    *
-   * `read` opens one on the roster flow for a person who holds none
+   * `read` opens one on the roster flow for a user who holds none
    * (`withReaderSessions`). No flow declaring the collection is a Lab with no
    * projects: zero rows, not a failure (a pre-project Lab). A reading session
    * that should have been opened and couldn't is a failure, and says why; it
@@ -689,7 +689,7 @@ export function createLabReader(clients: LabClients): LabReader {
               .map((row) => toProject(row.clientData, visibility))
               .filter((p): p is Project => p !== undefined);
       // Invariant: each scope's `projects/*` is one collection, so the first
-      // flow that declares it reads every row the person may, and the rest are
+      // flow that declares it reads every row the user may, and the rest are
       // not asked.
       const [shared, own] = await Promise.all([rowsAt(found.org, "shared"), rowsAt(found.user, "private")]);
       return { ok: true, value: { rows: [...shared, ...own] } };
@@ -699,9 +699,9 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * This person's sessions, with one of their own on the roster flow, which
+   * This user's sessions, with one of their own on the roster flow, which
    * declares the worker inventory, the projects and the workstream entries. A
-   * person may hold only a worker's session, or none at all on a first visit,
+   * user may hold only a worker's session, or none at all on a first visit,
    * and nothing of theirs can read them. It is opened once, under
    * {@link readerSessionId} so overlapping first reads can't open two, and
    * listed from then on. One that can't be opened leaves the sessions as they
@@ -735,10 +735,10 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * Open the person's reading session on `flow` under its one id. A 409 is
+   * Open the user's reading session on `flow` under its one id. A 409 is
    * usually another page that opened it first, and the listing then holds it.
    * Session ids are not scoped by organization, so a 409 the listing doesn't
-   * explain is that id held in another of the person's organizations: open one
+   * explain is that id held in another of the user's organizations: open one
    * under a fresh id.
    */
   const openReaderSession = async (flow: string): Promise<void> => {
@@ -752,7 +752,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
   };
 
-  /** The pending person-asks in one session. */
+  /** The pending user-asks in one session. */
   const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
     const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
     if (pending.length === 0) return [];
@@ -785,7 +785,7 @@ export function createLabReader(clients: LabClients): LabReader {
    * The declared documents a listed session's flow serves to a browser: each
    * flow's manifest, read once (and cached), keeping the single resources whose
    * content a client may read. A document no flow serves, or a flow no listed
-   * session runs, is not found: nothing is read but the person's own sessions.
+   * session runs, is not found: nothing is read but the user's own sessions.
    */
   const readResources = async (sessions: SessionSummary[]): Promise<Section<DeclaredResource[]>> => {
     const byFlow = new Map<string, string>();
@@ -824,7 +824,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     // Before the organization is read, on purpose, even though a Lab with no
     // reader flow answers it 404 on every refused read: a reading session is
-    // the only session a first-visit person can have for the org to be read off.
+    // the only session a first-visit user can have for the org to be read off.
     const readers = await withReaderSessions(sessions);
     sessions = readers.sessions;
     let orgId: string | undefined;
@@ -851,9 +851,9 @@ export function createLabReader(clients: LabClients): LabReader {
         }
         // A worker's sessions are on its worker flow, and name the worker in
         // their state. One on a worker's flow that names none is still read: its
-        // asks are shown, unattributed. A session naming one of the person's
+        // asks are shown, unattributed. A session naming one of the user's
         // own workers, on the flow their roster says it runs on, is that
-        // worker's: the listing holds only the person's sessions, so it is
+        // worker's: the listing holds only the user's sessions, so it is
         // their own worker's and nobody else's. Another flow's session that
         // merely names it in its state is not.
         const workerIds = new Set(inventory.value.workers.map((s) => s.id));

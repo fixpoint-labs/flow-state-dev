@@ -51,8 +51,8 @@ const TASK_TOOLS = [
  * The board suffixes the flow's own action list names: every `<suffix>` for
  * which all eight `<tool>_<suffix>` above are actions. `taskToolActions` generates
  * them together, so a whole family is a board's tools even when this
- * session has no rows on that board (a sibling Workforce mailbox sharing the
- * flow kind, or a board with no tasks yet). An app's own `cancelTask_now`
+ * session has no rows on that board (a sibling session sharing the flow
+ * kind, or a board with no tasks yet). An app's own `cancelTask_now`
  * comes with no family, so it names no board.
  */
 function generatedSuffixes(actions: readonly string[]): string[] {

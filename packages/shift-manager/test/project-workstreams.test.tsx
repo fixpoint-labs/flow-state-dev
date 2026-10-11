@@ -3,7 +3,7 @@
  * installs the project coordinator and the standard workstream coordinator
  * (FIX-1793 S8, S9).
  *
- * Two people in one shared project: the Lab's owner ("Alice") and a member
+ * Two people in one shared project: the Lab's owner ("Alice") and a project member
  * ("Bob"), and an organization member on no project, each with a secret of
  * their own. Everything goes through Shift Manager's own code
  * (`lib/projects.ts`, the project view) against the Lab's shipped routes.
@@ -17,7 +17,7 @@
  * and its owner's delegate record, and takes the project coordinator's post),
  * and V8 (BR-12, BR-18: a project view opens on the row and one entry prefix,
  * its Board reads only the viewer's own workstream sessions, and another
- * person's entry is read, never their session).
+ * user's entry is read, never their session).
  *
  * **Node first, then a DOM.** The DevTeam host's modules resolve files beside
  * them with `new URL(path, import.meta.url)`, which a DOM test file's
@@ -112,11 +112,11 @@ afterEach(async () => {
   root = undefined;
 });
 
-/** One person at the Lab: their connection, their workforce client, and their roster reading session. */
-type Person = { clients: LabClients; reader: string; roster: () => Promise<RosterEntry[]> };
+/** One user at the Lab: their connection, their workforce client, and their roster reading session. */
+type User = { clients: LabClients; reader: string; roster: () => Promise<RosterEntry[]> };
 
-/** The DevTeam Lab with one shared project, Apollo, whose members are Alice and Bob. */
-async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user: { userId: string; bearer: string }) => Promise<Person> }> {
+/** The DevTeam Lab with one shared project, Apollo, whose project members are Alice and Bob. */
+async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user: { userId: string; bearer: string }) => Promise<User> }> {
   const harness = selectHarness();
   root = mkdtempSync(join(tmpdir(), "sm-project-workstreams-"));
   lab = await openLab({
@@ -133,9 +133,9 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
   const baseUrl = served.baseUrl;
   // With a DOM in place, the page is on the Lab's origin, as the shift-manager command serves it.
   if (typeof window !== "undefined") (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-  const as = async (user: { userId: string; bearer: string }): Promise<Person> => {
+  const as = async (user: { userId: string; bearer: string }): Promise<User> => {
     const clients = createLabClients({ userId: user.userId, baseUrl, bearerToken: user.bearer });
-    // The Lab read opens the person's reading session on the roster flow, as the app does.
+    // The Lab read opens the user's reading session on the roster flow, as the app does.
     await createLabReader(clients).read();
     const workforce = workforceClientFor(clients);
     return { clients, reader: readerSessionId(user.userId, PROJECT_READER_FLOW), roster: () => workforce.roster() };
@@ -145,22 +145,22 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
   return { baseUrl, setup, as };
 }
 
-/** The person's own workers, by id. */
-async function ownWorkers(person: Person): Promise<RosterEntry[]> {
-  return (await person.roster()).filter((entry) => !entry.standard).sort((a, b) => a.id.localeCompare(b.id));
+/** The user's own workers, by id. */
+async function ownWorkers(user: User): Promise<RosterEntry[]> {
+  return (await user.roster()).filter((entry) => !entry.standard).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function openAs(person: Person, setup: ProjectSetup, id: string, project: ProjectAddress = APOLLO) {
-  return openWorkstreamWithCoordinator(person.clients, workforceClientFor(person.clients), setup, person.reader, { project, id, title: `The ${id}` });
+async function openAs(user: User, setup: ProjectSetup, id: string, project: ProjectAddress = APOLLO) {
+  return openWorkstreamWithCoordinator(user.clients, workforceClientFor(user.clients), setup, user.reader, { project, id, title: `The ${id}` });
 }
 
-/** The person's project coordinator session for Apollo, found or started as the Stream tab does. */
-async function projectCoordinator(person: Person, setup: ProjectSetup): Promise<string> {
-  return (await workforceClientFor(person.clients).ensureWorkerSession({ worker: setup.projectCoordinator!, projectId: APOLLO })).id;
+/** The user's project coordinator session for Apollo, found or started as the Stream tab does. */
+async function projectCoordinator(user: User, setup: ProjectSetup): Promise<string> {
+  return (await workforceClientFor(user.clients).ensureWorkerSession({ worker: setup.projectCoordinator!, projectId: APOLLO })).id;
 }
 
-async function delegatesOf(person: Person, sessionId: string) {
-  const { output } = await runAction(person.clients, "coordinator", sessionId, "listDelegates", {});
+async function delegatesOf(user: User, sessionId: string) {
+  const { output } = await runAction(user.clients, "coordinator", sessionId, "listDelegates", {});
   return (output as { delegates: Array<{ worker: string; target?: string; takes: string }> }).delegates;
 }
 
@@ -258,7 +258,7 @@ describe("opening a workstream from a project (V8a: BR-35 to BR-37)", () => {
     const { setup, as } = await open();
     const outsider = await as(OUTSIDER);
     const before = await ownWorkers(outsider);
-    await expect(openAs(outsider, setup, "sneak")).rejects.toThrow(/member/);
+    await expect(openAs(outsider, setup, "sneak")).rejects.toThrow(/not-a-member/);
     expect(await ownWorkers(outsider)).toEqual(before);
   });
 

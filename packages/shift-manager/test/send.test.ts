@@ -105,9 +105,9 @@ describe("sendTurn", () => {
     await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
   });
 
-  // A turn that stops on a person's approval (a chief of staff's fire or retire) holds the
+  // A turn that stops on a user's approval (a chief of staff's fire or retire) holds the
   // line already: it is delivered, and resending it would raise the ask twice.
-  it("is delivered, stopped on an ask, when the door's request suspended on a person's approval and the session holds its user item", async () => {
+  it("is delivered, stopped on an ask, when the door's request suspended on a user's approval and the session holds its user item", async () => {
     const { clients } = stubClients({
       status: "suspended",
       items: [
@@ -118,7 +118,7 @@ describe("sendTurn", () => {
     await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
   });
 
-  // Inbox lists only a person's asks, so a suspension on anything else must not point there.
+  // Inbox lists only a user's asks, so a suspension on anything else must not point there.
   it("is delivered, stopped on a wait and not an ask, when the request suspended on something Inbox doesn't list", async () => {
     const { clients } = stubClients({
       status: "suspended",
@@ -152,8 +152,8 @@ describe("sendTurn", () => {
     const resume = (id: string) => ({ requestId: "req_door", type: "suspension_resume", suspensionId: id });
     const cases: Array<[string, Item[], "ask" | "wait" | null]> = [
       ["answered between the poll and the read, nothing pending: plain delivered", [line, ask("s1"), resume("s1")], null],
-      ["a wait answered, then a person's ask pending: in Inbox", [line, ask("s1", "external_event"), resume("s1"), ask("s2")], "ask"],
-      ["a person's input pending: in Inbox", [line, ask("s1", "human_input")], "ask"],
+      ["a wait answered, then a user's ask pending: in Inbox", [line, ask("s1", "external_event"), resume("s1"), ask("s2")], "ask"],
+      ["a user's input pending: in Inbox", [line, ask("s1", "human_input")], "ask"],
       ["another request's ask pending, this one's answered: not this line's", [line, ask("s1"), resume("s1"), { ...ask("s9"), requestId: "req_other" }], null],
     ];
     for (const [what, items, stopped] of cases) {
@@ -182,7 +182,7 @@ describe("sendTurn", () => {
 
     // A request resumed and suspended again under one id: its own items, read with its status,
     // say what it is stopped on now.
-    it("re-suspended on a person's ask after a wait was answered: the ask is reported", async () => {
+    it("re-suspended on a user's ask after a wait was answered: the ask is reported", async () => {
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1", "external_event"), resume("s1"), ask("s2")] });
       await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
     });

@@ -130,7 +130,7 @@ function runWord(status: string | undefined): string {
 
 /**
  * What the worker is doing, above the composer (v2:428-429): a mark (v2's
- * needs square while the run waits on the person, its run square while it
+ * needs square while the run waits on the user, its run square while it
  * runs), the worker and the run's state, and Esc while it can be stopped.
  */
 function Activity({ worker }: { worker: string | null }) {

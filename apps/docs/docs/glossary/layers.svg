@@ -57,8 +57,8 @@
   <text x="42" y="266" class="muted">uses engine</text>
   <rect x="248" y="168" width="424" height="112" rx="10" class="wall-org"/>
   <text x="262" y="192" class="h">Workforce</text>
-  <text x="262" y="212" class="p">Workers from WORKER.md, mailboxes from MAILBOX.md,</text>
-  <text x="262" y="230" class="p">rosters, the inventory, projects and workstreams</text>
+  <text x="262" y="212" class="p">Workers, coordinators and projects, with rosters,</text>
+  <text x="262" y="230" class="p">the inventory and workstreams</text>
   <text x="262" y="248" class="code">@flow-state-dev/workforce</text>
   <text x="262" y="266" class="muted">uses core, orchestration. Your app passes in engine calls.</text>
   <rect x="688" y="168" width="204" height="112" rx="10" class="card"/>

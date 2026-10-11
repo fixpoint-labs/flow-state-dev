@@ -148,7 +148,7 @@ export type TaskPlanProps = {
    * collection. Without this scope, every TaskPlan instance in the chat
    * history reads from the global stream and shows the latest run's
    * data — including TaskPlans rendered at older positions in the
-   * thread. Pass `requestId` to bind the plan to its originating run.
+   * chat thread. Pass `requestId` to bind the plan to its originating run.
    *
    * When omitted, the component falls back to the most recent request
    * that emitted events for `collectionId` (useful when there's only
@@ -431,7 +431,7 @@ function TaskPlanHeader({
 
 /**
  * A board's phase, coloured by what it means. Every phase here is agents at
- * work, so none takes `attention` (a person must act). Planning, active and
+ * work, so none takes `attention` (a user must act). Planning, active and
  * reviewing are ordinary progress (`info`); replanning means a review sent
  * the plan back, which is `warning`.
  */

@@ -2,7 +2,7 @@
  * The Chief of Staff view's pure parts: where Shift Manager lands (V1, BR-1),
  * which worker is the chief of staff (V2, D2, BR-10 to BR-12), the shift
  * summary's numbers (V3; D1, BR-4), and which session
- * is the person's conversation with it (V4, BR-14).
+ * is the user's conversation with it (V4, BR-14).
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -16,7 +16,7 @@ const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWork
 
 describe("landing (V1, BR-1)", () => {
   it("opens Chief of Staff at /, at /cos and at any path Shift Manager doesn't know", () => {
-    // `/w/…` was a mailbox workstream's address; with no such level, it lands here too.
+    // `/w/…` is no level Shift Manager knows, so it lands here too.
     for (const path of ["/", "/cos", "/nowhere", "/cos/extra", "/w", "/w/ops.desk/stream"]) {
       expect(parseRoute(path), path).toEqual({ level: "cos" });
     }
@@ -135,7 +135,7 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
     expect(summary.running).toEqual({ ok: true, value: { runs: 3, workstreams: 2 } });
   });
 
-  it("still counts what is running when nothing needs the person", () => {
+  it("still counts what is running when nothing needs the user", () => {
     const summary = shiftSummary(snapshotOf({ asks: { ok: true, value: [] } }));
     expect(summary.asks).toEqual({ ok: true, value: [] });
     expect(summary.running).toEqual({ ok: true, value: { runs: 3, workstreams: 2 } });
@@ -152,7 +152,7 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
   });
 });
 
-describe("the person's conversation with the chief of staff (V4, BR-14)", () => {
+describe("the user's conversation with the chief of staff (V4, BR-14)", () => {
   const cos = worker("desk.chief-of-staff");
   const session = (id: string, workerId: string | undefined, createdAt: number, parentSessionId?: string, flowKind = "agent"): SessionSummary =>
     ({ id, flowKind, flowId: flowKind, ...(workerId === undefined ? {} : { state: { workerId } }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;

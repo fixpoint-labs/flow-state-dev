@@ -2,7 +2,7 @@
 /**
  * The sidebar and the right panel each collapse on their own, so the centre
  * can take the window: from a control on the panel and from `[` and `]`, kept
- * for the person across reloads, and, on a narrow window, the right panel
+ * for the user across reloads, and, on a narrow window, the right panel
  * opening over the centre instead of pushing it.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -105,7 +105,7 @@ describe("the right panel", () => {
 });
 
 describe("the shortcuts", () => {
-  it("[ toggles the sidebar and ] the right panel, and neither does anything while the person types", async () => {
+  it("[ toggles the sidebar and ] the right panel, and neither does anything while the user types", async () => {
     await openApp("/cos");
     const sidebar = screen.getByTestId("sidebar");
 
@@ -146,7 +146,7 @@ describe("a screen with no right panel", () => {
   });
 });
 
-describe("what the person picked", () => {
+describe("what the user picked", () => {
   it("survives a reload and a change of screen, and is theirs: another user in the same browser opens with both panels expanded", async () => {
     const app = await openApp("/cos");
     act(() => fireEvent.click(screen.getByTestId("sidebar-toggle")));
@@ -167,7 +167,7 @@ describe("what the person picked", () => {
 });
 
 describe("a narrow window", () => {
-  it("starts the right panel collapsed, opens it over the centre without keeping that, and a wide window gets the person's pick back", async () => {
+  it("starts the right panel collapsed, opens it over the centre without keeping that, and a wide window gets the user's pick back", async () => {
     happy().setViewport({ width: 1100, height: 900 });
     await openApp("/cos");
     // Nothing kept says collapsed, and still it starts that way.
@@ -184,7 +184,7 @@ describe("a narrow window", () => {
     press("]");
     expect(screen.queryByTestId("cos-panel")).toBeNull();
     press("]");
-    // Widened while open over the centre: the panel is the person's pick, expanded and pushing again.
+    // Widened while open over the centre: the panel is the user's pick, expanded and pushing again.
     act(() => happy().setViewport({ width: 1600, height: 900 }));
     expect(screen.getByTestId("right-panel").getAttribute("data-overlay")).toBe("false");
     expect(screen.getByTestId("right-panel-slot").className).toContain("w-[340px]");

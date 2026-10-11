@@ -27,32 +27,32 @@ A section is a label and a set of kind names. The navigator reads the rest of th
 
 ## How deep the navigator goes
 
-The navigator starts at the kind. How many levels sit under it depends on how that flow was declared.
+The navigator starts at the flow kind. How many levels sit under it depends on how that flow was declared.
 
-A flow with `cardinality: "collection"` has many addressable copies, so it gets **three levels**: kind, then instances, then sessions. The built-in `agent` worker flow works this way. Open it and you see the workers hired on it; open a worker and you see that worker's sessions.
+A flow with `cardinality: "collection"` has many addressable copies, so it gets **three levels**: flow kind, then instances, then sessions. The built-in `agent` worker flow works this way. Open it and you see the workers hired on it; open a worker and you see that worker's sessions.
 
-A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it gets **two levels**: kind, then sessions. The `coordinator` flow works this way: a hundred conversations with coordinators are a hundred sessions on one instance, so opening the kind lists the conversations directly.
+A flow with `cardinality: "singleton"` is one instance whose address is its flow kind, so it gets **two levels**: flow kind, then sessions. The `coordinator` flow works this way: a hundred conversations with coordinators are a hundred sessions on one instance, so opening the flow kind lists the conversations directly.
 
 There is no prop for choosing the depth. What the navigator shows always matches the flow, so a flow that changes its cardinality changes the navigator with it.
 
 ## Showing the roster and the boards
 
-`Roster`, `BoardColumns` and `BoardList` read collections through a session you pass in. `Roster` reads the `roster` collection, so its session's flow has to declare it:
+`Roster`, `BoardColumns` and `BoardList` read collections through a session you pass in. `Roster` reads the user's worker collection under the key `roster`, so its session's flow has to declare it there:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { defineHiredRosterCollection } from "@flow-state-dev/workforce";
+import { defineWorkerCollection } from "@flow-state-dev/workforce";
 
 export const shell = defineFlow({
   kind: "shell",
   resources: {
-    roster: defineHiredRosterCollection(),
+    roster: defineWorkerCollection(),
   },
   actions: { /* ... */ },
 });
 ```
 
-A board is read through a session whose flow keeps it, by the key that flow keeps it under. Each conversation with a coordinator keeps its tasks under `tasks`, and so does any session on the built-in worker flow or a flow built with `defineSessionBoard`; [Showing a person's boards in your app](./delegating-work.md#showing-a-persons-boards-in-your-app) says which rows that read returns.
+A board is read through a session whose flow keeps it, by the key that flow keeps it under. Each conversation with a coordinator keeps its tasks under `tasks`, and so does any session on the built-in worker flow or a flow built with `defineSessionBoard`; [Showing a user's boards in your app](./delegating-work.md#showing-a-users-boards-in-your-app) says which rows that read returns.
 
 ```tsx
 import { useMemo } from "react";
@@ -97,7 +97,7 @@ A board column is grouped by task status. An empty board says so, and names the 
 
 ### A board as a list
 
-`BoardList` draws the same board as one list, newest first, with each task's status beside it. Reach for it when people scan a board rather than work it, such as a queue of cases waiting for a person. It takes the same `sessionId`, `boardRef` and `resourceClient` as `BoardColumns`, plus `live` and the `fetcher` that goes with it. This example assumes a `fetcher` and a `resourceClient` built the way `ShellPanels` builds them above, once and shared:
+`BoardList` draws the same board as one list, newest first, with each task's status beside it. Reach for it when people scan a board rather than work it, such as a queue of cases waiting for a user. It takes the same `sessionId`, `boardRef` and `resourceClient` as `BoardColumns`, plus `live` and the `fetcher` that goes with it. This example assumes a `fetcher` and a `resourceClient` built the way `ShellPanels` builds them above, once and shared:
 
 ```tsx
 import { BoardList } from "@flow-state-dev/react";
@@ -129,7 +129,7 @@ Loading, an empty board and a failed read look different from each other. A fail
 
 ![Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function](./ui-read-sources.svg)
 
-What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton kind, or one instance of a collection kind, so opening a collection kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
+What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton flow kind, or one instance of a collection flow kind, so opening a collection flow kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
 
 To read again on demand, change a panel's React `key`, or use the `refresh` function the navigator's `leafToolbar` slot is handed. What that slot returns sits on the open leaf's own row, after any `rowTrailing` content.
 
@@ -139,7 +139,7 @@ The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
   `--fsd-panel-*` for the roster, the board columns and the board list. Set them on any ancestor.
-- **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `leafDetail` under an open leaf's row for content that doesn't fit on it, `sectionHeader` beside a section label, and `emptySection` for a section whose kinds your server doesn't have.
+- **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `leafDetail` under an open leaf's row for content that doesn't fit on it, `sectionHeader` beside a section label, and `emptySection` for a section whose flow kinds your server doesn't have.
 
 The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by the width of the expand arrow. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
 
@@ -151,7 +151,7 @@ The navigator draws a dashed line down from each open row, past the rows under i
 
 A navigator row's actions, whatever its `rowTrailing` and `leafToolbar` slots return, are hidden until the row is hovered or has keyboard focus, and stay shown on the selected row. On a touch screen with no hover they're always shown. Hidden actions keep their space and stay reachable with Tab.
 
-You can't pin an action visible. Only a session row's label is yours to set: it shows the session's title, which you set when you [create or update the session](../client/overview.md#session-management). Put a status your users need at a glance there. A session with no title shows its id, shortened when the server generated it; hover the row for the full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
+You can't pin an action visible. Only a session row's label is yours to set: it shows the session's title, which you set when you [create or update the session](../client/overview.md#session-management). Put a status your users need at a glance there. A session with no title shows its id, shortened when the server generated it; hover the row for the full id. Flow kind and instance rows always show the flow kind and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
 
 ### One set of tokens for everything on screen
 
@@ -179,4 +179,4 @@ The roster and the board columns are scoped to an organization, because the coll
 
 A user's own workers aren't flows, so the navigator doesn't list them: read them with `createWorkforceClient(...).roster()`, as [Hiring and forking](./durable-hire.md#after-a-hire-refresh-the-roster) shows. In a multi-organization deployment, don't show end users a workers section that includes file-declared workers, because those are listed to everyone.
 
-**Which organization the panels show depends on how your deployment signs people in.** A session is bound to the organization of the identity your server resolves for the request. With no sign-in configured there is one organization, and you see it. If you hire into real organizations but have not given the app a way to identify the person viewing it, the panels read the default organization and come up empty. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers how a request gets its organization.
+**Which organization the panels show depends on how your deployment signs people in.** A session is bound to the organization of the identity your server resolves for the request. With no sign-in configured there is one organization, and you see it. If you hire into real organizations but have not given the app a way to identify the user viewing it, the panels read the default organization and come up empty. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers how a request gets its organization.

@@ -7,7 +7,7 @@
  * answer the assertion wants. This is the only place that claim is made.
  *
  * Four legs, mapping to the worker-kind contract's acceptance criteria 1-3
- * (`docs/architecture/workforce-default-worker-kind.md`):
+ * (`docs/architecture/workforce-default-worker-flow.md`):
  *
  *   0  fixture integrity — the tree and input.json agree, before any model call
  *   a  C1: two worker files hire onto the built-in, from an installation given no worker flow

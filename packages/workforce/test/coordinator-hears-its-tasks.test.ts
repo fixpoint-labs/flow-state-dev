@@ -3,7 +3,7 @@
  * line only (FIX-1863, on FIX-1794 BR-22 and BR-24).
  *
  * A coordinator whose own turn can file a task reads that task's ending in
- * that turn, so a failed task can be filed again and the person told: one
+ * that turn, so a failed task can be filed again and the user told: one
  * routing by judgment, and every one routing by best fit. Best fit runs that
  * turn on a post it picks the coordinator for (FIX-1833 D1) and on a miss
  * with no fallback to take it (FIX-1791 D2), description or not. A

@@ -109,7 +109,7 @@ export function failingFlowsSource(message: string): FlowSource {
 
 /**
  * A session listing keyed by flow address: a singleton leaf is asked by its
- * kind, a collection member by its instance id.
+ * flow kind, a collection's copy by its instance id.
  */
 export function sessionsSource(byAddress: Readonly<Record<string, readonly SessionEntry[]>>): SessionSource {
   return {

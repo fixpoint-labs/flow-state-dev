@@ -92,7 +92,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
 /**
  * The installation's standard workers as `openInventory` takes workers: each
  * worker's id, the flow it runs on, and that flow's actions, which its door is
- * read from. The org's inventory lists these, the workers every member has; a
+ * read from. The org's inventory lists these, the workers every user has; a
  * user's own workers are theirs, on their roster.
  */
 export function inventoryWorkers(installation: WorkerInstallation): InventoryWorker[] {

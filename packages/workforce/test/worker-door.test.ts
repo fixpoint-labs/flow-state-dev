@@ -1,7 +1,7 @@
 /**
  * V5 — a worker's door (FIX-1690, BR-1, BR-2).
  *
- * An app sends a person's line into a worker's session through the door the
+ * An app sends a user's line into a worker's session through the door the
  * worker's inventory row names, without knowing the worker's flow. So the hire
  * reads it off the worker flow once: the one public action with `userMessage` and a
  * `{ message }` input.
@@ -83,7 +83,7 @@ describe("a worker's door (BR-1, BR-2)", () => {
     expect(workerDoorOf(worker!)).toEqual({ door: "run" });
   });
 
-  it("is the one public action a worker flow declares for a person's message", () => {
+  it("is the one public action a worker flow declares for a user's message", () => {
     const [worker] = mintWorkers([record("eng.desk", "desk")], { workerFlows: flows });
     expect(workerDoorOf(worker!)).toEqual({ door: "ask" });
   });

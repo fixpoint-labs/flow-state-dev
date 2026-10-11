@@ -8,7 +8,7 @@
  * Every worker runs on one copy of the flow it names, so the rail's worker
  * section is the `agent` worker flow, its one copy, and that copy's conversations:
  * each one a session that names its worker when it is created. The
- * coordinator flow is a singleton: its row opens straight into the person's
+ * coordinator flow is a singleton: its row opens straight into the user's
  * conversation with each coordinator the tree declares.
  *
  * These open the app as `devuser`, the one user this app runs as. Nothing
@@ -79,7 +79,7 @@ const flowRow = (page: Page, flow: string) => rail(page).locator(`button[data-ki
 /** A copy's row under its flow. */
 const copyRow = (page: Page, id: string) => rail(page).locator(`button[data-instance-id="${id}"]`);
 
-test("the rail opens the coordinator into the person's conversation with it and the worker flow into its one copy, reading only leaves", async ({
+test("the rail opens the coordinator into the user's conversation with it and the worker flow into its one copy, reading only leaves", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
@@ -90,14 +90,14 @@ test("the rail opens the coordinator into the person's conversation with it and 
   await expect(rail(page).getByRole("list", { name: "Workers" })).toBeVisible();
   // Drawing the rail reads no session list of its own. The reads at load are
   // the assistant's, for the conversation the stream opens on, and the roster
-  // panel's, for the person's roster session.
+  // panel's, for the user's roster session.
   await page.waitForLoadState("networkidle");
   expect(
     requests.take().filter((url) => !url.includes("flowKind=chat-agent") && !url.includes("flowKind=workforce-roster")),
   ).toEqual([]);
 
   // The coordinator flow is a singleton: its row is the leaf, so opening it
-  // lands straight on the person's conversation with each coordinator the
+  // lands straight on the user's conversation with each coordinator the
   // tree declares, found by the coordinator's id. The flow is never listed
   // whole: every list it reads names the coordinator's worker.
   await row(page, "coordinator").click();
@@ -314,7 +314,7 @@ const readActions = (nav: Locator): Promise<ActionState[]> =>
 const measureRows = (nav: Locator) =>
   nav.evaluate(
     (root, long) => {
-      // The first glyph a person sees, through a text range. Padding values
+      // The first glyph a user sees, through a text range. Padding values
       // can differ while the text still lands in the wrong place.
       const textLeft = (el: Element): number | null => {
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -434,7 +434,7 @@ async function checkRail(
   const atRest = await readActions(nav);
   expect(atRest.length, `${name} has host actions to measure`).toBeGreaterThan(0);
 
-  // Each action measured with its own row pointed at: what a person sees.
+  // Each action measured with its own row pointed at: what a user sees.
   const revealed = new Map<string, number>();
   for (const action of atRest) {
     await (action.row === null ? nav.locator(`[data-vg-action="${action.id}"]`) : nav.locator(action.row)).hover();
@@ -548,7 +548,7 @@ async function checkRail(
     `hidden at rest ${quiet.filter(hidden).length} of ${quiet.length}, reachable ${still.filter((a) => a.focusable).length} of ${still.length}; Tab from ${tabRow} lands on ${tabbedTo} and shows it: ${tabShows}; hovering ${hoverRow} shows only it: ${hoverShowsOnlyIt}; a row without actions shows none: ${plainQuiet}`,
   );
 
-  // One row pointed at, the rest quiet, for a person to look at.
+  // One row pointed at, the rest quiet, for a user to look at.
   await rest(page);
   await nav.locator(shot.hoverRow).hover();
   await page.waitForTimeout(100);
@@ -651,7 +651,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
  * flow it runs on and what it handles.
  *
  * `support.devices` is declared in a worker file, so it is a standard worker:
- * the roster lists it from the person's roster read, and its instructions,
+ * the roster lists it from the user's roster read, and its instructions,
  * the file's body, never reach the page. Hiring is the roster flow's, not a
  * button on the page.
  *

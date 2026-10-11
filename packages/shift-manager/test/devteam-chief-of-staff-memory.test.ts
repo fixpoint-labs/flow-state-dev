@@ -4,11 +4,11 @@
  * (working memory, the rolling digest, `memory/recall`), the `agent` flow
  * carries none of it, and the turn is told whether anything is recorded.
  *
- * The round trip is the test that matters. With capture on, a fact the person
+ * The round trip is the test that matters. With capture on, a fact the user
  * said reaches the next turn's prompt from working memory; with capture off,
  * the Lab's default, the same conversation leaves no trace there. Each prompt
- * is read without the person's own messages, so a fact found in it got there
- * from memory and not because the person just said it.
+ * is read without the user's own messages, so a fact found in it got there
+ * from memory and not because the user just said it.
  *
  * The model is scripted by block: the judgment (`coordinator-judgment`)
  * answers with a fixed line and records what it was handed; memory's
@@ -120,7 +120,7 @@ async function say(lab: Lab, sessionId: string, message: string): Promise<void> 
   }
 }
 
-/** The last judgment step's prompt, without the person's own messages. */
+/** The last judgment step's prompt, without the user's own messages. */
 function lastPrompt(): string {
   const options = handed.at(-1);
   expect(options).toBeDefined();
@@ -136,7 +136,7 @@ describe("the shift coordinator's memory", () => {
     handed = [];
   });
 
-  it("is composed into the coordinator flow, kept apart from the person's other flows, and not into agent", async () => {
+  it("is composed into the coordinator flow, kept apart from the user's other flows, and not into agent", async () => {
     const lab = await open();
     const runtime = await lab.state.getRuntime();
     const coordinator = runtime.registry.get("coordinator") as FlowInstance;
@@ -158,7 +158,7 @@ describe("the shift coordinator's memory", () => {
     expect(lastPrompt()).not.toContain(CAPTURE_ON);
   });
 
-  it("with capture on, reads back what the person said on the next turn, from working memory", async () => {
+  it("with capture on, reads back what the user said on the next turn, from working memory", async () => {
     const lab = await open(true);
     const id = await conversation(lab);
     await say(lab, id, `remember: ${FACT}`);
@@ -174,8 +174,8 @@ describe("the shift coordinator's memory", () => {
     const id = await conversation(lab);
     await say(lab, id, `remember: ${FACT}`);
     await say(lab, id, "when does the train leave?");
-    // The person's earlier message is still in the conversation's history,
-    // which is read now and is not memory: the prompt without the person's
+    // The user's earlier message is still in the conversation's history,
+    // which is read now and is not memory: the prompt without the user's
     // messages carries no trace of it.
     expect(lastPrompt()).not.toContain(FACT);
   });

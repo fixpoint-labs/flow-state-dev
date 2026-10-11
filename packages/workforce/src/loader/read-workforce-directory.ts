@@ -194,7 +194,7 @@ async function readWorkerSlots(
     // that could not be read is an author's typo, and a file declaring what
     // the framework imposes is an author's misunderstanding. Checked here
     // rather than inside the parse so the two stay tellable apart by control
-    // flow, the way the mailboxes and resources readers keep them apart.
+    // flow, the way the teams and resources readers keep them apart.
     const refused = refusedDeclaration(loaded.declared, workerName);
     if (refused !== undefined) {
       errors.push({ path: step.path, error: refused, kind: "refused-declaration" });
@@ -304,7 +304,7 @@ function parseWorkerMd(
  * because a second copy of that membership drifts. The set here is a different
  * set — the contract's keys MINUS `instructions`, which a file may legitimately
  * declare, PLUS `persona`, which the contract does not carry at all — and each
- * member answers with its own wording. A shared list would have to unify those
+ * key answers with its own wording. A shared list would have to unify those
  * wordings to exist, which would cost more than it saves. So a sixth imposed
  * key needs a sixth condition here, deliberately, and the test beside each one
  * is what notices when it is missing.

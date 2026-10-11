@@ -68,7 +68,7 @@ export interface ReferenceContentStore {
 
 /** The flow the references are installed on, as the storage coordinate needs it. */
 export interface ReferenceInstallFlow {
-  /** The flow instance's id — half the bucket when the org scope is isolated. */
+  /** The registered flow's id — half the bucket when the org scope is isolated. */
   id: string;
   /**
    * Whether that flow isolates its org scope (`isolateOrgState`).

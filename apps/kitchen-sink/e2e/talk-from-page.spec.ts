@@ -362,7 +362,7 @@ test("a specialist's answer is one line under its own name, and the line wakes n
   consoleErrors: _consoleErrors,
 }) => {
   const mark = `reply-token-${token()}`;
-  const line = `[route:support.devices] [scenario:reply-in-mailbox] ${mark} when do refunds post?`;
+  const line = `[route:support.devices] [scenario:reply-in-conversation] ${mark} when do refunds post?`;
   await post(await openHelpDesk(page), line);
   await answerLanded(page, mark);
   // Time for a wrongly woken worker to run, so its absence below is not a race.
@@ -371,7 +371,7 @@ test("a specialist's answer is one line under its own name, and the line wakes n
   const answers = answersTo(await drawnAfterReload(page, mark), mark);
   // One line, the specialist's answer.
   expect(answers.map((l) => l.label)).toEqual(["support.devices"]);
-  expect(answers[0]!.text).toContain(`[reply:in-mailbox] ${mark}`);
+  expect(answers[0]!.text).toContain(`[reply:in-conversation] ${mark}`);
 
   for (const worker of SPECIALISTS) {
     const routed = worker === "support.devices";
@@ -407,7 +407,7 @@ test("with support.help open, the routed specialist shows as working and then it
   // be seen working. It is the only one working on the post.
   const working = panel.getByTestId("working-row");
   await expect(working).toHaveText(["support.devices is working"]);
-  const reply = panel.getByTestId("coordinator-line").filter({ hasText: `[reply:in-mailbox] ${mark}` });
+  const reply = panel.getByTestId("coordinator-line").filter({ hasText: `[reply:in-conversation] ${mark}` });
   await expect(reply).toHaveCount(0);
 
   // Then its line lands in the open panel, under its name, and the row clears.

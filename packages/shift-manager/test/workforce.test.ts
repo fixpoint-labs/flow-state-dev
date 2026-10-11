@@ -1,10 +1,10 @@
 /**
- * The person's workers as Shift Manager reads them, against a real Lab served
+ * The user's workers as Shift Manager reads them, against a real Lab served
  * on a free port that runs its workers as data: one copy of `agent`, the
  * roster flow, and a standard worker.
  *
  * The Lab takes a bearer token, so a client that dropped the connection's
- * credential would be refused: the client must act as the Lab's person, with
+ * credential would be refused: the client must act as the Lab's user, with
  * the credential every other read carries.
  */
 import { createBearerSecretPrincipalResolver, createFlowState, inMemoryStores, PrincipalResolutionError } from "@flow-state-dev/engine";
@@ -61,7 +61,7 @@ async function workerLab() {
 }
 
 describe("useWorkforce's client, on a Lab that runs its workers as data", () => {
-  it("lists the person's roster with each worker's flow, and opens one session per worker", async () => {
+  it("lists the user's roster with each worker's flow, and opens one session per worker", async () => {
     const { baseUrl } = await workerLab();
     const workforce = workforceClientFor(createLabClients({ userId: USER, bearerToken: SECRET, baseUrl }));
 
