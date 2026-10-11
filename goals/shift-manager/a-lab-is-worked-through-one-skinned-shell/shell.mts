@@ -232,13 +232,18 @@ export type Store = {
   asks: StoredAsk[];
   /** The organizations the person's sessions are bound to. */
   orgs: string[];
-  /** The organization's projects; none when no flow declares the collection. */
-  projects: Array<{ id: string; title: string; brief: string | null; workstreams: string[] }>;
+  /** The organization's projects; none when no flow declares the collection. A project lists no mailbox. */
+  projects: Array<{ id: string; title: string; brief: string | null }>;
 };
 
 export async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
-  // The inventory, through the first mailbox's session, by its published key patterns.
-  const host = tree.mailboxes[0]!.id;
+  // The person's own session on the roster flow: it declares the projects and the worker inventory.
+  const reader = await api.call("POST", "/workforce-roster/sessions", { userId });
+  const readerId = reader.status === 201 ? String(reader.body.session.id) : undefined;
+  // The inventory, through the first mailbox's session, or the roster session in a tree with
+  // none, by its published key patterns.
+  const host = tree.mailboxes[0]?.id ?? readerId;
+  if (host === undefined) throw new Error(`no session to read the inventory through: the tree declares no mailbox and the roster session did not open (${reader.status})`);
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const refOf = (pattern: string) =>
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
@@ -251,9 +256,7 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
       ? []
       : (await api.collection(host, mailboxesRef)).map((r) => ({ id: String(r.id), kind: String(r.kind), members: Array.isArray(r.members) ? (r.members as string[]) : [] }));
 
-  // The projects, through the person's own session on the roster flow, which declares them (Shift Manager reads them there).
-  const reader = await api.call("POST", "/workforce-roster/sessions", { userId });
-  const readerId = reader.status === 201 ? String(reader.body.session.id) : undefined;
+  // The projects, through the roster session, which declares them (Shift Manager reads them there).
   const readerManifest = readerId === undefined ? undefined : await api.get(`/sessions/${encodeURIComponent(readerId)}/manifest`);
   const projectsRef = (readerManifest?.resources as Array<{ kind: string; ref: string; pattern: string; scope?: string }> | undefined)?.find(
     (r) => r.kind === "collection" && r.pattern === "projects/*" && r.scope === "org",
@@ -265,7 +268,6 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
           id: String(r.id),
           title: String(r.title),
           brief: typeof r.brief === "string" ? r.brief : null,
-          workstreams: Array.isArray(r.workstreams) ? (r.workstreams as string[]) : [],
         }));
 
   const rows: Store["rows"] = {};

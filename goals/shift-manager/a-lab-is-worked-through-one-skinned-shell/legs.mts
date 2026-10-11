@@ -137,7 +137,9 @@ export async function walkSurfaces(
   // Jump to: a workstream, a worker, a task and a declared document.
   const docs = readableDocuments(tree.root);
   const targets: Array<{ group: string; query: string; lands: string }> = [
-    { group: "Workstreams", query: tree.mailboxes[0]!.id, lands: `[data-testid=workstream][data-mailbox-id="${tree.mailboxes[0]!.id}"]` },
+    ...(tree.mailboxes[0] === undefined
+      ? []
+      : [{ group: "Workstreams", query: tree.mailboxes[0].id, lands: `[data-testid=workstream][data-mailbox-id="${tree.mailboxes[0].id}"]` }]),
     { group: "Workers", query: store.seats[0] ?? "", lands: "[data-testid=roster]" },
     ...(rows[0] === undefined ? [] : [{ group: "Tasks", query: rows[0].title.slice(0, 24), lands: `[data-testid=task-frame][data-task-id="${rows[0].id}"]` }]),
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
@@ -238,10 +240,10 @@ export async function walkSurfaces(
   // The project level: No project, then each of the store's projects, in four
   // tabs. A tab draws the store's content, or its named empty state when the
   // store holds none: No project has no coordinator and no brief.
-  const inProject = new Set(store.projects.flatMap((p) => p.workstreams));
+  // A project lists no mailbox, so No project holds every mailbox workstream.
   const levels = [
-    { id: "unassigned", nav: "projects-heading", project: false, brief: null, workstreams: store.mailboxes.map((c) => c.id).filter((id) => !inProject.has(id)) },
-    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, project: true, brief: p.brief, workstreams: p.workstreams })),
+    { id: "unassigned", nav: "projects-heading", project: false, brief: null, workstreams: store.mailboxes.map((c) => c.id) },
+    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, project: true, brief: p.brief, workstreams: [] as string[] })),
   ];
   const holdsBoard = new Set(tree.mailboxes.filter((c) => c.boardRefs.length > 0).map((c) => c.id));
   for (const level of levels) {
@@ -822,10 +824,13 @@ export async function legC(ctx: LegCtx): Promise<void> {
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
         await page.locator("[data-testid=inbox-detail] [data-testid=ask-card]").waitFor();
         await sweep(page, { ask: `[data-testid=inbox-detail] ${SWEPT.ask}` }, tally);
-        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))!.id;
-        await page.getByTestId(`nav-workstream-${workstream}`).click();
-        await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
-        await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
+        // And in the Stream of a mailbox workstream the asking worker is on, when there is one.
+        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))?.id;
+        if (workstream !== undefined) {
+          await page.getByTestId(`nav-workstream-${workstream}`).click();
+          await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
+          await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
+        }
         // Approve, so a run's Session and its trace page can be read.
         await page.getByTestId("nav-inbox").click();
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();

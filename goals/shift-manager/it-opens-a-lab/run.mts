@@ -41,7 +41,7 @@
  *                    both its paths (`transcript.ts` and `send.ts`). Must
  *                    fail at "the post is in the stored transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
- *                    answer from the Stream lands in the store" on DevTeam.
+ *                    answer lands in the store" on DevTeam.
  *   queued-shown     Tasks treats no row as queued, so the toggle hides
  *                    nothing. Must fail at "Tasks equals the store's open
  *                    rows" on DevTeam, whose filed row is queued.
@@ -60,6 +60,8 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { PROJECTS_KIND as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { EM_KIND as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks", "queued-shown"] as const;
@@ -81,6 +83,8 @@ const fixture = loadFixture<{
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const SCRATCH = goalTmpDir("shift-manager");
+/** The id of the workstream this check opens in a DevTeam project, as its owner. */
+const WORKSTREAM = "feature";
 
 const LABS = {
   devteam: {
@@ -238,8 +242,8 @@ type Store = {
   rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null; runSession: string | null }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
-  /** The organization's project rows: which workstreams each one lists. */
-  projects: Array<{ id: string; workstreams: string[] }>;
+  /** The organization's project rows, by id. A project lists no mailbox. */
+  projects: Array<{ id: string }>;
 };
 
 /** The person's `workforce-roster` session, opened once per API. */
@@ -269,14 +273,22 @@ async function topLevelSessions(api: LabApi, userId: string): Promise<string[]> 
   return ((listing.sessions ?? []) as Array<Record<string, any>>).filter((s) => s.parentSessionId == null).map((s) => String(s.id));
 }
 
+/** Every session of the person's, those another session opened (a workstream's) included. */
+async function allSessions(api: LabApi, userId: string): Promise<Array<Record<string, any>>> {
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
+  return (listing.sessions ?? []) as Array<Record<string, any>>;
+}
+
 /**
  * Every conversation's board, by conversation: the conversation ledger read
  * through the first of the person's own sessions whose flow lets a browser
  * read it, each row kept under the conversation its topic names
- * (`<filingSessionId>/<taskId>`, the filing id being `<sessionId>~<n>`).
+ * (`<filingSessionId>/<taskId>`, the filing id being `<sessionId>~<n>`). A
+ * conversation is any session of the person's, a workstream's included.
  */
 async function conversationRows(api: LabApi, userId: string): Promise<Store["rows"]> {
   const own = await topLevelSessions(api, userId);
+  const theirs = new Set((await allSessions(api, userId)).map((s) => String(s.id)));
   let carrier: string | undefined;
   for (const sessionId of own) {
     if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.ref === CONVERSATION_LEDGER && r.client?.state?.read === true)) {
@@ -294,7 +306,7 @@ async function conversationRows(api: LabApi, userId: string): Promise<Store["row
     for (const item of (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>) {
       const filing = decodeURIComponent(item.topic.split("/")[0] ?? "");
       const holder = filing.slice(0, filing.lastIndexOf("~"));
-      if (!own.includes(holder)) continue;
+      if (!theirs.has(holder)) continue;
       const row = item.clientData ?? {};
       (rows[holder] ??= []).push({
         ref: `${holder}.${CONVERSATION_LEDGER}`,
@@ -387,10 +399,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
   const projects =
     projectsRef === undefined || reader === undefined
       ? []
-      : (await api.collection(reader, projectsRef)).map((r) => ({
-          id: String(r.id),
-          workstreams: Array.isArray(r.workstreams) ? (r.workstreams as string[]) : [],
-        }));
+      : (await api.collection(reader, projectsRef)).map((r) => ({ id: String(r.id) }));
   return { seats, mailboxes, rows, asks, projects };
 }
 
@@ -481,6 +490,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     };
 
     // Put a row on the board, through the Lab's own actions.
+    let workstream: { project: string; id: string; session: string; lead: string } | undefined;
     if (name === "multi-seat-collab") {
       const labTree = await readLabTree();
       const scenario = new Scenario(
@@ -497,12 +507,26 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       // The planner's board hands the row to its worker at once, and the worker parks it on its question.
       if (!(await waitForRow(api, tree, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
     } else {
-      const mailbox = boardMailbox(tree);
-      const kind = (await readStore(api, tree, userId)).mailboxes.find((c) => c.id === mailbox.id)?.kind;
-      if (kind === undefined) throw new Error(`${name}: the inventory registers no mailbox ${mailbox.id}`);
-      const status = await act(api, kind, mailbox.id, "post", { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` }, userId);
-      if (status !== "completed") throw new Error(`${name}: the filing post ended ${status}`);
-      if (!(await waitForRow(api, tree, () => true, userId))) throw new Error(`${name}: the post filed no row`);
+      // The person opens a workstream in the organization's first project, led
+      // by the tree's EM, through the projects flow Shift Manager opens one
+      // with; then files one feature on that workstream session's board through
+      // the EM's own `file` door. Filed, not run: the row waits, queued.
+      const roster = await readDeclaredRoster(LABS.devteam.tree);
+      const lead = roster.workers.find((w) => w.declared.flow === EM_FLOW)?.id;
+      if (lead === undefined) throw new Error(`${name}: the tree declares no worker on the "${EM_FLOW}" flow to lead a workstream`);
+      const project = (await readStore(api, tree, userId)).projects[0]?.id;
+      if (project === undefined) throw new Error(`${name}: the Lab holds no project to open a workstream in`);
+      const projects = await api.call("POST", `/${PROJECTS_FLOW}/sessions`, { userId });
+      if (projects.status !== 201) throw new Error(`${name}: no ${PROJECTS_FLOW} session: ${projects.status} ${JSON.stringify(projects.body)}`);
+      const address = { visibility: "shared", id: project };
+      const openedStatus = await act(api, PROJECTS_FLOW, String(projects.body.session.id), "openWorkstream", { project: address, id: WORKSTREAM, title: "Feature", lead }, userId);
+      if (openedStatus !== "completed") throw new Error(`${name}: opening ${project}'s ${WORKSTREAM} ended ${openedStatus}`);
+      const session = (await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&state.workstreamId=${encodeURIComponent(`shared/${project}/${WORKSTREAM}`)}`)).sessions?.[0]?.id;
+      if (typeof session !== "string") throw new Error(`${name}: opening ${project}'s ${WORKSTREAM} made no workstream session of ${userId}'s`);
+      const status = await act(api, EM_FLOW, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, userId);
+      if (status !== "completed") throw new Error(`${name}: the filing ended ${status}`);
+      if (!(await waitForRow(api, tree, () => true, userId))) throw new Error(`${name}: the filing put no row on a board`);
+      workstream = { project, id: WORKSTREAM, session, lead };
     }
 
     const store = await readStore(api, tree, userId);
@@ -588,8 +612,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     // project coordinator and no brief, and says so; its Board draws a lane per
     // board-holding one.
     await page.getByTestId("projects-heading").click();
-    const listed = new Set(store.projects.flatMap((p) => p.workstreams));
-    const unlisted = store.mailboxes.map((c) => c.id).filter((id) => !listed.has(id));
+    // A project lists no mailbox, so No project lists every one.
+    const unlisted = store.mailboxes.map((c) => c.id);
     const unlistedBoards = tree.mailboxes.filter((c) => unlisted.includes(c.id) && c.boardRefs.length > 0).map((c) => c.id);
     for (const tab of ["stream", "brief"]) {
       await page.locator(`[role=tab][data-tab=${tab}]`).click();
@@ -671,6 +695,29 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       await reachTaskFrame(first, "Tasks equals the store's open rows");
     }
 
+    // ---- a workstream the person opened: its entry, and its lead's board ------
+    if (workstream !== undefined) {
+      const { project, id, session } = workstream;
+      await open(page, served.origin, `/p/${encodeURIComponent(project)}/workstreams`);
+      const entry = page.locator(`[data-testid=project-entry][data-owner="${userId}"][data-workstream-id="${id}"]`);
+      if (!(await entry.first().waitFor({ timeout: 15_000 }).then(() => true, () => false))) {
+        const drawn = await page.locator("[data-testid=project-entry]").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-owner")}/${e.getAttribute("data-workstream-id")}`));
+        fail("a workstream shows its entry", `${project}'s Workstreams lists [${drawn.join(", ")}], not ${userId}/${id}`);
+      }
+      await open(page, served.origin, `/p/${encodeURIComponent(project)}/board`);
+      const lane = page.locator(`[data-testid=project-lane][data-session-id="${session}"]`);
+      const filed = store.rows[session] ?? [];
+      if (filed.length === 0) fail("its owner sees the lead's board", `the store holds no row on ${id}'s session ${session}`);
+      if (!(await lane.first().waitFor({ timeout: 15_000 }).then(() => true, () => false))) {
+        fail("its owner sees the lead's board", `${project}'s Board draws no lane for ${id}'s session ${session}`);
+      } else {
+        await lane.locator("[data-testid=cos-task], [data-testid=cos-tasks-empty], [data-testid=cos-tasks-failure]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+        const drawn = await lane.locator("[data-testid=cos-task]").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-task-id")}:${e.getAttribute("data-status")}`));
+        const want = filed.map((r) => `${r.id}:${r.status}`);
+        if (!same(drawn, want)) fail("its owner sees the lead's board", `${id}'s lane: ${diff(want, drawn)}`);
+      }
+    }
+
     // ---- post: the composer, on the board-holding workstream ---------------
     const line = `${fixture.line} (${name} ${RUN_STAMP})`;
     let kept: number;
@@ -691,6 +738,27 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       await open(page, served.origin, `/w/${encodeURIComponent(mailbox.id)}/stream`);
       if (!(await visible(page, "transcript-line-body"))) fail("the post is in the stored transcript", "after a reload the transcript is empty");
       else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
+    } else if (workstream !== undefined) {
+      // A workstream the person opened: its page is the conversation with its
+      // lead, in its session, sent through the lead's door. The composer's line
+      // is drawn, and the session holds it once, across a reload.
+      const path = `/p/${encodeURIComponent(workstream.project)}/workstreams?owner=${encodeURIComponent(userId)}&ws=${encodeURIComponent(workstream.id)}`;
+      await open(page, served.origin, path);
+      const input = page.getByTestId("project-entry-composer-input");
+      await input.waitFor({ timeout: 15_000 });
+      await input.fill(line);
+      await page.getByTestId("project-entry-composer-send").click();
+      const drawn = page.locator("[data-testid=project-entry-item][data-role=user]").filter({ hasText: line });
+      try {
+        await drawn.first().waitFor({ timeout: 30_000 });
+      } catch {
+        fail("the post appears on screen", `"${line}" was never drawn (${(await page.getByTestId("project-entry-composer-status").textContent().catch(() => null)) ?? ""})`);
+      }
+      kept = (await api.items(workstream.session, ["message"])).filter((i) => i.role === "user" && JSON.stringify(i.content ?? i.text ?? i).includes(line)).length;
+      if (kept !== 1) fail("the post is in the stored transcript", `the workstream session ${workstream.session} holds ${kept} copies of "${line}"`);
+      await open(page, served.origin, path);
+      await page.getByTestId("project-entry-item").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+      if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
     } else {
       // A tree with no workstream has no workstream composer: the post goes
       // through the task composer on a conversation's open row, into the
@@ -740,8 +808,23 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
           }
         }
       }
+      // An ask no workstream's Stream holds (DevTeam's sits in the EM seat's own
+      // session) is answered where Inbox draws it, with the same card.
       if (picked === null) {
-        fail("an answer from the Stream lands in the store", `${store.asks.length} ask(s) pending and no workstream's Stream offers an answer on any`);
+        await open(page, served.origin, "/inbox");
+        const items = page.getByTestId("inbox-item");
+        for (let i = 0; i < (await items.count()) && picked === null; i += 1) {
+          await items.nth(i).click();
+          const approve = page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" });
+          await approve.first().waitFor({ timeout: 5_000 }).catch(() => undefined);
+          if ((await approve.count()) > 0 && !(await approve.first().isDisabled())) {
+            picked = await items.nth(i).getAttribute("data-suspension-id");
+            await approve.first().click();
+          }
+        }
+      }
+      if (picked === null) {
+        fail("an answer lands in the store", `${store.asks.length} ask(s) pending and neither a workstream's Stream nor Inbox offers an answer on any`);
         answered = "no ask answerable";
       } else {
         let left = store.asks;
@@ -750,13 +833,13 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
           left = (await readStore(api, tree, userId)).asks;
         }
         if (left.includes(picked) || left.length !== store.asks.length - 1) {
-          fail("an answer from the Stream lands in the store", `${store.asks.length} pending before Approve, ${left.length} after, the approved one ${left.includes(picked) ? "still" : "no longer"} pending`);
+          fail("an answer lands in the store", `${store.asks.length} pending before Approve, ${left.length} after, the approved one ${left.includes(picked) ? "still" : "no longer"} pending`);
         }
-        // The answer clears it from Inbox too: both draw the same pending asks.
+        // The answer clears it from Inbox: both draw the same pending asks.
         await open(page, served.origin, "/inbox");
         const listed = await page.locator(`[data-testid=inbox-item][data-suspension-id="${picked}"]`).count();
-        if (listed !== 0) fail("an answer from the Stream leaves Inbox", `the ask approved in the Stream is still listed in Inbox`);
-        answered = `approved 1 of ${store.asks.length} in the Stream, ${left.length} left in the store, ${listed} listed in Inbox`;
+        if (listed !== 0) fail("an answer leaves Inbox", `the approved ask is still listed in Inbox`);
+        answered = `approved 1 of ${store.asks.length}, ${left.length} left in the store, ${listed} listed in Inbox`;
       }
     }
 

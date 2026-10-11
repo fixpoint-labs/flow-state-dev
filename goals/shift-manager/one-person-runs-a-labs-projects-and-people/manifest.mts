@@ -70,9 +70,9 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     // `b:second-run-sees-file` (and `a:note-saved`, `b:file-saved`)
     "no-sync-back": { legs: [/^\[control no-sync-back\] b:second-run-sees-file — /] },
   },
-  // "must FAIL on leg 2, *the mailbox's board returned no rows* (legs 3, 4 and 5 go red with it)"
+  // "must FAIL on `a:the-row`, *the workstream session's board holds no row*"
   "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": {
-    "kind-ledger": { legs: [/^\[control kind-ledger\] the mailbox's board returned no rows/] },
+    "em-session": { legs: [/^\[control em-session\] a:the-row/] },
   },
   // leg 1, "a row existed before any approval" (and legs 3 and 4c)
   "goals/devforce-lab/it-waits-for-a-person-before-it-files": {

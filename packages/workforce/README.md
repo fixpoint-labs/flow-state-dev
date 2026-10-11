@@ -2050,7 +2050,9 @@ const flows = hireWorkforce(installation); // research, agent, and the roster fl
 ```
 
 Register every flow `hireWorkforce` returns: one copy of each worker flow, and the roster flow,
-`workforce-roster`, which carries the `hire`, `fork`, `edit` and `fire` actions below.
+`workforce-roster`, which carries the `hire`, `fork`, `edit` and `fire` actions below. A session
+of it also reads the organization's worker inventory (`inventory/seats/*`), so a person can see
+who the organization's workers are with no mailbox session to read it through.
 `createWorkerHireBlocks(installation)` returns the same four as blocks, to mount elsewhere or hand
 to a model as [tools](#hire-fork-and-fire-as-tools).
 

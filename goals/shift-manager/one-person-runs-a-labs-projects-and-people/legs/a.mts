@@ -1,6 +1,6 @@
 /**
- * Leg a: the person asks the chief of staff for two projects, one spanning two
- * teams, and finds them under PROJECTS, each with four tabs whose Stream is
+ * Leg a: the person asks the chief of staff for two projects, one shared with
+ * another member, and finds them under PROJECTS, each with four tabs whose Stream is
  * the person's own project coordinator for it, before and after a restart.
  *
  * Steps a1 to a5 (PLAN.md → Checks). Only rows the chief of staff created in
@@ -28,18 +28,20 @@ export interface LegA {
   streams: Record<string, string>;
 }
 
-const teamOf = (mailboxId: string) => mailboxId.split(".")[0]!;
-const rowKey = (r: ProjectRow) => JSON.stringify({ t: r.title, b: r.brief ?? null, o: r.ownerUserId, m: [...r.members].sort(), w: r.workstreams });
+const rowKey = (r: ProjectRow) => JSON.stringify({ t: r.title, b: r.brief ?? null, o: r.ownerUserId, m: [...r.members].sort() });
+
+/** The flow a person reads their roster and projects through: the session made for a person who holds none. */
+const READER_FLOW = "workforce-roster";
 
 /**
  * When Shift Manager refuses a person who holds no session (the refusal is
- * graded first), make them one session over HTTP on the flow `mailboxSession`
- * runs, and open `url` again, so the rest of a4 is still graded.
+ * graded first), make them one session over HTTP on the roster flow, and open
+ * `url` again, so the rest of a4 is still graded.
  */
-async function openWithSession(world: World, who: "member" | "outsider", page: Page, url: string, mailboxSession: string): Promise<{ ok: true; madeSession?: string } | { ok: false; why: string }> {
+async function openWithSession(world: World, who: "member" | "outsider", page: Page, url: string): Promise<{ ok: true; madeSession?: string } | { ok: false; why: string }> {
   const first = await openAs(page, url);
   if (first.ok) return first;
-  const kind = String((await world.routes.owner.get(`/sessions/${encodeURIComponent(mailboxSession)}`)).session?.flowKind ?? "");
+  const kind = READER_FLOW;
   const made = await world.routes[who].call("POST", `/${encodeURIComponent(kind)}/sessions`, { userId: world.routes[who].user.userId });
   if (made.status >= 400) return first;
   const again = await openAs(page, url);
@@ -47,25 +49,18 @@ async function openWithSession(world: World, who: "member" | "outsider", page: P
 }
 
 /** a1 and a2 to a4: ask, then read. Returns undefined when a1 left nothing to grade. */
-export async function legA(world: World, mailboxSession: string): Promise<LegA | undefined> {
+export async function legA(world: World): Promise<LegA | undefined> {
   const r = world.record;
   const { owner, member } = world.people;
 
   // ---- a1 · ask for two projects ---------------------------------------------
-  const boot = await readProjects(world.routes.owner, mailboxSession);
-  const claimed = new Set(boot.rows.flatMap((row) => row.workstreams));
-  const free = boot.mailboxes.filter((c) => !claimed.has(c));
-  const teams = [...new Set(free.map(teamOf))].sort();
-  // D1: one workstream on each of two teams that no default project holds.
-  const picked = teams.slice(0, 2).map((t) => free.find((c) => teamOf(c) === t)!);
-  if (picked.length < 2) {
-    r.fail("a1", `D1's workstreams: the boot's projects leave free [${free.join(", ")}], not one on each of two teams (finding against FIX-1718)`);
-    return undefined;
-  }
+  // A project lists no mailbox, so D1's "one workstream on each of two teams" has no subject:
+  // a project's workstreams are entries people open in it, which the chief of staff doesn't pick.
+  const boot = await readProjects(world.routes.owner);
   const titles = [`Launch ${hex(2)}`, `Research ${hex(2)}`];
   const words =
-    `Please create two projects for me. The first is called "${titles[0]}": give it the workstreams ${picked[0]} and ${picked[1]}, ` +
-    `and add ${member.userId} as a member. The second is called "${titles[1]}", with no workstreams and nobody else.`;
+    `Please create two projects for me. The first is called "${titles[0]}": add ${member.userId} as a member. ` +
+    `The second is called "${titles[1]}", with nobody else.`;
   const turn = await askCos(world, "a1", words);
   if (turn === undefined) {
     r.fail("a1", "no CoS seat: the Chief of Staff view draws no chief of staff to ask");
@@ -73,7 +68,7 @@ export async function legA(world: World, mailboxSession: string): Promise<LegA |
   }
   const creates = callsTo(turn, "createProject");
   if (creates.length !== 2 || creates.some((c) => !c.ok)) r.fail("a1", `CoS's session holds ${creates.length} createProject call(s), ${creates.filter((c) => c.ok).length} ok, not two ok: ${quote(turn)}`);
-  const after = await readProjects(world.routes.owner, mailboxSession);
+  const after = await readProjects(world.routes.owner);
   const before = new Set(boot.rows.map((row) => row.id));
   const created = after.rows.filter((row) => !before.has(row.id));
   const p1 = created.find((row) => row.title.trim().toLowerCase() === titles[0]!.toLowerCase());
@@ -82,23 +77,22 @@ export async function legA(world: World, mailboxSession: string): Promise<LegA |
     r.fail("a1", `two rows: the store holds ${created.length} new row(s) [${created.map((c) => `${c.id} "${c.title}"`).join(", ")}], wanted exactly "${titles[0]}" and "${titles[1]}"; ${quote(turn)}`);
     return undefined;
   }
-  for (const [row, members, workstreams] of [
-    [p1, [owner.userId, member.userId], picked],
-    [p2, [owner.userId], []],
+  for (const [row, members] of [
+    [p1, [owner.userId, member.userId]],
+    [p2, [owner.userId]],
   ] as const) {
     if (row.ownerUserId !== owner.userId) r.fail("a1", `${row.id} is owned by ${row.ownerUserId}, not the person who asked (${owner.userId})`);
     if (!same(row.members, members)) r.fail("a1", `${row.id}'s members are [${row.members.join(", ")}], asked for [${members.join(", ")}]`);
-    if (!same(row.workstreams, workstreams)) r.fail("a1", `${row.id}'s workstreams are [${row.workstreams.join(", ")}], asked for [${workstreams.join(", ")}]`);
   }
   const defaults = after.rows.filter((row) => before.has(row.id));
   for (const row of boot.rows) {
     const now = defaults.find((d) => d.id === row.id);
     if (now === undefined || rowKey(now) !== rowKey(row)) r.fail("a1", `the default project ${row.id} changed while CoS created the new ones`);
   }
-  r.saw("a1", `asked "${words}"; CoS: ${quote(turn)}; new rows ${p1.id} {owner ${p1.ownerUserId}, members [${p1.members}], workstreams [${p1.workstreams}]} and ${p2.id} {owner ${p2.ownerUserId}, members [${p2.members}], workstreams [${p2.workstreams}]}`);
+  r.saw("a1", `asked "${words}"; CoS: ${quote(turn)}; new rows ${p1.id} {owner ${p1.ownerUserId}, members [${p1.members}]} and ${p2.id} {owner ${p2.ownerUserId}, members [${p2.members}]}`);
 
   const state: LegA = { p1, p2, defaults: boot.rows, streams: {} };
-  await readBack(world, mailboxSession, state, false);
+  await readBack(world, state, false);
   return state;
 }
 
@@ -106,11 +100,11 @@ export async function legA(world: World, mailboxSession: string): Promise<LegA |
  * a2 to a4 (and, after a restart, a5: the same reads on a new process, each
  * Stream on the same coordinator session as before).
  */
-export async function readBack(world: World, mailboxSession: string, state: LegA, restarted: boolean): Promise<void> {
+export async function readBack(world: World, state: LegA, restarted: boolean): Promise<void> {
   const r = world.record;
   const tag = (step: string) => (restarted ? "a5" : step);
   const { p1, p2 } = state;
-  const store = await readProjects(world.routes.owner, mailboxSession);
+  const store = await readProjects(world.routes.owner);
   const row1 = store.rows.find((x) => x.id === p1.id);
   const row2 = store.rows.find((x) => x.id === p2.id);
   if (row1 === undefined || row2 === undefined) {
@@ -132,14 +126,13 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
   for (const row of [row1, row2]) {
     const g = groups.find((x) => x.id === row.id);
     if (g === undefined) r.fail(tag("a2"), `PROJECTS does not list ${row.id} ("${row.title}")`);
-    else if (!same(g.streams, row.workstreams)) r.fail(tag("a2"), `PROJECTS lists [${g.streams.join(", ")}] under ${row.id}, its row lists [${row.workstreams.join(", ")}]`);
+    else if (g.streams.length > 0) r.fail(tag("a2"), `PROJECTS lists [${g.streams.join(", ")}] under ${row.id}, and a project lists no mailbox`);
   }
   const titles = await world.page.locator("[data-testid=project-group]").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-project-id")}=${(e.textContent ?? "").trim().slice(0, 80)}`));
   for (const row of [row1, row2]) if (!titles.some((t) => t.startsWith(`${row.id}=`) && t.toLowerCase().includes(row.title.toLowerCase()))) r.fail(tag("a2"), `PROJECTS does not title ${row.id} "${row.title}"`);
-  if (new Set(row1.workstreams.map(teamOf)).size < 2) r.fail(tag("a2"), `${row1.id} lists workstreams of one team: ${row1.workstreams.join(", ")}`);
   for (const d of state.defaults) {
     const g = groups.find((x) => x.id === d.id);
-    if (g === undefined || !same(g.streams, d.workstreams)) r.fail(tag("a2"), `the default ${d.id} is drawn as [${g?.streams.join(", ") ?? "nothing"}], its row lists [${d.workstreams.join(", ")}]`);
+    if (g === undefined || g.streams.length > 0) r.fail(tag("a2"), `the default ${d.id} is drawn as [${g?.streams.join(", ") ?? "nothing"}], and a project lists no mailbox`);
   }
   r.saw(tag("a2"), `PROJECTS: ${groups.map((g) => `${g.id}[${g.streams.join(",")}]`).join(" ")}`);
 
@@ -164,17 +157,8 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
     }
     await tab("workstreams");
     if (!(await visible(world.page, "project-progress"))) r.fail(tabs, `${row.id}'s Workstreams draws no progress`);
-    if (row.workstreams.length > 0) await visible(world.page, "project-workstream");
     const listed = await world.page.locator("[data-testid=project-workstream]").evaluateAll((els) => els.map((e) => e.getAttribute("data-mailbox-id") ?? ""));
-    if (!same(listed, row.workstreams)) r.fail(tabs, `${row.id}'s Workstreams lists mailbox workstreams [${listed}], its row [${row.workstreams}]`);
-    // Each mailbox workstream opens its workstream: click it, as a person would, and read where the page went.
-    for (const id of listed) {
-      await world.open(`/p/${encodeURIComponent(row.id)}/workstreams`);
-      await world.page.locator(`[data-testid=project-workstream][data-mailbox-id="${id}"] button`).click({ timeout: 10_000 }).catch(() => undefined);
-      await sleep(300);
-      const path = new URL(world.page.url()).pathname;
-      if (!path.startsWith(`/w/${encodeURIComponent(id)}`)) r.fail(tabs, `${row.id}'s Workstreams entry ${id} opens ${path}, not its workstream`);
-    }
+    if (listed.length > 0) r.fail(tabs, `${row.id}'s Workstreams lists mailbox workstreams [${listed}], and a project lists none`);
     await tab("board");
     if (!(await visible(world.page, "project-board-none"))) r.fail(tabs, `${row.id}'s Board doesn't draw its named no-board state`);
     await tab("stream");
@@ -199,7 +183,7 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
     const url = `${world.served.origin}/p/${encodeURIComponent(row1.id)}/stream`;
     const refused = await openAs(memberView.page, url);
     if (!refused.ok) r.fail(a4, `the second member can't open Shift Manager: "${refused.why}"`);
-    const opened = refused.ok ? refused : await openWithSession(world, "member", memberView.page, url, mailboxSession);
+    const opened = refused.ok ? refused : await openWithSession(world, "member", memberView.page, url);
     if (!refused.ok && opened.ok) r.saw(a4, `the rest of a4's member checks ran after the check made the member a session over HTTP (${(opened as { madeSession?: string }).madeSession})`);
     if (opened.ok && !("error" in coordinator)) {
       const drawn = await streamCoordinator(memberView.page, world.routes.member, coordinator, row1.id);
@@ -216,7 +200,7 @@ export async function readBack(world: World, mailboxSession: string, state: LegA
     const url = `${world.served.origin}/cos`;
     const refused = await openAs(outsiderView.page, url);
     if (!refused.ok) r.fail(a4, `the outsider can't open Shift Manager: "${refused.why}"`);
-    const opened = refused.ok ? refused : await openWithSession(world, "outsider", outsiderView.page, url, mailboxSession);
+    const opened = refused.ok ? refused : await openWithSession(world, "outsider", outsiderView.page, url);
     if (!opened.ok) {
       await r.shot(outsiderView.page, restarted ? "a5-outsider" : "a4-outsider");
       return;
