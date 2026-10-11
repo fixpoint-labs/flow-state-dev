@@ -152,7 +152,7 @@ id never share a tree. Pass `boardCollectionId` and `boardCollection` too and th
 run exactly as before.
 
 The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. A manager
-built with `ledgers` and no fixed board has no `messageDoor`: the door reads one board's rows.
+built with `ledgers` and no fixed board has no `messageDoor`: that door reads one board's rows. Build one with [`harnessMessageDoor`](#one-door-for-runs-from-more-than-one-board) instead.
 
 On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
 task id in their place, and a task naming only one of the two is refused. A fixed board still
@@ -276,6 +276,37 @@ It answers `{ outcome: "continuing" | "kept", taskId }`:
 
 The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.
 
+### One door for runs from more than one board
+
+A manager built with `ledgers` and no fixed board has no `messageDoor`, and a flow with two managers wants one `message` action, not two. Build that door with `harnessMessageDoor`, and say which boards the calling session's run may be on:
+
+```ts
+import { harnessMessageDoor } from "@flow-state-dev/harness-manager";
+
+defineFlow({
+  kind: "coder",
+  actions: {
+    message: harnessMessageDoor({
+      boards: async (ctx) => [
+        { tasks: await featureBoard(ctx), orgScoped: true, drain: { drain: "resume", flowKind: "em" } },
+        // A conversation's board, for a task session opened for one.
+        ...(await conversationBoardFor(ctx)),
+      ],
+    }),
+  },
+  // ...
+});
+```
+
+Resolve each board from server state, such as the session's own fields, never from the request. For each board you give:
+
+- `tasks`: its rows, as the substrate resolves them. The door keys run records by the board's ledger id and partition, the same way the manager did.
+- `orgScoped`: the board is kept per organization, so only the run's own person may talk to it.
+- `drain`: the `internal` entry that runs this board's drain, and the flow that declares it. After a stop the door dispatches it into the session that claimed the row.
+- `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for rows that carry an `{ issue, phase }` payload. For a task with neither, return its task id and the phase of the manager that runs it.
+
+The door takes the first board whose row links the calling session. It then behaves exactly like `messageDoor`, with the same answers and the same refusals.
+
 ## The deadline
 
 `runTimeoutMs` bounds **the harness step**: the manager composes it into the step's abort signal and fires that signal when the deadline passes. That is the manager's half and all it promises. How promptly a harness returns after its signal fires is the harness's own business.
@@ -284,7 +315,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessMessageDoor`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

@@ -1,5 +1,5 @@
 /**
- * The feature board, and the door the coder takes its rows through.
+ * The feature board, which the EM's board drains and hands to the coder.
  *
  * **The board itself belongs to the mailbox.** The feature mailbox's
  * `MAILBOX.md` names it by a plain local name (`boards: [work]`), and the
@@ -18,22 +18,17 @@
  *   naming that worker, so the row it claims is handed to that worker. A row
  *   for any other name falls to the board's fallback, which asks the
  *   Workforce lookup which worker holds that name.
- * - {@link ledgerDoor} is the coder's side: its task entry takes rows from
- *   this ledger, by the ledger's id, with no board of its own. The board
- *   hands off under that id (`boardId: ledger.id`) for the door to find it.
+ * - The coder's side is its `work` entry (`coder.mts`), which takes rows from
+ *   this ledger, by the ledger's id, with no board of its own, beside any
+ *   conversation's tasks. The board hands off under that id
+ *   (`boardId: ledger.id`) for the entry to find it.
  */
 
-import { defineCapability, dispatcher } from "@flow-state-dev/core";
-import type { TaskBinding, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
+import { dispatcher } from "@flow-state-dev/core";
+import type { TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import {
-  getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
-  resolveResourceCollection,
-  type DefinedTaskCollection,
-  type TaskWorkerInput,
-} from "@flow-state-dev/orchestration/tasks";
-import { taskBoard, taskLedgers } from "@flow-state-dev/orchestration/task-board";
+import { type DefinedTaskCollection, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { runOwnerDispatcher } from "@flow-state-dev/harness-manager";
 
 /**
@@ -58,7 +53,7 @@ export const WORK_ENTRY = "work";
 
 /**
  * The coordinator's `internal` entry that runs its board's drain. The coder
- * seat's message door dispatches it into the EM session that claimed a run's
+ * worker's message door dispatches it into the EM session that claimed a run's
  * row, so the run's next attempt is handed off into the session it ran in.
  */
 export const RESUME_ENTRY = "resume";
@@ -121,7 +116,7 @@ export interface CoordinatorBoardOptions {
 export function coordinatorBoard(options: CoordinatorBoardOptions) {
   return taskBoard({
     name: BOARD_ID,
-    // The ledger's id, which is what the coder's door resolves.
+    // The ledger's id, which is what the coder's entry resolves.
     boardId: options.ledger.id,
     collection: options.ledger.collection,
     concurrency: 1,
@@ -149,33 +144,5 @@ export function coordinatorBoard(options: CoordinatorBoardOptions) {
           }),
         }),
     ...(options.initialTasks === undefined ? {} : { initialTasks: options.initialTasks }),
-  });
-}
-
-/**
- * The coder's door: its task entry takes rows from this ledger, read by the
- * id each hand-off carries. Any other id is refused before a row is read.
- *
- * Pass as the entry's `from`; the flow then needs no board of its own.
- */
-export function ledgerDoor(ledger: FeatureLedger): TaskBinding {
-  return taskLedgers({
-    name: `${BOARD_ID}-door`,
-    resolve: async (id, ctx) => {
-      if (id !== ledger.id) return undefined;
-      const collection = resolveResourceCollection(ctx, id);
-      return collection === undefined
-        ? undefined
-        : getOrCreateTaskCollection({
-            ctx,
-            backing: "resource",
-            collectionId: id,
-            collection,
-            // The EM's board hands rows off, which freezes their assignee; the
-            // door must agree, as every board-mediated path to the ledger does.
-            immutableAssignee: hasFrozenLedgerAssignee(ledger.collection),
-          });
-    },
-    uses: [defineCapability({ name: `${BOARD_ID}-ledger`, resources: { [ledger.id]: ledger.collection } })],
   });
 }

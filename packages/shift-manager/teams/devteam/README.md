@@ -18,7 +18,7 @@ declared seat wakes a **different** declared seat, in a session of its own on
 its flow's one copy, into a supervised coding run whose prompt was built out of that seat's own files. A
 third seat, declared on the same kind, is never reached.
 
-Six checks drive it. The first two differ by **one expression** — the harness
+Seven checks drive it. The first two differ by **one expression** — the harness
 slot; the third adds the two ends of the path neither of them reaches:
 
 | | |
@@ -29,6 +29,8 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/`](../../../../goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/) | The board check. The feature mailbox holds the board its rows sit on, and a posted line ends as one completed row read back through the mailbox, the HTTP door and the organization's storage. No model. |
 | [`goals/devforce-lab/it-waits-for-a-person-before-it-files/`](../../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
 | [`goals/devforce-lab/it-codes-in-the-projects-repository/`](../../../../goals/devforce-lab/it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
+| [`goals/devforce-lab/it-answers-a-conversations-task/`](../../../../goals/devforce-lab/it-answers-a-conversations-task/) | The conversation check. A coordinator files a task for the coder from a conversation: the coder answers it from the right project's code in a checkout of its own, the conversation hears it once, and a task that can't be done is heard failing, with Jev judging the answer against the goal. Scripted legs, and a real-model leg when a key serves it. |
+| [`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`](../../../../goals/devforce-lab/it-names-the-project-a-coders-task-works-in/) | The project-list check. Asked to have the coder look at "our repo", the chief of staff reads the person's projects and files the task for the one with a repository without asking; with two, it asks, naming both; a project the person isn't a member of never appears. Real model. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two
@@ -80,9 +82,10 @@ no opinion at that spot — not because a convention is missing.
 
 | File | Why it is the lab's |
 |---|---|
-| `board.mts` | The EM's board over the mailbox's ledger, whose worker hands a row to the coder worker, and the coder's door on that ledger, which lets the hand-off in without a board of its own. The board itself belongs to the mailbox: its file names it, and the framework mints its id from where the mailbox sits. |
+| `board.mts` | The EM's board over the mailbox's ledger, whose worker hands a row to the coder worker under the ledger's id, which the coder's `work` entry resolves without a board of its own. The board itself belongs to the mailbox: its file names it, and the framework mints its id from where the mailbox sits. |
 | `workforce/flows/workers/em.mts` | The coordinator kind. It owns the board and files rows, and declares **no task entry at all** — so "the EM seat does no harness work" is a fact about the kind, not about one run. |
-| `workforce/flows/workers/coder.mts` | The working kind. One task entry, `harnessManager` behind it, and the harness itself passed in as a slot. |
+| `workforce/flows/workers/coder.mts` | The working kind. One task entry, taking the feature board's rows and any conversation's tasks, with two `harnessManager`s behind it (feature work, which needs a commit, and a person's ask, which needs an answer), one message door over both, and the harness itself passed in as a slot. |
+| `judge.mts` | What the coder's judge asks Jev about a conversation's task, and the confidence floor it reads the verdict against: the same model and floor the chief of staff's best fit runs on. |
 | `host.mts` | Read the tree, build the installation and the kinds, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, on the board or filed through the mailbox, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
 | the mailbox door in `host.mts`, with `notify.mts` | Which mailbox this lab opens, and when, is the app's — and so is which member resolves to which seat, because the dispatch seam refuses a target read out of stored data. `openMailboxes` takes no `orgId` and needs no wrapper: the server-created session carries the organization from the verified principal (FIX-1442). |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |

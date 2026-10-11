@@ -60,8 +60,15 @@ export interface HarnessStubOptions {
    * field.
    */
   outcome?: HarnessRunOutcome | null;
-  /** Anything the run wants to say. Recorded on the row, and becomes retry feedback. */
-  finalMessage?: string | null;
+  /**
+   * Anything the run wants to say: its final message, the answer an answer
+   * task's output carries. Recorded on the row, and becomes retry feedback.
+   * A function reads it off the run after `duringRun`, so a run can answer
+   * with what it found in its working folder.
+   */
+  finalMessage?: string | null | ((run: StubRun) => string | null);
+  /** The handle's `outcome` word per run, overriding {@link outcome}. */
+  outcomeOf?: (run: StubRun) => HarnessRunOutcome | null;
   /**
    * Lines the run says as it works, each emitted as a message in the run's own
    * session before `duringRun`. Absent means a run that says nothing, which is
@@ -152,8 +159,14 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             sessionId: `sess_stub_${sessions}`,
             url: null,
             dispatchedAt: Date.now(),
-            outcome: options.outcome === undefined ? ("finished" as const) : options.outcome,
-            finalMessage: options.finalMessage ?? null,
+            outcome:
+              options.outcomeOf !== undefined
+                ? options.outcomeOf(run)
+                : options.outcome === undefined
+                  ? ("finished" as const)
+                  : options.outcome,
+            finalMessage:
+              typeof options.finalMessage === "function" ? options.finalMessage(run) : (options.finalMessage ?? null),
             usage: null,
             cost: null,
           };

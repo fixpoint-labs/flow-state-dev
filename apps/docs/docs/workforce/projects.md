@@ -461,7 +461,7 @@ The run is refused, before any file is read, when:
 | `not-the-owner` | The run is in a workstream whose owner is someone else. |
 | `no-such-workstream`, `no-such-project` | What the task or its session names is gone. |
 
-Membership is read from the person the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+Membership is read from the person the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried. When the task came from a conversation, the task fails and the conversation hears why, in a line under the worker's name.
 
 A coordinator filing for a coding worker from a conversation with no project names one:
 

@@ -97,10 +97,15 @@ export {
 } from "./project-progress";
 
 export {
+  listedProjectSchema,
+  listProjects,
+  listProjectsInputSchema,
+  listProjectsOutputSchema,
   projectProgressSchema,
   readProject,
   readProjectInputSchema,
   readProjectOutputSchema,
+  type ListProjectsOutput,
   type ReadProjectInput,
   type ReadProjectOutput
 } from "./project-read";

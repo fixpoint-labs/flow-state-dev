@@ -68,10 +68,12 @@ export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } 
 export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   conversationLedgers,
+  filingConversationBoard,
   workerTaskEntry,
   type WorkerTaskBlockInput,
   type WorkerTaskClaim,
-  type WorkerTaskEntryOptions
+  type WorkerTaskEntryOptions,
+  type MailboxListDeclaration
 } from "./conversation-board/task-entry";
 export {
   createWorkerLookup,

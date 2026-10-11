@@ -1242,8 +1242,8 @@ export type HarnessManager = TaskWorker & {
  *
  * Only a manager with a fixed board has a message door: the door reads that
  * board's rows. A manager given only {@link ManagerOptions.ledgers} is a plain
- * task worker, and its host builds the door over the run records, which key
- * each claim's board as the run does (`runBoardSegment`).
+ * task worker, and its host builds the door with `harnessMessageDoor`, naming
+ * the boards a session's run may be on.
  */
 export function harnessManager(
   options: ManagerOptions & { boardCollectionId: string; boardCollection: DefinedTaskCollection },
@@ -2636,11 +2636,24 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
    * phase's check alone (`judged: false`). Absent when no judge was given, so
    * a manager without one runs the chain it always ran.
    */
+  //
+  // Wrapped in a sequencer of the manager's own, whose chain-level rescue
+  // catches a failure anywhere beneath it: a block-level rescue on the host's
+  // block does not reach a failure inside a composite judge (a sequencer
+  // around an evaluator, which is what a judge usually is).
   const judgeStep =
     judge === undefined
       ? undefined
-      : judge.block
-          .connectOutput((verdict: unknown) => ({ verdict: judgeVerdictReadSchema.parse(verdict) }))
+      : sequencer({ name: `${name}-judge`, inputSchema: harnessJudgeInputSchema })
+          .step(judge.block)
+          .step(
+            handler({
+              name: `${name}-judge-verdict`,
+              inputSchema: z.unknown(),
+              outputSchema: z.object({ verdict: harnessJudgeVerdictSchema }),
+              execute: (verdict: unknown) => ({ verdict: judgeVerdictReadSchema.parse(verdict) }),
+            }),
+          )
           .rescue([
             {
               block: handler({
@@ -2733,11 +2746,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
 
   worker.validate();
 
-  // The door reads one board's rows, so only a fixed board has one.
+  // This door reads one board's rows, so only a fixed board has one. A host
+  // whose runs come from more than one board builds `harnessMessageDoor`.
   if (boardCollectionId === undefined || boardCollection === undefined) return worker;
   const messageDoor = createMessageDoor({
     name,
-    boardCollectionId,
     boardCollection,
     capability: managerCapability as unknown as DefinedCapability,
     boardTasks,
