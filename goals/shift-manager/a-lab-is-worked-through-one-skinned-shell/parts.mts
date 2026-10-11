@@ -379,11 +379,12 @@ export function part4(base: string, report: Report): void {
   const action = stripComments(readFileSync(join(src, "lib", "action.ts"), "utf8"));
   const actionSends = action.match(/\bsendAction\(/g)?.length ?? 0;
   if (actionSends !== 1 || !/sendAction\(action, input, \{ sessionId: session \}\)/.test(action)) report.fail("P4:ER-15", `lib/action.ts sends ${actionSends} action(s) outside runAction's one send`);
-  // The person's reading sessions (FIX-1752, FIX-1793): reads.ts creates sessions on its reader kinds only.
+  // The person's reading session (FIX-1752, FIX-1793): reads.ts creates sessions on its one reader
+  // kind only, the roster flow (the mailbox reader went with the mailbox, FIX-1792 P4).
   const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\[INVENTORY_READER_KIND, PROJECT_READER_KIND\]/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kinds");
+  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\bconst kind = PROJECT_READER_KIND;/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kind");
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));
@@ -392,7 +393,7 @@ export function part4(base: string, report: Report): void {
   if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*seat\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*seat\.id\s*\}/.test(opens[0]!)) {
     report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
   }
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kinds), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kind), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
   // One ask rendering: Inbox's detail and Chief of Staff's card draw through AskCard.
   for (const surface of ["Inbox.tsx", "ChiefOfStaff.tsx"]) {
@@ -401,7 +402,7 @@ export function part4(base: string, report: Report): void {
   }
   const askRenderers = own.filter((f) => /<Approval\b|<Question\b|SuspensionCard/.test(readFileSync(f, "utf8"))).map((f) => relative(src, f));
   if (askRenderers.some((f) => !f.endsWith("AskCard.tsx"))) report.fail("P4:ask", `an ask is drawn outside AskCard: ${askRenderers.join(", ")}`);
-  report.note(`P4 one ask rendering: Inbox, Stream and Chief of Staff import AskCard; registry ask cards are drawn only in [${askRenderers.join(", ")}]; a1 compared the two cards' text on screen`);
+  report.note(`P4 one ask rendering: Inbox and Chief of Staff import AskCard; registry ask cards are drawn only in [${askRenderers.join(", ")}]; a1 compared the two cards' text on screen`);
 
   // Layer fence (ER-7, ER-8): the set's changes to core, engine, client and react.
   const layerDiff = git("diff", `${base}..HEAD`, "--", "packages/core/src", "packages/engine/src", "packages/client/src", "packages/react/src");
