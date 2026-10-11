@@ -145,8 +145,7 @@ owner rule as new engine work) and [`poc/removal-inventory/`](poc/removal-invent
   on a run's session.
 - Take FIX-1788's shipped helper names and criteria shape, FIX-1790's key, and the epic's record
   of Q1, Q2 and the claims move.
-- **P5 ([D3](DECISIONS.md#d3)).** Confirm `discover` reaches a coordinator-flow worker; if it
-  doesn't, add it to the project coordinator's `tools:` line rather than a new read. Remove what
+- **P5 ([D3](DECISIONS.md#d3)).** Offer the roster the coordinator flow already reads per post (S5), rather than adding a new read. Remove what
   only the fork used (grep `openWorkstreamWithCoordinator`, `workstreamCoordinator`,
   `workstreamCoordinatorId`, `WORKSTREAM_COORDINATOR`, `workstream-coordinator`, and prose such as
   "forked from the standard workstream coordinator" or "a coordinator of its own") across

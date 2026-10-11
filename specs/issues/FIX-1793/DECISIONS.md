@@ -220,7 +220,7 @@ Engineering calls, recorded so nobody re-derives them.
   declare it; FIX-1792 moved the DevTeam's workstreams to the EM, on `em`, for this. Coordinating is
   the delegates, not the flow (epic D8). S3's lead-flow check already refuses any other lead.
 - **The project coordinator picks the lead from the worker descriptions on the person's roster**
-  (`discover`), and says so rather than opening when none fits (BR-39). It doesn't hire: hiring
+  (read when the ask arrives, so hired workers count), and says so rather than opening when none fits (BR-39). It doesn't hire: hiring
   stays the chief of staff's.
 - **The project coordinator and the chief of staff open workstreams through the same
   `openWorkstream` block** (S9), which names a lead. No default lead remains anywhere.
