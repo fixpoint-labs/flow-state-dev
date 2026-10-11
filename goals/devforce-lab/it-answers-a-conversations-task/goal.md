@@ -85,13 +85,11 @@ Two departures from the spec's wording, both forced by the lab as it is:
   and the project comes from its workstream.
 - **Leg d files on the person's first words.** The chief of staff reads the person's projects
   with `listProjects` and names storefront, the one with a repository, without asking; that it
-  does is FIX-1869's goal (`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`). A
-  real model's filing is retried up to `GOAL_ATTEMPTS` conversations (3 by default), under a
-  control too, since every control perturbs what happens after the filing; what happens to a
-  task once filed is graded on the first one, never retried.
+  does is FIX-1869's goal (`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`).
+  Each real-model leg runs one conversation and is never retried.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-10 | `6c65b15f1`+wip (fix/FIX-1866-p3) | scripted (a–c); `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | Controls first: `feature-door-only` FAILs `a:one-line-under-eng.coder` (no task is filed for the coder: every leg red); `no-filing-project` FAILs exactly `b:carrying-the-marker` and `b-sandbox:carrying-the-marker` ("failed for good … refused this run (no-project)"), `b:sandbox-note-kept`; `no-judge` FAILs `d2:ends-errored` ("ended completed after 1 attempt") and `c:judged-not-done:…`. Then PASS, about 40 s: d filed on the first turn, Jev `done` at 0.89; d2 Jev `not-done` at 1.0 twice. On earlier runs the coordinator asked which project and filed on the person's answer. Found on the way: with three overlapping not-done outcomes Jev's confidence split (0.66 on "Storefront is a project.", under the 0.7 floor), so the judge now asks its verdict apart from the reason; and a filing with `waitForResponse` hears the ending in the turn, not as a line, so the chief of staff's file now says never to wait on a coder's task. |
-| 2026-10-11 | branch `claude/fix-1869-list-projects-6y4pfh` | `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | Legs d and d2 only, after FIX-1869 gave the chief of staff `listProjects` and the person's answer was dropped: d filed for storefront on the first turn, Jev `done` at 0.64; d2 Jev `not-done` at 0.98 twice. |
+| 2026-10-11 | branch `claude/fix-1866-p3-lb0hhy`, filing retry removed | `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | d2 6/6, d 5/6 | Six single runs of legs d and d2, no retry. d2 passed all six (Jev `not-done`, 0.98 to 1.0). d failed once: the chief of staff guessed a project id (`our-repo`) instead of asking, because it can't list projects. The same six runs on top of FIX-1869 (`listProjects`) passed 6/6 for both legs, filing on the first turn. `no-judge` still FAILs `d2:ends-errored` with no retry, on both. |

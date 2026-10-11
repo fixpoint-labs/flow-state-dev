@@ -54,7 +54,7 @@ import { dirname, join } from "node:path";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { DEFAULT_MODEL, gatewayModel, goalAttempts, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { LAB_USER_ID, LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
@@ -623,21 +623,19 @@ await runGoal(async (failures) => {
         commitToRemote(storefront.path, fixture.markerFile, `${marker}\n`);
 
         /**
-         * The ask, in a new conversation, until the coordinator files a task
-         * naming storefront: a real model asks or misnames run to run, so its
-         * filing is retried, under a control too, since every control perturbs
-         * what happens after the filing. What happens to a task once filed is
-         * graded on the first one filed, never retried.
+         * The ask, in a new conversation, once: the coordinator must file a
+         * task naming storefront on this one turn. Never retried, under a
+         * control too.
          */
         const fileLive = async (leg: string): Promise<Filed | undefined> => {
-          const attempts = goalAttempts();
-          for (let attempt = 1; attempt <= attempts; attempt += 1) {
-            const filed = await fileFrom(lab, COORDINATOR_FLOW, await http.open(COORDINATOR_FLOW, { workerId: CHIEF }), fixture.ask);
-            const row = filed.task === undefined ? undefined : await storedTask(lab, filed.task.id);
-            if (row?.assignee === CODER && row.input?.project?.visibility === "shared" && row.input.project.id === "storefront") return filed;
-            console.log(`  ${leg} attempt ${attempt}: filed ${show(row && { assignee: row.assignee, input: row.input })}; the coordinator said ${show(filed.all.at(-1)?.text, 200)}`);
-          }
-          note(`${leg}:names-storefront`, `in ${attempts} conversation(s) the coordinator never filed a task for ${CODER} naming storefront`);
+          const filed = await fileFrom(lab, COORDINATOR_FLOW, await http.open(COORDINATOR_FLOW, { workerId: CHIEF }), fixture.ask);
+          const row = filed.task === undefined ? undefined : await storedTask(lab, filed.task.id);
+          if (row?.assignee === CODER && row.input?.project?.visibility === "shared" && row.input.project.id === "storefront") return filed;
+          note(
+            `${leg}:names-storefront`,
+            `the coordinator filed ${show(row && { assignee: row.assignee, input: row.input })}, not a task for ${CODER} naming storefront; ` +
+              `it said ${show(filed.all.at(-1)?.text, 200)}`,
+          );
           return undefined;
         };
 
