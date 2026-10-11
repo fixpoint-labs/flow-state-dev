@@ -308,15 +308,20 @@ function projectSetup(installation: WorkerInstallation) {
 const AGENT_LEADS = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
 
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
-const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams", "setRepository", "openWorkstream"];
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams", "setRepository", "openWorkstream", "listProjects"];
 
 /**
  * The project writes as the chief of staff's tools, `createProject`,
- * `setWorkstreams`, `setRepository` and `openWorkstream`: the same blocks the
- * Lab's own projects flow runs, under the names its `tools:` line spells. A
- * catalog key must be the tool's own name, so `setWorkstreams` and
- * `openWorkstream` are the blocks under `.as()`; the others are sequencers
- * named for the tool, since each waits for an approval first.
+ * `setWorkstreams`, `setRepository` and `openWorkstream`, and its one project
+ * read, `listProjects`: the same blocks the Lab's own projects flow runs,
+ * under the names its `tools:` line spells. A catalog key must be the tool's
+ * own name, so `setWorkstreams`, `openWorkstream` and `listProjects` are the
+ * blocks under `.as()`; the others are sequencers named for the tool, since
+ * each waits for an approval first.
+ *
+ * `listProjects` is how the chief of staff knows which project a coder's task
+ * works in: the projects the person is a member of, read when asked, never
+ * guessed.
  *
  * `openWorkstream` names its lead: the person's own worker. Shift Manager's
  * open forks a coordinator of the workstream's own instead; giving this tool
@@ -335,6 +340,13 @@ const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams"
  */
 export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
   return {
+    listProjects: blocks.listProjects.as({
+      name: "listProjects",
+      description:
+        "List the projects the person you are talking to is a member of: each one's address " +
+        "(`visibility` and `id`), its title, and its `repository` (null when it has none). " +
+        "Answer which projects they have, and pick the project a task works in, from this, never from memory.",
+    }),
     openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
       description:
@@ -621,6 +633,13 @@ export interface OpenLabOptions {
    */
   dropTask?: boolean;
   /**
+   * Leave the chief of staff's `listProjects` out: not in the catalog, and not
+   * in its `tools:`, so it can't read which projects the person has. The red
+   * state of "the chief of staff names the project a coder's task works in
+   * without asking".
+   */
+  withoutProjectList?: boolean;
+  /**
    * Leave the project tools out: not in the catalog the agent turn is built
    * with (the `agent` kind's, and the chief of staff's on the coordinator
    * flow), and not in any seat's `tools:`, as before the chief of staff had
@@ -856,6 +875,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
       declared.tools = (declared.tools as string[]).filter((name) => !PROJECT_TOOL_NAMES.includes(name));
     }
+    if (options.withoutProjectList === true && Array.isArray(declared.tools)) {
+      declared.tools = (declared.tools as string[]).filter((name) => name !== "listProjects");
+    }
     const redirected = { ...worker, declared };
     return options.mutateSkills === undefined
       ? redirected
@@ -882,7 +904,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     installation,
     leadFlows: [AGENT_LEADS],
   });
-  const projectTools = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
+  const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
+  const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
     (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_KIND;
   // A worker of either kind reads its brief by the document it names; one that

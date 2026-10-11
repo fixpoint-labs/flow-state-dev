@@ -13,9 +13,8 @@ Before this, the coder took rows from the feature board only, so a conversation'
 refused when filed.
 
 **Input:** `fixtures/input.json`: the marker file's name, a second project with its own repository
-and a workstream in it, a project the person isn't a member of, the ask a person types, what the
-person answers when the coordinator asks which project, and the two answers a run gives without
-doing the work. It is **held-out**: the stub reads the marker file by the name in the fixture, and
+and a workstream in it, a project the person isn't a member of, the ask a person types, and the
+two answers a run gives without doing the work. It is **held-out**: the stub reads the marker file by the name in the fixture, and
 every project, workstream and word is read from it, so another file name, another second project
 or another ask passes a correct implementation. Each marker is a random string committed to a
 project's repository, or left in a project's files by an earlier run, after the lab opens.
@@ -84,14 +83,15 @@ Two departures from the spec's wording, both forced by the lab as it is:
   project coordinator) hands work to the workstreams the person owns, and it is a workstream's
   lead that files the coder's task. So the conversation that names nothing is the workstream's,
   and the project comes from its workstream.
-- **Leg d may take two turns.** The chief of staff has no tool that lists projects, so on the
-  person's first words it asks which project they mean, as its `WORKER.md` tells it to when it
-  can't tell. The person's answer (`whichProject`) is sent as the next turn. A real model's
-  filing is retried up to `GOAL_ATTEMPTS` conversations (3 by default), under a control too,
-  since every control perturbs what happens after the filing; what happens to a task once filed
-  is graded on the first one, never retried.
+- **Leg d files on the person's first words.** The chief of staff reads the person's projects
+  with `listProjects` and names storefront, the one with a repository, without asking; that it
+  does is FIX-1869's goal (`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`). A
+  real model's filing is retried up to `GOAL_ATTEMPTS` conversations (3 by default), under a
+  control too, since every control perturbs what happens after the filing; what happens to a
+  task once filed is graded on the first one, never retried.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-10 | `6c65b15f1`+wip (fix/FIX-1866-p3) | scripted (a–c); `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | Controls first: `feature-door-only` FAILs `a:one-line-under-eng.coder` (no task is filed for the coder: every leg red); `no-filing-project` FAILs exactly `b:carrying-the-marker` and `b-sandbox:carrying-the-marker` ("failed for good … refused this run (no-project)"), `b:sandbox-note-kept`; `no-judge` FAILs `d2:ends-errored` ("ended completed after 1 attempt") and `c:judged-not-done:…`. Then PASS, about 40 s: d filed on the first turn, Jev `done` at 0.89; d2 Jev `not-done` at 1.0 twice. On earlier runs the coordinator asked which project and filed on the person's answer. Found on the way: with three overlapping not-done outcomes Jev's confidence split (0.66 on "Storefront is a project.", under the 0.7 floor), so the judge now asks its verdict apart from the reason; and a filing with `waitForResponse` hears the ending in the turn, not as a line, so the chief of staff's file now says never to wait on a coder's task. |
+| 2026-10-11 | branch `claude/fix-1869-list-projects-6y4pfh` | `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | Legs d and d2 only, after FIX-1869 gave the chief of staff `listProjects` and the person's answer was dropped: d filed for storefront on the first turn, Jev `done` at 0.64; d2 Jev `not-done` at 0.98 twice. |

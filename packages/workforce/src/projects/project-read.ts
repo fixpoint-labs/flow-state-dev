@@ -1,6 +1,7 @@
 /**
  * `readProject`: a project as a view opens it — its row, every workstream's
- * entry, and the progress worked out from them.
+ * entry, and the progress worked out from them. `listProjects`: the projects
+ * the caller is a member of, one line each.
  *
  * Two store reads, whatever the project holds: the row by its address, and
  * the project's entries by one prefix (`workstreams/<projectId>/`), never one
@@ -15,12 +16,19 @@
  * {@link readProjectAt} is the read itself: the app's `readProject` action and
  * a project coordinator's `readProject` tool (`project-coordinator.ts`) both
  * run it.
+ *
+ * `listProjects` reads two collections whole: the organization's projects and
+ * the caller's own private ones. A shared row is kept only when the session's
+ * owner is one of its `members` (`membership-gate.ts`); a private row is in the
+ * caller's own user scope, so it is theirs. The rows carry no member index, so
+ * the shared filter runs on the rows read.
  */
 
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { projectAddressSchema, projectRowSchema, projectVisibilitySchema, type ProjectAddress } from "./collections";
-import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { projectAddressSchema, projectRowSchema, projectVisibilitySchema, type ProjectAddress, type ProjectVisibility } from "./collections";
+import { isMember } from "./membership-gate";
+import { projectAt, projectRowsAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
@@ -97,4 +105,52 @@ export const readProject = handler({
   outputSchema: readProjectOutputSchema,
   resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
   execute: (input, ctx): Promise<ReadProjectOutput> => readProjectAt(ctx, input.project)
+});
+
+/** What listing the caller's projects takes: nothing. */
+export const listProjectsInputSchema = z.object({}).strict();
+
+/** One project the caller is a member of, as `listProjects` lists it. */
+export const listedProjectSchema = z.object({
+  visibility: projectVisibilitySchema,
+  id: z.string(),
+  title: z.string(),
+  /** The git remote its code lives in, or `null` for a project with no repository. */
+  repository: z.string().nullable()
+});
+
+/** What listing the caller's projects returns: shared ones first, then private, each by id. */
+export const listProjectsOutputSchema = z.object({ projects: z.array(listedProjectSchema) });
+
+/** @see listProjectsOutputSchema */
+export type ListProjectsOutput = z.infer<typeof listProjectsOutputSchema>;
+
+/**
+ * The projects `userId` is a member of: every shared row whose `members` hold
+ * them, and every private row in their own scope. The calling block declares
+ * the project rows at both visibilities.
+ */
+export async function listProjectsOf(ctx: ResourcesContext, userId: string | undefined): Promise<ListProjectsOutput> {
+  const projects: ListProjectsOutput["projects"] = [];
+  for (const visibility of ["shared", "private"] as const satisfies readonly ProjectVisibility[]) {
+    const listed: ListProjectsOutput["projects"] = [];
+    for (const ref of await projectRowsAt(ctx, visibility).list()) {
+      const parsed = projectRowSchema.safeParse(ref.state);
+      if (!parsed.success) continue;
+      const row = parsed.data;
+      if (visibility === "shared" && !isMember(row, userId)) continue;
+      listed.push({ visibility, id: row.id, title: row.title, repository: row.repository });
+    }
+    projects.push(...listed.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
+  }
+  return { projects };
+}
+
+/** List the projects the session's owner is a member of: each one's address, title and repository. */
+export const listProjects = handler({
+  name: "project-list",
+  inputSchema: listProjectsInputSchema,
+  outputSchema: listProjectsOutputSchema,
+  resources: { ...PROJECT_ROW_RESOURCES },
+  execute: (_input, ctx): Promise<ListProjectsOutput> => listProjectsOf(ctx, ctx.session.identity.userId)
 });
