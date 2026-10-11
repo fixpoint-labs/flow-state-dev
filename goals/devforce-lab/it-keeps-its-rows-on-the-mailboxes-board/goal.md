@@ -1,46 +1,55 @@
-# devforce-lab › it keeps its rows on the mailbox's board
+# devforce-lab › it keeps its rows on the workstream's board
 
-**Issue:** FIX-1667
+**Issue:** FIX-1667 (rewritten under FIX-1792, which took the DevTeam off mailboxes; the folder
+keeps its name so the goal's history stays in one place)
 
-**Outcome:** Anyone in the DevForce Lab's organization who opens the feature mailbox's workstream
-sees the board that mailbox holds and every row on it, at the status its coding run left it, with
-no second copy of the row anywhere. A line posted on the mailbox ends as one completed row, and
-that row is read back the way Shift Manager reads a workstream: through the mailbox, through the HTTP door
-a browser uses, and from the organization's storage under the id the framework minted.
+**Outcome:** In the DevTeam lab, a workstream's work sits on its lead's workstream session's board,
+and the organization reads the workstream without reading that work. Alice opens Storefront's
+`feature` workstream with the EM as its lead; a row the EM files there ends as one completed row on
+that session's board, which Alice reads. Bob (a project member) and an outsider (in the
+organization, on no project) read the workstream's entry, its lead and its session, and are refused
+its rows (epic ER-7: a workstream is read by whoever reads the project and written only by its
+owner).
 
-**Input:** the DevForce tree as it stands, with the lab's scripted harness in the coder seat's slot
-(it commits and finishes). The board's name and the mailbox's id are read off the tree at run time,
-so renaming the mailbox's folder or the board still passes a correct implementation (checked once
-by renaming the board to `queue`).
+Before this rewrite the claim was that the feature *mailbox* held the board and anyone in the org
+read its rows; the DevTeam has no mailbox now.
 
-**Signal:** six legs, each closing named rules (`specs/issues/FIX-1667/BUSINESS-RULES.md`):
+**Input:** the DevTeam tree as it stands, with the lab's scripted harness in the coder's slot (it
+commits and finishes), and a fresh issue slug per run. The workstream's session, the row's id and
+its storage key are read at run time, never typed in.
 
-0. the mailbox's `MAILBOX.md` declares the board by a plain name, and no file in the tree or the
-   lab's code writes the minted id *(BR-1)*;
-1. the mailbox's `read` lists exactly the boards its file declares *(BR-2)*;
-2. its `readBoard` returns exactly one row, with the issue-and-phase id the EM's filing returns,
-   `completed`, assignee `coder` *(BR-3, BR-4)*;
-3. the browser's door (the collection read route on the mailbox's session) returns that row under
-   the lab's verified bearer, without the row's input, output, metadata or execution coordinates,
-   and refuses the same read with no verified organization *(BR-7, BR-8)*;
-4. the organization's storage holds the row under the minted id, and no key in the organization's
-   or the user's storage holds another copy *(BR-4, BR-9)*;
-5. hiring printed no unattended-board warning naming the board *(BR-11)*.
+**Signal:** five legs, read over the lab's HTTP routes with each person's own verified bearer.
 
-**Anti-game:** a hollow pass is a run that completes while the row sits on a ledger the mailbox
-does not hold. So nothing here reads the drain's report, the run record or the EM's output — all
-three are green in exactly that case. The row is only ever read where Shift Manager reads it.
+- **0** the tree declares no mailbox (`0:no-mailbox`).
+- **a** Alice's read of her workstream session's board (`listTasks_tasks`) returns exactly one row
+  (`a:the-row`), `completed` (`a:completed`), assigned `eng.coder` (`a:assignee`), and the coder's
+  harness ran once (`a:ran-once`).
+- **b** Bob and the outsider each read Storefront's entries as Shift Manager does and find Alice's
+  `feature`, led by `eng.em` in her workstream session (`b:reads-the-entry`); a read with no
+  verified organization is refused (`b:org-less-refused`).
+- **c** Bob's and the outsider's reads of Alice's workstream session's board are refused and return
+  no row (`c:rows-refused`).
+- **d** the row is stored once, in Alice's storage under the workstream session's partition, naming
+  its issue and phase (`d:stored-once`, `d:names-its-work`), and nowhere in the organization's
+  storage (`d:no-org-copy`).
 
-**Model:** n/a — model-free by design; what is graded is where the row lives, not how the work
-went. The sibling `it-commits-from-the-seats-own-file` covers a real coding agent.
+**Anti-game:** a hollow pass is a run that completes while the row sits on a board the workstream
+does not hold, or a read that passes because nobody is refused anything. So the row is read where
+Shift Manager reads a workstream's board, through the workstream's session, never off the drain's
+report or the EM's output; the refusals are read as Bob and the outsider, each with their own
+bearer, against the same session Alice read; and storage is enumerated, never looked up by the key
+this check expects.
+
+**Model:** n/a — model-free by design; the lab runs with no judge (the stub answers nothing a judge
+could pass). What is graded is where the row lives and who reads it.
 
 **Run:** `pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts`
 
 Needs `git` and a writable temp directory. No network, no model credential.
 
-**Controls:** `GOAL_CONTROL=kind-ledger` builds the two worker kinds on a user-scoped ledger of their
-own, as they were before the board moved onto the mailbox. The run still completes; the check must
-FAIL on leg 2, *the mailbox's board returned no rows* (legs 3, 4 and 5 go red with it).
+**Controls:** `GOAL_CONTROL=em-session` has the EM file and drain on its own session's board, not
+the workstream session's. The check must FAIL on `a:the-row`, *the workstream session's board holds
+no row*.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -50,3 +59,6 @@ FAIL on leg 2, *the mailbox's board returned no rows* (legs 3, 4 and 5 go red wi
 | 2026-09-30 | a1b122eb1 | n/a | FAIL (control `kind-ledger`) | Fails at leg 2, *the mailbox's board returned no rows*; legs 3, 4 and 5 red with it. As designed. |
 | 2026-09-30 | a1b122eb1 | n/a | PASS (board renamed `queue`) | The board's name and id are read off the tree; rename reverted. |
 | 2026-09-30 | origin/main lab | n/a | FAIL | Before this change: *the mailbox lists no board*. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | FAIL | REWRITE, the old check on the converted tree: it fails to load (`ERR_MODULE_NOT_FOUND` for `teams/devteam/notify.mts`, removed with the mailbox wake), and its leg 0 has no subject: the tree declares no mailbox, so none holds a board. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | FAIL (control `em-session`) | Fails at `a:the-row`, *the workstream session's board holds no row*. As designed. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | PASS | Rewritten: Alice's `feature` session's board holds one completed row by `eng.coder`; Bob and the outsider read her entry (led by `eng.em`, in her session) and are refused the rows; the org-less read answers 401; the row is stored once under `tasks/<workstream session>~…/<id>` in her storage with `{issue, phase}`, none in the org's. The kind-ledger control went with the option it set. |
