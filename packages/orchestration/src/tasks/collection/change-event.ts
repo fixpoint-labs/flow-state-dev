@@ -36,7 +36,9 @@ export type TaskChangeKind =
    */
   | "run_linked"
   /** An asked row's resume-owed marker was cleared: its asking turn has its answer (FIX-1816). */
-  | "resume_settled";
+  | "resume_settled"
+  /** An asked row's ask is over and its cancel failed: the row owes that cancel (FIX-1844). */
+  | "cancel_owed";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the

@@ -57,6 +57,8 @@ export type TaskFilter = {
   hasAllLabels?: string[];
   /** Match only tasks whose asking turn is owed its answer (`Task.resumeOwed`). */
   resumeOwed?: true;
+  /** Match only tasks whose ask is over and still owes its cancel (`Task.cancelOwed`). */
+  cancelOwed?: true;
 };
 
 /** Returns true when `task` matches every set field on `filter`. */
@@ -85,6 +87,8 @@ export function matchesFilter(task: Task, filter?: TaskFilter): boolean {
   }
 
   if (filter.resumeOwed === true && task.resumeOwed !== true) return false;
+
+  if (filter.cancelOwed === true && task.cancelOwed !== true) return false;
 
   return true;
 }
