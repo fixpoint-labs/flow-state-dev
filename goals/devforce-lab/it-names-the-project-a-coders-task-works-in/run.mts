@@ -37,7 +37,7 @@ import { join } from "node:path";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { DEFAULT_MODEL, gatewayModel, goalAttempts, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
@@ -216,32 +216,24 @@ await runGoal(async (failures) => {
     );
     if (made.error !== undefined) throw new Error(`the stranger's createProject was refused — ${made.error}`);
 
-    const attempts = goalAttempts();
-
-    // ---- (one) one project with a repository: filed on the first turn ------
+    // ---- (one) one project with a repository: filed on the turn ------------
     if (LEGS.has("one")) {
       const before = failures.length;
-      let last: Asked | undefined;
-      let filed: Record<string, any> | undefined;
-      let tries = 0;
-      for (let attempt = 1; attempt <= attempts && filed === undefined; attempt += 1) {
-        tries = attempt;
-        last = await ask(lab);
-        filed = last.tasks.find((t) => t.assignee === CODER && t.input?.project?.visibility === "shared" && t.input.project.id === "storefront");
-        if (filed === undefined) {
-          console.log(`  one attempt ${attempt}: tools ${show(last.tools.map((t) => t.name))}; tasks ${show(last.tasks.map((t) => ({ assignee: t.assignee, input: t.input })))}; said ${show(last.reply, 200)}`);
-        }
-      }
-      const listed = last === undefined ? undefined : listedIds(last);
-      if (listed === undefined) note("one:read-the-projects", `the turn never called ${LIST_PROJECTS}; it called ${show(last?.tools.map((t) => t.name))}`);
+      const last = await ask(lab);
+      const filed = last.tasks.find((t) => t.assignee === CODER && t.input?.project?.visibility === "shared" && t.input.project.id === "storefront");
+      const listed = listedIds(last);
+      if (listed === undefined) note("one:read-the-projects", `the turn never called ${LIST_PROJECTS}; it called ${show(last.tools.map((t) => t.name))}`);
       else if (!listed.includes("storefront") || listed.includes(fixture.strangersProject.id)) {
         note("one:read-the-projects", `${LIST_PROJECTS} answered ${show(listed)}: wanted storefront, and never ${fixture.strangersProject.id}`);
       }
       if (filed === undefined) {
-        note("one:files-naming-storefront", `in ${attempts} conversation(s) the turn never filed a task for ${CODER} naming storefront; it last said ${show(last?.reply, 300)}`);
+        note(
+          "one:files-naming-storefront",
+          `the turn filed ${show(last.tasks.map((t) => ({ assignee: t.assignee, input: t.input })))}, not a task for ${CODER} naming storefront; it said ${show(last.reply, 300)}`,
+        );
       }
       if (failures.length === before) {
-        evidence.push(`one: "${fixture.ask}" read ${show(listed)} and filed a task for ${CODER} naming storefront on the turn (conversation ${tries} of ${attempts}): ${show(filed?.input)}`);
+        evidence.push(`one: "${fixture.ask}" read ${show(listed)} and filed a task for ${CODER} naming storefront on the turn: ${show(filed?.input)}`);
       }
     }
 
@@ -257,22 +249,15 @@ await runGoal(async (failures) => {
       if (added.error !== undefined) throw new Error(`createProject ${fixture.secondProject.id} was refused — ${added.error}`);
       const names = (reply: string, project: { id: string; title: string }) =>
         reply.toLowerCase().includes(project.id.toLowerCase()) || reply.toLowerCase().includes(project.title.toLowerCase());
-      let last: Asked | undefined;
-      let asked = false;
-      for (let attempt = 1; attempt <= attempts && !asked; attempt += 1) {
-        last = await ask(lab);
-        asked =
-          last.tasks.length === 0 &&
-          names(last.reply, { id: "storefront", title: "Storefront" }) &&
-          names(last.reply, fixture.secondProject);
-        if (!asked) console.log(`  two attempt ${attempt}: tasks ${show(last.tasks.map((t) => ({ assignee: t.assignee, input: t.input })))}; said ${show(last.reply, 300)}`);
+      const last = await ask(lab);
+      if (last.tasks.length > 0) note("two:files-nothing", `the turn filed ${show(last.tasks.map((t) => ({ assignee: t.assignee, input: t.input })))}`);
+      if (!names(last.reply, { id: "storefront", title: "Storefront" }) || !names(last.reply, fixture.secondProject)) {
+        note("two:asks-naming-both", `the reply doesn't name storefront and ${fixture.secondProject.id}: ${show(last.reply, 400)}; the turn called ${show(last.tools.map((t) => t.name))}`);
       }
-      if (last !== undefined && last.tasks.length > 0) note("two:files-nothing", `the turn filed ${show(last.tasks.map((t) => ({ assignee: t.assignee, input: t.input })))}`);
-      if (!asked) note("two:asks-naming-both", `in ${attempts} conversation(s) the reply never named storefront and ${fixture.secondProject.id}; it last said ${show(last?.reply, 400)}`);
-      if (last !== undefined && names(last.reply, fixture.strangersProject)) note("two:no-strangers-project", `the reply names ${fixture.strangersProject.id}: ${show(last.reply, 400)}`);
-      const listed = last === undefined ? undefined : listedIds(last);
+      if (names(last.reply, fixture.strangersProject)) note("two:no-strangers-project", `the reply names ${fixture.strangersProject.id}: ${show(last.reply, 400)}`);
+      const listed = listedIds(last);
       if (listed?.includes(fixture.strangersProject.id)) note("two:no-strangers-project", `${LIST_PROJECTS} answered ${show(listed)}`);
-      if (failures.length === before) evidence.push(`two: the turn filed nothing and asked: ${show(last?.reply, 300)}`);
+      if (failures.length === before) evidence.push(`two: the turn filed nothing and asked: ${show(last.reply, 300)}`);
     }
     await quiet(lab);
   } finally {

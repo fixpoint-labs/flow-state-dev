@@ -39,11 +39,10 @@ has a repository, so a list that leaked it would make leg one ambiguous.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| `no-project-list` | the chief of staff without `listProjects`, in its catalog and its `tools:` | `one:read-the-projects` and `one:files-naming-storefront` |
+| `no-project-list` | the chief of staff without `listProjects`, in its catalog and its `tools:` | `one:read-the-projects` and `one:files-naming-storefront` (and, on the runs so far, `two:asks-naming-both`) |
 
-**Model:** `openai/gpt-5.4-mini` for every turn, through the AI Gateway. A real model's turn is
-retried up to `GOAL_ATTEMPTS` conversations (3 by default), each a new conversation. Reports
-`blocked` when no key serves it. The coder's harness is the lab's stub, and what a filed task does
+**Model:** `openai/gpt-5.4-mini` for every turn, through the AI Gateway. Each leg is one turn,
+graded once: nothing is retried. Reports `blocked` when no key serves it. The coder's harness is the lab's stub, and what a filed task does
 next is not graded (the coder runs with no judge).
 
 **Run:** `pnpm tsx goals/devforce-lab/it-names-the-project-a-coders-task-works-in/run.mts`
@@ -60,3 +59,4 @@ of. It does **not** establish what happens to the task after the filing; that is
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-11 | branch `claude/fix-1869-list-projects-6y4pfh` (on FIX-1866 P3) | `openai/gpt-5.4-mini` | PASS | Control first: `no-project-list` FAILs `one:read-the-projects` ("never called listProjects") and `one:files-naming-storefront` in 3 of 3 conversations; on one it filed for a project id it made up (`repo`). Then PASS 6 of 6 runs: leg one filed for storefront on the first conversation 5 times, the second once; leg two asked naming Billing and Storefront, though in about one conversation of three the model picked Billing and filed, so it was retried. |
+| 2026-10-11 | branch `claude/fix-1869-list-projects-6y4pfh` (on FIX-1866 P3) | `openai/gpt-5.4-mini` | PASS | The retries above are gone: each leg is one turn, graded once. With the rule only in prose, single-shot runs passed 1 of 6, then 3 of 6 (the model offered instead of filing, or picked Billing of two), so the chief of staff's `listProjects` now adds `forCoding`, what to do next worked out from the projects with a repository. Then PASS 6 of 6 single-shot runs. Control `no-project-list` FAILs `one:read-the-projects`, `one:files-naming-storefront` and `two:asks-naming-both`. |

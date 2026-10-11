@@ -81,6 +81,8 @@ import {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  listProjectsInputSchema,
+  listProjectsOutputSchema,
   defineWorkstreamBlocks,
   projectCoordinatorTools,
   projectWorkspace,
@@ -310,14 +312,42 @@ const AGENT_LEADS = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENE
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams", "setRepository", "openWorkstream", "listProjects"];
 
+/** The person's projects, with what a coder's task that names no project does next. */
+const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
+
+/**
+ * What a coder's task that names no project does next, worked out from the
+ * projects with a repository rather than left to the model to count: file it
+ * for the one there is, or ask, naming them. A real model told the rule in
+ * prose picked one of two, or offered instead of filing, about one turn in
+ * three.
+ */
+const forCoding = handler({
+  name: "list-projects-for-coding",
+  inputSchema: listProjectsOutputSchema,
+  outputSchema: listedForCodingSchema,
+  execute: (listed) => {
+    const coded = listed.projects.filter((project) => project.repository != null);
+    const named = (project: (typeof coded)[number]) => `${project.title} (${JSON.stringify({ visibility: project.visibility, id: project.id })})`;
+    const [only] = coded;
+    const next =
+      coded.length === 1 && only !== undefined
+        ? `One project has a repository: ${named(only)}. File a coder's task that names no project for it now, with addTask, without asking.`
+        : coded.length === 0
+          ? "No project has a repository. Ask which project the person means."
+          : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the person means, naming each.`;
+    return { ...listed, forCoding: next };
+  },
+});
+
 /**
  * The project writes as the chief of staff's tools, `createProject`,
  * `setWorkstreams`, `setRepository` and `openWorkstream`, and its one project
  * read, `listProjects`: the same blocks the Lab's own projects flow runs,
  * under the names its `tools:` line spells. A catalog key must be the tool's
- * own name, so `setWorkstreams`, `openWorkstream` and `listProjects` are the
- * blocks under `.as()`; the others are sequencers named for the tool, since
- * each waits for an approval first.
+ * own name, so `setWorkstreams` and `openWorkstream` are the blocks under
+ * `.as()`; the others are sequencers named for the tool, since each waits
+ * for an approval first, or, for `listProjects`, adds `forCoding`.
  *
  * `listProjects` is how the chief of staff knows which project a coder's task
  * works in: the projects the person is a member of, read when asked, never
@@ -340,13 +370,18 @@ const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams"
  */
 export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
   return {
-    listProjects: blocks.listProjects.as({
+    listProjects: sequencer({
       name: "listProjects",
       description:
         "List the projects the person you are talking to is a member of: each one's address " +
-        "(`visibility` and `id`), its title, and its `repository` (null when it has none). " +
-        "Answer which projects they have, and pick the project a task works in, from this, never from memory.",
-    }),
+        "(`visibility` and `id`), its title, and its `repository` (null when it has none), and " +
+        "`forCoding`, what to do with a coder's task that names no project. Answer which projects " +
+        "they have, and pick the project a task works in, from this, never from memory.",
+      inputSchema: listProjectsInputSchema,
+      outputSchema: listedForCodingSchema,
+    })
+      .step(blocks.listProjects)
+      .step(forCoding),
     openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
       description:

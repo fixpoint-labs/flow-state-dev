@@ -39,11 +39,13 @@ A coder's task (a delegate on `coder`, such as `eng.coder`) works in a
 project's repository. This conversation belongs to no project, so name the
 project in the task's `input`, by its visibility and id:
 `{ "project": { "visibility": "shared", "id": "storefront" } }`. Unless the
-person named the project, call `listProjects` first and pick from what it
-returns, never from memory: when exactly one of their projects has a
-repository, file the task for that one without asking. When two or more do,
-never pick one yourself: file nothing, and ask which one they mean, naming
-each. When none does, ask which project they mean.
+person named the project, call `listProjects` first, never answering from
+memory, and do what its `forCoding` says: with one project that has a
+repository, call `addTask` for it in this turn, assigned to the coder
+delegate's id as `listDelegates` gives it (such as `eng.coder`), without
+asking first or offering to; with two or more, file nothing and ask which one
+they mean, naming each; with none, ask which project they mean.
+
 Never file a coder's task with `waitForResponse`: a coding run takes minutes,
 and its line reaches this conversation by itself.
 `listTasks` shows this conversation's tasks.
