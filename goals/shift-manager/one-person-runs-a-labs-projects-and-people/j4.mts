@@ -6,13 +6,18 @@
  * its `hire` and `fire` tools from `createWorkerHireBlocks` with the fire
  * asking first, the `projects` collection and the project tools it names. The
  * task also states what the Lab's other checks need of it (every start fresh,
- * `probe` and `coordinator` run only declared workers), facts the writer can't
+ * `probe`, `probe-desk` and `coordinator` run only declared workers), facts the writer can't
  * read from the docs or the copy; what to do about them is still the docs' to
  * say. The writer is an isolated Claude
  * Code agent (the Agent SDK) whose only tools read and write inside its own
- * workspace: the docs and the copy, nothing else of the repository. Every
- * step it reports no page covered is a failed step, reason *doc silent*
- * (QR-14).
+ * workspace: the docs and the copy, nothing else of the repository. It logs
+ * each step it took with the page that told it how, or *doc silent*. Jev
+ * judges each doc-silent line against the docs as the writer saw them
+ * (`j4-judge.mts`): a line fails J4, reason *doc silent* (QR-14), unless Jev
+ * is sure the docs answer it or it is outside what the task asked for.
+ *
+ * `J4_CUT=store` is the control: it cuts the Shift Manager README's stores and
+ * restarts from the writer's copy of the docs, a real gap J4 must fail on.
  *
  * Then Shift Manager serves the copy, and the person asks its chief of staff
  * for a project and a worker in the Chief of Staff view: PROJECTS must list
@@ -21,12 +26,13 @@
  * `human_approval` in the store naming it. The copy is deleted after the run;
  * `packages/shift-manager` is left untouched.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { labRoutes, personPage, startShiftManager, openShiftManager } from "../../lib/shift-manager.mts";
+import { judgeSilent, sectionsOf, type JudgedLine } from "./j4-judge.mts";
 import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, readWorkers, RunRecord, rosterOwn, sleep, World } from "./steps.mts";
 
 /** The pages D3's writer sees, as published on the commit (DOCS.md). */
@@ -55,7 +61,7 @@ It needs no \`setRepository\` and no memory; whether it also gets \`discover\` d
 
 What the Lab's other checks need of it, which its files don't show you:
 - Every start of the Lab is fresh: nothing one run writes is kept for the next.
-- Only the workers its files declare run its \`probe\` and \`coordinator\` flows. Nobody hires onto them.
+- Only the workers its files declare run its \`probe\`, \`probe-desk\` and \`coordinator\` flows. Nobody hires onto them.
 
 Keep everything the Lab does today working. Edit the files under \`lab/\` (its host and config, and its workforce tree).
 The Lab is served by Shift Manager from \`lab/fsdev.config.mts\`.
@@ -67,12 +73,22 @@ When no page told you how to do a step and you had to guess or infer it, write i
 - <what you did> · doc silent: <what the docs did not say>
 Be honest: a step you inferred from the Lab's own code or from general knowledge, and not from a docs page, is doc silent.`;
 
+/** J4's controls: each cuts what the docs say about one step from the writer's copy. */
+export const J4_CUTS: Record<string, { page: string; cut: RegExp }[]> = {
+  store: [
+    { page: "packages/shift-manager/README.md", cut: /\*\*A store\.\*\*[\s\S]*?runs on SQLite\.\n/ },
+    { page: "packages/shift-manager/README.md", cut: /A restart is a new process:[^\n]*/ },
+  ],
+};
+
 export interface J4Result {
   ok: boolean;
   failures: string[];
   notes: string[];
   steps: string[];
   silent: string[];
+  /** Jev's verdict on each doc-silent line. */
+  judged: JudgedLine[];
   diff: string;
   record: RunRecord;
 }
@@ -182,12 +198,24 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
   cpSync(source, copy, { recursive: true });
   let diff = "";
   let steps: string[] = [];
+  let judged: JudgedLine[] = [];
   try {
     mkdirSync(join(workspace, "docs"), { recursive: true });
+    const cutName = process.env.J4_CUT ?? "";
+    const cuts = cutName === "" ? [] : J4_CUTS[cutName];
+    if (cuts === undefined) throw new Error(`unknown J4_CUT "${cutName}"; known: ${Object.keys(J4_CUTS).join(", ")}`);
+    const seen: { page: string; text: string }[] = [];
     for (const page of J4_PAGES.filter((p) => !p.startsWith("goals/pentest-lab/"))) {
-      const to = join(workspace, "docs", page.replaceAll("/", "__"));
-      cpSync(join(REPO_ROOT, page), to);
+      let text = readFileSync(join(REPO_ROOT, page), "utf8");
+      for (const c of cuts.filter((c) => c.page === page)) {
+        if (!c.cut.test(text)) throw new Error(`J4_CUT=${cutName}: nothing in ${page} matches ${c.cut}, so the control cuts nothing`);
+        text = text.replace(c.cut, "");
+      }
+      writeFileSync(join(workspace, "docs", page.replaceAll("/", "__")), text);
+      seen.push({ page, text });
     }
+    if (cutName !== "") notes.push(`J4_CUT=${cutName}: cut ${cuts.length} passage(s) from the writer's docs`);
+    seen.push({ page: "goals/pentest-lab/lab/README.md", text: readFileSync(join(source, "README.md"), "utf8") });
     // The pentest Lab's README sits in the copy itself, where its author would find it.
     const summary = await write(workspace, copy, log);
     notes.push(`writer's summary: ${summary.slice(0, 600)}`);
@@ -195,8 +223,14 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     const stepsFile = join(copy, "J4-STEPS.md");
     steps = existsSync(stepsFile) ? readFileSync(stepsFile, "utf8").split("\n").filter((l) => /^\s*-\s+/.test(l)) : [];
     if (steps.length === 0) failures.push("J4: the writer kept no step log");
-    const silent = steps.filter((l) => /doc silent/i.test(l));
-    for (const s of silent) failures.push(`J4 doc silent: ${s.replace(/^\s*-\s+/, "").slice(0, 400)}`);
+    const silent = steps.filter((l) => /doc silent/i.test(l)).map((l) => l.replace(/^\s*-\s+/, ""));
+    // Jev reads each line against the docs as the writer saw them, the control's cut included.
+    judged = await judgeSilent(TASK, silent, sectionsOf(seen));
+    for (const j of judged) {
+      const read = `${j.verdict} ${j.confidence.toFixed(2)}, read ${j.cited}`;
+      if (j.fails) failures.push(`J4 doc silent (judge: ${read}): ${j.line.slice(0, 400)}`);
+      else notes.push(`J4 doc-silent line dropped (judge: ${read}): ${j.line.slice(0, 300)}`);
+    }
 
     // ---- Shift Manager over the copy: the person asks CoS for a project and a worker ----
     let served;
@@ -204,7 +238,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
       served = await startShiftManager({ scratch, label: "j4", config: join(copy, "fsdev.config.mts"), pages, timeoutMs: 120_000 });
     } catch (error) {
       failures.push(`J4: Shift Manager over the writer's Lab did not boot: ${(error as Error).message.slice(0, 1500)}`);
-      return { ok: false, failures, notes, steps, silent, diff, record };
+      return { ok: false, failures, notes, steps, silent, judged, diff, record };
     }
     try {
       const html = await (await fetch(`${served.origin}/`)).text();
@@ -271,7 +305,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     }
     const smAfter = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "packages/shift-manager"], { encoding: "utf8" });
     if (smAfter !== smBefore) failures.push("J4: packages/shift-manager changed");
-    return { ok: failures.length === 0, failures, notes, steps, silent, diff, record };
+    return { ok: failures.length === 0, failures, notes, steps, silent, judged, diff, record };
   } finally {
     // The writer's files, kept for the report, then the copy is deleted.
     try {
