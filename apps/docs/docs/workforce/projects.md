@@ -37,7 +37,6 @@ A project's address is its visibility and its id, `{ visibility: "shared", id: "
 | `status` | A free label. New projects are `"active"` |
 | `ownerUserId` | The user who created it |
 | `members` | On a shared project, who may open workstreams in it. Always includes the owner. A private project has only its owner |
-| `workstreams` | On a shared project, the declared mailboxes it lists, by full id. See [Mailboxes on a project](#mailboxes-on-a-project) |
 | `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
 
 Each workstream is its own entry, not part of the row, so two owners can update their workstreams at the same time.
@@ -56,7 +55,7 @@ export default defineProjectsCollection();
 
 ## Creating a project
 
-`defineProjectBlocks()` gives you the project blocks, `createProject`, `setWorkstreams`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
+`defineProjectBlocks()` gives you the project blocks, `createProject`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -105,7 +104,6 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 | `project-id-held` | Another owner's shared project holds the id |
 | `invalid-project-id` | The id is empty, `unassigned`, or not one path segment |
 | `private-has-members` | A private project names anyone besides its owner |
-| `private-has-workstreams` | A private project lists mailboxes in `workstreams` |
 | `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
 
 ### Default projects from app code
@@ -141,23 +139,6 @@ const agent = defineAgentWorkerFlow({
 
 A worker calls them only when its own `tools:` names them. The owner is the person whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
 
-`createProject` and `setWorkstreams` read the organization's [mailbox inventory](./inventory.md) to check mailbox ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesMailboxInventory` rather than a `defineMailboxInventoryCollection()` of its own:
-
-```ts
-import { defineCapability } from "@flow-state-dev/core";
-import { projectWritesMailboxInventory } from "@flow-state-dev/workforce";
-
-const mailboxInventory = defineCapability({
-  name: "mailbox-inventory",
-  resources: { mailboxInventory: projectWritesMailboxInventory },
-});
-```
-
-A second declaration of the inventory beside the writes fails when the flow is built:
-
-```text
-Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
-```
 
 [The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
 
@@ -443,9 +424,32 @@ harnessManager({
 });
 ```
 
-A run in a workstream's session, or in a task session filed from one, works for that workstream's project. A run works for the workstream's owner: one whose owner is anyone else is refused with `not-the-owner`. For a [mailbox board](#mailboxes-on-a-project) a shared project lists, pass the board as `projectWorkspace({ board })`, and the run works in the project that lists the board's mailbox, for its members only (`not-a-member` otherwise).
+`projectWorkspace` finds the project a run works in, in this order:
 
-Every refusal comes before any file is read: `no-project` when the run's session leads no workstream and no project holds its board, `no-such-workstream` and `no-such-project` when what it names is gone. The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+1. The workstream the task came from, when it was filed from one.
+2. The project the task came from, when it was filed from a project's conversation.
+3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the person's own coordinator.
+
+The run is refused, before any file is read, when:
+
+| Refusal | When |
+|---|---|
+| `other-project` | The task names a project other than the one its conversation belongs to. The refusal names both. |
+| `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
+| `no-project` | None of the three steps finds a project. The message says the task can name one in `input.project`. |
+| `not-a-member` | The person the run belongs to isn't one of the project's members. |
+| `not-the-owner` | The run is in a workstream whose owner is someone else. |
+| `no-such-workstream`, `no-such-project` | What the task or its session names is gone. |
+
+Membership is read from the person the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried. When the task came from a conversation, the task fails and the conversation hears why, in a line under the worker's name.
+
+A coordinator filing for a coding worker from a conversation with no project names one:
+
+```json
+{ "goal": "Take a look at our repo and tell me what the checkout flow does", "assignee": "eng.coder", "input": { "project": { "visibility": "shared", "id": "storefront" } } }
+```
+
+Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
 
 ### The project's own files
 
@@ -472,18 +476,3 @@ It returns that project's files, never another project's. A non-member is refuse
 
 In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
 
-## Mailboxes on a project
-
-A shared project can also list declared [mailboxes](./mailboxes.md) as workstreams, in its row's `workstreams`, by full mailbox id such as `eng.feature`. Pass them to `createProject`, or replace the list with `setWorkstreams`:
-
-```ts
-await projects.sendAction("setWorkstreams", { projectId: "storefront", workstreams: ["eng.feature", "ops.release"] }, { sessionId });
-```
-
-Only members can call `setWorkstreams`, and it works on shared projects only. Each id must be a mailbox in the organization's [inventory](./inventory.md) (`unknown-workstream` otherwise).
-
-A mailbox belongs to at most one project. If two projects claim the same mailbox at the same moment, exactly one of them gets it, and the other is refused with `workstream-claimed`, naming the mailbox and the project that holds it. A refused write leaves nothing behind. Removing a mailbox from the list frees it for another project.
-
-A listed mailbox isn't a workstream entry: `readProject`, the project's progress and the project coordinator leave it out.
-
-A mailbox no project lists isn't lost. Shift Manager shows it under **No project**.

@@ -4,7 +4,10 @@
  * reads the user's own workers and the standard ones over the collection-state
  * routes, and it adds no endpoint. It declares the projects at both scopes and
  * the workstream entries too, so the same session reads the projects its user
- * may, private ones included, and a project's entries by its prefix.
+ * may, private ones included, and a project's entries by its prefix. It
+ * declares the organization's worker inventory (`inventory/seats/*`), so the
+ * same session reads who the organization's workers are without a mailbox
+ * session to read it through.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session
@@ -13,6 +16,7 @@
  */
 import { defineFlow } from "@flow-state-dev/core";
 import type { ActionConfig } from "@flow-state-dev/core/types";
+import { defineSeatInventoryCollection } from "../inventory/collections";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { ROSTER_FLOW_KIND } from "./keys";
@@ -30,7 +34,7 @@ export function defineWorkerRosterFlow(
 ) {
   return defineFlow({
     kind: ROSTER_FLOW_KIND,
-    resources: { ...installation.resources, ...PROJECT_ROW_RESOURCES },
+    resources: { ...installation.resources, ...PROJECT_ROW_RESOURCES, inventorySeats: defineSeatInventoryCollection() },
     actions
   });
 }

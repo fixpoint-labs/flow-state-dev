@@ -2,7 +2,7 @@
  * Raising the EM seat's ask — the one step a host calls to put an approval in
  * front of a person, before anyone has done anything.
  *
- * Its own module, beside `notify.mts`, because two kinds of host call it:
+ * Its own module because two kinds of host call it:
  * `openLab` (the goal checks) and a host that builds its own flow state rather
  * than opening through the lab, such as an `fsdev` config Shift Manager serves. The
  * host keeps one option and one call; the rule for when to ask lives here.
@@ -46,9 +46,6 @@
 import { ensureSessionRecord, resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
-import type { FeatureLedger } from "./board.mts";
-import { PHASE } from "./phase.mts";
 import { ASK_ENTRY } from "./seat-config.mts";
 
 /** The step's name, as every refusal spells it. */
@@ -56,7 +53,7 @@ export const RAISE_ASK_STEP = "raiseAsk";
 
 /**
  * Where a feature's claim lives in the person's resource state. Outside the
- * ledger's prefix, so enumerating the board's rows never sees it.
+ * board's prefix, so enumerating the board's rows never sees it.
  */
 export const ASK_CLAIM_PREFIX = "devforce-lab-asks/";
 
@@ -68,10 +65,12 @@ const HELD_STATUSES: ReadonlySet<string> = new Set(["suspended", "in_progress", 
 
 /** The feature a person is asked to approve. */
 export interface AskFeature {
-  /** The row's identity: the issue slug the row id is derived from. */
+  /** The feature's identity: the issue slug its row names. */
   issue: string;
   /** What the feature is, in one line. */
   goal: string;
+  /** The project its coding run works in, by its address. Absent, a fixed repository's. */
+  project?: { visibility: "shared" | "private"; id: string };
 }
 
 export interface RaiseAskOptions {
@@ -86,10 +85,10 @@ export interface RaiseAskOptions {
   /** The person the ask runs as, and whose Inbox lists it. */
   principal: { userId: string; orgId: string };
   /**
-   * The ledger the EM's board files onto — the same object the host handed the
-   * EM kind — so "the row already exists" is read where the row would be.
+   * Read the row filed for a feature, by its issue, off the board of the EM's
+   * own session, so "the row already exists" is read where the row would be.
    */
-  ledger: FeatureLedger;
+  filed: (issue: string) => Promise<unknown>;
 }
 
 /** What the step did. */
@@ -168,7 +167,7 @@ function messageOf(error: unknown): string {
  *   message starts with {@link RAISE_ASK_STEP}.
  */
 export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult> {
-  const { state, emFlow, emWorker, feature, principal, ledger } = options;
+  const { state, emFlow, emWorker, feature, principal } = options;
   const sessionId = seatSessionId(emWorker);
   const refuse = (why: string): never => {
     throw new Error(`${RAISE_ASK_STEP}: the ask for "${feature.issue}" was not raised — ${why}`);
@@ -192,18 +191,10 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   }
   const { stores } = runtime;
 
-  const taskId = harnessTaskId(feature.issue, PHASE);
-  const orgLedger = ledger.collection.scope === "org";
   // The principal's cell in their org, where every flow keeps their user data.
   const userCell = resolveUserStorageKey(principal.userId, principal.orgId, { id: emFlow.id, isolateUserState: false });
-  const row = await guarded("reading the board", () =>
-    stores.resourceState.get(
-      orgLedger ? "org" : "user",
-      orgLedger ? principal.orgId : userCell,
-      `${ledger.id}/${taskId}`,
-    ),
-  );
-  if (row !== undefined) return skip(`row ${taskId} is already on the board`);
+  const row = await guarded("reading the board", () => options.filed(feature.issue));
+  if (row !== undefined) return skip(`"${feature.issue}" is already on the board`);
 
   // ---- the claim: create-if-absent, or take over an undecided one ---------
   const claimKey = `${ASK_CLAIM_PREFIX}${feature.issue}`;
@@ -254,7 +245,11 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
     result = (await runAction({
       flow: emFlow,
       actionName: ASK_ENTRY,
-      input: { issue: feature.issue, goal: feature.goal },
+      input: {
+        issue: feature.issue,
+        goal: feature.goal,
+        ...(feature.project === undefined ? {} : { project: feature.project }),
+      },
       userId: principal.userId,
       orgId: principal.orgId,
       sessionId,

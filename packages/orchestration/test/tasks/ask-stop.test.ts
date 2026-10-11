@@ -106,7 +106,7 @@ describe("stop a turn parked on an ask", () => {
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
   });
 
-  it("a stop whose row cancel fails still ends the turn aborted; the row stays open (FIX-1844)", async () => {
+  it("a stop whose row cancel fails still ends the turn aborted, and the next touch cancels the row (FIX-1844)", async () => {
     const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
     const flow = askFlow(model, { failCancelOnce: true });
     const state = track(runtimeFor(flow));
@@ -115,10 +115,14 @@ describe("stop a turn parked on an ask", () => {
     expect((await stop(state, parked.requestId!)).status).toBe(204);
     await untilStatus(state, parked.requestId!, "aborted");
     expect(seen).toHaveLength(1);
-    // The known gap: nothing retries the failed cancel, so the asked row stays
-    // open and a touch leaves it so (FIX-1844).
-    expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
+    // The cancel failed, so the row is still open, and owes its cancel.
     expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
+
+    // The next touch pays it. The stopped turn is owed nothing.
+    expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
+    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+    // The colleague's later ending is dropped.
+    await expect(act(state, flow, "settle", { outcome: { kind: "complete", output: "late" } })).rejects.toThrow();
   });
 
   it("a touch long past an ask's deadline leaves a row whose turn still waits on it alone", async () => {

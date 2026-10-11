@@ -6,10 +6,13 @@
  * It reports raw observations and grades nothing: the grading is the goal's.
  *
  * Every door used here is one a person or an app already has — the session
- * route to open the mailbox (through the workforce package's own
- * `openMailboxes`), the action route to file, drain and answer, and the
- * DevTool's own debug read for the ledger. Nothing is written into a store by
- * hand, and nothing runs in this process that the server does not.
+ * route to open each worker's session, and the action route on the planner's
+ * conversation to file (`addTask_tasks`), answer (`answerTask_tasks`) and
+ * reassign (`assignTask_tasks`). What the board holds is read off the
+ * server's SQLite file, read-only: the session route sends a browser only a
+ * row's board fields, and the checks grade a row's input and answer too.
+ * Nothing is written into a store by hand, and nothing runs in this process
+ * that the server does not.
  *
  * ## The environment the server gets
  *
@@ -24,16 +27,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { WORKER_ID_STATE_KEY, openMailboxes } from "@flow-state-dev/workforce";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce";
 import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../lib/index.mts";
-import { LAB_USER_ID, type LabTree } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import { FILE_ENTRY, type FileInput } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/planner.mts";
-import {
-  ANSWER_ENTRY,
-  DRAIN_ENTRY,
-  workLineSchema,
-  type WorkLine,
-} from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
+import { allTaskRows, requests as storedRequests, type StoredTask } from "../coordinators/files-tasks-down-the-owners-chain/store.mts";
+import { LAB_DB_PATH, LAB_USER_ID, type LabTree } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import type { PieceInput } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/piece.mts";
+import { workLineSchema, type WorkLine } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 
 /** The config `fsdev dev` is pointed at. */
 export const LAB_CONFIG = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "fsdev.config.mts");
@@ -154,6 +153,8 @@ export interface ActResult {
   requestId?: string;
   /** The request's terminal status, as the status route reports it. */
   status?: string;
+  /** What the action answered, as the session's request list records it. */
+  output?: any;
   /** Every item the request persisted. */
   items: Array<Record<string, unknown>>;
 }
@@ -168,7 +169,7 @@ export interface TaskChange {
 
 /** One task change the run emitted, and the request it was emitted from. */
 export interface ChangeRecord {
-  /** `claimed`, `review_requested`, `resumed`, `completed`, … */
+  /** `added`, `claimed`, `review_requested`, `resumed`, `completed`, … */
   kind: string;
   taskId: string;
   /** The session the emitting request ran in. */
@@ -182,25 +183,58 @@ export interface ChangeRecord {
   requestId: string;
 }
 
+/** A row as the board stored it: the fields the checks read beyond the stored task's own. */
+export type BoardRow = StoredTask & {
+  input?: PieceInput;
+  feedback?: string;
+  answered?: boolean;
+  parkedOnQuestion?: boolean;
+  deps?: string[];
+  startedAt?: number;
+};
+
+/** What one piece of work is, as a filer hands it to {@link Scenario.file}. */
+export interface Piece {
+  goal: string;
+  /** The desk the piece is for, or none: a row for nobody. */
+  desk?: string;
+  asks?: string;
+  /** The row this one follows, which it also waits on. */
+  follows?: string;
+  maxAttempts?: number;
+}
+
 /**
  * Drive one served lab.
  *
- * The seat drain sessions are named once, here, so the browser leg can open
- * the very session the headless legs drained in.
+ * The planner's conversation and each worker's own session are named once,
+ * here, so the browser leg can open the very session the headless legs used.
  */
 export class Scenario {
   constructor(
     readonly served: ServedLab,
     readonly tree: LabTree,
+    /** Desk -> delegate: the app's map the filer reads (`routesFor`). */
+    readonly routes: Readonly<Record<string, string>>,
   ) {}
 
   private get api(): string {
     return `${this.served.origin}/api/flows`;
   }
 
-  /** The session each seat works in. One spelling, used everywhere. */
-  seatSession(seatId: string): string {
-    return `s_${seatId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  /** The session each worker works in — for the planner, its conversation. One spelling, used everywhere. */
+  seatSession(workerId: string): string {
+    return `s_${workerId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  }
+
+  /** The planner's conversation, whose board every row is filed on. */
+  get conversation(): string {
+    return this.seatSession(this.tree.plannerId);
+  }
+
+  /** The SQLite file the server writes. */
+  get storeFile(): string {
+    return join(this.served.workDir, LAB_DB_PATH);
   }
 
   private async json(path: string, init?: RequestInit): Promise<{ status: number; body: any }> {
@@ -219,50 +253,17 @@ export class Scenario {
   }
 
   /**
-   * Open the mailbox through the workforce package's own `openMailboxes`, over
-   * the server's HTTP session route — the only route that takes a mailbox's
-   * state at create — and create each seat's working session the same way.
-   * The config's boot has already opened the mailbox; `openMailboxes` meets
-   * that session and leaves it as it is.
+   * Open each worker's own session over the server's HTTP session route, on
+   * the one copy of the flow it runs on, naming the worker. The planner's is
+   * its conversation.
    */
   async open(): Promise<void> {
-    const client = {
-      createSession: async (create: {
-        flowKind: string;
-        userId: string;
-        sessionId?: string;
-        description?: string;
-        state?: Record<string, unknown>;
-      }) => {
-        const { status, body } = await this.json(`/${encodeURIComponent(create.flowKind)}/sessions`, {
-          method: "POST",
-          body: JSON.stringify(create),
-        });
-        if (status >= 400) {
-          throw Object.assign(new Error(`create session ${create.sessionId}: ${status} ${JSON.stringify(body)}`), {
-            status,
-          });
-        }
-        return body;
-      },
-      getSession: async (sessionId: string) => {
-        const { status, body } = await this.json(`/sessions/${encodeURIComponent(sessionId)}`);
-        if (status >= 400) throw new Error(`read session ${sessionId}: ${status}`);
-        return (body?.session ?? body) as {
-          flowKind: string;
-          flowId?: string;
-          userId: string;
-          state?: Record<string, unknown>;
-        };
-      },
-      deleteSession: async (sessionId: string) => {
-        await this.json(`/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
-      },
-    };
-    await openMailboxes([this.tree.mailbox], { client, userId: LAB_USER_ID });
-    // A seat has no flow of its own: its session is on the one copy of the flow it runs on, naming it.
-    for (const seat of [this.tree.plannerId, ...this.tree.workerIds]) {
-      await client.createSession({ flowKind: this.tree.seatFlows[seat]!, userId: LAB_USER_ID, sessionId: this.seatSession(seat), state: { [WORKER_ID_STATE_KEY]: seat } });
+    for (const worker of this.tree.roster.workers.map((record) => record.id)) {
+      const { status, body } = await this.json(`/${encodeURIComponent(this.tree.seatFlows[worker]!)}/sessions`, {
+        method: "POST",
+        body: JSON.stringify({ userId: LAB_USER_ID, sessionId: this.seatSession(worker), state: { [WORKER_ID_STATE_KEY]: worker } }),
+      });
+      if (status >= 400) throw new Error(`create session ${this.seatSession(worker)}: ${status} ${JSON.stringify(body)}`);
     }
   }
 
@@ -295,69 +296,73 @@ export class Scenario {
       const read = await this.json(`/${encodeURIComponent(flowId)}/requests/${encodeURIComponent(requestId)}/status`);
       status = String(read.body?.status ?? "in_progress");
     }
-    const items = (await this.requests(sessionId)).find((request) => request.id === requestId)?.items ?? [];
-    return { httpStatus: posted.status, requestId, status, items };
+    const found = (await this.requests(sessionId)).find((request) => request.id === requestId);
+    return { httpStatus: posted.status, requestId, status, output: found?.result?.output, items: found?.items ?? [] };
   }
 
-  /** The planner files one piece of work through its own action. */
-  file(input: FileInput): Promise<ActResult> {
-    return this.act(this.tree.seatFlows[this.tree.plannerId]!, this.seatSession(this.tree.plannerId), FILE_ENTRY, input);
+  /** Run one of the planner's conversation's actions. */
+  onConversation(action: string, input: unknown, userId: string = LAB_USER_ID, settleWithinMs = 30_000): Promise<ActResult> {
+    return this.act(this.tree.seatFlows[this.tree.plannerId]!, this.conversation, action, input, userId, settleWithinMs);
   }
 
   /**
-   * Every worker seat drains at once. They share one board, and a drain exits
-   * only when nothing on the board is claimable at all, so draining them one
-   * after another would leave one idle-polling while another desk's row waited.
+   * File one piece on the planner's conversation's board, through its own
+   * `addTask_tasks`, for the delegate the app's map routes the piece's desk
+   * to. A piece with no desk is filed for nobody. A piece that follows
+   * another waits on it.
    */
-  async drainAll(): Promise<Array<{ seat: string; result: ActResult; terminationReason?: string }>> {
-    return Promise.all(
-      this.tree.workerIds.map(async (seat) => {
-        const result = await this.act(this.tree.seatFlows[seat]!, this.seatSession(seat), DRAIN_ENTRY, {});
-        return { seat, result, terminationReason: terminationReasonOf(result.items) };
-      }),
-    );
+  file(piece: Piece): Promise<ActResult> {
+    const input: PieceInput = {
+      ...(piece.desk === undefined ? {} : { desk: piece.desk }),
+      ...(piece.asks === undefined ? {} : { asks: piece.asks }),
+      ...(piece.follows === undefined ? {} : { follows: piece.follows }),
+    };
+    return this.onConversation("addTask_tasks", {
+      goal: piece.goal,
+      ...(piece.desk === undefined ? {} : { assignee: this.routes[piece.desk] }),
+      ...(piece.follows === undefined ? {} : { deps: [piece.follows] }),
+      ...(piece.maxAttempts === undefined ? {} : { maxAttempts: piece.maxAttempts }),
+      input,
+    });
   }
 
   /**
-   * A person answers a parked row through the owning seat's own action.
+   * A person answers a row parked on its worker's question, through the
+   * planner's conversation's `answerTask_tasks`.
    *
    * @param settleWithinMs How long to wait for the request to settle. A
-   *   delivery the server will not run may never settle at all (see the goal's
-   *   second-principal leg), so the caller bounds the wait.
+   *   delivery the server will not run may never settle at all, so the caller
+   *   bounds the wait.
    */
-  answer(
-    seat: string,
-    taskId: string,
-    feedback: string,
-    userId: string = LAB_USER_ID,
-    settleWithinMs = 30_000,
-  ): Promise<ActResult> {
-    return this.act(this.tree.seatFlows[seat]!, this.seatSession(seat), ANSWER_ENTRY, { taskId, feedback }, userId, settleWithinMs);
+  answer(taskId: string, answer: string, userId: string = LAB_USER_ID, settleWithinMs = 30_000): Promise<ActResult> {
+    return this.onConversation("answerTask_tasks", { taskId, answer }, userId, settleWithinMs);
   }
 
-  /**
-   * Every row on the ledger, whole, through the DevTool's own debug read — the
-   * read its Resources panel makes — on a worker seat's session, whose flow
-   * declares the ledger.
-   */
-  async rows(): Promise<Array<Record<string, any>>> {
-    const session = this.seatSession(this.tree.workerIds[0]!);
-    const { status, body } = await this.json(
-      `/sessions/${encodeURIComponent(session)}/debug/resources/${encodeURIComponent(this.tree.boardId)}/items?limit=200`,
-    );
-    if (status !== 200) throw new Error(`ledger read: ${status} ${JSON.stringify(body)}`);
-    const items = (body?.items ?? []) as Array<{ state?: Record<string, any> | null }>;
-    return items.map((item) => item.state ?? {}).filter((row) => typeof row.id === "string");
+  /** Every row the lab user's conversations filed, read off the server's store. */
+  rows(): BoardRow[] {
+    if (!existsSync(this.storeFile)) return [];
+    return allTaskRows(this.storeFile).filter((row) => row.scopeId.startsWith(`${LAB_USER_ID}:`) || row.scopeId === LAB_USER_ID) as BoardRow[];
   }
 
-  /** Wait until the ledger holds a row matching `predicate`, or give up. */
-  async waitForRow(predicate: (row: Record<string, any>) => boolean, ms = 10_000): Promise<Record<string, any> | undefined> {
+  /** Wait until the board holds a row matching `predicate`, or give up. */
+  async waitForRow(predicate: (row: BoardRow) => boolean, ms = 10_000): Promise<BoardRow | undefined> {
     for (let waited = 0; waited < ms; waited += 50) {
-      const found = (await this.rows()).find(predicate);
+      const found = this.rows().find(predicate);
       if (found !== undefined) return found;
       await new Promise((r) => setTimeout(r, 50));
     }
     return undefined;
+  }
+
+  /** Wait until no request is running, then a beat more, so a dispatch accepted just now is counted. */
+  async settled(ms = 30_000): Promise<boolean> {
+    let calm = 0;
+    for (let waited = 0; waited < ms; waited += 100) {
+      calm = storedRequests(this.storeFile).some((request) => request.status === "in_progress") ? 0 : calm + 1;
+      if (calm >= 5) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
   }
 
   /** Every session the server holds for the lab's user, dispatch runs included. */
@@ -366,17 +371,18 @@ export class Scenario {
     return (body?.sessions ?? []) as Array<Record<string, any>>;
   }
 
-  /** One session's requests, with their items. */
+  /** One session's requests, with their items and answers. */
   async requests(sessionId: string): Promise<Array<Record<string, any>>> {
-    const { body } = await this.json(`/sessions/${encodeURIComponent(sessionId)}/requests?include_items=true&limit=500`);
+    const { body } = await this.json(
+      `/sessions/${encodeURIComponent(sessionId)}/requests?include_items=true&include_result_output=true&limit=500`,
+    );
     return (body?.requests ?? []) as Array<Record<string, any>>;
   }
 
   /**
    * Every task change the run emitted, anywhere, with the session (and the
-   * worker it names), principal and action of the request that emitted it. A change is emitted
-   * into the session that made it, so for a claim this is the claim's identity
-   * as the server recorded it.
+   * worker it names), principal and action of the request that emitted it. A
+   * change is emitted into the session that made it.
    */
   async changes(): Promise<ChangeRecord[]> {
     const out: ChangeRecord[] = [];
@@ -415,37 +421,4 @@ export function taskChangesOf(items: ReadonlyArray<Record<string, any>>): TaskCh
     .filter((item) => item.type === "component" && item.component === "task-change")
     .map((item) => item.data as TaskChange)
     .filter((change) => change !== undefined && typeof change.taskId === "string");
-}
-
-/**
- * What an action returned, as its own request recorded it.
- *
- * The HTTP action route acknowledges with a request id and carries no output,
- * so the value is read where the server records it: the request's root block
- * trace — the same record the DevTool's Trace tab renders. A root that
- * forwards a step's value records a `ref` to that step's item; this follows it.
- *
- * @returns The value, or `undefined` when the request recorded no root output.
- */
-export function actionOutputOf(requestId: string, items: ReadonlyArray<Record<string, any>>): unknown {
-  const byId = new Map(items.map((item) => [String(item.id), item]));
-  const valueOf = (output: unknown, depth = 0): unknown => {
-    const recorded = output as { kind?: string; value?: unknown; sourceItemId?: string } | undefined;
-    if (recorded?.kind === "inline") return recorded.value;
-    if (recorded?.kind === "ref" && depth < 8) {
-      return valueOf(byId.get(String(recorded.sourceItemId))?.output, depth + 1);
-    }
-    return undefined;
-  };
-  const root = items.find(
-    (item) => item.type === "block_trace" && item.blockInstanceId === `${requestId}:root:0`,
-  );
-  return valueOf(root?.output);
-}
-
-/** The drain's own termination reason, off its board-meta item. */
-export function terminationReasonOf(items: ReadonlyArray<Record<string, any>>): string | undefined {
-  const metas = items.filter((item) => item.type === "component" && item.component === "task-board-meta");
-  const last = metas.at(-1)?.data as { terminationReason?: string } | undefined;
-  return last?.terminationReason;
 }

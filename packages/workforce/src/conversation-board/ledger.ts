@@ -57,15 +57,48 @@ export function conversationPartition(view: TaskPartitionContext): Promise<strin
 }
 
 /**
+ * The fields of a row a browser reads: what a task screen or a board column
+ * draws, and nothing a run keeps for itself (its input, output, metadata and
+ * write log stay on the server, BP-015).
+ */
+export const CONVERSATION_BOARD_CLIENT_FIELDS = [
+  "id",
+  "title",
+  "goal",
+  "status",
+  "assignee",
+  "run",
+  "priority",
+  "attempts",
+  "maxAttempts",
+  "deps",
+  "labels",
+  "error",
+  "createdAt",
+  "updatedAt",
+  "startedAt",
+  "completedAt"
+] as const;
+
+/**
  * The ledger's one declaration. Every flow that keeps a conversation's board,
  * or works its tasks, declares this object under {@link CONVERSATION_LEDGER_ID}.
+ *
+ * A browser may read it: the rows sit at the person's own user scope, so a
+ * read through any of their sessions answers their own boards and nobody
+ * else's, every conversation's at once, each row keyed under its
+ * conversation's partition. That is how an app lists the tasks its person's
+ * conversations filed, and what a task screen reads.
  */
-export const conversationLedger = defineTaskCollection({
-  id: CONVERSATION_LEDGER_ID,
-  scope: "user",
-  partitionBy: conversationPartition,
-  recordEnding
-});
+export const conversationLedger = Object.assign(
+  defineTaskCollection({
+    id: CONVERSATION_LEDGER_ID,
+    scope: "user",
+    partitionBy: conversationPartition,
+    recordEnding
+  }),
+  { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
+);
 
 /** The flow resources that install the ledger. */
 export const conversationLedgerResources = { [CONVERSATION_LEDGER_ID]: conversationLedger } as const;

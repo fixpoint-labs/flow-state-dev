@@ -76,9 +76,9 @@ import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
+  defineMailboxInventoryCollection,
   defineSeatInventoryCollection,
   hireWorkforce,
-  projectWritesMailboxInventory,
   workerMailboxPostCapability,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -132,7 +132,7 @@ const agentTurn = {
   uses: [
     defineCapability({
       name: "inventory",
-      resources: { seatInventory: defineSeatInventoryCollection(), mailboxInventory: projectWritesMailboxInventory },
+      resources: { seatInventory: defineSeatInventoryCollection(), mailboxInventory: defineMailboxInventoryCollection() },
     }),
     createWorkforceCapability({
       roster: { workers: roster.workers, mailboxes: roster.mailboxes },
@@ -159,7 +159,7 @@ export const flows = hireWorkforce(installation);
 
 The capabilities each add one part:
 
-- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on both flows `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the seat and mailbox inventories on both flows. The mailbox one uses `projectWritesMailboxInventory`, the declaration the [project tools](#starting-projects) need, so you can add them later without touching it. Passing the keys as `inventory` lets `discover` answer who works here and who is in a mailbox.
+- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on both flows `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the worker and mailbox inventories on both flows. Passing the keys as `inventory` lets `discover` answer who works here and who is in a mailbox.
 - **Posting.** `workerMailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can post in a mailbox it is a member of, signed as the worker its turn runs as. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`.
 - **Hiring.** The catalog holds `hire` and `fire`. Asking first is yours to add, as `askFire` does: the blocks themselves write at once.
 
@@ -215,7 +215,7 @@ The description is what best fit picks the chief of staff by, so name its jobs t
 
 Ask the chief of staff for a project and it creates one, owned by you, shared with your organization or private to you, as you ask. On a shared project you are always a member, and anyone you name is one too. It can also open workstreams in a project for you, each led by a worker from your roster.
 
-It needs the project tools in its `tools:` line and in `agentTurn.catalog`: `createProject` and `openWorkstream`, plus `setRepository` if it should also name the [repository](./projects.md#a-projects-code-and-files) a project's code lives in, and `setWorkstreams` if it should list [mailboxes](./projects.md#mailboxes-on-a-project) on a project. `openWorkstream` comes from [`defineWorkstreamBlocks`](./projects.md#workstreams), the others from `defineProjectBlocks`. [Giving the writes to a worker](./projects.md#giving-the-writes-to-a-worker) shows the catalog entries. Add the names to the file:
+It needs the project tools in its `tools:` line and in `agentTurn.catalog`: `createProject` and `openWorkstream`, plus `setRepository` if it should also name the [repository](./projects.md#a-projects-code-and-files) a project's code lives in. `openWorkstream` comes from [`defineWorkstreamBlocks`](./projects.md#workstreams), the others from `defineProjectBlocks`. [Giving the writes to a worker](./projects.md#giving-the-writes-to-a-worker) shows the catalog entries. Add the names to the file:
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
@@ -235,11 +235,9 @@ pass `visibility: "private"` and name no members. To open a workstream, call
 `id` for the workstream, its title, and a `lead` from their roster.
 ```
 
-The `devteam` profile's chief of staff holds these three, and `setWorkstreams` too.
+The `devteam` profile's chief of staff holds these three.
 
-The `inventory` capability from [Adding one](#adding-one) is the inventory declaration the project tools read. Don't add a second one, such as a `defineMailboxInventoryCollection()` of your own: [Giving the writes to a worker](./projects.md#giving-the-writes-to-a-worker) shows the error the kind throws.
-
-A refused tool call writes nothing, and its refusal names the reason, such as a lead that isn't on the person's roster, a shared project they aren't a member of, or a mailbox another project already lists. Tell the chief of staff in its body to pass that on.
+A refused tool call writes nothing, and its refusal names the reason, such as a lead that isn't on the person's roster, or a shared project they aren't a member of. Tell the chief of staff in its body to pass that on.
 
 ## Giving it memory
 
@@ -294,7 +292,6 @@ has nothing on it, say you have no memory of it. Never make up a memory.
 | `fire` | Removes one of the person's own workers. Its sessions stay readable to them | Only when you wrap it with an ask, as above |
 | `createProject` | Creates a project owned by the person asking, private or shared, with the members they name | Never |
 | `openWorkstream` | Opens a workstream the person asking owns, led by a worker from their roster. On a shared project they must be one of its members | Never |
-| `setWorkstreams` | Replaces the mailboxes a shared project lists. The person asking must be one of its members | Never |
 | `setRepository` | Sets the repository a project's code lives in, or clears it with `null`. The person asking must be one of its members | Never |
 
 The roster tools work on the person's own workers. Another member's workers are theirs: the chief of staff can't list or fire them.

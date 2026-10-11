@@ -8,23 +8,30 @@
  * (`coordinator-judgment`) makes the tool calls a test names, then answers;
  * an `agent` worker's turn (`agent-answer`) answers with a fixed line.
  *
+ * And a task it files for the coder (FIX-1866) runs as a supervised coding
+ * run in the project's repository, its answer heard back the same way.
+ *
  * The chief of staff keeps its memory to its own flow (`isolateUserState`),
  * and the task session runs on `agent`, which doesn't: the conversation's
  * board has to sit where both read it, or every task it files fails at the
  * task session's gate.
  */
-import { mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { GeneratorTool } from "@flow-state-dev/core";
+import { z } from "zod";
+import { handler, harnessRunHandleSchema, harnessRunInputSchema, type GeneratorTool } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { askMarkerPath } from "@flow-state-dev/harness-manager";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
+import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "../teams/devteam/harness-stub.mts";
+import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
@@ -88,7 +95,6 @@ async function open(model: ModelResolver): Promise<Lab> {
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-tasks-")), remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
   });
   return opened;
@@ -219,22 +225,461 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
   });
 });
 
-describe("a task for the coder, whose work entry takes only its own board's rows (FIX-1842)", () => {
-  it("is refused at filing, naming why, so nothing sits in progress with no word", async () => {
-    const inputs: unknown[] = [];
-    const lab = await open(
-      scripted([...hireTaskTaker, END_TURN, { toolName: "addTask", args: { goal: "take a look at our repo", assignee: "eng.coder" } }], [], inputs),
+/**
+ * The coder takes a conversation's task (FIX-1866): the chief of staff files
+ * it with `addTask`, the coder works it as a supervised coding run in a
+ * checkout of the project's repository, and the conversation hears one line
+ * under `eng.coder`. The harness is a stub that answers with what it finds in
+ * its working folder; Jev is scripted through the model resolver's evaluation
+ * hook, by its question id.
+ */
+const CODER = "eng.coder";
+const MARKER_FILE = "MARKER.txt";
+const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
+
+/** What the scripted judge answers, in order, and why when not done; past the end, `done`. `throw` fails the call. */
+type Verdict = { choice: string; why?: string; confidence?: number } | "throw";
+
+/** A scripted model: the judgment's calls, a helper's fixed line, and the judge's verdicts, recording what it was asked. */
+function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdict[] = [], judged: unknown[] = []): ModelResolver {
+  const base = scripted(calls) as unknown as ((...args: unknown[]) => unknown) & Record<string, unknown>;
+  let verdict = 0;
+  const judge = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test/jev",
+    supportedQuestionTypes: ["choice", "score", "boolean"],
+    async doEvaluate(call: { questions: Record<string, unknown>; state?: unknown }) {
+      // Best fit's route: no pick, so the chief of staff's judgment takes the post, as without the hook.
+      if (!("verdict" in call.questions)) throw new Error("no route in this test");
+      judged.push(call);
+      const next = verdicts[verdict] ?? { choice: "done", confidence: 0.95 };
+      verdict += 1;
+      if (next === "throw") throw new Error("the gateway is down");
+      return {
+        answers: {
+          verdict: { type: "choice", choice: next.choice },
+          // Jev answers every question it is asked; why is read only for not done.
+          why: { type: "choice", choice: next.why ?? "off-target" },
+        },
+        usage: { inputTokens: 1, outputTokens: 1 },
+        warnings: [],
+        providerMetadata: next.confidence === undefined ? undefined : { typesafe: { confidence: { verdict: next.confidence } } },
+      };
+    },
+  };
+  return Object.assign((...args: unknown[]) => base(...args), {
+    resolveId: (id: string) => id,
+    resolveEvaluationModel: () => judge,
+  }) as unknown as ModelResolver;
+}
+
+/** File one task for the coder, from the chief of staff's first turn. */
+const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
+  toolName: "addTask",
+  args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
+});
+
+/** A lab with storefront (a bare repository holding a marker) and sandbox (no repository), and a coder harness `stub`. */
+async function openCoderLab(model: ModelResolver, stub: HarnessStub, options: { withoutJudge?: boolean } = {}) {
+  const marker = `marker-${globalThis.crypto.randomUUID()}`;
+  const remote = createBareRemote("coder-tasks", { seed: { [MARKER_FILE]: `${marker}\n` } });
+  opened = await openLab({
+    modelResolver: model,
+    stores: inMemoryStores(),
+    harness: stub.slot,
+    runTimeoutMs: 30_000,
+    workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-tasks-")), remotes: { allow: ["file"] } },
+    coderSeatId: CODER,
+    inventory: true,
+    projects: [
+      { id: "storefront", title: "Storefront", repository: remote.url },
+      { id: "sandbox", title: "Sandbox" },
+    ],
+    ...(options.withoutJudge === true ? { withoutJudge: true } : {}),
+  });
+  return { lab: opened, marker, remote };
+}
+
+/** A stub that answers with the marker file it finds in its working folder, and commits nothing. */
+const readsMarker = (extra: HarnessStubOptions = {}) =>
+  harnessStub({
+    finalMessage: (run) => {
+      const at = join(run.cwd, MARKER_FILE);
+      return existsSync(at) ? `The marker reads ${readFileSync(at, "utf8").trim()}.` : "I could not find the repository.";
+    },
+    ...extra,
+  });
+
+/** File `call` from a new chief-of-staff conversation, and wait for the task to settle. */
+async function fileAndSettle(lab: Lab, message = "the coder should take a look at our repo") {
+  const id = await conversation(lab);
+  const filed = await act(lab, id, "run", { message });
+  expect(filed.error).toBeUndefined();
+  const listed = await until(
+    async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
+    (out) => ["completed", "errored", "cancelled"].includes(out.tasks?.[0]?.status),
+    "the coder's task",
+  );
+  await quiet(lab);
+  const task = listed.tasks[0]!;
+  return { id, task, taskId: task.id as string };
+}
+
+/** The conversation's lines under the coder's name that name the task. */
+async function coderLines(lab: Lab, id: string, taskId: string) {
+  return (await messages(lab, id)).filter((m) => m.agentName === CODER && m.text.includes(`(${taskId})`));
+}
+
+/** The task's row as stored on the conversation's board, in the person's scope. */
+async function storedTask(lab: Lab, taskId: string): Promise<Record<string, any> | undefined> {
+  const rows = await lab.stored("user", "tasks/");
+  return Object.entries(rows).find(([key]) => key.endsWith(`/${taskId}`))?.[1] as Record<string, any> | undefined;
+}
+
+describe("a task for the coder, from a conversation (FIX-1866)", () => {
+  it("runs in a checkout of the named project's repository, answers from it, and the conversation hears one completed line", async () => {
+    const judged: unknown[] = [];
+    const goal = `take a look at our repo ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    const stub = readsMarker();
+    const { lab, marker, remote } = await openCoderLab(scriptedCoder([fileForCoder(goal, { project: STOREFRONT })], [], judged), stub);
+    const branchesBefore = execFileSync("git", ["-C", remote.path, "branch", "--list"], { encoding: "utf8" });
+
+    const { id, task, taskId } = await fileAndSettle(lab);
+
+    expect(task).toMatchObject({ goal, assignee: CODER, status: "completed", attempts: 1 });
+    // One run, in a checkout of its own, not in the project's repository.
+    expect(stub.runs).toHaveLength(1);
+    const [run] = stub.runs as [StubRun];
+    expect(run.cwd.startsWith(remote.path)).toBe(false);
+    expect(execFileSync("git", ["-C", remote.path, "branch", "--list"], { encoding: "utf8" })).toBe(branchesBefore);
+    // The answer phase's prompt: the task, the worker's own files, then what it owes.
+    expect(run.prompt).toContain(goal);
+    expect(run.prompt).toContain("# Your instructions");
+    expect(run.prompt).toContain("Answer in your last message");
+    expect(run.prompt).not.toContain(marker);
+    // Read-only, and done anyway: an answer, no commit, judged once.
+    expect((await storedTask(lab, taskId))?.output).toMatchObject({
+      answer: `The marker reads ${marker}.`,
+      commits: 0,
+      judged: true,
+    });
+    expect(judged).toHaveLength(1);
+    expect(JSON.stringify(judged[0])).toContain(goal);
+
+    const lines = await coderLines(lab, id, taskId);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toContain(`completed by ${CODER}`);
+    expect(lines[0]!.text).toContain(marker);
+  });
+
+  it("works in a project with no repository on the project's files", async () => {
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("what's in our sandbox?", { project: { visibility: "shared", id: "sandbox" } })]),
+      stub,
+    );
+    const { task } = await fileAndSettle(lab);
+    expect(task).toMatchObject({ status: "completed", attempts: 1 });
+    expect(stub.runs[0]!.cwd.endsWith("workspace")).toBe(true);
+  });
+
+  it("ends errored after two attempts with the run's error, one failed line, in one session and one checkout", async () => {
+    const boom = `boom-${globalThis.crypto.randomUUID()}`;
+    const stub = harnessStub({
+      duringRun: () => {
+        throw new Error(boom);
+      },
+    });
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
+    const { id, task, taskId } = await fileAndSettle(lab);
+
+    expect(task).toMatchObject({ status: "errored", attempts: 2 });
+    expect(stub.runs).toHaveLength(2);
+    // The second attempt in the same checkout, resuming the first's session.
+    expect(stub.runs[1]!.cwd).toBe(stub.runs[0]!.cwd);
+    expect(stub.runs[1]!.resume).toBe("sess_stub_1");
+    const runtime = await lab.state.getRuntime();
+    const sessions = new Set((await runtime.stores.request.list({})).filter((r) => r.actionName === "work").map((r) => r.sessionId));
+    expect(sessions.size).toBe(1);
+
+    const failed = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("failed for good"));
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.text).toContain(boom);
+  });
+
+  it("refuses a task that names no project after one attempt, without running, and says it can name one", async () => {
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at our repo")]), stub);
+    const { id, task, taskId } = await fileAndSettle(lab);
+
+    expect(task).toMatchObject({ status: "errored", attempts: 1 });
+    expect(stub.runs).toHaveLength(0);
+    const failed = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("failed for good"));
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.text).toContain("input.project");
+  });
+
+  it("refuses a project named by its id alone, saying a project is named by its visibility and id", async () => {
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at our repo", { project: "storefront" })]), stub);
+    const { id, task, taskId } = await fileAndSettle(lab);
+    expect(task).toMatchObject({ status: "errored", attempts: 1 });
+    expect(stub.runs).toHaveLength(0);
+    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("visibility and id");
+  });
+
+  it("refuses a task naming only one of issue and phase after the claim, without running it as an answer", async () => {
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, issue: "greeting" })]), stub);
+    const { id, task, taskId } = await fileAndSettle(lab);
+    expect(task).toMatchObject({ status: "errored", attempts: 1 });
+    expect(stub.runs).toHaveLength(0);
+    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names both");
+  });
+
+  it("fails a run that stopped at its limit, and one that ended with no answer", async () => {
+    for (const stub of [readsMarker({ outcomeOf: () => "stopped-at-limit" }), harnessStub({ finalMessage: "   " })]) {
+      const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
+      const { task } = await fileAndSettle(lab);
+      expect(task).toMatchObject({ status: "errored", attempts: 2 });
+      expect(stub.runs).toHaveLength(2);
+      await lab.dispose();
+      opened = undefined;
+    }
+  });
+
+  it("retries a run the judge says missed the goal with its reason, and ends errored with that reason on the line", async () => {
+    const stub = harnessStub({ finalMessage: "Storefront is a project." });
+    const notDone = { choice: "not-done", why: "off-target", confidence: 0.9 };
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("explain the checkout flow", { project: STOREFRONT })], [notDone, notDone]),
+      stub,
+    );
+    const { id, task, taskId } = await fileAndSettle(lab);
+    expect(task).toMatchObject({ status: "errored", attempts: 2 });
+    expect(stub.runs[1]!.prompt).toContain("The answer does not address what the goal asks.");
+    const failed = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("failed for good"));
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.text).toContain("The answer does not address what the goal asks.");
+  });
+
+  it("closes as done on a miss under the floor, and on the phase's check alone when the judge fails", async () => {
+    for (const verdict of [{ choice: "not-done", why: "off-target", confidence: 0.5 }, "throw"] as Verdict[]) {
+      const stub = readsMarker();
+      const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })], [verdict]), stub);
+      const { task, taskId } = await fileAndSettle(lab);
+      expect(task).toMatchObject({ status: "completed", attempts: 1 });
+      expect((await storedTask(lab, taskId))?.output?.judged).toBe(verdict !== "throw");
+      await lab.dispose();
+      opened = undefined;
+    }
+  });
+
+  it("with no judge, an answer that misses the goal closes as completed (the control's red state)", async () => {
+    const stub = harnessStub({ finalMessage: "Storefront is a project." });
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("explain the checkout flow", { project: STOREFRONT })], [{ choice: "not-done", why: "off-target", confidence: 0.9 }]),
+      stub,
+      { withoutJudge: true },
+    );
+    const { task, taskId } = await fileAndSettle(lab);
+    expect(task).toMatchObject({ status: "completed" });
+    expect((await storedTask(lab, taskId))?.output?.judged).toBe(false);
+  });
+
+  it("parks on the judge's question, and the person's answer reaches the next attempt in the same session", async () => {
+    const reply = `the checkout flow ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("look at the flow", { project: STOREFRONT })], [{ choice: "ask", confidence: 0.9 }]),
+      stub,
     );
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    expect((await act(lab, id, "run", { message: "the coder should look at the flow" })).error).toBeUndefined();
+    const parked = await until(
+      async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
+      (out) => out.tasks?.[0]?.status === "parked",
+      "the parked task",
+    );
+    const taskId = parked.tasks[0]!.id as string;
     await quiet(lab);
+    const asked = (await coderLines(lab, id, taskId)).filter((m) => m.text.includes("is waiting on a question"));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.text).toContain("look at the flow");
 
-    // The tool's answer, as the model read it back: refused, naming the coder's flow.
-    const answered = JSON.stringify(inputs.at(-1)).replaceAll("\\", "");
-    expect(answered).toContain('Worker "eng.coder" runs on flow "coder", which takes no task.');
-    // Nothing filed, so nothing waits on a delegate that never starts.
-    expect(((await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: unknown[] }).tasks).toEqual([]);
+    expect((await act(lab, id, "answerTask_tasks", { taskId, answer: reply })).error).toBeUndefined();
+    await until(async () => (await storedTask(lab, taskId))?.status, (status) => status === "completed", "the answered task");
+    await quiet(lab);
+    expect(stub.runs).toHaveLength(2);
+    expect(stub.runs[1]!.prompt).toContain(reply);
+    expect(stub.runs[1]!.resume).toBe("sess_stub_1");
+  });
+
+  it("parks on the run's own question, and the person's answer reaches the next attempt", async () => {
+    const reply = `use the main branch ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    const stub = readsMarker({
+      duringRun: (run) => {
+        if (stub.runs.length > 1) return;
+        mkdirSync(dirname(askMarkerPath(run.cwd, 1)), { recursive: true });
+        writeFileSync(askMarkerPath(run.cwd, 1), "Which branch should I read?");
+      },
+    });
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
+    const id = await conversation(lab);
+    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    const parked = await until(
+      async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
+      (out) => out.tasks?.[0]?.status === "parked",
+      "the parked task",
+    );
+    const taskId = parked.tasks[0]!.id as string;
+    await quiet(lab);
+    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Which branch should I read?");
+
+    expect((await act(lab, id, "answerTask_tasks", { taskId, answer: reply })).error).toBeUndefined();
+    await until(async () => (await storedTask(lab, taskId))?.status, (status) => status === "completed", "the answered task");
+    expect(stub.runs[1]!.prompt).toContain(reply);
+  });
+
+  it("holds a conversation's feature task to feature work's rules: it runs, and never closes as an answer", async () => {
+    // A task naming an issue and a phase is feature work wherever it was filed: the implement
+    // manager runs it under the id its board minted, and it is done only on a commit. This run
+    // answers and commits nothing, so the task fails rather than closing as an answer task.
+    const stub = readsMarker();
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, issue: "greeting", phase: "implement" })]),
+      stub,
+    );
+    const { task } = await fileAndSettle(lab);
+    expect(task.status).toBe("errored");
+    expect(stub.runs.length).toBeGreaterThan(0);
+    // Every attempt was the implement phase's: its prompt names the row and asks for a commit.
+    for (const run of stub.runs) expect(run.prompt).toMatch(/\nRow task_\w+, phase implement, attempt \d/);
+    // The row's id is the board's, so the issue the filer named is rendered on its own:
+    // without it the coder is told which row it holds and never which issue.
+    for (const run of stub.runs) expect(run.prompt).toContain("\nIssue greeting.");
+  });
+
+  it("completes a conversation's feature task once its run commits", async () => {
+    const stub = readsMarker({
+      duringRun: async (run) => {
+        writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
+        commitAll(run.cwd, "add the greeting");
+      },
+    });
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, issue: "greeting", phase: "implement" })]),
+      stub,
+    );
+    const { task } = await fileAndSettle(lab);
+    expect(task.status).toBe("completed");
+    expect(stub.runs).toHaveLength(1);
+  });
+
+  it("runs the EM's feature row and a conversation's task at once, each in its own checkout, and judges each", async () => {
+    const judged: unknown[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const stub = readsMarker({
+      duringRun: async (run) => {
+        // A feature run commits; the conversation's run holds until the feature row is done.
+        if (run.prompt.includes("\nRow ")) {
+          writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
+          commitAll(run.cwd, "feature run: add the greeting");
+          return;
+        }
+        await held;
+      },
+    });
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })], [], judged), stub);
+    const id = await conversation(lab);
+    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    await until(async () => stub.runs.length, (n) => n >= 1, "the conversation's run");
+
+    expect(
+      (await lab.file("eng.em", { issue: "greeting", goal: "Add a greeting.", maxAttempts: 1, project: STOREFRONT })).error,
+    ).toBeUndefined();
+    const feature = await until(
+      async () => {
+        const row = await lab.featureRow("greeting");
+        if (row === undefined || row.status === "pending") await lab.drain("eng.em");
+        return row;
+      },
+      (row) => row?.status === "completed" || row?.status === "errored",
+      "the feature row",
+    );
+    release();
+    expect(feature?.status).toBe("completed");
+    const listed = await until(
+      async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
+      (out) => out.tasks?.[0]?.status === "completed",
+      "the conversation's task",
+    );
+    expect(listed.tasks[0]!.status).toBe("completed");
+    await quiet(lab);
+    expect(stub.runs).toHaveLength(2);
+    expect(stub.runs[0]!.cwd).not.toBe(stub.runs[1]!.cwd);
+    // The EM's row is a session's task like any other: the judge reads it against its own goal.
+    expect(feature?.output).toMatchObject({ judged: true });
+    expect(judged).toHaveLength(2);
+    expect(judged.map((input) => JSON.stringify(input)).join("\n")).toContain("look at the repo");
+    expect(judged.map((input) => JSON.stringify(input)).join("\n")).toContain("Add a greeting.");
+  });
+
+  it("refuses to open with a harness that isn't detached, naming the entry", async () => {
+    const attached = () =>
+      handler({
+        name: "attached-harness",
+        inputSchema: harnessRunInputSchema,
+        outputSchema: harnessRunHandleSchema,
+        sessionStateSchema: z.object({ turns: z.number().default(0) }),
+        execute: async () => {
+          throw new Error("never runs");
+        },
+      }) as never;
+    await expect(
+      openLab({
+        stores: inMemoryStores(),
+        harness: attached,
+        workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-attached-")), remotes: { allow: ["file"] } },
+        coderSeatId: CODER,
+      }),
+    ).rejects.toThrow(/task entry "work".*sessionStateSchema/);
+  });
+
+  it("takes a person's message into a running run, and the next attempt's prompt carries it", async () => {
+    const said = `also check the tests ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    // The first attempt holds until the test lets it go; the next one answers at once.
+    let started: () => void = () => {};
+    let release: () => void = () => {};
+    const firstStarted = new Promise<void>((resolve) => (started = resolve));
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const stub = harnessStub({
+      finalMessage: "I looked at the repository.",
+      duringRun: async () => {
+        if (stub.runs.length > 1) return;
+        started();
+        await held;
+      },
+    });
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
+    const id = await conversation(lab);
+    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    await firstStarted;
+
+    const runtime = await lab.state.getRuntime();
+    const taskSession = (await runtime.stores.request.list({})).find((r) => r.actionName === "work")!.sessionId!;
+    // The door stops the attempt and waits for it to end, so let it go once the door has asked.
+    const sending = act(lab, taskSession, "message", { message: said }, "coder");
+    setTimeout(release, 500);
+    const sent = await sending;
+    expect(sent.error).toBeUndefined();
+    expect(sent.output).toMatchObject({ outcome: "continuing" });
+
+    await until(async () => stub.runs.length, (n) => n >= 2, "the next attempt");
+    expect(stub.runs[1]!.prompt).toContain(said);
+    await quiet(lab);
   });
 });
 

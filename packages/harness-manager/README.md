@@ -55,14 +55,14 @@ harnessManager({
 });
 ```
 
-For a mailbox board a project holds, `@flow-state-dev/workforce` provides the source: `projectWorkspace({ board: work })` answers with the repository of the project that holds the board's workstream, with the project's files beside the checkout, or the project's files alone when it has none. It reads its collections through `projectWorkspaceCapability`, which goes on the manager's `uses`:
+For a run on a Workforce project, `@flow-state-dev/workforce` provides the source: `projectWorkspace()` answers with the repository of the project the run works for (its workstream's, its conversation's, or the one its task names), with the project's files beside the checkout, or the project's files alone when it has none. It reads its collections through `projectWorkspaceCapability`, which goes on the manager's `uses`:
 
 ```ts
 import { projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
 
 harnessManager({
   // ...
-  workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
+  workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
   uses: [projectWorkspaceCapability],
 });
 ```
@@ -121,6 +121,68 @@ row, but only after the claim, so the row is charged an attempt.
 manager.** The manager's own refusal keeps the run from being split between two people, but only
 the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
 the board's own readiness and order, so it takes the place of any other dispatcher on that board.
+
+## Running a conversation's tasks
+
+A worker can also take tasks a coordinator files in a conversation. Each conversation keeps its
+own board, so there is no single board to name. Give the manager `ledgers` instead: a function
+that finds a board by the ledger id and partition the task's claim names, and returns
+`undefined` for any board the worker shouldn't read. It has the same shape as orchestration's
+`taskLedgers` resolver, so one function can serve both.
+
+```ts
+import { harnessManager, type HarnessLedgers } from "@flow-state-dev/harness-manager";
+
+const ledgers: HarnessLedgers = async (ledgerId, ctx, partition) =>
+  ledgerId === "tasks" && partition !== undefined ? conversationBoard(ctx, partition) : undefined;
+
+const manager = harnessManager({
+  ledgers,
+  judge: { block: answerJudge, floor: 0.6 }, // optional, see below
+  // ...the rest as above
+});
+```
+
+The task's entry hands the manager the claim on its input, as `claim: { collectionId,
+partition, incarnationId }`. The manager never trusts it by itself: the row at that ledger and
+partition must be this task, on this attempt, still running, before anything runs, and every
+later write is checked against it again. Each run's checkout, branch and run record are kept
+apart by board and partition (`runBoardSegment`), so two conversations that file the same task
+id never share a tree. Pass `boardCollectionId` and `boardCollection` too and that board's rows
+run exactly as before.
+
+The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. A manager
+built with `ledgers` and no fixed board has no `messageDoor`: that door reads one board's rows. Build one with [`harnessMessageDoor`](#one-door-for-runs-from-more-than-one-board) instead.
+
+On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
+task id in their place, and a task naming only one of the two is refused. A task naming both is
+feature work in that phase, and its run is keyed by its task id, not by the issue: the board
+mints its own task ids, so its id needn't be the one `{ issue, phase }` derives, and two tasks
+naming one issue still get a tree each. A fixed board still runs feature rows only, and still
+refuses a row whose id isn't the one its payload derives.
+
+A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
+the run's `branch` (`null` for a run with only kept files), how many `commits` it made, and
+`judged`. A feature row's output gains the same fields.
+
+On a board read from the claim:
+
+- **A refused run fails the task for good** (`errored`, never retried), so the conversation
+  hears why. On a fixed board it is cancelled, as before.
+- **A question parks the task on the board**, the way the conversation parks any task. The
+  person answers there, and the next attempt gets the answer in its prompt, in the same
+  checkout and agent session.
+- **A judge, when you give one, reads the run** after the phase's own check passes, for a task
+  with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
+  count, subjects } }` and answering `{ verdict: "done" | "not-done" | "ask", confidence,
+  reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* parks
+  the task with the reason as its question. A verdict under `floor` counts as done. `confidence`
+  and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
+  that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
+  your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
+
+See [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager) for the whole
+picture.
 
 ## The slot
 
@@ -217,6 +279,37 @@ It answers `{ outcome: "continuing" | "kept", taskId }`:
 
 The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.
 
+### One door for runs from more than one board
+
+A manager built with `ledgers` and no fixed board has no `messageDoor`, and a flow with two managers wants one `message` action, not two. Build that door with `harnessMessageDoor`, and say which boards the calling session's run may be on:
+
+```ts
+import { harnessMessageDoor } from "@flow-state-dev/harness-manager";
+
+defineFlow({
+  kind: "coder",
+  actions: {
+    message: harnessMessageDoor({
+      boards: async (ctx) => [
+        { tasks: await featureBoard(ctx), orgScoped: true, drain: { drain: "resume", flowKind: "em" } },
+        // A conversation's board, for a task session opened for one.
+        ...(await conversationBoardFor(ctx)),
+      ],
+    }),
+  },
+  // ...
+});
+```
+
+Resolve each board from server state, such as the session's own fields, never from the request. For each board you give:
+
+- `tasks`: its rows, as the substrate resolves them. The door keys run records by the board's ledger id and partition, the same way the manager did.
+- `orgScoped`: the board is kept per organization, so only the run's own person may talk to it.
+- `drain`: the `internal` entry that runs this board's drain, and the flow that declares it. After a stop the door dispatches it into the session that claimed the row.
+- `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for a fixed board's rows, which carry an `{ issue, phase }` payload. For a board read from the claim, return the task id with its payload's phase, or for a task with neither, the phase of the manager that runs it.
+
+The door takes the first board whose row links the calling session. It then behaves exactly like `messageDoor`, with the same answers and the same refusals.
+
 ## The deadline
 
 `runTimeoutMs` bounds **the harness step**: the manager composes it into the step's abort signal and fires that signal when the deadline passes. That is the manager's half and all it promises. How promptly a harness returns after its signal fires is the harness's own business.
@@ -225,7 +318,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessMessageDoor`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

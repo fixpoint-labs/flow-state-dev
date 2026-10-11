@@ -14,6 +14,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Browser, Page } from "playwright";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
+import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { REPO_ROOT } from "../../lib/index.mts";
 import { pickShift } from "../../lib/shift-manager.mts";
@@ -135,7 +137,9 @@ export async function walkSurfaces(
   // Jump to: a workstream, a worker, a task and a declared document.
   const docs = readableDocuments(tree.root);
   const targets: Array<{ group: string; query: string; lands: string }> = [
-    { group: "Workstreams", query: tree.mailboxes[0]!.id, lands: `[data-testid=workstream][data-mailbox-id="${tree.mailboxes[0]!.id}"]` },
+    ...(tree.mailboxes[0] === undefined
+      ? []
+      : [{ group: "Workstreams", query: tree.mailboxes[0].id, lands: `[data-testid=workstream][data-mailbox-id="${tree.mailboxes[0].id}"]` }]),
     { group: "Workers", query: store.seats[0] ?? "", lands: "[data-testid=roster]" },
     ...(rows[0] === undefined ? [] : [{ group: "Tasks", query: rows[0].title.slice(0, 24), lands: `[data-testid=task-frame][data-task-id="${rows[0].id}"]` }]),
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
@@ -236,10 +240,10 @@ export async function walkSurfaces(
   // The project level: No project, then each of the store's projects, in four
   // tabs. A tab draws the store's content, or its named empty state when the
   // store holds none: No project has no coordinator and no brief.
-  const inProject = new Set(store.projects.flatMap((p) => p.workstreams));
+  // A project lists no mailbox, so No project holds every mailbox workstream.
   const levels = [
-    { id: "unassigned", nav: "projects-heading", project: false, brief: null, workstreams: store.mailboxes.map((c) => c.id).filter((id) => !inProject.has(id)) },
-    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, project: true, brief: p.brief, workstreams: p.workstreams })),
+    { id: "unassigned", nav: "projects-heading", project: false, brief: null, workstreams: store.mailboxes.map((c) => c.id) },
+    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, project: true, brief: p.brief, workstreams: [] as string[] })),
   ];
   const holdsBoard = new Set(tree.mailboxes.filter((c) => c.boardRefs.length > 0).map((c) => c.id));
   for (const level of levels) {
@@ -376,6 +380,30 @@ async function runningRow(api: LabApi, tree: Tree, userId: string, withinMs: num
     const store = await readStore(api, tree, userId);
     const row = Object.values(store.rows).flat().find((r) => r.status === "in_progress" && r.run !== null);
     if (row !== undefined) return row;
+  }
+  return undefined;
+}
+
+/**
+ * A running row on the lead's conversation board, for a tree whose work is
+ * filed there rather than on a mailbox's board: the lead is the worker whose
+ * file names delegates (no coordinator), and its board is the person's
+ * conversation ledger, read through that conversation and kept to its rows.
+ */
+async function conversationRunningRow(api: LabApi, root: string, userId: string, withinMs: number): Promise<{ id: string } | undefined> {
+  const roster = await readDeclaredRoster(root);
+  const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
+  if (lead === undefined) return undefined;
+  for (const until = Date.now() + withinMs; Date.now() < until; await sleep(500)) {
+    const sessions = ((await api.get(`/sessions?userId=${encodeURIComponent(userId)}`)).sessions ?? []) as Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
+    const conversation = sessions.find((s) => s.flowKind === lead.declared.flow && s.parentSessionId == null)?.id;
+    if (conversation === undefined) continue;
+    const body = await api.get(`/sessions/${encodeURIComponent(conversation)}/resources/tasks?limit=200`);
+    const row = ((body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>)
+      .filter((i) => sessionIdOfFiling(decodeURIComponent(i.topic.split("/")[0] ?? "")) === conversation)
+      .map((i) => i.clientData ?? {})
+      .find((r) => r.status === "in_progress" && r.run != null);
+    if (row !== undefined) return { id: String(row.id) };
   }
   return undefined;
 }
@@ -528,7 +556,9 @@ export async function legA(ctx: LegCtx): Promise<void> {
       report.fail("a2", approved ? `no row was running with a run link within ${RUN_STARTS_MS / 60_000} min of Approve` : "no ask was approved, so no task runs");
       report.fail("a4", "no task of the coder's is running, so there is nothing to talk to");
     } else {
-      const mailbox = tree.mailboxes.find((c) => c.boardRefs.includes(row.ref))!;
+      // The row's board: a mailbox's, or a seat session's own (`<sessionId>.tasks`) in a tree with none.
+      const mailbox = tree.mailboxes.find((c) => c.boardRefs.includes(row.ref));
+      const holder = mailbox?.id ?? row.ref.replace(/\.tasks$/, "");
       const assignee = String(row.raw.assignee ?? "");
       const seat = tree.seats.find((s) => s === assignee || s.endsWith(`.${assignee}`)) ?? assignee;
       // The turn goes in mid-run: once the harness has had A4_SETTLE_MS to open and
@@ -538,12 +568,21 @@ export async function legA(ctx: LegCtx): Promise<void> {
       await sleep(A4_SETTLE_MS);
       const working = (await api.items(row.run!.sessionId)).filter((i) => i.requestId === row.run!.requestId && (i.type === "tool_output" || i.type === "reasoning" || (i.type === "message" && i.role === "assistant"))).length;
       const line = token("a4");
-      await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-      await page.locator("[role=tab][data-tab=stream]").click();
-      await page.getByTestId("composer-input").fill(`@${seat.split(".").at(-1)} ${line}`);
-      const picker = page.getByTestId("composer-task-picker");
-      if (await picker.isVisible().catch(() => false)) await picker.selectOption(row.id);
-      const sent = await sendAndWatch(page, "composer", () => api.holds(row.run!.sessionId, "user", line));
+      let sent: Awaited<ReturnType<typeof sendAndWatch>>;
+      if (mailbox !== undefined) {
+        await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
+        await page.locator("[role=tab][data-tab=stream]").click();
+        await page.getByTestId("composer-input").fill(`@${seat.split(".").at(-1)} ${line}`);
+        const picker = page.getByTestId("composer-task-picker");
+        if (await picker.isVisible().catch(() => false)) await picker.selectOption(row.id);
+        sent = await sendAndWatch(page, "composer", () => api.holds(row.run!.sessionId, "user", line));
+      } else {
+        // No mailbox workstream to post in: the line goes through the task's own composer, from Tasks.
+        await page.getByTestId("nav-tasks").click();
+        await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
+        await page.getByTestId("task-composer-input").fill(line);
+        sent = await sendAndWatch(page, "task-composer", () => api.holds(row.run!.sessionId, "user", line));
+      }
       if (sent.state !== "delivered") report.fail("a4", `the composer never read delivered: ${sent.state}${sent.error === null ? "" : `, "${sent.error}"`}`);
       else if (sent.heldAtDelivered !== true) report.fail("a4", `the composer read delivered while ${seat}'s running task session ${row.run!.sessionId} held no person's turn with the token`);
       // The seat answers in that session: an assistant message, after the person's turn, from the next
@@ -554,7 +593,7 @@ export async function legA(ctx: LegCtx): Promise<void> {
       for (const until = Date.now() + ANSWER_MS; Date.now() < until && answer === undefined; await sleep(2_000)) {
         const messages = await api.items(row.run!.sessionId, ["message"]);
         turnAt = messages.findIndex((m) => m.role === "user" && JSON.stringify(m.content ?? m.text ?? m).includes(line));
-        const linked = (await readStore(api, tree, userId)).rows[mailbox.id]?.find((r) => r.id === row.id)?.run;
+        const linked = (await readStore(api, tree, userId)).rows[holder]?.find((r) => r.id === row.id)?.run;
         if (linked != null && linked.requestId !== row.run!.requestId) nextRequest = linked.requestId;
         if (turnAt >= 0 && nextRequest !== undefined) answer = messages.slice(turnAt + 1).find((m) => m.role === "assistant" && m.requestId === nextRequest);
         if (sent.state !== "delivered") break;
@@ -563,18 +602,20 @@ export async function legA(ctx: LegCtx): Promise<void> {
       else if (sent.state === "delivered" && nextRequest === undefined) report.fail("a4", `no next attempt took the line within ${ANSWER_MS / 60_000} min (not retried)`);
       else if (sent.state === "delivered" && answer === undefined) report.fail("a4", `the next attempt ${nextRequest} did not answer in ${row.run!.sessionId} within ${ANSWER_MS / 60_000} min of the turn (not retried)`);
       const answerText = answer === undefined ? "" : JSON.stringify(answer.content ?? answer.text ?? "").slice(0, 160);
-      report.note(`a4: @${seat.split(".").at(-1)} ${line} sent after ${working} harness item(s) in the attempt → ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}${sent.error === null ? "" : ` "${sent.error}"`} in ${row.run!.sessionId}; next attempt ${nextRequest ?? "none"}; answer ${answer === undefined ? "none" : `${String(answer.id)}: ${answerText}`}`);
+      report.note(`a4: ${mailbox === undefined ? `${seat}'s task composer:` : `@${seat.split(".").at(-1)}`} ${line} sent after ${working} harness item(s) in the attempt → ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}${sent.error === null ? "" : ` "${sent.error}"`} in ${row.run!.sessionId}; next attempt ${nextRequest ?? "none"}; answer ${answer === undefined ? "none" : `${String(answer.id)}: ${answerText}`}`);
 
-      // a2: the task, from Tasks and again from the workstream's Board.
-      const current = (await readStore(api, tree, userId)).rows[mailbox.id]!.find((r) => r.id === row.id) ?? row;
+      // a2: the task, from Tasks and again from the workstream's Board (a mailbox's; a tree with none has no Board to open it from).
+      const current = (await readStore(api, tree, userId)).rows[holder]?.find((r) => r.id === row.id) ?? row;
       const linked = current.run === null ? row : current;
       await page.getByTestId("nav-tasks").click();
       await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
       await taskJourney(page, api, linked, served.devtool, "a2", report, "Tasks");
-      await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
-      await page.locator("[role=tab][data-tab=board]").click();
-      await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
-      await taskJourney(page, api, linked, served.devtool, "a2", report, "Board");
+      if (mailbox !== undefined) {
+        await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
+        await page.locator("[role=tab][data-tab=board]").click();
+        await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
+        await taskJourney(page, api, linked, served.devtool, "a2", report, "Board");
+      }
     }
 
     // a3: every surface, against the store as it stands now.
@@ -796,10 +837,13 @@ export async function legC(ctx: LegCtx): Promise<void> {
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
         await page.locator("[data-testid=inbox-detail] [data-testid=ask-card]").waitFor();
         await sweep(page, { ask: `[data-testid=inbox-detail] ${SWEPT.ask}` }, tally);
-        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))!.id;
-        await page.getByTestId(`nav-workstream-${workstream}`).click();
-        await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
-        await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
+        // And in the Stream of a mailbox workstream the asking worker is on, when there is one.
+        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))?.id;
+        if (workstream !== undefined) {
+          await page.getByTestId(`nav-workstream-${workstream}`).click();
+          await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
+          await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
+        }
         // Approve, so a run's Session and its trace page can be read.
         await page.getByTestId("nav-inbox").click();
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
@@ -833,10 +877,9 @@ export async function legC(ctx: LegCtx): Promise<void> {
     const runLab = await startShiftManager(ctx.scratch, `c-run-lab-${shift}`, { config: RUN_LAB_CONFIG, pages: ctx.pages, shift, env: KEYLESS });
     const second = await newPage(ctx.browser);
     try {
-      const lab = await readTree(TREES.runLab);
       await open(second.page, runLab.origin, "/tasks");
       const { userId, bearer } = await injected(second.page);
-      const row = await runningRow(labApi(runLab.origin, bearer), lab, userId, 30_000);
+      const row = await conversationRunningRow(labApi(runLab.origin, bearer), TREES.runLab, userId, 30_000);
       if (row === undefined) report.fail("c:reach", `[${shift}] the run-lab's board never held a running row`);
       else {
         await second.page.getByTestId("nav-tasks").click();

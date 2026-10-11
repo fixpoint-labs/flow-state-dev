@@ -1,7 +1,8 @@
 /**
- * Goal check — two seats work one mailbox's board, a person answers a parked
- * row through the owning seat's own action, the work changes hands, and a
- * reader can say what happened from the DevTool's own screens.
+ * Goal check — a planner files work for its two delegates on its own
+ * conversation's board, a person answers a parked row through that
+ * conversation, the work changes hands, and a reader can say what happened
+ * from the DevTool's own screens.
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
@@ -12,22 +13,23 @@
  * Legs (every failure line is tagged with its leg, so a control can prove it
  * went red where it says it does and nowhere else):
  *
- *   V0  the tree declares the board by NAME, and the minted id is in no file
- *   V1  one row per piece, both directions; a row for nobody settles loudly
- *   V2  each row ran on the seat whose OWN FILE answers for its desk
- *   V3  the owning seat parks with the drain returning; the answer lands
- *       through that seat's action and the same seat finishes; a second
- *       delivery is declined
- *   V4  every claim belongs to a seat; an answer sent as a second person
- *       does not land
- *   V5  the finishing seat files a second row, for the other desk, naming the
- *       first; another seat runs it; the assignee is never moved
+ *   V0  no file declares a board: no MAILBOX.md, no `boards:`; the planner's
+ *       file names its delegates
+ *   V1  one row per piece, for a delegate; a row for nobody runs nowhere
+ *   V2  each row ran on the worker whose OWN FILE answers for its desk
+ *   V3  the worker parks on its question and nothing stays running; the
+ *       answer lands through the planner's conversation and the same task
+ *       session finishes; a second answer is declined
+ *   V4  every claim is the planner's board's; an answer sent as a second
+ *       person does not land
+ *   V5  the follow-on row, for the other desk, waits on the first and runs
+ *       on another worker; the assignee is never moved
  *   V6  `TaskStatus` has gained no value
  *   VB  three screens, on the DevTool's own navigation, in a real browser
  *
  * Run:      pnpm tsx goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/run.mts
  * Controls: GOAL_CONTROL=swapped-desks | ignore-the-answer | second-principal |
- *           silent-park | one-seat  (each must FAIL, at the legs goal.md names)
+ *           silent-park | one-worker  (each must FAIL, at the legs goal.md names)
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -36,9 +38,9 @@ import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
-import { LAB_USER_ID, readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import { LAB_CONFIG, Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult, type ChangeRecord } from "../run-scenario.mts";
-import { DRAIN_ENTRY, type WorkLine } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
+import { LAB_USER_ID, readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { LAB_CONFIG, Scenario, serveLab, type ActResult, type BoardRow, type ChangeRecord } from "../run-scenario.mts";
+import type { WorkLine } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string; then: { goal: string; desk: string } };
@@ -55,26 +57,29 @@ const PROOF_DIRS = [fileURLToPath(new URL("..", import.meta.url)), dirname(LAB_C
 const SHOTS = goalTmpDir("multi-seat-collab");
 
 /**
- * The legs each control must redden, and only those. `one-seat` is the one
- * that reddens two, and must redden BOTH: widening one seat's eligibility is
- * what puts a review row on a build seat (PLAN → Checks).
+ * The legs each control must redden, and only those. `one-worker` is the one
+ * that reddens two, and must redden BOTH: filing the review row for the build
+ * desk's worker is what puts a review row on a worker that answers for build.
  */
 const EXPECTED: Record<string, readonly string[]> = {
   "swapped-desks": ["V2"],
   "ignore-the-answer": ["V3"],
   "second-principal": ["V4"],
   "silent-park": ["VB"],
-  "one-seat": ["V2", "V5"],
+  "one-worker": ["V2", "V5"],
 };
 
 /**
- * `TaskStatus`, written out. **Pinned** — BR-20: a later widening (for
- * *handed-off*, *notified* or *waiting on you*) must fail here rather than pass.
+ * `TaskStatus`, written out. **Pinned** — a later widening (for *handed-off*,
+ * *notified* or *waiting on you*) must fail here rather than pass.
  */
 const TASK_STATUSES = ["pending", "in_progress", "blocked", "parked", "completed", "errored", "cancelled"];
 
 /** How long a second person's delivery gets to land before it is judged not to have. */
 const SECOND_PRINCIPAL_WINDOW_MS = 3_000;
+
+/** The board run's own action on the filing conversation: where every claim is made. */
+const BOARD_RUN_ACTION = "runTaskBoard";
 
 const failures: string[] = [];
 const notes: string[] = [];
@@ -87,13 +92,13 @@ function fail(leg: string, line: string): void {
  *
  * The engine answers another user's session with `404 Unknown session`, the
  * same answer an unused id gets. So the 404 counts as the refusal only when its
- * `error` names the owning seat's session AND the owner's own delivery to that
+ * `error` names the planner's conversation AND the owner's own delivery to that
  * same session is then admitted: that admission is what tells "refused this
  * caller" from "no such session".
  *
  * @param other The second person's delivery, which came back `404`.
  * @param ownerAnswer The owner's own delivery to the same session, sent after.
- * @param sessionId The owning seat's session both were addressed to.
+ * @param sessionId The conversation both were addressed to.
  * @returns A failure line for V4, or a note when the 404 is the refusal.
  */
 function judgeHiddenSession(
@@ -180,7 +185,7 @@ async function taskRow(
   taskId: string,
   until: (cells: Record<string, string>) => boolean = () => true,
 ): Promise<
-  { cells: Record<string, string>; hasLink: boolean; reasonClipped: boolean; reasonTitle: string | null } | undefined
+  { cells: Record<string, string>; reasonClipped: boolean; reasonTitle: string | null } | undefined
 > {
   const tab = page.getByRole("tab", { name: "Tasks" });
   await tab.click();
@@ -199,13 +204,12 @@ async function taskRow(
           const el = row.querySelector(`[data-slot="${name}"]`);
           if (el !== null) cells[head!] = (el.textContent ?? "").trim();
         }
-        const hasLink = row.querySelector("[data-slot='run'] button[title^='Open dispatch run']") !== null;
         const reasonCell = row.querySelector<HTMLElement>('[data-slot="reason"]');
         // A long note is clamped to its slot and carries its whole text on
         // the slot's title — the DevTool's own design. Read both, so a clamp
         // is graded on the title rather than passed on text nobody can see.
         const reasonClipped = reasonCell !== null && reasonCell.scrollWidth > reasonCell.clientWidth;
-        return { cells, hasLink, reasonClipped, reasonTitle: reasonCell?.getAttribute("title") ?? null };
+        return { cells, reasonClipped, reasonTitle: reasonCell?.getAttribute("title") ?? null };
       }
       return undefined;
     }, taskId);
@@ -224,25 +228,30 @@ async function main() {
     return { failures: [`unknown control ${JSON.stringify(CONTROL)}`], evidence: "" };
   }
   const tree = await readLabTree();
-  const seats = tree.workerIds;
+  const workers = tree.workerIds;
   const desks = new Set(Object.values(tree.declaredDesks));
+  // The app's desk -> delegate map, as the filer reads it. Never graded
+  // against: every leg below grades against the tree.
+  const routes = routesFor(CONTROL);
 
   // The fixture's desks have to be desks the TREE declares, or every leg below
-  // grades a routing key nobody answers for.
+  // grades a desk nobody answers for.
   for (const desk of [fixture.piece.desk, fixture.piece.then.desk]) {
     if (!desks.has(desk)) {
       return { failures: [`the fixture names desk "${desk}", which no WORKER.md answers for`], evidence: "" };
     }
   }
 
-  // ---- V0. the board by name, and the mint in no file ----------------------
+  // ---- V0. no file declares a board ----------------------------------------
   const files = PROOF_DIRS.flatMap(treeFiles);
-  const declaring = files.filter((path) => path.endsWith("MAILBOX.md") && readFileSync(path, "utf8").includes(tree.boardName));
-  if (declaring.length === 0) fail("V0", `no MAILBOX.md under the proof declares the board "${tree.boardName}" by name`);
-  for (const path of files) {
-    if (readFileSync(path, "utf8").includes(tree.boardId)) {
-      fail("V0", `${path} writes the minted ledger id; a file declares a NAME`);
-    }
+  for (const path of files.filter((candidate) => candidate.endsWith("MAILBOX.md"))) {
+    fail("V0", `${path} declares a mailbox; the planner's board is its own conversation's`);
+  }
+  for (const path of files.filter((candidate) => candidate.endsWith("WORKER.md"))) {
+    if (/^boards\s*:/m.test(readFileSync(path, "utf8"))) fail("V0", `${path} declares a board by name`);
+  }
+  if (tree.delegates.length !== workers.length) {
+    fail("V0", `the planner's file delegates to [${tree.delegates.join(", ")}], not to the two workers`);
   }
 
   // ---- V6. no new status --------------------------------------------------
@@ -262,7 +271,8 @@ async function main() {
   }
 
   const served = await serveLab({ control: CONTROL, workDir: join(SHOTS, "server") });
-  const lab = new Scenario(served, tree);
+  const lab = new Scenario(served, tree, routes);
+  const plannerFlow = tree.seatFlows[tree.plannerId]!;
   let browser: Browser | undefined;
   try {
     await lab.open();
@@ -270,103 +280,114 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     await page.goto(served.origin, { waitUntil: "networkidle" });
 
-    // ---- V1. the planner files one row ------------------------------------
-    const filed = await lab.file({
-      goal: fixture.piece.goal,
-      desk: fixture.piece.desk,
-      asks: fixture.piece.asks,
-      then: fixture.piece.then,
-    });
-    if (filed.status !== "completed") fail("V1", `the planner's file request ended ${filed.status ?? filed.refusal}`);
-    const first = await lab.waitForRow((row) => row.goal.includes(fixture.piece.goal));
-    const rowsAfterFiling = await lab.rows();
+    // ---- V1. the planner files one row per piece -------------------------
+    const filed = await lab.file({ goal: fixture.piece.goal, desk: fixture.piece.desk, asks: fixture.piece.asks });
+    const firstId = typeof filed.output?.taskId === "string" ? (filed.output.taskId as string) : undefined;
+    if (filed.status !== "completed" || filed.output?.ok !== true || firstId === undefined) {
+      return { failures: [...failures, `[V1] the planner's filing ended ${filed.status ?? filed.refusal}: ${JSON.stringify(filed.output)}`], evidence: "" };
+    }
+    // The work the first piece implies for the other desk, filed now and
+    // waiting on it: one board, a second row, a second assignee.
+    const filedNext = await lab.file({ goal: fixture.piece.then.goal, desk: fixture.piece.then.desk, follows: firstId });
+    const secondId = typeof filedNext.output?.taskId === "string" ? (filedNext.output.taskId as string) : undefined;
+    if (filedNext.status !== "completed" || filedNext.output?.ok !== true || secondId === undefined) {
+      fail("V1", `the planner's filing of the follow-on row ended ${filedNext.status ?? filedNext.refusal}: ${JSON.stringify(filedNext.output)}`);
+    }
+    const first = await lab.waitForRow((row) => row.id === firstId);
     if (first === undefined) {
-      // Nothing downstream can be graded against a row that does not exist.
-      return { failures: [...failures, "[V1] no row carrying the piece of work ever reached the board"], evidence: "" };
+      return { failures: [...failures, `[V1] the row the filing answered (${firstId}) never reached the board`], evidence: "" };
     }
-    const firstId = String(first.id);
-    if (rowsAfterFiling.length !== 1) {
-      fail("V1", `${rowsAfterFiling.length} rows landed for one piece of work (the mailbox has ${(tree.mailbox.declared.members as unknown[] | undefined)?.length ?? 0} members)`);
+    const rowsAfterFiling = lab.rows();
+    if (rowsAfterFiling.length !== 2) {
+      fail("V1", `${rowsAfterFiling.length} rows landed for two pieces of work (the planner has ${tree.delegates.length} delegates)`);
     }
-    for (const row of rowsAfterFiling) {
-      if (row.goal !== fixture.piece.goal) fail("V1", `row ${row.id} does not carry the piece verbatim: ${JSON.stringify(row.goal)}`);
-      if (!desks.has(String(row.assignee))) fail("V1", `row ${row.id} is for "${row.assignee}", a desk no WORKER.md declares`);
+    for (const [row, piece] of [[first, fixture.piece], [rowsAfterFiling.find((row) => row.id === secondId), fixture.piece.then]] as const) {
+      if (row === undefined) {
+        fail("V1", `the follow-on row ${secondId} never reached the board`);
+        continue;
+      }
+      if (row.goal !== piece.goal) fail("V1", `row ${row.id} does not carry its piece verbatim: ${JSON.stringify(row.goal)}`);
+      if (row.input?.desk !== piece.desk) fail("V1", `row ${row.id} carries desk ${JSON.stringify(row.input?.desk)}, not "${piece.desk}"`);
+      if (!tree.delegates.includes(String(row.assignee))) fail("V1", `row ${row.id} is for "${row.assignee}", who is not among the planner's delegates`);
+      if (row.partition !== first.partition) fail("V1", `row ${row.id} is on board ${row.partition}, not the planner's conversation's ${first.partition}`);
     }
 
-    // ---- V3 (BR-6). the owning seat parks, and the park holds no drain open --
-    // The seats hand rows off, so the drain that claims the row returns as
-    // soon as the row is running in its own child session ("handed-off") and
-    // the park happens there, after. What BR-6 asks of a drain is therefore
-    // asked of the NEXT one: run over a parked row, it must return rather than
-    // wait on a person, name the park as why, and leave the row parked.
-    const drain1 = await lab.drainAll();
+    // ---- V3 (park). the worker parks on its question, and nothing stays running
     const parkedLines = () => lab.workLines().filter((line) => line.taskId === firstId && line.event === "parked");
     const parked = await lab.waitForRow((row) => row.id === firstId && row.status === "parked");
     const parkedLine = parkedLines()[0];
     if (parkedLine === undefined || parked === undefined) {
       return {
-        failures: [...failures, `[V3] the first row never parked (lines: ${parkedLines().length}, status: ${(await lab.rows()).find((row) => row.id === firstId)?.status})`],
+        failures: [...failures, `[V3] the first row never parked (lines: ${parkedLines().length}, status: ${lab.rows().find((row) => row.id === firstId)?.status})`],
         evidence: "",
       };
     }
-    const owner = parkedLine.seat;
-    notes.push(`the claiming drain on ${owner} ended "${drain1.find((drain) => drain.seat === owner)?.terminationReason}"`);
-    const ownerFlow = tree.seatFlows[owner]!;
-    const overParked = await lab.act(ownerFlow, lab.seatSession(owner), DRAIN_ENTRY, {}, LAB_USER_ID, 10_000);
-    const overParkedReason = terminationReasonOf(overParked.items);
-    if (overParked.status !== "completed" || overParkedReason !== "parked-for-review") {
-      fail("V3", `${owner}'s drain over the parked row ended ${overParked.status} / "${overParkedReason}", not completed / parked-for-review`);
+    const owner = parkedLine.worker;
+    if (parked.parkedOnQuestion !== true) fail("V3", `the parked row is not parked on its worker's question, so no answer can reach it`);
+    if (!(await lab.settled())) fail("V3", `a request was still running with the row parked; a park holds nothing open`);
+    const parkingRequest = (await lab.requests(parkedLine.session)).find((request) => request.id === parked.run?.requestId);
+    if (parkingRequest?.status !== "completed") {
+      fail("V3", `the attempt that parked ended "${parkingRequest?.status}", not completed: a park is the attempt's end, not a wait`);
     }
-    const stillParked = (await lab.rows()).find((row) => row.id === firstId);
-    if (stillParked?.status !== "parked") fail("V3", `after that drain returned the first row is "${stillParked?.status}", not parked`);
+    const stillParked = lab.rows().find((row) => row.id === firstId);
+    if (stillParked?.status !== "parked") fail("V3", `with nothing running the first row is "${stillParked?.status}", not parked`);
 
-    // ---- VB (1). the seat's Tasks tab: the row, and its dispatch-run link --
-    // A seat has no flow of its own: the navigator lists the one copy of the
-    // flow it runs on, and each seat's own session under it.
-    for (const flow of new Set(seats.map((seat) => tree.seatFlows[seat]!))) await openCopy(page, flow);
-    await page.locator(`[data-session-id="${lab.seatSession(owner)}"]`).waitFor();
+    // ---- V5 (the freeze). the parked row's assignee cannot be moved ---------
+    const otherDelegate = tree.delegates.find((id) => id !== first.assignee) ?? tree.delegates[0]!;
+    const moved = await lab.onConversation("assignTask_tasks", { taskId: firstId, assignee: otherDelegate });
+    const movedError = String(moved.output?.error ?? "");
+    if (moved.output?.ok !== false || !movedError.includes("immutable-assignee")) {
+      fail("V5", `moving the parked row to ${otherDelegate} was not refused as immutable-assignee: ${JSON.stringify(moved.output)}`);
+    }
+
+    // ---- VB (1). the planner's Tasks tab: the row, as filed ---------------
+    // A worker has no flow of its own: the navigator lists the one copy of the
+    // flow it runs on, each worker's own session under it, and each task
+    // session the planner's board opened under the copy of the flow it runs on.
+    for (const flow of new Set([...workers, tree.plannerId].map((id) => tree.seatFlows[id]!))) await openCopy(page, flow);
+    await page.locator(`[data-session-id="${lab.conversation}"]`).waitFor();
     const listed = await page.locator("[data-session-id]").evaluateAll((els) => els.map((el) => el.getAttribute("data-session-id")));
-    for (const seat of seats) {
-      if (!listed.includes(lab.seatSession(seat))) {
-        fail("VB", `the navigator lists no session of seat ${seat} under the copy of "${tree.seatFlows[seat]}" (listed: ${listed.join(", ")})`);
+    for (const id of [...workers, tree.plannerId]) {
+      if (!listed.includes(lab.seatSession(id))) {
+        fail("VB", `the navigator lists no session of ${id} under the copy of "${tree.seatFlows[id]}" (listed: ${listed.join(", ")})`);
       }
     }
-    await openSession(page, ownerFlow, lab.seatSession(owner));
-    const screen1 = await taskRow(page, firstId);
-    await page.screenshot({ path: join(SHOTS, "1-seat-tasks.png") });
+    await openSession(page, plannerFlow, lab.conversation);
+    const screen1 = await taskRow(page, firstId, (cells) => cells.Assignee !== undefined);
+    await page.screenshot({ path: join(SHOTS, "1-planner-tasks.png") });
     if (screen1 === undefined) {
-      fail("VB", `screen 1: ${owner}'s Tasks tab never showed row ${firstId}`);
+      fail("VB", `screen 1: the planner's Tasks tab never showed row ${firstId}`);
     } else {
       if (screen1.cells.Goal !== fixture.piece.goal) fail("VB", `screen 1: the row's goal reads ${JSON.stringify(screen1.cells.Goal)}`);
-      if (screen1.cells.Assignee !== fixture.piece.desk) fail("VB", `screen 1: the row's assignee reads ${JSON.stringify(screen1.cells.Assignee)}`);
-      if (!screen1.hasLink) fail("VB", `screen 1: the row carries no link to the session it ran in`);
+      if (screen1.cells.Assignee !== first.assignee) fail("VB", `screen 1: the row's assignee reads ${JSON.stringify(screen1.cells.Assignee)}, the board holds "${first.assignee}"`);
     }
 
-    // ---- VB (2a). follow the link: the reason, with nothing expanded ------
+    // ---- VB (2a). the session the row names: the reason, nothing expanded --
+    // The row names the task session it ran in (`run`); a reader opens that
+    // session from the navigator, under the copy of the flow its worker runs on.
+    const runSession = parked.run?.sessionId;
     let childSession: string | undefined;
-    if (screen1?.hasLink) {
-      await page.locator(`main [data-task-id="${firstId}"] [data-slot="run"] button[title^='Open dispatch run']`).first().click();
-      await page.waitForFunction(
-        (seatSession) => ![...document.querySelectorAll("[title^='Session ID: ']")].some((el) => el.getAttribute("title")?.includes(seatSession)),
-        lab.seatSession(owner),
-        { timeout: 15_000 },
-      );
+    if (runSession !== parkedLine.session) {
+      fail("VB", `screen 2: the row names ${runSession} as its run, not ${parkedLine.session}, where it ran`);
+    } else {
+      await openCopy(page, tree.seatFlows[owner]!);
+      await openSession(page, tree.seatFlows[owner]!, runSession);
       childSession = await openBadgeSession(page);
       if (childSession !== parkedLine.session) {
-        fail("VB", `screen 2: the link opened ${childSession}, not ${parkedLine.session}, where the row ran`);
+        fail("VB", `screen 2: the navigator opened ${childSession}, not ${parkedLine.session}, where the row ran`);
       }
       const screen2 = await taskRow(page, firstId, (cells) => cells.Status === "parked");
-      await page.screenshot({ path: join(SHOTS, "2a-child-parked.png") });
+      await page.screenshot({ path: join(SHOTS, "2a-task-session-parked.png") });
       const expanded = await page.locator("main [data-task-id] button[aria-expanded='true']").count();
       if (expanded !== 0) fail("VB", `screen 2: ${expanded} row(s) open; the reason must be legible without opening one`);
       if (screen2 === undefined) {
-        fail("VB", `screen 2: the child session never showed row ${firstId} parked`);
+        fail("VB", `screen 2: the task session never showed row ${firstId} parked`);
       } else if (screen2.cells.Reason === undefined || screen2.cells.Reason.length === 0 || screen2.cells.Reason === "—") {
         fail("VB", `screen 2: the parked row shows no reason — a reader cannot say what it waits for`);
-      } else if (screen2.cells.Reason !== (parked?.feedback ?? "")) {
-        fail("VB", `screen 2: the reason reads ${JSON.stringify(screen2.cells.Reason)}, the row holds ${JSON.stringify(parked?.feedback)}`);
+      } else if (screen2.cells.Reason !== (parked.feedback ?? "")) {
+        fail("VB", `screen 2: the reason reads ${JSON.stringify(screen2.cells.Reason)}, the row holds ${JSON.stringify(parked.feedback)}`);
       } else if (screen2.reasonClipped) {
-        if (screen2.reasonTitle !== parked?.feedback) {
+        if (screen2.reasonTitle !== parked.feedback) {
           fail("VB", `screen 2: the reason is clamped on screen and its title reads ${JSON.stringify(screen2.reasonTitle)}`);
         } else {
           notes.push("the reason is clamped to its slot on screen and whole on hover");
@@ -374,12 +395,11 @@ async function main() {
       }
     }
 
-    // ---- V4 (BR-9). a second person's answer does not land ----------------
-    const beforeOther = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
+    // ---- V4 (the fence). a second person's answer does not land ------------
+    const beforeOther = JSON.stringify(lab.rows().find((row) => row.id === firstId));
     let otherPerson: ActResult | undefined;
     try {
       otherPerson = await lab.answer(
-        owner,
         firstId,
         fixture.answer,
         CONTROL === "second-principal" ? LAB_USER_ID : fixture.otherPrincipal,
@@ -389,11 +409,11 @@ async function main() {
       fail("V4", `the second person's delivery never reached the server: ${error instanceof Error ? error.message : String(error)}`);
     }
     // The positive record first: the delivery reached the server, either as a
-    // request on the owning seat or as an explicit refusal at the door. Only
-    // then is its fate judged. An explicit 401/403 is a loud refusal, so it
-    // counts. A 404 is judged by `judgeHiddenSession` once the owner's own
-    // delivery to the same session has been sent. Anything else that is not a
-    // 202 with a request id proves nothing about the fence.
+    // request on the planner's conversation or as an explicit refusal at the
+    // door. Only then is its fate judged. An explicit 401/403 is a loud
+    // refusal, so it counts. A 404 is judged by `judgeHiddenSession` once the
+    // owner's own delivery to the same session has been sent. Anything else
+    // that is not a 202 with a request id proves nothing about the fence.
     if (otherPerson !== undefined) {
       if (otherPerson.httpStatus === 401 || otherPerson.httpStatus === 403) {
         notes.push(`the second person's delivery was refused at the door (${otherPerson.httpStatus} ${otherPerson.refusal})`);
@@ -402,23 +422,25 @@ async function main() {
       } else if (otherPerson.httpStatus !== 202 || otherPerson.requestId === undefined) {
         fail("V4", `the second person's delivery came back ${otherPerson.httpStatus} ${otherPerson.refusal ?? "with no request id"} — neither an explicit refusal nor a request the fence was exercised on`);
       } else {
-        notes.push(`the second person's delivery was admitted as ${otherPerson.requestId} and ${otherPerson.status === "in_progress" ? `was still in_progress after ${SECOND_PRINCIPAL_WINDOW_MS} ms` : `ended ${otherPerson.status}`}`);
+        notes.push(`the second person's delivery was admitted as ${otherPerson.requestId} and ended ${otherPerson.status}`);
       }
     }
-    const afterOther = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
+    await lab.settled();
+    const afterOther = JSON.stringify(lab.rows().find((row) => row.id === firstId));
     if (afterOther !== beforeOther) {
       fail("V4", `an answer sent as a second person moved the row: ${beforeOther} -> ${afterOther}`);
     }
 
-    // ---- V3 (BR-7). the person answers through the owning seat's action ----
-    const answered = await lab.answer(owner, firstId, fixture.answer);
+    // ---- V3 (the answer). the person answers through the planner's conversation
+    const answered = await lab.answer(firstId, fixture.answer);
     if (otherPerson?.httpStatus === 404) {
-      const verdict = judgeHiddenSession(otherPerson, answered, lab.seatSession(owner));
+      const verdict = judgeHiddenSession(otherPerson, answered, lab.conversation);
       if ("fail" in verdict) fail("V4", verdict.fail);
       else notes.push(verdict.note);
     }
     if (answered.status !== "completed") fail("V3", `the answer request ended ${answered.status ?? answered.refusal}`);
-    const afterAnswer = (await lab.rows()).find((row) => row.id === firstId);
+    await lab.settled();
+    const afterAnswer = lab.rows().find((row) => row.id === firstId);
     const finishedFirst = lab.workLines().filter((line) => line.taskId === firstId && line.event === "finished");
     if (afterAnswer?.status !== "completed") fail("V3", `after the answer the first row is "${afterAnswer?.status}", not completed`);
     if (afterAnswer?.feedback !== fixture.answer) fail("V3", `after the answer the row carries ${JSON.stringify(afterAnswer?.feedback)}, not the answer`);
@@ -426,223 +448,162 @@ async function main() {
     if (finishedFirst.length !== 1) {
       fail("V3", `the first row finished ${finishedFirst.length} times`);
     } else {
-      if (finishedFirst[0]!.seat !== owner) fail("V3", `the row parked on ${owner} and finished on ${finishedFirst[0]!.seat}`);
-      if (finishedFirst[0]!.answer !== fixture.answer) fail("V3", `the finishing attempt read ${JSON.stringify(finishedFirst[0]!.answer)} as its answer`);
-      // The answer ran the work in the answering request itself: the claim the
-      // finishing attempt ran under was made by an `answer` request on the
-      // owning seat's own session — not by a later drain that happened by.
-      const claimer = (await lab.requests(lab.seatSession(owner))).find(
-        (request) => request.id === finishedFirst[0]!.claimedByRequest,
-      );
-      if (claimer?.actionName !== "answer") {
-        fail("V3", `the finishing attempt ran under a claim made by ${finishedFirst[0]!.claimedByRequest} (${claimer?.actionName ?? "not on " + owner}), not by the answer`);
+      const finished = finishedFirst[0]!;
+      if (finished.worker !== owner) fail("V3", `the row parked on ${owner} and finished on ${finished.worker}`);
+      if (finished.session !== parkedLine.session) {
+        fail("V3", `the row parked in ${parkedLine.session} and finished in ${finished.session}; an answer carries on where the question was asked`);
       }
+      if (finished.answer !== fixture.answer) fail("V3", `the finishing attempt read ${JSON.stringify(finished.answer)} as its answer`);
     }
+    // The answer reached the row through the planner's conversation's own
+    // door, as the one person: the row was put back in the queue by an
+    // `answerTask_tasks` request there, not by anything that happened by.
+    const changesAfterAnswer = await lab.changes();
+    const resumedByAnswer = changesAfterAnswer.some(
+      (change) =>
+        change.taskId === firstId &&
+        change.kind === "resumed" &&
+        change.sessionId === lab.conversation &&
+        change.action === "answerTask_tasks" &&
+        change.userId === LAB_USER_ID,
+    );
+    if (!resumedByAnswer) fail("V3", `no answerTask_tasks request on ${lab.conversation} put the row back to work`);
 
-    // ---- the other seat drains --------------------------------------------
-    await lab.drainAll();
-
-    // ---- V3 (BR-10). one park, one answer ---------------------------------
-    const beforeSecond = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
-    const linesBeforeSecond = lab.workLines().length;
-    const second = await lab.answer(owner, firstId, fixture.secondAnswer);
-    // Completed is the positive record: an id the ledger did not hold would
-    // have thrown, so this delivery found the row — and wrote nothing to it.
+    // ---- V3 (one park, one answer). a second answer is declined -------------
+    const beforeSecond = JSON.stringify(lab.rows().find((row) => row.id === firstId));
+    const firstLines = () => lab.workLines().filter((line) => line.taskId === firstId).length;
+    const linesBeforeSecond = firstLines();
+    const second = await lab.answer(firstId, fixture.secondAnswer);
+    // Completed is the positive record: the delivery ran and found the row.
     if (second.status !== "completed") fail("V3", `the second delivery ended ${second.status ?? second.refusal}, so it never reached the row`);
     // The answer door's own verdict, not just its silence: one park takes one
     // answer, so the second must come back declined — the row is settled, so
-    // `terminal`. An `unchanged` or an accepted no-op would leave the row and
-    // the work file exactly as a decline does, and only this catches it.
-    const secondOutcome = actionOutputOf(String(second.requestId), second.items) as
-      | { outcome?: string; reason?: string }
-      | undefined;
-    if (secondOutcome?.outcome !== "declined" || secondOutcome.reason !== "terminal") {
-      fail("V3", `the second delivery was not declined as terminal: ${JSON.stringify(secondOutcome)}`);
+    // terminal. An accepted no-op would leave the row and the work file
+    // exactly as a decline does, and only this catches it.
+    if (second.output?.ok !== false || !String(second.output?.error ?? "").startsWith("terminal_task_write_declined")) {
+      fail("V3", `the second delivery was not declined as terminal: ${JSON.stringify(second.output)}`);
     }
-    const afterSecond = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
+    await lab.settled();
+    const afterSecond = JSON.stringify(lab.rows().find((row) => row.id === firstId));
     if (afterSecond !== beforeSecond) fail("V3", `a second delivery changed the answered row: ${afterSecond}`);
-    if (lab.workLines().length !== linesBeforeSecond) fail("V3", `a second delivery ran the work again`);
+    if (firstLines() !== linesBeforeSecond) fail("V3", `a second delivery ran the row's work again`);
 
     // ---- VB (2b, 3). the answer in its place; both rows on the ledger ------
-    const ledgerNow = await lab.rows();
+    const ledgerNow = lab.rows();
     const firstNow = ledgerNow.find((row) => row.id === firstId);
     if (childSession !== undefined) {
       // Re-selected through the navigator, the way a person comes back to it.
-      await openSession(page, ownerFlow, lab.seatSession(owner));
-      await page.locator(`[data-session-id="${childSession}"]`).click();
-      await waitForBadge(page, childSession);
+      await openSession(page, plannerFlow, lab.conversation);
+      await openSession(page, tree.seatFlows[owner]!, childSession);
       const screen2b = await taskRow(page, firstId, (cells) => cells.Status === firstNow?.status);
-      await page.screenshot({ path: join(SHOTS, "2b-child-answered.png") });
+      await page.screenshot({ path: join(SHOTS, "2b-task-session-answered.png") });
       if (screen2b === undefined) {
-        fail("VB", `screen 2: after the answer the child session never showed the row as "${firstNow?.status}"`);
+        fail("VB", `screen 2: after the answer the task session never showed the row as "${firstNow?.status}"`);
       } else if ((screen2b.cells.Reason ?? "") !== (firstNow?.feedback ?? "")) {
         fail("VB", `screen 2: after the answer the row reads ${JSON.stringify(screen2b.cells.Reason)}, the row holds ${JSON.stringify(firstNow?.feedback)}`);
       }
     }
     // Screen 3: the ledger collection, on the Resources panel of the session
     // open now — any session whose flow declares the ledger will do.
-    const aside = page.locator("aside").last();
-    await page.getByTitle("Refresh debug resources").click();
-    await aside.getByRole("button", { name: new RegExp(`^\\s*${tree.boardId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) }).first().click();
-    for (const row of ledgerNow) {
-      const topic = aside.getByRole("button", { name: String(row.id), exact: true });
-      try {
-        await topic.waitFor({ timeout: 10_000 });
-        await topic.click();
-      } catch {
-        fail("VB", `screen 3: the ledger collection does not list row ${row.id}`);
-      }
-    }
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: join(SHOTS, "3-resources.png"), fullPage: true });
-    // The body folds after 20 lines behind a "… (N more lines)" button, and a
-    // row that names its run (`run`) folds its output, where the seat is, below
-    // that line. A person reading the row clicks it, so the check does too
-    // before reading what the row says. One row at a time, and re-clicked if
-    // the panel's refresh folds it again before the read.
-    const byRow: Array<{ row: Record<string, any>; text: string }> = [];
-    for (const row of ledgerNow) {
-      const box = aside.locator("div", { has: page.getByRole("button", { name: String(row.id), exact: true }) }).last();
-      let text = "";
-      for (let tries = 0; tries < 5 && (await box.count()) > 0; tries += 1) {
-        const more = box.getByRole("button", { name: /more lines/ });
-        if ((await more.count()) > 0) await more.first().click();
-        text = await box.innerText();
-        if (!/more lines\)/.test(text)) break;
-        await page.waitForTimeout(200);
-      }
-      byRow.push({ row, text });
-    }
-    const workLines = lab.workLines();
-    for (const { row, text } of byRow) {
-      // A listed row whose body shows nothing is a screen a person cannot read,
-      // and must fail here — skipping it would pass screen 3 on no data at all.
-      if (!text.includes(`"id": "${row.id}"`)) {
-        fail("VB", `screen 3: row ${row.id} is listed but its expanded body shows none of it`);
-        continue;
-      }
-      const shown = (field: string) => new RegExp(`"${field}":\\s*"([^"]*)"`).exec(text)?.[1];
-      if (shown("status") !== row.status) fail("VB", `screen 3: row ${row.id} reads "${shown("status")}", the ledger holds "${row.status}"`);
-      if (shown("assignee") !== row.assignee) fail("VB", `screen 3: row ${row.id}'s assignee reads "${shown("assignee")}", the ledger holds "${row.assignee}"`);
-      const ranOn = workLines.find((line) => line.taskId === row.id && line.event === "finished")?.seat;
-      if (ranOn !== undefined && shown("seat") !== ranOn) {
-        fail("VB", `screen 3: row ${row.id} does not say it ran on ${ranOn} (reads "${shown("seat")}")`);
-      }
-    }
+    await screenThree(page, ledgerNow.filter((row) => row.partition === first.partition), lab.workLines());
 
-    // ---- V1 (BR-5). a row for nobody, loudly --------------------------------
-    await lab.file({ goal: fixture.orphan, maxAttempts: 1 });
-    const orphan: Record<string, any> | undefined = await lab.waitForRow((row) => row.goal === fixture.orphan);
+    // ---- V1 (a row for nobody). it reaches the board and runs nowhere -------
+    const orphanFiled = await lab.file({ goal: fixture.orphan, maxAttempts: 1 });
+    const orphanId = typeof orphanFiled.output?.taskId === "string" ? (orphanFiled.output.taskId as string) : undefined;
+    const orphan = orphanId === undefined ? undefined : await lab.waitForRow((row) => row.id === orphanId);
     if (orphan === undefined) {
-      fail("V1", `the row for nobody never reached the board`);
+      fail("V1", `the row for nobody never reached the board: ${JSON.stringify(orphanFiled.output)}`);
     } else {
       if (orphan.assignee !== undefined) fail("V1", `the row for nobody was filed for "${orphan.assignee}"`);
-      await lab.drainAll();
-      const settled = (await lab.rows()).find((row) => row.id === orphan.id);
-      if (settled?.status !== "errored") {
-        fail("V1", `the row for nobody is "${settled?.status}"; it must be refused where it would have run, not wait`);
-      } else if (!String(settled.error ?? "").includes(String(orphan.id))) {
-        fail("V1", `the refusal does not name the row: ${JSON.stringify(settled.error)}`);
+      await lab.settled();
+      const settled = lab.rows().find((row) => row.id === orphan.id);
+      if (settled?.status !== "pending" || settled.run !== undefined || settled.attempts !== 0) {
+        fail("V1", `the row for nobody is "${settled?.status}" after ${settled?.attempts} attempt(s); with no assignee it must wait, handed to no worker`);
       }
       if (lab.workLines().some((line) => line.taskId === orphan.id)) fail("V1", `the row for nobody ran anyway`);
+      if ((await lab.sessions()).some((session) => session.state?.taskId === orphan.id)) {
+        fail("V1", `a task session was opened for the row for nobody`);
+      }
     }
 
-    // ---- V2. each row against the file of the seat that ran it ---------------
-    const rowsNow = await lab.rows();
+    // ---- V2. each row against the file of the worker that ran it -------------
+    const rowsNow = lab.rows();
     const ran: WorkLine[] = lab.workLines();
     if (ran.length === 0) fail("V2", `no row ran at all`);
     for (const line of ran) {
       const row = rowsNow.find((candidate) => candidate.id === line.taskId);
-      const oracle = tree.declaredDesks[line.seat];
-      if (row?.assignee !== oracle) {
-        fail("V2", `row ${line.taskId} is for "${row?.assignee}" and ran on ${line.seat}, whose own file answers for "${oracle}"`);
+      const oracle = tree.declaredDesks[line.worker];
+      if (row?.input?.desk !== oracle) {
+        fail("V2", `row ${line.taskId} is for desk "${row?.input?.desk}" and ran on ${line.worker}, whose own file answers for "${oracle}"`);
       }
       if (line.declaredDesk !== oracle) {
-        fail("V2", `${line.seat} reported answering for "${line.declaredDesk}" from inside its run; its file says "${oracle}"`);
+        fail("V2", `${line.worker} reported answering for "${line.declaredDesk}" from inside its run; its file says "${oracle}"`);
       }
     }
 
-    // ---- V4 (BR-8). every claim belongs to a seat ----------------------------
+    // ---- V4 (the claims). every claim is the planner's board's ---------------
     const changes = await lab.changes();
     const claims = changes.filter((change) => change.kind === "claimed");
     for (const id of [...new Set(ran.map((line) => line.taskId))]) {
       if (!claims.some((claim) => claim.taskId === id)) fail("V4", `row ${id} ran with no claim on record`);
     }
-    // A seat is the worker its session's state names, not the flow it runs on.
-    const seatsOwn = (change: ChangeRecord) =>
-      change.workerId !== null && seats.includes(change.workerId) && change.sessionId === lab.seatSession(change.workerId);
+    const boardsOwn = (change: ChangeRecord) =>
+      change.sessionId === lab.conversation && change.action === BOARD_RUN_ACTION && change.userId === LAB_USER_ID;
     for (const claim of claims) {
-      if (!seatsOwn(claim)) {
-        fail("V4", `row ${claim.taskId} was claimed from session ${claim.sessionId} (worker ${claim.workerId ?? "none"}), not from a seat's own session`);
+      if (!boardsOwn(claim)) {
+        fail("V4", `row ${claim.taskId} was claimed by a "${claim.action}" request in ${claim.sessionId} as ${claim.userId}, not by the planner's board run as the one person`);
       }
-      if (claim.action !== "drain" && claim.action !== "answer") fail("V4", `row ${claim.taskId} was claimed by a "${claim.action}" request`);
-      if (claim.userId !== LAB_USER_ID) fail("V4", `row ${claim.taskId} was claimed as ${claim.userId}`);
     }
-    // Every claim that reached a worker left its coordinate on the row, and the
-    // row's own record is read from inside the attempt: it must be the own
-    // session of the seat that ran it. A claim that reached no worker — the row
-    // for nobody — settled in the request that claimed it, so its change is
-    // there, and that request must be a seat's too.
+    // Every attempt ran in the task session the planner's board opened for
+    // that row and its assignee: a child of the planner's conversation, naming
+    // the row and the worker, born for the conversation that filed it.
+    const sessionsNow = await lab.sessions();
     for (const line of ran) {
-      if (line.claimedBySession !== lab.seatSession(line.seat)) {
-        fail("V4", `row ${line.taskId} ran on ${line.seat} under a claim made from ${line.claimedBySession}`);
+      const row = rowsNow.find((candidate) => candidate.id === line.taskId);
+      const session = sessionsNow.find((candidate) => candidate.id === line.session);
+      if (session?.parentSessionId !== lab.conversation) {
+        fail("V4", `row ${line.taskId} ran in ${line.session}, which is not a child of the planner's conversation (parent ${session?.parentSessionId})`);
       }
-    }
-    for (const settled of changes.filter((change) => change.kind === "errored")) {
-      if (!seatsOwn(settled)) {
-        fail("V4", `row ${settled.taskId} was taken and refused from session ${settled.sessionId} (worker ${settled.workerId ?? "none"})`);
+      if (session?.state?.taskId !== line.taskId || session?.state?.workerId !== row?.assignee || line.worker !== row?.assignee) {
+        fail("V4", `row ${line.taskId} (for ${row?.assignee}) ran on ${line.worker} in a session naming task ${session?.state?.taskId} and worker ${session?.state?.workerId}`);
       }
-    }
-    // And the row for nobody must HAVE such a record: an errored row with no
-    // seat-originated claim or refusal behind it could have been settled by
-    // anything, and the loop above passes on nothing at all.
-    if (orphan !== undefined) {
-      const takenBySeat = changes.filter(
-        (change) =>
-          change.taskId === orphan.id &&
-          (change.kind === "claimed" || change.kind === "errored") &&
-          seatsOwn(change) &&
-          (change.action === "drain" || change.action === "answer") &&
-          change.userId === LAB_USER_ID,
-      );
-      if (takenBySeat.length === 0) {
-        fail("V4", `the row for nobody (${orphan.id}) has no claim or refusal on record from a seat's own drain`);
+      if (line.filingSession !== row?.partition) {
+        fail("V4", `row ${line.taskId} ran in a session born for ${line.filingSession}, not the board it is on (${row?.partition})`);
       }
     }
 
     // ---- V5. the handoff ----------------------------------------------------
     const finishedFirstLine = ran.find((line) => line.taskId === firstId && line.event === "finished");
     if (finishedFirstLine === undefined) {
-      notes.push("V5 not graded: the first row never finished, which is V3's failure");
+      notes.push("V5 not graded past the freeze: the first row never finished, which is V3's failure");
     } else {
-      const secondId = finishedFirstLine.filed;
       const secondRow = rowsNow.find((row) => row.id === secondId);
-      if (secondId === null || secondRow === undefined) {
-        fail("V5", `the seat that finished the first row filed nothing for the next desk`);
+      const firstFinal = rowsNow.find((row) => row.id === firstId);
+      if (secondRow === undefined) {
+        fail("V5", `the follow-on row is not on the board`);
       } else {
-        if (secondRow.input?.follows !== firstId) fail("V5", `the second row does not name the first (follows: ${secondRow.input?.follows})`);
-        if (secondRow.assignee !== fixture.piece.then.desk) fail("V5", `the second row is for "${secondRow.assignee}", not "${fixture.piece.then.desk}"`);
+        if (secondRow.input?.follows !== firstId || !(secondRow.deps ?? []).includes(firstId)) {
+          fail("V5", `the follow-on row does not name and wait on the first (follows: ${secondRow.input?.follows}, deps: ${JSON.stringify(secondRow.deps)})`);
+        }
         if (secondRow.assignee === first.assignee) fail("V5", `both rows are for "${secondRow.assignee}"; nothing changed hands`);
         const secondRan = ran.find((line) => line.taskId === secondId && line.event === "finished");
         if (secondRan === undefined) {
-          fail("V5", `the second row never ran`);
+          fail("V5", `the follow-on row never ran`);
         } else {
-          if (secondRan.seat === finishedFirstLine.seat) {
-            fail("V5", `both rows ran on ${secondRan.seat}; one seat instance did the whole thing and nothing changed hands`);
+          if (secondRan.worker === finishedFirstLine.worker) {
+            fail("V5", `both rows ran on ${secondRan.worker}; one worker did the whole thing and nothing changed hands`);
           }
-          const session = (await lab.sessions()).find((candidate) => candidate.id === secondRan.session);
-          if (session?.parentSessionId !== lab.seatSession(secondRan.seat)) {
-            fail("V5", `the second row ran in ${secondRan.session}, not a child of ${secondRan.seat}'s own session`);
+          if (secondRan.session === finishedFirstLine.session) fail("V5", `both rows ran in one session, ${secondRan.session}`);
+          if (secondRow.status !== "completed") fail("V5", `the follow-on row is "${secondRow.status}"`);
+          // It waited: the board took it only once the row it follows was done.
+          if (secondRow.startedAt === undefined || firstFinal?.completedAt === undefined || secondRow.startedAt < firstFinal.completedAt) {
+            fail("V5", `the follow-on row started at ${secondRow.startedAt}, before the row it follows completed at ${firstFinal?.completedAt}`);
           }
-          if (secondRow.status !== "completed") fail("V5", `the second row is "${secondRow.status}"`);
         }
       }
-      if (finishedFirstLine.reassign?.outcome !== "declined" || finishedFirstLine.reassign.reason !== "immutable-assignee") {
-        fail("V5", `moving the first row's assignee was not refused as immutable-assignee: ${JSON.stringify(finishedFirstLine.reassign)}`);
-      }
-      const firstFinal = rowsNow.find((row) => row.id === firstId);
-      if (firstFinal?.assignee !== first.assignee) fail("V5", `the first row's assignee moved to "${firstFinal?.assignee}"`);
     }
+    const firstFinalAssignee = rowsNow.find((row) => row.id === firstId)?.assignee;
+    if (firstFinalAssignee !== first.assignee) fail("V5", `the first row's assignee moved to "${firstFinalAssignee}"`);
   } finally {
     await browser?.close().catch(() => {});
     served.stop();
@@ -670,17 +631,67 @@ async function main() {
   return {
     failures,
     evidence:
-      `the shipped \`fsdev dev\` served a hire read from ${tree.roster.workers.length} WORKER.md files and one MAILBOX.md ` +
-      `declaring board "${tree.boardName}" (its minted id appears in no file). The planner filed one row for "${fixture.piece.desk}"; ` +
-      `the seat whose own file answers for it parked it with the question, and its drain returned; a second person's answer did not land; ` +
-      `the person's answer through that seat's own action did, and the same seat finished the row and filed the next one for ` +
-      `"${fixture.piece.then.desk}", which the other seat ran in its own child session; moving the assignee was refused; ` +
-      `a row for nobody was refused by name; every claim came from a seat's own session. In Chromium on the shipped bundle: the seat's ` +
-      `Tasks tab showed the row and its link, the child session showed the reason with nothing expanded and then the answer, and ` +
-      `the ledger collection showed both rows with their assignees and the seat that ran each. ` +
+      `the shipped \`fsdev dev\` served a hire read from ${tree.roster.workers.length} WORKER.md files and no MAILBOX.md; ` +
+      `no file declares a board. The planner filed one row for "${fixture.piece.desk}" and one for "${fixture.piece.then.desk}" waiting on it, ` +
+      `on its own conversation's board; the worker whose own file answers for "${fixture.piece.desk}" parked the first on its question ` +
+      `and nothing stayed running; moving its assignee was refused; a second person's answer did not land; the person's answer through ` +
+      `the planner's conversation did, and the same task session finished the row; a second answer was declined as terminal; the other ` +
+      `worker then ran the follow-on row in its own task session; a row for nobody waited, handed to no one; every claim was the planner's ` +
+      `board run's. In Chromium on the shipped bundle: the planner's Tasks tab showed the row as filed, the task session the row names, opened ` +
+      `from the navigator, showed the reason with nothing expanded and then the answer, and the ledger collection showed both rows ` +
+      `with their assignees and the task session each ran in. ` +
       (notes.length > 0 ? `Notes: ${notes.join("; ")}. ` : "") +
       `Screenshots: ${SHOTS}`,
   };
+}
+
+/**
+ * Screen 3: the ledger collection on the Resources panel of the session open
+ * now, each listed row opened and read against what the board holds.
+ */
+async function screenThree(page: Page, rows: readonly BoardRow[], workLines: readonly WorkLine[]): Promise<void> {
+  const aside = page.locator("aside").last();
+  await page.getByTitle("Refresh debug resources").click();
+  await aside.getByRole("button", { name: /^\s*tasks\b/ }).first().click();
+  for (const row of rows) {
+    const topic = aside.getByRole("button", { name: new RegExp(`${row.id}$`) });
+    try {
+      await topic.first().waitFor({ timeout: 10_000 });
+      await topic.first().click();
+    } catch {
+      fail("VB", `screen 3: the ledger collection does not list row ${row.id}`);
+    }
+  }
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(SHOTS, "3-resources.png"), fullPage: true });
+  // The body folds after 20 lines behind a "… (N more lines)" button. A person
+  // reading the row clicks it, so the check does too before reading what the
+  // row says. One row at a time, and re-clicked if the panel's refresh folds
+  // it again before the read.
+  for (const row of rows) {
+    const box = aside.locator("div", { has: page.getByRole("button", { name: new RegExp(`${row.id}$`) }) }).last();
+    let text = "";
+    for (let tries = 0; tries < 5 && (await box.count()) > 0; tries += 1) {
+      const more = box.getByRole("button", { name: /more lines/ });
+      if ((await more.count()) > 0) await more.first().click();
+      text = await box.innerText();
+      if (!/more lines\)/.test(text)) break;
+      await page.waitForTimeout(200);
+    }
+    // A listed row whose body shows nothing is a screen a person cannot read,
+    // and must fail here — skipping it would pass screen 3 on no data at all.
+    if (!text.includes(`"id": "${row.id}"`)) {
+      fail("VB", `screen 3: row ${row.id} is listed but its expanded body shows none of it`);
+      continue;
+    }
+    const shown = (field: string) => new RegExp(`"${field}":\\s*"([^"]*)"`).exec(text)?.[1];
+    if (shown("status") !== row.status) fail("VB", `screen 3: row ${row.id} reads "${shown("status")}", the board holds "${row.status}"`);
+    if (shown("assignee") !== row.assignee) fail("VB", `screen 3: row ${row.id}'s assignee reads "${shown("assignee")}", the board holds "${row.assignee}"`);
+    const ranOn = workLines.find((line) => line.taskId === row.id && line.event === "finished");
+    if (ranOn !== undefined && !text.includes(ranOn.session)) {
+      fail("VB", `screen 3: row ${row.id} does not name the task session it ran in (${ranOn.session}, on ${ranOn.worker})`);
+    }
+  }
 }
 
 mkdirSync(SHOTS, { recursive: true });

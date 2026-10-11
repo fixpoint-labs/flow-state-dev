@@ -64,9 +64,6 @@ interface LegsRun {
   stores: Array<{ file: string; steps: string }>;
 }
 
-/** The DevTeam tree's mailboxes: the board's (where b4 posts) and the one projects are read through. */
-const BOARD_MAILBOX = "eng.feature";
-
 async function runLegs(
   label: string,
   pages: string,
@@ -88,20 +85,20 @@ async function runLegs(
       };
       if (opts.legs.includes("a")) {
         say(`${label}: leg a`);
-        const a = await legA(world, BOARD_MAILBOX);
+        const a = await legA(world);
         if (a !== undefined) {
           // a5: the rows as they stand now, on a new process.
-          const now = (await readProjects(world.routes.owner, BOARD_MAILBOX)).rows;
+          const now = (await readProjects(world.routes.owner)).rows;
           a.p1 = now.find((r) => r.id === a.p1.id) ?? a.p1;
           a.p2 = now.find((r) => r.id === a.p2.id) ?? a.p2;
           await restart("a5 restart");
           say(`${label}: a5`);
-          await readBack(world, BOARD_MAILBOX, a, true);
+          await readBack(world, a, true);
         }
       }
       if (opts.legs.includes("b")) {
         say(`${label}: leg b`);
-        await legB(world, BOARD_MAILBOX, BOARD_MAILBOX, restart, opts.deny);
+        await legB(world, restart, opts.deny);
       }
       if (world.pageErrors.length > 0) record.saw("page", `the page threw: ${world.pageErrors.join(" | ")}`);
     } catch (error) {
@@ -224,7 +221,7 @@ await runGoal(async (failures) => {
       const world = new World(browser, people, { config: lab.config, pages, scratch: SCRATCH, store }, record);
       try {
         await world.boot("no-cos boot");
-        await hireWithoutCos(world, BOARD_MAILBOX, BOARD_MAILBOX);
+        await hireWithoutCos(world);
       } catch (error) {
         record.fail("setup", `the control failed at setup: ${(error as Error).message.slice(0, 1500)}`);
       } finally {

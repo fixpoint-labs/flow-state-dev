@@ -310,6 +310,16 @@ The epic-specific delta:
    unsettled, verdicts, settleRequests, dispatched, deferred, converged, crossSpecGate, moreWorkNow,
    mayWrap, suspectOwnerApprovals }` — persist `epic` and `issues` verbatim.
 
+   **A row that turned cancelled since the last wake** (its `linearState` now cancelled,
+   duplicate, dropped or won't do, where the persisted record had it open) is yours to account
+   for in this wake. The wake only observes the cancel; a human usually made it in Linear. If the
+   row carried out a decision recorded in the epic-spec, you post a note on the epic issue saying
+   whether that decision still stands and why the child went, or put the question to the user
+   when only they know. If the decision no longer stands, a note isn't enough: later specs read
+   the retained `DECISIONS.md` as authority, so dispatch `epic-agent` for an amendment PR from
+   `main`, which goes through renewed approval like any meaningful amendment. Otherwise the epic keeps a decision nothing implements, and the next
+   reader trusts it. A row cancelled with no such decision behind it needs no note.
+
    **`suspectOwnerApprovals`** is an owner-login GitHub review or approving comment with no
    agent-mailbox header. It is not sign-off. Tell the user which PR, and that the gate is still
    their message in this conversation. Do not dispatch implementation because of it. A separate
@@ -752,6 +762,28 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   needed a third round is telling you something about the spec-authoring altitude, and the
   ledger is where that becomes visible. This is also where the Fable-escalation trial is
   *measured* — the ledger's `design-off` trend is the evidence it's earning its cost.
+
+  **The same worker maps the jobs the batch grew.** Per-spec review and `cross-spec-review`
+  both stop at the epic's edge; a job's surface grows across epics and projects, and wrap is
+  the cheapest moment to fold what just landed. The worker:
+  1. **Derives the added surface.** It starts from the jobs the merged issue specs already
+     named under `issue-spec` question 7 (their `DECISIONS.md`), then checks the merged impl
+     PRs' diffs for additions no spec recorded: new or changed package exports, subpath
+     re-exports, and tool, action and internal-entry registrations.
+  2. **Names the job** each addition does (deliver work, wait for a result, answer, report an
+     ending…), and dedupes: one entry per job, however many issues touched it.
+  3. **Runs `audit-coherence` once per job** with that job as the scope, across packages, and
+     files each fold candidate through `issue-manager` (deduped, in the epic's project), linking
+     the issues from the lessons PR. The lessons PR is a draft that may never merge; the issue
+     is what gives the fold an owner. A job whose
+     only addition a merged spec already compared against the closest entry, finding no fold,
+     needs no audit; list it as cleared by that spec. Two or more additions to one job always
+     get the audit, because no single spec saw both.
+
+  The lessons PR body **lists every addition it considered and the job it named**, even when
+  no audit ran. `job audit: none grew` alone can't be told from "didn't look", so it is only
+  valid under that list. The job audit runs whether or not the grounding proposal below is
+  skipped; it is part of the rows, not the proposal.
 
   **The skip is partial, and the split is deliberate.** An epic with no rework worth measuring
   skips the *grounding-proposal* pass — no tenet/BP sharpening, and the lessons PR carries rows

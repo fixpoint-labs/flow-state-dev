@@ -51,6 +51,7 @@ describe("@flow-state-dev/workforce/browser", () => {
     expect(entry.COORDINATOR_JUDGMENT).toBe("coordinator-judgment");
     expect(typeof entry.mailboxTranscriptLineSchema.parse).toBe("function");
     expect(typeof entry.parseWorkstreamEntry).toBe("function");
+    expect(entry.sessionIdOfFiling("sess_1~3f2a")).toBe("sess_1");
     // The `MailboxTranscriptLine` type is pinned in `browser-exports.test-d.ts`.
   });
 

@@ -3,13 +3,13 @@
  * project's files, and what it keeps is saved to the project.
  *
  * The DevTeam lab, opened as its profile is served: the coder kind's manager
- * runs on a workspace host whose source is `projectWorkspace` on the feature
- * mailbox's board, and the host may reach `file://` remotes only. The harness
- * is the lab's scripted stub; what is graded is where a run's files came from
- * and where they went, read off git, the run's directory and the
- * organization's storage. Rows are filed through the EM seat and run by its
- * drain, exactly as the other checks run them. Which project holds the board's
- * workstream is moved between legs with the project writes, as a person would.
+ * runs on a workspace host whose source is `projectWorkspace()`, and the host
+ * may reach `file://` remotes only. Each project has a `feature` workstream
+ * the EM leads. The harness is the lab's scripted stub; what is graded is
+ * where a run's files came from and where they went, read off git, the run's
+ * directory and the organization's storage. Each row is filed by the EM in
+ * its project's `feature` workstream session, on that session's board, and
+ * run by its drain there: the run finds its project through the workstream.
  *
  * Legs:
  *
@@ -20,8 +20,8 @@
  *   b  sandbox names no repository. Its first run starts in an empty
  *      `workspace/`; the file it writes is in `project-files/sandbox/`; its
  *      second run's `workspace/` holds that file; a run in platform does not.
- *   c  platform names a remote the host does not allow. The row is refused
- *      naming the remote, the harness never runs, and nothing is cloned.
+ *   c  platform names a remote the host does not allow. The row fails for good,
+ *      refused naming the remote, the harness never runs, and nothing is cloned.
  *
  * Controls:
  *
@@ -39,14 +39,14 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
+import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
+import { runAction } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { hashContent } from "@flow-state-dev/workspace";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
-import { openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
-import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { DRAIN_ENTRY, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createBareRemote, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -69,10 +69,10 @@ interface Fixture {
 }
 const fixture = loadFixture<Fixture>(import.meta.url);
 
-/** The seat the board's `coder` assignee is addressed to, and the seat that files and drains. */
+/** The worker the rows are assigned to, and the worker that leads each `feature` workstream, files and drains. */
 const CODER_SEAT = "eng.coder";
 const EM_SEAT = "eng.em";
-/** The rows, one per run. The issue slug is what the stub reads off the prompt. */
+/** The rows, one per run. The issue slug is what the stub reads off the goal in the prompt. */
 const ISSUE = {
   storefront: "storefront-note",
   sandboxFirst: "sandbox-first",
@@ -117,7 +117,7 @@ function write(path: string, body: string): void {
  * working directory.
  */
 function duringRun(run: StubRun): void {
-  const issue = /^Row ([^,\s]+),/m.exec(run.prompt)?.[1] ?? "";
+  const issue = /\bRun (\S+) for the project\b/.exec(run.prompt)?.[1] ?? "";
   seen.set(issue, { cwd: run.cwd, started: filesIn(run.cwd) });
   if (issue === ISSUE.storefront) {
     write(join(run.cwd, fixture.code.path), fixture.code.body);
@@ -136,31 +136,49 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" }).trim();
 }
 
-/** File one row through the EM seat, then drain until it settles. */
-async function runRow(lab: Lab, issue: string): Promise<Task | undefined> {
-  const filed = await lab.file(EM_SEAT, { issue, goal: `Run ${issue} for the project that holds this workstream.`, maxAttempts: 1 });
-  if (filed.error !== undefined) throw new Error(`filing ${issue} was refused — ${filed.error}`);
-  const taskId = harnessTaskId(issue, PHASE);
+/** The EM's `feature` workstream session in `projectId`, the one opening it created. */
+async function featureSession(lab: Lab, projectId: string): Promise<string> {
+  const runtime = await lab.state.getRuntime();
+  const [session] = await runtime.stores.session.list({
+    orgId: LAB_ORG_ID,
+    parentage: "all",
+    state: { workstreamId: `shared/${projectId}/feature` },
+  });
+  if (session === undefined) throw new Error(`no feature workstream session in ${projectId}`);
+  return session.id;
+}
+
+/** Run one of the EM's actions in its workstream session `sessionId`, as the lab's owner. */
+async function emAct(lab: Lab, sessionId: string, actionName: string, input: unknown): Promise<{ error?: unknown }> {
+  const runtime = await lab.state.getRuntime();
+  return (await runAction({
+    orgId: LAB_ORG_ID,
+    flow: lab.seats[EM_SEAT] as FlowInstance,
+    actionName,
+    input,
+    userId: LAB_USER_ID,
+    sessionId,
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+  } as never)) as { error?: unknown };
+}
+
+/** File one row in `projectId`'s `feature` workstream session, then drain there until it settles. */
+async function runRow(lab: Lab, projectId: string, issue: string): Promise<Task | undefined> {
+  const session = await featureSession(lab, projectId);
+  const filed = await emAct(lab, session, FILE_ENTRY, { issue, goal: `Run ${issue} for the project that holds this workstream.`, maxAttempts: 1 });
+  if (filed.error !== undefined) throw new Error(`filing ${issue} was refused — ${JSON.stringify(filed.error)}`);
+  const board = `tasks/${encodeUserSegment(`${session}~`)}`;
   const deadline = Date.now() + SETTLE_BUDGET_MS;
   let row: Task | undefined;
   while (Date.now() < deadline) {
-    row = await lab.row(taskId);
+    const rows = Object.values(await lab.stored("user", board)) as Task[];
+    row = rows.find((r) => (r.input as { issue?: string } | undefined)?.issue === issue);
     if (row !== undefined && SETTLED.has(row.status)) return row;
-    if (row === undefined || row.status === "pending") await lab.drain(EM_SEAT);
+    if (row === undefined || row.status === "pending") await emAct(lab, session, DRAIN_ENTRY, {});
     await sleep(200);
   }
   return row;
-}
-
-/** Hand the board's workstream to one project, as its members would. */
-async function moveWorkstream(lab: Lab, from: string, to: string): Promise<void> {
-  for (const [projectId, workstreams] of [
-    [from, []],
-    [to, ["eng.feature"]],
-  ] as const) {
-    const done = await lab.projectAct!("setWorkstreams", { projectId, workstreams });
-    if (done.error !== undefined) throw new Error(`setWorkstreams ${projectId} was refused — ${done.error}`);
-  }
 }
 
 /** The organization's stored project files, as `<projectId>/<path>` → content hash. */
@@ -196,19 +214,27 @@ await runGoal(async (failures) => {
     workspace,
     coderSeatId: CODER_SEAT,
     logger: silentLogger,
-    mailboxes: { addresses: { [EM_SEAT]: EM_SEAT }, log: createNotifyLog() },
     inventory: true,
     projects: [
-      { id: "storefront", title: "Storefront", workstreams: ["eng.feature"], repository: remoteA.url },
+      { id: "storefront", title: "Storefront", repository: remoteA.url },
       { id: "sandbox", title: "Sandbox" },
       { id: "platform", title: "Platform" },
     ],
+    // Each project's `feature` workstream, led by the EM, opened by the lab's owner as a person would.
+    workstreams: ["storefront", "sandbox", "platform"].map((id) => ({
+      as: "owner" as const,
+      input: { project: { visibility: "shared" as const, id }, id: "feature", title: "Feature", lead: EM_SEAT },
+    })),
     ...(CONTROL === "no-sync-back" ? { saveNothing: true } : {}),
+    // Model-free: a row on a workstream session's board is judged before it closes, and
+    // the stub answers nothing a judge could pass. Where the files went is graded here;
+    // the judge is it-answers-a-conversations-task's.
+    withoutJudge: true,
   });
 
   try {
     // ---- (a) storefront: its repository, its notes ------------------------
-    const a = await runRow(lab, ISSUE.storefront);
+    const a = await runRow(lab, "storefront", ISSUE.storefront);
     const aRun = seen.get(ISSUE.storefront);
     if (a?.status !== "completed" || aRun === undefined) {
       note("a:ran", `the storefront row ended ${a?.status ?? "unfiled"} and the harness ${aRun === undefined ? "never ran" : "ran"}`);
@@ -247,8 +273,7 @@ await runGoal(async (failures) => {
     }
 
     // ---- (b) sandbox: no repository, the project's files ------------------
-    await moveWorkstream(lab, "storefront", "sandbox");
-    const b1 = await runRow(lab, ISSUE.sandboxFirst);
+    const b1 = await runRow(lab, "sandbox", ISSUE.sandboxFirst);
     const b1Run = seen.get(ISSUE.sandboxFirst);
     const before = failures.length;
     if (b1?.status !== "completed" || b1Run === undefined) {
@@ -260,15 +285,14 @@ await runGoal(async (failures) => {
     if (afterFirst[`sandbox/${fixture.sandboxFile.path}`] !== hashContent(fixture.sandboxFile.body)) {
       note("b:file-saved", `project-files/sandbox/${fixture.sandboxFile.path} holds ${JSON.stringify(afterFirst[`sandbox/${fixture.sandboxFile.path}`] ?? "nothing")}`);
     }
-    const b2 = await runRow(lab, ISSUE.sandboxSecond);
+    const b2 = await runRow(lab, "sandbox", ISSUE.sandboxSecond);
     const b2Run = seen.get(ISSUE.sandboxSecond);
     if (b2Run === undefined) {
       note("b:second-ran", `the second sandbox row ended ${b2?.status ?? "unfiled"} before its harness ran`);
     } else if (b2Run.started[fixture.sandboxFile.path] !== fixture.sandboxFile.body) {
       note("b:second-run-sees-file", `the second run started with [${Object.keys(b2Run.started).join(", ")}], not the first run's ${fixture.sandboxFile.path}`);
     }
-    await moveWorkstream(lab, "sandbox", "platform");
-    await runRow(lab, ISSUE.platform);
+    await runRow(lab, "platform", ISSUE.platform);
     const pRun = seen.get(ISSUE.platform);
     if (pRun === undefined) {
       note("b:other-project-ran", "the platform row's harness never ran");
@@ -288,13 +312,13 @@ await runGoal(async (failures) => {
     if (set.error !== undefined) throw new Error(`setRepository was refused — ${set.error}`);
     const beforeC = failures.length;
     const clonesBefore = existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")).filter((e) => e.endsWith(".git")) : [];
-    const c = await runRow(lab, ISSUE.refused);
+    const c = await runRow(lab, "platform", ISSUE.refused);
     const reason = JSON.stringify(c ?? {});
     if (seen.has(ISSUE.refused)) note("c:not-run", "the harness ran for a remote the host does not allow");
     // Named by host and path: a host shows a remote without its login, so `git@` may be left out.
     const remote = new URL(fixture.disallowedRemote);
     const named = reason.includes(remote.hostname) && reason.includes(remote.pathname);
-    if (c?.status !== "cancelled" || !named || !reason.includes("remote-not-allowed")) {
+    if (c?.status !== "errored" || !named || !reason.includes("remote-not-allowed")) {
       note("c:refused-by-name", `the row ended ${c?.status ?? "unfiled"} without a refusal naming ${fixture.disallowedRemote}`);
     }
     const clonesAfter = existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")).filter((e) => e.endsWith(".git")) : [];
@@ -303,7 +327,7 @@ await runGoal(async (failures) => {
     const refusal = (c as { error?: unknown; reason?: unknown } | undefined) ?? {};
     if (failures.length === beforeC) {
       evidence.push(
-        `c: the row was cancelled before its harness ran (${String(refusal.error ?? refusal.reason ?? "").slice(0, 160)}), ` +
+        `c: the row failed for good before its harness ran (${String(refusal.error ?? refusal.reason ?? "").slice(0, 160)}), ` +
           `and ${root}/.clones holds only [${clonesAfter.join(", ")}]`,
       );
     }

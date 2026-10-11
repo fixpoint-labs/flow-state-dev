@@ -1,0 +1,18 @@
+{
+  "markerFile": "MARKER.txt",
+  "secondProject": {
+    "id": "billing",
+    "title": "Billing"
+  },
+  "workstream": {
+    "id": "checkout",
+    "title": "Checkout"
+  },
+  "strangersProject": {
+    "id": "ledger",
+    "title": "Ledger"
+  },
+  "ask": "the coder should take a look at our repo",
+  "notFound": "I could not find the repository.",
+  "offPoint": "Storefront is a project."
+}

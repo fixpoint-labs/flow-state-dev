@@ -35,7 +35,7 @@ export function extraFlow(flow: string): Patch {
     apply(lab) {
       const host = join(lab, "host.mts");
       let text = readFileSync(host, "utf8");
-      const anchor = "  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(roster.mailboxes) });";
+      const anchor = "  const copies = hireWorkforce(installation);";
       if (!text.includes(anchor)) throw new Error("extra-flow: host.mts no longer has the line this patch edits");
       const k = JSON.stringify(flow);
       const door = JSON.stringify(EXTRA_FLOW_DOOR);

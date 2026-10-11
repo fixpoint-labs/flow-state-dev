@@ -175,28 +175,25 @@ export type ProjectRow = {
   brief: string | null;
   ownerUserId: string;
   members: string[];
-  workstreams: string[];
 };
 
 /**
  * The organization's `projects` rows, read through the person's roster
- * session (Shift Manager reads them there too), and the inventoried
- * mailboxes, read through a mailbox's session.
+ * session (Shift Manager reads them there too). A project lists no mailbox.
  */
-export async function readProjects(routes: LabRoutes, mailboxSession: string): Promise<{ rows: ProjectRow[]; mailboxes: string[] }> {
+export async function readProjects(routes: LabRoutes): Promise<{ rows: ProjectRow[] }> {
   const reader = await rosterSession(routes);
   const manifest = await routes.get(`/sessions/${encodeURIComponent(reader)}/manifest`);
   const ref = (manifest.resources as Array<{ kind: string; pattern?: string; scope?: string; ref: string }>).find(
     (r) => r.kind === "collection" && r.pattern === "projects/*" && r.scope === "org",
   )?.ref;
   const rows = ref === undefined ? [] : ((await pageRows(routes, reader, ref)).map((i) => i.clientData ?? {}) as ProjectRow[]);
-  const mailboxes = (await routes.collection(mailboxSession, "inventory/mailboxes/*").catch(() => [])).map((r) => String(r.id));
-  return { rows, mailboxes };
+  return { rows };
 }
 
-/** The seat inventory, read through a mailbox's session. */
-export async function readInventory(routes: LabRoutes, mailboxSession: string): Promise<Array<Record<string, any>>> {
-  return routes.collection(mailboxSession, "inventory/seats/*");
+/** The seat inventory, read through the person's roster session, which declares it. */
+export async function readInventory(routes: LabRoutes): Promise<Array<Record<string, any>>> {
+  return routes.collection(await rosterSession(routes), "inventory/seats/*");
 }
 
 /** One of the person's own workers, as their roster row stores it. */

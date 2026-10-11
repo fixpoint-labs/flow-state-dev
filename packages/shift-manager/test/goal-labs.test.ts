@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -100,6 +100,37 @@ describe.each([
     }
   });
 
+  // multi-seat-collab declares no board: the planner files on its own
+  // conversation's, so its rows reach Shift Manager as that conversation's
+  // board, keyed by the conversation, and through no workstream.
+  it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board, and no workstream's", async () => {
+    const { roster, clients } = opened;
+    const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && w.declared.flow !== "coordinator");
+    if (filer === undefined) throw new Error("the tree declares no worker that files for delegates");
+    const assignee = (filer.declared.delegates as string[])[0]!;
+    const flowKind = String(filer.declared.flow);
+    const conversation = (
+      await clients.sessions.createSession({ flowKind, userId: clients.userId, state: { workerId: filer.id } })
+    ).id;
+    const sent = await clients.actions(flowKind).sendAction("addTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
+    const taskId = await eventually(async () => {
+      const listed = (await clients.sessions.listSessionRequests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
+        id: string;
+        result?: { output?: { taskId?: string } };
+      }>;
+      return listed.find((r) => r.id === sent.request.id)?.result?.output?.taskId;
+    }, "the filing's answer");
+
+    const snapshot = await createLabReader(clients).read();
+    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the Lab did not load");
+    const boards = snapshot.boards[conversation];
+    if (boards === undefined || !boards.ok) throw new Error(`the conversation's board did not load: ${JSON.stringify(boards)}`);
+    expect(boards.value.refs).toEqual([`${conversation}.tasks`]);
+    expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
+    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
+    expect(snapshot.inventory.value.workstreams).toEqual([]);
+  }, 60_000);
+
   it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
     const { snapshot, roster, clients } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
@@ -131,7 +162,13 @@ const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 
 describe("devteam: an approved task's run", () => {
   let opened: Opened;
+  // The EM's task is judged by Jev before it closes, and the scripted run makes
+  // no real change, so with the gateway reachable Jev rightly fails it. This
+  // checks the stream and the settle, not the judge: with no gateway key the
+  // judge can't run, and the task closes on its own check (`judged: false`).
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
   beforeAll(async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
     // Settling is what this checks, so the scripted run does not wait out the
     // pacing a person watching needs. The it-shows-and-stops goal keeps it.
     process.env[STEP_MS_ENV] = "0";
@@ -141,7 +178,10 @@ describe("devteam: an approved task's run", () => {
       delete process.env[STEP_MS_ENV];
     }
   }, 120_000);
-  afterAll(async () => opened?.lab.handle.close());
+  afterAll(async () => {
+    if (gatewayKey !== undefined) process.env.AI_GATEWAY_API_KEY = gatewayKey;
+    await opened?.lab.handle.close();
+  });
 
   it("streams its steps, stamped with the task, and settles the row the Tasks list and the task screen both read", async () => {
     const { snapshot, clients } = opened;
@@ -180,10 +220,10 @@ describe("devteam: an approved task's run", () => {
     });
 
     follower.close();
-    expect(taskItems(streamed, running.boardRef, running.id).items.length).toBeGreaterThan(0);
+    expect(taskItems(streamed, collectionOfBoard(running.boardRef), running.id).items.length).toBeGreaterThan(0);
     expect(settled.status).toBe("completed");
     expect(settled.run).not.toBeNull();
     const { items } = await readSessionItems(clients, settled.run!.sessionId);
-    expect(taskItems(items, settled.boardRef, settled.id).items.length).toBeGreaterThan(0);
+    expect(taskItems(items, collectionOfBoard(settled.boardRef), settled.id).items.length).toBeGreaterThan(0);
   }, 90_000);
 });

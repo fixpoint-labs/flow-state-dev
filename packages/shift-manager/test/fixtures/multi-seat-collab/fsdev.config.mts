@@ -3,38 +3,32 @@
  *
  *     fsdev dev --config packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts
  *
- * One `FlowState` holding the hired seats and the mailbox singleton, and
- * nothing else: no app, no wrapper, no route of the lab's own, and no package
- * manifest. The file is ESM by extension, which is what makes the tree read's
- * top-level await legal without one. The DevTool the server hands out is the
- * shipped bundle on its documented navigation.
+ * One `FlowState` holding the hired workers' flows and the inventory writer,
+ * and nothing else: no app, no wrapper, no route of the lab's own, and no
+ * package manifest. The file is ESM by extension, which is what makes the
+ * tree read's top-level await legal without one. The DevTool the server hands
+ * out is the shipped bundle on its documented navigation.
  *
- * ## The app's routing, and where the controls move it
+ * ## The controls this file reads
  *
- * {@link ROUTES} is this app's desk -> seat map. It is written here, as an app
- * would write it, and never derived from the tree: each seat's own `WORKER.md`
- * is what the checks grade a row against, so the two sources can disagree —
- * which is exactly what two of the controls make them do. `GOAL_CONTROL` is
- * the one switch, end to end: the goal check sets it on the process it spawns
- * and this file reads it.
+ * `GOAL_CONTROL` is the one switch, end to end: the goal check sets it on the
+ * process it spawns and this file reads it. The routing controls
+ * (`swapped-desks`, `one-worker`) are the filer's, not the server's: see
+ * `routesFor` in `host.mts`.
  *
- * - `swapped-desks` — the two desks trade seats.
- * - `one-seat` — both desks route to the first seat; the other gets nothing.
- * - `ignore-the-answer`, `silent-park` — passed to the worker kind.
- * - `no-inventory` — the boot opens the mailbox and skips `openInventory`, so
- *   the organization's inventory holds no rows.
- * - `mailbox-actions-off` — the mailbox is hired as if its `MAILBOX.md` had
- *   not declared `boardActions: true`, so it exposes no task actions.
+ * - `ignore-the-answer`, `silent-park` — passed to the worker flow.
+ * - `no-inventory` — the boot skips `openInventory`, so the organization's
+ *   inventory holds no rows.
  *
- * Any other value leaves the app as written.
+ * Any other value leaves the server as written.
  *
  * ## The boot
  *
  * After the `FlowState` is built, and before this module finishes loading —
- * so before `fsdev dev` takes a request — {@link openLab} opens the mailbox
- * and then the inventory, in-process, exactly as the inventory docs show an
- * app doing it. A boot whose inventory reports a problem throws here, and the
- * server does not start.
+ * so before `fsdev dev` takes a request — {@link openLab} opens the
+ * inventory, in-process, exactly as the inventory docs show an app doing it.
+ * A boot whose inventory reports a problem throws here, and the server does
+ * not start.
  */
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -43,24 +37,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LAB_DB_PATH, LAB_USER_ID, hireLab, openLab, readLabTree } from "./host.mts";
 import type { WorkerControl } from "./workforce/flows/workers/worker.mts";
-
-/** Desk key -> seat id. The app's wiring — see the module header. */
-export const ROUTES: Readonly<Record<string, string>> = {
-  build: "eng.builder",
-  review: "eng.reviewer",
-};
-
-/** Apply a routing control, if one is set. */
-function routesFor(control: string): Record<string, string> {
-  const [first, second] = Object.keys(ROUTES) as [string, string];
-  if (control === "swapped-desks") {
-    return { [first]: ROUTES[second]!, [second]: ROUTES[first]! };
-  }
-  if (control === "one-seat") {
-    return { [first]: ROUTES[first]!, [second]: ROUTES[first]! };
-  }
-  return { ...ROUTES };
-}
 
 const control = process.env.GOAL_CONTROL ?? "";
 const workerControl: WorkerControl | undefined =
@@ -78,22 +54,20 @@ mkdirSync(".fsdev/data", { recursive: true });
 
 const tree = await readLabTree();
 
-const flows = hireLab({
+const hired = hireLab({
   tree,
-  routes: routesFor(control),
   outbox,
   ...(workerControl === undefined ? {} : { workerControl }),
-  boardActions: control !== "mailbox-actions-off",
 });
 
 const flowstate = createFlowState({
-  flows,
+  flows: hired.flows,
   stores: { default: { primary: sqliteStores({ filename: LAB_DB_PATH }) } },
   // The documented DevTool setting: which user the navigator lists sessions
   // for. Not a wrapper — the same field any app sets.
   devtool: { userId: LAB_USER_ID },
 } as never);
 
-await openLab(flowstate, { tree, flows, inventory: control !== "no-inventory" });
+if (control !== "no-inventory") await openLab(flowstate, hired);
 
 export default flowstate;

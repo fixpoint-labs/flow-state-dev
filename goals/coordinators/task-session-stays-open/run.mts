@@ -46,6 +46,8 @@ const BRIEF =
   "ask the person who assigned this which region to deploy to, with parkOnQuestion, and stop there. " +
   "Once you have the answer, finish with one line that names the ticket you drew and the region.";
 const LEG_B = "Which ticket did you draw?";
+/** What `drop-answer` hands the re-entered turn in place of the app's answer: not one of `REGIONS`, nor contains one. */
+const DECOY_REGION = "me-central";
 
 // ---- controls -------------------------------------------------------------------------
 
@@ -75,11 +77,11 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
-        from: String.raw`if \(task\.answer !== (?:undefined|void 0)\) return`,
-        to: "if (false) return",
+        from: String.raw`\$\{task\.answer\}`,
+        to: `Use ${DECOY_REGION}.`,
       },
     ],
-    does: "the answer re-queues the task in its session, but the re-entered turn is handed the task again, not the answer",
+    does: `the answer re-queues the task in its session, but the re-entered turn is handed an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,
   },
 };
 

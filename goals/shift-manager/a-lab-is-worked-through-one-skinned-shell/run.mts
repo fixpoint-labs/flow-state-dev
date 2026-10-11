@@ -399,9 +399,11 @@ const CHILDREN: Child[] = [
   { id: "P3.1 design-system", run: "goals/design-system/skins-reused-components-from-one-token-set/run.mts", control: "hardcoded-accent", must: /b:themed[^\n]*tool:awaiting/, allowed: /tool:awaiting|b:themed summary — 1 components: tool\.tsx/ },
   // P3.2: each child's merged goal check, with its controls.
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab") },
-  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-seat-collab\] TEAMS equals the store's seats/, allowed: /\[multi-seat-collab\] TEAMS equals the store's seats/ },
+  // Written-in seats leave multi-seat-collab's parked row with no seat, so its empty Inbox counts no worker
+  // on call and its task composer finds no door: both follow from the names, as the goal records.
+  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-seat-collab\] TEAMS equals the store's seats/, allowed: /\[multi-seat-collab\] (TEAMS equals the store's seats|Inbox equals the store's pending asks|the post appears on screen)/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "optimistic-post", must: /the post is in the stored transcript/, allowed: /the post is in the stored transcript/ },
-  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer from the Stream lands in the store/, allowed: /an answer from the Stream lands in the store/ },
+  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer lands in the store/, allowed: /an answer lands in the store/ },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run") },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run"), control: "worker-session", must: /items equal the run session's/, allowed: /items equal the run session's|\blive\b/ },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run"), control: "optimistic-interrupt", must: /the request reads aborted first/, allowed: /the request reads aborted first/ },
@@ -425,7 +427,7 @@ const CHILDREN: Child[] = [
   { id: "P3.2 FIX-1666 it-waits-for-a-person-before-it-files", run: "goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts" },
   { id: "P3.2 FIX-1666 it-waits-for-a-person-before-it-files", run: "goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts", control: "no-gate", must: /a row existed before any approval/, allowed: /./ },
   { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts" },
-  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts", control: "kind-ledger", must: /the mailbox's board returned no rows/, allowed: /./ },
+  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts", control: "em-session", must: /the workstream session's board holds no row/, allowed: /./ },
   // P3.3: the goal labs the set touched.
   { id: "P3.3 devforce-lab it-wakes-the-seat-a-file-declared", run: "goals/devforce-lab/it-wakes-the-seat-a-file-declared/run.mts" },
   { id: "P3.3 devforce-lab it-commits-from-the-seats-own-file", run: "goals/devforce-lab/it-commits-from-the-seats-own-file/run.mts" },

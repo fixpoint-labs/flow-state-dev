@@ -634,11 +634,15 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       return transitionDerived(
         id,
         (task, tasks) => {
-          const routing = routeFailure(
-            task as Task,
-            () => sumGrantedRetries(Object.values(tasks) as Task[]),
-            maxTotalRetries
-          );
+          // `noRetry`: a failure no retry can change ends the task here.
+          const routing =
+            options?.noRetry === true
+              ? ({ action: "terminal", deniedByBudget: false } as const)
+              : routeFailure(
+                  task as Task,
+                  () => sumGrantedRetries(Object.values(tasks) as Task[]),
+                  maxTotalRetries
+                );
           if (routing.action === "retry") {
             return {
               targetStatus: "pending" as const,
@@ -853,6 +857,14 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     async clearResumeOwed(id) {
       return patchOne(id, "resume_settled", (task) =>
         task.resumeOwed === true ? { resumeOwed: undefined } : undefined
+      );
+    },
+
+    async markCancelOwed(id) {
+      return patchOne(id, "cancel_owed", (task) =>
+        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+          ? { cancelOwed: true }
+          : undefined
       );
     },
 

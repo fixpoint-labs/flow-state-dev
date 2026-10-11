@@ -215,6 +215,14 @@ export const runRecordStateSchema = z.object({
    * attempts. Never set while {@link place} is `null` (BR-27).
    */
   held: heldSchema.nullable().default(null),
+  /**
+   * The question the run last parked its row on, on a board read from the
+   * claim, where the row itself carries the question to the person and gives
+   * back only the answer. The next attempt pairs the answer with it in its
+   * prompt. Kept across attempts. Absent on a fixed board, whose questions are
+   * kept in its inbox, and on a record written before it existed (BP-030).
+   */
+  question: z.string().nullable().optional(),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */
@@ -358,6 +366,20 @@ export interface AttemptIdentity {
   topic: string;
   /** The board's ledger collection id, resolved from `ctx.resources`. */
   boardCollectionId: string;
+  /**
+   * How to read this task's row on a board read from the claim, in place of
+   * resolving {@link boardCollectionId} off `ctx.resources`: such a board is
+   * one of many the host's resolver answers for, at the partition the claim
+   * names, and is never registered under one accessor. Answers `undefined`
+   * when the row is not there.
+   */
+  readBoardRow?: () => Promise<unknown>;
+  /**
+   * The row's incarnation as the attempt opened it. A row carrying another is
+   * a different task under the same id, so its writes are refused. Compared
+   * only when both sides carry one, as the substrate compares it.
+   */
+  incarnationId?: string;
 }
 
 /**
@@ -368,6 +390,7 @@ interface ClaimView {
   status?: string;
   attempts?: number;
   leaseUntil?: number | null;
+  incarnationId?: string;
 }
 
 /**
@@ -464,7 +487,11 @@ function leaseHasLapsed(claim: ClaimView, now: number): boolean {
  * monotonic fence can accept a stale write from the old incarnation. Closing
  * that would need the task board to pass claim identity (`incarnationId`)
  * through to the worker, which it does not — `TaskWorkerInput` carries neither
- * that nor `createdAt`. Framework work, outside this lab's boundary.
+ * that nor `createdAt`. Framework work, outside this lab's boundary. On a
+ * board read from the claim it is closed where the row carries an
+ * incarnation: the manager keeps the one its run opened on
+ * ({@link AttemptIdentity.incarnationId}) and refuses a write to a row of
+ * another.
  *
  * **The read-then-write window.** The reads above and the upsert below are not
  * one atomic operation. A replacement claim landing between them lets the
@@ -490,13 +517,23 @@ export async function writeRunRow(
   update: Partial<RunRecordState>,
 ): Promise<RunRowWrite> {
   const runs = collectionRef(ctx, RUNS);
-  const board = collectionRef(ctx, identity.boardCollectionId);
+  const row =
+    identity.readBoardRow !== undefined
+      ? await identity.readBoardRow()
+      : (await collectionRef(ctx, identity.boardCollectionId).getOptional(identity.taskId))?.state;
 
-  const claim = readClaim((await board.getOptional(identity.taskId))?.state);
+  const claim = readClaim(row);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
   if (leaseHasLapsed(claim, Date.now())) return "refused";
+  if (
+    identity.incarnationId !== undefined &&
+    claim.incarnationId !== undefined &&
+    claim.incarnationId !== identity.incarnationId
+  ) {
+    return "refused";
+  }
 
   const existing = (await runs.getOptional(identity.topic))?.state as
     | RunRecordState
@@ -558,6 +595,10 @@ export async function openRunRow(
 /**
  * The row of the run that last opened an attempt in `sessionId`, within one
  * board's topics, or `undefined` when none did.
+ *
+ * `epic` is the board's run segment (`runBoardSegment` in `./workspace`): a
+ * fixed board's id as it is, or a ledger id and its partition's digest for a
+ * board read from a claim, so two conversations' runs are never confused.
  */
 export async function findRunRowBySession(
   ctx: CollectionHoldingContext,

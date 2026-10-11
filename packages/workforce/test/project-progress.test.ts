@@ -195,9 +195,8 @@ describe("readProject", () => {
     });
     // The row holds no workstreams and no totals.
     expect(Object.keys(out.project).sort()).toEqual(
-      ["brief", "claimTokens", "id", "members", "ownerUserId", "repository", "status", "title", "workstreams"].sort()
+      ["brief", "id", "members", "ownerUserId", "repository", "status", "title"].sort()
     );
-    expect(out.project.workstreams).toEqual([]);
   });
 
   it("keeps a held-out status word as written, counts it in progress, and refuses an empty or overlong one", async () => {

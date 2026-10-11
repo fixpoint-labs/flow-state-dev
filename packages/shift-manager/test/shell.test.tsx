@@ -137,7 +137,7 @@ describe("the refusal (V2, BR-3)", () => {
         ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
         : real(input, init),
     );
-    await openApp("/inbox", { mailboxes: false });
+    await openApp("/inbox", { conversations: false });
     await screen.findByTestId("refusal");
     expect(screen.getByTestId("refusal-message").textContent).toMatch(/no organization/);
     expect(screen.queryByTestId("sidebar")).toBeNull();
@@ -183,104 +183,26 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
   });
 });
 
+// A workstream's own screens (its Stream, its Board tab, its composer) are
+// drawn for a workstream the inventory registers, and only a mailbox ever
+// registered one. The ask-lab has none, so those tests are retired (BR-24):
+// "a workstream whose mailbox attaches no board says so", "a workstream's
+// Stream holds its members' asks", and the Stream composer's three (a post
+// drawn once the mailbox holds it, a refused post keeps its draft, @worker
+// with no task disables Send). What they proved is proved now by a project
+// workstream's tabs and its Stream, its owner's project coordinator session
+// (projects.test.tsx, project-workstreams.test.tsx); by an ask answered in
+// Inbox and in the Shift Coordinator (below); and by the composers' own
+// tests (composer.test.tsx: a draft kept through a slow read-back, the
+// @worker hint; conversation.test.tsx: a line drawn once the session holds
+// it, and a refused line kept with the reason).
 describe("empty states (BR-14, BR-28)", () => {
-  it("a workstream whose mailbox attaches no board says so on the Board tab and in the panel", async () => {
-    await openApp("/w/ops.side/board");
-    expect((await screen.findByTestId("board-none")).textContent).toMatch(/attaches no board/);
-    expect(screen.getByTestId("panel-tasks-none").textContent).toMatch(/attaches no board/);
-  });
-
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
     // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
     expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
-  });
-});
-
-describe("a workstream's Stream holds its members' asks (BR-16)", () => {
-  it("draws a pending ask in the feed, marked as waiting on you, and answering it there clears Inbox too", async () => {
-    const lab = await serveLab((await openAskLab()).flowState);
-    served.push(lab);
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/w/ops.desk/stream`);
-    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    // ops.asker sits in #ops.desk, so its ask belongs in that Stream.
-    await seatAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
-    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
-
-    const ask = await screen.findByTestId("feed-ask");
-    // In the feed itself, not beside it.
-    expect(screen.getByTestId("transcript").contains(ask)).toBe(true);
-    expect(within(ask).getByText("NEEDS YOU").getAttribute("data-look")).toBe("needs-tag");
-    expect(within(ask).getByTestId("ask-card").textContent).toMatch(/ship it/);
-    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("1"));
-
-    act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
-    // The ask leaves the feed and Inbox together: there is one list of pending asks.
-    await waitFor(() => expect(screen.queryByTestId("feed-ask")).toBeNull(), { timeout: 10_000 });
-    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("0"));
-  });
-});
-
-describe("the composer (V6)", () => {
-  it("draws a post only once the mailbox holds it", async () => {
-    const { clients } = await openApp("/w/ops.side/stream");
-    const input = (await screen.findByTestId("composer-input")) as HTMLTextAreaElement;
-    // Hold the post's request open: nothing may be drawn while it is.
-    let release!: () => void;
-    const held = new Promise<void>((r) => (release = r));
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-      if (String(i instanceof Request ? i.url : i).includes("/status")) await held;
-      return real(i, init);
-    });
-    fireEvent.change(input, { target: { value: "kept line" } });
-    fireEvent.click(screen.getByTestId("composer-send"));
-    await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toMatch(/Posting/));
-    expect(screen.queryByText("kept line", { selector: "[data-testid=transcript-line-body]" })).toBeNull();
-    expect(input.value).toBe("kept line");
-    release();
-    await screen.findByText("kept line", { selector: "[data-testid=transcript-line-body]" });
-    // The live stream can draw the kept line before the post's next status poll
-    // answers, and only that answer clears the draft: wait for it, don't race it.
-    await waitFor(() => expect(input.value).toBe(""));
-    // And the mailbox holds it.
-    const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
-    expect(JSON.stringify(state.items)).toContain("kept line");
-  });
-
-  it("keeps the draft and says why when the post is refused", async () => {
-    await openApp("/w/ops.side/stream");
-    const input = (await screen.findByTestId("composer-input")) as HTMLTextAreaElement;
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
-      String(i instanceof Request ? i.url : i).includes("/actions/post")
-        ? Promise.resolve(new Response(JSON.stringify({ error: "post refused by the mailbox" }), { status: 422 }))
-        : real(i, init),
-    );
-    fireEvent.change(input, { target: { value: "refused line" } });
-    fireEvent.click(screen.getByTestId("composer-send"));
-    expect((await screen.findByTestId("composer-error")).textContent).toMatch(/post refused by the mailbox/);
-    expect(input.value).toBe("refused line");
-    expect(screen.queryByText("refused line", { selector: "[data-testid=transcript-line-body]" })).toBeNull();
-  });
-
-  it("@worker with no task in this workstream disables Send and says so, and posts nothing (BR-19)", async () => {
-    const { clients } = await openApp("/w/ops.side/stream");
-    const input = await screen.findByTestId("composer-input");
-    fireEvent.change(input, { target: { value: "@asker please look" } });
-    await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
-    expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    // The button draws v2's ⏎; its name says the line goes to a worker, not the mailbox.
-    expect(screen.getByTestId("composer-send").getAttribute("aria-label")).toBe("Send");
-
-    fireEvent.change(input, { target: { value: "@nobody please" } });
-    expect(screen.getByTestId("composer-status").textContent).toBe(`@nobody ${GAPS.turn.noWorker}`);
-    expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-
-    const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
-    expect(JSON.stringify(state.items ?? [])).not.toContain("please");
   });
 });
 
@@ -572,19 +494,13 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
   });
 
-  it("draws each workstream's running rows and its members' asks in the rail, and the workers on call (BR-19)", async () => {
+  // The rail's STREAMS rows count a workstream's running rows and its
+  // members' asks; the ask-lab registers no workstream, so that half is
+  // retired (BR-24) with the screens above. A project's progress is its
+  // count now (project-workstreams.test.tsx).
+  it("draws the workers on call in the rail (BR-19)", async () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
-    const streams = screen.getAllByTestId("cos-stream").map((el) => [
-      el.getAttribute("data-mailbox-id"),
-      within(el).getByTestId("cos-stream-running").textContent,
-      within(el).getByTestId("cos-stream-needs-you").textContent,
-    ]);
-    // ops.asker sits in both mailboxes; ops.helper only in the desk.
-    expect(streams).toEqual([
-      ["ops.desk", "0", "1"],
-      ["ops.side", "0", "1"],
-    ]);
     // ops.asker's pending ask puts it on call, by the rule Roster uses.
     expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-seat-id"))).toEqual(["ops.asker"]);
   });
@@ -676,9 +592,10 @@ describe("Chief of Staff (FIX-1722)", () => {
   // created is listed without a reload.
   it("lists a project the chief of staff's turn created, without a reload", async () => {
     await openCos("/", { chiefOfStaff: true, seatsStartProjects: true });
-    await screen.findByTestId("nav-project-unassigned");
-    expect(screen.queryByTestId("nav-project-launch")).toBeNull();
+    // The composer is drawn from the read snapshot, whose PROJECTS hold no project yet.
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    expect(screen.queryByTestId("projects-failure")).toBeNull();
+    expect(screen.queryAllByTestId("project-group")).toEqual([]);
     fireEvent.change(input, { target: { value: startProjectLine("launch") } });
     fireEvent.click(screen.getByTestId("cos-composer-send"));
     await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
@@ -855,7 +772,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(conversation.textContent).not.toMatch(/Waiting on you/);
   });
 
-  it("says what the Lab answered, with Retry, for a workstream whose boards or asks didn't load (BR-8)", async () => {
+  it("says what the Lab answered, with Retry, for asks or a conversation's board that didn't load (BR-8)", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
     // A seat session, so there are asks to read.
@@ -863,20 +780,23 @@ describe("Chief of Staff (FIX-1722)", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
-      if (url.includes("/sessions/ops.desk/resources/ops.desk.") || url.includes("item_types=suspension")) {
+      if (/\/resources\/tasks(\?|$)/.test(url) || url.includes("item_types=suspension")) {
         return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
       return real(i, init);
     });
     setURL(`${lab.baseUrl}/cos`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
-    const desk = await screen.findByTestId("cos-stream-failure");
-    expect(desk.textContent).toMatch(/ops\.desk/);
-    expect(desk.textContent).toMatch(/store offline.*503/);
-    expect(within(desk).getByRole("button", { name: "Retry" })).toBeTruthy();
-    const asks = screen.getByTestId("cos-streams-asks-failure");
+    const asks = await screen.findByTestId("cos-streams-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
+    // The person's conversation boards are read once, through one of their
+    // coordinator conversations: Tasks names it, with what the Lab answered.
+    act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
+    const board = await screen.findByTestId("section-failure");
+    expect(board.textContent).toMatch(/The boards of ops\.(desk|side) did not load/);
+    expect(board.textContent).toMatch(/store offline.*503/);
+    expect(within(board).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("disables the composer for a seat that takes no message (BR-13)", async () => {
@@ -916,14 +836,14 @@ describe("Jump to from the keyboard", () => {
     act(() => fireEvent.change(input, { target: { value: "" } }));
 
     // Enter opens the highlighted result, not the first one: the ask Lab's
-    // first three results are Shift Coordinator, then its workstreams, ops.desk
-    // then ops.side.
+    // first three results are Shift Coordinator, then its workers, ops.asker
+    // then ops.desk, each of which opens Roster.
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
-    expect(screen.getAllByTestId("jump-result")[2]!.textContent).toMatch(/^ops\.side/);
+    expect(screen.getAllByTestId("jump-result")[2]!.textContent).toMatch(/^ops\.desk/);
     act(() => fireEvent.keyDown(input, { key: "Enter" }));
     expect(screen.queryByTestId("jump-dialog")).toBeNull();
-    expect(window.location.pathname).toBe("/w/ops.side/stream");
+    expect(window.location.pathname).toBe("/roster");
   });
 
   it("the pointer highlights the result it is over", async () => {

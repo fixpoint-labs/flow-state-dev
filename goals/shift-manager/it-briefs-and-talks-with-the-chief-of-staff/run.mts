@@ -17,8 +17,10 @@
  *
  *   landing  `/` and an unknown path draw Chief of Staff, its entry current
  *   summary  the needs-you count equals the store's pending asks, every one is
- *            listed, and each stream's running and needs-you counts equal its
- *            rows and its members' asks
+ *            listed, the running line equals the running rows on the person's
+ *            conversation boards, and the rail lists the tree's workstreams:
+ *            none, since the desk's coordinator is a worker. Per-stream counts
+ *            are retired with the mailbox (goal.md, BR-24).
  *   inline   Approve on one summary ask leaves one fewer pending suspension in
  *            the store, and both the summary and Inbox drop it
  *   talk     a fresh token typed to the chief of staff is a user item in its
@@ -206,10 +208,23 @@ function labApi(origin: string, bearer: string | undefined) {
     }
     return out;
   };
-  /** A board's rows as stored. */
-  const rows = async (mailboxId: string, boardRef: string): Promise<Array<{ status: string }>> =>
-    ((await get(`/sessions/${enc(mailboxId)}/resources/${enc(boardRef)}?limit=200`)).items ?? []).map((r: any) => ({ status: String(r.clientData?.status) }));
-  return { call, items, sessions, pendingAsks, rows };
+  /**
+   * The rows on every one of the person's conversation boards, as stored: the
+   * `tasks` collection, read through the first of `sessionIds` whose flow
+   * declares it readable. None when no listed session's flow keeps one.
+   */
+  const conversationRows = async (sessionIds: string[]): Promise<Array<{ status: string }>> => {
+    for (const id of sessionIds) {
+      const manifest = await get(`/sessions/${enc(id)}/manifest`);
+      const declared = (manifest.resources as Array<{ kind: string; ref: string; client?: { state?: { read?: boolean } } }>).some(
+        (r) => r.kind === "collection" && r.ref === "tasks" && r.client?.state?.read === true,
+      );
+      if (!declared) continue;
+      return ((await get(`/sessions/${enc(id)}/resources/tasks?limit=200`)).items ?? []).map((r: any) => ({ status: String(r.clientData?.status) }));
+    }
+    return [];
+  };
+  return { call, items, sessions, pendingAsks, conversationRows };
 }
 
 /** The text of a message item. */
@@ -261,10 +276,9 @@ await runGoal(async (failures) => {
   const desk = await readDeclaredRoster(LABS.desk.tree);
   const cosSeat = desk.workers.find((w) => w.id.split(".").at(-1) === COS_NAME);
   const asker = desk.workers.find((w) => w.declared.flow === "asker");
-  const mailbox = desk.mailboxes[0];
-  if (cosSeat === undefined || asker === undefined || mailbox === undefined) throw new Error("the desk tree declares no chief of staff, asker or mailbox");
-  const boardRefs = ((mailbox.declared.boards as string[] | undefined) ?? []).map((b) => `${mailbox.id}.${b}`);
-  const members = new Set((mailbox.declared.members as string[] | undefined) ?? []);
+  if (cosSeat === undefined || asker === undefined) throw new Error("the desk tree declares no chief of staff or asker");
+  // A workstream is a mailbox the tree declares; the desk's coordinator is a worker, so it has none.
+  const workstreams = desk.mailboxes.length;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];
@@ -326,17 +340,13 @@ await runGoal(async (failures) => {
       if (shownCount !== pending.length) fail("summary", `the summary says ${shownCount} need you, the store holds ${pending.length} pending`);
       const shownAsks = await asksOnScreen(page);
       if (!same(shownAsks, pending)) fail("summary", `the summary lists [${shownAsks.join(", ")}], the store holds [${pending.join(", ")}]`);
-      const storeRunning = (await Promise.all(boardRefs.map((ref) => api.rows(mailbox.id, ref)))).flat().filter((r) => r.status === "in_progress").length;
-      const storeNeedsYou = members.has(asker.id) ? pending.length : 0;
-      const stream = page.locator(`[data-testid=cos-stream][data-mailbox-id="${mailbox.id}"]`);
-      if ((await stream.count()) !== 1) fail("summary", `the rail lists ${mailbox.id} ${await stream.count()} times`);
-      else {
-        const running = await stream.getByTestId("cos-stream-running").textContent();
-        const needs = await stream.getByTestId("cos-stream-needs-you").textContent();
-        if (Number(running) !== storeRunning) fail("summary", `${mailbox.id} shows ${running} running, the store holds ${storeRunning}`);
-        if (Number(needs) !== storeNeedsYou) fail("summary", `${mailbox.id} shows ${needs} needing you, its members hold ${storeNeedsYou}`);
-      }
-      evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${mailbox.id} ${storeRunning} running`);
+      const listed = (await api.sessions(userId)).filter((s) => s.parentSessionId == null).map((s) => s.id);
+      const storeRunning = (await api.conversationRows(listed)).filter((r) => r.status === "in_progress").length;
+      const shownRunning = await page.getByTestId("cos-summary-running").getAttribute("data-runs");
+      if (Number(shownRunning) !== storeRunning) fail("summary", `the summary says ${shownRunning} runs going, the person's conversation boards hold ${storeRunning} running`);
+      const streams = await page.getByTestId("cos-stream").count();
+      if (streams !== workstreams) fail("summary", `the rail lists ${streams} workstream(s), the tree declares ${workstreams}`);
+      evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${shownRunning} running / ${storeRunning} in the store, ${streams} workstreams in the rail`);
 
       // inline
       const answered = shownAsks[0] ?? pending[0]!;

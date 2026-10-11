@@ -393,6 +393,17 @@ export const taskSchema = z.object({
    */
   resumeOwed: z.boolean().optional(),
 
+  /**
+   * The ask on this row is over (its turn was stopped, or it timed out) but
+   * the cancel that should have ended the row failed (FIX-1844). A touch of
+   * the board pays it by cancelling the row. Whatever ends the row pays it,
+   * in that ending's write, and owes the turn no resume: nobody waits.
+   *
+   * Top level and server-written, as `resumeOwed` is (BP-031): it drives a
+   * cancel. **Absent reads as not owed** (BP-030).
+   */
+  cancelOwed: z.boolean().optional(),
+
   createdAt: z.number(),
   updatedAt: z.number(),
   startedAt: z.number().optional(),

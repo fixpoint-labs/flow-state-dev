@@ -388,6 +388,22 @@ export interface AwaitReviewOptions extends TaskTransitionOptions {
 }
 
 /**
+ * `fail`'s options: the ordinary transition guards, plus whether this failure
+ * may be retried at all.
+ */
+export interface FailOptions extends TaskTransitionOptions {
+  /**
+   * Settle the task `errored` even though it has attempts left: the failure is
+   * one no retry can change, such as a run refused before it started because
+   * it names nothing it may work on. Without it, a task with attempts left is
+   * re-queued and refused the same way on every one. Every guard still runs
+   * inside the same write, so a stale holder's `noRetry` failure is declined
+   * like any other.
+   */
+  noRetry?: boolean;
+}
+
+/**
  * `unpark`'s options: the ordinary transition guards, plus whether the
  * feedback answers the question the row's worker parked on (FIX-1817).
  */
@@ -576,7 +592,8 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *   claim increments `attempts` for a fresh attempt. Emits a
    *   `task-change` item with `kind: "retried"`.
    * - Otherwise this is a *hard* fail: status transitions to terminal
-   *   `errored` with the error captured on `task.error`.
+   *   `errored` with the error captured on `task.error`. `options.noRetry`
+   *   makes it a hard fail whatever budget is left.
    *
    * An advisory decline is reported on the returned {@link TaskWriteOutcome},
    * from whichever branch ran; discarding it is supported and behaves exactly
@@ -585,7 +602,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   fail(
     id: string,
     error: string,
-    options?: TaskTransitionOptions
+    options?: FailOptions
   ): Promise<TaskWriteOutcome>;
   // The four parking/review transitions. Each takes the same optional
   // `TaskTransitionOptions` the settlement methods take (FIX-981) — a worker
@@ -797,6 +814,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * host an ask, and the ask path refuses on it.
    */
   clearResumeOwed?(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * Mark an open asked row as owing its cancel (`Task.cancelOwed`): its ask
+   * is over and the cancel the asking call wrote failed (FIX-1844). The
+   * row's next ending, the touch's cancel among them, clears it. `unchanged`
+   * on a row that has ended, isn't an ask, or is already marked.
+   *
+   * Optional, like `clearResumeOwed`: both built-in backings implement it.
+   * On a ref without it, a failed cancel leaves the row open, as before.
+   */
+  markCancelOwed?(id: string): Promise<TaskWriteOutcome>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;

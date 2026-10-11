@@ -28,9 +28,13 @@ afterEach(async () => {
   await Promise.all(served.splice(0).map((lab) => lab.handle.close()));
 });
 
-/** The ask-lab with two projects: `desk` holds a board-holding and a board-less workstream; `empty` holds none. */
+/**
+ * The ask-lab with two projects: `desk` has a brief, `empty` has nothing.
+ * Neither lists a workstream: a row lists workstreams by mailbox id, and the
+ * ask-lab has no mailbox.
+ */
 const PROJECTS = [
-  { id: "desk", title: "The desk", brief: "Keep the request desk moving.", members: [OTHER], workstreams: ["ops.desk", "ops.side"] },
+  { id: "desk", title: "The desk", brief: "Keep the request desk moving.", members: [OTHER] },
   { id: "empty", title: "Nothing yet", members: [OTHER] },
 ];
 
@@ -51,38 +55,6 @@ async function storedRow(baseUrl: string, id: string): Promise<Project> {
   return row;
 }
 
-/**
- * Serve the inventory's mailbox rows rewritten by `rewrite`, as a Lab whose
- * inventory says that would answer. Everything else goes to the Lab as is.
- * Returns the path of every action request sent, in order.
- */
-function rewriteMailboxRows(
-  baseUrl: string,
-  rewrite: (rows: Array<{ clientData: Record<string, unknown> }>) => Array<{ clientData: Record<string, unknown> }>,
-): { actions: string[] } {
-  const real = globalThis.fetch;
-  const actions: string[] = [];
-  let mailboxesRef: Promise<string> | undefined;
-  const refOf = () =>
-    (mailboxesRef ??= real(`${baseUrl}/api/flows/sessions/ops.desk/manifest`)
-      .then((r) => r.json())
-      .then((m: { resources: Array<{ kind: string; pattern: string; ref: string }> }) => {
-        const found = m.resources.find((r) => r.kind === "collection" && r.pattern === "inventory/mailboxes/*");
-        if (found === undefined) throw new Error("the ask-lab's mailbox kind declares no mailbox inventory");
-        return found.ref;
-      }));
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = String(input instanceof Request ? input.url : input);
-    if (/\/actions\//.test(url)) actions.push(url.replace(/^https?:\/\/[^/]+/, "").split("?")[0]!);
-    if (new RegExp(`/resources/${encodeURIComponent(await refOf())}(\\?|$)`).test(url)) {
-      const body = (await (await real(input, init)).json()) as { items: Array<{ clientData: Record<string, unknown> }> };
-      return new Response(JSON.stringify({ ...body, items: rewrite(body.items) }), { status: 200, headers: { "content-type": "application/json" } });
-    }
-    return real(input, init);
-  });
-  return { actions };
-}
-
 function openApp(baseUrl: string, path: string, userId = ASK_LAB_USER_ID): LabClients {
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${baseUrl}${path}`);
   const clients = createLabClients({ userId });
@@ -90,49 +62,21 @@ function openApp(baseUrl: string, path: string, userId = ASK_LAB_USER_ID): LabCl
   return clients;
 }
 
+// The sidebar drew each project with the mailbox workstreams its row named,
+// then No project with the rest. The ask-lab has no mailbox, so no row can
+// name one and nothing is left over: "lists each project with exactly the
+// workstreams its row names" and "draws no No project when every workstream
+// is in a project" are retired (BR-24). The grouping itself is the
+// snapshot's, proved below without a Lab ("grouping is the snapshot's"); a
+// project's workstreams are its entries now (project-workstreams.test.tsx).
 describe("PROJECTS (BR-22, D3)", () => {
-  it("lists each project with exactly the workstreams its row names, then No project with the rest", async () => {
-    const { baseUrl } = await lab([
-      { id: "desk", title: "The desk", members: [OTHER], workstreams: ["ops.desk"] },
-      { id: "empty", title: "Nothing yet", members: [OTHER] },
-    ]);
-    openApp(baseUrl, "/inbox");
-    await screen.findByTestId("nav-project-desk");
-    const groups = screen.getAllByTestId("project-group").map((g) => ({
-      id: g.getAttribute("data-project-id"),
-      streams: within(g)
-        .queryAllByTestId(/^nav-workstream-/)
-        .map((el) => el.getAttribute("data-testid")!.slice("nav-workstream-".length)),
-    }));
-    expect(groups).toEqual([
-      { id: "desk", streams: ["ops.desk"] },
-      { id: "empty", streams: [] },
-      { id: "unassigned", streams: ["ops.side"] },
-    ]);
-    expect(screen.getByTestId("nav-project-desk").textContent).toContain("The desk");
-  });
-
-  it("draws no No project when every workstream is in a project, and every workstream when there are no projects", async () => {
+  it("a Lab whose inventory lists seats and projects but no workstreams still shows its projects, and no No project", async () => {
     const { baseUrl } = await lab();
-    openApp(baseUrl, "/inbox");
-    await screen.findByTestId("nav-project-desk");
-    expect(screen.queryByTestId("nav-project-unassigned")).toBeNull();
-    cleanup();
-
-    const bare = await lab([]);
-    openApp(bare.baseUrl, "/inbox");
-    await screen.findByTestId("nav-project-unassigned");
-    expect(screen.getAllByTestId("project-group")).toHaveLength(1);
-    expect(screen.getByTestId("nav-workstream-ops.desk")).toBeTruthy();
-    expect(screen.getByTestId("nav-workstream-ops.side")).toBeTruthy();
-  });
-
-  it("a Lab whose inventory lists seats and projects but no workstreams still shows its projects", async () => {
-    const { baseUrl } = await lab();
-    rewriteMailboxRows(baseUrl, () => []);
     openApp(baseUrl, "/inbox");
     await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
     expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toEqual(["desk", "empty"]);
+    expect(screen.getByTestId("nav-project-desk").textContent).toContain("The desk");
+    expect(screen.queryByTestId("nav-project-unassigned")).toBeNull();
   });
 
   it("a member who holds no session on a flow that declares the projects still sees them, and a Lab with no project setup has no coordinator", async () => {
@@ -182,7 +126,7 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
     });
   }
 
-  it("a pre-project Lab, whose flows declare no projects collection, shows its workstreams under No project and no failure", async () => {
+  it("a pre-project Lab, whose flows declare no projects collection, shows no project and no failure", async () => {
     const { baseUrl } = await lab([]);
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -197,9 +141,9 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
     expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
 
     openApp(baseUrl, "/inbox");
-    await screen.findByTestId("nav-project-unassigned");
+    await screen.findByTestId("inbox-empty");
     expect(screen.queryByTestId("projects-failure")).toBeNull();
-    expect(screen.getByTestId("nav-workstream-ops.desk")).toBeTruthy();
+    expect(screen.queryAllByTestId("project-group")).toEqual([]);
   });
 
   it("a Lab that doesn't serve the roster flow has nothing that declares projects: zero projects, not a failure", async () => {
@@ -224,26 +168,25 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
 });
 
 describe("a project's tabs (BR-25 to BR-29)", () => {
-  it("Brief is the row's brief; Board draws only the person's own workstream sessions; Workstreams lists the row's mailboxes", async () => {
+  // Its Workstreams tab listed the row's mailboxes; with no mailbox, a row
+  // lists none, so that part is retired (BR-24). A project's workstream
+  // entries are listed there now (project-workstreams.test.tsx).
+  it("Brief is the row's brief; Board draws only the person's own workstream sessions", async () => {
     const { baseUrl } = await lab();
     openApp(baseUrl, "/p/desk/brief");
     expect((await screen.findByTestId("project-brief")).textContent).toBe((await storedRow(baseUrl, "desk")).brief);
     expect(screen.getByTestId("project-title").textContent).toBe("The desk");
 
-    // A project's Board is the person's own workstreams' tasks, never the Lab's mailbox boards (S8).
+    // A project's Board is the person's own workstreams' tasks, never a board the Lab keeps elsewhere (S8).
     act(() => fireEvent.click(screen.getByRole("tab", { name: /board/i })));
     await screen.findByTestId("project-board-none");
     expect(screen.queryByTestId("project-lane")).toBeNull();
-
-    act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
-    const listed = (await screen.findAllByTestId("project-workstream")).map((l) => l.getAttribute("data-mailbox-id"));
-    expect(listed).toEqual((await storedRow(baseUrl, "desk")).workstreams);
   });
 
   it("Brief names the repository a project's code lives in, or says it runs on its files", async () => {
     const remote = "https://github.com/acme/desk.git";
     const { baseUrl } = await lab([
-      { id: "desk", title: "The desk", brief: "Keep the request desk moving.", members: [OTHER], workstreams: ["ops.desk"], repository: remote },
+      { id: "desk", title: "The desk", brief: "Keep the request desk moving.", members: [OTHER], repository: remote },
       { id: "empty", title: "Nothing yet", members: [OTHER] },
     ]);
     openApp(baseUrl, "/p/desk/brief");
@@ -269,7 +212,7 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
 
   it("a private project is listed for its owner alone, at its own address", async () => {
     const { baseUrl } = await lab([
-      { id: "desk", title: "The desk", members: [OTHER], workstreams: ["ops.desk"] },
+      { id: "desk", title: "The desk", members: [OTHER] },
       { id: "desk", title: "My notes", visibility: "private" },
     ]);
     openApp(baseUrl, "/inbox");
@@ -291,11 +234,13 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
     expect((await screen.findByTestId("project-missing")).textContent).toMatch(/You have no private project "desk"/);
   });
 
-  it("No project: Board and Workstreams list its workstreams; Stream and Brief say it has no coordinator or brief", async () => {
-    const { baseUrl } = await lab([{ id: "desk", title: "The desk", members: [OTHER], workstreams: ["ops.desk"] }]);
+  // No project's Workstreams listed the mailbox workstreams no row named;
+  // the ask-lab has none, so it says so (BR-24: "grouping is the snapshot's"
+  // proves the leftovers below).
+  it("No project: Workstreams and Board say it holds none; Stream and Brief say it has no coordinator or brief", async () => {
+    const { baseUrl } = await lab([{ id: "desk", title: "The desk", members: [OTHER] }]);
     openApp(baseUrl, "/p/unassigned/workstreams");
-    const listed = (await screen.findAllByTestId("project-workstream")).map((l) => l.getAttribute("data-mailbox-id"));
-    expect(listed).toEqual(["ops.side"]);
+    await screen.findByTestId("project-workstreams-none");
     act(() => fireEvent.click(screen.getByRole("tab", { name: /board/i })));
     await screen.findByTestId("project-board-none");
     act(() => fireEvent.click(screen.getByRole("tab", { name: /^stream$/i })));
@@ -343,7 +288,6 @@ describe("grouping is the snapshot's (V4)", () => {
     status: "active",
     ownerUserId: "alice",
     members: ["alice"],
-    workstreams: [],
     visibility: "shared",
     repository: null,
     ...over,
@@ -364,17 +308,15 @@ describe("grouping is the snapshot's (V4)", () => {
     expect(toProject({ ...row, repository: null })?.repository).toBeNull();
   });
 
-  it("projectsOf groups a cross-team project, keeps a gone id as gone, and makes no read", () => {
+  it("projectsOf lists no mailbox under a project, even off a row that still carries `workstreams`, and makes no read", () => {
     const spy = vi.spyOn(globalThis, "fetch");
-    const view = projectsOf(snapshot([project({ id: "s", workstreams: ["eng.a", "ops.b", "ops.gone"] })]));
+    // A row an earlier version wrote, still naming mailboxes: nothing reads the field.
+    const stale = toProject({ id: "s", title: "S", ownerUserId: ASK_LAB_USER_ID, workstreams: ["eng.a", "ops.b"] })!;
+    const view = projectsOf(snapshot([stale]));
     expect(spy).not.toHaveBeenCalled();
     if (!view.ok) throw new Error("expected a view");
-    expect(view.value.projects[0]!.workstreams.map((w) => [w.id, w.workstream?.id ?? null])).toEqual([
-      ["eng.a", "eng.a"],
-      ["ops.b", "ops.b"],
-      ["ops.gone", null],
-    ]);
-    expect(view.value.noProject.map((w) => w.id)).toEqual(["ops.c"]);
+    expect(view.value.projects.map((project) => project.id)).toEqual(["s"]);
+    expect(view.value.noProject.map((w) => w.id)).toEqual(["eng.a", "ops.b", "ops.c"]);
   });
 
 });

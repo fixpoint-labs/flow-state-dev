@@ -58,20 +58,19 @@ type ValidatedWorkspace = { baseRef: string } | { host: true };
  * The task is the job, as the board handed it over (`run.task`): what a person
  * approved or posted, word for word. The seat's files are how this team works:
  * its instructions, its standing brief and its conventions. Where the two
- * disagree, the task wins, which is why it comes first. The mailbox's charter
- * follows when the woken seat is a declared member of the mailbox whose board
- * holds the task, and the run's terms close it.
+ * disagree, the task wins, which is why it comes first. The run's terms close
+ * it.
  *
- * Nothing else reaches the prompt: not the coordinator's session, not the
- * mailbox's transcript, not the environment.
+ * Nothing else reaches the prompt: not the filing session, not the
+ * environment.
  *
  * Exported because the honesty check grades the same prompt the gate does: one
  * builder, two harnesses, which is the only way "the prompt carried the seat's
  * own files" means the same thing in both halves.
  *
  * @param run What the manager hands a prompt builder for this attempt.
- * @param options The phase's options: how the run's worker is loaded, the
- *   mailbox's charter and members, and whether acceptance decides.
+ * @param options The phase's options: how the run's worker is loaded, and
+ *   whether acceptance decides.
  * @returns The prompt.
  * @throws If the seat declares a document it does not hold — a seat reading
  *   nothing is the silent pass this whole lab exists to refuse, so it is loud.
@@ -80,8 +79,41 @@ export async function buildSeatPrompt(
   run: PromptRunContext,
   options: ImplementPhaseOptions,
 ): Promise<string> {
+  const { seat } = await seatSections(run, options.seatOf);
+
+  return [
+    ...(options.dropTask === true ? [] : taskSection(run.task)),
+    ...seat,
+    `# Where and how to work`,
+    ``,
+    `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
+    ...issueLine(run),
+    `Work in ${run.workspacePath}, on branch ${run.branch}.`,
+    options.requireAcceptance === true
+      ? `Commit your work. The task is done when this branch carries a commit its base does not ` +
+        `and the acceptance check that comes with your brief passes against it. The acceptance ` +
+        `check decides, not your own tests.`
+      : `Commit your work. The task is done when this branch carries a commit its base does not.`,
+    ...(run.feedback === undefined
+      ? []
+      : ["", `# Why the last attempt stopped`, "", run.feedback]),
+  ].join("\n");
+}
+
+/**
+ * The prompt's sections out of the woken worker's own configuration: its
+ * `WORKER.md` instructions, its standing brief and its conventions. Both
+ * phases carry them, so a coder works the same way whichever board its task
+ * came from.
+ *
+ * @throws If the seat declares a document it does not hold.
+ */
+async function seatSections(
+  run: PromptRunContext,
+  seatOf: SeatOf,
+): Promise<{ seat: string[] }> {
   const ctx = run.ctx;
-  const { config } = await options.seatOf(ctx as never);
+  const { config } = await seatOf(ctx as never);
 
   const documentRef = config.document;
   if (documentRef === undefined) {
@@ -100,46 +132,22 @@ export async function buildSeatPrompt(
   const brief = (await (ref as { readContent(): Promise<string | null> }).readContent()) ?? "";
 
   const skills = config.seatSkills ?? [];
-  // Membership is read off the declared tree and the woken worker's own id
-  // (imposed on its settings), never off the row: who may see a mailbox is not
-  // the filer's to say.
-  const charter =
-    options.mailbox !== undefined &&
-    config.seatId !== undefined &&
-    options.mailbox.members.includes(config.seatId)
-      ? options.mailbox
-      : undefined;
-
-  return [
-    ...(options.dropTask === true ? [] : taskSection(run.task)),
-    `# Your instructions`,
-    ``,
-    (config.instructions ?? "").trim(),
-    ``,
-    `# Your team's standing brief (${documentRef})`,
-    ``,
-    brief.trim(),
-    ``,
-    `# Your team's conventions`,
-    ``,
-    skills.map((skill) => skill.skillMd.trim()).join("\n\n"),
-    ``,
-    ...(charter === undefined
-      ? []
-      : [`# The charter of ${charter.id}, the mailbox this task is on`, ``, charter.charter.trim(), ``]),
-    `# Where and how to work`,
-    ``,
-    `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
-    `Work in ${run.workspacePath}, on branch ${run.branch}.`,
-    options.requireAcceptance === true
-      ? `Commit your work. The task is done when this branch carries a commit its base does not ` +
-        `and the acceptance check that comes with your brief passes against it. The acceptance ` +
-        `check decides, not your own tests.`
-      : `Commit your work. The task is done when this branch carries a commit its base does not.`,
-    ...(run.feedback === undefined
-      ? []
-      : ["", `# Why the last attempt stopped`, "", run.feedback]),
-  ].join("\n");
+  return {
+    seat: [
+      `# Your instructions`,
+      ``,
+      (config.instructions ?? "").trim(),
+      ``,
+      `# Your team's standing brief (${documentRef})`,
+      ``,
+      brief.trim(),
+      ``,
+      `# Your team's conventions`,
+      ``,
+      skills.map((skill) => skill.skillMd.trim()).join("\n\n"),
+      ``,
+    ],
+  };
 }
 
 /**
@@ -159,10 +167,21 @@ function cappedJson(value: unknown): string {
 }
 
 /**
+ * The issue the row's payload names, when the run's row id is not it: a
+ * board that mints its own task ids runs a feature row under the minted id,
+ * so without this line the prompt names the row and never the issue.
+ */
+function issueLine(run: PromptRunContext): string[] {
+  const issue = (run.task.input as { issue?: unknown } | undefined)?.issue;
+  return typeof issue === "string" && issue !== run.issue ? [`Issue ${issue}.`] : [];
+}
+
+/**
  * The task's section, as the board packed it: the goal, then what the row adds.
  *
  * `input` is deliberately not rendered: this team's rows carry only
- * `{ issue, phase }`, which the run's terms already name.
+ * `{ issue, phase }`, which the run's terms already name ({@link issueLine}
+ * covers the one case where they don't).
  */
 function taskSection(task: PromptRunContext["task"]): string[] {
   return [
@@ -288,12 +307,6 @@ export interface ImplementPhaseOptions {
    */
   requireAcceptance?: boolean;
   /**
-   * The mailbox whose board holds this phase's rows: its id, its charter, and
-   * its declared members. The charter reaches a run's prompt only when the
-   * woken seat is one of the members. Absent, no prompt carries a charter.
-   */
-  mailbox?: { id: string; charter: string; members: readonly string[] };
-  /**
    * Control only: build the prompt without the task the manager handed over,
    * as the builder did before it led with it. The red state of "a run is
    * handed the work a person approved".
@@ -305,8 +318,7 @@ export interface ImplementPhaseOptions {
  * Build the implement phase.
  *
  * @param options `seatOf` to load the run's worker, `requireAcceptance` to add
- *   the brief's condition to the done-condition, and `mailbox` to hand member
- *   seats its charter. See {@link ImplementPhaseOptions}.
+ *   the brief's condition to the done-condition. See {@link ImplementPhaseOptions}.
  * @returns The phase spec to hand the coder kind.
  */
 export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec {
@@ -364,3 +376,66 @@ export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec 
   };
 }
 
+
+/** The phase segment of an answer task's run record: a task a conversation filed with no `issue` or `phase`. */
+export const ANSWER_PHASE = "answer";
+
+/** What the answer phase is built from. */
+export interface AnswerPhaseOptions {
+  /** How a run loads the worker its session names: `seatOf(installation, CODER_KIND)`. */
+  seatOf: SeatOf;
+}
+
+/**
+ * Compose an answer task's prompt: the task first, then the woken worker's
+ * own instructions, brief and conventions, then what the run owes. An answer
+ * task is a person's ask from a conversation, most often a question about the
+ * code, so the run answers in its last message, and commits only when the
+ * task asks for a change. It can ask the person back through its question
+ * file, and the answers to what it asked come with the next attempt.
+ *
+ * @param run What the manager hands a prompt builder for this attempt.
+ * @param options How the run's worker is loaded.
+ * @returns The prompt.
+ */
+export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPhaseOptions): Promise<string> {
+  const { seat } = await seatSections(run, options.seatOf);
+  return [
+    ...taskSection(run.task),
+    ...seat,
+    `# Where and how to work`,
+    ``,
+    `Task ${run.issue}, attempt ${run.attempt}.`,
+    `Work in ${run.workspacePath}.`,
+    `Answer in your last message: it is what the person who asked reads. Commit only if the ` +
+      `task asks for a change.`,
+    `If you can't go on without the person deciding something, write your question to ` +
+      `${run.askMarkerPath} and stop.`,
+    ...(run.answers.length === 0
+      ? []
+      : [
+          "",
+          `# Answers to your questions`,
+          "",
+          ...run.answers.map((answered) => `You asked: ${answered.question}\nThey answered: ${answered.answer}`),
+        ]),
+    ...(run.feedback === undefined ? [] : ["", `# Why the last attempt stopped`, "", run.feedback]),
+  ].join("\n");
+}
+
+/**
+ * Build the answer phase: the phase of a task that names no `issue` and no
+ * `phase`. Done means the run didn't stop at its limit and ended with an
+ * answer; a commit is reported in the output, never required.
+ *
+ * @param options How the run's worker is loaded.
+ * @returns The phase spec for the answer manager.
+ */
+export function defineAnswerPhase(options: AnswerPhaseOptions): PhaseSpec {
+  return {
+    phase: ANSWER_PHASE,
+    buildPrompt: (run: PromptRunContext) => buildAnswerPrompt(run, options),
+    isDone: (context: CompletionRunContext) =>
+      context.stopReport !== "stopped-at-limit" && (context.answer ?? "").trim().length > 0,
+  };
+}

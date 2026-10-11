@@ -53,7 +53,6 @@ import { runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts
 import { LAB_TREE, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { BASE_REF, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
-import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 stripIntentOverrides();
 
@@ -61,7 +60,6 @@ stripIntentOverrides();
 const ASSIGNED_SEAT = "eng.coder";
 const COORDINATOR_SEAT = "eng.em";
 const ROW = { issue: "greeting-module", goal: "Add a greeting module to the repository." };
-const TASK_ID = `${ROW.issue}--${PHASE}`;
 
 /**
  * The tokens the prompt must carry, and the file each one lives in.
@@ -170,7 +168,7 @@ await runGoal(async (failures) => {
     const deadline = Date.now() + SETTLE_TIMEOUT_MS;
     let row: Task | undefined;
     while (Date.now() < deadline) {
-      row = await lab.row(TASK_ID);
+      row = await lab.featureRow(ROW.issue);
       if (row !== undefined && row.status !== "in_progress" && row.status !== "pending") break;
       await sleep(1_000);
     }

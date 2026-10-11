@@ -32,6 +32,36 @@ open the run row  →  build the prompt, take the checkout  →  run the harness
 
 **Settle or re-queue.** A run that terminated normally goes on to the phase's completion check, including one that reports `stopped-at-limit`. Pass the check and the row completes. Asked a question, the row parks. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
 
+## Running tasks from more than one board
+
+A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
+
+Give the manager `ledgers` instead. It's a function that finds a board by the id and partition the task's claim names, and returns `undefined` for any board the worker shouldn't read:
+
+```ts
+import { harnessManager } from "@flow-state-dev/harness-manager";
+import { conversationLedgers } from "@flow-state-dev/workforce";
+
+const answering = harnessManager({
+  ledgers: conversationLedgers,
+  tenant: undefined,
+  phase: answerPhase(),
+  workspace,
+  runTimeoutMs: 30 * 60_000,
+  harness,
+});
+```
+
+`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the person the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and that board's rows run exactly as before.
+
+A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made.
+
+Two things work differently for a task from a conversation's board. A run refused before it starts (no project, a remote the host doesn't allow) fails the task for good, so the conversation hears why. On a fixed board it's cancelled, as before. And a question the run asks parks the task the way the conversation parks any task: the person answers in the conversation, and the run's next attempt gets the answer in its prompt.
+
+You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the person, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
+
+A manager built with `ledgers` alone has no `messageDoor`, since that door reads one board's rows. To let a person send a message into a running run, build the door with `harnessMessageDoor` and tell it which boards the calling session's run may be on. The package README's [One door for runs from more than one board](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#one-door-for-runs-from-more-than-one-board) has the setup.
+
 ## Choosing the harness
 
 The harness is a slot. You pass a factory; the manager calls it once and hands it three things.
@@ -205,7 +235,8 @@ The package has two entry points, and the difference is what it promises to keep
 stable.
 
 `@flow-state-dev/harness-manager` is the supported host API: everything above,
-plus the pieces you need around it: `harnessManager` and its options, `PhaseSpec`
+plus the pieces you need around it: `harnessManager` and its options,
+`harnessMessageDoor`, `PhaseSpec`
 and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing

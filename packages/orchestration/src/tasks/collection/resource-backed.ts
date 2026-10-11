@@ -782,7 +782,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // `options` must reach BOTH branches — see the state backing's
       // `fail` for why the status-blind retry predicate makes this the most
       // likely place to ship a partial fix.
-      const candidateRef = mirror.get(id);
+      // `noRetry`: a failure no retry can change skips the retry route.
+      const candidateRef = options?.noRetry === true ? undefined : mirror.get(id);
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
         if (routeFailure(current as Task, () => 0, undefined).action === "retry") {
@@ -1041,6 +1042,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async clearResumeOwed(id) {
       return patchRef(id, "resume_settled", (task) =>
         task.resumeOwed === true ? { resumeOwed: undefined } : undefined
+      );
+    },
+
+    async markCancelOwed(id) {
+      return patchRef(id, "cancel_owed", (task) =>
+        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+          ? { cancelOwed: true }
+          : undefined
       );
     },
 
