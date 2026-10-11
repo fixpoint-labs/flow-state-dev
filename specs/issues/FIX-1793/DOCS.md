@@ -200,12 +200,12 @@ on this page.
 
 And under the table:
 
-> **Opening a workstream.** Open one from its project and it comes with a coordinator of its own:
-> a new worker on your roster, copied from the standard workstream coordinator, that leads
-> it. Each workstream gets its own, so changing one coordinator's instructions or delegates
-> changes only its workstream. Nobody else sees it on their roster. It stays when you mark the
-> workstream done, so you can pick the workstream up again; fire it from your roster like any
-> worker once you no longer need it.
+> **Opening a workstream.** Ask your project coordinator, in the project's Stream tab, for work
+> none of your workstreams there covers. It opens a workstream for it, led by the worker on your
+> roster whose description fits, such as your engineering manager for a feature, and hands your
+> ask to it. The ask stays in the workstream's conversation as its brief. One worker can lead
+> several of your workstreams, with a separate conversation and board for each. When nobody on
+> your roster does the work, the coordinator says so; ask your chief of staff to hire someone.
 >
 > In your own app, `openWorkstream` takes whichever lead you name. See
 > [Projects](../workforce/projects.md#workstreams).

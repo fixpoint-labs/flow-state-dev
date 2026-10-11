@@ -81,3 +81,25 @@ skipped (FIX-1802 BR-9), and leg c would fail.
 | PLAN's implement-time check that the coordinator flow takes a delegated post | **Removed**: settled, it doesn't | The specs on `main` answer it | The check that the DevTeam doesn't keep `agent` for standard workers |
 | V8a | **Amended**: a post handed to the new coordinator lands in its workstream session | It is what failed | Its other legs |
 | DOCS: a workstream session is "usually a coordinator" | **Amended**: usually a worker with delegates it files work for | The same finding | — |
+
+<a name="amendment-session-not-worker"></a>
+## Amended after merge: a workstream is a session on an existing worker (2026-10-11)
+
+**The decision.** On 2026-10-11 the product owner reversed [D2](DECISIONS.md#d2), recorded as
+[D3](DECISIONS.md#d3). A workstream is a session on a worker already on the roster, and the
+person's project coordinator opens it. It came up because FIX-1797's leg b5 needs Alice to open
+`feature` with the EM as lead through the app, and Shift Manager could make only a forked
+coordinator a lead. P1 to P4 had merged; the delegate records per workstream (BR-21a) and the
+session per workstream (S3) already held, so this removes code and adds one tool to a worker.
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| D2, each workstream in Shift Manager gets its own new coordinator | **Superseded** by D3 | The forks start identical and nothing edits them; one worker already leads many workstreams, a session each | D2's text, marked superseded |
+| S8's open form, the fork, `openWorkstreamWithCoordinator`, `workstreamCoordinatorId` | **Removed** | A coordinator opens a workstream, not a form (D3) | S3's `openWorkstream`, which still takes a lead, and every rule it runs |
+| S9's standard workstream coordinator and the setup's `workstreamCoordinator` | **Removed** | Nothing forks it | The project coordinator and the chief of staff's tools |
+| The project coordinator's "Don't open a workstream for them" | **Amended**: it gains `openWorkstream`, picks a lead from the roster, and hands the ask on (BR-38, BR-39) | D3 | `readProject`, its delegates and `handOff` |
+| BR-35 to BR-37, V8a, and the failure-taxonomy line on a worker at a coordinator's id | **Removed**, IDs kept and struck | They governed the fork | BR-7 to BR-17, BR-21a, BR-21b |
+| Shift Manager's Tasks view keying a workstream session by its worker | **Amended** (BR-40, FIX-1877) | Two workstreams with one lead are now the usual shape | By-worker and by-state groupings |
+| DOCS, "Opening a workstream" in Shift Manager's overview | **Amended**: you ask your project coordinator | Reader-facing | The Projects page: an app's `openWorkstream` names its lead |
+| Follow-ups: a lead choice in the open form; the chief of staff's default lead | **Removed** | No form and no default remain | — |
+| — | **Added** follow-ups: a coordinator-written skill for one workstream session; opening a workstream when a project-level task is picked up | The product owner's two routes, built when needed | — |
