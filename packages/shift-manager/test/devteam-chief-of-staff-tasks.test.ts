@@ -556,6 +556,9 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(stub.runs.length).toBeGreaterThan(0);
     // Every attempt was the implement phase's: its prompt names the row and asks for a commit.
     for (const run of stub.runs) expect(run.prompt).toMatch(/\nRow task_\w+, phase implement, attempt \d/);
+    // The row's id is the board's, so the issue the filer named is rendered on its own:
+    // without it the coder is told which row it holds and never which issue.
+    for (const run of stub.runs) expect(run.prompt).toContain("\nIssue greeting.");
   });
 
   it("completes a conversation's feature task once its run commits", async () => {

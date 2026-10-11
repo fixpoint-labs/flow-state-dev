@@ -87,6 +87,7 @@ export async function buildSeatPrompt(
     `# Where and how to work`,
     ``,
     `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
+    ...issueLine(run),
     `Work in ${run.workspacePath}, on branch ${run.branch}.`,
     options.requireAcceptance === true
       ? `Commit your work. The task is done when this branch carries a commit its base does not ` +
@@ -166,10 +167,21 @@ function cappedJson(value: unknown): string {
 }
 
 /**
+ * The issue the row's payload names, when the run's row id is not it: a
+ * board that mints its own task ids runs a feature row under the minted id,
+ * so without this line the prompt names the row and never the issue.
+ */
+function issueLine(run: PromptRunContext): string[] {
+  const issue = (run.task.input as { issue?: unknown } | undefined)?.issue;
+  return typeof issue === "string" && issue !== run.issue ? [`Issue ${issue}.`] : [];
+}
+
+/**
  * The task's section, as the board packed it: the goal, then what the row adds.
  *
  * `input` is deliberately not rendered: this team's rows carry only
- * `{ issue, phase }`, which the run's terms already name.
+ * `{ issue, phase }`, which the run's terms already name ({@link issueLine}
+ * covers the one case where they don't).
  */
 function taskSection(task: PromptRunContext["task"]): string[] {
   return [
