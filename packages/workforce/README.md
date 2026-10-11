@@ -1970,6 +1970,10 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   oldest first, without reports, and the progress worked out from them at read (`projectProgress`),
   never stored. A browser reads the same entries through the resource routes and parses each with
   `parseWorkstreamEntry` from `./browser`.
+- **`listProjects {}`** returns `{ projects }`: the projects the caller is a member of, each as
+  `{ visibility, id, title, repository }` (`repository` is `null` when it has none). Shared ones
+  come first, then the caller's private ones, each by id. A shared project the caller isn't a member
+  of is left out, though its row is readable in the organization.
 - **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
   returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
@@ -2431,7 +2435,7 @@ the root exports, and reaches no Node built-in.
 | `mailboxFlow` | The built-in mailbox kind, seeded by `mailboxInstances` when you register none. |
 | `mailboxInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in mailbox kind. Register these. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
-| `defineProjectBlocks()` | Returns `{ createProject, setRepository, readProject, readProjectFiles, actions }`. See [Projects](#projects). |
+| `defineProjectBlocks()` | Returns `{ createProject, setRepository, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
 | `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |

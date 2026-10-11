@@ -860,6 +860,14 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       );
     },
 
+    async markCancelOwed(id) {
+      return patchOne(id, "cancel_owed", (task) =>
+        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+          ? { cancelOwed: true }
+          : undefined
+      );
+    },
+
     get(id) {
       const task = ownTask(readTasks(), id);
       return task === undefined ? undefined : wrap(task);

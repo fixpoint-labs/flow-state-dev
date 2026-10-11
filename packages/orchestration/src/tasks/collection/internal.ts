@@ -1089,6 +1089,9 @@ function recordEnding<TInput, TOutput>(
  * retries, a cancel, the cancel its ask's timeout writes, the board's
  * abandonment settle) reaches it in the same write as the ending. A retried
  * failure re-pends the row, which is not an ending, and writes nothing.
+ *
+ * A row that owes its cancel (`Task.cancelOwed`, FIX-1844) has an ask that is
+ * already over: its ending pays that debt and owes no resume, as no turn waits.
  */
 function recordResumeOwed<TInput, TOutput>(
   prev: Task<TInput, TOutput>,
@@ -1097,6 +1100,7 @@ function recordResumeOwed<TInput, TOutput>(
   if (prev.ask == null || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
     return next;
   }
+  if (prev.cancelOwed === true) return { ...next, cancelOwed: undefined };
   return { ...next, resumeOwed: true };
 }
 

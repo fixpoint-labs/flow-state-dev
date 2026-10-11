@@ -39,7 +39,7 @@ import { projectAt, projectRowsAt, PROJECT_ROW_RESOURCES } from "./project-addre
 import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
-import { readProject } from "./project-read";
+import { listProjects, readProject } from "./project-read";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
 
@@ -97,11 +97,13 @@ export type ProjectBlocks = {
   createProject: typeof writeProject;
   setRepository: typeof setRepository;
   readProject: typeof readProject;
+  listProjects: typeof listProjects;
   readProjectFiles: typeof readProjectFiles;
   actions: {
     createProject: ActionConfig;
     setRepository: ActionConfig;
     readProject: ActionConfig;
+    listProjects: ActionConfig;
     readProjectFiles: ActionConfig;
   };
 };
@@ -245,7 +247,8 @@ const setRepository = handler({
 });
 
 /**
- * Build the project writes, the project read and the project files read.
+ * Build the project writes, the project read, the caller's project list and
+ * the project files read.
  *
  * @example
  *   const projects = defineProjectBlocks();
@@ -257,6 +260,7 @@ export function defineProjectBlocks(): ProjectBlocks {
     createProject,
     setRepository,
     readProject,
+    listProjects,
     readProjectFiles,
     actions: {
       createProject: {
@@ -272,6 +276,11 @@ export function defineProjectBlocks(): ProjectBlocks {
         block: readProject,
         description:
           "Read a project by its address: its row, every workstream's entry, and its progress worked out from them."
+      },
+      listProjects: {
+        block: listProjects,
+        description:
+          "List the projects the caller is a member of: each one's visibility, id, title and repository (null when it has none)."
       },
       readProjectFiles: {
         block: readProjectFiles,

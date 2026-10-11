@@ -23,7 +23,8 @@
 **Controls:** scratch patches to Workforce modules, applied as the Lab loads them (`goals/lib/module-patch.mjs`), printed by the run, and refused when they never reached the code.
 
 - `GOAL_CONTROL=new-session`: every attempt and every follow-up is handed to a fresh session (`conversation-board/board.ts`, the hand-off's session key). Must fail **`a:names-ticket`** and **`c:names-ticket`**.
-- `GOAL_CONTROL=drop-answer`: the re-entered turn is handed the task again, not the answer (`conversation-board/task-entry.ts`). Must fail **`a:names-region`**.
+- `GOAL_CONTROL=drop-answer`: the app's answer re-queues the task in its session, but never reaches the re-entered turn: the turn is handed an answer naming `me-central`, a region the run never picks, in its place (`conversation-board/task-entry.ts`). Must fail **`a:names-region`** and nothing else: the turn reads an answered question and finishes as the plain run does, so only the region differs. It shows the region in the output comes from the answer the app sent and no other path.
+  The control used to hand the turn the brief again, with no answer. The model then either ended the turn still waiting (only `a:names-region` red) or asked again, drawing a second ticket and parking a second time (eleven tags red), so what it reddened depended on the model (FIX-1867).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -31,3 +32,5 @@
 | 2026-10-10 | 566291ccc | openai/gpt-5.4-mini (vercel gateway) | PASS | Attempt 1 of 1. a: parked, answered `eu-north`, completed 1 s later in the session that parked, output "Ticket TCK-161E8C, region eu-north.", attempts 2 with 1 re-entry. b: "TCK-161E8C". c: the follow-up completed in the same session, named the ticket; `drawTicket` ran once |
 | 2026-10-10 | 566291ccc | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `new-session`, expected) | `a:names-ticket` and `c:names-ticket`: the re-entry drew a second ticket in a fresh session, the follow-up a third; `a:same-session`, `b:names-ticket`, `c:same-session`, `c:one-draw` red with them |
 | 2026-10-10 | 566291ccc | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `drop-answer`, expected) | `a:names-region` alone: "I drew ticket TCK-E0AF77 and am waiting for the deployment region." |
+| 2026-10-10 | d484d3955 + FIX-1867 | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `drop-answer`, expected) | Four runs, each red at `a:names-region` alone, each handed `me-central` in place of the answer: eu-north → "Ticket TCK-5D2118 will deploy to me-central."; eu-north → "Ticket TCK-E52832, region me-central."; ap-south → "Ticket TCK-5FE299: deploy billing service to me-central."; us-east → "Ticket TCK-1739CA; region me-central.". Every other tag green: one park, one draw, completed in the session that parked, b and c named the ticket |
+| 2026-10-10 | d484d3955 + FIX-1867 | openai/gpt-5.4-mini (vercel gateway) | PASS | Attempt 1 of 3. a: answered `us-east`, completed 1 s later in the session that parked: "Ticket TCK-E10420, region us-east.", attempts 2 with 1 re-entry. b and c named the ticket; `drawTicket` ran once |

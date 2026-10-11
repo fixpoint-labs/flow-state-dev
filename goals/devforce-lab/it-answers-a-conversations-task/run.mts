@@ -52,9 +52,9 @@ import { dirname, join } from "node:path";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { DEFAULT_MODEL, gatewayModel, goalAttempts, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
-import { LAB_USER_ID, LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
@@ -76,8 +76,6 @@ interface Fixture {
   workstream: { id: string; title: string };
   strangersProject: { id: string; title: string };
   ask: string;
-  /** What the person answers when the coordinator asks which project. */
-  whichProject: string;
   notFound: string;
   offPoint: string;
 }
@@ -316,8 +314,6 @@ async function quiet(lab: Lab): Promise<void> {
 interface Filed {
   /** How long the filing turn took. */
   turnMs: number;
-  /** How many turns the person sent before a task was filed. */
-  turns: number;
   /** The task as the conversation lists it, once settled, or its last state. */
   task: Record<string, any> | undefined;
   /** The conversation's lines that name the task, with who said them. */
@@ -336,32 +332,21 @@ interface Filed {
 
 /**
  * Send one turn to a conversation, wait for the task it files to settle, and
- * read back what the conversation heard. With `answer`, a turn that files
- * nothing (a coordinator asking which project) gets that answer as the
- * person's next turn.
+ * read back what the conversation heard.
  */
-async function fileFrom(lab: Lab, flow: string, sessionId: string, message: string, answer?: string): Promise<Filed> {
+async function fileFrom(lab: Lab, flow: string, sessionId: string, message: string): Promise<Filed> {
   const http = door(lab);
   const runsBefore = stub.runs.length;
   const listTasks = async (): Promise<Array<Record<string, any>>> => (await http.act(flow, sessionId, LIST_TASKS, {})).output?.tasks ?? [];
   const filedBefore = new Set((await listTasks()).map((t) => t.id));
-  const pending = answer === undefined ? [] : [answer];
-  let turn = await http.act(flow, sessionId, "run", { message });
-  let turns = 1;
+  const turn = await http.act(flow, sessionId, "run", { message });
   let task: Record<string, any> | undefined;
-  let turnEnded = Date.now();
-  for (let deadline = turnEnded + LINE_BUDGET_MS; Date.now() < deadline; await sleep(200)) {
+  const turnEnded = Date.now();
+  for (const deadline = turnEnded + LINE_BUDGET_MS; Date.now() < deadline; await sleep(200)) {
     task = (await listTasks()).find((t) => !filedBefore.has(t.id));
     if (task !== undefined && SETTLED.has(task.status)) break;
-    if (task === undefined && Date.now() - turnEnded > 5_000) {
-      const next = pending.shift();
-      // A filing the turn refused files nothing.
-      if (next === undefined) break;
-      turn = await http.act(flow, sessionId, "run", { message: next });
-      turns += 1;
-      turnEnded = Date.now();
-      deadline = turnEnded + LINE_BUDGET_MS;
-    }
+    // A filing the turn refused, or a turn that asked instead, files nothing.
+    if (task === undefined && Date.now() - turnEnded > 5_000) break;
   }
   await quiet(lab);
   // The worker's line about the task, which is delivered after the task settles.
@@ -378,7 +363,6 @@ async function fileFrom(lab: Lab, flow: string, sessionId: string, message: stri
   const record = Object.entries(records).find(([key]) => key.includes(`/${task!.id}/`))?.[1] as Record<string, any> | undefined;
   return {
     turnMs: turn.ms,
-    turns,
     task,
     named,
     all,
@@ -633,21 +617,19 @@ await runGoal(async (failures) => {
         commitToRemote(storefront.path, fixture.markerFile, `${marker}\n`);
 
         /**
-         * The ask, in a new conversation, until the coordinator files a task
-         * naming storefront: a real model asks or misnames run to run, so its
-         * filing is retried, under a control too, since every control perturbs
-         * what happens after the filing. What happens to a task once filed is
-         * graded on the first one filed, never retried.
+         * The ask, in a new conversation, once: the coordinator must file a
+         * task naming storefront on this one turn. Never retried, under a
+         * control too.
          */
         const fileLive = async (leg: string): Promise<Filed | undefined> => {
-          const attempts = goalAttempts();
-          for (let attempt = 1; attempt <= attempts; attempt += 1) {
-            const filed = await fileFrom(lab, COORDINATOR_FLOW, await http.open(COORDINATOR_FLOW, { workerId: CHIEF }), fixture.ask, fixture.whichProject);
-            const row = filed.task === undefined ? undefined : await storedTask(lab, filed.task.id);
-            if (row?.assignee === CODER && row.input?.project?.visibility === "shared" && row.input.project.id === "storefront") return filed;
-            console.log(`  ${leg} attempt ${attempt}: filed ${show(row && { assignee: row.assignee, input: row.input })}; the coordinator said ${show(filed.all.at(-1)?.text, 200)}`);
-          }
-          note(`${leg}:names-storefront`, `in ${attempts} conversation(s) the coordinator never filed a task for ${CODER} naming storefront`);
+          const filed = await fileFrom(lab, COORDINATOR_FLOW, await http.open(COORDINATOR_FLOW, { workerId: CHIEF }), fixture.ask);
+          const row = filed.task === undefined ? undefined : await storedTask(lab, filed.task.id);
+          if (row?.assignee === CODER && row.input?.project?.visibility === "shared" && row.input.project.id === "storefront") return filed;
+          note(
+            `${leg}:names-storefront`,
+            `the coordinator filed ${show(row && { assignee: row.assignee, input: row.input })}, not a task for ${CODER} naming storefront; ` +
+              `it said ${show(filed.all.at(-1)?.text, 200)}`,
+          );
           return undefined;
         };
 
@@ -659,8 +641,7 @@ await runGoal(async (failures) => {
             gradeAnswered("d", d, marker, note);
             if (failures.length === before) {
               evidence.push(
-                `d: "${fixture.ask}" filed a task for ${CODER} naming storefront ` +
-                  `(${d.turns === 1 ? "on the first turn" : `once the person answered "${fixture.whichProject}"`}), ` +
+                `d: "${fixture.ask}" filed a task for ${CODER} naming storefront on the first turn, ` +
                   `and one completed line carries its marker, judged by Jev (${show(verdicts.at(-1) && { choice: verdicts.at(-1)!.choice, confidence: verdicts.at(-1)!.confidence })})`,
               );
             }
