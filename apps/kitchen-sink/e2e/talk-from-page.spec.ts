@@ -245,6 +245,19 @@ test("a line posted to support.help shows as devuser, and is still there after a
   await expect(kept.getByTestId("coordinator-line-label")).toHaveText("devuser");
 });
 
+/**
+ * The reply to `message` in a worker conversation: the assistant message drawn
+ * in the same request as it. "Talk" reopens the person's one conversation with
+ * the worker, and the scripted reply is the same text every time, so a reply
+ * matched on its text alone also matches every earlier turn's.
+ */
+const replyTo = (conversation: Locator, message: string): Locator =>
+  conversation
+    .locator("[data-request-id]")
+    .filter({ has: conversation.page().locator('[data-message-role="user"]').filter({ hasText: message }) })
+    .locator('[data-message-role="assistant"]')
+    .filter({ hasText: "[reply:talk-to-seat]" });
+
 test("a new support.devices conversation keeps the message and the reply across a reload", async ({
   page,
   consoleErrors: _consoleErrors,
@@ -259,7 +272,7 @@ test("a new support.devices conversation keeps the message and the reply across 
   // Read in the conversation: the live view can draw the message while the
   // composer still holds its text, until the server has taken the send.
   await expect(panel.getByRole("log").getByText(message, { exact: true })).toBeVisible();
-  await expect(panel.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
+  await expect(replyTo(panel, message)).toBeVisible();
 
   // The conversation that was opened, so the reload can come back to it. It
   // is a session the server lists as the person's with the worker.
@@ -272,7 +285,7 @@ test("a new support.devices conversation keeps the message and the reply across 
   await (await openWorkerCopy(page)).locator(`[data-session-id="${sessionId}"]`).click();
   const kept = picked(page);
   await expect(kept.getByText(message, { exact: true })).toBeVisible();
-  await expect(kept.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
+  await expect(replyTo(kept, message)).toBeVisible();
 });
 
 test("a failed Talk shows in the worker's roster row, opens nothing, and can be pressed again", async ({
