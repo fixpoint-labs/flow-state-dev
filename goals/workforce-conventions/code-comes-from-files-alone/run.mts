@@ -1,9 +1,15 @@
 /**
  * Goal check — a workforce's code comes from files alone.
  *
- * One leg, on a fixture host that carries a custom worker kind. The host
- * reaches the kind through a `workforce.gen.ts` that `fsdev gen` wrote, and
- * through nothing else.
+ * Three legs. Leg a builds kitchen-sink with one planted block; legs d and e
+ * run a fixture host that carries a custom worker kind and reaches it through
+ * a `workforce.gen.ts` that `fsdev gen` wrote, and through nothing else.
+ *
+ *   a  the APP'S BUILD. A block file named with a fresh token is planted in
+ *      kitchen-sink's `workforce/blocks/`; the app's own `fsdev gen` and `next
+ *      build` run, and the token must be in compiled chunks under `.next`,
+ *      beside the hand-wired flows as the probe's positive control. The plant
+ *      and every file the build rewrites are restored when the leg ends.
  *
  *   d  the KIND, on the fixture host. Two workers sit on ONE custom kind,
  *      `desk-clerk`, and differ only in the `desk:` their own `WORKER.md`
@@ -20,21 +26,22 @@
  *      worker must still answer with its own file's desk, which it can only do
  *      if the generated module's static imports were carried into the bundle.
  *
- * Legs a to c ran on kitchen-sink's one piece of workforce code, the
- * `escalate` tool block. The escalation feature was removed (FIX-1792), the
- * app carries no workforce code now, and the three legs went with it; leg e
- * keeps their production-bundle guarantee on the fixture host. The letters
- * stay so the verdict log reads straight.
+ * Legs b and c ran on kitchen-sink's `escalate` tool block, which was removed
+ * with the escalation feature (FIX-1792); with no workforce code in the app
+ * they have nothing to grade. The letters stay so the verdict log reads
+ * straight.
  *
  * Model-free. See goal.md for the contract.
  *
  * Run:      pnpm tsx goals/workforce-conventions/code-comes-from-files-alone/run.mts
  * Controls: GOAL_CONTROL=shared-settings (this runner hires both fixture workers on the first worker's settings: must FAIL at d, and nothing else)
+ *           GOAL_CONTROL=stripped-import (the planted block's import is removed from kitchen-sink's generated module before next build: must FAIL at a, and nothing else)
  *           GOAL_CONTROL=runtime-scan (the bundle's host finds kinds by scanning flows/workers/ at run time: must FAIL at e, and nothing else)
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -63,6 +70,9 @@ const EXPECTED: Record<string, string[]> = {
   // Read by this runner: the bundle's host finds its kinds by scanning a folder at run time
   // instead of through the generated module's static imports.
   "runtime-scan": ["e"],
+  // Read by this runner: after `fsdev gen` writes the planted block onto kitchen-sink's generated
+  // module, its import and entry are stripped before `next build` runs.
+  "stripped-import": ["a"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -130,11 +140,119 @@ function declaredDesk(seatId: string): string {
   return desk;
 }
 
+
+// ---- the app, for leg (a) ----------------------------------------------------
+const KITCHEN_SINK = join(REPO_ROOT, "apps", "kitchen-sink");
+const NEXT_DIR = join(KITCHEN_SINK, ".next");
+const APP_GEN = join(KITCHEN_SINK, "workforce", "workforce.gen.ts");
+const APP_BLOCKS = join(KITCHEN_SINK, "workforce", "blocks");
+/** Files a Next build or this leg rewrites, restored byte for byte when the leg ends. */
+const APP_RESTORE = [APP_GEN, join(KITCHEN_SINK, "next-env.d.ts")];
+/** Flows kitchen-sink wires by hand: the probe must find these, or a 0 for the block means nothing. */
+const HAND_WIRED = ["chat-agent", "rich-text-component", "weekly-digest"];
+
+/** Every file under `dir`, skipping the trees named by `skip`. */
+function walk(dir: string, skip: (name: string) => boolean, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    if (skip(name)) continue;
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) walk(path, skip, out);
+    else out.push(path);
+  }
+  return out;
+}
+
+/**
+ * How many COMPILED chunks under `.next` name `token`.
+ *
+ * `.js` only, and that exclusion is the leg: `.next` also holds `*.nft.json`
+ * file-trace manifests, which list the SOURCE `.ts` files a deployment must
+ * carry. A module that is merely typechecked appears in those while appearing
+ * in no bundled code, so counting them would score the failure this leg exists
+ * to catch as a pass.
+ */
+function chunksNaming(token: string): number {
+  return walk(NEXT_DIR, (name) => name === "node_modules" || name === "cache")
+    .filter((path) => path.endsWith(".js"))
+    .filter((path) => readFileSync(path, "utf8").includes(token)).length;
+}
+
 // ---------------------------------------------------------------------------
 
 await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
+
+  // ---- (a) the app's own production build -----------------------------------
+  // A block file is dropped into kitchen-sink's `workforce/blocks/` and the
+  // app's own build runs: `fsdev gen` puts it on the generated module, and
+  // `next build` bundles the app from its real entry points. The block's
+  // fresh name must then be in compiled chunks, which it can only be if the
+  // app's entry points reach `workforce.gen.ts` and its imports were bundled.
+  // Everything the leg writes is restored when it ends, pass or fail.
+  const token = `code-from-files-probe-${randomBytes(4).toString("hex")}`;
+  // The file, the map key and the block's own name must agree (the tool catalog refuses otherwise).
+  const plant = join(APP_BLOCKS, `${token}.ts`);
+  const hadBlocksDir = existsSync(APP_BLOCKS);
+  const saved = APP_RESTORE.map((path) => [path, readFileSync(path)] as const);
+  const restoreApp = () => {
+    rmSync(plant, { force: true });
+    if (!hadBlocksDir) rmSync(APP_BLOCKS, { recursive: true, force: true });
+    for (const [path, bytes] of saved) writeFileSync(path, bytes);
+  };
+  process.once("SIGINT", () => {
+    restoreApp();
+    process.exit(130);
+  });
+  try {
+    mkdirSync(APP_BLOCKS, { recursive: true });
+    writeFileSync(
+      plant,
+      [
+        `// Planted by the code-comes-from-files-alone goal check for one build; removed when it ends.`,
+        `import { handler } from "@flow-state-dev/core";`,
+        `import { z } from "zod";`,
+        ``,
+        `export default handler({`,
+        `  name: ${JSON.stringify(token)},`,
+        `  inputSchema: z.object({}),`,
+        `  outputSchema: z.object({ probe: z.string() }),`,
+        `  execute: () => ({ probe: ${JSON.stringify(token)} }),`,
+        `});`,
+        ``,
+      ].join("\n"),
+    );
+    execFileSync("pnpm", ["fsdev", "gen"], { cwd: KITCHEN_SINK, stdio: "pipe" });
+    if (!readFileSync(APP_GEN, "utf8").includes(`./blocks/${token}`)) {
+      fail("a", `fsdev gen did not put the planted block on kitchen-sink's workforce.gen.ts`);
+    }
+    if (CONTROL === "stripped-import") {
+      const gen = readFileSync(APP_GEN, "utf8")
+        .split("\n")
+        .filter((line) => !line.includes(token) && !line.includes(token.replaceAll("-", "_")))
+        .join("\n");
+      writeFileSync(APP_GEN, gen);
+    }
+    // Built here rather than assumed, so the leg cannot pass against a `.next`
+    // left by an earlier build.
+    execFileSync("pnpm", ["exec", "next", "build"], { cwd: KITCHEN_SINK, stdio: "pipe" });
+    const control = HAND_WIRED.map((flow) => [flow, chunksNaming(flow)] as const);
+    const blind = control.filter(([, count]) => count === 0).map(([flow]) => flow);
+    if (blind.length > 0) {
+      fail("a", `the build-output probe is blind: the hand-wired ${blind.join(", ")} appear in 0 compiled chunks, so a 0 for the block would not mean it was left out`);
+    } else {
+      const count = chunksNaming(token);
+      if (count === 0) {
+        fail("a", `the planted block's name "${token}" appears in 0 compiled chunks under .next: the generated module's imports never reached the app's bundle`);
+      }
+      evidence.push(`kitchen-sink's own build, compiled chunks naming each: ${[...control, ["planted block", count] as const].map(([name, n]) => `${name}=${n}`).join(", ")}`);
+    }
+  } catch (err) {
+    const e = err as { stderr?: Buffer; message?: string };
+    fail("a", `the app's build did not complete: ${String(e.stderr ?? e.message ?? err).slice(-400)}`);
+  } finally {
+    restoreApp();
+  }
 
   // ---- (d) the kind, on the fixture host ------------------------------------
   // The generated module is the command's output for this tree, not a file
