@@ -223,5 +223,11 @@ left.
   ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)). P2 waits on FIX-1814, and V3 gains the
   must-test: each task tool once on the coordinator's turn.
   ([EVOLUTION.md](EVOLUTION.md#amendment-handoff))
+- **Amended after merge (FIX-1863, 2026-10-11)**: a best-fit coordinator now hears its filed
+  tasks end in its own turn, as a judgment coordinator does; only round robin and everyone show
+  the ending as a line (`coordinator-flow.ts`, the board's entries). DOCS.md's *Hearing how it
+  went* and PLAN S7 say so. Leg e's signal names both refusal codes a finished task gives:
+  `terminal_task_write_declined` for assign, cancel, update and answer, and
+  `illegal_status_transition` for complete, fail and block (`task-tools-capability.ts`).
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).
