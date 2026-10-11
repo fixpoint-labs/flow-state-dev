@@ -7,7 +7,7 @@ description: "A project is a body of work, private to one user or shared with th
 
 # Projects
 
-A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row created while the app runs, by your own code or by a worker acting for a person.
+A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a person.
 
 The work inside a project is split into **workstreams**. Each workstream has one owner and a lead worker from that owner's roster. Everyone who can read the project can read every workstream's entry, so anyone can see how the project is going. Only the owner can change their workstream or hand it work.
 

@@ -1,12 +1,12 @@
 /**
- * The Inventory tab's model: which of the organization's three inventory
- * collections a session's flow declares, and every row each one holds, read
- * through the production collection read.
+ * The Inventory tab's model: whether a session's flow declares the
+ * organization's inventory collection, and every row it holds, read through
+ * the production collection read.
  *
- * The DevTool takes no dependency on the package that defines these
- * collections. It finds them by their three published key patterns in the
- * session's resource manifest, and uses whatever ref the flow gave each one.
- * The patterns are the contract; a ref is only the name one flow chose.
+ * The DevTool takes no dependency on the package that defines the collection.
+ * It finds it by its published key pattern in the session's resource
+ * manifest, and uses whatever ref the flow gave it. The pattern is the
+ * contract; a ref is only the name one flow chose.
  *
  * Three outcomes per collection, kept apart on purpose because a reader must
  * never confuse them:
@@ -23,30 +23,28 @@
 import type { ResourceClient, ResourceManifest } from "@flow-state-dev/client";
 import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } from "@flow-state-dev/client";
 
-/** The three published key patterns, by the section each one fills. */
+/** The published key pattern, by the section it fills. */
 export const INVENTORY_PATTERNS = {
   seats: "inventory/seats/*",
-  mailboxes: "inventory/mailboxes/*",
-  memberships: "inventory/members/**",
 } as const;
 
-/** One of the three inventory collections. */
+/** An inventory collection. */
 export type InventoryCollection = keyof typeof INVENTORY_PATTERNS;
 
-/** The three, in the order the tab shows them. */
-export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["seats", "mailboxes", "memberships"];
+/** The collections, in the order the tab shows them. */
+export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["seats"];
 
 /** Where one collection sits on this session's flow: its ref, and whether the browser may read it. */
 export type InventoryDeclaration = { ref: string; readable: boolean };
 
-/** Each collection's declaration on this flow, or `undefined` when the flow does not declare it. */
+/** The collection's declaration on this flow, or `undefined` when the flow does not declare it. */
 export type InventoryDeclarations = Record<InventoryCollection, InventoryDeclaration | undefined>;
 
 /** Page size for every read — the collection route's maximum. */
 const INVENTORY_PAGE_SIZE = 200;
 
 /**
- * Find the three collections in a session's manifest, by pattern.
+ * Find the inventory collection in a session's manifest, by pattern.
  *
  * The manifest lists only collections with some client affordance, so one
  * declared with no browser read at all is indistinguishable here from one not
@@ -64,7 +62,7 @@ export function findInventoryCollections(manifest: ResourceManifest): InventoryD
   return found;
 }
 
-/** Whether the tab belongs on this session: any one of the three is readable. */
+/** Whether the tab belongs on this session: the inventory collection is readable. */
 export function hasReadableInventory(declarations: InventoryDeclarations): boolean {
   return INVENTORY_COLLECTIONS.some((name) => declarations[name]?.readable === true);
 }
@@ -131,10 +129,6 @@ export async function readEveryPage(
 
 /** A seat row as the tab shows it. */
 export type SeatRow = { id: string; kind: string | null };
-/** A mailbox row as the tab shows it. `members` is empty and `registeredAt` null on a row that predates them. */
-export type MailboxRow = { id: string; kind: string | null; members: string[]; registeredAt: string | null };
-/** A membership row as the tab shows it. */
-export type MembershipRow = { seatId: string; mailboxId: string };
 
 function field(row: unknown, key: string): unknown {
   return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
@@ -147,40 +141,4 @@ function text(value: unknown): string | null {
 /** A seat row's fields, as stored. A missing kind reads as unknown, never throws. */
 export function toSeatRow(row: unknown): SeatRow {
   return { id: text(field(row, "id")) ?? "", kind: text(field(row, "kind")) };
-}
-
-/**
- * A mailbox row's fields, as stored. A row written before `members` or
- * `openedAt` existed reads as no members and an unknown time (BP-030).
- */
-export function toMailboxRow(row: unknown): MailboxRow {
-  const members = field(row, "members");
-  return {
-    id: text(field(row, "id")) ?? "",
-    kind: text(field(row, "kind")),
-    members: Array.isArray(members) ? members.filter((m): m is string => typeof m === "string") : [],
-    registeredAt: text(field(row, "openedAt")),
-  };
-}
-
-/** A membership row's fields, as stored. */
-export function toMembershipRow(row: unknown): MembershipRow {
-  return { seatId: text(field(row, "seatId")) ?? "", mailboxId: text(field(row, "mailboxId")) ?? "" };
-}
-
-/**
- * The mailboxes each seat's membership rows name, keyed by seat id.
- *
- * Read off the membership collection alone. A mailbox row's own `members` is
- * never consulted, so when the two disagree the tab shows both and the
- * mismatch stays visible.
- */
-export function mailboxesBySeat(memberships: readonly MembershipRow[]): Map<string, string[]> {
-  const bySeat = new Map<string, string[]>();
-  for (const row of memberships) {
-    const mailboxes = bySeat.get(row.seatId) ?? [];
-    mailboxes.push(row.mailboxId);
-    bySeat.set(row.seatId, mailboxes);
-  }
-  return bySeat;
 }

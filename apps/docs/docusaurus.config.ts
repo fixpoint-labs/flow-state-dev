@@ -100,7 +100,11 @@ const config: Config = {
           },
           {
             from: "/docs/workforce/channels",
-            to: "/docs/workforce/mailboxes",
+            to: "/docs/workforce/coordinators",
+          },
+          {
+            from: "/docs/workforce/mailboxes",
+            to: "/docs/workforce/coordinators",
           },
         ],
       },

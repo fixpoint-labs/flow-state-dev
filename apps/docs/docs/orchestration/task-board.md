@@ -448,7 +448,7 @@ const board = taskBoard({
 
 When the function returns `undefined` or an empty string, the hand-over is refused with a `DispatchRefusedError` whose `refused` is `"flow-not-found"`, naming the assignee, and the attempt fails through the board's ordinary error path. A task with no assignee is refused the same way, since the fallback hands a task over by the name on it. A function that throws fails the attempt with its own error.
 
-Only a `task` dispatcher takes a function. An `internal` dispatcher given one throws when you build it. The flow the function returns is cross-flow, so `defineFlow` can't check it ahead of time; the entry named by `action` has to exist on whichever flow it returns, or the dispatch is refused `no-entry`. Workforce's worker lookup is one of these functions: see [Handing a row to the worker it names](../workforce/mailboxes.md#handing-a-row-to-the-worker-it-names).
+Only a `task` dispatcher takes a function. An `internal` dispatcher given one throws when you build it. The flow the function returns is cross-flow, so `defineFlow` can't check it ahead of time; the entry named by `action` has to exist on whichever flow it returns, or the dispatch is refused `no-entry`. Workforce's worker lookup supplies one: `createWorkerLookup({ installation }).flowKind` hands a task to the flow of the worker its `assignee` names, with `state` beside it naming that worker. A workforce coordinator, a worker that hands work to other workers called its delegates, keeps a board of its own for that: see [Handing out tasks](../workforce/coordinators.md#handing-out-tasks).
 
 ### A task entry served by many boards
 
@@ -939,23 +939,10 @@ The function is handed the running session's server-set identity, `{ sessionId, 
 
 The rows sit in the user's own storage, which every flow of theirs reads, even on a flow that keeps its other user state to itself with `isolateUserState`. Task ids on a partitioned ledger are a single path segment, with no `/`, and the collection doesn't take `maxInstances`.
 
-### A board a mailbox holds
-
-A [mailbox](../workforce/mailboxes.md) can keep a durable board of its own, declared in its `MAILBOX.md` rather than in TypeScript. The mailbox owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `mailboxBoard` and drains it like any other durable board.
-
-```ts
-import { mailboxBoard } from "@flow-state-dev/workforce";
-
-const followups = mailboxBoard("engineering.incidents", "followups");
-const board = taskBoard({ name: "followups", collection: followups, workers });
-```
-
-The collection is org-scoped, so its rows sit in the organization the mailbox runs in. The mailbox id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/mailboxes.md#holding-a-board).
-
 ## See also
 
 - [Configuration](./configuration) — every `taskBoard` field, including defaults.
-- [Mailboxes](../workforce/mailboxes.md#holding-a-board) — declaring a durable board on a mailbox in Markdown, and reaching it from a worker.
+- [Coordinators](../workforce/coordinators.md) — the board each conversation with a coordinator keeps, and filing a task on it.
 - [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
 - [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.

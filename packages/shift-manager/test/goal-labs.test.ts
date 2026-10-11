@@ -75,35 +75,10 @@ describe.each([
     }
   });
 
-  it("each workstream is exactly one declared mailbox, with its members", () => {
-    const { snapshot, roster } = opened;
-    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
-    expect(
-      snapshot.inventory.value.workstreams.map((w) => ({ id: w.id, members: [...w.members].sort() })).sort((a, b) =>
-        a.id.localeCompare(b.id),
-      ),
-    ).toEqual(
-      roster.mailboxes
-        .map((c) => ({ id: c.id, members: [...((c.declared.members as string[]) ?? [])].sort() }))
-        .sort((a, b) => a.id.localeCompare(b.id)),
-    );
-  });
-
-  it("each workstream's boards are exactly the boards its mailbox attaches", () => {
-    const { snapshot, roster } = opened;
-    for (const mailbox of roster.mailboxes) {
-      const boards = snapshot.boards[mailbox.id];
-      if (boards === undefined || !boards.ok) throw new Error(`boards of ${mailbox.id} did not load`);
-      const attached = ((mailbox.declared.boards as string[] | undefined) ?? []).map((name) => `${mailbox.id}.${name}`);
-      expect(boards.value.refs.sort()).toEqual(attached.sort());
-      for (const row of boards.value.rows) expect(attached).toContain(row.boardRef);
-    }
-  });
-
   // multi-seat-collab declares no board: the planner files on its own
   // conversation's, so its rows reach Shift Manager as that conversation's
-  // board, keyed by the conversation, and through no workstream.
-  it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board, and no workstream's", async () => {
+  // board, keyed by the conversation.
+  it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board", async () => {
     const { roster, clients } = opened;
     const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && w.declared.flow !== "coordinator");
     if (filer === undefined) throw new Error("the tree declares no worker that files for delegates");
@@ -127,8 +102,6 @@ describe.each([
     if (boards === undefined || !boards.ok) throw new Error(`the conversation's board did not load: ${JSON.stringify(boards)}`);
     expect(boards.value.refs).toEqual([`${conversation}.tasks`]);
     expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
-    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
-    expect(snapshot.inventory.value.workstreams).toEqual([]);
   }, 60_000);
 
   it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
@@ -213,7 +186,7 @@ describe("devteam: an approved task's run", () => {
 
     let last: BoardRow | undefined;
     const settled = await eventually<BoardRow>(async () => {
-      last = (await reader.readBoard(running.mailboxId, running.boardRef)).find((r) => r.id === running.id);
+      last = (await reader.readBoard(running.holderSessionId)).find((r) => r.id === running.id);
       return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
     }, "the approved row to settle", 45_000).catch((error: Error) => {
       throw new Error(`${error.message}; last read ${last?.status ?? "no row"}: ${last?.error ?? ""}`);

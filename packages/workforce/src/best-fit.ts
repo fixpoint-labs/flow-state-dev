@@ -1,7 +1,6 @@
 /**
  * Best fit's ladder: where a post goes when one evaluator call picks who
- * answers it. Shared by the mailbox's route (`routeByPurpose`) and the
- * coordinator's `best-fit` policy, so a fix to the order reaches both.
+ * answers it, for the coordinator's `best-fit` policy.
  *
  * The order, and nothing else:
  *
@@ -20,11 +19,10 @@
  *    there was nothing to pick from: the fallback takes the post, when one is
  *    set and can be reached.
  * 5. **None.** Nobody takes it here. What happens next is the caller's: the
- *    mailbox records the route failed; the coordinator hands the post to its
- *    own judgment turn first.
+ *    coordinator hands the post to its own judgment turn first.
  *
- * A caller that names no coordinator and no floor (the mailbox's route)
- * places exactly as steps 1, 3, 4 and 5 always have.
+ * A caller that names no coordinator and no floor places by steps 1, 3, 4
+ * and 5 only.
  *
  * Each caller words its own reasons, so the ladder returns why a pick was not
  * used as a value ({@link BestFitMiss}), never a sentence.

@@ -1,13 +1,11 @@
 /**
- * The Inventory tab — the organization's registered seats, mailboxes and
- * memberships, read from one session.
+ * The Inventory tab — the organization's registered workers, read from one
+ * session.
  *
- * Shown on any session whose flow declares at least one of the three inventory
- * collections as browser-readable (a mailbox built with the inventory on
- * declares all three; a seat carrying the hire tools declares only the seat
- * collection). One section per collection; a collection the flow does not
- * declare reads *not installed on this flow*, which is never drawn as an empty
- * table.
+ * Shown on any session whose flow declares the inventory collection as
+ * browser-readable (a seat carrying the hire tools declares it). One section
+ * per collection; a collection the flow does not declare reads *not installed
+ * on this flow*, which is never drawn as an empty table.
  *
  * Every request — the manifest and every page of every collection — goes
  * through the DevTool's shared `resourceClient`, so it carries the bearer
@@ -19,8 +17,7 @@
  * **Words.** Everything here says *registered*. A row is written once and never
  * removed, so it means *registered in this organization*, not *working now*;
  * the tab must not use a word that says otherwise. The view renders what the
- * rows hold and nothing more: no filtering, no reconciling a mailbox's
- * `members` against the membership rows, no liveness.
+ * rows hold and nothing more: no filtering, no liveness.
  *
  * Mounted inside the workspace-keyed subtree (see `DevToolPanel`), so the
  * remount on a workspace switch retires its reads; each effect also drops a
@@ -31,12 +28,9 @@ import { Boxes } from "lucide-react";
 import { useDevTool } from "../../context/devtool-context";
 import {
   INVENTORY_COLLECTIONS,
-  mailboxesBySeat,
   findInventoryCollections,
   hasReadableInventory,
   readEveryPage,
-  toMailboxRow,
-  toMembershipRow,
   toSeatRow,
   type InventoryCollection,
   type InventoryDeclarations,
@@ -107,7 +101,7 @@ export function InventoryTabContent({ sessionId }: { sessionId: string | null })
 type Reads = Record<InventoryCollection, InventoryRead> | null;
 
 /**
- * The three sections, for a session whose declarations are already known.
+ * One section per collection, for a session whose declarations are already known.
  */
 function InventoryView({
   sessionId,
@@ -147,19 +141,16 @@ function InventoryView({
     INVENTORY_COLLECTIONS.every((name) => reads[name].status !== "failed") &&
     loaded.every((read) => read.rows.length === 0);
 
-  const memberships = reads.memberships.status === "loaded" ? reads.memberships.rows.map(toMembershipRow) : [];
-  const seatMailboxes = mailboxesBySeat(memberships);
-
   return (
     <div className="flex flex-col gap-3 p-3" data-inventory-view="">
       <p className="text-[11px] text-slate-500">
-        Everything registered in this session's organization. A row stays once it is written: a seat
-        that was fired, or a mailbox a seat has left, is still listed as registered.
+        Everything registered in this session's organization. A row stays once it is written: a worker
+        that was fired is still listed as registered.
       </p>
       {nothingRegistered && (
         <p className="rounded-md border border-slate-800 px-3 py-2 text-xs text-slate-300" role="status">
-          Nothing is registered in this organization yet. An app registers its seats and mailboxes by
-          calling <code>openInventory</code> at boot.
+          Nothing is registered in this organization yet. An app registers its workers by calling{" "}
+          <code>openInventory</code> at boot.
         </p>
       )}
 
@@ -169,74 +160,14 @@ function InventoryView({
             <thead>
               <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-1.5 font-medium">Id</th>
-                <th className="py-1.5 font-medium">Kind</th>
-                {reads.memberships.status !== "not-installed" && (
-                  <th className="py-1.5 pr-3 font-medium">Mailboxes</th>
-                )}
+                <th className="py-1.5 pr-3 font-medium">Kind</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(toSeatRow).map((seat) => (
                 <tr key={seat.id} className="border-b border-slate-800/50 align-top">
                   <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{seat.id}</td>
-                  <td className="py-1.5 pr-2 text-slate-300">{seat.kind ?? "unknown"}</td>
-                  {reads.memberships.status !== "not-installed" && (
-                    <td className="py-1.5 pr-3 text-slate-300">
-                      {reads.memberships.status === "failed"
-                        ? "unknown (the membership read failed)"
-                        : (seatMailboxes.get(seat.id) ?? []).join(", ") || "none"}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      <Section name="mailboxes" title="Registered mailboxes" read={reads.mailboxes} noun="mailboxes">
-        {(rows) => (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-1.5 font-medium">Id</th>
-                <th className="py-1.5 font-medium">Kind</th>
-                <th className="py-1.5 font-medium">Members</th>
-                <th className="py-1.5 pr-3 font-medium">Registered</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(toMailboxRow).map((mailbox) => (
-                <tr key={mailbox.id} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{mailbox.id}</td>
-                  <td className="py-1.5 pr-2 text-slate-300">{mailbox.kind ?? "unknown"}</td>
-                  <td className="py-1.5 pr-2 text-slate-300">
-                    {mailbox.members.length === 0 ? "none" : mailbox.members.join(", ")}
-                  </td>
-                  <td className="py-1.5 pr-3 font-mono text-[11px] text-slate-400">
-                    {mailbox.registeredAt ?? "unknown"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      <Section name="memberships" title="Registered memberships" read={reads.memberships} noun="memberships">
-        {(rows) => (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-1.5 font-medium">Seat</th>
-                <th className="py-1.5 pr-3 font-medium">Mailbox</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(toMembershipRow).map((row) => (
-                <tr key={`${row.seatId}/${row.mailboxId}`} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{row.seatId}</td>
-                  <td className="py-1.5 pr-3 font-mono text-[11px] text-slate-300">{row.mailboxId}</td>
+                  <td className="py-1.5 pr-3 text-slate-300">{seat.kind ?? "unknown"}</td>
                 </tr>
               ))}
             </tbody>

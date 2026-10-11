@@ -6,7 +6,7 @@ description: "The browser app you run a Workforce team through. Point it at a La
 
 # Shift Manager
 
-Shift Manager is the browser app you run a [Workforce](../workforce/overview.md) team through. A team is served as a **Lab**: one `fsdev.config.mts` that default-exports a `FlowState` holding the team's workers and mailboxes. You point Shift Manager at that config, and it shows what the Lab holds.
+Shift Manager is the browser app you run a [Workforce](../workforce/overview.md) team through. A team is served as a **Lab**: one `fsdev.config.mts` that default-exports a `FlowState` holding the team's workers. You point Shift Manager at that config, and it shows what the Lab holds.
 
 It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs. The [glossary](../glossary.md#shift-manager-screens-over-a-workforce) lists its terms and what each screen reads.
 
@@ -67,20 +67,20 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 | Screen | What it is |
 |--------|------------|
 | **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [chief of staff](../workforce/chief-of-staff.md). When the chief of staff is a [coordinator](../workforce/coordinators.md), the DELEGATES panel lists who it hands this conversation's work to: add a worker from your roster, or remove one. A refused add shows why. Without a chief of staff, you get the summary and a line saying how to add one. |
-| **Inbox** | Every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker under it. Inbox is not a [mailbox](../workforce/mailboxes.md). |
+| **Inbox** | Every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker under it. |
 | **Tasks** | Every row on every board that isn't done, grouped by state, worker or workstream. Queued rows are behind a toggle. |
 | **Roster** | Every worker, grouped as on shift (running a task), on call (waiting on you), or off shift. |
 | **A project** | Shared with your org, or private to you. Tabs: Stream (your own [project coordinator](../workforce/projects.md#talking-to-a-project)), Workstreams (every workstream's entry, with the progress worked out from them), Board (the tasks of your own workstreams) and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md). |
-| **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. A declared [mailbox](../workforce/mailboxes.md) a project lists has its own view, with Stream (the transcript, which you can post to), Board, Brief (the mailbox's charter) and Results. |
+| **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. |
 | **A task** | One worker's run, live, with Interrupt to stop it. *Open trace* opens the run's session in the DevTool (see [Opening a session from a link](../devtool/overview.md#opening-a-session-from-a-link)). |
 
-The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. Mailboxes that no project lists sit under **No project**. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
+The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
 
 **Opening a workstream.** On a project's Workstreams tab, give a workstream a title and Shift Manager opens it with a coordinator of its own: a new worker on your roster, forked from the Lab's standard workstream coordinator, that leads it. Each workstream gets its own, so changing one coordinator's instructions or delegates changes only that workstream, and nobody else sees it on their roster. A refused open leaves your roster as it was. In your own app, `openWorkstream` takes whichever lead you name; see [Workstreams](../workforce/projects.md#workstreams).
 
 Shift Coordinator, a workstream and a task also have a panel on the right. The sidebar and the right panel each collapse from their own toggle or from the keyboard: `[` for the sidebar, which shrinks to a column of icons, and `]` for the right panel, which shrinks to a strip. Each one's state is kept in the browser for the signed-in user. On a window narrower than 1180px, the right panel starts collapsed and opens over the center.
 
-A board has five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU and DONE. In a workstream's composer, a message that starts with `@` and a worker's name goes to that worker's task in the workstream, not to the mailbox.
+A board has five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU and DONE. In a workstream's composer, a message that starts with `@` and a worker's name goes to that worker's task in the workstream.
 
 For the components behind screens like these in your own app, see [Workforce components](../workforce/ui.md).
 
@@ -100,7 +100,6 @@ Shift Manager reads a Lab only through the routes its `FlowState` serves. It bui
 
 - **A `FlowState` as the default export**, with a store. `inMemoryStores()` gives an empty Lab on every start. Use `sqliteStores` or `postgresStores` to keep what it holds across restarts.
 - **An organization**, named by `resolvePrincipal` on `createFlowState`. Without one, the Lab runs in the development organization, `DEFAULT_ORG_ID`.
-- **Open mailboxes.** Call `openMailboxes` at boot with the same `userId` you set in `devtool: { userId }`. Each mailbox is a workstream.
 - **An open [inventory](../workforce/inventory.md)**, which TEAMS, PROJECTS, Inbox and the boards read. Without it, TEAMS and PROJECTS say there's none and the rest loads.
 - **Who Shift Manager reads as**: `devtool: { userId }` on `createFlowState`, plus `bearerToken` when your resolver checks one. Shift Manager hands these to the page only on a loopback host.
 - **Optionally, a chief of staff**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The chief of staff](../workforce/chief-of-staff.md).

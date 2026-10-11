@@ -26,10 +26,7 @@ import {
 } from "@flow-state-dev/workforce";
 
 /** What {@link installWorkers} takes beside the workers and the flows. */
-export type InstallWorkersOptions = Omit<WorkerInstallationOptions, "standardWorkers" | "workerFlows"> & {
-  /** The mailboxes' board ids, for `hireWorkforce`'s unattended-board warning. */
-  mailboxBoards?: readonly string[];
-};
+export type InstallWorkersOptions = Omit<WorkerInstallationOptions, "standardWorkers" | "workerFlows">;
 
 /**
  * Build the installation over `workers` and the worker flows `build` returns
@@ -43,12 +40,11 @@ export function installWorkers(
   build: (installation: WorkerInstallation) => Record<string, unknown>,
   options: InstallWorkersOptions = {},
 ): { installation: WorkerInstallation; copies: FlowInstance[] } {
-  const { mailboxBoards, ...rest } = options;
   let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ ...rest, standardWorkers: workers, workerFlows: () => flows as never });
+  const installation = createWorkerInstallation({ ...options, standardWorkers: workers, workerFlows: () => flows as never });
   flows = build(installation);
   return {
     installation,
-    copies: hireWorkforce(installation, mailboxBoards === undefined ? {} : { mailboxBoards }),
+    copies: hireWorkforce(installation),
   };
 }

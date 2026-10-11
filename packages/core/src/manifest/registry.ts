@@ -31,7 +31,7 @@ export type ManifestRegistry = {
   /**
    * This scope's source for `domain`, or `undefined` when it carries none.
    * An absent source is an ordinary state, not an error: a scope with no
-   * mailboxes source registered yet simply has nothing to say about mailboxes.
+   * resources source registered yet simply has nothing to say about resources.
    */
   source(domain: ManifestDomain): BlockManifestSource | undefined;
 };

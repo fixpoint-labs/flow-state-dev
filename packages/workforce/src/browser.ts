@@ -2,8 +2,8 @@
  * `@flow-state-dev/workforce/browser` — the names a browser component needs
  * from this package, and nothing that runs a seat.
  *
- * The package root is not safe to bundle for a browser: the mailbox floor
- * reaches the orchestration task board, which imports `node:async_hooks`. A
+ * The package root is not safe to bundle for a browser: the conversation
+ * board reaches the orchestration task board, which imports `node:async_hooks`. A
  * bundler that drops unused re-exports hides that until a client component
  * asks for one name that sits beside the runtime, and then the page fails to
  * compile. Import from here in a client component instead.
@@ -18,11 +18,6 @@
  * coordinator's conversation, its routing records and its own turn apart by them.
  */
 
-export {
-  MAILBOX_POST_COMPONENT,
-  mailboxTranscriptLineSchema,
-  type MailboxTranscriptLine
-} from "./mailbox/mailbox-post-line";
 export {
   createWorkforceClient,
   type RosterEntry,

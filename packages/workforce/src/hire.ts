@@ -34,7 +34,7 @@ import type {
   SessionConfig,
   UserConfig
 } from "@flow-state-dev/core/types";
-import { firstInProcess, type DeclaredResources } from "@flow-state-dev/core";
+import type { DeclaredResources } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import {
   INSTRUCTIONS_KEY,
@@ -318,26 +318,6 @@ export interface HireOptions {
    */
   packageBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
 
-  /**
-   * The ledger ids this app's mailboxes declared — `mailboxBoardIds(mailboxes)`.
-   *
-   * Handed over so this step can say when a mailbox holds a board **no flow
-   * hired here declares**: the rows would sit `pending` forever with nothing
-   * said, which is the one failure a declared board can produce silently. Each
-   * unattended id gets a `console.warn` naming the mailbox and the id, once per
-   * process: a later hire that finds the same board unattended says nothing.
-   *
-   * **A warning, never a refusal**, and the reason is in the evidence rather
-   * than in a preference: a seat may legitimately live in another process, and
-   * this check cannot see it. So a missing declaration is *probably* a mistake
-   * and cannot be proved to be one, which is exactly the shape a warning is
-   * for.
-   *
-   * Optional. Omitted, nothing is checked and nothing is said — the check
-   * cannot invent a roster's ids, and every caller that predates boards hires
-   * exactly as it did.
-   */
-  mailboxBoards?: readonly string[];
 
   /**
    * The documents this app declared, keyed by ref — the map
@@ -665,9 +645,9 @@ export function mintSeats(
     // used to refuse an absent `flow:` and a whitespace-only one alike. Only
     // an ABSENT key now resolves to the built-in.
     //
-    // Which case the `flow:` is in is `readDeclaredFlow`'s call, shared with
-    // the mailbox door (its doc carries why a key holding `null` is present,
-    // not absent). The sentences stay here: they are this door's words.
+    // Which case the `flow:` is in is `readDeclaredFlow`'s call (its doc
+    // carries why a key holding `null` is present, not absent). The sentences
+    // stay here: they are this door's words.
     const declaredFlow = readDeclaredFlow(manifest.declared, AGENT_KIND);
 
     if ("refused" in declaredFlow && declaredFlow.refused === "blank") {
@@ -725,8 +705,8 @@ export function mintSeats(
     // the seat can read, since the flow's id is kept off the block context.
     // Written here and nowhere else, so every mint path (files, the runtime
     // `hire` tool, the boot reload) carries it. A hired record's `id` is its
-    // org-qualified address, so it brings the logical id a mailbox's
-    // `members:` lists on `manifest.seatId`; a file record's `id` is that id.
+    // org-qualified address, so it brings the logical id on
+    // `manifest.seatId`; a file record's `id` is that id.
     settings[SEAT_ID_KEY] = manifest.id;
 
     // The seat's TEAM-level instructions — and **only when the record carries
@@ -969,58 +949,5 @@ export function mintSeats(
       : new Error(message);
   }
 
-  // After the refusals, deliberately: a roster that did not hire has nothing
-  // to be unattended by, and a warning printed beside a fatal error is noise.
-  // Once per process per board (see `firstInProcess`), so a hot reload stays
-  // quiet while a board that newly goes unattended still prints.
-  for (const boardId of options.mailboxBoards ?? []) {
-    for (const warning of unattendedBoardWarnings([boardId], seats)) {
-      if (firstInProcess(`workforce/unattended-board/${boardId}`)) console.warn(warning);
-    }
-  }
   return seats;
-}
-
-/**
- * The unattended-board sentences `hireWorkforce` prints, as values, over the
- * copies it registers.
- *
- * Hire does not attach boards. A caller that surfaces the same warning on a
- * tool result (the seat-hire capability) reads them here rather than
- * re-deriving the text, so the mint and the tool stay one story.
- *
- * Read off the hired instances' merged `resources` rather than off the kinds:
- * a board reaches a flow either as a flow-level declaration or by bubbling up
- * from a capability, and only the minted instance has both.
- */
-export function unattendedBoardWarnings(
-  boardIds: readonly string[],
-  seats: readonly FlowInstance[]
-): string[] {
-  if (boardIds.length === 0) return [];
-
-  const declared = new Set<string>();
-  for (const seat of seats) {
-    for (const key of Object.keys(seat.resources ?? {})) declared.add(key);
-  }
-
-  const warnings: string[] = [];
-  for (const boardId of boardIds) {
-    if (declared.has(boardId)) continue;
-    // A board id is its mailbox's id, a dot, and a name carrying no dot.
-    const mailboxId = boardId.slice(0, boardId.lastIndexOf("."));
-    // The LOCAL name in the prose, because that is what the `MAILBOX.md` says
-    // and what an operator goes looking for. The minted id appears once, in
-    // the fix, where it is the thing to copy.
-    const boardName = boardId.slice(mailboxId.length + 1);
-    warnings.push(
-      `[workforce] mailbox "${mailboxId}" holds board "${boardName}" (ledger "${boardId}"), ` +
-        `and no flow registered in this ` +
-        `call declares it. Rows filed there will sit pending until something drains them — ` +
-        `declare the board on the seat that runs the work ` +
-        `(\`resources: { [board.id]: board }\` with \`mailboxBoard("${mailboxId}", "${boardName}")\`), ` +
-        `or ignore this if that seat runs in another process.`
-    );
-  }
-  return warnings;
 }

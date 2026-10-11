@@ -44,7 +44,7 @@ Hand the manager a workspace host instead of a fixed repository, and each run ge
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 
 harnessManager({
-  boardCollectionId: work.id,
+  boardCollectionId: "eng.feature.work",
   boardCollection: work,
   workspace: localWorkspaceHost({
     root: "/var/fsd/runs",
@@ -83,32 +83,31 @@ Without a held-work store, nothing is saved and the record gets no `place` or `h
 
 A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason. The same answer would come back on every retry, so retrying would only spend the attempts.
 
-## Running a mailbox's board
+## Running a board kept per organization
 
-A mailbox can hold a board (see `@flow-state-dev/workforce` → "Holding a board"). To run its
-rows as supervised coding runs, hand the manager that board and its id:
+To run an org-scoped board's rows as supervised coding runs, hand the manager that board and its id:
 
 ```ts
-import { mailboxBoard } from "@flow-state-dev/workforce";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { harnessManager, runOwnerDispatcher } from "@flow-state-dev/harness-manager";
 
-const work = mailboxBoard("eng.feature", "work");
+const work = defineTaskCollection({ id: "eng.feature.work", scope: "org" });
 
 const manager = harnessManager({
-  boardCollectionId: work.id,   // "eng.feature.work"
+  boardCollectionId: "eng.feature.work",
   boardCollection: work,
   // ...the rest as above
 });
 
-// On the board that drains the mailbox's rows:
+// On the board that drains the rows:
 taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
 ```
 
-The manager builds each run's checkout folder and git branch from the board's id, used as is. A
-mailbox's board id contains dots, which the manager accepts. It refuses, when you build it, an id
-git can't use as a branch name, such as one ending in `.lock`; a mailbox can't name a board
-`lock`. Two boards whose ids differ other than in letter case never share a checkout.
+The manager builds each run's checkout folder and git branch from the board's id, used as is. An
+id with dots in it is accepted. The manager refuses, when you build it, an id git can't use as a
+branch name, such as one ending in `.lock`. Two boards whose ids differ other than in letter case
+never share a checkout.
 
 The board is kept per organization, so everyone in the organization sees its rows. A row's
 coding run belongs to the person who started it: a drain by anyone else in the organization is

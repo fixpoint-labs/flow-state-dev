@@ -68,11 +68,8 @@ describe("a flow that meets the contract", () => {
     expect(workerFlowProblems("desk-bound", ownRequired)).toEqual([]);
   });
 
-  it("is true of the built-in agent, with and without task lists", () => {
+  it("is true of the built-in agent", () => {
     expect(workerFlowProblems("agent", defineAgentWorkerFlow() as never)).toEqual([]);
-    expect(
-      workerFlowProblems("agent", defineAgentWorkerFlow({ taskLists: ["front-desk.queue"] }) as never)
-    ).toEqual([]);
   });
 
   it("is true of a flow writing a shared resource", () => {

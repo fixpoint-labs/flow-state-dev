@@ -2,7 +2,7 @@
  * What the screens compute from one snapshot, kept out of the components so
  * every surface computes it the same way.
  */
-import { columnFor, isDone, readStatus } from "./columns";
+import { isDone, readStatus } from "./columns";
 import {
   STAFF_TEAM,
   type Ask,
@@ -12,28 +12,25 @@ import {
   type Project,
   type Section,
   type Seat,
-  type Workstream,
   workerOf,
 } from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
 export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
 
-/** Every row on every attached board that loaded, across workstreams. */
+/** Every row on every board that loaded, across conversations. */
 export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
   return Object.values(snapshot.boards).flatMap((boards) => (boards.ok ? boards.value.rows : []));
 }
 
 /**
- * What a row's board is called on a screen: the workstream's id, or, for a
- * conversation's board, the worker that conversation is with (`@<worker>`),
- * else the conversation's id.
+ * What a row's board is called on a screen: the worker the conversation that
+ * holds it is with (`@<worker>`), else the conversation's id.
  */
 export function holderOf(snapshot: LoadedSnapshot, row: BoardRow): string {
-  if (snapshot.inventory.ok && snapshot.inventory.value.workstreams.some((w) => w.id === row.mailboxId)) return row.mailboxId;
-  const session = snapshot.sessions.find((s) => s.id === row.mailboxId);
+  const session = snapshot.sessions.find((s) => s.id === row.holderSessionId);
   const worker = session === undefined ? null : workerOf(session);
-  return worker === null ? row.mailboxId : `@${worker}`;
+  return worker === null ? row.holderSessionId : `@${worker}`;
 }
 
 /** The rows Tasks shows: every attached board's, excluding done ones (BR-15). */
@@ -41,8 +38,8 @@ export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
   return allRows(snapshot).filter((row) => !isDone(row.status));
 }
 
-/** The seats and workstreams a row's assignee is resolved against. */
-export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[] };
+/** The seats a row's assignee is resolved against. */
+export type Roster = { seats: readonly Seat[] };
 
 /**
  * The seat a row is held by, or `undefined` when no single seat is.
@@ -52,11 +49,9 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  * `<team>.<name>`. So, in order:
  *
  * 1. the seat whose id is the assignee;
- * 2. the one seat whose own name is the assignee;
- * 3. when that name belongs to seats in more than one team, the one of them
- *    that is a member of the row's mailbox.
+ * 2. the one seat whose own name is the assignee.
  *
- * Still more than one, or none, is no seat: a row is never shown against
+ * A name more than one seat carries, or none, is no seat: a row is never shown against
  * several seats, or against a guess. Which seat actually claimed the row is
  * not published to a browser, and a declared assignee-to-seat map is
  * FIX-1672's.
@@ -66,13 +61,10 @@ export function seatFor(roster: Roster, row: BoardRow): Seat | undefined {
   const exact = roster.seats.find((seat) => seat.id === row.assignee);
   if (exact !== undefined) return exact;
   const named = roster.seats.filter((seat) => seat.name === row.assignee);
-  if (named.length <= 1) return named[0];
-  const members = new Set(roster.workstreams.find((w) => w.id === row.mailboxId)?.members ?? []);
-  const inMailbox = named.filter((seat) => members.has(seat.id));
-  return inMailbox.length === 1 ? inMailbox[0] : undefined;
+  return named.length === 1 ? named[0] : undefined;
 }
 
-/** A worker's shift status, the one word Roster, the sidebar and the workstream panel draw. */
+/** A worker's shift status, the one word Roster and the sidebar draw. */
 export type ShiftStatus = "on shift" | "on call" | "off shift";
 
 /** The three statuses, in the order Roster groups them. */
@@ -143,18 +135,9 @@ export function seatStates(snapshot: LoadedSnapshot): SeatStates {
   return result;
 }
 
-/** The seats and workstreams of a snapshot whose inventory loaded; empty otherwise. */
+/** The seats of a snapshot whose inventory loaded; empty otherwise. */
 export function rosterOf(snapshot: LoadedSnapshot): Roster {
-  return snapshot.inventory.ok ? snapshot.inventory.value : { seats: [], workstreams: [] };
-}
-
-/**
- * The asks a workstream's Stream shows (BR-18): the Inbox's asks whose seat is
- * one of the mailbox's members, in Inbox's order.
- */
-export function asksFor(workstream: Workstream, asks: readonly Ask[]): Ask[] {
-  const members = new Set(workstream.members);
-  return asks.filter((ask) => ask.seatId !== null && members.has(ask.seatId));
+  return snapshot.inventory.ok ? snapshot.inventory.value : { seats: [] };
 }
 
 /**
@@ -173,16 +156,6 @@ export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardRow | un
 }
 
 /**
- * The workstreams an ask belongs to: the mailbox whose post started the run,
- * when there is one, otherwise every mailbox the seat is a member of.
- */
-export function workstreamsOf(ask: Ask, workstreams: readonly Workstream[]): Workstream[] {
-  const parent = workstreams.find((w) => w.id === ask.parentSessionId);
-  if (parent !== undefined) return [parent];
-  return ask.seatId === null ? [] : workstreams.filter((w) => w.members.includes(ask.seatId!));
-}
-
-/**
  * The door of the flow that owns a session: the seat inventory rows of the
  * workers on that flow name it, since a worker flow is registered at its kind.
  * Every worker on one flow shares its door. `null` when no seat row is on the
@@ -190,65 +163,6 @@ export function workstreamsOf(ask: Ask, workstreams: readonly Workstream[]): Wor
  */
 export function doorOf(seats: readonly Seat[], flowId: string): string | null {
   return seats.find((seat) => seat.kind === flowId)?.door ?? null;
-}
-
-/**
- * The rows a `@worker` line can go to (BR-19): the seat's rows on this
- * workstream's boards that are running, parked, or pending with a run linked.
- */
-export function messageableRows(roster: Roster, rows: readonly BoardRow[], seat: Seat): BoardRow[] {
-  return rows.filter((row) => {
-    if (seatFor(roster, row)?.id !== seat.id) return false;
-    const status = readStatus(row.status);
-    return status === "in_progress" || status === "parked" || (status === "pending" && row.run !== null);
-  });
-}
-
-/**
- * The member a `@name` line addresses: a member of the workstream whose seat
- * id, or whose own name, is `name`. `undefined` when none, or more than one.
- */
-export function addressedSeat(roster: Roster, workstream: Workstream, name: string): Seat | undefined {
-  const members = new Set(workstream.members);
-  const found = roster.seats.filter((seat) => members.has(seat.id) && (seat.id === name || seat.name === name));
-  return found.length === 1 ? found[0] : undefined;
-}
-
-/**
- * What to type after `@` to reach `seat` in `workstream`: its short name, or
- * its full id when another member shares that name, so the line always
- * resolves through {@link addressedSeat} to this seat.
- */
-export function mentionOf(roster: Roster, workstream: Workstream, seat: Seat): string {
-  return addressedSeat(roster, workstream, seat.name)?.id === seat.id ? seat.name : seat.id;
-}
-
-/**
- * The members of `workstream` running a task on its boards, in member order,
- * at most three: who the workstream composer offers to `@` (v2:1265). A
- * running task is one in progress; no shipped status means *in review* yet.
- */
-export function liveWorkers(snapshot: LoadedSnapshot, workstream: Workstream): Seat[] {
-  const boards = snapshot.boards[workstream.id];
-  if (boards === undefined || !boards.ok) return [];
-  const roster = rosterOf(snapshot);
-  const running = new Set(
-    boards.value.rows.filter((row) => readStatus(row.status) === "in_progress").map((row) => seatFor(roster, row)?.id),
-  );
-  return workstream.members
-    .map((member) => roster.seats.find((seat) => seat.id === member))
-    .filter((seat): seat is Seat => seat !== undefined && running.has(seat.id))
-    .slice(0, 3);
-}
-
-/** Rows grouped by column, in column order. */
-export function byColumn(rows: readonly BoardRow[]): Map<ReturnType<typeof columnFor>, BoardRow[]> {
-  const grouped = new Map<ReturnType<typeof columnFor>, BoardRow[]>();
-  for (const row of rows) {
-    const column = columnFor(row.status);
-    grouped.set(column, [...(grouped.get(column) ?? []), row]);
-  }
-  return grouped;
 }
 
 /**
@@ -262,23 +176,17 @@ export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Se
   return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
 }
 
-/** PROJECTS: every project, then the mailbox workstreams, which sit under No project. */
-export type ProjectsView = { projects: Project[]; noProject: Workstream[] };
+/** PROJECTS: every project the person reads. */
+export type ProjectsView = { projects: Project[] };
 
 /**
- * PROJECTS (BR-22, D3): every project the person reads, shared ones and their
- * own private ones, then every mailbox workstream the inventory registers,
- * which is No project. A project lists no mailbox, including a row that still
- * carries `workstreams`.
- *
- * Derived from the snapshot alone: no read of its own.
- * Fails when either read it groups did: the inventory's failure first, since
- * without it no workstream can be placed.
+ * PROJECTS (BR-22): every project the person reads, shared ones and their own
+ * private ones. Derived from the snapshot alone: no read of its own. Fails when
+ * the projects read did.
  */
 export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
-  if (!snapshot.inventory.ok) return snapshot.inventory;
   if (!snapshot.projects.ok) return snapshot.projects;
-  return { ok: true, value: { projects: snapshot.projects.value.rows, noProject: snapshot.inventory.value.workstreams } };
+  return { ok: true, value: { projects: snapshot.projects.value.rows } };
 }
 
 
@@ -328,7 +236,7 @@ export function chiefOfStaffOf(seats: readonly Seat[]): ChiefOfStaff {
 /** Whether a row is running. */
 const isRunning = (row: BoardRow) => readStatus(row.status) === "in_progress";
 
-/** The first failed board read among the loaded workstreams', if any. */
+/** The first failed board read, if any. */
 function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
   for (const boards of Object.values(snapshot.boards)) if (!boards.ok) return boards.failure;
   return undefined;
@@ -349,35 +257,8 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
     asks: snapshot.asks,
     running:
       failed === undefined
-        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.mailboxId)).size } }
+        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.holderSessionId)).size } }
         : { ok: false, failure: failed },
-  };
-}
-
-/**
- * One workstream's line in the rail's STREAMS. `needsYou` is `null` when the
- * asks did not load.
- */
-export type StreamCount = { workstream: Workstream; running: Section<number>; needsYou: number | null };
-
-/**
- * The rail's STREAMS (BR-19): each workstream with its running rows and its
- * members' pending asks, the asks its Stream shows. Fails whole only when the
- * inventory did; a workstream whose boards failed carries that failure.
- */
-export function streamCounts(snapshot: LoadedSnapshot): Section<StreamCount[]> {
-  if (!snapshot.inventory.ok) return snapshot.inventory;
-  const asks = snapshot.asks;
-  return {
-    ok: true,
-    value: snapshot.inventory.value.workstreams.map((workstream) => {
-      const boards = snapshot.boards[workstream.id];
-      const running: Section<number> =
-        boards === undefined || boards.ok
-          ? { ok: true, value: (boards?.value.rows ?? []).filter(isRunning).length }
-          : { ok: false, failure: boards.failure };
-      return { workstream, running, needsYou: asks.ok ? asksFor(workstream, asks.value).length : null };
-    }),
   };
 }
 

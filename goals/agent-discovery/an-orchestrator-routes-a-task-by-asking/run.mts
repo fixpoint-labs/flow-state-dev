@@ -140,7 +140,7 @@ async function route(blankPurposes: boolean): Promise<{
     uses: [
       inventoryMount,
       createWorkforceCapability({
-        roster: { workers: roster, mailboxes: [] },
+        roster: { workers: roster },
         inventory: { seats: SEAT_INVENTORY_KEY },
       }),
     ],

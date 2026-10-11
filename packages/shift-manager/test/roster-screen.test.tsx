@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Roster, the sidebar, the workstream panel and Tasks, drawn over one fixed
+ * Roster, the sidebar, Jump to and Tasks, drawn over one fixed
  * snapshot (V3 to V5; BR-6 to BR-20). The reader is swapped for one that hands back
  * the fixture, so every screen draws exactly what the snapshot holds.
  */
@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import type { LabClients } from "../src/lib/connection";
-import { STAFF_TEAM, toBoardRow, toSeat, toWorkstream, type Ask, type BoardRow, type LabSnapshot, type Section, type WorkstreamBoards } from "../src/lib/reads";
+import { STAFF_TEAM, toBoardRow, toSeat, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
 /** What the person's roster read answers: their own workers and the standard ones. */
@@ -33,8 +33,8 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 
 const ORG = "acme";
 const seat = (id: string, kind = "worker") => toSeat({ id, kind })!;
-const row = (mailbox: string, id: string, status: string, assignee: string): BoardRow =>
-  toBoardRow(`${mailbox}.work`, mailbox, id, { id, title: `${id} title`, status, assignee });
+const row = (holder: string, id: string, status: string, assignee: string): BoardRow =>
+  toBoardRow(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
 const ask = (seatId: string, suspensionId: string, message: string): Ask =>
   ({
     sessionId: `s_${suspensionId}`,
@@ -54,22 +54,18 @@ const ask = (seatId: string, suspensionId: string, message: string): Ask =>
  */
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
   const seats = [seat("eng.coder", "coder"), seat("eng.reviewer"), seat("ops.asker", "asker"), seat("ops.idle"), seat("chief-of-staff", "cos")];
-  const workstreams = [
-    toWorkstream({ id: "eng.desk", kind: "mailbox", members: ["eng.coder", "eng.reviewer"] })!,
-    toWorkstream({ id: "ops.desk", kind: "mailbox", members: ["ops.asker", "ops.idle"] })!,
-  ];
-  const ok = (rows: BoardRow[]): Section<WorkstreamBoards> => ({ ok: true, value: { refs: [`${rows[0]!.mailboxId}.work`], rows } });
+  const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
   return {
     readAt: Date.UTC(2026, 9, 1, 9, 30),
     sessions: [],
     orgId: ORG,
-    inventory: options.inventory === "failed" ? { ok: false, failure: { message: "inventory offline" } } : { ok: true, value: { seats, workstreams } },
+    inventory: options.inventory === "failed" ? { ok: false, failure: { message: "inventory offline" } } : { ok: true, value: { seats } },
     boards:
       options.inventory === "failed"
         ? {}
         : {
-            "eng.desk": ok([row("eng.desk", "E-1", "in_progress", "coder"), row("eng.desk", "E-2", "parked", "coder"), row("eng.desk", "E-3", "parked", "reviewer")]),
-            "ops.desk": options.boards === "ops failed" ? { ok: false, failure: { message: "board offline" } } : ok([row("ops.desk", "O-1", "pending", "asker")]),
+            s_eng: ok([row("s_eng", "E-1", "in_progress", "coder"), row("s_eng", "E-2", "parked", "coder"), row("s_eng", "E-3", "parked", "reviewer")]),
+            s_ops: options.boards === "ops failed" ? { ok: false, failure: { message: "board offline" } } : ok([row("s_ops", "O-1", "pending", "asker")]),
           },
     asks: options.asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: [ask("ops.asker", "q1", "Approve: ship it")] },
     resources: { ok: true, value: [] },
@@ -175,7 +171,7 @@ describe("Roster (V3)", () => {
     expect(within(idle).getByTestId("roster-no-wait").textContent).toBe("—");
 
     act(() => fireEvent.click(chips[0]!));
-    expect(window.location.pathname).toBe("/tasks/eng.desk.work/E-1/session");
+    expect(window.location.pathname).toBe("/tasks/s_eng.tasks/E-1/session");
   });
 
   it("names its gaps: standing watches, which seat holds a task, and the harness", async () => {
@@ -209,9 +205,9 @@ describe("Roster (V3)", () => {
     expect(screen.queryByTestId("roster-summary")).toBeNull();
   });
 
-  it("BR-19: a workstream whose boards did not load is named, and none of its tasks counts", async () => {
+  it("BR-19: a conversation whose board did not load is named, and none of its tasks counts", async () => {
     await open("/roster", lab({ boards: "ops failed" }));
-    expect((await screen.findByTestId("roster-boards-failure")).textContent).toMatch(/ops\.desk/);
+    expect((await screen.findByTestId("roster-boards-failure")).textContent).toMatch(/s_ops/);
     expect(screen.getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call/);
   });
 
@@ -283,7 +279,7 @@ describe("Tasks (BR-14)", () => {
 
   it("with nothing queued the toggle says 0 and hides nothing", async () => {
     const snapshot = lab();
-    const ops = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["ops.desk"] : undefined;
+    const ops = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_ops"] : undefined;
     if (ops?.ok === true) ops.value.rows = ops.value.rows.map((r) => ({ ...r, status: "in_progress" }));
     await open("/tasks", snapshot);
     await screen.findByTestId("tasks-table");
@@ -293,14 +289,14 @@ describe("Tasks (BR-14)", () => {
 
   it("draws v2's columns in v2's order, each row's id, and TIME from the row's start for a running row only", async () => {
     const snapshot = lab();
-    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["eng.desk"] : undefined;
+    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
     if (eng?.ok === true) eng.value.rows = eng.value.rows.map((r) => ({ ...r, startedAt: Date.now() - 400_000 }));
     await open("/tasks", snapshot);
     const table = await screen.findByTestId("tasks-table");
     expect(within(table).getAllByRole("columnheader").slice(0, 8).map((th) => th.textContent)).toEqual(["", "ID", "TASK", "NOW", "STREAM", "WORKER", "TIME", "COST"]);
     const cell = (id: string, testId: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId(testId).textContent;
     expect(cell("E-1", "task-row-id")).toBe("E-1");
-    expect(cell("E-1", "task-row-stream")).toBe("#eng.desk");
+    expect(cell("E-1", "task-row-stream")).toBe("#s_eng");
     expect(cell("E-1", "task-row-worker")).toBe("coder");
     expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
     // E-2 is parked: it waits on you, so its clock isn't running.
@@ -398,20 +394,7 @@ describe("the sidebar (V4)", () => {
   });
 });
 
-describe("the workstream panel and Jump to (V5)", () => {
-  it("BR-6: the panel's word for a seat is Roster's", async () => {
-    await open("/w/eng.desk/stream");
-    const members = await screen.findAllByTestId("panel-member");
-    expect(members.map((m) => within(m).getByTestId("status-word").getAttribute("data-status"))).toEqual(["on shift", "on call"]);
-    expect(screen.queryAllByTestId("partial-mark")).toHaveLength(0);
-  });
-
-  it("BR-20: the panel carries the partial mark when asks did not load", async () => {
-    await open("/w/eng.desk/stream", lab({ asks: "failed" }));
-    const panel = await screen.findByTestId("panel-team");
-    expect(within(panel).getByTestId("partial-mark")).toBeTruthy();
-  });
-
+describe("Jump to (V5)", () => {
   it("BR-17: a worker found in Jump to opens Roster", async () => {
     await open("/inbox");
     act(() => fireEvent.click(screen.getByTestId("jump-to")));

@@ -6,8 +6,8 @@
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `seatStates` result, so they agree with Roster. PROJECTS lists each project,
- * then No project; TEAMS is one row per
+ * `seatStates` result, so they agree with Roster. PROJECTS lists each project;
+ * TEAMS is one row per
  * team with a status square per seat, the person's own workers included,
  * opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
@@ -16,8 +16,7 @@
  * the page; square; labels, counts and the footer in mono (v2:26-113). Shift
  * Coordinator is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
  * Inbox's count wears the highlighter only while an ask waits, and Tasks' is
- * blue; the current row is v2's blue tint at 700; each workstream has its `#`
- * and its needs-you or running dot; TEAMS says what its counts are; and the
+ * blue; the current row is v2's blue tint at 700; TEAMS says what its counts are; and the
  * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
@@ -27,14 +26,13 @@
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { themeLabel, type ThemeLook } from "../lib/theme";
-import { navigate, NO_PROJECT, type Route } from "../lib/routes";
+import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
-import type { Workstream } from "../lib/reads";
-import { initialsOf, streamMark } from "../lib/shell";
+import { openRows, projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { initialsOf } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
-import { Meta, PartialMark, SectionFailure, ShiftMark, StateSquare } from "../components/ui";
+import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import { ShiftManagerMark } from "../components/ShiftManagerMark";
 import type { Gaps } from "../gaps";
 
@@ -133,48 +131,12 @@ function ChiefOfStaffEntry({ active }: { active: boolean }) {
   );
 }
 
-/**
- * A workstream under PROJECTS (v2:88): a mono `#`, its name, and a dot, the
- * highlighter while one of its members' asks waits on the person, else blue
- * while a row on its boards runs, else none (v2:1183-1184).
- */
-function StreamItem({ id, state, active }: { id: string; state: "needs" | "run" | null; active: boolean }) {
+function Heading({ children, aside, testId }: { children: string; aside?: string; testId: string }) {
   return (
-    <button
-      type="button"
-      onClick={() => navigate({ level: "workstream", mailboxId: id, tab: "stream" })}
-      aria-current={active ? "page" : undefined}
-      data-testid={`nav-workstream-${id}`}
-      data-dot={state ?? "none"}
-      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-[13px] ${
-        active ? "bg-accent font-semibold text-accent-foreground" : "hover:bg-foreground/6"
-      }`}
-    >
-      <Meta className="text-[11.5px] text-muted-foreground">#</Meta>
-      <span className="min-w-0 flex-1 truncate" data-look="nav-label">
-        {id}
-      </span>
-      {state === null ? null : <StateSquare state={state} className="size-1.5" />}
-    </button>
-  );
-}
-
-function Heading({ children, aside, onClick, testId }: { children: string; aside?: string; onClick?: () => void; testId: string }) {
-  const className = "flex justify-between px-1.5 pt-4 pb-1.5 text-muted-foreground";
-  const label = (
-    <>
+    <p className="flex justify-between px-1.5 pt-4 pb-1.5 text-muted-foreground" data-testid={testId}>
       <Meta role="label">{children}</Meta>
       {aside === undefined ? null : <Meta role="label">{aside}</Meta>}
-    </>
-  );
-  return onClick === undefined ? (
-    <p className={className} data-testid={testId}>
-      {label}
     </p>
-  ) : (
-    <button type="button" className={`${className} w-full text-left hover:text-foreground`} onClick={onClick} data-testid={testId}>
-      {label}
-    </button>
   );
 }
 
@@ -325,30 +287,12 @@ function SidebarRail({
   );
 }
 
-/**
- * PROJECTS (BR-22): each project by title, then No project with every mailbox
- * workstream the inventory registers, only when there is one.
- */
-function ProjectsSection({
-  snapshot,
-  route,
-  marks,
-  onRetry,
-}: {
-  snapshot: LoadedSnapshot;
-  route: Route;
-  /** Each workstream's square, by workstream id. */
-  marks: ReadonlyMap<string, "needs" | "run" | null>;
-  onRetry: () => void;
-}) {
+/** PROJECTS (BR-22): each project by title. */
+function ProjectsSection({ snapshot, route, onRetry }: { snapshot: LoadedSnapshot; route: Route; onRetry: () => void }) {
   const view = projectsOf(snapshot);
   if (!view.ok) {
-    const what = snapshot.inventory.ok ? "Projects" : "Workstreams";
-    return <SectionFailure what={what} failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
+    return <SectionFailure what="Projects" failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
   }
-  const workstreamItem = (w: Workstream) => (
-    <StreamItem key={w.id} id={w.id} state={marks.get(w.id) ?? null} active={route.level === "workstream" && route.mailboxId === w.id} />
-  );
   // A project's address is its visibility and its id: a private project and a shared one can share an id.
   const projectItem = (projectId: string, label: string, visibility: "shared" | "private" = "shared") => (
     <NavItem
@@ -365,12 +309,6 @@ function ProjectsSection({
           {projectItem(project.id, project.title, project.visibility)}
         </div>
       ))}
-      {view.value.noProject.length === 0 ? null : (
-        <div data-testid="project-group" data-project-id={NO_PROJECT}>
-          {projectItem(NO_PROJECT, "No project")}
-          <div className="pl-3">{view.value.noProject.map(workstreamItem)}</div>
-        </div>
-      )}
     </>
   );
 }
@@ -401,9 +339,6 @@ export function Sidebar({
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
-  // Each workstream's dot (v2:1183-1184): needs-you first, then running.
-  const streams = loaded === undefined ? undefined : streamCounts(loaded);
-  const dots = new Map(streams?.ok === true ? streams.value.map((stream) => [stream.workstream.id, streamMark(stream)]) : []);
   // The person's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster(loaded?.readAt);
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
@@ -489,11 +424,9 @@ export function Sidebar({
               />
             </div>
 
-            <Heading testId="projects-heading" onClick={() => navigate({ level: "project", projectId: NO_PROJECT, tab: "stream" })}>
-              PROJECTS
-            </Heading>
+            <Heading testId="projects-heading">PROJECTS</Heading>
             <div data-testid="projects">
-              {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} marks={dots} onRetry={retry} />}
+              {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} onRetry={retry} />}
             </div>
 
             <Heading testId="teams-heading" aside="on shift">

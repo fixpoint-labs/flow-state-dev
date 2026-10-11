@@ -38,9 +38,7 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 /**
  * What a segment names, for the error to say.
  *
- * `Team` and `Worker` are the two halves of a seat's address, and `Mailbox` is
- * the second half of a mailbox's — dot-joined the same way, because a mailbox
- * id is a flow instance id and a session id. `Document` is a file-declared
+ * `Team` and `Worker` are the two halves of a seat's address. `Document` is a file-declared
  * resource's name — the one segment that is a *file* rather than a folder, and
  * the one whose identity is joined with a `/` rather than a `.`, because a
  * document's ref is a storage-key namespace and never routes.
@@ -59,7 +57,6 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 export type SegmentLabel =
   | "Team"
   | "Worker"
-  | "Mailbox"
   | "Document"
   | "Kind"
   | "Block"
@@ -85,15 +82,13 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
     const identity =
       label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
-        : label === "Mailbox"
-          ? `it becomes part of the mailbox's identity, which is joined with a "."`
-          : label === "Kind"
-            ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
-            : label === "Block"
-              ? `it becomes the name the block registers under, which a task board assigns by`
-              : label === "Package"
-                ? `it becomes the name a worker's \`packages:\` takes the package by`
-                : `it becomes part of the worker's identity, which is joined with a "."`;
+        : label === "Kind"
+          ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
+          : label === "Block"
+            ? `it becomes the name the block registers under, which a task board assigns by`
+            : label === "Package"
+              ? `it becomes the name a worker's \`packages:\` takes the package by`
+              : `it becomes part of the worker's identity, which is joined with a "."`;
     throw new Error(
       `${what} "${segment}" must be lowercase letters, digits, and single ` +
         `hyphens (not at the start or end) — ${identity}`,

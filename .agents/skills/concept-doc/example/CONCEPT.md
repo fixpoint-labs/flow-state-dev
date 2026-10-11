@@ -388,7 +388,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 | Retired term | Say instead | Where it lives today | Files |
 | -- | -- | -- | -- |
 | Seat, hired seat | Worker | `hireWorkforce`, `seatId`, `seatAddress`, `seat-door.ts`, the `seat*` config keys | 128 / 72 / 88 |
-| Mailbox, `MAILBOX.md` | Coordinator | `mailboxFlow`, `openMailboxes`, `mailboxBoard`, `wakeMemberSeats`, the mailbox binder | 59 / 43 / 81 |
+| Mailbox, `MAILBOX.md` | Coordinator | the mailbox flow, its binder, its boards and its member wake | 59 / 43 / 81 |
 | Mailbox member, mailbox thread | Delegate, and the delegate's session | `members:` in `MAILBOX.md`, a woken worker's `mailbox:<id>` session | counted with mailbox |
 | Room, talk session | The project coordinator. A conversation shared between members waits for channels | `projects/talk.ts`, `room-lines`, the talk template | 18 / 29 / 13 |
 | Flow instance, as a worker | Worker resource, run by the singleton flow it names | `cardinality: "collection"` | 4 / 13 / 3 |

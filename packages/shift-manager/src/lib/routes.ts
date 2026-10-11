@@ -2,14 +2,13 @@
  * Shift Manager's addresses. The level and the tab live in the URL, so a link opens
  * the same view.
  *
- * Pinned (FIX-1662 PLAN, "Pinned names"): the task route, the workstream route
- * and the project route. The rest are Shift Manager's own.
+ * Pinned (FIX-1662 PLAN, "Pinned names"): the task route and the project
+ * route. The rest are Shift Manager's own.
  *
  *     /cos                           Chief of Staff: where `/` and any unknown path land
  *     /inbox[/<suspensionId>]
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
- *     /w/<mailboxId>/<stream|board|brief|results>
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the person's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
@@ -17,21 +16,13 @@
  */
 import { useSyncExternalStore } from "react";
 
-export const WORKSTREAM_TABS = ["stream", "board", "brief", "results"] as const;
 export const PROJECT_TABS = ["stream", "board", "workstreams", "brief"] as const;
 export const TASK_TABS = ["session", "diff", "checks", "brief"] as const;
 export const TASK_GROUPINGS = ["state", "worker", "stream"] as const;
 
-export type WorkstreamTab = (typeof WORKSTREAM_TABS)[number];
 export type ProjectTab = (typeof PROJECT_TABS)[number];
 export type TaskTab = (typeof TASK_TABS)[number];
 export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
-
-/**
- * No project: the project level for the workstreams no project lists, and
- * what the PROJECTS heading opens. No project row can take this id.
- */
-export const NO_PROJECT = "unassigned";
 
 /** Where the person is. */
 export type Route =
@@ -39,7 +30,6 @@ export type Route =
   | { level: "inbox"; suspensionId: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
-  | { level: "workstream"; mailboxId: string; tab: WorkstreamTab }
   | {
       level: "project";
       projectId: string;
@@ -70,7 +60,6 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "tasks") {
     return { level: "tasks", by: oneOf(TASK_GROUPINGS, new URLSearchParams(search).get("by") ?? undefined, "state") };
   }
-  if (head === "w" && a !== undefined) return { level: "workstream", mailboxId: a, tab: oneOf(WORKSTREAM_TABS, b, "stream") };
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream"), ...entryOf(search) };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
@@ -98,8 +87,6 @@ export function pathFor(route: Route): string {
       return route.by === "state" ? "/tasks" : `/tasks?by=${route.by}`;
     case "task":
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
-    case "workstream":
-      return `/w/${e(route.mailboxId)}/${route.tab}`;
     case "project": {
       const at = route.visibility === "private" ? `/p/private/${e(route.projectId)}` : `/p/${e(route.projectId)}`;
       const entry = route.entry === undefined ? "" : `?owner=${e(route.entry.owner)}&ws=${e(route.entry.id)}`;

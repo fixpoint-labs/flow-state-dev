@@ -84,7 +84,6 @@ const flows = hireWorkforce(installation);
 | `model` | The model a worker uses when its own file names none. |
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
-| `taskLists` | The mailbox boards this kind's workers take tasks from, by id (`mailboxBoardIds(mailboxes)`). Left out, the kind takes no tasks. See [Taking a task](#taking-a-task). |
 | `uses` | Capabilities every worker of this kind carries, attached to the generator that answers. |
 | `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
 | `isolateUserState` | Keep this flow's user-scoped storage apart from other flows'. Every worker on `agent` shares one copy, so a user's workers on it still share the same user-scoped storage. |
@@ -95,23 +94,9 @@ A replacement declares `kind: "agent"`, like any other flow passed under its own
 
 ## Taking a task
 
-A worker on this kind can be handed a task from a mailbox's board, by name, when you build the kind with `taskLists`:
+A worker on this kind takes tasks with no setup. When a [coordinator](./coordinators.md), a worker that hands work to other workers called its delegates, files a task for it, the worker runs the task as one turn in a task session of its own. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails.
 
-```ts
-import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce, mailboxBoardIds } from "@flow-state-dev/workforce";
-
-const boardIds = mailboxBoardIds(mailboxes);
-
-const installation = createWorkerInstallation({
-  standardWorkers: workers,
-  workerFlows: () => ({ agent: defineAgentWorkerFlow({ installation, taskLists: boardIds }) }),
-});
-const flows = hireWorkforce(installation);
-```
-
-Each task runs as one turn, in a session of its own when the board hands tasks over `per-task`. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails, and the task's `maxAttempts` decides whether it runs again. Nothing is posted to a mailbox unless the worker's own tools post it.
-
-A board hands tasks to standard workers only: whoever drains it opens the task's session, and nobody can open one with another user's worker. Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `workerFlows`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
+A task goes only to a worker on the filing person's roster, one your files declare or one of their own. Another user's worker is refused the way a worker nobody holds is. Filing a task, retries, and what the filing conversation hears are in [Handing out tasks](./coordinators.md#handing-out-tasks).
 
 ## What a worker keeps
 

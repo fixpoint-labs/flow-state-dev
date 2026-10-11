@@ -8,7 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { collectionOfBoard, conversationBoardRef, createLabReader, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, type BoardRow } from "../src/lib/reads";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   followRequest,
@@ -32,7 +32,7 @@ let clients: LabClients;
 
 /** The lead's conversation board's rows, as Shift Manager's own board read returns them. */
 async function rows(): Promise<BoardRow[]> {
-  return createLabReader(clients).readBoard(lab.conversation, conversationBoardRef(lab.conversation));
+  return createLabReader(clients).readBoard(lab.conversation);
 }
 
 /** The row for a filed task, once its run has linked itself: held on the shared flow, or on a worker's own. */

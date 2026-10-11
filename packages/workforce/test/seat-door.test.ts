@@ -109,12 +109,12 @@ describe("a seat's door (BR-1, BR-2)", () => {
     });
     const sent: unknown[] = [];
     await openInventory(
-      { seats, mailboxes: [] },
+      { seats },
       {
         run: async (request) => void sent.push(request.input),
         userId: "u",
         orgId: "org",
-        seatWriter: { flowKind: "mailbox" },
+        seatWriter: { flowKind: "inventory-writer" },
       },
     );
     expect(sent).toEqual([

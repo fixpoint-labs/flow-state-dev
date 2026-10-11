@@ -6,8 +6,8 @@
  * as that item's own installed file beside the copies, and its look is the
  * design-system package's one import.
  *
- * The tree names are read from the two goal trees themselves, so a seat or
- * mailbox added there is checked too. Each check is shown to reach the code
+ * The tree names are read from the two goal trees themselves, so a seat
+ * added there is checked too. Each check is shown to reach the code
  * it covers by planting a violation and seeing it caught.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -45,13 +45,6 @@ async function treeNames(): Promise<Set<string>> {
       const [team, ...rest] = worker.id.split(".");
       names.add(worker.id).add(team!).add(rest.join("."));
       if (typeof worker.declared.flow === "string") names.add(worker.declared.flow);
-    }
-    for (const mailbox of roster.mailboxes) {
-      const [team, ...rest] = mailbox.id.split(".");
-      names.add(mailbox.id).add(team!).add(rest.join("."));
-      for (const board of (mailbox.declared.boards as string[] | undefined) ?? []) {
-        names.add(board).add(`${mailbox.id}.${board}`);
-      }
     }
   }
   return names;
@@ -97,7 +90,7 @@ function literalColours(file: string, text: string): string[] {
 }
 
 describe("V8", () => {
-  it("names no seat, team, mailbox, board or kind from either goal tree (BR-5)", async () => {
+  it("names no seat, team or kind from either goal tree (BR-5)", async () => {
     const names = await treeNames();
     expect(names.size).toBeGreaterThan(10);
     const hits = sources.flatMap((file) => namedIn(readFileSync(file, "utf8"), names).map((n) => `${relative(pkg, file)}: "${n}"`));
@@ -107,11 +100,11 @@ describe("V8", () => {
     expect(namedIn(`const seat = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("reads the inventory on workforce's built-in mailbox kind, and projects on its roster flow", async () => {
-    const { MAILBOX_KIND, ROSTER_FLOW_KIND } = await import("@flow-state-dev/workforce");
-    const { INVENTORY_READER_KIND, PROJECT_READER_KIND } = await import("../src/lib/reads");
-    expect(INVENTORY_READER_KIND).toBe(MAILBOX_KIND);
-    expect(PROJECT_READER_KIND).toBe(ROSTER_FLOW_KIND);
+  it("reads the seat inventory and the projects on workforce's roster flow, and opens no reader on any other kind", async () => {
+    const { ROSTER_FLOW_KIND } = await import("@flow-state-dev/workforce");
+    const reads = await import("../src/lib/reads");
+    expect(reads.PROJECT_READER_KIND).toBe(ROSTER_FLOW_KIND);
+    expect(Object.keys(reads).filter((name) => name.endsWith("_READER_KIND"))).toEqual(["PROJECT_READER_KIND"]);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {
@@ -140,15 +133,15 @@ describe("V8", () => {
     const sites = (files: string[], read: (f: string) => string) =>
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
-    // A workstream post (`transcript.ts`) is the mailbox action, an action whose answer a
-    // view reads goes through `action.ts`, and a line to a worker goes through `send.ts`.
-    expect(sites(code, read)).toEqual(["lib/action.ts", "lib/send.ts", "lib/transcript.ts"]);
+    // An action whose answer a view reads goes through `action.ts`, and a line
+    // to a worker goes through `send.ts`.
+    expect(sites(code, read)).toEqual(["lib/action.ts", "lib/send.ts"]);
     // The door is the one the inventory names, never an action name of Shift Manager's own.
     const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
     expect(sendLines).toHaveLength(1);
     expect(sendLines[0]).toContain("sendAction(target.door,");
     // Every composer that talks to a worker sends through it.
-    for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Stream.tsx", "surfaces/Inbox.tsx", "components/Conversation.tsx"]) {
+    for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Inbox.tsx", "components/Conversation.tsx"]) {
       expect(read(join(src, file)), file).toContain("sendTurn(clients,");
     }
     // Planted: a composer that sends to a named action is caught.
@@ -167,9 +160,7 @@ describe("V8", () => {
       files.filter((f) => read(f).split("\n").some((line) => CLASSIFIES.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
     expect(sites(code, read)).toEqual(["components/TurnComposer.tsx"]);
-    for (const file of ["surfaces/Stream.tsx", "components/TurnComposer.tsx"]) {
-      expect(read(join(src, file)), file).toContain("useTurnSend()");
-    }
+    expect(read(join(src, "components/TurnComposer.tsx"))).toContain("useTurnSend()");
     // Planted: a composer that classifies a failure itself is caught.
     const planted = join(src, "surfaces/Planted.tsx");
     expect(sites([...code, planted], (f) => (f === planted ? `const retry = err instanceof TurnNotDelivered && err.kind === "not-sent";` : read(f)))).toContain(
