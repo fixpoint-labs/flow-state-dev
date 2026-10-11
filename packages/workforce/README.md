@@ -727,11 +727,11 @@ pass `--root`.
 
 ```ts
 import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { blocks, kinds, packageBlocks, workerBlocks } from "./workforce/workforce.gen";
+import { blocks, packageBlocks, workerBlocks, workerFlows } from "./workforce/workforce.gen";
 
 const installation = createWorkerInstallation({
   standardWorkers: workers,
-  workerFlows: () => ({ ...kinds, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
+  workerFlows: () => ({ ...workerFlows, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
   workerBlocks,
   packageBlocks,
 });
@@ -875,12 +875,12 @@ line which packages it holds. Leave `packageBlocks` out and a held package bring
 
 ```ts
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { kinds, packageBlocks, workerBlocks } from "./workforce/workforce.gen";
+import { packageBlocks, workerBlocks, workerFlows } from "./workforce/workforce.gen";
 
 const { workers, errors, packageErrors } = await readWorkforce("./workforce");
 if (errors.length || packageErrors.length) throw new Error("workforce: failed to load");
 
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, workerBlocks, packageBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows, workerBlocks, packageBlocks });
 const flows = hireWorkforce(installation);
 ```
 
@@ -2376,7 +2376,7 @@ the root exports, and reaches no Node built-in.
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
-| `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |
+| `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
 | `inventoryWorkers(installation)` | The standard workers as `openInventory` takes workers: each worker's id, its flow and that flow's actions. |
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |

@@ -19,7 +19,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   if (cached !== undefined) return cached;
   const real = asWritten(snapshot);
   const seats = new Map(
-    [...real.seats].map(([id, state]) => [
+    [...real.workers].map(([id, state]) => [
       id,
       {
         ...state,
@@ -31,7 +31,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
       },
     ]),
   );
-  const result = { ...real, seats };
+  const result = { ...real, workers: seats };
   computed.set(snapshot, result);
   return result;
 }

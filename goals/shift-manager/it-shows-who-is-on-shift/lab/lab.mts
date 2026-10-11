@@ -240,7 +240,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
 
   const runtime = await flowState.getRuntime();
   const inventory = await openInventory(
-    { seats: [...inventoryWorkers(installation), ORG_SEAT], mailboxes: [] },
+    { workers: [...inventoryWorkers(installation), ORG_SEAT], mailboxes: [] },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({

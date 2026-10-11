@@ -312,7 +312,7 @@ Name the worker when you build the installation. It must be a standard worker on
 ```ts
 const installation = createWorkerInstallation({
   standardWorkers: workers,
-  workerFlows: () => kinds,
+  workerFlows: () => workerFlows,
   projectCoordinator: "project-coordinator",
 });
 ```

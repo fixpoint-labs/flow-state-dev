@@ -248,7 +248,7 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const refOf = (pattern: string) =>
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const workersRef = refOf("inventory/seats/*");
+  const workersRef = refOf("inventory/workers/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
   const workerRows = workersRef === undefined ? [] : (await api.collection(host, workersRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
   const seats = workerRows.map((s) => s.id);

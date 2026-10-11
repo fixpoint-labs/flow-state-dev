@@ -8,7 +8,7 @@
 // this file and the tree disagree. Committed on purpose — a fresh clone has to
 // typecheck before anything has been generated.
 
-export const kinds = {};
+export const workerFlows = {};
 
 export const mailboxKinds = {};
 

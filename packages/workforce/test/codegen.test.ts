@@ -487,7 +487,7 @@ describe("the rendered module", () => {
 
     // An app with no custom worker flows should not acquire an import because of a
     // folder it does not have — and there is no member for a type to catch.
-    expect(rendered).toContain("export const kinds = {};");
+    expect(rendered).toContain("export const workerFlows = {};");
     expect(rendered).toContain("export const mailboxKinds = {};");
     expect(rendered).not.toContain("HireOptions");
   });

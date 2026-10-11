@@ -88,7 +88,7 @@ export async function openDesk(root: string) {
 
   const runtime = await flowState.getRuntime();
   const opened = await openInventory(
-    { seats: inventoryWorkers(installation), mailboxes: [] },
+    { workers: inventoryWorkers(installation), mailboxes: [] },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({

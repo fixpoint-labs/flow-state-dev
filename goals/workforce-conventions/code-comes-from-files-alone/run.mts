@@ -36,7 +36,7 @@
  *   d  the KIND, on the fixture host. Two seats sit on ONE custom kind,
  *      `desk-clerk`, and differ only in the `desk:` their own `WORKER.md`
  *      declares. The fixture's generated module agrees with its tree
- *      (`fsdev gen --check`), the seats are hired from that module's `kinds`
+ *      (`fsdev gen --check`), the seats are hired from that module's `workerFlows`
  *      map, and each one's `answer` names the desk ITS OWN FILE declared, read
  *      from that file here rather than written into the check. An
  *      implementation that hired both onto one shared configuration gives both
@@ -363,7 +363,7 @@ await runGoal(async (failures) => {
   }
 
   const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
-    kinds: Record<string, unknown>;
+    workerFlows: Record<string, unknown>;
   };
   const roster = await readWorkforce(TREE);
   if (roster.errors.length > 0) {
@@ -376,7 +376,7 @@ await runGoal(async (failures) => {
     const first = workers[0]!.declared;
     workers = workers.map((worker) => ({ ...worker, declared: { ...first } }));
   }
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: generated.kinds as never });
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: generated.workerFlows as never });
   const copies = hireWorkforce(installation);
   const state = createFlowState({
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),

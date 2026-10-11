@@ -93,8 +93,8 @@ const LABS = {
     tree: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce"),
   },
   "multi-seat-collab": {
-    config: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "fsdev.config.mts"),
-    tree: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "workforce"),
+    config: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "fsdev.config.mts"),
+    tree: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "workforce"),
   },
 } as const;
 type LabName = keyof typeof LABS;
@@ -334,7 +334,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
   let host = tree.mailboxes[0]?.id;
   if (host === undefined) {
     for (const sessionId of await topLevelSessions(api, userId)) {
-      if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/seats/*")) {
+      if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")) {
         host = sessionId;
         break;
       }
@@ -342,7 +342,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
   }
   const declared = host === undefined ? [] : await declaredBy(api, host);
   const refOf = (pattern: string) => declared.find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const workersRef = refOf("inventory/seats/*");
+  const workersRef = refOf("inventory/workers/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
   const seats = workersRef === undefined || host === undefined ? [] : (await api.collection(host, workersRef)).map((r) => String(r.id));
   const mailboxes =
@@ -563,11 +563,11 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     await open(page, served.origin, "/inbox");
 
     // ---- TEAMS: one status square per seat, under its team's row -------------
-    const shownSeats = await attr(page, "worker", "data-seat-id");
+    const shownSeats = await attr(page, "worker", "data-worker-id");
     if (!same(shownSeats, store.seats)) fail("TEAMS equals the store's seats", diff(store.seats, shownSeats));
     for (const team of await attr(page, "team", "data-team")) {
       const under = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) =>
-        els.map((e) => e.getAttribute("data-seat-id") ?? ""),
+        els.map((e) => e.getAttribute("data-worker-id") ?? ""),
       );
       // A seat with no team (an org seat) sits in the Staff row.
       const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
@@ -661,7 +661,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       await page.getByTestId(`nav-workstream-${mailbox.id}`).click();
       await page.locator(`[data-testid=workstream][data-mailbox-id="${mailbox.id}"]`).waitFor();
       if (!(await visible(page, "workstream-panel"))) fail("reach", `${mailbox.id} has no right panel`);
-      const members = await attr(page, "panel-member", "data-seat-id");
+      const members = await attr(page, "panel-member", "data-worker-id");
       if (!same(members, mailbox.members)) fail("PROJECTS equals the store's mailboxes", `${mailbox.id}'s panel team: ${diff(mailbox.members, members)}`);
 
       await page.locator("[role=tab][data-tab=board]").click();

@@ -596,7 +596,7 @@ async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, eviden
   // below is the one "Talk" opens and not the last seat session leg b read.
   await showHelpDesk(page);
   await talkTo(page, seat.id);
-  const box = panel(page).getByLabel("Message this seat");
+  const box = panel(page).getByLabel("Message this worker");
   await box.waitFor({ timeout: 15_000 });
   // Which session "Talk" opened, from the server's index by worker: the person's own, not a run. Not graded.
   const started = await readUntil(() => workerSessions(page, ORIGIN, seat.id), (listed) => listed.length > 0, 10_000);

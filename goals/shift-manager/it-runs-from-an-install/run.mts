@@ -176,9 +176,9 @@ async function serve(project: string, dev: boolean): Promise<Served> {
 
 // ---- the page -----------------------------------------------------------------------
 
-/** The `data-seat-id`s the sidebar's TEAMS draws, once it draws any (up to `ms`). */
+/** The `data-worker-id`s the sidebar's TEAMS draws, once it draws any (up to `ms`). */
 async function shownWorkers(page: Page, ms: number): Promise<string[]> {
-  const read = () => page.locator("[data-testid=worker]").evaluateAll((els) => els.map((e) => e.getAttribute("data-seat-id") ?? ""));
+  const read = () => page.locator("[data-testid=worker]").evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""));
   let shown: string[] = [];
   for (const until = Date.now() + ms; Date.now() < until && shown.length === 0; await sleep(250)) shown = await read().catch(() => []);
   return shown;
@@ -186,7 +186,7 @@ async function shownWorkers(page: Page, ms: number): Promise<string[]> {
 
 /** The flow the Roster draws for a worker: the first of the row's two lines under its name. */
 async function shownKind(page: Page, workerId: string): Promise<string | null> {
-  const line = page.locator(`[data-testid=roster-worker][data-seat-id="${workerId}"] p.truncate`).first();
+  const line = page.locator(`[data-testid=roster-worker][data-worker-id="${workerId}"] p.truncate`).first();
   const text = await line.textContent({ timeout: 500 }).catch(() => null);
   return text === null ? null : text.split(" · ")[0]!.trim();
 }

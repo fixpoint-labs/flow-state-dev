@@ -3,7 +3,7 @@
  * tags a note with the desk the worker's own `WORKER.md` sets.
  *
  * Nothing registers it. `fsdev gen` walks this folder and puts it on the
- * `kinds` map of `workforce.gen.ts` under its basename, `desk-clerk`, the name
+ * `workerFlows` map of `workforce.gen.ts` under its basename, `desk-clerk`, the name
  * both workers' files give in their `flow:` line. The goal check hands that map
  * to the installation and never imports this module.
  *

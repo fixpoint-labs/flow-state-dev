@@ -408,7 +408,7 @@ async function checkInterrupt({ page, api, fail }: Ctx, row: Row): Promise<void>
 
 async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row): Promise<void> {
   const seat = tree.members.find((m) => m === row.assignee);
-  const shownSeat = await page.getByTestId("inspector-worker-id").getAttribute("data-seat-id");
+  const shownSeat = await page.getByTestId("inspector-worker-id").getAttribute("data-worker-id");
   if (shownSeat !== seat) fail("inspector", `worker ${shownSeat}, the row is assigned ${seat}`);
   const started = await page.getByTestId("inspector-started-at").getAttribute("data-started-at");
   if (started !== String(row.startedAt ?? "")) fail("inspector", `started ${started}, stored ${row.startedAt}`);

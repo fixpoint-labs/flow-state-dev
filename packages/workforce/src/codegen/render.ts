@@ -61,7 +61,7 @@ const SLOT_TYPES: Record<CodeSlotId, { imported: string; from: string; expressio
   },
 };
 
-/** The map Door B's modules are rendered onto. Public: an app imports it beside `kinds`. */
+/** The map Door B's modules are rendered onto. Public: an app imports it beside `workerFlows`. */
 const RESOURCE_MODULES_EXPORT = "resourceModules";
 
 /**
@@ -168,7 +168,7 @@ function renderModuleMap(modules: DiscoveredResourceModule[]): string {
   );
 }
 
-/** The map Door C's registrations are rendered onto. Public: an app imports it beside `kinds`. */
+/** The map Door C's registrations are rendered onto. Public: an app imports it beside `workerFlows`. */
 const WORKER_BLOCKS_EXPORT = "workerBlocks";
 
 /**

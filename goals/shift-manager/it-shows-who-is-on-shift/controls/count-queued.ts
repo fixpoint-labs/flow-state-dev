@@ -26,14 +26,14 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   if (cached !== undefined) return cached;
   const real = asWritten(snapshot);
   const roster = rosterOf(snapshot);
-  const seats = new Map([...real.seats].map(([id, state]) => [id, { ...state, held: [...state.held] }]));
+  const seats = new Map([...real.workers].map(([id, state]) => [id, { ...state, held: [...state.held] }]));
   for (const row of allRows(snapshot)) {
     const status = readStatus(row.status);
     if (status !== "pending" && status !== "blocked") continue;
     const owner = workerFor(roster, row);
     if (owner !== undefined) seats.get(owner.id)?.held.push(row);
   }
-  const result = { ...real, seats };
+  const result = { ...real, workers: seats };
   computed.set(snapshot, result);
   return result;
 }

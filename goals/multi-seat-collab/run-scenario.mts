@@ -35,7 +35,7 @@ import type { PieceInput } from "../../packages/shift-manager/test/fixtures/mult
 import { workLineSchema, type WorkLine } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 
 /** The config `fsdev dev` is pointed at. */
-export const LAB_CONFIG = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "fsdev.config.mts");
+export const LAB_CONFIG = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "fsdev.config.mts");
 
 /** What a served lab hands back. */
 export interface ServedLab {

@@ -81,7 +81,7 @@ await runGoal(async (failures) => {
   } else {
     const named = (flow: string) => bootError.includes(`worker flow "${flow}"`);
     if (!named("doorless") || !bootError.includes("no door")) fail("a", `the boot error does not name the doorless flow: ${bootError}`);
-    if (!named("numbered") || !bootError.includes("`seatId`")) fail("a", `the boot error does not name numbered's \`seatId\`: ${bootError}`);
+    if (!named("numbered") || !bootError.includes("`workerId`")) fail("a", `the boot error does not name numbered's \`workerId\`: ${bootError}`);
     if (!named("loose-attribution") || !bootError.includes("writtenBy")) {
       fail("a", `the boot error does not name loose-attribution's \`writtenBy\`: ${bootError}`);
     }

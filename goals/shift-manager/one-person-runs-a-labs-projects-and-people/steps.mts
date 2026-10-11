@@ -193,7 +193,7 @@ export async function readProjects(routes: LabRoutes): Promise<{ rows: ProjectRo
 
 /** The seat inventory, read through the person's roster session, which declares it. */
 export async function readInventory(routes: LabRoutes): Promise<Array<Record<string, any>>> {
-  return routes.collection(await rosterSession(routes), "inventory/seats/*");
+  return routes.collection(await rosterSession(routes), "inventory/workers/*");
 }
 
 /** One of the person's own workers, as their roster row stores it. */
@@ -293,7 +293,7 @@ export async function teamsSeats(world: World): Promise<string[]> {
   await world.open("/cos");
   await world.page.getByTestId("teams").waitFor();
   await world.page.locator("[data-testid=teams] [data-testid=worker]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-  return world.page.locator("[data-testid=teams] [data-testid=worker]").evaluateAll((els) => els.map((e) => e.getAttribute("data-seat-id") ?? ""));
+  return world.page.locator("[data-testid=teams] [data-testid=worker]").evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""));
 }
 
 /**
@@ -307,7 +307,7 @@ export async function rosterOwn(world: World): Promise<Array<{ id: string; text:
   await world.page.getByTestId("roster").waitFor();
   await read;
   await sleep(500);
-  return world.page.locator("[data-testid=roster-worker][data-own=true]").evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-seat-id") ?? "", text: (e as HTMLElement).innerText.replace(/\s+/g, " ").trim() })));
+  return world.page.locator("[data-testid=roster-worker][data-own=true]").evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-worker-id") ?? "", text: (e as HTMLElement).innerText.replace(/\s+/g, " ").trim() })));
 }
 
 /** PROJECTS as drawn: each group's project id and its workstream ids. */

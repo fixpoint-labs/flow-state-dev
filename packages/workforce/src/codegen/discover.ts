@@ -69,7 +69,7 @@ export interface CodeSlot {
   /** Path under the workforce root, POSIX, relative. Owner-locked. */
   readonly dir: string;
   /** The map this slot's files are rendered onto. Public: an app imports it. */
-  readonly exportName: "kinds" | "mailboxKinds" | "blocks";
+  readonly exportName: "workerFlows" | "mailboxKinds" | "blocks";
   /** What a basename here names, for a refusal to say. */
   readonly label: SegmentLabel;
 }
@@ -82,7 +82,7 @@ export interface CodeSlot {
  * rather than a flows-only one the blocks half would later have to match.
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
-  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" }),
+  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "workerFlows", label: "Kind" }),
   Object.freeze({ id: "mailbox", dir: "flows/mailboxes", exportName: "mailboxKinds", label: "Kind" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);

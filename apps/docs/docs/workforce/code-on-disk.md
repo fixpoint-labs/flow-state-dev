@@ -83,7 +83,7 @@ import resource_teams__engineering__research from "./teams/engineering/resources
 import teamblock_engineering__build_status from "./teams/engineering/blocks/build-status";
 import workerblock_engineering__triage__page_oncall from "./teams/engineering/workers/triage/blocks/page-oncall";
 
-export const kinds = {
+export const workerFlows = {
   "request-triage": worker_request_triage,
 } satisfies NonNullable<HireOptions["workerFlows"]>;
 
@@ -115,7 +115,7 @@ Each export feeds a parameter that already exists:
 
 | Export | Goes to |
 | --- | --- |
-| `kinds` | `createWorkerInstallation`'s `workerFlows` |
+| `workerFlows` | `createWorkerInstallation`'s `workerFlows` |
 | `mailboxKinds` | `mailboxInstances` |
 | `blocks` | a task board's `workers`, or a worker flow's [tool catalog](./built-in-worker.md#tools) |
 | `workerBlocks` | `createWorkerInstallation` again |
@@ -124,9 +124,9 @@ Each export feeds a parameter that already exists:
 
 ```ts
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
-import { kinds, workerBlocks } from "./workforce/workforce.gen";
+import { workerBlocks, workerFlows } from "./workforce/workforce.gen";
 
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, workerBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows, workerBlocks });
 const flows = hireWorkforce(installation);
 ```
 
@@ -185,11 +185,11 @@ The org-level half is one line in your app, on the option the built-in worker fl
 
 ```ts
 import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { blocks, kinds, workerBlocks } from "./workforce/workforce.gen";
+import { blocks, workerBlocks, workerFlows } from "./workforce/workforce.gen";
 
 const installation = createWorkerInstallation({
   standardWorkers: workers,
-  workerFlows: () => ({ ...kinds, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
+  workerFlows: () => ({ ...workerFlows, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
   workerBlocks,
 });
 const flows = hireWorkforce(installation);

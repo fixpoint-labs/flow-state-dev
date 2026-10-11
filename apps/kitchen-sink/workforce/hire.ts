@@ -41,7 +41,7 @@ import { dirname } from "node:path";
 import { coordinatorWorkersUnderControl, delegateFlowsUnderControl } from "../lib/coordinator-control";
 import { landingControl } from "../lib/landing-control";
 import { ROUTE_MODEL } from "../lib/models";
-import { blocks, kinds, packageBlocks, workerBlocks } from "./workforce.gen";
+import { blocks, packageBlocks, workerBlocks, workerFlows } from "./workforce.gen";
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
@@ -102,7 +102,7 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
   // post and hands no answer back, in test mode only.
   const agent = landingControl(blocks, installation) ?? defineAgentWorkerFlow({ installation, catalog: blocks });
   flows = {
-    ...kinds,
+    ...workerFlows,
     agent,
     // The coordinator flow: `support.help` runs on it. Its delegates take
     // posts on `agent`, and best fit's one evaluator call runs on ROUTE_MODEL.

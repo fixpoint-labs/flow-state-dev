@@ -38,7 +38,7 @@ import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-
 
 /** The three published key patterns, by the tab's section names. */
 const PATTERNS = {
-  seats: "inventory/seats/*",
+  seats: "inventory/workers/*",
   mailboxes: "inventory/mailboxes/*",
   memberships: "inventory/members/**",
 } as const;
@@ -77,7 +77,7 @@ async function readStore(dbFile: string, orgId: string): Promise<Stored> {
  */
 function expectedFromTree(tree: LabTree): { keys: string[]; workerFlowNames: Map<string, string> } {
   const workerFlowNames = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
-  const keys = [...workerFlowNames.keys()].map((id) => `inventory/seats/${id}`).sort();
+  const keys = [...workerFlowNames.keys()].map((id) => `inventory/workers/${id}`).sort();
   return { keys, workerFlowNames };
 }
 
@@ -117,7 +117,7 @@ function judgeStore(tree: LabTree, stored: Stored): string | undefined {
     return `the store holds ${JSON.stringify(keys)} for the lab's organization; the tree implies ${JSON.stringify(expected.keys)}`;
   }
   for (const [id, kind] of expected.workerFlowNames) {
-    const row = stored[`inventory/seats/${id}`]!;
+    const row = stored[`inventory/workers/${id}`]!;
     if (row.id !== id || row.kind !== kind) return `seat row ${id} holds ${JSON.stringify(row)}; the tree hired it as "${kind}"`;
   }
   return undefined;
@@ -245,7 +245,7 @@ export async function gradeRow5(options: {
   {
     const stores = createSQLiteStores({ filename: dbFile });
     try {
-      await stores.resourceState.set("org", foreign.org, `inventory/seats/${foreign.seat}`, { id: foreign.seat, kind: "worker" }, "any");
+      await stores.resourceState.set("org", foreign.org, `inventory/workers/${foreign.seat}`, { id: foreign.seat, kind: "worker" }, "any");
       await stores.resourceState.set(
         "org",
         foreign.org,
@@ -258,7 +258,7 @@ export async function gradeRow5(options: {
     }
   }
   const planted = Object.keys(await readStore(dbFile, foreign.org)).sort();
-  if (JSON.stringify(planted) !== JSON.stringify([`inventory/mailboxes/${foreign.mailbox}`, `inventory/seats/${foreign.seat}`])) {
+  if (JSON.stringify(planted) !== JSON.stringify([`inventory/mailboxes/${foreign.mailbox}`, `inventory/workers/${foreign.seat}`])) {
     throw new Error(`the foreign rows did not store: ${JSON.stringify(planted)}`);
   }
 
@@ -288,13 +288,13 @@ export async function gradeRow5(options: {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: LAB_USER_ID, input: { seats: [{ id: "fabricated.seat", kind: "worker" }] } }),
+        body: JSON.stringify({ userId: LAB_USER_ID, input: { workers: [{ id: "fabricated.seat", kind: "worker" }] } }),
       },
     );
     const refusal = await fabricated.text();
     await new Promise((r) => setTimeout(r, 500));
     const afterFabricated = await readStore(dbFile, LAB_ORG_ID);
-    const landed = "inventory/seats/fabricated.seat" in afterFabricated;
+    const landed = "inventory/workers/fabricated.seat" in afterFabricated;
     if (fabricated.status < 400 || !refusal.includes('does not define action \\"registerWorkersInInventory\\"') || landed) {
       fail(
         "step 3",
@@ -322,7 +322,7 @@ export async function gradeRow5(options: {
       Object.entries(stored)
         .filter(([key]) => key.startsWith(prefix))
         .map(([, row]) => row);
-    const storedSeats = under("inventory/seats/");
+    const storedSeats = under("inventory/workers/");
     const storedMailboxes = under("inventory/mailboxes/");
     const storedMemberships = under("inventory/members/");
 
@@ -385,7 +385,7 @@ export async function gradeRow5(options: {
 
       if (screen !== undefined) {
         if (screen.openExpanders !== 0) fail("step 4", `${screen.openExpanders} expander(s) were open when the tab was read`);
-        const seats = screen.sections.seats;
+        const seats = screen.sections.workers;
         const mailboxes = screen.sections.mailboxes;
         const memberships = screen.sections.memberships;
         for (const [name, section] of Object.entries({ seats, mailboxes, memberships })) {
@@ -483,8 +483,8 @@ export async function gradeRow5(options: {
           notes,
           evidence:
             `row 5 read on the multi-seat-collab hire with the debug endpoints off: the inventory's session ${host.id} (${host.kind}), ` +
-            `opened from the navigator, showed ${screen.sections.seats!.rows.length} registered worker(s) ` +
-            `(${screen.sections.seats!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind} in ${r.cells.Mailboxes}`).join("; ")}), ` +
+            `opened from the navigator, showed ${screen.sections.workers!.rows.length} registered worker(s) ` +
+            `(${screen.sections.workers!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind} in ${r.cells.Mailboxes}`).join("; ")}), ` +
             `${screen.sections.mailboxes!.rows.length} mailbox(es) and ${screen.sections.memberships!.rows.length} membership(s), ` +
             `exactly as the store holds them, nothing expanded; the coordinator ${tree.coordinatorId} delegates to ${delegates.join(", ")}; ` +
             `another organization's rows were stored and appeared nowhere; a second boot changed nothing`,

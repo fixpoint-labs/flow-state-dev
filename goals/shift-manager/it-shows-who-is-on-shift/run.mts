@@ -237,7 +237,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   let workerRows: Array<{ id: string; kind: string | null }> = [];
   for (const host of topLevel) {
     const resources = await published(host);
-    const workersRef = resources.find((r) => r.pattern === "inventory/seats/*")?.ref;
+    const workersRef = resources.find((r) => r.pattern === "inventory/workers/*")?.ref;
     if (workersRef === undefined) continue;
     workerRows = (await api.collection(host.id, workersRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
     break;
@@ -308,14 +308,14 @@ async function gradeRoster(page: Page, store: Store, team: string | null, fail: 
   await page.locator(`[data-testid=roster][data-team="${team ?? ""}"]`).waitFor({ timeout: 10_000 });
   const want = store.workers.filter((w) => team === null || w.team === team);
   const rows = page.getByTestId("roster-worker");
-  const shown = (await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-seat-id") ?? ""))) as string[];
+  const shown = (await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""))) as string[];
   if (!same(shown, want.map((w) => w.id))) fail("roster", `${where}: ${diff(want.map((w) => w.id), shown)}`);
 
   for (const worker of want) {
-    const row = page.locator(`[data-testid=roster-worker][data-seat-id="${worker.id}"]`);
+    const row = page.locator(`[data-testid=roster-worker][data-worker-id="${worker.id}"]`);
     if ((await row.count()) !== 1) continue;
     const status = await row.getAttribute("data-status");
-    const group = await page.locator(`[data-testid=roster-group]:has([data-testid=roster-worker][data-seat-id="${worker.id}"])`).getAttribute("data-status");
+    const group = await page.locator(`[data-testid=roster-group]:has([data-testid=roster-worker][data-worker-id="${worker.id}"])`).getAttribute("data-status");
     if (status !== worker.status || group !== worker.status) {
       fail("status", `${where}: ${worker.id} is drawn under "${group}" (row says "${status}"), the store says "${worker.status}"`);
     }
@@ -389,7 +389,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
       const members = store.workers.filter((w) => w.team === team);
       const squares = (await page
         .locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`)
-        .evaluateAll((els) => els.map((e) => `${e.getAttribute("data-seat-id")}=${e.getAttribute("data-status")}`))) as string[];
+        .evaluateAll((els) => els.map((e) => `${e.getAttribute("data-worker-id")}=${e.getAttribute("data-status")}`))) as string[];
       const wantSquares = members.map((w) => `${w.id}=${w.status}`);
       if (!same(squares, wantSquares)) fail("TEAMS", `${team}: ${diff(wantSquares, squares)}`);
       const meta = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=team-on-shift]`).textContent();

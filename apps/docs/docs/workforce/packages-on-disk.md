@@ -75,7 +75,7 @@ A package's tools reach only the workers that hold it. They are not in your app'
 ```ts
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { kinds, packageBlocks, workerBlocks } from "./workforce/workforce.gen";
+import { packageBlocks, workerBlocks, workerFlows } from "./workforce/workforce.gen";
 
 const { workers, errors, packageErrors } = await readWorkforce("./workforce");
 if (errors.length || packageErrors.length) {
@@ -83,7 +83,7 @@ if (errors.length || packageErrors.length) {
   throw new Error(`workforce failed to load:\n${reported.join("\n")}`);
 }
 
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, workerBlocks, packageBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows, workerBlocks, packageBlocks });
 const flows = hireWorkforce(installation);
 ```
 

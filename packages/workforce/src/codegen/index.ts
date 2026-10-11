@@ -6,7 +6,7 @@
  * `workforce/flows/mailboxes/` and `workforce/blocks/` — and the TypeScript in
  * every `resources/` folder beside the documents, and every `blocks/` folder
  * inside the team tree, and every package's `blocks/` — and renders one module
- * of static imports: `kinds`, `mailboxKinds`, `blocks`, `workerBlocks`,
+ * of static imports: `workerFlows`, `mailboxKinds`, `blocks`, `workerBlocks`,
  * `packageBlocks` and `resourceModules`, each feeding a parameter the framework
  * already takes. `fsdev gen` is a thin
  * command over these two calls — it resolves the root, writes the file, and

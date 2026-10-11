@@ -2,7 +2,7 @@
 /**
  * Guard: nothing in the docs corpus may teach that `flowIsolation` keys on the
  * flow KIND. Since FIX-1323 the isolation coordinate is the resolved flow
- * INSTANCE id, and `hireWorkforce` mints one instance per seat.
+ * INSTANCE id, and `hireWorkforce` mints one instance per worker.
  *
  * Why this is a co-occurrence check and not a phrase list. FIX-1420 first
  * shipped with a scan whose patterns were generalized from the stale lines it

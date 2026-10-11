@@ -659,7 +659,7 @@ async function readStore(api: LabApi, tree: string, userId: string, boards: read
     if (session.parentSessionId != null) continue;
     const manifest = await api.get(`/sessions/${encodeURIComponent(String(session.id))}/manifest`);
     const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-      (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+      (r) => r.kind === "collection" && r.pattern === "inventory/workers/*",
     )?.ref;
     if (ref !== undefined) {
       seatsAt = { host: String(session.id), ref };

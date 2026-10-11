@@ -19,7 +19,7 @@
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { useWorkerConversation as useStoredConversation, type WorkerConversation } from "../../../../packages/shift-manager/src/lib/conversation.ts";
-import type { Seat } from "../../../../packages/shift-manager/src/lib/reads.ts";
+import type { Worker } from "../../../../packages/shift-manager/src/lib/reads.ts";
 import type { sendTurn as realSendTurn } from "../../../../packages/shift-manager/src/lib/send.ts";
 
 export * from "../../../../packages/shift-manager/src/lib/conversation.ts";
@@ -37,7 +37,7 @@ export const sendTurn: typeof realSendTurn = async (_clients, _target, message) 
 };
 
 /** The real hook, with the session's items replaced by the lines typed here and a canned reply to each. */
-export function useWorkerConversation(seat: Seat, sessions: readonly SessionSummary[]): WorkerConversation {
+export function useWorkerConversation(seat: Worker, sessions: readonly SessionSummary[]): WorkerConversation {
   const stored = useStoredConversation(seat, sessions);
   if (typed.length === 0) return stored;
   const items = typed.flatMap((line, i) => [

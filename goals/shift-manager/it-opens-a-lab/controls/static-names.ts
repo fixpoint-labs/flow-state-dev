@@ -14,7 +14,7 @@
  * control removes the tree reading and nothing else: a composer turn to a
  * seat that exists still goes through.
  */
-import { createLabReader as readerAsWritten, toWorker, type LabReader, type Seat } from "../../../../packages/shift-manager/src/lib/reads.ts";
+import { createLabReader as readerAsWritten, toWorker, type LabReader, type Worker } from "../../../../packages/shift-manager/src/lib/reads.ts";
 
 export * from "../../../../packages/shift-manager/src/lib/reads.ts";
 
@@ -28,11 +28,11 @@ export function createLabReader(clients: Parameters<typeof readerAsWritten>[0]):
     read: async () => {
       const snapshot = await reader.read();
       if (snapshot.refused !== undefined || !snapshot.inventory.ok) return snapshot;
-      const stored = new Map(snapshot.inventory.value.seats.map((seat) => [seat.id, seat]));
+      const stored = new Map(snapshot.inventory.value.workers.map((seat) => [seat.id, seat]));
       const seats = __STATIC_SEATS__
         .map((row) => toWorker({ ...row, door: stored.get(row.id)?.door ?? null }, ""))
-        .filter((s): s is Seat => s !== undefined);
-      return { ...snapshot, inventory: { ok: true, value: { ...snapshot.inventory.value, seats } } };
+        .filter((s): s is Worker => s !== undefined);
+      return { ...snapshot, inventory: { ok: true, value: { ...snapshot.inventory.value, workers: seats } } };
     },
   };
 }
