@@ -37,7 +37,7 @@ function useNow(running: boolean): number {
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
-/** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<conversation id>`. */
+/** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<workstream>` or `#<conversation id>`. */
 function streamLabel(holder: string): string {
   return holder.startsWith("@") ? holder : `#${holder}`;
 }

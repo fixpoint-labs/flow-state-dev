@@ -61,7 +61,7 @@ import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type S
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { workforceClientFor, type LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -73,6 +73,15 @@ export type Failure = { message: string; httpStatus?: number };
  */
 export function workerOf(session: SessionSummary): string | null {
   return text(field((session as { state?: unknown }).state, WORKER_ID_STATE_KEY));
+}
+
+/**
+ * The workstream a session leads, as its readonly `workstreamId` names it
+ * (`<visibility>/<project>/<workstream>`), or `null` for a session outside
+ * any workstream.
+ */
+export function workstreamOf(session: SessionSummary): string | null {
+  return text(field((session as { state?: unknown }).state, WORKSTREAM_STATE_KEY));
 }
 
 /** One section's outcome: its value, or why it has none. */

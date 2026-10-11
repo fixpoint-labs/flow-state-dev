@@ -200,10 +200,22 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     }));
   };
 
-  /** Hire a worker on `flow` onto `user`'s roster, through the roster flow. */
-  const hire = async (user: string, id: string, flow: string, org = ORG) => {
+  /**
+   * Hire a worker on `flow` onto `user`'s roster, through the roster flow. A
+   * worker on `lead` or `lead2` lists a delegate unless `settings` says
+   * otherwise, since a lead runs its workstream through its delegates.
+   */
+  const hire = async (user: string, id: string, flow: string, org = ORG, settings?: Record<string, unknown>) => {
     const rosterSession = await openSession(user, ROSTER_FLOW_KIND, undefined, org);
-    return ok(user, ROSTER_FLOW_KIND, rosterSession, "hire", { id, flow, description: `${user}'s ${id}` }, org);
+    const given = settings ?? (flow === "lead" || flow === "lead2" ? { delegates: [`${id}.helper`] } : undefined);
+    return ok(
+      user,
+      ROSTER_FLOW_KIND,
+      rosterSession,
+      "hire",
+      { id, flow, description: `${user}'s ${id}`, ...(given === undefined ? {} : { settings: given }) },
+      org
+    );
   };
 
   /** A session record as stored. */

@@ -6,17 +6,16 @@
  *
  * Every change goes through the install's routes as that person: the
  * `projects` flow's `createProject`, `projectSetup`, `openWorkstream` and
- * `updateWorkstream`, the roster flow's `fork`, a turn in a session, or the
+ * `updateWorkstream`, the roster flow's `hire`, a turn in a session, or the
  * registered `goal-entry-writer` flow. Nothing is seeded. Every grade reads
  * back what that person gets from the routes, and, for a coordinator's
  * delivery ledger (server-written state no route exposes), the session row
  * that person owns in the store file.
  *
- * Opening a workstream is Shift Manager's way (D2, BR-35): fork the standard
- * workstream coordinator onto the opener's roster under an id derived from
- * the workstream's address, then `openWorkstream` naming it as the lead. The
- * calls are the ones `packages/shift-manager/src/lib/projects.ts` makes, sent
- * from here so the run doesn't load a browser module.
+ * Each opener leads their workstream with a worker of their own: the roster
+ * flow's `hire` puts one on `agent` on their roster, listing the coder as its
+ * delegate and holding the lead's `updateWorkstream` tool, then
+ * `openWorkstream` names it as the lead over HTTP, as any app may.
  */
 import { randomBytes } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -116,8 +115,14 @@ async function act(who: Connected, kind: string, sessionId: string, action: stri
 
 const refusedBy = (text: string | undefined, rule: string) => text !== undefined && text.includes(rule);
 
-/** Shift Manager's id for a workstream's own coordinator (`workstreamCoordinatorId`). */
-const leadIdFor = (project: string, workstream: string) => `ws:shared:${encodeURIComponent(project)}:${encodeURIComponent(workstream)}`;
+/** The id of the worker an opener hires to lead one workstream. */
+const leadIdFor = (project: string, workstream: string) => `lead-${project}-${workstream}`;
+
+/** What a hired lead is told: lead one workstream, and keep its entry current with `updateWorkstream`. */
+const LEAD_INSTRUCTIONS =
+  "You lead one workstream of a project, for the person who owns it. When asked for work, file it as a task " +
+  "for eng.coder with addTask. When its status changes, or there is something to report, call updateWorkstream " +
+  "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
 /** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
 const ownSession = (who: Connected, kind: string, suffix = "") => `${kind}-own-${who.person.userId}${suffix}`;
@@ -338,16 +343,21 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   const r = leg("b");
   const setup = await act(alice, PROJECTS_KIND, ownSession(alice, PROJECTS_KIND), "projectSetup", {});
   const projectCoordinator = setup.output?.projectCoordinator as string | null | undefined;
-  const template = setup.output?.workstreamCoordinator as string | null | undefined;
-  if (setup.status !== "completed" || typeof template !== "string" || typeof projectCoordinator !== "string") {
+  if (setup.status !== "completed" || typeof projectCoordinator !== "string") {
     throw new Error(`setup: projectSetup ${setup.status}: ${show(setup.output)} ${setup.error ?? ""}`);
   }
-  r.notes.push(`projectSetup: project coordinator "${projectCoordinator}", workstream coordinator "${template}"`);
+  r.notes.push(`projectSetup: project coordinator "${projectCoordinator}"`);
 
   const openFor = async (who: Connected, rosterSession: string, ws: WorkstreamInput) => {
     const lead = leadIdFor(S.id, ws.id);
-    const forked = await act(who, ROSTER_KIND, rosterSession, "fork", { from: template, id: lead });
-    if (forked.status !== "completed") throw new Error(`setup: ${who.person.label}'s fork of ${template} as ${lead} ${forked.status}: ${forked.error}`);
+    const hired = await act(who, ROSTER_KIND, rosterSession, "hire", {
+      id: lead,
+      flow: "agent",
+      description: "Leads one workstream, and keeps its entry current.",
+      instructions: LEAD_INSTRUCTIONS,
+      settings: { delegates: ["eng.coder"], tools: ["updateWorkstream"], model: "openai/gpt-5.4-mini" },
+    });
+    if (hired.status !== "completed") throw new Error(`setup: ${who.person.label}'s hire of ${lead} ${hired.status}: ${hired.error}`);
     const opened = await act(who, PROJECTS_KIND, ownSession(who, PROJECTS_KIND), "openWorkstream", {
       project: shared,
       id: ws.id,
@@ -359,7 +369,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
     if (opened.status !== "completed") throw new Error(`setup: ${who.person.label}'s openWorkstream ${opened.status}: ${opened.error}`);
     return { lead, view: opened.output?.workstream as Record<string, any> };
   };
-  o.say(`leg b: Alice opens "${d.aliceWs.id}", Bob opens "${d.bobWs.id}", each led by a workstream coordinator forked onto their roster`);
+  o.say(`leg b: Alice opens "${d.aliceWs.id}", Bob opens "${d.bobWs.id}", each led by a worker hired onto their roster`);
   const aliceWs = await openFor(alice, reader.alice, d.aliceWs);
   const bobWs = await openFor(bob, reader.bob, d.bobWs);
 
@@ -374,7 +384,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
     }
     const mine = (await who.workforce.roster()).find((e) => e.id === ws.lead);
     const theirs = (await other.workforce.roster()).find((e) => e.id === ws.lead);
-    if (mine === undefined || mine.standard || mine.forkedFrom !== template) r.failures.push(`b:own-roster — ${who.person.label}'s roster lists the lead as ${show(mine)}, not their own fork of ${template}`);
+    if (mine === undefined || mine.standard) r.failures.push(`b:own-roster — ${who.person.label}'s roster lists the lead as ${show(mine)}, not a worker of their own`);
     if (theirs !== undefined) r.failures.push(`b:own-roster — ${other.person.label}'s roster lists ${who.person.label}'s lead ${ws.lead}`);
     // The workstream session: the owner's, naming the lead; nobody else's to open.
     const listed = (await who.routes.sessions()).some((s) => s.id === v.sessionId);

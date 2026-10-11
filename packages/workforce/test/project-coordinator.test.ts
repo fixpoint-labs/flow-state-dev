@@ -46,13 +46,29 @@ const standardWorkers: WorkerManifest[] = [
       flow: "coordinator",
       routing: "judgment",
       description: "Talks to you about one project.",
-      tools: ["readProject"]
+      tools: ["readProject", "listLeads", "openWorkstream"]
     },
     body: "Answer from the project's workstreams; hand work only to your own.",
     skills: []
   },
   { id: "chief", declared: { flow: "coordinator", description: "Your one point of contact." }, body: "", skills: [] }
 ];
+
+/**
+ * The project coordinator's catalog: its project read, and the workstream
+ * open and lead list an app gives whoever opens workstreams.
+ */
+function openingTools(installation: Parameters<typeof defineWorkstreamBlocks>[0]["installation"]) {
+  const workstreams = defineWorkstreamBlocks({
+    installation,
+    leadFlows: [{ kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }]
+  });
+  return {
+    ...projectCoordinatorTools,
+    listLeads: workstreams.listLeadsTool,
+    openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream", description: "Open a workstream." })
+  };
+}
 
 /** One delegated post a lead heard: who, what, and in which session. */
 type Heard = { worker: string; message: string; sessionId: string };
@@ -106,7 +122,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
           installation,
           delegateFlows: [leadFlowRef],
           routeModel: "typesafe-ai/jev",
-          agent: { catalog: projectCoordinatorTools }
+          agent: { catalog: openingTools(installation) }
         })
       }),
       models: { generators: { "coordinator-judgment": options.judgment ?? mockGenerator({ script: [] }) } }
@@ -121,7 +137,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
   /** `user` hires `lead` (once) and opens `id` in `project` with it. */
   const open = async (user: string, id: string, lead: string, project: { visibility: "shared" | "private"; id: string } = apollo) => {
     // Hiring an id already on the roster is refused, and that's fine here.
-    await h.act(user, ROSTER_FLOW_KIND, await h.openSession(user, ROSTER_FLOW_KIND), "hire", { id: lead, flow: "lead" });
+    await h.act(user, ROSTER_FLOW_KIND, await h.openSession(user, ROSTER_FLOW_KIND), "hire", { id: lead, flow: "lead", settings: { delegates: [`${lead}.helper`] } });
     return h.ok(user, "lab", await lab(user), "openWorkstream", { project, id, title: `${user}'s ${id}`, lead });
   };
   /** Mark `user`'s workstream `id` with `status`, from the app. */
@@ -415,5 +431,117 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     expect(h.heard).toHaveLength(1);
     const lists = h.counting!.reads.filter((read) => read.includes("prefix") && read.includes("workstreams/"));
     expect(lists.length, lists.join("\n")).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)", () => {
+  /** A judgment turn that runs `calls`, one tool call each step, then answers `last`. */
+  const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown> }>, last = "Done.") =>
+    mockGenerator({
+      script: [
+        ...calls.map((call, index) => ({ toolCalls: [{ toolCallId: `c${index}`, toolName: call.toolName, args: call.args }] })),
+        { text: last }
+      ]
+    });
+  /** Hire `id` on `flow` onto `user`'s roster, listing `delegates`. */
+  const hireOn = async (h: Awaited<ReturnType<typeof boot>>, user: string, id: string, flow: string, delegates: string[]) =>
+    h.ok(user, ROSTER_FLOW_KIND, await h.openSession(user, ROSTER_FLOW_KIND), "hire", {
+      id,
+      flow,
+      description: `${user}'s ${id}`,
+      ...(delegates.length === 0 ? {} : { settings: { delegates } })
+    });
+  /** What `listLeads` answered in a conversation's turns, as their tool outputs carry it. */
+  const leadsOffered = async (h: Awaited<ReturnType<typeof boot>>, sessionId: string) => {
+    const requests = await h.runtime.stores.request.list({ sessionId, withItems: true });
+    return requests
+      .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+      .filter((item) => item.type === "tool_output" && item.blockName === "listLeads")
+      .map((item) => (item.output as { leads: Array<{ id: string }> }).leads.map((lead) => lead.id));
+  };
+
+  it("opens one led by a worker her hire put on her roster, and hands the ask in, in the same turn (BR-38)", async () => {
+    const judgment = scripted([
+      { toolName: "listLeads", args: {} },
+      { toolName: "openWorkstream", args: { project: apollo, id: "checkout", title: "Guest checkout", lead: "alice-lead", objectives: ["Ship it"] } },
+      { toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/checkout" } }
+    ]);
+    const h = await boot({ judgment });
+    await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+    await hireOn(h, "alice", "alice-solo", "lead", []);
+    await hireOn(h, "alice", "alice-quiet", "quiet", ["alice-quiet.helper"]);
+    const roster = (await h.client("alice").roster()).map((worker) => worker.id).sort();
+    const id = await h.coordinator("alice");
+    const posted = await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Please add guest checkout." });
+    expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
+    await h.settled();
+
+    // It offered only the worker that can lead: on a lead flow, listing delegates.
+    expect(await leadsOffered(h, id)).toEqual([["alice-lead"]]);
+    // The open: her entry, led by her worker, and nothing added to her roster.
+    expect((await h.client("alice").roster()).map((worker) => worker.id).sort()).toEqual(roster);
+    const listed = (await h.ok("alice", "lab", await h.lab("alice"), "readProject", { project: apollo })) as {
+      workstreams: Array<{ id: string; owner: string; lead: string; sessionId: string | null }>;
+    };
+    const entry = listed.workstreams.find((workstream) => workstream.id === "checkout")!;
+    expect(entry).toMatchObject({ owner: "alice", lead: "alice-lead" });
+    expect((await h.sessionRecord(entry.sessionId!))!.state).toMatchObject({
+      workerId: "alice-lead",
+      workstreamId: "shared/apollo/checkout"
+    });
+    // Its record is on her coordinator, and the hand-off in that same turn was delivered into the workstream's session.
+    expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/checkout" }]);
+    expect(h.heard).toEqual([{ worker: "alice-lead", message: expect.stringContaining("Please add guest checkout."), sessionId: entry.sessionId }]);
+    const [record] = (await h.items(id)).records;
+    expect(record).toMatchObject({
+      by: "judgment",
+      delegates: [{ worker: "alice-lead", target: "shared/apollo/checkout", outcome: "delivered" }]
+    });
+  });
+
+  it("opens a second with the same lead as a second session and record, and a post to one lands only there (BR-40)", async () => {
+    const judgment = scripted([
+      { toolName: "openWorkstream", args: { project: apollo, id: "checkout", title: "Checkout", lead: "alice-lead" } },
+      { toolName: "openWorkstream", args: { project: apollo, id: "search", title: "Search", lead: "alice-lead" } },
+      { toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/search" } }
+    ]);
+    const h = await boot({ judgment });
+    await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+    const id = await h.coordinator("alice");
+    await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Make search fuzzy." });
+    await h.settled();
+    const sessions = await h.sessionsWith("workerId", "alice-lead");
+    expect(sessions).toHaveLength(2);
+    expect(await h.delegates("alice", id)).toEqual([
+      { worker: "alice-lead", target: "shared/apollo/checkout" },
+      { worker: "alice-lead", target: "shared/apollo/search" }
+    ]);
+    const search = sessions.find((session: { state: Record<string, unknown> }) => session.state.workstreamId === "shared/apollo/search");
+    expect(h.heard).toEqual([{ worker: "alice-lead", message: expect.stringContaining("Make search fuzzy."), sessionId: search.id }]);
+  });
+
+  it("offers nobody when no worker on her roster can lead (BR-39)", async () => {
+    const judgment = scripted([{ toolName: "listLeads", args: {} }], "Nobody on your roster does that work.");
+    const h = await boot({ judgment });
+    await hireOn(h, "alice", "alice-solo", "lead", []);
+    const id = await h.coordinator("alice");
+    await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Please add guest checkout." });
+    await h.settled();
+    expect(await leadsOffered(h, id)).toEqual([[]]);
+    expect(await h.delegates("alice", id)).toEqual([]);
+  });
+
+  it("refuses a lead that lists no delegates, or runs on a flow that can't lead, and writes nothing (BR-42)", async () => {
+    const h = await boot();
+    await hireOn(h, "alice", "alice-solo", "lead", []);
+    await hireOn(h, "alice", "alice-quiet", "quiet", ["alice-quiet.helper"]);
+    const lab = await h.lab("alice");
+    const solo = await h.act("alice", "lab", lab, "openWorkstream", { project: apollo, id: "checkout", title: "Checkout", lead: "alice-solo" });
+    expect(refusal(solo)).toContain("cannot-lead");
+    expect(refusal(solo)).toContain("lists no delegates");
+    const quiet = await h.act("alice", "lab", lab, "openWorkstream", { project: apollo, id: "checkout", title: "Checkout", lead: "alice-quiet" });
+    expect(refusal(quiet)).toContain("cannot-lead");
+    const listed = (await h.ok("alice", "lab", lab, "readProject", { project: apollo })) as { workstreams: unknown[] };
+    expect(listed.workstreams).toEqual([]);
   });
 });

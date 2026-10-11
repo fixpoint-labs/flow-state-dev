@@ -181,6 +181,8 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
+  /** The delegates its configuration lists (`delegates:`), by worker id; empty when it lists none. */
+  delegates: readonly string[];
   /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */
   problem?: string;
 }
@@ -281,6 +283,15 @@ export interface WorkerInstallation extends WorkerGrants {
    * @param ctx The block's context. The block must declare {@link resources}.
    */
   rosterWorker(ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined>;
+  /**
+   * The session user's whole roster, read now: their own workers (one list of
+   * their worker collection) and every standard worker, by id order. A
+   * standard worker of the same id as one of theirs is theirs: a hire can't
+   * take a standard id, so this only matters for a row written by hand.
+   *
+   * @param ctx The block's context. The block must declare {@link resources}.
+   */
+  roster(ctx: WorkerTurnContext): Promise<RosterWorker[]>;
   /** A standard worker by id, or `undefined`. */
   standardWorker(id: string): WorkerManifest | undefined;
   /** Every standard worker, by id order. */
@@ -308,6 +319,12 @@ export interface WorkerInstallation extends WorkerGrants {
    * @returns Each refusal, prefixed with the worker's id; empty when every one would run.
    */
   standardWorkerProblems(): string[];
+}
+
+/** The worker ids a configuration's `delegates:` lists, or none. */
+function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[] {
+  const listed = declared.delegates;
+  return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
 }
 
 /** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
@@ -786,12 +803,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     };
   };
 
-  const rosterWorker = async (ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined> => {
-    const collection = workerCollection(ctx, "rosterWorker");
-    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+  /** A worker as the roster reads it, from what `lookupWorker` found. */
+  const rosterEntry = (workerId: string, found: ReturnType<typeof lookupWorker>): RosterWorker | undefined => {
     if (found.found === "none") return undefined;
     if (found.found === "unreadable") {
-      return { id: workerId, standard: false, flow: "", description: null, problem: found.problem };
+      return { id: workerId, standard: false, flow: "", description: null, delegates: [], problem: found.problem };
     }
     if (found.found === "own") {
       return {
@@ -799,6 +815,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         standard: false,
         flow: found.flow,
         description: found.row.description,
+        delegates: declaredDelegates(found.row.settings),
         ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
       };
     }
@@ -807,8 +824,28 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       id: workerId,
       standard: true,
       flow: found.flow,
-      description: typeof declaredDescription === "string" ? declaredDescription : null
+      description: typeof declaredDescription === "string" ? declaredDescription : null,
+      delegates: declaredDelegates(found.manifest.declared)
     };
+  };
+
+  const rosterWorker = async (ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined> => {
+    const collection = workerCollection(ctx, "rosterWorker");
+    return rosterEntry(workerId, lookupWorker(workerId, (await collection.getOptional(workerId))?.state));
+  };
+
+  const roster = async (ctx: WorkerTurnContext): Promise<RosterWorker[]> => {
+    const collection = workerCollection(ctx, "roster");
+    const byId = new Map<string, RosterWorker>();
+    for (const id of standard.keys()) byId.set(id, rosterEntry(id, lookupWorker(id, undefined))!);
+    for (const ref of (await collection.list()) as { path: string; state: unknown }[]) {
+      // A worker's id is its key's last segment, as the client's roster reads it.
+      const id = ref.path.slice(ref.path.lastIndexOf("/") + 1);
+      if (id.length === 0) continue;
+      const entry = rosterEntry(id, lookupWorker(id, ref.state));
+      if (entry !== undefined) byId.set(id, entry);
+    }
+    return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   };
 
   const installation: WorkerInstallation = {
@@ -819,6 +856,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     sessionStateShape,
     createCheck,
     rosterWorker,
+    roster,
     session(extraShape) {
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
