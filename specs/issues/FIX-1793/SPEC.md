@@ -126,11 +126,13 @@ rename the room and still let any member change anyone's work.
 4. **[Shared means the whole org reads it](DECISIONS.md#decided-not-asked)**, the project and
    every workstream, as epic ER-7 has it; members decide who opens workstreams. If wrong: keeping
    reads to members is a reader rule on a row, an epic amendment.
-5. **[D2](DECISIONS.md#d2) · In Shift Manager, every workstream comes with its own coordinator**
-   (the product owner, 2026-10-07, after merge): opening one forks a new coordinator onto the
-   owner's roster and names it as the lead. The framework is unchanged. If wrong: rosters fill
-   with coordinators nobody tunes, cleared one by one.
+5. **[D3](DECISIONS.md#d3) · A workstream is a session on an existing worker, opened by the
+   project coordinator** (the product owner, 2026-10-11, after merge; it supersedes
+   [D2](DECISIONS.md#d2)'s coordinator of its own per workstream). Asked for work no workstream
+   holds, the person's project coordinator opens one with a lead from their roster, such as the
+   EM; Shift Manager has no open form and forks nothing. If wrong: a workstream that needs its own
+   standing instructions waits on the coordinator-written skill.
 
 **Open:** none.
 
-Feature · `core`, `engine`, `workforce`, `shift-manager` · large · 4 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Feature · `core`, `engine`, `workforce`, `shift-manager` · large · 5 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
