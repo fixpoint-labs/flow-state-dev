@@ -1,5 +1,5 @@
 /**
- * `post-to-mailbox` — an agent seat posts into a mailbox it belongs to, as
+ * `post-to-mailbox` — an agent worker posts into a mailbox it belongs to, as
  * itself.
  *
  * Run on the real kinds: the built-in mailbox kind and an agent kind carrying
@@ -7,20 +7,20 @@
  * scripted model whose step calls the tool (no text, so the real tool runs).
  * Every author assertion is on the line the mailbox STORED, never on what the
  * tool was handed: the tool's input has no author, and the point is that the
- * name on the line comes from the seat's settings.
+ * name on the line comes from the worker's settings.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1594/BUSINESS-RULES.md`, V1):
- *   BR-1/BR-3  a direct turn lands one line: author the seat's id, principal
+ *   BR-1/BR-3  a direct turn lands one line: author the worker's id, principal
  *              the request's user, `authorVerified: false`;
  *   BR-4       an `author` (or any other extra key) from the model is refused;
- *   BR-5       a mailbox the seat is not in refuses the post on its own
- *              request; the seat's turn completes;
+ *   BR-5       a mailbox the worker is not in refuses the post on its own
+ *              request; the worker's turn completes;
  *   BR-6       an id nobody opened, and a session of another kind, are
  *              refused by name at dispatch; the call fails;
- *   BR-7       a seat whose `tools:` does not name the tool posts nothing;
+ *   BR-7       a worker whose `tools:` does not name the tool posts nothing;
  *   BR-8       an empty body is refused by the tool's input;
- *   BR-16      a runtime-hired seat posts under its record id, not its address;
- *   BR-17      a seat with no `seatId` is refused by name, never posted as the
+ *   BR-16      a runtime-hired worker posts under its record id, not its address;
+ *   BR-17      a worker with no `workerId` is refused by name, never posted as the
  *              principal;
  *   BR-19      behind an external dispatcher the call fails naming it.
  */
@@ -39,11 +39,11 @@ import {
   mailboxPostCapability,
   defineAgentWorkerFlow,
   defineMailboxFlow,
-  wakeMemberSeats,
+  wakeMemberWorkers,
   workerConfigSchema,
   type WorkerManifest,
 } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { postedLines } from "./mailbox-post-lines";
 import { createWorkerInstallation } from "../src/workers/installation";
 
@@ -87,13 +87,13 @@ const externalDispatcher = {
 
 const agent = defineAgentWorkerFlow({ uses: [mailboxPostCapability] });
 
-function seat(id: string, tools: string[] | undefined = [POST_TO_MAILBOX_TOOL]): WorkerManifest {
+function worker(id: string, tools: string[] | undefined = [POST_TO_MAILBOX_TOOL]): WorkerManifest {
   return { id, declared: tools === undefined ? {} : { tools }, body: "You answer questions." };
 }
 
-function host(seats: FlowInstance[], options: { external?: boolean; agent?: MockGeneratorInstance } = {}) {
+function host(workers: FlowInstance[], options: { external?: boolean; agent?: MockGeneratorInstance } = {}) {
   const flows: Record<string, FlowInstance> = { [MAILBOX_KIND]: mailboxFlow() };
-  for (const s of seats) flows[s.id] = s;
+  for (const s of workers) flows[s.id] = s;
   const state = createFlowState({
     flows,
     stores: { default: { primary: inMemoryStores() } },
@@ -133,7 +133,7 @@ async function bind(
   );
 }
 
-/** Talk to a seat directly: one turn of its `run` action. */
+/** Talk to a worker directly: one turn of its `run` action. */
 async function say(runtime: FlowStateRuntime, target: FlowInstance, message: string, orgId = DEFAULT_ORG_ID) {
   return await runAction({
     orgId,
@@ -160,8 +160,8 @@ async function mailboxRequests(runtime: FlowStateRuntime, sessionId: string, cou
 }
 
 describe("post-to-mailbox", () => {
-  it("lands one line in a mailbox the seat belongs to, under the seat's own id (BR-1, BR-3)", async () => {
-    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
+  it("lands one line in a mailbox the worker belongs to, under the worker's own id (BR-1, BR-3)", async () => {
+    const [otto] = mintWorkers([worker("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -176,7 +176,7 @@ describe("post-to-mailbox", () => {
           author: "support.otto",
           principal: USER_ID,
           authorVerified: false,
-          seatAuthored: true,
+          workerAuthored: true,
           body: "Refunds post on Fridays.",
         }),
       ]);
@@ -185,9 +185,9 @@ describe("post-to-mailbox", () => {
     }
   });
 
-  it("wakes no co-member when the seat posts through the tool, and still wakes them on a public claim of that seat", async () => {
-    const [otto, iris] = mintSeats([seat("support.otto"), seat("support.iris", undefined)], { workerFlows: { agent } });
-    const mailbox = defineMailboxFlow({ notify: wakeMemberSeats([otto!, iris!]) })();
+  it("wakes no co-member when the worker posts through the tool, and still wakes them on a public claim of that worker", async () => {
+    const [otto, iris] = mintWorkers([worker("support.otto"), worker("support.iris", undefined)], { workerFlows: { agent } });
+    const mailbox = defineMailboxFlow({ notify: wakeMemberWorkers([otto!, iris!]) })();
     const state = createFlowState({
       flows: { [MAILBOX_KIND]: mailbox, [otto!.id]: otto!, [iris!.id]: iris! },
       stores: { default: { primary: inMemoryStores() } },
@@ -197,7 +197,7 @@ describe("post-to-mailbox", () => {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "support.desk", ["support.otto", "support.iris"]);
 
-      const turn = await say(runtime, otto!, postTurn({ mailbox: "support.desk", body: "from the seat" }));
+      const turn = await say(runtime, otto!, postTurn({ mailbox: "support.desk", body: "from the worker" }));
       expect(turn.error).toBeUndefined();
       await mailboxRequests(runtime, "support.desk", 2);
       expect(await runtime.stores.session.list({ flowId: iris!.id, parentage: "all" })).toEqual([]);
@@ -226,14 +226,14 @@ describe("post-to-mailbox", () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       expect(text).toContain("claimed as otto");
-      expect(text).not.toContain("from the seat");
+      expect(text).not.toContain("from the worker");
     } finally {
       await state.dispose();
     }
   });
 
   it("refuses an author from the model, and any other key; nothing is posted (BR-4)", async () => {
-    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintWorkers([worker("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -252,15 +252,15 @@ describe("post-to-mailbox", () => {
     }
   });
 
-  it("is refused by the mailbox when the seat is not a member; the turn completes and nothing is written (BR-5)", async () => {
-    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
+  it("is refused by the mailbox when the worker is not a member; the turn completes and nothing is written (BR-5)", async () => {
+    const [otto] = mintWorkers([worker("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "support.ada-wren", ["support.ada", "support.wren"]);
 
       const turn = await say(runtime, otto!, postTurn({ mailbox: "support.ada-wren", body: "may I?" }));
-      // The tool only handed the post over; the seat is not told it was refused.
+      // The tool only handed the post over; the worker is not told it was refused.
       expect(turn.error).toBeUndefined();
 
       const [request] = await mailboxRequests(runtime, "support.ada-wren", 1);
@@ -273,7 +273,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("fails the call by name for an id nobody opened, and for a session of another kind; nothing is written (BR-6)", async () => {
-    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintWorkers([worker("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -292,8 +292,8 @@ describe("post-to-mailbox", () => {
     }
   });
 
-  it("offers nothing to a seat whose tools: does not name it (BR-7)", async () => {
-    const [iris] = mintSeats([seat("support.iris", [])], { workerFlows: { agent } });
+  it("offers nothing to a worker whose tools: does not name it (BR-7)", async () => {
+    const [iris] = mintWorkers([worker("support.iris", [])], { workerFlows: { agent } });
     const state = host([iris!]);
     try {
       const runtime = await state.getRuntime();
@@ -309,7 +309,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("refuses an empty body at the tool's input (BR-8)", async () => {
-    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintWorkers([worker("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -324,13 +324,13 @@ describe("post-to-mailbox", () => {
     }
   });
 
-  it("refuses a seat whose settings carry no seatId by name, at the mint, so it never posts as the principal (BR-17)", () => {
-    // Minted straight off the kind, not hired: the one way to a seat with no `seatId`.
-    expect(() => agent({ id: "support.otto", config: { tools: [POST_TO_MAILBOX_TOOL] } })).toThrow(/"seatId": Required/);
+  it("refuses a worker whose settings carry no workerId by name, at the mint, so it never posts as the principal (BR-17)", () => {
+    // Minted straight off the kind, not hired: the one way to a worker with no `workerId`.
+    expect(() => agent({ id: "support.otto", config: { tools: [POST_TO_MAILBOX_TOOL] } })).toThrow(/"workerId": Required/);
   });
 
-  it("refuses the tool to any kind's seat with no seatId before the model is offered it (BR-17)", async () => {
-    // Not the agent kind, whose own landing needs `seatId` at the mint: this refusal is the tool's.
+  it("refuses the tool to any kind's worker with no workerId before the model is offered it (BR-17)", async () => {
+    // Not the agent kind, whose own landing needs `workerId` at the mint: this refusal is the tool's.
     const scripted = scriptedAgent();
     const poster = defineFlow({
       kind: "poster",
@@ -355,7 +355,7 @@ describe("post-to-mailbox", () => {
       await bind(runtime.stores, "support.desk", ["support.otto"]);
 
       const turn = await say(runtime, bare, postTurn({ mailbox: "support.desk", body: "who am I?" }));
-      expect(String(turn.error)).toMatch(/"post-to-mailbox-line" cannot read: "seatId": Required/);
+      expect(String(turn.error)).toMatch(/"post-to-mailbox-line" cannot read: "workerId": Required/);
       expect(scripted.calls).toEqual([]);
       expect(await runtime.stores.request.list({ sessionId: "support.desk" })).toEqual([]);
     } finally {
@@ -366,7 +366,7 @@ describe("post-to-mailbox", () => {
   it("on one copy that runs every worker, lands the line under the worker the turn loaded (FIX-1788)", async () => {
     let flows: Record<string, unknown> = {};
     const installation = createWorkerInstallation({
-      standardWorkers: [seat("support.otto"), seat("support.iris")],
+      standardWorkers: [worker("support.otto"), worker("support.iris")],
       workerFlows: () => flows as never,
     });
     const shared = defineAgentWorkerFlow({ uses: [mailboxPostCapability], installation });
@@ -412,7 +412,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("fails the call naming the external dispatcher; nothing is written (BR-19)", async () => {
-    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintWorkers([worker("support.otto")], { workerFlows: { agent } });
     const state = host([otto!], { external: true });
     try {
       const runtime = await state.getRuntime();

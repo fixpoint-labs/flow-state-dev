@@ -555,7 +555,7 @@ describe("a dispatch through a public task dispatcher()", () => {
       }
     })({ id }) as unknown as FlowInstance;
   }
-  const envelope = { boardId: "board", seat: "researcher", taskId: "t1", attempt: 1, createdAt: 1, payload: {} };
+  const envelope = { boardId: "board", assignee: "researcher", taskId: "t1", attempt: 1, createdAt: 1, payload: {} };
 
   it("creates each task's child with the state the dispatcher looked up for it", async () => {
     const { sent, children } = await sendThroughRelay(relay(true), envelope);

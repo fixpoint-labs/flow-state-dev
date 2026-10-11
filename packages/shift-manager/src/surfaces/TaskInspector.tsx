@@ -1,7 +1,7 @@
 /**
  * The right panel's task slot: the task inspector (S7, BR-18 to BR-23).
  *
- * Worker and team from the seat inventory, started from the row, the ask the
+ * Worker and team from the worker inventory, started from the row, the ask the
  * run waits on (on the highlighter, a way to it in Inbox), the plan and
  * files the run recorded under its own request (read once per open, no
  * stream), the rows it waits on and the rows waiting on it from the same board
@@ -12,7 +12,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
-import { asksOfTask, rosterOf, seatFor, waited, type LoadedSnapshot } from "../lib/derive";
+import { asksOfTask, rosterOf, workerFor, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -40,7 +40,7 @@ function Gap({ text, testId }: { text: string; testId: string }) {
 export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const task = useTask();
   const { row } = task;
-  const seat = row === undefined ? undefined : seatFor(rosterOf(snapshot), row);
+  const worker = row === undefined ? undefined : workerFor(rosterOf(snapshot), row);
   const after = row === undefined ? [] : task.boardRows.filter((r) => row.deps.includes(r.id));
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
@@ -52,11 +52,11 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
     <div data-testid="task-panel-slot">
       <div data-testid="task-inspector">
         <Section title="WORKER" testId="inspector-worker">
-          <p className="text-sm" data-testid="inspector-worker-id" data-seat-id={seat?.id ?? ""}>
-            {seat?.id ?? row?.assignee ?? "No worker named"}
+          <p className="text-sm" data-testid="inspector-worker-id" data-worker-id={worker?.id ?? ""}>
+            {worker?.id ?? row?.assignee ?? "No worker named"}
           </p>
           <p className="text-xs text-muted-foreground" data-testid="inspector-team">
-            {seat === undefined ? "" : seat.team === STAFF_TEAM ? STAFF_TEAM : `team ${seat.team}`}
+            {worker === undefined ? "" : worker.team === STAFF_TEAM ? STAFF_TEAM : `team ${worker.team}`}
           </p>
         </Section>
         <Section title="STARTED" testId="inspector-started">

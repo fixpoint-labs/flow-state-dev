@@ -21,7 +21,7 @@
  * policy: the handed-off board's assignee freeze is a `WeakSet` on the
  * declaration object, so a second declaration is a routing key that can still
  * be changed after a row was handed off. The mailbox's own actions and the
- * seat's board must therefore pass one value, which the memo below guarantees
+ * worker's board must therefore pass one value, which the memo below guarantees
  * inside one process. Across processes it does not reach, and
  * `define-task-collection.ts` parks that on the resource contract.
  *
@@ -75,7 +75,7 @@ export type MailboxBoardCollection = DefinedTaskCollection & {
 /**
  * Mint a board's ledger id from its mailbox's id and its local name.
  *
- * **Pinned**, and the only spelling: a seat types this id to reach the same
+ * **Pinned**, and the only spelling: a worker types this id to reach the same
  * rows, so the join is public surface. Dot-joined because a mailbox id already
  * is, and because a collection id may carry no path separator.
  */
@@ -128,7 +128,7 @@ export function mailboxBoardNameProblem(name: unknown): string | undefined {
  * The process-wide declaration registry — one object per minted id.
  *
  * Keyed by the id rather than by object identity, which is what D1 buys: the
- * mailbox's own actions and a seat's {@link mailboxBoard} call reach the same
+ * mailbox's own actions and a worker's {@link mailboxBoard} call reach the same
  * object without either passing the other a reference, so the assignee freeze
  * — a `WeakSet` keyed on this object — is read the same way on both sides.
  *
@@ -246,11 +246,11 @@ export function mailboxBoardLedger(id: string): MailboxBoardCollection {
 }
 
 /**
- * The seat-side helper: the same ledger a mailbox holds, from the mailbox's id
+ * The worker-side helper: the same ledger a mailbox holds, from the mailbox's id
  * and the board's local name.
  *
- * A seat declares one thing rather than a minted string, and it resolves
- * through the same memo the mailbox's own actions do — so a freeze the seat's
+ * A worker declares one thing rather than a minted string, and it resolves
+ * through the same memo the mailbox's own actions do — so a freeze the worker's
  * board sets is read by the mailbox's writes.
  *
  * @param mailboxId  The mailbox's id, as the tree minted it (`eng.feature`).
@@ -291,7 +291,7 @@ export function mailboxBoardNamesFor(
  *
  * The frozen-assignee policy is read HERE, at resolution, off the shared
  * declaration — never captured when a board was constructed. That is what makes
- * the mailbox's writes and the seat's board agree: a boolean captured per call
+ * the mailbox's writes and the worker's board agree: a boolean captured per call
  * site guards only that call site.
  */
 export async function resolveMailboxBoard<TInput = unknown, TOutput = unknown>(
@@ -317,29 +317,29 @@ function resolveFor(board: MailboxBoardCollection): TaskCollectionResolver {
  * The model's door onto a mailbox board: the eight `taskTools` handlers, over
  * this board's ledger.
  *
- * Composed by the **seat's** kind (`uses: [mailboxBoardTaskTools(work)]`), not
+ * Composed by the **worker's** kind (`uses: [mailboxBoardTaskTools(work)]`), not
  * by the mailbox — a mailbox has no generator, and D2 keeps execution on the
- * seat's side of the fence. The seat's flow must also declare the board as a
+ * worker's side of the fence. The worker's flow must also declare the board as a
  * resource (`resources: { [work.id]: work }`), which is what this resolver
  * reads.
  *
  * **All eight, or none.** `taskTools` contributes its handlers as capability
- * *controls*, minted per resolver and therefore unnameable: a seat's `tools:`
+ * *controls*, minted per resolver and therefore unnameable: a worker's `tools:`
  * list can neither grant them nor fence them out. Composing this capability IS
- * the declaration, so a seat that holds it holds `assignTask` and `updateTask`
+ * the declaration, so a worker that holds it holds `assignTask` and `updateTask`
  * alongside `addTask`. Narrowing the set means a different capability, not a
  * shorter `tools:` line.
  *
- * It also cannot be a block colocated in a seat's own folder: a mailbox board
- * is an org-scoped resource, and a seat-folder block declaring one is refused
+ * It also cannot be a block colocated in a worker's own folder: a mailbox board
+ * is an org-scoped resource, and a worker-folder block declaring one is refused
  * by name at hire.
  *
  * @param board The declaration {@link mailboxBoard} handed back.
- * @returns The capability to list in a seat kind's `uses`.
+ * @returns The capability to list in a worker kind's `uses`.
  */
 export function mailboxBoardTaskTools(board: MailboxBoardCollection) {
   return defineCapability({
-    // Per board, not per kind. A seat holding two boards composes this twice,
+    // Per board, not per kind. A worker holding two boards composes this twice,
     // and a shared name collides at build — `defineCapability` refuses two
     // declarations under one name.
     name: `mailboxBoardTasks:${board.id}`,
@@ -352,13 +352,13 @@ export function mailboxBoardTaskTools(board: MailboxBoardCollection) {
     presets: {
       tools: {
         // `controlTools`, not `tools`: these are framework controls, minted per
-        // resolver and therefore unnameable, so a seat's `tools:` list has no
+        // resolver and therefore unnameable, so a worker's `tools:` list has no
         // stable key to fence them out with or to let them back in. Composing
         // the capability IS the declaration — which is why it is all eight or
         // none.
         // Board-qualified, for the same reason the capability name is: a
         // generator asserts its tool names are unique, and the eight are fixed
-        // strings. Two boards on one seat would collide on every one of them.
+        // strings. Two boards on one worker would collide on every one of them.
         // The id is the qualifier because it is unique across the roster by
         // construction, where a local name is not: two mailboxes may both
         // declare `triage`. `taskToolSuffix` is orchestration's one rule for

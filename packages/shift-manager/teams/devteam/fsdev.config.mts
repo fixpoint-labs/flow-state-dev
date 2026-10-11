@@ -16,10 +16,10 @@
  *   default projects are created as the Lab's owner; and Storefront's two
  *   workstreams, `feature` and `release`, are opened as the Lab's second user,
  *   each led by the EM.
- * - **One ask waiting.** The EM seat's approval for {@link ASK_FEATURE} is
+ * - **One ask waiting.** The EM worker's approval for {@link ASK_FEATURE} is
  *   raised in its own session (which also turns durable execution on), so
  *   Inbox has something to answer. Approve files the row and starts the coder
- *   seat; Deny files nothing.
+ *   worker; Deny files nothing.
  * - **The page's connection.** The lab's user and verified bearer go to the
  *   page through the `devtool` block, which the host injects on a loopback
  *   bind only. A request with no bearer is refused, as in the checks.
@@ -37,7 +37,7 @@
  *   works on the project's files alone. No folder is named for any of it.
  *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
- *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Seats the chief of
+ *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the chief of
  *   staff hired are read back and serve again at the next start, a fire it
  *   made stays made, and an ask still waiting is still in Inbox. Delete the
  *   file for a fresh start.
@@ -60,7 +60,7 @@ import { EM_KIND } from "./workforce/flows/workers/em.mts";
 import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
 
 /**
- * The feature the EM seat asks a person to approve when the server opens, from
+ * The feature the EM worker asks a person to approve when the server opens, from
  * `ask.json` beside this file. Data, not code: the lab's asking check refuses a
  * lab module that spells a feature, and brings its own held-out one. Its
  * `issue` keys the ask's claim in the store, so changing it raises a new ask.
@@ -114,8 +114,8 @@ const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_KIND);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");
-const coderSeatId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => kindOf(id) === CODER_KIND);
-if (coderSeatId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder kind`);
+const coderWorkerId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => kindOf(id) === CODER_KIND);
+if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder kind`);
 
 /**
  * Storefront's two workstreams, `feature` and `release`, each led by the EM.
@@ -143,7 +143,7 @@ const lab = await openLab({
   runTimeoutMs: harness.runTimeoutMs,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },
-  coderSeatId,
+  coderWorkerId,
   inventory: true,
   ask: ASK_FEATURE,
   devtool: true,

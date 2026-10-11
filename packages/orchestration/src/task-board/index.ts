@@ -150,9 +150,9 @@ import {
   assertHandOffBoardSupported,
   handedOffTaskPredicate,
   resolveWorkerSlots,
-  type HandOffSeat,
-  type TaskSeat,
-  type TaskSeatRegistry,
+  type HandOffAssignee,
+  type TaskAssignee,
+  type TaskAssigneeRegistry,
 } from "./hand-off";
 import { boardExitsConnector } from "./exits-connector";
 import { createTaskGate } from "./task-entry";
@@ -275,11 +275,11 @@ export {
   resolveWorkerSlots,
 } from "./hand-off";
 export type {
-  HandOffSeat,
+  HandOffAssignee,
   TaskDispatcherBlock,
-  TaskSeat,
-  TaskSeatAddress,
-  TaskSeatRegistry,
+  TaskAssignee,
+  TaskAssigneeAddress,
+  TaskAssigneeRegistry,
 } from "./hand-off";
 export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 export {
@@ -363,11 +363,11 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   name: string;
 
   /**
-   * Explicit, stable identifier for this board. **Required when any seat
+   * Explicit, stable identifier for this board. **Required when any assignee
    * holds a task dispatcher (`dispatcher({ action, session })`)**, optional otherwise.
    *
    * A handed-off row's child session is keyed on this value together with the
-   * seat and the row, so it lands in a persisted key. It cannot be derived
+   * assignee and the row, so it lands in a persisted key. It cannot be derived
    * from `name` (unique per flow, not per session) or from `collectionId`
    * (the literal `"factory-supplied"` for every factory board), which is why
    * it is declared rather than inferred.
@@ -405,13 +405,13 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * `TaskWorkerInput` shape.
    *
    * A registry value may also be a `dispatcher({ action, session })` block — a
-   * **seat that hands off**: the stamped address is `type: "task"`, the row is
+   * **assignee that hands off**: the stamped address is `type: "task"`, the row is
    * dispatched to the `task` entry the dispatcher names, and the flow that
    * declares that entry owns the worker.
    * The board runs the hand-off through its own claim gate, so the child
    * settles the same row this drain claimed.
    */
-  workers: TaskWorker<TInput, TOutput> | TaskSeatRegistry;
+  workers: TaskWorker<TInput, TOutput> | TaskAssigneeRegistry;
 
   /**
    * Optional default worker — the board's **floor** (FIX-940).
@@ -421,7 +421,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * declared workers are never routed through it (reached only on a
    * genuine miss). Blackboard and the patterns leave it unset.
    */
-  defaultWorker?: TaskSeat;
+  defaultWorker?: TaskAssignee;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -652,15 +652,15 @@ export interface TaskBoardHandle<
   backing: TaskBoardBacking;
   /**
    * The board's declared `boardId`, or `undefined` when it declared none.
-   * Always present on a board with a dispatcher seat — that is what
+   * Always present on a board with a dispatcher assignee — that is what
    * `assertHandOffBoardSupported` enforces.
    */
   boardId?: string;
   /**
-   * The seats holding a task dispatcher, in declaration order.
-   * Empty on every board that declares no dispatcher seat.
+   * The assignees holding a task dispatcher, in declaration order.
+   * Empty on every board that declares no dispatcher assignee.
    */
-  handedOff: readonly HandOffSeat[];
+  handedOff: readonly HandOffAssignee[];
   /**
    * Whether the board's own `initialTasks` seed carries any task without a
    * stable `id` (FIX-910). An idless initial task is re-added on every drain
@@ -766,15 +766,15 @@ export function taskBoard<
     );
   }
 
-  // Read every seat down to the bare block the drain composes, refusing the
-  // removed seat shapes by name. A board with only inline seats produces
+  // Read every assignee down to the bare block the drain composes, refusing the
+  // removed assignee shapes by name. A board with only inline assignees produces
   // exactly the values it was handed.
   const resolvedWorkers = resolveWorkerSlots({
     name,
     // The cast only widens the input side: a dispatcher's input is the
     // envelope, not the packed worker input, and the substitution below never
     // runs it here.
-    workers: workersConfig as TaskWorker | TaskSeatRegistry,
+    workers: workersConfig as TaskWorker | TaskAssigneeRegistry,
     ...(defaultWorkerConfig !== undefined
       ? { defaultWorker: defaultWorkerConfig as TaskWorker }
       : {}),
@@ -782,7 +782,7 @@ export function taskBoard<
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
   const handedOff = resolvedWorkers.handedOff;
-  const inlineSeats = resolvedWorkers.inline;
+  const inlineAssignees = resolvedWorkers.inline;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -849,7 +849,7 @@ export function taskBoard<
   // before; the completion meta is the third reader (FIX-1074), and it has to
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = handedOffTaskPredicate(handedOff, inlineSeats);
+  const runsElsewhere = handedOffTaskPredicate(handedOff, inlineAssignees);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
@@ -889,24 +889,24 @@ export function taskBoard<
   });
   const teardownFlowState = createTeardownBoardFlowState({ name });
 
-  // The hand-off. A dispatcher seat routes to a block that puts the claimed
+  // The hand-off. A dispatcher assignee routes to a block that puts the claimed
   // row through the dispatch seam and returns, instead of to the dispatcher
   // itself. The drain's shape is untouched (claim, route, record); only what
   // the route does changes, so an inline board composes exactly as it did.
   //
   // Substituted here rather than inside `buildWorkerStep` because the routing
-  // table is the one place that already maps a seat to a block. The substitute
+  // table is the one place that already maps an assignee to a block. The substitute
   // receives the same packed `TaskWorkerInput` an inline worker would, which
   // is what makes the two paths agree on what the worker sees.
-  // Keyed by SEAT, never by block identity: one dispatcher may legitimately
-  // sit at two seats, and each seat's hand-off carries its own name so the
+  // Keyed by ASSIGNEE, never by block identity: one dispatcher may legitimately
+  // sit at two assignees, and each assignee's hand-off carries its own name so the
   // row's assignee is what the child's gate checks.
   //
   // The hand-off carries the board's BINDING — its id and the claim gate — so
   // `defineFlow`, reaching it through the drain, can put the entry it addresses
   // behind this board's gate. The gate is built once for the board: it is the
-  // same ledger and the same failure policy whichever seat hands off.
-  const handOffBySeat = new Map<string, TaskWorker>();
+  // same ledger and the same failure policy whichever assignee hands off.
+  const handOffByAssignee = new Map<string, TaskWorker>();
   let floorHandOff: TaskWorker | undefined;
   if (boardId !== undefined && handedOff.length > 0) {
     const gate = createTaskGate({
@@ -921,26 +921,26 @@ export function taskBoard<
       // so it has to declare the board's durable collection itself.
       ...(drainUses !== undefined ? { uses: drainUses } : {}),
     });
-    for (const seat of handedOff) {
-      if (seat.kind === "floor") {
+    for (const assignee of handedOff) {
+      if (assignee.kind === "floor") {
         // The fallback stands in for every assignee the board does not name,
-        // so its hand-off carries no seat: each row goes over under its own.
+        // so its hand-off carries no assignee: each row goes over under its own.
         floorHandOff = createHandOff({
           name: `${name}-hand-off-fallback`,
           boardId,
-          address: seat.dispatch,
+          address: assignee.dispatch,
           binding: { boardId, gate },
         });
         continue;
       }
-      if (seat.kind !== "named") continue;
-      handOffBySeat.set(
-        seat.name,
+      if (assignee.kind !== "named") continue;
+      handOffByAssignee.set(
+        assignee.name,
         createHandOff({
-          name: `${name}-hand-off-${seat.name}`,
+          name: `${name}-hand-off-${assignee.name}`,
           boardId,
-          seat: seat.name,
-          address: seat.dispatch,
+          assignee: assignee.name,
+          address: assignee.dispatch,
           binding: { boardId, gate },
         })
       );
@@ -953,7 +953,7 @@ export function taskBoard<
       : Object.fromEntries(
           Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
             assignee,
-            handOffBySeat.get(assignee) ?? worker,
+            handOffByAssignee.get(assignee) ?? worker,
           ])
         );
   const dispatchDefaultWorker = floorHandOff ?? defaultWorker;
@@ -1250,7 +1250,7 @@ export function taskBoard<
         // hand-off dispatchers sitting in the worker router. The blocks every
         // worker is composed from are static and shared, and declaring them
         // is what lets a flow that reaches this drain without declaring the
-        // task entry a seat hands off to be refused at definition rather than
+        // task entry an assignee hands off to be refused at definition rather than
         // at the first hand-off.
         blocks: [claimTask, workerBody, checkBoard],
       }
@@ -1298,7 +1298,7 @@ export function taskBoard<
   // A handed-off board's assignee is fixed while an attempt holds a task, because it is what
   // the child's routing key derives from. Recorded on the LEDGER declaration
   // rather than on the refs built from it: two boards may bind the same
-  // durable collection and only one need declare a dispatcher seat, yet they
+  // durable collection and only one need declare a dispatcher assignee, yet they
   // share rows, so a reassignment through either board's ref moves a key the
   // handed-off board routes by. Reading it back at resolution time
   // (`resolveResourceTaskCollection`) also makes construction order

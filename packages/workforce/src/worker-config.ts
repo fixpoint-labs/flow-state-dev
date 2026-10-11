@@ -3,15 +3,15 @@
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
- * easiest to confuse. The contract DECLARES six keys, and the seat factory
+ * easiest to confuse. The contract DECLARES six keys, and the worker factory
  * IMPOSES each on its own condition: `instructions` when the record has a
  * body, `teamInstructions` when the record's team wrote a `TEAM.md`,
- * `seatPackages` when the seat holds a package, and `seatSkills`, `seatTools`
- * and `seatId` on every record. `seatId` always has a value, the record's id;
- * `seatSkills` and `seatTools` are imposed unconditionally because
- * present and empty is a real answer for a seat's skills
+ * `workerPackages` when the worker holds a package, and `workerSkills`, `workerTools`
+ * and `workerId` on every record. `workerId` always has a value, the record's id;
+ * `workerSkills` and `workerTools` are imposed unconditionally because
+ * present and empty is a real answer for a worker's skills
  * and for what its own folders register, and there is no equivalent answer for
- * a team layer, so a seat whose team wrote none carries no such key at all
+ * a team layer, so a worker whose team wrote none carries no such key at all
  * rather than an empty string.
  *
  * A worker kind is an ordinary flow. What makes it *hireable* is that its
@@ -47,10 +47,10 @@ import type { BlockDefinition } from "@flow-state-dev/core";
 import { MAX_DELEGATES } from "./delegates/delegate-keys";
 import {
   INSTRUCTIONS_KEY,
-  SEAT_ID_KEY,
-  SEAT_PACKAGES_KEY,
-  SEAT_SKILLS_KEY,
-  SEAT_TOOLS_KEY,
+  WORKER_ID_KEY,
+  WORKER_PACKAGES_KEY,
+  WORKER_SKILLS_KEY,
+  WORKER_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY
 } from "./manifest";
 
@@ -67,7 +67,7 @@ import {
  * is where it used to sit: every hireable kind now receives this shape, so a
  * copy per kind would be the two-spellings bug again.
  */
-export const seatSkillSchema = z
+export const workerSkillSchema = z
   .object({
     name: z.string().min(1),
     skillMd: z.string(),
@@ -93,11 +93,11 @@ export const seatSkillSchema = z
  *
  * A fresh schema per call, not a shared constant: `.extend()` returns a new
  * object schema either way, but a kind that overrides one of these keys (the
- * built-in `agent` kind refines `seatSkills` against the app's own skill names)
+ * built-in `agent` kind refines `workerSkills` against the app's own skill names)
  * must not be editing a value other kinds hold.
  *
  * **Reading any of it is optional.** A kind that composes the contract and
- * never looks at `seatSkills` mints and runs exactly as before; ignoring the
+ * never looks at `workerSkills` mints and runs exactly as before; ignoring the
  * bag is not an error. The door is what is mandatory.
  */
 export function workerConfigSchema() {
@@ -105,90 +105,90 @@ export function workerConfigSchema() {
     /**
      * The worker's own instructions — its file body, or the frontmatter key.
      *
-     * Optional: a bodyless worker is a weak seat, not a failed hire. Imposed by
+     * Optional: a bodyless worker is a weak worker, not a failed hire. Imposed by
      * the factory only when the record's body is non-whitespace, so "no
      * instructions" is an ABSENT key rather than an empty string.
      */
     [INSTRUCTIONS_KEY]: z.string().optional(),
 
     /**
-     * The instructions every seat on this worker's team carries — its team's,
+     * The instructions every worker on this worker's team carries — its team's,
      * not its own.
      *
      * Optional, and absent rather than empty when the team wrote none: an empty
      * layer would be a different value for every team that has no file. Two
-     * values, never merged — a seat's own instructions stay at
+     * values, never merged — a worker's own instructions stay at
      * {@link INSTRUCTIONS_KEY}.
      *
      * Never authored. A worker file that declares this key is refused by name
-     * at every door, the same way `seatSkills` is.
+     * at every door, the same way `workerSkills` is.
      */
     [TEAM_INSTRUCTIONS_KEY]: z.string().optional(),
 
     /**
-     * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union the
+     * The skills this worker can see — the org ∪ team (team workers only) ∪ own-folder union the
      * loader resolved for it, in level order.
      *
      * **Imposed by the factory on every record, never authored**, and present
      * even when it is empty: present-and-empty is the answer for *nothing to
      * give*, and the bag is handed over all the same. A worker file that
-     * declares `seatSkills:` is refused by name at both doors; see
+     * declares `workerSkills:` is refused by name at both doors; see
      * `manifest.ts`.
      *
-     * Spelled `seatSkills` rather than `skills` because the built-in kind's bag
+     * Spelled `workerSkills` rather than `skills` because the built-in kind's bag
      * already carries an author-written `skills` switch object, and one key
      * that is sometimes authored and sometimes imposed is the collision this
      * package refuses rather than resolves.
      */
-    [SEAT_SKILLS_KEY]: z.array(seatSkillSchema).default([]),
+    [WORKER_SKILLS_KEY]: z.array(workerSkillSchema).default([]),
 
     /**
-     * The blocks this seat's `tools:` resolved to **from its own levels** — a
-     * team seat's own `blocks/` folder, then its team's; an org seat has
+     * The blocks this worker's `tools:` resolved to **from its own levels** — a
+     * team worker's own `blocks/` folder, then its team's; an org worker has
      * neither, so only its held packages' — already resolved, in the order
      * the file named them.
      *
      * **Imposed by the factory on every record, never authored**, and present
-     * even when empty, exactly as {@link SEAT_SKILLS_KEY} is. A worker file
-     * that declares `seatTools:` is refused by name.
+     * even when empty, exactly as {@link WORKER_SKILLS_KEY} is. A worker file
+     * that declares `workerTools:` is refused by name.
      *
      * The one contract key that carries live blocks rather than strings. It is
-     * NOT the seat's registry: a folder REGISTERS a name, and the file's
+     * NOT the worker's registry: a folder REGISTERS a name, and the file's
      * `tools:` is what grants its use, so what rides here is the intersection
-     * — the subset of the registry the seat actually declared. Names that fell
+     * — the subset of the registry the worker actually declared. Names that fell
      * through to the app's catalog stay in the kind's own `tools` setting.
      */
-    [SEAT_TOOLS_KEY]: z.array(seatToolSchema).default([]),
+    [WORKER_TOOLS_KEY]: z.array(workerToolSchema).default([]),
 
     /**
-     * The packages this seat holds — the ones in its own `packages/` folder,
+     * The packages this worker holds — the ones in its own `packages/` folder,
      * then the ones its `packages:` line took from its team's or the org's
      * library — each with its instructions and its blocks.
      *
-     * **Imposed only when the seat holds at least one**, and absent otherwise,
+     * **Imposed only when the worker holds at least one**, and absent otherwise,
      * the way {@link TEAM_INSTRUCTIONS_KEY} is. Never authored: a worker file
-     * that declares `seatPackages:` is refused by name.
+     * that declares `workerPackages:` is refused by name.
      *
      * What to do with it is the kind's. The built-in `agent` kind renders each
-     * package's instructions after the team's and the seat's own, and offers
-     * its blocks as tools when the seat wrote no `tools:` line. A kind that
-     * composes the contract and never reads it hires and runs; its seats'
+     * package's instructions after the team's and the worker's own, and offers
+     * its blocks as tools when the worker wrote no `tools:` line. A kind that
+     * composes the contract and never reads it hires and runs; its workers'
      * packages then simply do nothing.
      */
-    [SEAT_PACKAGES_KEY]: z.array(seatPackageSchema).optional(),
+    [WORKER_PACKAGES_KEY]: z.array(workerPackageSchema).optional(),
 
     /**
-     * The seat's own id — its record's id, the name a team's `members:` lists.
+     * The worker's own id — its record's id, the name a team's `members:` lists.
      *
      * **Imposed by the factory on every record, never authored.** A block
-     * inside the seat reads it as `ctx.flow.config.seatId`, for example to
+     * inside the worker reads it as `ctx.flow.config.workerId`, for example to
      * sign what it files or posts; the flow's own id is not on the block
-     * context. A worker file that declares `seatId:` is refused by name.
+     * context. A worker file that declares `workerId:` is refused by name.
      *
      * Optional in the schema only so a kind can still be run outside a hire
-     * (a test, a single-flow app); every hired seat carries it.
+     * (a test, a single-flow app); every hired worker carries it.
      */
-    [SEAT_ID_KEY]: z.string().min(1).optional(),
+    [WORKER_ID_KEY]: z.string().min(1).optional(),
 
     /**
      * The workers this worker hands work to, by id: its **delegates**
@@ -211,14 +211,14 @@ export function workerConfigSchema() {
 /**
  * One already-resolved block as it rides into the bag.
  *
- * Structural and shallow, like {@link seatSkillSchema} and for its reason: the
+ * Structural and shallow, like {@link workerSkillSchema} and for its reason: the
  * value is a live `BlockDefinition` the hire step took off a map the app
  * imported, so this checks the shape arrived intact rather than re-deriving
  * what a block is. Anything stricter would be a second definition of a block
  * beside `@flow-state-dev/core`'s, and anything that TRANSFORMED would change
  * the bag — which `defineFlow` refuses for a block's `flowConfigSchema`.
  */
-export const seatToolSchema = z.custom<BlockDefinition<any, any>>(
+export const workerToolSchema = z.custom<BlockDefinition<any, any>>(
   (value) =>
     typeof value === "object" &&
     value !== null &&
@@ -228,10 +228,10 @@ export const seatToolSchema = z.custom<BlockDefinition<any, any>>(
 
 /**
  * One held package as it rides into the bag. Structural, like
- * {@link seatSkillSchema}: the hire built it from records the loader already
+ * {@link workerSkillSchema}: the hire built it from records the loader already
  * validated.
  */
-export const seatPackageSchema = z
+export const workerPackageSchema = z
   .object({
     /** The package's folder name. */
     name: z.string().min(1),
@@ -240,7 +240,7 @@ export const seatPackageSchema = z
     /** Its `PACKAGE.md` body. Absent when the body is empty. */
     instructions: z.string().optional(),
     /** Its blocks, in name order. Empty for an instructions-only package. */
-    tools: z.array(seatToolSchema)
+    tools: z.array(workerToolSchema)
   })
   .strict();
 

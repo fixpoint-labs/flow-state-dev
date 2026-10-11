@@ -1,5 +1,5 @@
 /**
- * The ask-lab's one worker kind: a seat that asks a person before it does
+ * The ask-lab's one worker kind: a worker that asks a person before it does
  * anything.
  *
  * Two doors, both durable, both ending in the framework's stock
@@ -13,7 +13,7 @@
  * - `ask` — a public action a test calls directly, in a session a person
  *   opened.
  *
- * And a door, `message`: a person's line into the seat's session, which the
+ * And a door, `message`: a person's line into the worker's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
  * assistant item of its own ({@link heardLine}), refuses a line that asks to
  * be refused, takes its time over a line that asks it to, or stops on a stock approval for a line that asks for one, the
@@ -26,14 +26,14 @@
  * collections for a browser to read, so a person who holds only a worker's
  * session still finds the inventory.
  *
- * No model anywhere: the ask is the point, not what the seat would do.
+ * No model anywhere: the ask is the point, not what the worker would do.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import {
   DELEGATED_POST_ENTRY,
   defineMailboxInventoryCollection,
   defineProjectBlocks,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   delegatedPostEntry,
   workerConfigSchema,
   type WorkerInstallation,
@@ -52,11 +52,11 @@ const messageSchema = z.object({ message: z.string() });
 /** The line a test sends to be refused. */
 export const ASKER_REFUSED_LINE = "refuse me";
 
-/** The line a test sends to have the seat stop on a person's approval before it answers. */
+/** The line a test sends to have the worker stop on a person's approval before it answers. */
 export const ASKER_GATED_LINE = "ask me first";
 
 /**
- * The line a test sends to keep the seat's turn running: the seat answers it
+ * The line a test sends to keep the worker's turn running: the worker answers it
  * only once the test lets it ({@link holdSlowLines}).
  */
 export const ASKER_SLOW_LINE = "take your time";
@@ -77,7 +77,7 @@ export function holdSlowLines(): () => void {
 export const startProjectLine = (id: string) => `start project ${id}`;
 const START_PROJECT = /^start project (\S+)$/;
 
-/** What the seat says when it hears `message`. */
+/** What the worker says when it hears `message`. */
 export const heardLine = (message: string) => `Heard: ${message}`;
 
 const hear = handler({
@@ -85,7 +85,7 @@ const hear = handler({
   inputSchema: messageSchema,
   outputSchema: z.object({ heard: z.string() }),
   execute: async (input, ctx) => {
-    if (input.message === ASKER_REFUSED_LINE) throw new Error("This seat won't take that line.");
+    if (input.message === ASKER_REFUSED_LINE) throw new Error("This worker won't take that line.");
     if (input.message === ASKER_SLOW_LINE) await slow;
     if (input.message === ASKER_GATED_LINE) await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.message}` });
     ctx.emit.message(heardLine(input.message));
@@ -160,7 +160,7 @@ export function defineAskerFlow(
   const inventory =
     options.inventory === true
       ? {
-          inventorySeats: defineSeatInventoryCollection(),
+          inventoryWorkers: defineWorkerInventoryCollection(),
           ...(options.projects === true ? {} : { inventoryMailboxes: defineMailboxInventoryCollection() }),
         }
       : {};
@@ -176,7 +176,7 @@ export function defineAskerFlow(
         block: options.projects === true ? hearAndStartProjects() : hear,
         inputSchema: messageSchema,
         userMessage: (input: { message: string }) => input.message,
-        description: "A person's line into this seat's session.",
+        description: "A person's line into this worker's session.",
       },
     },
     internal: {

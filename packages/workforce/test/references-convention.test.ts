@@ -10,16 +10,16 @@
  * work. Each is written as the promise, on the real path, so a green is the
  * promise holding and not the harness agreeing with itself:
  *
- * - **V3 / BR-7** — an ungranted seat reads another team's handbook. The wall
+ * - **V3 / BR-7** — an ungranted worker reads another team's handbook. The wall
  *   has to come from where the file sits, with no filter written by the app.
- * - **V2 / BR-11** — an ungranted seat overwrites the org handbook.
+ * - **V2 / BR-11** — an ungranted worker overwrites the org handbook.
  * - **V2 / BR-1** — the write STICKS: the disk body was a first-boot seed, so
  *   the file in git stopped being what anyone read.
  *
  * **Two are the regressions that would ship silently**, and they matter more
  * than the reds:
  *
- * - **V4 / BR-14** — a seat with no `resources:` key still reaches every
+ * - **V4 / BR-14** — a worker with no `resources:` key still reaches every
  *   MUTABLE resource. Tightening that while making the wall work is the
  *   cheapest way to break the rest of this wave, and it would pass every check
  *   above.
@@ -49,10 +49,10 @@ import {
   clearShadowedReferences,
   describeShadowedReferences,
 } from "../src/clear-shadowed-references";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { SEAT_REFERENCES_KEY, placeOfReference } from "../src/seat-references";
-import { SEAT_RESOURCES_KEY } from "../src/seat-resources";
+import { WORKER_REFERENCES_KEY, placeOfReference } from "../src/worker-references";
+import { WORKER_RESOURCES_KEY } from "../src/worker-resources";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 
@@ -69,13 +69,13 @@ const BOB_NOTES = "teams/engineering/workers/bob/notes";
 
 /**
  * A VALID engineering placement. A worker id is team-qualified,
- * `"<teamId>.<name>"` — a `/` there is unroutable — so this seat's folder is
+ * `"<teamId>.<name>"` — a `/` there is unroutable — so this worker's folder is
  * `teams/engineering/workers/ada/`, and that is the place the wall is derived
- * from. A bare `"ada"` would be an org seat (`org/workers/ada/`), which has no
+ * from. A bare `"ada"` would be an org worker (`org/workers/ada/`), which has no
  * team, so it would give the own-team / sibling-team distinction nothing to be
  * distinguished FROM.
  */
-const ENG_SEAT = "engineering.ada";
+const ENG_WORKER = "engineering.ada";
 
 /**
  * The installing flow, as the migration's storage coordinate needs it.
@@ -84,7 +84,7 @@ const ENG_SEAT = "engineering.ada";
  * build; the isolated case has its own check below, because it addresses a
  * different bucket and getting it wrong is silent.
  */
-const INSTALLED_ON = { id: ENG_SEAT, isolatesOrgState: false };
+const INSTALLED_ON = { id: ENG_WORKER, isolatesOrgState: false };
 
 const roots: string[] = [];
 
@@ -136,8 +136,8 @@ function kindWith(resources: DeclaredResources) {
   });
 }
 
-/** A seat record as the loader produces one. */
-function seat(id: string, declared: Record<string, unknown> = {}): WorkerManifest {
+/** A worker record as the loader produces one. */
+function worker(id: string, declared: Record<string, unknown> = {}): WorkerManifest {
   return { id, declared: { flow: KIND, description: id, ...declared }, body: "" };
 }
 
@@ -157,7 +157,7 @@ async function ctxFor(flow: FlowInstance, stores = createInMemoryStores()) {
 }
 
 /**
- * The handle, or `undefined` when the seat cannot reach that ref at all.
+ * The handle, or `undefined` when the worker cannot reach that ref at all.
  *
  * `ctx.resources.get` THROWS on an unregistered accessor rather than returning
  * nothing, so "unreachable" has to be caught to be asserted on.
@@ -172,21 +172,21 @@ const handleFor = (ctx: { resources: { get(k: string): unknown } }, key: string)
 
 /**
  * The whole path in one call: disk → loader → both install halves → kind →
- * hire → a live seat.
+ * hire → a live worker.
  *
  * **No install filter.** That is the point of V3: the app hands the kind every
  * document and every reference it loaded, and the cross-team wall has to come
  * from somewhere else.
  */
-async function seatOn(root: string, seatRecord: WorkerManifest = seat(ENG_SEAT)) {
+async function workerOn(root: string, workerRecord: WorkerManifest = worker(ENG_WORKER)) {
   const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
   const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
-  const hired = mintSeats([seatRecord], {
+  const hired = mintWorkers([workerRecord], {
     workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
     documents,
     references,
   });
-  return { seat: hired[0]!, documents, references };
+  return { worker: hired[0]!, documents, references };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,14 +242,14 @@ describe("V1 · the references/ slot loads at every level (BR-1, BR-18)", () => 
 // ---------------------------------------------------------------------------
 
 describe("V2 · a reference is read from its file and sealed (D1)", () => {
-  it("BR-11 RED→GREEN — an ungranted seat CANNOT write the org handbook", async () => {
-    const { seat: ada } = await seatOn(await tree());
+  it("BR-11 RED→GREEN — an ungranted worker CANNOT write the org handbook", async () => {
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     await expect(handleFor(ctx, ORG_HANDBOOK)!.writeContent("DEFACED")).rejects.toThrow(/read-only/i);
   });
 
   it("BR-1 RED→GREEN — after a write is attempted, the body is still the FILE's", async () => {
-    const { seat: ada } = await seatOn(await tree());
+    const { worker: ada } = await workerOn(await tree());
     const { ctx, stores } = await ctxFor(ada);
     await expect(handleFor(ctx, ORG_HANDBOOK)!.writeContent("DEFACED")).rejects.toThrow();
 
@@ -259,7 +259,7 @@ describe("V2 · a reference is read from its file and sealed (D1)", () => {
   });
 
   it("BR-1 — the body is the DOCUMENT, not the file: no frontmatter leaks through", async () => {
-    const { seat: ada } = await seatOn(await tree());
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     const body = await handleFor(ctx, ORG_HANDBOOK)!.readContent();
     // `contentFile` hands the engine the raw bytes. Exact equality is the only
@@ -271,7 +271,7 @@ describe("V2 · a reference is read from its file and sealed (D1)", () => {
 
   it("BR-2 — an edit in git reaches the next execution context", async () => {
     const root = await tree();
-    const { seat: ada } = await seatOn(root);
+    const { worker: ada } = await workerOn(root);
     const { ctx, stores } = await ctxFor(ada);
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
 
@@ -287,7 +287,7 @@ describe("V2 · a reference is read from its file and sealed (D1)", () => {
 
   it("BR-3 — and NOT mid-request: a read already in flight does not see the edit", async () => {
     const root = await tree();
-    const { seat: ada } = await seatOn(root);
+    const { worker: ada } = await workerOn(root);
     const { ctx } = await ctxFor(ada);
     const handle = handleFor(ctx, ORG_HANDBOOK)!;
     expect(await handle.readContent()).toBe("ORG HANDBOOK v1");
@@ -371,7 +371,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
       "org/resources/handbook.md": doc("The org handbook", "ORG HANDBOOK v1"),
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
-    const before = mintSeats([seat(ENG_SEAT)], {
+    const before = mintWorkers([worker(ENG_WORKER)], {
       workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
@@ -388,7 +388,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
 
   it("the hole is real — sealing alone leaves the stale row serving forever", async () => {
     const { root, stores } = await treeWithHistory();
-    const { seat: ada } = await seatOn(root);
+    const { worker: ada } = await workerOn(root);
     const { ctx } = await ctxFor(ada, stores);
     // Not an aspiration: this is what a `git mv` on its own buys. The next case
     // is what makes it wrong.
@@ -397,7 +397,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
 
   it("RED→GREEN — after the migration the file wins, and it says what it cleared", async () => {
     const { root, stores } = await treeWithHistory();
-    const { seat: ada, references } = await seatOn(root);
+    const { worker: ada, references } = await workerOn(root);
 
     const result = await clearShadowedReferences({
       references,
@@ -422,7 +422,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
 
   it("dryRun reports the same finding and changes nothing", async () => {
     const { root, stores } = await treeWithHistory();
-    const { seat: ada, references } = await seatOn(root);
+    const { worker: ada, references } = await workerOn(root);
 
     const result = await clearShadowedReferences({
       references,
@@ -447,7 +447,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
 
   it("is idempotent, and a clean tree reports nothing cleared", async () => {
     const root = await tree();
-    const { references } = await seatOn(root);
+    const { references } = await workerOn(root);
     const stores = createInMemoryStores();
 
     const first = await clearShadowedReferences({
@@ -470,7 +470,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
 
   it("never touches a resources/ document's row — the mutable path keeps its history", async () => {
     const root = await tree();
-    const { seat: ada, references } = await seatOn(root);
+    const { worker: ada, references } = await workerOn(root);
     const { ctx, stores } = await ctxFor(ada);
     await handleFor(ctx, ENG_SCRATCH)!.writeContent("scratch edit");
 
@@ -491,28 +491,28 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
 // ---------------------------------------------------------------------------
 
 describe("V3 · the wall comes from the tree, with no filter written by the app (D2)", () => {
-  it("BR-1 — an ungranted seat reads the org's references and its own team's", async () => {
-    const { seat: ada } = await seatOn(await tree());
+  it("BR-1 — an ungranted worker reads the org's references and its own team's", async () => {
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
     expect(await handleFor(ctx, ENG_HANDBOOK)!.readContent()).toBe("ENGINEERING HANDBOOK v1");
   });
 
   it("BR-7 RED→GREEN — and CANNOT read another team's, with no install filter", async () => {
-    const { seat: ada } = await seatOn(await tree());
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     // Not an empty read and not a null body: the ref is not reachable at all.
     expect(handleFor(ctx, SALES_HANDBOOK)).toBeUndefined();
   });
 
   it("BR-1 — its own worker folder is reachable", async () => {
-    const { seat: ada } = await seatOn(await tree());
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     expect(await handleFor(ctx, ADA_NOTES)!.readContent()).toBe("ADA NOTES v1");
   });
 
-  it("BR-9 — a SIBLING seat's folder on the same team is not", async () => {
-    const { seat: ada } = await seatOn(await tree());
+  it("BR-9 — a SIBLING worker's folder on the same team is not", async () => {
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     // The walk inherits downward only. A sibling's folder is not above anyone.
     expect(handleFor(ctx, BOB_NOTES)).toBeUndefined();
@@ -525,17 +525,17 @@ describe("V3 · the wall comes from the tree, with no filter written by the app 
     await fs.rm(path.join(root, "teams/sales/references/handbook.md"));
     await writeInto(root, { "org/references/company.md": doc("Company-wide", "COMPANY v1") });
 
-    for (const seatId of ["engineering.ada", "sales.sam"]) {
-      const { seat: hired } = await seatOn(root, seat(seatId));
+    for (const workerId of ["engineering.ada", "sales.sam"]) {
+      const { worker: hired } = await workerOn(root, worker(workerId));
       const { ctx } = await ctxFor(hired);
       expect(await handleFor(ctx, "company")!.readContent()).toBe("COMPANY v1");
     }
   });
 
   it("BR-4 — a `references:` list narrows within the wall", async () => {
-    const { seat: ada } = await seatOn(
+    const { worker: ada } = await workerOn(
       await tree(),
-      seat(ENG_SEAT, { [SEAT_REFERENCES_KEY]: [ENG_HANDBOOK] }),
+      worker(ENG_WORKER, { [WORKER_REFERENCES_KEY]: [ENG_HANDBOOK] }),
     );
     const { ctx } = await ctxFor(ada);
     expect(await handleFor(ctx, ENG_HANDBOOK)!.readContent()).toBe("ENGINEERING HANDBOOK v1");
@@ -544,14 +544,14 @@ describe("V3 · the wall comes from the tree, with no filter written by the app 
 
   it("BR-4 / BP-031 — and can never widen past it: naming a sibling team refuses", async () => {
     await expect(
-      seatOn(await tree(), seat(ENG_SEAT, { [SEAT_REFERENCES_KEY]: [SALES_HANDBOOK] })),
+      workerOn(await tree(), worker(ENG_WORKER, { [WORKER_REFERENCES_KEY]: [SALES_HANDBOOK] })),
     ).rejects.toThrow(/cannot add one from outside|is not a reference/i);
   });
 
   it("BR-5 — present-and-empty is restricted to nothing, and is not absent", async () => {
-    const { seat: ada } = await seatOn(
+    const { worker: ada } = await workerOn(
       await tree(),
-      seat(ENG_SEAT, { [SEAT_REFERENCES_KEY]: [] }),
+      worker(ENG_WORKER, { [WORKER_REFERENCES_KEY]: [] }),
     );
     const { ctx } = await ctxFor(ada);
     expect(handleFor(ctx, ORG_HANDBOOK)).toBeUndefined();
@@ -562,13 +562,13 @@ describe("V3 · the wall comes from the tree, with no filter written by the app 
 
   it("BR-6 — a ref matching no file refuses at hire, naming it", async () => {
     await expect(
-      seatOn(await tree(), seat(ENG_SEAT, { [SEAT_REFERENCES_KEY]: ["teams/engineering/hanbdook"] })),
+      workerOn(await tree(), worker(ENG_WORKER, { [WORKER_REFERENCES_KEY]: ["teams/engineering/hanbdook"] })),
     ).rejects.toThrow(/hanbdook/);
   });
 
   it("a malformed `references:` refuses rather than resolving to nothing", async () => {
     await expect(
-      seatOn(await tree(), seat(ENG_SEAT, { [SEAT_REFERENCES_KEY]: "teams/engineering/handbook" })),
+      workerOn(await tree(), worker(ENG_WORKER, { [WORKER_REFERENCES_KEY]: "teams/engineering/handbook" })),
     ).rejects.toThrow(/is a LIST/);
   });
 });
@@ -578,8 +578,8 @@ describe("V3 · the wall comes from the tree, with no filter written by the app 
 // ---------------------------------------------------------------------------
 
 describe("V4 · BR-14 — the mutable path is untouched", () => {
-  it("a seat with NO `resources:` key still reaches every mutable resource", async () => {
-    const { seat: ada } = await seatOn(await tree());
+  it("a worker with NO `resources:` key still reaches every mutable resource", async () => {
+    const { worker: ada } = await workerOn(await tree());
     const { ctx } = await ctxFor(ada);
     // A `resources:` grant is optional NARROWING, never a precondition for
     // reach. Breaking this breaks every app in the monorepo, and it would pass
@@ -588,7 +588,7 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
   });
 
   it("…and can still WRITE it. The wall seals references, not resources", async () => {
-    const { seat: ada } = await seatOn(await tree());
+    const { worker: ada } = await workerOn(await tree());
     const { ctx, stores } = await ctxFor(ada);
     await handleFor(ctx, ENG_SCRATCH)!.writeContent("scratch edit");
     const again = await ctxFor(ada, stores);
@@ -600,7 +600,7 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
     await writeInto(root, {
       "teams/sales/resources/pipeline.md": doc("Sales pipeline", "pipeline seed"),
     });
-    const { seat: ada } = await seatOn(root);
+    const { worker: ada } = await workerOn(root);
     const { ctx } = await ctxFor(ada);
     // Deliberate, and the boundary of this change: D2 derives a wall for
     // REFERENCES. Tightening the mutable path is a different decision with a
@@ -609,9 +609,9 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
   });
 
   it("#1943's `resources:` narrowing still works, alongside the wall", async () => {
-    const { seat: ada } = await seatOn(
+    const { worker: ada } = await workerOn(
       await tree(),
-      seat(ENG_SEAT, { [SEAT_RESOURCES_KEY]: [ENG_SCRATCH] }),
+      worker(ENG_WORKER, { [WORKER_RESOURCES_KEY]: [ENG_SCRATCH] }),
     );
     const { ctx } = await ctxFor(ada);
     expect(await handleFor(ctx, ENG_SCRATCH)!.readContent()).toBe("seed");
@@ -629,7 +629,7 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
       "org/resources/coc.md": doc("Code of conduct", "coc seed"),
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
-    const hired = mintSeats([seat(ENG_SEAT)], {
+    const hired = mintWorkers([worker(ENG_WORKER)], {
       workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
@@ -689,7 +689,7 @@ describe("BR-15 · a ref claimed by both slots is refused at both doors", () => 
       content: "x",
     });
     expect(() =>
-      mintSeats([seat(ENG_SEAT)], {
+      mintWorkers([worker(ENG_WORKER)], {
         workerFlows: { [KIND]: kindWith({ [ORG_HANDBOOK]: shared }) as never },
         documents: { [ORG_HANDBOOK]: shared },
         references: { [ORG_HANDBOOK]: shared },
@@ -709,7 +709,7 @@ describe("BR-16 / BR-17 · both folders at one level, each by its own rules", ()
       "teams/engineering/resources/scratch.md": doc("Scratch", "seed"),
       "teams/engineering/references/handbook.md": doc("Engineering handbook", "ENGINEERING HANDBOOK v1"),
     });
-    const { seat: ada } = await seatOn(root);
+    const { worker: ada } = await workerOn(root);
     const { ctx, stores } = await ctxFor(ada);
 
     // The reference: sealed, served from the file.
@@ -730,11 +730,11 @@ describe("the wall places a reference by its minted ref, not by its accessor key
   /**
    * An app may expose one definition under a second key. The alias is still the
    * engineering handbook, but its KEY is a single segment — which reads as an
-   * org-level ref, and would hand a team's handbook to every seat in the
+   * org-level ref, and would hand a team's handbook to every worker in the
    * company. Asserted as the negative, because a happy-path check would have
    * stayed green straight through this.
    */
-  async function withAlias(seatId: string) {
+  async function withAlias(workerId: string) {
     const root = await tree();
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
@@ -743,7 +743,7 @@ describe("the wall places a reference by its minted ref, not by its accessor key
       // A single-segment alias of a TEAM document — the widening shape.
       companyHandbook: references[ENG_HANDBOOK]!,
     };
-    const hired = mintSeats([seat(seatId)], {
+    const hired = mintWorkers([worker(workerId)], {
       workerFlows: { [KIND]: kindWith({ ...documents, ...aliased }) as never },
       documents,
       references: aliased,
@@ -751,13 +751,13 @@ describe("the wall places a reference by its minted ref, not by its accessor key
     return await ctxFor(hired[0]!);
   }
 
-  it("RED→GREEN — a sibling team's seat cannot reach an aliased engineering handbook", async () => {
+  it("RED→GREEN — a sibling team's worker cannot reach an aliased engineering handbook", async () => {
     const { ctx } = await withAlias("sales.sam");
     expect(handleFor(ctx, "companyHandbook")).toBeUndefined();
   });
 
-  it("…and the team's own seat still can, so the wall narrowed rather than broke", async () => {
-    const { ctx } = await withAlias(ENG_SEAT);
+  it("…and the team's own worker still can, so the wall narrowed rather than broke", async () => {
+    const { ctx } = await withAlias(ENG_WORKER);
     expect(await handleFor(ctx, "companyHandbook")!.readContent()).toBe(
       "ENGINEERING HANDBOOK v1",
     );
@@ -783,13 +783,13 @@ describe("a reserved path segment is still a legal document name", () => {
   // that as a broken `teams/` path made an ordinary org document reach nobody.
   // Handled as a class — length decides the shape, never the spelling.
   it.each(["teams", "workers"])(
-    "RED→GREEN — an org reference named %s reaches every seat",
+    "RED→GREEN — an org reference named %s reaches every worker",
     async (name) => {
       const root = await tree();
       await writeInto(root, {
         [`org/references/${name}.md`]: doc(`An org document named ${name}`, `ORG ${name} v1`),
       });
-      const { seat: ada } = await seatOn(root);
+      const { worker: ada } = await workerOn(root);
       const { ctx } = await ctxFor(ada);
       expect(await handleFor(ctx, name)!.readContent()).toBe(`ORG ${name} v1`);
     },
@@ -836,9 +836,9 @@ describe("a reference cannot isolate itself", () => {
 describe("the migration addresses the right bucket, or refuses", () => {
   it("an isolated org scope is a DIFFERENT bucket, and the migration uses it", async () => {
     const root = await tree();
-    const { references } = await seatOn(root);
+    const { references } = await workerOn(root);
     const stores = createInMemoryStores();
-    const isolated = { id: ENG_SEAT, isolatesOrgState: true };
+    const isolated = { id: ENG_WORKER, isolatesOrgState: true };
 
     // A row written where an isolated flow would store it.
     await stores.content.set("org", `${ORG}:${isolated.id}`, ORG_HANDBOOK, "WRITTEN BEFORE");
@@ -866,7 +866,7 @@ describe("the migration addresses the right bucket, or refuses", () => {
 
   it("refuses loudly for an id the engine would escape, rather than reading the wrong cell", async () => {
     const root = await tree();
-    const { references } = await seatOn(root);
+    const { references } = await workerOn(root);
     const stores = createInMemoryStores();
 
     await expect(
@@ -885,7 +885,7 @@ describe("the migration addresses the right bucket, or refuses", () => {
         references,
         orgId: ORG,
         content: stores.content,
-        installedOn: { id: "kind:seat", isolatesOrgState: true },
+        installedOn: { id: "kind:worker", isolatesOrgState: true },
       }),
     ).rejects.toThrow(/flow id/i);
 
@@ -894,7 +894,7 @@ describe("the migration addresses the right bucket, or refuses", () => {
       references,
       orgId: ORG,
       content: stores.content,
-      installedOn: { id: "kind:seat", isolatesOrgState: false },
+      installedOn: { id: "kind:worker", isolatesOrgState: false },
     });
     expect(fine.scopeId).toBe(ORG);
   });
@@ -912,7 +912,7 @@ describe("the wall cannot be turned off by omission", () => {
    *
    * D1 survives that — the seal rides on the definition, so the files stay
    * read-only and still read from disk. **D2 does not.** Nothing is recognised
-   * as a reference, so the wall applies to nothing and every seat reaches every
+   * as a reference, so the wall applies to nothing and every worker reaches every
    * team's handbook.
    *
    * That is this convention's own problem statement one level up: the wall it
@@ -920,18 +920,18 @@ describe("the wall cannot be turned off by omission", () => {
    * absence would be as silent as the filter's was. Refused instead, naming the
    * option, the same way the migration refuses an address it cannot compute.
    */
-  async function hireWithoutCatalog(seatRecord = seat(ENG_SEAT)) {
+  async function hireWithoutCatalog(workerRecord = worker(ENG_WORKER)) {
     const root = await tree();
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
-    return mintSeats([seatRecord], {
+    return mintWorkers([workerRecord], {
       workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
       documents,
       // `references` deliberately NOT passed. This is the whole case.
     });
   }
 
-  it("RED→GREEN — refuses rather than hiring a seat with no wall", async () => {
+  it("RED→GREEN — refuses rather than hiring a worker with no wall", async () => {
     await expect(hireWithoutCatalog()).rejects.toThrow(/references/);
   });
 
@@ -944,12 +944,12 @@ describe("the wall cannot be turned off by omission", () => {
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const all = referencesFromDocs((await readReferencesDirectory(root)).documents);
     // Everything except the sales handbook, which would then be walled by
-    // nothing and reachable by every seat.
+    // nothing and reachable by every worker.
     const partial = Object.fromEntries(
       Object.entries(all).filter(([ref]) => ref !== SALES_HANDBOOK),
     );
     expect(() =>
-      mintSeats([seat(ENG_SEAT)], {
+      mintWorkers([worker(ENG_WORKER)], {
         workerFlows: { [KIND]: kindWith({ ...documents, ...all }) as never },
         documents,
         references: partial,
@@ -964,7 +964,7 @@ describe("the wall cannot be turned off by omission", () => {
       "teams/engineering/resources/scratch.md": doc("Scratch", "seed"),
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
-    const hired = mintSeats([seat(ENG_SEAT)], {
+    const hired = mintWorkers([worker(ENG_WORKER)], {
       workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
@@ -973,37 +973,37 @@ describe("the wall cannot be turned off by omission", () => {
   });
 });
 
-describe("an org seat's own references/ reach that seat alone", () => {
-  it("an org WORKER's references/ sits beside the org level, not above a team seat", async () => {
+describe("an org worker's own references/ reach that worker alone", () => {
+  it("an org WORKER's references/ sits beside the org level, not above a team worker", async () => {
     const root = await tree();
     await writeInto(root, {
       "org/workers/build/references/runbook.md": doc("Build runbook", "BUILD RUNBOOK v1"),
     });
-    const { seat: ada } = await seatOn(root);
+    const { worker: ada } = await workerOn(root);
     const { ctx } = await ctxFor(ada);
     expect(handleFor(ctx, "workers/build/runbook")).toBeUndefined();
   });
 
-  it("the org seat at that folder reads it, with the org's, and no team's", async () => {
+  it("the org worker at that folder reads it, with the org's, and no team's", async () => {
     const root = await tree();
     await writeInto(root, {
       "org/workers/build/references/runbook.md": doc("Build runbook", "BUILD RUNBOOK v1"),
     });
-    const { seat: build } = await seatOn(root, seat("build"));
+    const { worker: build } = await workerOn(root, worker("build"));
     const { ctx } = await ctxFor(build);
     expect(await handleFor(ctx, "workers/build/runbook")!.readContent()).toBe("BUILD RUNBOOK v1");
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
-    // An org seat has no team: no team's folder is above it.
+    // An org worker has no team: no team's folder is above it.
     expect(handleFor(ctx, ENG_HANDBOOK)).toBeUndefined();
     expect(handleFor(ctx, ADA_NOTES)).toBeUndefined();
   });
 
-  it("another org seat does not read it", async () => {
+  it("another org worker does not read it", async () => {
     const root = await tree();
     await writeInto(root, {
       "org/workers/build/references/runbook.md": doc("Build runbook", "BUILD RUNBOOK v1"),
     });
-    const { seat: deploy } = await seatOn(root, seat("deploy"));
+    const { worker: deploy } = await workerOn(root, worker("deploy"));
     const { ctx } = await ctxFor(deploy);
     expect(handleFor(ctx, "workers/build/runbook")).toBeUndefined();
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");

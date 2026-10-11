@@ -2,10 +2,10 @@
  * A board's fallback that hands rows off to a flow looked up per task.
  *
  * The fallback (`defaultWorker`) holds a task dispatcher whose `flowKind` is a
- * function of the task: each row the board's own seats do not name goes to
+ * function of the task: each row the board's own assignees do not name goes to
  * the flow that function answers, under the assignee it was claimed with, in a
  * session of its own. A row the function answers nothing for, or that names
- * no assignee, fails by name before anything is dispatched. A seat the board
+ * no assignee, fails by name before anything is dispatched. An assignee the board
  * names keeps its own route and never asks the function.
  */
 import { describe, expect, it } from "vitest";
@@ -166,7 +166,7 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
       expect(byTask["t-bob"]?.flow).toBe("taker-bob");
       // Two tasks for one name run in two sessions.
       expect(byTask["t-alice-1"]?.session).not.toBe(byTask["t-alice-2"]?.session);
-      // The board's own seat ran inline and the lookup was never asked about it.
+      // The board's own assignee ran inline and the lookup was never asked about it.
       expect(inlineRan).toEqual(["t-local"]);
       expect(asked).not.toContain("local");
       expect(asked.sort()).toEqual(["alice", "alice", "bob"]);

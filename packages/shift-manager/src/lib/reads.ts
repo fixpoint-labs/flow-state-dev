@@ -3,14 +3,14 @@
  *
  * A refresh makes each read once and hands back one snapshot. Counts, badges
  * and screens all draw from that snapshot, so the sidebar's Inbox count and
- * the Inbox list can never disagree, and a Lab with dozens of seats costs one
- * listing and one ask read per seat session, not one per badge.
+ * the Inbox list can never disagree, and a Lab with dozens of workers costs one
+ * listing and one ask read per worker session, not one per badge.
  *
  * What a refresh reads, in order:
  *
- * 1. **The person's sessions**, dispatch runs included. A seat woken by a
+ * 1. **The person's sessions**, dispatch runs included. A worker woken by a
  *    mailbox post runs in a dispatch-run session, which the default listing
- *    leaves out, so without `include: "dispatch-runs"` that seat's ask would
+ *    leaves out, so without `include: "dispatch-runs"` that worker's ask would
  *    be invisible. This is also Shift Manager's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
  *    and nothing else is read (BR-3).
@@ -23,10 +23,10 @@
  *    A Lab that still lists the person no session (it serves neither) names
  *    no organization, and gets the refusal too: Shift Manager never draws a
  *    Lab under an unknown one (ER-4).
- * 3. **The inventory**: the organization's seat and mailbox collections, found
+ * 3. **The inventory**: the organization's worker and mailbox collections, found
  *    by their published key patterns in the manifest of a listed session whose
  *    flow declares them (the mailbox kind does). Nothing about the tree is
- *    written in Shift Manager; this is where every seat, team and workstream name
+ *    written in Shift Manager; this is where every worker, team and workstream name
  *    comes from.
  * 4. **Each workstream's attached boards**: the mailbox kind's manifest lists
  *    one collection per attached board, `<mailboxId>.<name>`, read through the
@@ -35,9 +35,9 @@
  *    each under its conversation's partition, so one read through any
  *    session whose flow declares it answers every board of theirs, grouped
  *    here by the conversation that holds it (`<sessionId>.tasks`).
- * 5. **Pending asks**: for each listed session a seat owns, the suspension
+ * 5. **Pending asks**: for each listed session a worker owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
- *    pending. Not the transcript. A seat is one the inventory registers, or
+ *    pending. Not the transcript. A worker is one the inventory registers, or
  *    one of the person's own workers: those are on their roster, never in the
  *    inventory, so the roster is read first, through Workforce's `roster()`,
  *    which answers for the caller only.
@@ -82,23 +82,23 @@ export function workerOf(session: SessionSummary): string | null {
 /** One section's outcome: its value, or why it has none. */
 export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure };
 
-/** A seat, as the seat inventory registers it: one worker. */
-export type Seat = {
+/** A worker, as the worker inventory registers it: one worker. */
+export type Worker = {
   /**
-   * The worker's id: `<team>.<name>`, or a bare name for an org seat. Boards
-   * and mailboxes name the seat by it, and its sessions carry it as their
+   * The worker's id: `<team>.<name>`, or a bare name for an org worker. Boards
+   * and mailboxes name the worker by it, and its sessions carry it as their
    * `workerId`.
    */
   id: string;
   /** The worker flow the worker runs on, which is also that flow's copy id; `null` on a row that has none. */
   kind: string | null;
   /**
-   * The action that takes a person's message into this seat's sessions, as
+   * The action that takes a person's message into this worker's sessions, as
    * the hire published it; `null` when its kind takes none, or on a row
    * written before doors were published.
    */
   door: string | null;
-  /** The team it sits under, or {@link STAFF_TEAM} for an org seat (see {@link toSeat}). */
+  /** The team it sits under, or {@link STAFF_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
   name: string;
 };
@@ -109,7 +109,7 @@ export type Workstream = {
   id: string;
   /** The mailbox's flow kind. */
   kind: string | null;
-  /** The seat ids the mailbox declares as members. */
+  /** The worker ids the mailbox declares as members. */
   members: string[];
 };
 
@@ -191,17 +191,17 @@ export type WorkstreamBoards = { refs: string[]; rows: BoardRow[] };
 
 /** A pending approval or question, and the session that holds it. */
 export type Ask = {
-  /** The seat session the ask waits in. */
+  /** The worker session the ask waits in. */
   sessionId: string;
-  /** The seat that asked, when the session names its owner. */
-  seatId: string | null;
+  /** The worker that asked, when the session names its owner. */
+  workerId: string | null;
   /**
    * The flow instance that owns the session, which is what the answer goes
    * through. `null` on a session written before instance ownership: its ask
    * is shown, and its answer is unavailable.
    */
   flowId: string | null;
-  /** The session that started this run, for a dispatch run (a mailbox, when a post woke the seat). */
+  /** The session that started this run, for a dispatch run (a mailbox, when a post woke the worker). */
   parentSessionId: string | null;
   kind: "approval" | "question";
   item: SuspensionItem;
@@ -231,7 +231,7 @@ export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "sc
 
 /** What an ask's card says when its run can't be reopened from outside the Lab. */
 export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a mailbox post waking a seat, a dispatch, a webhook) is never reopened from outside it.";
+  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a mailbox post waking a worker, a dispatch, a webhook) is never reopened from outside it.";
 
 /**
  * Why a Lab that lists the person no session, even after one was asked for on
@@ -251,10 +251,10 @@ export const UNOWNED_SESSION_UNANSWERABLE =
  */
 export type DeclaredResource = { ref: string; sessionId: string };
 
-/** The organization's seats and workstreams, as the inventory registers them. */
+/** The organization's workers and workstreams, as the inventory registers them. */
 export type Inventory = {
-  /** Every seat the inventory registers. */
-  seats: Seat[];
+  /** Every worker the inventory registers. */
+  workers: Worker[];
   workstreams: Workstream[];
 };
 
@@ -291,7 +291,7 @@ export type LabSnapshot =
     };
 
 /** The organization's inventory collections, by their published key patterns. */
-const INVENTORY_PATTERNS = { seats: "inventory/seats/*", mailboxes: "inventory/mailboxes/*" } as const;
+const INVENTORY_PATTERNS = { workers: "inventory/workers/*", mailboxes: "inventory/mailboxes/*" } as const;
 
 /**
  * The flow kind a person's own session for reading the organization's
@@ -321,7 +321,7 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 1000;
 /** Suspension items per session-state page. */
 const ASK_PAGE_SIZE = 200;
-/** How many seat sessions are read at once. */
+/** How many worker sessions are read at once. */
 const ASK_READ_BATCH = 6;
 
 /**
@@ -384,20 +384,20 @@ function time(value: unknown): number | null {
 }
 
 /**
- * The group an org seat sits in: a seat whose address has no team, such as a
+ * The group an org worker sits in: a worker whose address has no team, such as a
  * chief of staff or Ops. Capitalised, so no team id (lowercase by Workforce's
  * segment rule) can be it.
  */
 export const STAFF_TEAM = "Staff";
 
 /**
- * A seat inventory row, grouped by its worker id:
+ * A worker inventory row, grouped by its worker id:
  *
  * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
  *   is everything before the first one;
- * - an id with no dot is an org seat, and sits in {@link STAFF_TEAM}.
+ * - an id with no dot is an org worker, and sits in {@link STAFF_TEAM}.
  */
-export function toSeat(row: unknown): Seat | undefined {
+export function toWorker(row: unknown): Worker | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
   const dot = id.indexOf(".");
@@ -665,15 +665,15 @@ export function createLabReader(clients: LabClients): LabReader {
 
   /**
    * Find the inventory through the first listed session whose flow declares
-   * it: seats and mailboxes, or, when no flow declares the mailboxes (a Lab
-   * that serves no mailbox kind), the seats alone, with no mailbox workstream.
+   * it: workers and mailboxes, or, when no flow declares the mailboxes (a Lab
+   * that serves no mailbox kind), the workers alone, with no mailbox workstream.
    */
   const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
     const byKind = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
     }
-    let seatsOnly: { sessionId: string; seatsRef: string } | undefined;
+    let workersOnly: { sessionId: string; workersRef: string } | undefined;
     for (const [kind, sessionId] of byKind) {
       let manifest: ResourceManifest;
       try {
@@ -684,44 +684,44 @@ export function createLabReader(clients: LabClients): LabReader {
       const refOf = (pattern: string) =>
         manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern && r.client.state?.read === true)
           ?.ref;
-      const seatsRef = refOf(INVENTORY_PATTERNS.seats);
+      const workersRef = refOf(INVENTORY_PATTERNS.workers);
       const mailboxesRef = refOf(INVENTORY_PATTERNS.mailboxes);
-      if (seatsRef === undefined) continue;
+      if (workersRef === undefined) continue;
       if (mailboxesRef === undefined) {
-        seatsOnly ??= { sessionId, seatsRef };
+        workersOnly ??= { sessionId, workersRef };
         continue;
       }
       try {
-        const [seatRows, mailboxRows] = await Promise.all([
-          readCollection(sessionId, seatsRef),
+        const [workerRows, mailboxRows] = await Promise.all([
+          readCollection(sessionId, workersRef),
           readCollection(sessionId, mailboxesRef),
         ]);
-        const seats = seatRows.map((r) => toSeat(r.clientData)).filter((seat): seat is Seat => seat !== undefined);
+        const workers = workerRows.map((r) => toWorker(r.clientData)).filter((worker): worker is Worker => worker !== undefined);
         const workstreams = mailboxRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
-        if (seats.length === 0 && workstreams.length === 0) {
+        if (workers.length === 0 && workstreams.length === 0) {
           return {
             ok: false,
             failure: {
               message:
-                "The Lab's inventory is empty: it registers no seats and no mailboxes. The Lab booted without opening its inventory.",
+                "The Lab's inventory is empty: it registers no workers and no mailboxes. The Lab booted without opening its inventory.",
             },
           };
         }
-        return { ok: true, value: { seats, workstreams } };
+        return { ok: true, value: { workers, workstreams } };
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
     }
-    if (seatsOnly !== undefined) {
+    if (workersOnly !== undefined) {
       try {
-        const seats = (await readCollection(seatsOnly.sessionId, seatsOnly.seatsRef))
-          .map((r) => toSeat(r.clientData))
-          .filter((seat): seat is Seat => seat !== undefined);
-        // Every Workforce Lab's roster flow declares the seats, so none there is the Lab not having
+        const workers = (await readCollection(workersOnly.sessionId, workersOnly.workersRef))
+          .map((r) => toWorker(r.clientData))
+          .filter((worker): worker is Worker => worker !== undefined);
+        // Every Workforce Lab's roster flow declares the workers, so none there is the Lab not having
         // opened its inventory, or these pages looking for keys it no longer writes: said below.
-        if (seats.length > 0) return { ok: true, value: { seats, workstreams: [] } };
+        if (workers.length > 0) return { ok: true, value: { workers, workstreams: [] } };
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
@@ -730,7 +730,7 @@ export function createLabReader(clients: LabClients): LabReader {
       ok: false,
       failure: {
         message:
-          `No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and mailbox inventory (${INVENTORY_PATTERNS.seats}, ${INVENTORY_PATTERNS.mailboxes}). Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
+          `No inventory to read: none of this person's sessions is on a flow that declares the organization's worker and mailbox inventory (${INVENTORY_PATTERNS.workers}, ${INVENTORY_PATTERNS.mailboxes}). Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
       },
     };
   };
@@ -796,7 +796,7 @@ export function createLabReader(clients: LabClients): LabReader {
    * This person's sessions, with one of their own on each reader kind: the
    * mailbox kind, which declares the organization's inventory, and the roster
    * flow, which declares the projects and the workstream entries. A person may
-   * hold only a seat's session, or none at all on a first visit, and nothing
+   * hold only a worker's session, or none at all on a first visit, and nothing
    * of theirs can read either. Each is opened once, under
    * {@link readerSessionId} so overlapping first reads can't open two, and
    * listed from then on. One that can't be opened leaves the sessions as they
@@ -872,7 +872,7 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /** The pending person-asks in one session. */
-  const readAsks = async (session: SessionSummary, seatId: string | null): Promise<Ask[]> => {
+  const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
     const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
     if (pending.length === 0) return [];
     // Which transport each suspended request arrived on: that decides whether
@@ -885,7 +885,7 @@ export function createLabReader(clients: LabClients): LabReader {
     );
     return pending.map((view) => ({
       sessionId: session.id,
-      seatId,
+      workerId,
       flowId: session.flowId ?? null,
       parentSessionId: session.parentSessionId ?? null,
       kind: suspensionShape(view.item) === "approval" ? ("approval" as const) : ("question" as const),
@@ -968,29 +968,29 @@ export function createLabReader(clients: LabClients): LabReader {
       readConversationBoards(sessions),
       (async (): Promise<Section<Ask[]>> => {
         if (!inventory.ok) {
-          return { ok: false, failure: { message: `Asks are read from seat sessions, and the seat inventory did not load. ${inventory.failure.message}` } };
+          return { ok: false, failure: { message: `Asks are read from worker sessions, and the worker inventory did not load. ${inventory.failure.message}` } };
         }
         if (!ownWorkers.ok) {
           return { ok: false, failure: { message: `Asks are read from your own workers' sessions too, and your roster did not load. ${ownWorkers.failure.message}` } };
         }
-        // A seat's sessions are on its worker flow, and name the worker in
-        // their state. One on a seat's flow that names none is still read: its
+        // A worker's sessions are on its worker flow, and name the worker in
+        // their state. One on a worker's flow that names none is still read: its
         // asks are shown, unattributed. A session naming one of the person's
         // own workers, on the flow their roster says it runs on, is that
         // worker's: the listing holds only the person's sessions, so it is
         // their own worker's and nobody else's. Another flow's session that
         // merely names it in its state is not.
-        const seatIds = new Set(inventory.value.seats.map((s) => s.id));
-        const seatKinds = new Set(inventory.value.seats.map((s) => s.kind).filter((k): k is string => k !== null));
-        const seatSessions = sessions.flatMap((s): Array<{ session: SessionSummary; seatId: string | null }> => {
+        const workerIds = new Set(inventory.value.workers.map((s) => s.id));
+        const workerKinds = new Set(inventory.value.workers.map((s) => s.kind).filter((k): k is string => k !== null));
+        const workerSessions = sessions.flatMap((s): Array<{ session: SessionSummary; workerId: string | null }> => {
           const workerId = workerOf(s);
-          if (workerId !== null && ownWorkers.value.get(workerId) === s.flowKind) return [{ session: s, seatId: workerId }];
-          if (!seatKinds.has(s.flowKind)) return [];
-          if (workerId === null) return [{ session: s, seatId: null }];
-          return seatIds.has(workerId) ? [{ session: s, seatId: workerId }] : [];
+          if (workerId !== null && ownWorkers.value.get(workerId) === s.flowKind) return [{ session: s, workerId: workerId }];
+          if (!workerKinds.has(s.flowKind)) return [];
+          if (workerId === null) return [{ session: s, workerId: null }];
+          return workerIds.has(workerId) ? [{ session: s, workerId: workerId }] : [];
         });
         try {
-          const found = await inBatches(seatSessions, ASK_READ_BATCH, ({ session, seatId }) => readAsks(session, seatId));
+          const found = await inBatches(workerSessions, ASK_READ_BATCH, ({ session, workerId }) => readAsks(session, workerId));
           return { ok: true, value: found.flat().sort((a, b) => a.since - b.since) };
         } catch (error) {
           return { ok: false, failure: describeFailure(error) };

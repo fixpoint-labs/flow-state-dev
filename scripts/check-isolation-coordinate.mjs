@@ -199,8 +199,8 @@ export function scanClaims(text) {
   return out;
 }
 
-const COORDINATE = /\bseats?\b|\binstances?\b/i;
-const VISIBLE_COMMITS = /per seat|per-seat|flow instance id|instance id,/i;
+const COORDINATE = /\bseats?\b|\bworkers?\b|\binstances?\b/i;
+const VISIBLE_COMMITS = /per seat|per-seat|per worker|flow instance id|instance id,/i;
 
 /**
  * Whether a figure is about stored rows at all — derived from `KEYING` rather

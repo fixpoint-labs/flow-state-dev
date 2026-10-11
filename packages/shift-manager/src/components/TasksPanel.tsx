@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { columnFor } from "../lib/columns";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Seat } from "../lib/reads";
+import { describeFailure, type Worker } from "../lib/reads";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 
 type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
@@ -32,7 +32,7 @@ const isOpen = (task: ConversationTask) => task.status === "pending" || task.sta
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
-export function TasksPanel({ seat, sessionId, readAt }: { seat: Seat; sessionId: string | null; readAt: number }) {
+export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sessionId: string | null; readAt: number }) {
   const { clients, refresh } = useLab();
   const [read, setRead] = useState<Read>(undefined);
   const [polls, setPolls] = useState(0);
@@ -44,13 +44,13 @@ export function TasksPanel({ seat, sessionId, readAt }: { seat: Seat; sessionId:
   useEffect(() => {
     setRead(undefined);
     last.current = { movedAt: 0 };
-  }, [seat.kind, sessionId]);
+  }, [worker.kind, sessionId]);
 
   useEffect(() => {
-    if (sessionId === null || seat.kind === null) return;
+    if (sessionId === null || worker.kind === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readConversationTasks(clients, seat.kind, sessionId)
+    readConversationTasks(clients, worker.kind, sessionId)
       .then((tasks) => {
         if (closed) return;
         setRead({ tasks });
@@ -69,9 +69,9 @@ export function TasksPanel({ seat, sessionId, readAt }: { seat: Seat; sessionId:
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, refresh, seat.kind, sessionId, readAt, polls]);
+  }, [clients, refresh, worker.kind, sessionId, readAt, polls]);
 
-  if (sessionId === null || seat.kind === null) {
+  if (sessionId === null || worker.kind === null) {
     return (
       <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none">
         Tasks belong to a conversation. Say something to start one.

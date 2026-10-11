@@ -68,10 +68,10 @@ export interface WorkerLookup {
   /**
    * The check a door makes before it files a task for `name` on list
    * `listId`: `undefined` when the name is fine, else the sentence to refuse
-   * with. A name a board over that list declares as its own seat (DevTeam's
+   * with. A name a board over that list declares as its own worker (DevTeam's
    * `coder`) passes without the lookup, since that board routes it itself.
    *
-   * @param aliases Each list's own seat names, by list id, as the host read
+   * @param aliases Each list's own worker names, by list id, as the host read
    *   them off the boards it built.
    */
   filingCheck(

@@ -248,10 +248,10 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const refOf = (pattern: string) =>
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const seatsRef = refOf("inventory/seats/*");
+  const workersRef = refOf("inventory/seats/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
-  const seatRows = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
-  const seats = seatRows.map((s) => s.id);
+  const workerRows = workersRef === undefined ? [] : (await api.collection(host, workersRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
+  const seats = workerRows.map((s) => s.id);
   const mailboxes =
     mailboxesRef === undefined
       ? []
@@ -293,10 +293,10 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
   // A seat session's own board (`<sessionId>.tasks`), where a worker that names delegates files:
   // the organization keeps every session's rows in one `tasks` collection, each under a topic
   // naming the session that filed it.
-  const seatIds = new Set(seats);
+  const workerIds = new Set(seats);
   for (const session of sessions) {
     const id = String(session.id);
-    if (session.parentSessionId != null || !seatIds.has(String(session.state?.workerId)) || rows[id] !== undefined) continue;
+    if (session.parentSessionId != null || !workerIds.has(String(session.state?.workerId)) || rows[id] !== undefined) continue;
     const { status, body } = await api.call("GET", `/sessions/${encodeURIComponent(id)}/resources/tasks?limit=200`);
     if (status !== 200) continue;
     const own = ((body?.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>)
@@ -314,7 +314,7 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
   }
   const orgs = [...new Set(sessions.map((s) => s.orgId).filter((o): o is string => typeof o === "string" && o.length > 0))];
   // The seat an ask belongs to is the worker its session names, not the flow the session is on.
-  const asks: StoredAsk[] = (await pendingSeatAsks(api, sessions, seatRows)).map((a) => ({ suspensionId: a.suspensionId, sessionId: a.sessionId, seat: a.seatId }));
+  const asks: StoredAsk[] = (await pendingSeatAsks(api, sessions, workerRows)).map((a) => ({ suspensionId: a.suspensionId, sessionId: a.sessionId, seat: a.seatId }));
   return { seats, mailboxes, rows, asks, orgs, projects };
 }
 

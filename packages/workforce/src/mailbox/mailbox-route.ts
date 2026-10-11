@@ -127,18 +127,18 @@ export type RouteLedgerState = z.infer<typeof routeLedgerStateSchema>;
 
 /**
  * Keep one line in the ledger. A person's post (one that did not arrive on
- * the internal seat entry) also comes back with its case: the lines kept
+ * the internal worker entry) also comes back with its case: the lines kept
  * before it, and the member still on the person's previous post. That member
  * holds only when the previous post's route is recorded, was the evaluator's
  * or the fallback's, and the member has kept no line since. A claimed
- * `author` does not make the line a seat's: only `seatAuthored`, which the
+ * `author` does not make the line a worker's: only `workerAuthored`, which the
  * internal entry sets. A post that was itself held holds nothing, and neither
  * does one on a mailbox that was not routed, which never gets a route.
  */
 export function keepLine(ledger: RouteLedger, line: MailboxTranscriptLine): { ledger: RouteLedger; postCase?: PostCase } {
   const lines = [...ledger.lines, line].slice(-RECENT_LINES);
   const last = ledger.lastPost;
-  if (line.seatAuthored === true) {
+  if (line.workerAuthored === true) {
     if (last === undefined || line.author === undefined) {
       return { ledger: { lines, ...(last === undefined ? {} : { lastPost: last }) } };
     }
@@ -206,7 +206,7 @@ export const ROUTE_BLOCK: unique symbol = Symbol("mailbox-route-block");
 export interface MailboxRoute {
   /**
    * The members this route can send a post to: the logical ids (as a
-   * mailbox's `members:` lists them) of the seats it was built with that hear
+   * mailbox's `members:` lists them) of the workers it was built with that hear
    * posts. A mailbox's fallback must be one of them.
    */
   readonly members: readonly string[];

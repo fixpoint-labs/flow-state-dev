@@ -77,7 +77,7 @@ import {
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
   defineMailboxInventoryCollection,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   hireWorkforce,
   workerMailboxPostCapability,
 } from "@flow-state-dev/workforce";
@@ -132,11 +132,11 @@ const agentTurn = {
   uses: [
     defineCapability({
       name: "inventory",
-      resources: { seatInventory: defineSeatInventoryCollection(), mailboxInventory: defineMailboxInventoryCollection() },
+      resources: { workerInventory: defineWorkerInventoryCollection(), mailboxInventory: defineMailboxInventoryCollection() },
     }),
     createWorkforceCapability({
       roster: { workers: roster.workers, mailboxes: roster.mailboxes },
-      inventory: { seats: "seatInventory", mailboxes: "mailboxInventory" },
+      inventory: { workers: "workerInventory", mailboxes: "mailboxInventory" },
     }),
     workerMailboxPostCapability,
   ],
@@ -167,7 +167,7 @@ Build in this order:
 
 1. Finish any edits or additions to the mailbox records.
 2. Build the installation and the `agent` and `coordinator` flows above, and call `hireWorkforce`.
-3. Build the mailbox kind with `wakeMemberSeats(flows, { installation })`. It comes after `hireWorkforce`, because it takes the flows it returned.
+3. Build the mailbox kind with `wakeMemberWorkers(flows, { installation })`. It comes after `hireWorkforce`, because it takes the flows it returned.
 4. Call `mailboxInstances` last.
 
 `createWorkforceCapability` keeps the mailbox records it is given, so a record changed after step 2 never reaches `discover`. Pass `createWorkforceCapability` the same mailbox records you pass `mailboxInstances`, so `discover` answers from the mailboxes the app actually opens.
@@ -180,7 +180,7 @@ Every flow in `workerFlows` can take a hire, and so can the built-in `agent`, un
 
 Putting the tools in the catalog doesn't hand them to every worker on either flow. A worker holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other.
 
-A post in a mailbox doesn't wake a chief of staff on the `coordinator` flow, even when it is listed there: that flow doesn't hear mailbox posts, so [`wakeMemberSeats`](./mailboxes.md#waking-agent-seats) hands that delivery to the notify block you pass as its `fallback`, if you pass one. Listing it in a mailbox's `members:` lets it post there.
+A post in a mailbox doesn't wake a chief of staff on the `coordinator` flow, even when it is listed there: that flow doesn't hear mailbox posts, so [`wakeMemberWorkers`](./mailboxes.md#waking-agent-workers) hands that delivery to the notify block you pass as its `fallback`, if you pass one. Listing it in a mailbox's `members:` lets it post there.
 
 A hire is a row in the person's own data, so it is there after a restart on any store that keeps data. Every process sees it on the next turn.
 

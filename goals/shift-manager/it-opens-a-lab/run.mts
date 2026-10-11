@@ -59,7 +59,7 @@ import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../li
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
-import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { PROJECTS_KIND as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_KIND as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
@@ -342,9 +342,9 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
   }
   const declared = host === undefined ? [] : await declaredBy(api, host);
   const refOf = (pattern: string) => declared.find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const seatsRef = refOf("inventory/seats/*");
+  const workersRef = refOf("inventory/seats/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
-  const seats = seatsRef === undefined || host === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
+  const seats = workersRef === undefined || host === undefined ? [] : (await api.collection(host, workersRef)).map((r) => String(r.id));
   const mailboxes =
     mailboxesRef === undefined || host === undefined
       ? []
@@ -463,7 +463,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     name,
     pages,
     // DevTeam on a fresh store each run, for a profile whose store outlives the process.
-    name === "multi-seat-collab" ? { MULTI_SEAT_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
+    name === "multi-seat-collab" ? { MULTI_WORKER_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
   );
   const browser = await launchChromium();
   try {

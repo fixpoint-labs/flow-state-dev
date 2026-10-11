@@ -10,9 +10,9 @@
  *
  * **Two writers, split by where the live answer lives.**
  *
- * A **seat** has no session. What it is — its id and the kind it was hired into
+ * A **worker** has no session. What it is — its id and the kind it was hired into
  * — is the roster the process was hired from, which the binder already holds,
- * so the seat rows go out in ONE run carrying all of them.
+ * so the worker rows go out in ONE run carrying all of them.
  *
  * A **mailbox** has a session, and its `members` live there and nowhere else.
  * So the binder does not write a mailbox's row at all: it runs
@@ -30,41 +30,41 @@
  * another process opened. A reader tolerates a row naming something it cannot
  * reach; there is no undoing a row that should not have been removed.
  *
- * Each removal is positive evidence, not absence: `fire` (`removeHiredSeat`)
- * deletes the row of the hired seat it removes, which it knows exactly.
+ * Each removal is positive evidence, not absence: `fire` (`removeHiredWorker`)
+ * deletes the row of the hired worker it removes, which it knows exactly.
  */
 
 import { kindOf, orderedById } from "../mailbox/mailbox-binder";
-import { INVENTORY_REGISTER_MAILBOX, INVENTORY_REGISTER_SEATS } from "../mailbox/mailbox-flow";
+import { INVENTORY_REGISTER_MAILBOX, INVENTORY_REGISTER_WORKERS } from "../mailbox/mailbox-flow";
 import type { MailboxManifest } from "../manifest";
-import { seatDoorOf } from "../seat-door";
+import { workerDoorOf } from "../worker-door";
 
 /**
- * One registered seat, as the binder needs it.
+ * One registered worker, as the binder needs it.
  *
  * Structurally typed, and satisfied by `hireWorkforce`'s own return value: a
- * hired seat is a flow copy carrying these three fields. Typed this
- * loosely on purpose — what belongs in the inventory is the seats that
+ * hired worker is a flow copy carrying these three fields. Typed this
+ * loosely on purpose — what belongs in the inventory is the workers that
  * actually exist, and a manifest the hire step refused never became one.
  */
-export interface InventorySeat {
-  /** The seat's id (`"<teamId>.<name>"`, or a bare `"<name>"` for an org seat) — the id its row is keyed by. */
+export interface InventoryWorker {
+  /** The worker's id (`"<teamId>.<name>"`, or a bare `"<name>"` for an org worker) — the id its row is keyed by. */
   id: string;
   /** The flow kind it was hired into. */
   kind: string;
   /**
-   * The seat's public actions, which its door is read from (see
-   * `seat-door.ts`). A hired seat carries them. Required, so a caller that
-   * builds `{ id, kind }` by hand can't register a seat as taking no message
-   * by forgetting them: pass `{}` to say the seat has no door.
+   * The worker's public actions, which its door is read from (see
+   * `worker-door.ts`). A hired worker carries them. Required, so a caller that
+   * builds `{ id, kind }` by hand can't register a worker as taking no message
+   * by forgetting them: pass `{}` to say the worker has no door.
    */
   actions: Readonly<Record<string, unknown>>;
 }
 
-/** What the binder registers: the seats that were hired, and the mailboxes that were opened. */
+/** What the binder registers: the workers that were hired, and the mailboxes that were opened. */
 export interface InventoryRoster {
-  /** The registered seats: `inventorySeats(installation)`, the standard workers with their flows' actions. */
-  seats: readonly InventorySeat[];
+  /** The registered workers: `inventoryWorkers(installation)`, the standard workers with their flows' actions. */
+  workers: readonly InventoryWorker[];
   /** The mailbox records — the same ones `mailboxInstances` registered and `openMailboxes` opened. */
   mailboxes: readonly MailboxManifest[];
 }
@@ -79,48 +79,48 @@ export interface InventoryActionRequest {
   userId: string;
   /** The org the rows are written in. Always present: the binder refuses without one. */
   orgId: string;
-  /** The flow kind to run on: the mailbox's own kind, or the seat writer's. */
+  /** The flow kind to run on: the mailbox's own kind, or the worker writer's. */
   flowKind: string;
-  /** The session to run in: the mailbox's id for a mailbox, the seat writer's session otherwise. */
+  /** The session to run in: the mailbox's id for a mailbox, the worker writer's session otherwise. */
   sessionId: string;
   /**
-   * `"internal"` for the seat write, absent for a mailbox registration.
+   * `"internal"` for the worker write, absent for a mailbox registration.
    *
-   * The seat-registration action lives only in the flow's `internal.actions`
+   * The worker-registration action lives only in the flow's `internal.actions`
    * map, not its public one (see `inventoryWriterActions` in
    * `mailbox-flow.ts`), because its whole input is caller-supplied row data
    * with nothing to validate it against. `run` must forward this straight
    * into `runAction`'s own `source` option — `runAction({ source:
-   * request.source, ... })` — so the seat write resolves from `internal.actions`
+   * request.source, ... })` — so the worker write resolves from `internal.actions`
    * instead of the public one. A door that drops this field on the floor
-   * makes the seat write unreachable rather than insecure: `resolveEntry`
+   * makes the worker write unreachable rather than insecure: `resolveEntry`
    * reads one map per dispatch type with no fallback, so a `run` that always
-   * dispatches as `"http"` gets `no-entry` for the seat write, never a
+   * dispatches as `"http"` gets `no-entry` for the worker write, never a
    * public hit on it.
    */
   source?: string;
 }
 
-/** Where the seat rows are written. @see OpenInventoryOptions.seatWriter */
-export interface InventorySeatWriter {
-  /** A flow kind carrying {@link INVENTORY_REGISTER_SEATS}. */
+/** Where the worker rows are written. @see OpenInventoryOptions.workerWriter */
+export interface InventoryWorkerWriter {
+  /** A flow kind carrying {@link INVENTORY_REGISTER_WORKERS}. */
   flowKind: string;
-  /** The session to run the write in. Defaults to {@link INVENTORY_SEAT_WRITER_SESSION}. */
+  /** The session to run the write in. Defaults to {@link INVENTORY_WORKER_WRITER_SESSION}. */
   sessionId?: string;
 }
 
 /**
- * The session the seat write runs in when the caller names none.
+ * The session the worker write runs in when the caller names none.
  *
  * An ordinary session on the writer's flow, created on the first boot and
  * reused after. It never collides with a mailbox: a mailbox's id is
  * `"<teamId>.<name>"` and always carries a dot.
  */
-export const INVENTORY_SEAT_WRITER_SESSION = "inventory-binder";
+export const INVENTORY_WORKER_WRITER_SESSION = "inventory-binder";
 
 export interface OpenInventoryOptions {
   /**
-   * The action door — one call per open mailbox, plus one for the seats.
+   * The action door — one call per open mailbox, plus one for the workers.
    *
    * Structurally typed and supplied by the app, for the same reason
    * `openMailboxes` takes its session client that way: this package depends on
@@ -142,25 +142,25 @@ export interface OpenInventoryOptions {
    * signal this package can read.
    *
    * Return the action's output, or a run result carrying it as `output`
-   * (`runAction`'s shape), and `InventoryBinding.seats` counts the seat rows
+   * (`runAction`'s shape), and `InventoryBinding.workers` counts the worker rows
    * that actually landed; any other return counts the rows sent.
    */
   run: (request: InventoryActionRequest) => Promise<unknown>;
 
   /**
-   * Where the SEAT rows are written.
+   * Where the WORKER rows are written.
    *
-   * A seat has no session of its own, and a collection can only be written from
-   * inside a running flow — so the seat rows need a flow to run in, and the
+   * A worker has no session of its own, and a collection can only be written from
+   * inside a running flow — so the worker rows need a flow to run in, and the
    * binder cannot derive one. Every mailbox kind built with `inventory: true`
    * carries the writer, and so does any flow of the app's own that spreads
    * `inventoryWriterActions`. Naming it is one line, and it is the single thing
    * about this call that is not already decided by the roster.
    *
-   * Required when the roster carries seats, and refused by name when it is
-   * missing. A roster with no seats does not need one.
+   * Required when the roster carries workers, and refused by name when it is
+   * missing. A roster with no workers does not need one.
    */
-  seatWriter?: InventorySeatWriter;
+  workerWriter?: InventoryWorkerWriter;
 
   /** The user every run is made as — the same one `openMailboxes` opened the mailboxes for. */
   userId: string;
@@ -180,14 +180,14 @@ export interface OpenInventoryOptions {
 /** What one boot wrote, and what it could not. */
 export interface InventoryBinding {
   /**
-   * How many seat rows were written. A row the boot may no longer write — the
+   * How many worker rows were written. A row the boot may no longer write — the
    * store already holds a newer hire's row at that address — is left and not
-   * counted. The count is the seat action's own, read from what `run`
+   * counted. The count is the worker action's own, read from what `run`
    * returns: the action's output, or a run result carrying it as `output`.
    * A door whose return carries neither (an HTTP action client returns no
    * output) gets the number of rows sent instead.
    */
-  seats: number;
+  workers: number;
   /** How many mailboxes registered themselves. */
   mailboxes: number;
   /**
@@ -199,7 +199,7 @@ export interface InventoryBinding {
 }
 
 /**
- * The seat action's `written` count from what the door returned: the action's
+ * The worker action's `written` count from what the door returned: the action's
  * output itself, or a run result carrying it as `output` (what `runAction`
  * returns). `undefined` when the return carries neither.
  */
@@ -216,27 +216,27 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Fill the org's live inventory: one row per hired seat, and one per open
+ * Fill the org's live inventory: one row per hired worker, and one per open
  * mailbox written by that mailbox itself.
  *
  * Run it after `openMailboxes` — a mailbox that is not open yet has no session
- * to register in, and the failure is named rather than silent. The seat half
+ * to register in, and the failure is named rather than silent. The worker half
  * does not care about the order.
  *
  * Re-running over an unchanged roster is a no-op: every write is keyed by the
  * record's own id, so nothing duplicates and nothing appends. A mailbox that
- * has been open since an earlier boot keeps its original `openedAt`. A seat
+ * has been open since an earlier boot keeps its original `openedAt`. A worker
  * row is written only where the boot may still write it (no row when read, or
- * a stored row of the same seat), so a boot whose roster is older than the
+ * a stored row of the same worker), so a boot whose roster is older than the
  * store never replaces a runtime hire's row.
  *
- * @param roster  The hired seats and the opened mailbox records.
- * @param options `run`: the action door. `seatWriter`: the flow the seat rows
+ * @param roster  The hired workers and the opened mailbox records.
+ * @param options `run`: the action door. `workerWriter`: the flow the worker rows
  *   are written through. `userId` / `orgId`: who and where.
  * @returns What was written, and one named entry per failure. Nothing is
  *   retried.
- * @throws If no `orgId` was given, or if the roster carries seats and no
- *   `seatWriter` was named. Both are wiring mistakes an app should not boot
+ * @throws If no `orgId` was given, or if the roster carries workers and no
+ *   `workerWriter` was named. Both are wiring mistakes an app should not boot
  *   past — a run that continued would report success and write where nobody
  *   can read. An app with no authentication passes `DEFAULT_ORG_ID`
  *   explicitly; it is the absent value, not that one, that is refused.
@@ -245,7 +245,7 @@ export async function openInventory(
   roster: InventoryRoster,
   options: OpenInventoryOptions
 ): Promise<InventoryBinding> {
-  const seats = orderedById(roster.seats);
+  const workers = orderedById(roster.workers);
   const mailboxes = orderedById(roster.mailboxes);
 
   // `openInventory` writes through trusted direct execution, below any
@@ -270,32 +270,32 @@ export async function openInventory(
     );
   }
 
-  if (seats.length > 0 && options.seatWriter === undefined) {
+  if (workers.length > 0 && options.workerWriter === undefined) {
     throw new Error(
-      `openInventory was given ${seats.length} seat${seats.length === 1 ? "" : "s"} and no ` +
-        `\`seatWriter\`. A seat has no session, so its row has to be written from inside some ` +
+      `openInventory was given ${workers.length} worker${workers.length === 1 ? "" : "s"} and no ` +
+        `\`workerWriter\`. A worker has no session, so its row has to be written from inside some ` +
         `flow, and there is nothing in the roster that says which. Pass ` +
-        `\`seatWriter: { flowKind }\` naming a kind that carries the inventory writer — the ` +
+        `\`workerWriter: { flowKind }\` naming a kind that carries the inventory writer — the ` +
         `mailbox kind does when \`mailboxInstances\` was called with \`inventory: true\`.`
     );
   }
 
   const problems: string[] = [];
-  let seatsWritten = 0;
+  let workersWritten = 0;
 
-  if (seats.length > 0) {
-    const writer = options.seatWriter!;
+  if (workers.length > 0) {
+    const writer = options.workerWriter!;
     try {
       const ran = await options.run({
-        action: INVENTORY_REGISTER_SEATS,
-        // Id, kind, door, origin and incarnation only. A seat's row is the whole of what the
+        action: INVENTORY_REGISTER_WORKERS,
+        // Id, kind, door, origin and incarnation only. A worker's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {
-          seats: seats.map((seat) => ({
-            id: seat.id,
-            kind: seat.kind,
-            door: seatDoorOf(seat).door,
+          workers: workers.map((worker) => ({
+            id: worker.id,
+            kind: worker.kind,
+            door: workerDoorOf(worker).door,
             hired: false,
             incarnation: null,
           })),
@@ -303,19 +303,19 @@ export async function openInventory(
         userId: options.userId,
         orgId,
         flowKind: writer.flowKind,
-        sessionId: writer.sessionId ?? INVENTORY_SEAT_WRITER_SESSION,
-        // The seat writer lives in `internal.actions` only — see
+        sessionId: writer.sessionId ?? INVENTORY_WORKER_WRITER_SESSION,
+        // The worker writer lives in `internal.actions` only — see
         // `InventoryActionRequest.source`.
         source: "internal"
       });
       // The action skips a row the boot may no longer write (a newer hire's),
       // so its own count is the one reported, when the door hands it back.
-      seatsWritten = writtenOf(ran) ?? seats.length;
+      workersWritten = writtenOf(ran) ?? workers.length;
     } catch (error) {
       // Collected, not thrown: an app whose mailboxes all registered is not an
       // app with no inventory, and the caller is the one that knows whether a
-      // seatless inventory is worth refusing to boot over.
-      problems.push(`the seat rows could not be written — ${messageOf(error)}`);
+      // workerless inventory is worth refusing to boot over.
+      problems.push(`the worker rows could not be written — ${messageOf(error)}`);
     }
   }
 
@@ -353,5 +353,5 @@ export async function openInventory(
     }
   }
 
-  return { seats: seatsWritten, mailboxes: mailboxesWritten, problems };
+  return { workers: workersWritten, mailboxes: mailboxesWritten, problems };
 }

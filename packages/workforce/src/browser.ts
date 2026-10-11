@@ -1,6 +1,6 @@
 /**
  * `@flow-state-dev/workforce/browser` — the names a browser component needs
- * from this package, and nothing that runs a seat.
+ * from this package, and nothing that runs a worker.
  *
  * The package root is not safe to bundle for a browser: the mailbox floor
  * reaches the orchestration task board, which imports `node:async_hooks`. A

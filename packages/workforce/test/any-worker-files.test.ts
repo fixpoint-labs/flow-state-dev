@@ -302,7 +302,7 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       const [after] = turnsAbout(h.seen, "turn after the add") as [Seen];
       expect(taskToolsIn(after.names).sort()).toEqual([...TASK_TOOLS].sort());
 
-      const filed = await file(h, "alice", talk, { goal: "Count seats [slow:100]", assignee: "eng.tasker" }, "agent");
+      const filed = await file(h, "alice", talk, { goal: "Count workers [slow:100]", assignee: "eng.tasker" }, "agent");
       expect(filed.ok).toBe(true);
       const removed = await h.act("alice", talk, "removeDelegate", { worker: "eng.tasker" }, "agent");
       expect(removed.error, messageOf(removed.error)).toBeUndefined();
@@ -315,7 +315,7 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       // The row filed while it could still file runs, settles and is heard.
       await h.settled();
       const rows = await h.rows("alice");
-      expect(rows.map((row) => [row.goal, row.status])).toEqual([["Count seats [slow:100]", "completed"]]);
+      expect(rows.map((row) => [row.goal, row.status])).toEqual([["Count workers [slow:100]", "completed"]]);
       const heard = (await h.requestsOf(talk)).filter((request) => request.actionName === "onTaskSettled");
       expect(heard).toHaveLength(1);
     } finally {

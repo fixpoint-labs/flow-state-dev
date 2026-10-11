@@ -19,7 +19,7 @@ import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
 import { deliveryDelegateSchema } from "../delivery-ledger";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
-import { seatConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
+import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { DELEGATE_TAKES, createDelegateCheck, flowTakes, postTakingFlows, type DelegateTakes } from "./delegate-check";
@@ -136,12 +136,12 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    * The defaults of the worker this turn runs as: the one its request loaded;
    * on a flow that loads none before this is read, the session's worker,
    * loaded now; and on a block run outside any worker's session, the flow
-   * copy's own settings, as the turn reads them (`seatConfigOf`).
+   * copy's own settings, as the turn reads them (`turnConfigOf`).
    */
   const turnDefaults = async (ctx: BlockContext): Promise<DelegateDefaults> => {
     if (verifiedWorkerOf(ctx.session) !== undefined) return seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx)));
     const named = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
-    return typeof named === "string" ? ownerDefaults(ctx) : delegateDefaultsOf(seatConfigOf(ctx));
+    return typeof named === "string" ? ownerDefaults(ctx) : delegateDefaultsOf(turnConfigOf(ctx));
   };
 
   type Changed = ({ ok: true } & Listed) | { ok: false; message: string };

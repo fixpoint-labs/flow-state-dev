@@ -92,7 +92,7 @@ await runGoal(async (failures) => {
     stores: inMemoryStores(),
     harness: stub.slot,
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-    coderSeatId: CODER,
+    coderWorkerId: CODER,
     logger: silentLogger,
     // Model-free: the stub answers nothing a judge could pass.
     withoutJudge: true,

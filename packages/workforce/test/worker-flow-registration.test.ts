@@ -14,7 +14,7 @@ import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/c
 import { createInMemoryStores, executeBlock } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { mintSeats, type HireOptions } from "../src/hire";
+import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 
@@ -38,7 +38,7 @@ const triage = workerFlow("triage");
 const coordinator = workerFlow("coordinator");
 const doorless = workerFlow("doorless", { actions: { run: { inputSchema: note, block: work } } });
 const numbered = workerFlow("numbered", {
-  configSchema: workerConfigSchema().extend({ seatId: z.number().optional() })
+  configSchema: workerConfigSchema().extend({ workerId: z.number().optional() })
 });
 const twoDoors = workerFlow("two-doors", { actions: { ask: door, say: door } });
 
@@ -58,29 +58,29 @@ function refusalOf(run: () => unknown): string {
 
 describe("registering worker flows (V2)", () => {
   it("BR-7 · refuses every broken flow in one error, and hires nothing", () => {
-    let seats: unknown;
+    let workers: unknown;
     const message = refusalOf(() => {
-      seats = mintSeats([standard("support.ada"), standard("support.tri", "triage")], {
+      workers = mintWorkers([standard("support.ada"), standard("support.tri", "triage")], {
         workerFlows: { triage, doorless, numbered }
       });
     });
-    expect(seats).toBeUndefined();
+    expect(workers).toBeUndefined();
     expect(message).toContain('"doorless"');
     expect(message).toContain('"numbered"');
-    expect(message).toContain("`seatId`");
+    expect(message).toContain("`workerId`");
     expect(message).not.toContain('worker flow "triage"');
     expect(message).toContain("nothing was hired");
   });
 
   it("refuses a broken flow before any worker, an empty roster included", () => {
-    expect(refusalOf(() => mintSeats([], { workerFlows: { doorless } }))).toContain('"doorless"');
+    expect(refusalOf(() => mintWorkers([], { workerFlows: { doorless } }))).toContain('"doorless"');
   });
 
   it("V7 · no worker flow hires with no door or two", () => {
-    expect(refusalOf(() => mintSeats([standard("support.d", "doorless")], { workerFlows: { doorless } }))).toContain(
+    expect(refusalOf(() => mintWorkers([standard("support.d", "doorless")], { workerFlows: { doorless } }))).toContain(
       "no door"
     );
-    const two = refusalOf(() => mintSeats([standard("support.t", "two-doors")], { workerFlows: { "two-doors": twoDoors } }));
+    const two = refusalOf(() => mintWorkers([standard("support.t", "two-doors")], { workerFlows: { "two-doors": twoDoors } }));
     expect(two).toContain('"ask"');
     expect(two).toContain('"say"');
   });
@@ -91,19 +91,19 @@ describe("registering worker flows (V2)", () => {
         board: defineResourceCollection({ pattern: "board/*", scope: "org", stateSchema: z.object({ text: z.string() }) })
       }
     });
-    const seats = mintSeats([standard("ops.keeper", "org-keeper")], { workerFlows: { "org-keeper": orgKeeper } });
-    expect(seats.map((seat) => seat.kind)).toEqual(["org-keeper"]);
+    const workers = mintWorkers([standard("ops.keeper", "org-keeper")], { workerFlows: { "org-keeper": orgKeeper } });
+    expect(workers.map((worker) => worker.kind)).toEqual(["org-keeper"]);
   });
 
   it("BR-10 · with no flows of its own, the app registers the built-in agent, which passes", () => {
-    expect(mintSeats([standard("support.ada")]).map((seat) => seat.kind)).toEqual(["agent"]);
-    expect(mintSeats([standard("support.ada")], { workerFlows: {} }).map((seat) => seat.kind)).toEqual(["agent"]);
+    expect(mintWorkers([standard("support.ada")]).map((worker) => worker.kind)).toEqual(["agent"]);
+    expect(mintWorkers([standard("support.ada")], { workerFlows: {} }).map((worker) => worker.kind)).toEqual(["agent"]);
   });
 
   it("BR-9 · registers the built-in agent with mailbox task lists, with no warning", () => {
     const agent = defineAgentWorkerFlow({ taskLists: ["front-desk.queue"] });
-    const seats = mintSeats([standard("support.ada")], { workerFlows: { agent } as never });
-    expect(seats.map((seat) => seat.kind)).toEqual(["agent"]);
+    const workers = mintWorkers([standard("support.ada")], { workerFlows: { agent } as never });
+    expect(workers.map((worker) => worker.kind)).toEqual(["agent"]);
   });
 });
 
@@ -111,7 +111,7 @@ describe("which workers may run on a flow (V3)", () => {
   const kept: HireOptions["workerFlows"] = { triage, coordinator: { flow: coordinator, standardOnly: true } };
 
   it("BR-11 · a worker naming a registered flow runs on it", () => {
-    expect(mintSeats([standard("support.tri", "triage")], { workerFlows: kept }).map((s) => s.kind)).toEqual([
+    expect(mintWorkers([standard("support.tri", "triage")], { workerFlows: kept }).map((s) => s.kind)).toEqual([
       "triage"
     ]);
   });
@@ -122,27 +122,27 @@ describe("a block requirement the registration check can't reach", () => {
   // The flow requires a setting of its own, so the probe stops at it before
   // core checks what the door block needs. Pre-checking that would mean a
   // second way to mint; the hire refuses instead, with core's own error.
-  const needsNumericSeat = handler({
-    name: "needs-numeric-seat",
+  const needsNumericWorker = handler({
+    name: "needs-numeric-worker",
     inputSchema: message,
     outputSchema: message,
-    flowConfigSchema: z.object({ seatId: z.number() }),
+    flowConfigSchema: z.object({ workerId: z.number() }),
     execute: (i) => i
   });
   const desk = workerFlow("desk", {
     configSchema: workerConfigSchema().extend({ desk: z.string() }),
-    actions: { run: { ...door, block: needsNumericSeat } }
+    actions: { run: { ...door, block: needsNumericWorker } }
   });
 
   it("is refused when a worker is hired on the flow, naming the block, and nothing is hired", () => {
-    let seats: unknown;
+    let workers: unknown;
     const refusal = refusalOf(() => {
-      seats = mintSeats([{ id: "support.front", declared: { flow: "desk", desk: "front" }, body: "" }], {
+      workers = mintWorkers([{ id: "support.front", declared: { flow: "desk", desk: "front" }, body: "" }], {
         workerFlows: { desk }
       });
     });
-    expect(seats).toBeUndefined();
-    expect(refusal).toContain('block "needs-numeric-seat" cannot read');
-    expect(refusal).toContain('"seatId"');
+    expect(workers).toBeUndefined();
+    expect(refusal).toContain('block "needs-numeric-worker" cannot read');
+    expect(refusal).toContain('"workerId"');
   });
 });

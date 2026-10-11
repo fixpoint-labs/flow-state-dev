@@ -178,7 +178,7 @@ describe("the address walk", () => {
   });
 
   it("skips a task address that names another flow", () => {
-    const seat = dispatcher({
+    const assignee = dispatcher({
       name: "hand-off-billing",
       type: "task",
       flowKind: "billing",
@@ -188,7 +188,7 @@ describe("the address walk", () => {
     expect(() =>
       defineFlow({
         kind: "shipping",
-        actions: { run: { block: seat } }
+        actions: { run: { block: assignee } }
       })
     ).not.toThrow();
   });
@@ -197,12 +197,12 @@ describe("the address walk", () => {
 describe("task entries", () => {
   /**
    * A board's binding, as `taskBoard()` would bind it onto the hand-off it
-   * installs at a dispatcher seat: the board id and a gate that wraps the
+   * installs at a dispatcher assignee: the board id and a gate that wraps the
    * entry's block. The gate here just nests the block under a named sequencer,
    * which is enough to tell a gated entry from the author's.
    */
   // One gate per board, as `taskBoard()` builds it: the binding is keyed on
-  // the gate, so two seats of one board share it and two boards never do.
+  // the gate, so two assignees of one board share it and two boards never do.
   const gates = new Map<string, TaskBinding["gate"]>();
   const gateFor = (boardId: string): TaskBinding["gate"] => {
     let gate = gates.get(boardId);
@@ -216,9 +216,9 @@ describe("task entries", () => {
     return gate;
   };
   const bindingFor = (boardId: string): TaskBinding => ({ boardId, gate: gateFor(boardId) });
-  const handOff = (target: string, boardId: string, seat = target) => {
+  const handOff = (target: string, boardId: string, assignee = target) => {
     const block = markDispatcher(
-      handler({ name: `hand-off-${boardId}-${seat}`, inputSchema: z.unknown(), execute: () => null }),
+      handler({ name: `hand-off-${boardId}-${assignee}`, inputSchema: z.unknown(), execute: () => null }),
       { type: "task", action: target, session: "per-task" }
     );
     bindTaskDispatcher(block, bindingFor(boardId));
@@ -240,8 +240,8 @@ describe("task entries", () => {
     expect(flow().task?.actions.implement.block.name).toBe("issues-implement-gate");
   });
 
-  it("defaults an entry a shared-child seat hands off to `queue`, and leaves a per-task one alone", () => {
-    // `per-worker` and `key` seats send several rows into one child session,
+  it("defaults an entry a shared-child assignee hands off to `queue`, and leaves a per-task one alone", () => {
+    // `per-worker` and `key` assignees send several rows into one child session,
     // where the `allow` default interleaves their writes. `per-task` gives
     // every row its own session, so nothing there needs serialising.
     const shared = markDispatcher(
@@ -274,9 +274,9 @@ describe("task entries", () => {
     expect(flow.task?.actions.implement.concurrency).toBe("allow");
   });
 
-  it("gates an entry once when one board reaches it from two seats", () => {
+  it("gates an entry once when one board reaches it from two assignees", () => {
     const flow = defineFlow({
-      kind: "two-seats",
+      kind: "two-assignees",
       actions: {
         run: {
           block: sequencer({ name: "run" })
@@ -395,7 +395,7 @@ describe("task entries", () => {
 });
 
 describe("resolveEntry — one lookup, no fallback", () => {
-  // A board's hand-off at a dispatcher seat, with an identity gate so the
+  // A board's hand-off at a dispatcher assignee, with an identity gate so the
   // entry's block stays observable as the one declared.
   const handOff = markDispatcher(
     handler({ name: "hand-off-implement", inputSchema: z.unknown(), execute: () => null }),

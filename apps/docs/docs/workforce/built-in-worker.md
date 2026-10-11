@@ -33,9 +33,9 @@ The settings a worker writes for itself are `instructions`, `model`, `tools`, th
 
 ## Tools
 
-A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog**. That last one is a map from key to tool your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. An org seat, one under `org/workers/`, has no team and no `blocks/` folder of its own, so its tools come from the catalog and from the packages it holds. A block in a [package](./packages-on-disk.md) the worker holds can be named there too; a name that is both a package block and a catalog tool is refused at the hire, naming both. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:` means no tools, whatever is registered.
+A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog**. That last one is a map from key to tool your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. An org worker, one under `org/workers/`, has no team and no `blocks/` folder of its own, so its tools come from the catalog and from the packages it holds. A block in a [package](./packages-on-disk.md) the worker holds can be named there too; a name that is both a package block and a catalog tool is refused at the hire, naming both. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:` means no tools, whatever is registered.
 
-**Registering a name is not granting it.** Dropping a block into a team seat's own `blocks/` folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./code-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
+**Registering a name is not granting it.** Dropping a block into a team worker's own `blocks/` folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./code-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
 
 A written `tools:` list is the whole of what a worker can call. With no list, a worker can call the tools of the presets it selected in [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) and the blocks of the packages it holds, and nothing else. A capability you attach through [`defineAgentWorkerFlow`'s `uses`](#configuring-the-kind) can carry tools of its own, and a preset the kind switches on gives its tools only to the workers that select it. Memory is the case you meet first. Its `recall` and `connect` presets are on by default, and a worker that selected nothing and named no tools reaches the model with no tools. To give a worker one of them, select the preset in its `capabilities:`, or put the tool in the catalog and let the worker name it in `tools:`.
 
@@ -50,7 +50,7 @@ A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tool
 
 Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so what a `tools:` name is checked against is that kind's business. So is whether it declares `tools` at all.
 
-What the key *means* is not. `tools` is reserved across hireable kinds for one thing: the names of tools that seat may call. Hiring resolves each name against what is registered for that seat before your kind ever sees the bag, so the key is not available for unrelated configuration of your own — give that its own name.
+What the key *means* is not. `tools` is reserved across hireable kinds for one thing: the names of tools that worker may call. Hiring resolves each name against what is registered for that worker before your kind ever sees the bag, so the key is not available for unrelated configuration of your own — give that its own name.
 
 ## Configuring the kind
 
@@ -146,7 +146,7 @@ workforce/
 
 The `tester` worker holds all three. The `qa` lead next door holds the first two. Nobody on another team holds `regression` at all, and no one anywhere else holds `write-regression`.
 
-An org seat is fed by two: `org/skills/` and its own `org/workers/<name>/skills/`.
+An org worker is fed by two: `org/skills/` and its own `org/workers/<name>/skills/`.
 
 `readWorkforce` resolves that union per worker. [Reading the tree](./workers-on-disk.md#reading-the-tree) covers the walk and what it reports.
 
@@ -186,7 +186,7 @@ Pulling an edit through is a separate, explicit act — `refreshSeededSkills` fr
 
 ### Custom worker kinds
 
-Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your flow is free to ignore the skills it receives. It can't skip the rest of the [worker flow contract](./workers-on-disk.md#which-flows-can-run-workers).
+Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `workerSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your flow is free to ignore the skills it receives. It can't skip the rest of the [worker flow contract](./workers-on-disk.md#which-flows-can-run-workers).
 
 ## Giving workers memory
 

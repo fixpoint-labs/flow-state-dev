@@ -3,10 +3,10 @@
  * shift, for all teams or one (`/roster[?team=]`). The workers are the
  * person's roster, read through Workforce's client: their own workers and the
  * standard ones, each on the flow it names. A standard worker's row is the
- * seat inventory's. The roster is read again with every snapshot, so a worker
+ * worker inventory's. The roster is read again with every snapshot, so a worker
  * hired or fired on a turn shows on the next read.
  *
- * Every status, slot and count is read from the one `seatStates` result over
+ * Every status, slot and count is read from the one `workerStates` result over
  * the snapshot, the same one the sidebar and the workstream panel draw, so a
  * worker reads the same everywhere. Nothing is polled: Roster draws the
  * snapshot and says when it was read.
@@ -17,7 +17,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { chiefOfStaffOf, pickedTeam, seatStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type SeatState, type ShiftStatus } from "../lib/derive";
+import { chiefOfStaffOf, pickedTeam, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
 import { readStatus } from "../lib/columns";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
@@ -66,21 +66,21 @@ function useLookName(look: ThemeLook | undefined): string | null {
   return theme === undefined ? null : themeLabel(theme);
 }
 
-function WorkerRow({ state, gaps, own }: { state: SeatState; gaps: Gaps; own: boolean }) {
-  const { seat, status, held, asks } = state;
+function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: boolean }) {
+  const { worker, status, held, asks } = state;
   const parked = held.filter((row) => readStatus(row.status) === "parked");
   return (
     <li
       className={`${COLUMNS_GRID} border-b px-2 py-2.5 text-sm`}
       data-testid="roster-worker"
-      data-seat-id={seat.id}
+      data-worker-id={worker.id}
       data-status={status}
       data-own={own ? "true" : "false"}
     >
       <div className="min-w-0">
         <p className="flex items-baseline gap-2">
-          <span className="font-medium">{seat.name}</span>
-          <span className="text-xs text-muted-foreground">{seat.team}</span>
+          <span className="font-medium">{worker.name}</span>
+          <span className="text-xs text-muted-foreground">{worker.team}</span>
           {own ? (
             <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
               YOURS
@@ -88,7 +88,7 @@ function WorkerRow({ state, gaps, own }: { state: SeatState; gaps: Gaps; own: bo
           ) : null}
         </p>
         <p className="truncate text-xs text-muted-foreground">
-          {seat.kind ?? "unknown kind"}
+          {worker.kind ?? "unknown kind"}
           {" · "}
           <span title={gaps.harness} data-testid="roster-worker-harness">
             —
@@ -162,23 +162,23 @@ export function RosterView({
   const { refresh } = useLab();
   const lookName = useLookName(look);
   const roster = useRoster(snapshot.readAt);
-  const { snapshot: withOwn, seats, own } = withRoster(snapshot, roster);
-  if (!snapshot.inventory.ok && seats.length === 0) {
+  const { snapshot: withOwn, workers, own } = withRoster(snapshot, roster);
+  if (!snapshot.inventory.ok && workers.length === 0) {
     return (
       <div className="p-4" data-testid="roster">
         <SectionFailure what="Roster" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
       </div>
     );
   }
-  const ownIds = new Set(own.map((seat) => seat.id));
-  const team = pickedTeam(seats, asked);
-  const states = seatStates(withOwn);
+  const ownIds = new Set(own.map((worker) => worker.id));
+  const team = pickedTeam(workers, asked);
+  const states = workerStates(withOwn);
   // The chief of staff first: the coordinator the person's work goes through.
-  const cos = chiefOfStaffOf(seats);
-  const first = cos.kind === "one" ? cos.seat.id : undefined;
-  const shown = [...states.seats.values()]
-    .filter((s) => team === null || s.seat.team === team)
-    .sort((a, b) => Number(b.seat.id === first) - Number(a.seat.id === first));
+  const cos = chiefOfStaffOf(workers);
+  const first = cos.kind === "one" ? cos.worker.id : undefined;
+  const shown = [...states.workers.values()]
+    .filter((s) => team === null || s.worker.team === team)
+    .sort((a, b) => Number(b.worker.id === first) - Number(a.worker.id === first));
   const counts = shiftCounts(states, team ?? undefined);
   const unread = Object.entries(snapshot.boards).flatMap(([workstreamId, boards]) => (boards.ok ? [] : [{ workstreamId, failure: boards.failure }]));
   const title = [lookName ?? "Roster", ...(team === null ? [] : [team])].join(" · ");
@@ -200,7 +200,7 @@ export function RosterView({
           </p>
         </div>
         <div role="group" aria-label="Team" className="flex border border-foreground text-xs">
-          {[null, ...teamsOf(seats).map((t) => t.team)].map((option, i) => (
+          {[null, ...teamsOf(workers).map((t) => t.team)].map((option, i) => (
             <button
               key={option ?? ""}
               type="button"
@@ -227,7 +227,7 @@ export function RosterView({
       <div className="flex-1 overflow-y-auto px-5 pb-6">
         {snapshot.inventory.ok ? null : (
           <div className="mt-3">
-            <SectionFailure what="The seat inventory" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
+            <SectionFailure what="The worker inventory" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
           </div>
         )}
         {roster !== undefined && "failure" in roster ? (
@@ -262,7 +262,7 @@ export function RosterView({
               </h2>
               <ul>
                 {group.map((state) => (
-                  <WorkerRow key={state.seat.id} state={state} gaps={gaps} own={ownIds.has(state.seat.id)} />
+                  <WorkerRow key={state.worker.id} state={state} gaps={gaps} own={ownIds.has(state.worker.id)} />
                 ))}
               </ul>
             </section>
@@ -270,7 +270,7 @@ export function RosterView({
         })}
         <div className="mt-4 space-y-1 text-xs text-muted-foreground">
           <p data-testid="roster-gap-watches">{gaps.roster.watches}</p>
-          <p data-testid="roster-gap-seat-match">{gaps.roster.seatMatch}</p>
+          <p data-testid="roster-gap-worker-match">{gaps.roster.workerMatch}</p>
         </div>
       </div>
     </div>

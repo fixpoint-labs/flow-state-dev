@@ -185,18 +185,18 @@ async function shownWorkers(page: Page, ms: number): Promise<string[]> {
 }
 
 /** The flow the Roster draws for a worker: the first of the row's two lines under its name. */
-async function shownKind(page: Page, seatId: string): Promise<string | null> {
-  const line = page.locator(`[data-testid=roster-worker][data-seat-id="${seatId}"] p.truncate`).first();
+async function shownKind(page: Page, workerId: string): Promise<string | null> {
+  const line = page.locator(`[data-testid=roster-worker][data-seat-id="${workerId}"] p.truncate`).first();
   const text = await line.textContent({ timeout: 500 }).catch(() => null);
   return text === null ? null : text.split(" · ")[0]!.trim();
 }
 
-/** Wait up to `ms` for the Roster to draw `seatId` on `kind`; what it last drew. */
-async function waitForKind(page: Page, seatId: string, kind: string, ms: number): Promise<{ ok: boolean; last: string | null; after: number }> {
+/** Wait up to `ms` for the Roster to draw `workerId` on `kind`; what it last drew. */
+async function waitForKind(page: Page, workerId: string, kind: string, ms: number): Promise<{ ok: boolean; last: string | null; after: number }> {
   const start = Date.now();
   let last: string | null = null;
   while (Date.now() - start < ms) {
-    last = await shownKind(page, seatId).catch(() => null);
+    last = await shownKind(page, workerId).catch(() => null);
     if (last === kind) return { ok: true, last, after: Date.now() - start };
     await sleep(250);
   }
@@ -307,10 +307,10 @@ await runGoal(async (failures) => {
   return { failures, evidence: evidence.join("; ") };
 });
 
-/** The `WORKER.md` of `seatId` (`<team>.<name>`) under a tree's `teams/<team>/workers/<name>/`. */
-function findWorkerFile(tree: string, seatId: string): string {
-  const [team, name] = seatId.split(".");
+/** The `WORKER.md` of `workerId` (`<team>.<name>`) under a tree's `teams/<team>/workers/<name>/`. */
+function findWorkerFile(tree: string, workerId: string): string {
+  const [team, name] = workerId.split(".");
   const file = join(tree, "teams", team!, "workers", name!, "WORKER.md");
-  if (!existsSync(file)) throw new Error(`setup: no WORKER.md for ${seatId} at ${file}`);
+  if (!existsSync(file)) throw new Error(`setup: no WORKER.md for ${workerId} at ${file}`);
   return file;
 }

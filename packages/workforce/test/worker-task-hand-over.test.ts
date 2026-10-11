@@ -98,7 +98,7 @@ describe("which worker a name on a task means", () => {
     expect(await lookup.state({ assignee: "eng.auditor", taskId: "t1", input: {} }, ctx)).toEqual({ workerId: "eng.auditor" });
   });
 
-  it("lets a list's own seat names through the filing check without asking", () => {
+  it("lets a list's own worker names through the filing check without asking", () => {
     const check = lookup.filingCheck({ [list.id]: ["coder"] });
     expect(check("coder", list.id, ctx)).toBeUndefined();
     expect(check("coder", "other.list", ctx)).toMatch(/No worker is named "coder"/);
@@ -130,7 +130,7 @@ describe("a task filed for a worker by name, on a real host", () => {
       kinds: { mailbox: defineMailboxFlow({ checkAssignee: lookup.filingCheck() }) as never }
     });
 
-    // The coordinator's board over the list: no seat of its own, and a
+    // The coordinator's board over the list: no worker of its own, and a
     // fallback that hands each task to whichever worker its name means.
     const board = taskBoard({
       name: "desk-coordinator",

@@ -14,7 +14,7 @@ export const GAPS = {
   },
   inReview: "What counts as in review arrives with FIX-1651.",
   now: "What a task is doing now arrives with FIX-1651.",
-  harness: "Which harness a seat runs arrives with FIX-1652.",
+  harness: "Which harness a worker runs arrives with FIX-1652.",
   cost: "A task's cost arrives with FIX-1652.",
   /**
    * The task screen's gaps (FIX-1664's gap registry, BUSINESS-RULES.md): each
@@ -41,7 +41,7 @@ export const GAPS = {
   },
   /**
    * Why a message to a worker can't be sent (FIX-1690's rules). Not gaps that
-   * an owner fills: each is the answer for a state a task or a seat is in. A
+   * an owner fills: each is the answer for a state a task or a worker is in. A
    * line that takes the worker's name is drawn after it.
    */
   turn: {
@@ -62,19 +62,19 @@ export const GAPS = {
   roster: {
     watches:
       "What a worker is on call for beyond you, such as webhooks, schedules and other standing watches, arrives with FIX-1675. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.",
-    seatMatch:
+    workerMatch:
       "Which worker holds a task is a best match on the task's assignee: its id, then a unique name, then who is in the task's workstream. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
     partial: "Asks did not load, so on call may be missing workers waiting on you.",
   },
   /** The Chief of Staff view's named states (BR-11, BR-12). */
   chiefOfStaff: {
-    /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
+    /** BR-11: the Lab's inventory holds no chief-of-staff worker. */
     none: {
       title: "This Lab declares no shift coordinator",
-      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the coordinator flow at org/workers/chief-of-staff/.",
+      body: "Shift Manager talks to the worker named chief-of-staff. Declare one on the coordinator flow at org/workers/chief-of-staff/.",
     },
-    /** BR-12: drawn before the seats' ids. */
-    several: "More than one seat is named chief-of-staff, so Shift Manager talks to neither:",
+    /** BR-12: drawn before the workers' ids. */
+    several: "More than one worker is named chief-of-staff, so Shift Manager talks to neither:",
   },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:

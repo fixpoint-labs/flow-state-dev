@@ -2,7 +2,7 @@
  * The unattended-board warning: a mailbox holds a ledger nobody drains.
  *
  * A warning and never a refusal, because the evidence is incomplete by
- * construction — a seat may legitimately live in another process, where this
+ * construction — a worker may legitimately live in another process, where this
  * check is blind. What it buys is that the silence stops being silent: rows
  * still sit `pending`, but somebody is told why.
  */
@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { __resetDeprecationWarningsForTests, defineFlow, handler } from "@flow-state-dev/core";
 import { mailboxBoard, workerConfigSchema } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerDoor } from "./worker-door";
 
@@ -21,8 +21,8 @@ const noop = handler({
   execute: (input) => input
 });
 
-/** A seat kind declaring one mailbox board as a flow resource — an attended board. */
-function seatKindHolding(boardIds: string[]) {
+/** A worker kind declaring one mailbox board as a flow resource — an attended board. */
+function workerKindHolding(boardIds: string[]) {
   return defineFlow({
     kind: "coder",
     cardinality: "collection",
@@ -34,7 +34,7 @@ function seatKindHolding(boardIds: string[]) {
   });
 }
 
-function seat(id: string): WorkerManifest {
+function worker(id: string): WorkerManifest {
   return { id, declared: { flow: "coder" }, body: "Do the work." };
 }
 
@@ -45,16 +45,16 @@ beforeEach(() => {
 });
 
 describe("a mailbox folder that was renamed", () => {
-  it("re-keys its boards and warns, because the seat still declares the old id", () => {
+  it("re-keys its boards and warns, because the worker still declares the old id", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       // The mailbox moved from `eng.feature` to `eng.renamed`. A board id is a
       // storage key derived from where the mailbox folder sits, so the board
       // moved with it and the rows filed under the old id are still sitting at
       // the old key. Nothing migrates them and nothing refuses (BR-23) — the
-      // seat below is the one that did not move.
-      mintSeats([seat("eng.coder")], {
-        workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+      // worker below is the one that did not move.
+      mintWorkers([worker("eng.coder")], {
+        workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.renamed.triage"]
       });
 
@@ -63,7 +63,7 @@ describe("a mailbox folder that was renamed", () => {
       // the board the RENAMED mailbox now holds, which nothing drains.
       expect(said).toContain("eng.renamed.triage");
       expect(said).toMatch(/mailbox "eng\.renamed"/);
-      // And it does not claim the seat's old board is fine — that id is simply
+      // And it does not claim the worker's old board is fine — that id is simply
       // not on the roster any more, so nothing reports on it at all. This is
       // the line that says the old rows are unreachable rather than migrated.
       expect(said).not.toContain("eng.feature.triage");
@@ -77,14 +77,14 @@ describe("a mailbox board nobody declared", () => {
   it("warns at hire, names the mailbox and the id, and still hires", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const seats = mintSeats([seat("eng.coder")], {
-        workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+      const workers = mintWorkers([worker("eng.coder")], {
+        workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.feature.triage", "eng.feature.review"]
       });
 
       // The hire succeeded — this is not a refusal, and a roster that boots
       // short would be a far worse answer than a line on stderr.
-      expect(seats).toHaveLength(1);
+      expect(workers).toHaveLength(1);
 
       const said = warn.mock.calls.map((call) => String(call[0])).join("\n");
       expect(said).toContain("eng.feature.review");
@@ -104,8 +104,8 @@ describe("a mailbox board nobody declared", () => {
   it("says nothing when every board a roster minted is declared somewhere", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      mintSeats([seat("eng.coder")], {
-        workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+      mintWorkers([worker("eng.coder")], {
+        workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.feature.triage"]
       });
       expect(warn).not.toHaveBeenCalled();
@@ -123,8 +123,8 @@ describe("a mailbox board nobody declared", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const hire = (mailboxBoards: string[]) =>
-        mintSeats([seat("eng.coder")], {
-          workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+        mintWorkers([worker("eng.coder")], {
+          workerFlows: { coder: workerKindHolding(["eng.feature.triage"]) as never },
           mailboxBoards
         });
 
@@ -148,8 +148,8 @@ describe("a mailbox board nobody declared", () => {
     // boards existed.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      mintSeats([seat("eng.coder")], {
-        workerFlows: { coder: seatKindHolding([]) as never }
+      mintWorkers([worker("eng.coder")], {
+        workerFlows: { coder: workerKindHolding([]) as never }
       });
       expect(warn).not.toHaveBeenCalled();
     } finally {

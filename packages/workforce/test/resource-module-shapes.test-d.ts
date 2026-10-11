@@ -46,9 +46,9 @@ export const resourceAtTeamLevel: ResourceModuleExport = handbook;
 export const resourceAtWorkerRoot: WorkerResourceModuleExport = handbook;
 
 /**
- * The refusal (BR-21). Every seat of a kind shares that kind's capabilities, so
+ * The refusal (BR-21). Every worker of a kind shares that kind's capabilities, so
  * one installed from a single worker's folder would quietly change every other
- * seat — and the name the compiler prints beside the file is the only place
+ * worker — and the name the compiler prints beside the file is the only place
  * that refusal can be said in words.
  */
 // @ts-expect-error a capability may not sit in one worker's own resources/ folder.

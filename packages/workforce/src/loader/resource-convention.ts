@@ -112,7 +112,7 @@ export const DOCUMENT_EXTENSION = ".md";
  * combinations ARE the four refs: a call site passes what it has and never
  * picks between shapes.
  *
- * Qualified by the folders above it so two teams — and two seats in one team —
+ * Qualified by the folders above it so two teams — and two workers in one team —
  * can each have a `handbook` without coordinating names, and **path-joined, not
  * dot-joined**: the atlas fixes this key as a path, so a dotted ref would put
  * the same logical document at a different org storage row from anything else

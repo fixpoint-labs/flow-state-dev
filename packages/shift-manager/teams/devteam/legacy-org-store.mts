@@ -3,7 +3,7 @@
  * id, or before mailboxes were renamed.
  *
  * The lab's org id was `org_devforce_lab`. It is `devforce-lab` now, because a
- * hired seat's address starts with the org and an address segment must be
+ * hired worker's address starts with the org and an address segment must be
  * lowercase and hyphenated. A default store from before the change holds the
  * mailbox's and the ask's sessions, the requests and suspensions run in them,
  * and the org's rows, all under the old id, and a boot that reuses those
@@ -13,8 +13,8 @@
  * suspensions, checkpoints and the org's resource rows, each in its own store
  * with its own keying, and there is no store-level way to re-home all of them
  * at once. What would be lost is small and rebuilt at boot: the old id could
- * never hold a hired seat (no address could be built for one), and the
- * declared seats, mailboxes and the waiting ask are written again by the next
+ * never hold a hired worker (no address could be built for one), and the
+ * declared workers, mailboxes and the waiting ask are written again by the next
  * boot. So the file is moved aside, never deleted, and the boot says where.
  *
  * The rename is the same break for the same store: nothing reads the old names,

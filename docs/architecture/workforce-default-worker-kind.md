@@ -19,14 +19,14 @@ The two facts it was written against, and where each landed:
   key. It no longer does: an absent key resolves to the built-in `agent` kind, and only a
   *present* `flow:` that names nothing still refuses (C2).
 - **A worker's skills were not that worker's.** The skills library keyed its collection at
-  `"skills"`, org scope, with no per-seat isolation, so two seats in one org shared a bucket.
-  The kind now declares `flowIsolation`, and each seat is seeded from its own resolved union (C3).
+  `"skills"`, org scope, with no per-worker isolation, so two workers in one org shared a bucket.
+  The kind now declares `flowIsolation`, and each worker is seeded from its own resolved union (C3).
 
 One property of that second fix is worth carrying forward, because it reaches callers: the
 collection is **user-scoped** (FIX-1789; it was org-scoped before). A worker's skills drawer is its
 own working state, and org scope is shared with every member of the org, so the built-in keeps it
-in the scope of the user the worker runs for, isolated per seat. A request to a built-in worker
-sends `userId`; the seat's skills resolve for that user. Two people never share one seat's drawer.
+in the scope of the user the worker runs for, isolated per worker. A request to a built-in worker
+sends `userId`; the worker's skills resolve for that user. Two people never share one worker's drawer.
 
 Related, and deliberately not restated here:
 
@@ -38,8 +38,8 @@ Related, and deliberately not restated here:
 - [`docs/contributing/architecture-reference.md`](../contributing/architecture-reference.md)
   — carries the two rows a reader needs without opening this file.
 
-The diagram is the shipped shape: an absent `flow:` hires the built-in worker kind, and a seat's
-skills are stored under that seat's own instance id.
+The diagram is the shipped shape: an absent `flow:` hires the built-in worker kind, and a worker's
+skills are stored under that worker's own instance id.
 
 ```mermaid
 flowchart TD
@@ -48,7 +48,7 @@ flowchart TD
   H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
   A --> P["prompt: [default, teamInstructions, instructions, package instructions]"]
-  A --> S["skills: org ∪ team (team seats) ∪ seat<br/>stored per seat"]
+  A --> S["skills: org ∪ team (team workers) ∪ worker<br/>stored per worker"]
   A --> M["memory: existing scopes<br/>composed in by the app"]
   A --> T[model + tools from configSchema]
 ```
@@ -64,19 +64,19 @@ at boot:
 
 | | Keys | Whose |
 |---|---|---|
-| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?`, `seatId` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **The admission contract** | `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?`, `workerId` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
 | **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
 | **The hire step's** | `flow`, `description`, `resources` | Never a kind's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
 
 **`resources` is taken outright, and is not a setting at all (FIX-1381).** Where `tools` is a key a
 kind declares and the hire step reads, `resources` is a key the hire step *consumes*: it names the
-documents that seat may touch, it is removed from the bag before admission, and it never reaches a
+documents that worker may touch, it is removed from the bag before admission, and it never reaches a
 kind's `configSchema`. So a kind may not declare a `resources` setting of its own — one that did
 would simply stop receiving an authored value. The narrowed map it produces replaces the kind's
-flow-level resource map for that seat; `packages/workforce/src/seat-resources.ts` is canonical for
+flow-level resource map for that worker; `packages/workforce/src/worker-resources.ts` is canonical for
 the grant shapes and the refusals.
 
-**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (for a team seat, its own `blocks/` folder and then its team's; for every seat, the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). An org seat has no `blocks/` folder at either level. A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the seat's own folders or its packages are moved onto `seatTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the seat's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the seat picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+**`tools` is reserved across hireable kinds, for one meaning: the names of tools this worker may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that worker (for a team worker, its own `blocks/` folder and then its team's; for every worker, the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). An org worker has no `blocks/` folder at either level. A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the worker's own folders or its packages are moved onto `workerTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the worker's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the worker picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 
 The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (the reading is now `contractKeysRefused`, `packages/workforce/src/worker-flow-contract.ts`).
 
@@ -99,24 +99,24 @@ same keys is therefore admitted identically — verified, not assumed. The cost 
 does not track the contract: when a key is added, a composed kind receives it and a hand-rolled one
 refuses at boot naming the unrecognised key. That failure is loud and collected with the rest of
 the roster's problems, never silent, which is why the trade is acceptable and a second nominal gate
-is not worth the second authority it would create. That replaces a branch whose other arm was silence: a seat
+is not worth the second authority it would create. That replaces a branch whose other arm was silence: a worker
 whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
 
 **Imposed and never-authored are two different properties, and the contract's keys do not line up
 on them.** All six are what hire puts in the bag — `instructions` when the body is non-empty,
-`teamInstructions` when the seat's team wrote a `TEAM.md`, `seatPackages` when the seat holds at
-least one package, and `seatSkills`, `seatTools` and `seatId` on every record. `seatSkills`, `seatTools`,
-`seatPackages`, `seatId` and `teamInstructions` are the ones no file may author, refused by name at the worker
+`teamInstructions` when the worker's team wrote a `TEAM.md`, `workerPackages` when the worker holds at
+least one package, and `workerSkills`, `workerTools` and `workerId` on every record. `workerSkills`, `workerTools`,
+`workerPackages`, `workerId` and `teamInstructions` are the ones no file may author, refused by name at the worker
 loader and at the hire, from the shared constants in `manifest.ts` that every door references rather
 than re-spelling. Those five are both; `instructions` is the one key that is imposed and authored all
 the same — as the file's body.
 
-`seatId` is the seat's logical id, the one a mailbox's `members:` lists (FIX-1589). A file
+`workerId` is the worker's logical id, the one a mailbox's `members:` lists (FIX-1589). A file
 record's `id` is that id; a runtime-hired record's `id` is its org-qualified address, so the roster
-row carries the logical id on the record's `seatId` field and the hire stamps that. It exists because a seat that files or posts must
-name itself, and a block cannot see which seat it runs in: core keeps the flow's id off the block
-context, so the seat's settings are the one per-seat fact a block can read, and only the hire writes
-them. Every mint path (files, the runtime `hire` tool, the boot reload) stamps it, so no seat is
+row carries the logical id on the record's `workerId` field and the hire stamps that. It exists because a worker that files or posts must
+name itself, and a block cannot see which worker it runs in: core keeps the flow's id off the block
+context, so the worker's settings are the one per-worker fact a block can read, and only the hire writes
+them. Every mint path (files, the runtime `hire` tool, the boot reload) stamps it, so no worker is
 without one.
 
 `teamInstructions` is imposed the same way and refused at **three** doors rather than two — a
@@ -124,75 +124,75 @@ without one.
 (`TEAM_INSTRUCTIONS_KEY`) rather than a literal, so a rename moves every refusal with it instead
 of leaving one door open with nothing said.
 
-`teamInstructions` carries the instructions a seat's TEAM wrote — read from that team's
+`teamInstructions` carries the instructions a worker's TEAM wrote — read from that team's
 `TEAM.md` by the loader (`packages/workforce/src/loader/read-teams-directory.ts`), joined onto
 each of that team's worker records, and imposed by the hire step **only when the record carries
 one**. A team that wrote none, and a team with no file at all, both leave the key ABSENT rather
 than empty: an empty layer would be a value every kind's schema could see, and a different bag
 for every team in every tree that has no file.
 
-`seatPackages` carries the packages a seat holds (FIX-1459): each one's `name`, `path`,
-`instructions` (the `PACKAGE.md` body, absent when empty) and `tools` (its blocks, live). A seat
+`workerPackages` carries the packages a worker holds (FIX-1459): each one's `name`, `path`,
+`instructions` (the `PACKAGE.md` body, absent when empty) and `tools` (its blocks, live). A worker
 holds every package in its own `packages/` folder and the ones its `packages:` line names from its
-team's library or, failing that, the org's (`packages/workforce/src/seat-packages.ts`). An org seat
+team's library or, failing that, the org's (`packages/workforce/src/worker-packages.ts`). An org worker
 (`org/workers/<name>/`) has no team, so its `packages:` line names from the org's library only. The text
 arrives on the worker record from the loader (`packages/workforce/src/loader/read-packages-directory.ts`),
 the blocks on the generated `packageBlocks` map that `fsdev gen` writes, and the hire step is the
-one place they meet. Like `teamInstructions`, the key is imposed **only when a seat holds one**, so a
-kind that hand-declared the older contract still hires every seat that holds nothing, and is refused
-at boot, naming the key, only when one of its seats does. Every problem a package can cause (a name
+one place they meet. Like `teamInstructions`, the key is imposed **only when a worker holds one**, so a
+kind that hand-declared the older contract still hires every worker that holds nothing, and is refused
+at boot, naming the key, only when one of its workers does. Every problem a package can cause (a name
 no library offers, a block name another tool already uses, a block that declares a store) is a
-start-time refusal naming the seat and the package, except a clash with a tool a preset builds per
+start-time refusal naming the worker and the package, except a clash with a tool a preset builds per
 turn, which cannot be known at start and fails that turn with the framework's duplicate-name error.
 
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, teamInstructions, instructions, package instructions]` — the framework's default
-first, then the seat's team, then the seat's own, then the instructions of the packages it holds
+first, then the worker's team, then the worker's own, then the instructions of the packages it holds
 (joined by a blank line, its own packages first), with absent layers dropped rather than joined as
 blanks. (The
 default is still unshipped; the slot is three entries today and gains the fourth at the front when
 it lands.)
 
-**What that order buys, and what it does not.** The position is fixed and checkable: a seat's own
+**What that order buys, and what it does not.** The position is fixed and checkable: a worker's own
 text always follows its team's, and the packages it holds follow both. That is the whole promise. It is **not** a precedence rule. Assembly on this
 path is plain concatenation, with no override, precedence or conflict-resolution mechanism
-anywhere in it — so if a team says *never touch production* and a seat says *restart the
+anywhere in it — so if a team says *never touch production* and a worker says *restart the
 production queue*, what happens is whatever the **model** does with two contradictory sentences.
 The framework does not adjudicate that, and no check on the composed prompt can show otherwise: a
 check there proves order, which is a neighbour of precedence rather than precedence itself. Making
-a seat's line genuinely win would mean resolving contradictions before the prompt is sent, which
+a worker's line genuinely win would mean resolving contradictions before the prompt is sent, which
 is a different and much larger feature.
 
-A written `tools:` line is a hard runtime fence over the app's catalog, not a hint: a seat may call
+A written `tools:` line is a hard runtime fence over the app's catalog, not a hint: a worker may call
 exactly the catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
 catalog carries, what a bound skill's `allowed-tools` declares (see C5), or what a capability
-attached through `uses` would otherwise contribute. A seat that writes **no** `tools:` line may
+attached through `uses` would otherwise contribute. A worker that writes **no** `tools:` line may
 call the tools of the capability presets its own file picked under `capabilities:` and the blocks
 of the packages it holds (FIX-1459);
-presets this kind switches on by default grant nothing the seat did not pick.
+presets this kind switches on by default grant nothing the worker did not pick.
 
 **Capability tools are fenced by mechanism (FIX-1393).** The core resolver drops a capability's
 catalog-granted tools when the consuming block declares `tools:`, so an app's `uses` can no longer
-hand a seat with `tools: []` something it never named. The union this document once described is
+hand a worker with `tools: []` something it never named. The union this document once described is
 gone; `docs/architecture/capabilities.md` → *The tools fence* is canonical for the rule.
 
 **The carve-out is controls, and it is deliberate.** A capability contributes through two slots:
 `tools` (a grant from the app's catalog, fenced) and `controlTools` (a framework control, never
 fenced). A control is built inside its capability and never exported — so no `tools:` list could
-name it back in, and fencing it would leave the seat advertising a tool in its prompt it cannot
-call. Two ship in this kind. The first is held only because the seat's own configuration asked
-for it; the second is held by every seat in the kind, and a seat's configuration narrows it rather
+name it back in, and fencing it would leave the worker advertising a tool in its prompt it cannot
+call. Two ship in this kind. The first is held only because the worker's own configuration asked
+for it; the second is held by every worker in the kind, and a worker's configuration narrows it rather
 than requesting it:
 
-- **The skill loader.** A seat that sets `skills.activateTool: true` is bound with
+- **The skill loader.** A worker that sets `skills.activateTool: true` is bound with
   `dynamicActivation`, which installs the loader as a control. It reaches the model without
-  appearing in `tools:` — by design, because the seat's own setting is the declaration.
+  appearing in `tools:` — by design, because the worker's own setting is the declaration.
 - **The discovery door (FIX-817).** `createWorkforceCapability` contributes `discover` as a
-  control, and it ships **on**. This is the one control a seat does not ask for: composing the
-  capability is itself the declaration that a seat may ask what is around it, so a second per-seat
-  switch would have nothing to add, and defaulting it off would leave an upgraded app's seats
+  control, and it ships **on**. This is the one control a worker does not ask for: composing the
+  capability is itself the declaration that a worker may ask what is around it, so a second per-worker
+  switch would have nothing to add, and defaulting it off would leave an upgraded app's workers
   unable to see the domains their kind already installed. A worker file's `discover:` key only
-  **narrows** it — the key lists the domains that seat sees, an empty list sees nothing, and
+  **narrows** it — the key lists the domains that worker sees, an empty list sees nothing, and
   omitting the key sees every domain the scope carries. It can never widen past what the app
   installed: naming a domain the scope does not carry does not reach it, and neither does asking
   the tool for that domain directly, because the narrowing is applied to the registry rather than
@@ -206,7 +206,7 @@ one capability can be on both sides of the fence at once.
 
 **The consumer-level opt-outs are no longer load-bearing as a fence.** FIX-1364's memory recipe
 (`mem.presets({ recall: false, connect: false })`) and `registerCatalogTools: false` still work and
-can still be reasonable defaults on cost or behaviour grounds, but a seat's `tools:` no longer
+can still be reasonable defaults on cost or behaviour grounds, but a worker's `tools:` no longer
 depends on them for safety. Do not add a per-consumer fence: core is the one structural
 enforcement point, and a second would be another door to forget.
 
@@ -255,11 +255,11 @@ refusal** — that is the loud-fail obligation the epic assigned here.
 
 ### A replacement must also declare `cardinality: "collection"`
 
-A roster is N seats of one kind, and `defineFlow` defaults to `singleton`
+A roster is N workers of one kind, and `defineFlow` defaults to `singleton`
 (`normalizeCardinality`, `packages/core/src/flow/defineFlow.ts:200` — `undefined` returns
 `"singleton"`). A singleton's id is its kind. So a replacement written the plain way —
 `defineFlow({ kind: "agent", configSchema, actions })` — hires without complaint and is then
-refused seat by seat at **registration**, not at the mint:
+refused worker by worker at **registration**, not at the mint:
 
 ```
 Flow "agent" is a singleton but was instantiated with id "engineering.lead". A singleton's id
@@ -275,20 +275,20 @@ The refusal is loud and arrives at boot, so nothing ships broken. It is stated h
 caller reading only "declare `kind: 'agent'`" would meet it by surprise. It is a requirement
 on callers, **not a refusal anyone has to build.**
 
-## C3 — A seat's skills are stored per seat, and *stored* is not the same as *filled*
+## C3 — A worker's skills are stored per worker, and *stored* is not the same as *filled*
 
-Two things have to be true for a seat's skills to be that seat's. They are separate, and the
+Two things have to be true for a worker's skills to be that worker's. They are separate, and the
 second one is the one that gets missed.
 
 ### The drawer — isolation
 
-The seat's *view* already works: `org ∪ teams/<thatTeam> ∪ workers/<thatSeat>` for a team seat, and
-`org ∪ org/workers/<thatSeat>` for an org seat, which has no team
-(`packages/workforce/src/loader/read-seat-skills.ts:187-189`), with a name reaching one seat
+The worker's *view* already works: `org ∪ teams/<thatTeam> ∪ workers/<thatWorker>` for a team worker, and
+`org ∪ org/workers/<thatWorker>` for an org worker, which has no team
+(`packages/workforce/src/loader/read-worker-skills.ts:187-189`), with a name reaching one worker
 from two levels refused rather than shadowed (`duplicateSkillNameMessage`, same file).
 
-The kind declares its skills collection **isolated per flow instance**. A seat *is* a flow
-instance, minted with the worker's id (`hire.ts` mints each seat with `{ id: manifest.id }`), and the
+The kind declares its skills collection **isolated per flow instance**. A worker *is* a flow
+instance, minted with the worker's id (`hire.ts` mints each worker with `{ id: manifest.id }`), and the
 storage layer already keys isolated resources as `${identityId}:${flowId}` on the **instance**
 id, not the kind (`resolveResourceScopeId`, `packages/engine/src/stores/scope-keys.ts:324`).
 
@@ -300,36 +300,36 @@ built-in kind switches it on.
 
 ### The contents — population
 
-Isolation alone gives every seat its own *empty* drawer and then fills all of them from the
+Isolation alone gives every worker its own *empty* drawer and then fills all of them from the
 same jar.
 
 `createSkillsLibrary` captured one static `initialSkills` array when the kind was defined —
-once per kind, not once per seat. The runtime seeder writes exactly what it is handed into
+once per kind, not once per worker. The runtime seeder writes exactly what it is handed into
 whichever collection ref it is handed (`ensureSeeded`,
 `packages/orchestration/src/skills/seeding.ts`; called that way from `run-skill-tool.ts`,
-`load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`). N isolated seats
+`load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`). N isolated workers
 would therefore end up with N separate buckets holding N *identical* catalogs.
 
-There was no channel for a per-seat set either: `WorkerManifest` was `{ id, declared, body }`
+There was no channel for a per-worker set either: `WorkerManifest` was `{ id, declared, body }`
 and nothing more, and `hireWorkforce` forwards only frontmatter settings — so the union
-`read-seat-skills.ts` already computes had nowhere to ride into the mint.
+`read-worker-skills.ts` already computes had nowhere to ride into the mint.
 
-**The contract therefore requires an instance-specific seeding path.** The seat's computed union
-must reach *that seat's* collection as its `initialSkills`, so `ensureSeeded` writes that seat's
+**The contract therefore requires an instance-specific seeding path.** The worker's computed union
+must reach *that worker's* collection as its `initialSkills`, so `ensureSeeded` writes that worker's
 skills and no one else's. Acceptance criterion 5 is written to fail without one.
 
 **Built by FIX-1362**, and the handoff it chose is the settings bag: the loader resolves each
-seat's union onto its record as `WorkerManifest.skills`, the hire step imposes it as the
-`seatSkills` setting the way a body is imposed as `instructions`, and the library's
-`initialSkills` takes a resolver that reads it off `ctx.flow.config`. A seat's `skills:` folder
-therefore reaches only that seat's collection. (Same defect class as FIX-1372, filed against the
+worker's union onto its record as `WorkerManifest.skills`, the hire step imposes it as the
+`workerSkills` setting the way a body is imposed as `instructions`, and the library's
+`initialSkills` takes a resolver that reads it off `ctx.flow.config`. A worker's `skills:` folder
+therefore reaches only that worker's collection. (Same defect class as FIX-1372, filed against the
 reference app: an activator built with no `initialSkills` shows every matcher tier an empty
 catalog on turn 1.)
 
 ### Copy-in is the honest lock-in, and it is named
 
-Seeding writes a *copy* into the seat's drawer and records the name in `_meta.seededNames`
-(`seeding.ts:58,84`), so a later edit to the company copy's **body** does not reach a seat that
+Seeding writes a *copy* into the worker's drawer and records the name in `_meta.seededNames`
+(`seeding.ts:58,84`), so a later edit to the company copy's **body** does not reach a worker that
 already holds one. A deliberate deletion is not undone either, and that half is stronger than a
 convention: `needsResed` returns `false` when the manifest is gone, preserving the decision on
 purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
@@ -338,44 +338,44 @@ purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
 `needsResed` finds the persisted record stale against the FIX-918 migration shape — it still
 carries a legacy non-inline `contextMode` the source dropped, or the source's `contextMode` changed
 (`seeding.ts`, `needsResed`). Those replace a
-seat's copy without anyone refreshing it. FIX-1362 left that reseeding as it is for seat copies:
+worker's copy without anyone refreshing it. FIX-1362 left that reseeding as it is for worker copies:
 it fires on a *schema* mismatch between the persisted record and the current parser, never on a
 body edit, so it repairs records the renderer would otherwise skip rather than propagating an
-upstream rewording. Narrowing it would leave a seat quietly holding a skill that never renders.
+upstream rewording. Narrowing it would leave a worker quietly holding a skill that never renders.
 
-Refreshing a running seat *otherwise* is a deliberate act, and **FIX-1362 built the mechanism**:
+Refreshing a running worker *otherwise* is a deliberate act, and **FIX-1362 built the mechanism**:
 `refreshSeededSkills` rewrites a named skill's folder from a source set. It replaces a touched
 folder **whole** — deleting keys the new source does not carry — so a supporting file withdrawn
 upstream cannot outlive the withdrawal; it touches only names whose manifest still exists, so a
 deliberate deletion stands; and ordinary seeding stays additive, because a file the source never
-had is the seat's own edit.
+had is the worker's own edit.
 
 ### This clause supersedes drift note §3a
 
-Drift §3a says *"Real per-seat isolation needs a real resource identity — a distinct collection
+Drift §3a says *"Real per-worker isolation needs a real resource identity — a distinct collection
 key, prefix, or scope"* (`docs/internal/design/kitchen-sink-agent-drift.md:161`). **It does
-not.** The identity already exists as `flowIsolation`, keyed on the seat's instance id.
+not.** The identity already exists as `flowIsolation`, keyed on the worker's instance id.
 
 Stated against the note by name because epic theme 8 sends every later issue to the note
 *instead of* re-reading the app, and FIX-1362 is the issue that would otherwise read §3a and
 build the refuted mechanism. The note is a dated characterization and explicitly not
 maintained, so it is **not edited** — the correction lives here.
 
-## C4 — Memory attaches to existing scopes, and per-seat memory works
+## C4 — Memory attaches to existing scopes, and per-worker memory works
 
 `session`, `user`, `org`, plus per-instance isolation where a resource wants it. **Identity and
-durable per-member memory are not on the seat object.**
+durable per-member memory are not on the worker object.**
 
-**Corrected by FIX-1364 — "member" here has always meant *seat*** (one flow instance on the
-roster), not a person identity outliving seats and not a separate member graph. Read that way,
+**Corrected by FIX-1364 — "member" here has always meant *worker*** (one flow instance on the
+roster), not a person identity outliving workers and not a separate member graph. Read that way,
 the gap this contract named is a **default, not a missing primitive**: user-scoped resources are
 shared per end user unless something isolates them (BP-027), and
-`defineFlow({ isolateUserState: true })` isolates them on the instance id — which a seat has.
+`defineFlow({ isolateUserState: true })` isolates them on the instance id — which a worker has.
 A characterization test with a control case (POC on the FIX-1364 spec branch, and the shipped
 tests in `packages/workforce/test/agent-worker-memory.test.ts`) showed a fact written through
-one seat is invisible to its neighbour with the flag on, and visible with it off. The kind
+one worker is invisible to its neighbour with the flag on, and visible with it off. The kind
 forwards the flag through `defineAgentWorkerFlow({ isolateUserState })`. **Nothing invents a new
-isolation primitive, and no memory field goes on the seat object.**
+isolation primitive, and no memory field goes on the worker object.**
 
 The residual limit the contract once filed here, that the flag is on the kind and memory's
 tiers could not differ from it, is closed (FIX-1396). Each durable tier now declares its own
@@ -383,7 +383,7 @@ tiers could not differ from it, is closed (FIX-1396). Each durable tier now decl
 which wins over the flow default in both directions; the digest is isolated when either of its
 sources is. Nothing new was added to core. Per-tier isolation is per flow copy, like the flag:
 workers that run on one copy still share every tier. Renaming a
-seat moves where its isolated data lives, which orphans that seat's memory; documented, not
+worker moves where its isolated data lives, which orphans that worker's memory; documented, not
 migrated.
 
 ## C5 — Out of the box is the cheap path, and cheap includes *off*
@@ -391,7 +391,7 @@ migrated.
 Three things, and they are separate:
 
 1. **Skills** — the library plus per-generator binding (entry point pinned below).
-2. **Memory is a build-time composition seam, not a setting.** An instructions-only seat does
+2. **Memory is a build-time composition seam, not a setting.** An instructions-only worker does
    **not** remember out of the box. (Memory here means the memory system's stores. The kind's
    answer does read the earlier turns of its own conversation through the generator's `history`
    slot, bounded by the session's history window, which is 50 turns by default: FIX-1612. That
@@ -424,7 +424,7 @@ made of* is a contract call, because leaving it open lets FIX-1363 and FIX-1362 
 different default stacks under one name — and FIX-1362 **pins that choice and draws the docs
 boundary** around it (its §11). **Deprecating the other surface is FIX-1390's**, not FIX-1362's:
 retiring a published entry point is its own change with its own migration, and folding it into a
-per-seat seat feature would multiply the blast radius for no gain.
+per-worker feature would multiply the blast radius for no gain.
 
 The library wins on the same argument as C3, one level down: its activation is per binding, so
 a skill given to one generator never appears in another's context, where the capability keeps a
@@ -432,7 +432,7 @@ session-global `activeSkills` bag. The published guide currently teaches the cap
 correcting that is FIX-1366's, not a reason to pick it.
 
 "Whole catalog" here means the load tool's reach over the *skill* catalog (`allowed` omitted), not
-licence for the skills library to re-widen a seat's tool reach past its own `tools:` (C1) — the
+licence for the skills library to re-widen a worker's tool reach past its own `tools:` (C1) — the
 default kind hands the library the app's tool catalog with registration turned off
 (`createSkillsLibrary({ catalog, registerCatalogTools: false })`), so a bound skill's
 `allowed-tools` are still validated against it but never registered by the library itself. A
@@ -445,7 +445,7 @@ solely the generator's own `tools:` mapping (C1).
 - `defineAgent` / `materializeAgent` are **not** the teach path. Nothing here extends, imports
   or mirrors them — equally, nothing here waits on their deletion (FIX-1344 / PR #1713 owns
   that kill).
-- Seats are flow instances of a kind. There is no `worker.ts` seat door.
+- Workers are flow instances of a kind. There is no `worker.ts` worker door.
 - No Mailbox or MessageBoard types follow from this contract.
 
 ### And one thing that must not be *copied*
@@ -480,19 +480,19 @@ The contract's falsifiable half, written as assertions a caller can watch happen
 **assigned**, not pooled.
 
 1. A worker file carrying only a description and a body hires, with no `workerFlows` entry supplied.
-2. That seat answers a turn using its body as its instructions.
+2. That worker answers a turn using its body as its instructions.
 3. A worker file naming an unregistered kind refuses by name, listing the kinds that were
    passed, and nothing in the roster hires.
 4. A roster passing its own `agent` — declared `cardinality: "collection"` — gets its own flow,
-   not ours, for **every** seat on the roster, and those seats register.
-5. Two seats whose worker folders hold **different** skills each read a catalog containing
+   not ours, for **every** worker on the roster, and those workers register.
+5. Two workers whose worker folders hold **different** skills each read a catalog containing
    their own skill and not the other's, and each can use it. Separate storage keys are
-   necessary and not sufficient: a run in which the two seats resolve to distinct keys and
+   necessary and not sufficient: a run in which the two workers resolve to distinct keys and
    **identical** catalogs *fails* this criterion. (See C3 — this is the criterion the
    instance-specific seeding path exists to satisfy.)
-6. Editing an org-level skill's **content** after a seat has been seeded does not change what
-   that seat holds until that seat is deliberately refreshed — except on the FIX-918 migration
-   paths, which replace the copy by design (see C3). A seat's deleted copy stays deleted.
+6. Editing an org-level skill's **content** after a worker has been seeded does not change what
+   that worker holds until that worker is deliberately refreshed — except on the FIX-918 migration
+   paths, which replace the copy by design (see C3). A worker's deleted copy stays deleted.
 7. Nothing in the shipped kind imports `defineAgent`, `materializeAgent` or `AgentRegistry`.
 
 Each criterion belongs to the issue whose own build makes it true: **1–3 to FIX-1365**, the epic's
@@ -512,14 +512,14 @@ compose memory into its own kind is FIX-1364's and is not stated here.
 |---|---|
 | Worker file names a kind that isn't registered | Refuse by name, list the kinds passed. Never fall back to the default — that is the typo risk the epic traded for this rule |
 | App registers a flow under `agent` whose own kind is something else | Refuse, via the existing mismatched-kind check (`hire.ts`, the `factory.kind !== kind` check). The built-in's presence must not create an exemption |
-| App registers `agent` without `cardinality: "collection"` | Seats mint, then registration refuses each by name — see C2, which carries the rule and the error |
+| App registers `agent` without `cardinality: "collection"` | Workers mint, then registration refuses each by name — see C2, which carries the rule and the error |
 | App registers `agent` *and* a worker says `flow: agent` | The app's flow. One resolution path, whether the name was implicit or written |
 | Worker file carries a body **and** an `instructions:` key | Already refused today (two sources, no precedence rule). Unchanged |
 | Worker file declares `persona:` | Already refused by name today. Unchanged; `persona` is a reserved later opinion, not a hire key |
-| Empty/whitespace-only body, no `flow:` | Hires the default with no instructions setting. A weak seat, not a failed hire — matching today's treatment of a blank body |
-| Same skill name reaches one seat from two levels | Already refused with both paths named. Unchanged |
-| Same skill name on two different teams | Fine, and now fine at the storage level too — different seats, different keys |
-| A seat's drawer is isolated but seeded from the kind's shared array | Not an edge case — it is today's default behaviour, and it fails criterion 5. C3's instance-specific seeding path is what removes it |
+| Empty/whitespace-only body, no `flow:` | Hires the default with no instructions setting. A weak worker, not a failed hire — matching today's treatment of a blank body |
+| Same skill name reaches one worker from two levels | Already refused with both paths named. Unchanged |
+| Same skill name on two different teams | Fine, and now fine at the storage level too — different workers, different keys |
+| A worker's drawer is isolated but seeded from the kind's shared array | Not an edge case — it is today's default behaviour, and it fails criterion 5. C3's instance-specific seeding path is what removes it |
 
 **Taxonomy:** every admission problem is a startup misconfiguration, therefore fatal and
 collected — one run names every bad worker, and nothing hires partially. Existing behaviour;
@@ -528,8 +528,8 @@ this contract does not soften it.
 ## Evidence
 
 The empirical claims above were **run, not read**: a throwaway POC on the never-merged spec branch
-`spec/FIX-1361` (under `spec-poc/FIX-1361-seat-skill-isolation/`, beside that branch's spec
-document) showed that per-seat isolation separates the drawers but does not fill them —
+`spec/FIX-1361` (under `spec-poc/FIX-1361-worker-skill-isolation/`, beside that branch's spec
+document) showed that per-worker isolation separates the drawers but does not fill them —
 isolation is not population, C3's second half — and that a plain
 `defineFlow({ kind: "agent", … })` is a singleton refused at registration rather than at the mint,
 which is why C2 requires `cardinality: "collection"`. Those paths live on that branch only; by
@@ -541,8 +541,8 @@ BP-037 neither the spec nor its POC lands on `main`.
   `createSkillsCapability` — overlap heavily and cross-reference each other, and the published
   guide teaches the one not picked. C5 pins which one the built-in uses; *deprecating* the other
   is **FIX-1390's** (drift note §2a), correcting the guide is FIX-1366's.
-- **Per-seat cost, unmeasured** — isolated storage plus a per-seat `ensureSeeded` means one
-  bucket and one cold-start seed pass per seat. At a large roster times a large catalog that is
-  a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less seat
+- **Per-worker cost, unmeasured** — isolated storage plus a per-worker `ensureSeeded` means one
+  bucket and one cold-start seed pass per worker. At a large roster times a large catalog that is
+  a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less worker
   does no storage work at all — but the roster × catalog case is still unrun. Not a reason to
   change C3, which trades it for a privacy promise the storage actually keeps.

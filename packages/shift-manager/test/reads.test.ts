@@ -2,7 +2,7 @@
  * S3's shared reads, against a real Lab served on a free port (V2, V3, V7).
  *
  * Every assertion is on what the Lab's own routes return: the ask-lab is an
- * ordinary Lab config whose seats suspend on a stock approval, woken the way a
+ * ordinary Lab config whose workers suspend on a stock approval, woken the way a
  * real Lab wakes them, by a person's post to a coordinator, which delivers it
  * to each delegate.
  */
@@ -18,7 +18,7 @@ import {
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
-import { seatStates, type LoadedSnapshot } from "../src/lib/derive";
+import { workerStates, type LoadedSnapshot } from "../src/lib/derive";
 import { withRoster } from "../src/lib/roster";
 import { workforceClientFor } from "../src/lib/workforce";
 import { ROSTER_FLOW_KIND } from "@flow-state-dev/workforce/browser";
@@ -62,14 +62,14 @@ async function post(clients: ReturnType<typeof createLabClients>, coordinatorId:
 const delivered = (coordinatorId: string, message: string) => `${ASK_LAB_USER_ID}, through ${coordinatorId}: ${message}`;
 
 /**
- * A person asks a seat directly, through its public `ask` action, in the
- * seat's own session (`s_<seat id>`, the session the Lab's EM ask lives in),
- * opened naming the seat's worker on the asker flow's one copy.
+ * A person asks a worker directly, through its public `ask` action, in the
+ * worker's own session (`s_<worker id>`, the session the Lab's EM ask lives in),
+ * opened naming the worker's worker on the asker flow's one copy.
  */
-async function ask(clients: ReturnType<typeof createLabClients>, seatId: string, what: string) {
-  const sessionId = `s_${seatId.replace(/\./g, "_")}`;
+async function ask(clients: ReturnType<typeof createLabClients>, workerId: string, what: string) {
+  const sessionId = `s_${workerId.replace(/\./g, "_")}`;
   await clients.sessions
-    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: seatId } })
+    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: workerId } })
     .catch((error: unknown) => {
       if ((error as { status?: number }).status !== 409) throw error;
     });
@@ -82,12 +82,12 @@ async function hire(clients: ReturnType<typeof createLabClients>, id: string) {
   await clients.actions(ROSTER_FLOW_KIND).sendAction("hire", { id, flow: ASKER_KIND }, { sessionId: roster.id });
 }
 
-/** The refs a session's flow declares the inventory's seat and mailbox collections under, as its manifest lists them. */
+/** The refs a session's flow declares the inventory's worker and mailbox collections under, as its manifest lists them. */
 async function inventoryRefs(baseUrl: string, sessionId: string): Promise<string[]> {
   const manifest = (await (await fetch(`${baseUrl}/api/flows/sessions/${sessionId}/manifest`)).json()) as {
     resources: Array<{ kind: string; pattern?: string; ref: string }>;
   };
-  const refs = ["inventory/seats/*", "inventory/mailboxes/*"].map(
+  const refs = ["inventory/workers/*", "inventory/mailboxes/*"].map(
     (pattern) => manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern)?.ref,
   );
   if (refs.some((ref) => ref === undefined)) throw new Error(`session ${sessionId}'s flow declares no inventory`);
@@ -305,7 +305,7 @@ describe("one read per resource (V3, BR-11)", () => {
     const seen = countRequests();
     const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
-    expect(snapshot.inventory.value.seats.map((seat) => seat.id).sort()).toEqual(
+    expect(snapshot.inventory.value.workers.map((worker) => worker.id).sort()).toEqual(
       ["ops.asker", "ops.desk", "ops.helper", "ops.loner", "ops.side"],
     );
     // No workstream: nothing registers a mailbox.
@@ -323,7 +323,7 @@ describe("one read per resource (V3, BR-11)", () => {
     const seen = countRequests();
     const snapshot = loaded(await createLabReader(other).read());
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
-    expect(snapshot.inventory.value.seats.map((seat) => seat.id)).toContain("ops.asker");
+    expect(snapshot.inventory.value.workers.map((worker) => worker.id)).toContain("ops.asker");
     const refs = await inventoryRefs(baseUrl, "s_other_asker");
     expect(seen.filter((line) => refs.some((ref) => line.endsWith(`/resources/${ref}`)))).toEqual(
       refs.map((ref) => `GET /api/flows/sessions/s_other_asker/resources/${ref}`),
@@ -373,7 +373,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     const asks = snapshot.asks.value;
     const desk = tree.workers.find((w) => w.id === "ops.desk")!;
     // Every delegate of the desk asked, from a dispatch run the post started.
-    expect(asks.map((a) => a.seatId).sort()).toEqual([...(desk.declared.delegates as string[])].sort());
+    expect(asks.map((a) => a.workerId).sort()).toEqual([...(desk.declared.delegates as string[])].sort());
     for (const ask of asks) {
       expect(ask.parentSessionId).toBe("ops.desk");
       expect(ask.flowId).toBe(ASKER_KIND);
@@ -449,7 +449,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(recorded[0]!.unanswerable).toBeNull();
   });
 
-  it("an ask in a seat that is no coordinator's delegate is in Inbox", async () => {
+  it("an ask in a worker that is no coordinator's delegate is in Inbox", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     await ask(clients, "ops.loner", "alone");
@@ -458,7 +458,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
       return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
     }, "the loner's ask");
     if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
-    expect(snapshot.asks.value[0]!.seatId).toBe("ops.loner");
+    expect(snapshot.asks.value[0]!.workerId).toBe("ops.loner");
   });
 
   it("an ask from the person's own worker is in Inbox, and that worker reads as on call", async () => {
@@ -472,13 +472,13 @@ describe("asks through a coordinator's delivery (V7)", () => {
       return s.asks.ok && s.asks.value.length === 1 ? s : undefined;
     }, "the own worker's ask");
     if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
-    expect(snapshot.inventory.value.seats.map((s) => s.id)).not.toContain("ops.mine");
-    expect(snapshot.asks.value.map((a) => [a.seatId, a.item.message])).toEqual([["ops.mine", "Approve: ship it"]]);
+    expect(snapshot.inventory.value.workers.map((s) => s.id)).not.toContain("ops.mine");
+    expect(snapshot.asks.value.map((a) => [a.workerId, a.item.message])).toEqual([["ops.mine", "Approve: ship it"]]);
 
     // Roster and TEAMS join the roster the same way, so the worker is on call there.
     const entries = await workforceClientFor(clients).roster();
-    const states = seatStates(withRoster(snapshot, { entries }).snapshot);
-    expect(states.seats.get("ops.mine")?.status).toBe("on call");
+    const states = workerStates(withRoster(snapshot, { entries }).snapshot);
+    expect(states.workers.get("ops.mine")?.status).toBe("on call");
   });
 
   it("a roster that fails to load fails Inbox's asks by name, not by dropping the person's own workers", async () => {
@@ -564,10 +564,10 @@ describe("asks through a coordinator's delivery (V7)", () => {
       const s = loaded(await createLabReader(theirs).read());
       return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
     }, "their own worker's ask");
-    expect(theirAsks.map((a) => a.seatId)).toEqual(["ops.theirs"]);
+    expect(theirAsks.map((a) => a.workerId)).toEqual(["ops.theirs"]);
     const snapshot = loaded(await createLabReader(mine).read());
     if (!snapshot.asks.ok) throw new Error("not loaded");
-    expect(snapshot.asks.value.map((a) => a.seatId)).toEqual(["ops.asker"]);
+    expect(snapshot.asks.value.map((a) => a.workerId)).toEqual(["ops.asker"]);
   });
 
   it("Approve and Deny resolve through the resume, and the ask leaves Inbox", async () => {
@@ -604,7 +604,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
       const s = loaded(await reader.read());
       return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
     }, "the ask");
-    // The desk's board belongs to the coordinator's flow, not the seat's.
+    // The desk's board belongs to the coordinator's flow, not the worker's.
     await expect(reader.resume({ ...pending!, flowId: COORDINATOR_KIND }, { action: "approve" })).rejects.toMatchObject({
       status: 404,
     });
@@ -617,11 +617,11 @@ describe("asks through a coordinator's delivery (V7)", () => {
 });
 
 describe("declared documents (BR-10)", () => {
-  it("lists a document a seat's flow serves, and its content is the file's, read through that seat's session", async () => {
+  it("lists a document a worker's flow serves, and its content is the file's, read through that worker's session", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     const reader = createLabReader(clients);
-    // No seat session yet: no listed flow serves the document, so none is found.
+    // No worker session yet: no listed flow serves the document, so none is found.
     const before = loaded(await reader.read());
     expect(before.resources).toEqual({ ok: true, value: [] });
 

@@ -1,17 +1,17 @@
 /**
- * A mailbox post reaches an agent seat through the kind's internal
+ * A mailbox post reaches an agent worker through the kind's internal
  * `onMailboxPost` entry.
  *
  * A mailbox's notify block is handed one delivery per member per post, and a
  * dispatch resolves only a flow's internal entries. So the kind carries one
- * that takes the delivery as it is handed over and runs the seat's ordinary
- * answer on it, with the post as the seat's turn: `<writer> in <mailbox>:
+ * that takes the delivery as it is handed over and runs the worker's ordinary
+ * answer on it, with the post as the worker's turn: `<writer> in <mailbox>:
  * <body>`. The writer is the post's `author`, else its `principal`.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1590/PLAN.md`, V1):
- *   BR-7  a dispatch to the entry runs the seat's answer, and the model is
+ *   BR-7  a dispatch to the entry runs the worker's answer, and the model is
  *         handed the heard turn;
- *   BR-8  the heard turn is kept as the seat's user message, ahead of the reply;
+ *   BR-8  the heard turn is kept as the worker's user message, ahead of the reply;
  *   BR-9  a second post keyed on the same mailbox lands in the same
  *         conversation;
  *   BR-13 the same name on the public action route runs nothing.
@@ -25,21 +25,21 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 
 const USER_ID = "u_mailbox";
 const MAILBOX_SESSION = "support.desk";
 
-/** A stand-in for a mailbox's fan-out: one dispatcher to the seat's receiver, keyed on the mailbox. */
-function wakeFlow(seatId: string) {
+/** A stand-in for a mailbox's fan-out: one dispatcher to the worker's receiver, keyed on the mailbox. */
+function wakeFlow(workerId: string) {
   return defineFlow({
     kind: "wake-test",
     actions: {
       deliver: {
         inputSchema: mailboxNotifyInputSchema,
         block: dispatcher({
-          name: "wake-seat",
-          flowKind: seatId,
+          name: "wake-worker",
+          flowKind: workerId,
           action: "onMailboxPost",
           inputSchema: mailboxNotifyInputSchema,
           session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` }
@@ -50,11 +50,11 @@ function wakeFlow(seatId: string) {
 }
 
 function boot() {
-  const [seat] = mintSeats([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
+  const [worker] = mintWorkers([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
   const heard: string[] = [];
-  const sender = wakeFlow(seat!.id);
+  const sender = wakeFlow(worker!.id);
   const state = createFlowState({
-    flows: { [seat!.id]: seat!, [sender.id]: sender },
+    flows: { [worker!.id]: worker!, [sender.id]: sender },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {
@@ -74,7 +74,7 @@ function boot() {
       policy: "allow"
     })
   });
-  return { seat: seat!, sender, state, heard };
+  return { worker: worker!, sender, state, heard };
 }
 
 function post(overrides: Partial<MailboxNotifyInput> = {}): MailboxNotifyInput {
@@ -128,17 +128,17 @@ function messagesOf(request: { items?: unknown[] }) {
 
 describe("the agent kind's mailbox receiver", () => {
   it("is declared as an internal entry taking the mailbox's delivery, and nowhere public", () => {
-    const { seat } = boot();
-    const entry = seat.internal?.actions.onMailboxPost;
+    const { worker } = boot();
+    const entry = worker.internal?.actions.onMailboxPost;
     expect(entry, "the agent kind declares no internal onMailboxPost").toBeDefined();
     expect(entry!.inputSchema).toBe(mailboxNotifyInputSchema);
     // Default concurrency: a queued request expires after the engine's wait,
     // which would drop a post that arrives behind a slow answer (BR-10).
     expect(entry!.concurrency).toBeUndefined();
-    expect(Object.keys(seat.actions)).toEqual(["run"]);
+    expect(Object.keys(worker.actions)).toEqual(["run"]);
   });
 
-  it("runs the seat's answer on a dispatched post, keeping the heard turn ahead of the reply", async () => {
+  it("runs the worker's answer on a dispatched post, keeping the heard turn ahead of the reply", async () => {
     const { sender, state, heard } = boot();
     try {
       const runtime = await state.getRuntime();
@@ -154,7 +154,7 @@ describe("the agent kind's mailbox receiver", () => {
       // The model was handed the heard turn, not the raw delivery.
       expect(heard.some((input) => input.includes(turn))).toBe(true);
 
-      // The run is a child of the mailbox's session, on the seat's own flow.
+      // The run is a child of the mailbox's session, on the worker's own flow.
       const child = await runtime.stores.session.get(handle.sessionId);
       expect(child?.flowKind).toBe("agent");
       expect(child?.parentSessionId).toBe(MAILBOX_SESSION);
@@ -163,7 +163,7 @@ describe("the agent kind's mailbox receiver", () => {
     }
   });
 
-  it("names the author as the writer when a seat wrote the post", async () => {
+  it("names the author as the writer when a worker wrote the post", async () => {
     const { sender, state } = boot();
     try {
       const runtime = await state.getRuntime();
@@ -198,10 +198,10 @@ describe("the agent kind's mailbox receiver", () => {
   });
 
   it("is refused on the public action route and runs nothing", async () => {
-    const { seat, state, heard } = boot();
+    const { worker, state, heard } = boot();
     try {
       const router = await state.getRouter();
-      const segments = [seat.id, "actions", "onMailboxPost"];
+      const segments = [worker.id, "actions", "onMailboxPost"];
       const res = await router.POST(
         new Request(`http://localhost/api/flows/${segments.map(encodeURIComponent).join("/")}`, {
           method: "POST",

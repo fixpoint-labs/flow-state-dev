@@ -1,35 +1,35 @@
 /**
- * `mailboxPostCapability` — an agent seat posts into a mailbox it belongs to,
+ * `mailboxPostCapability` — an agent worker posts into a mailbox it belongs to,
  * as itself.
  *
  * Compose it into a worker kind's `uses` and the kind's catalog gains one
- * tool, `post-to-mailbox`. That is a grant the kind offers, not one a seat
- * holds: a seat names the tool in its `tools:` before the model can call it,
+ * tool, `post-to-mailbox`. That is a grant the kind offers, not one a worker
+ * holds: a worker names the tool in its `tools:` before the model can call it,
  * the same fence the roster's `hire` sits behind as a tool. Posting is an
- * effect other people read, so it is never a control every seat holds.
+ * effect other people read, so it is never a control every worker holds.
  *
  * ## Who the line is from
  *
  * The model chooses the mailbox and the words, and nothing else: the input is
- * closed, so an `author` from the model is refused. The author is the seat's
- * `seatId`, which the hire step writes into every seat's settings: the seat's
+ * closed, so an `author` from the model is refused. The author is the worker's
+ * `workerId`, which the hire step writes into every worker's settings: the worker's
  * record id, the name a mailbox's `members:` lists. The tool declares it as
- * the flow config it requires, so a seat whose settings carry none is refused
+ * the flow config it requires, so a worker whose settings carry none is refused
  * by name before the model is offered the tool, never posted as the request's
- * principal. The line's `author` is that `seatId`: the roster check and the
+ * principal. The line's `author` is that `workerId`: the roster check and the
  * name on the line. It is not what withholds member wakes. The post goes
- * through the mailbox's `seatPost` action, and that action is what marks
- * the line a seat's. A dispatched `post` does not.
+ * through the mailbox's `workerPost` action, and that action is what marks
+ * the line a worker's. A dispatched `post` does not.
  *
  * ## One gate
  *
- * The line is written by the built-in mailbox kind's `seatPost`, or for a
+ * The line is written by the built-in mailbox kind's `workerPost`, or for a
  * routed post's answer its `answer`, which checks the line as `post` does:
  * membership against the mailbox as opened. The tool checks nothing of its
  * own. A dispatch into another session starts a request there and returns, so
  * the tool reports that it handed the post over, not that it landed: a mailbox
  * that refuses the author (`author-not-a-member`) refuses on its own request,
- * and the seat's turn goes on. A refusal the dispatch returns at once fails
+ * and the worker's turn goes on. A refusal the dispatch returns at once fails
  * the call by name: an id nobody opened (`session-not-found`), a session of
  * another mailbox kind (`session-not-addressable`), or a host whose dispatcher
  * hands work to an external queue with no shared lease backend
@@ -48,7 +48,7 @@
  * mailbox took the hand-off, not that it kept the line: the dispatch returns
  * before the mailbox writes. So the kind's own landing still hands the turn's
  * reply over, which lands only when the tool's answer did not. Nothing is
- * claimed on the seat's side, so a hand-off the dispatch refuses writes
+ * claimed on the worker's side, so a hand-off the dispatch refuses writes
  * nothing anywhere: the tool's next call, the landing, or the post delivered
  * again can still answer it. Any other turn, and any other mailbox, posts as
  * before.
@@ -58,8 +58,8 @@ import { verifiedWorkerOf } from "./workers/verified-worker";
 import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
 import { z } from "zod";
-import { MAILBOX_ANSWER_ACTION, MAILBOX_KIND, MAILBOX_SEAT_POST_ACTION } from "./mailbox/mailbox-flow";
-import { SEAT_ID_KEY } from "./manifest";
+import { MAILBOX_ANSWER_ACTION, MAILBOX_KIND, MAILBOX_WORKER_POST_ACTION } from "./mailbox/mailbox-flow";
+import { WORKER_ID_KEY } from "./manifest";
 
 /** The capability name a worker file spells under `capabilities:`. */
 export const MAILBOX_POST_CAPABILITY = "mailbox-post";
@@ -106,13 +106,13 @@ export const routedTurnSchema = z.object({
 export const routedTurnStateSchema = z.object({ [ROUTED_TURN_STATE]: routedTurnSchema.optional() });
 
 /**
- * What a block that posts as the seat requires of the seat's settings: its
- * `seatId`, which the hire step writes on every seat it mints. Declared as the
- * block's `flowConfigSchema`, so a seat without one is refused before it can
+ * What a block that posts as the worker requires of the worker's settings: its
+ * `workerId`, which the hire step writes on every worker it mints. Declared as the
+ * block's `flowConfigSchema`, so a worker without one is refused before it can
  * post: at the mint when the block is reachable from the kind, and when a
  * generator resolves the tool.
  */
-export const seatIdConfigSchema = z.object({ [SEAT_ID_KEY]: z.string().min(1) });
+export const workerIdConfigSchema = z.object({ [WORKER_ID_KEY]: z.string().min(1) });
 
 /**
  * The worker a turn on a copy that runs every worker signs as: the one the
@@ -126,47 +126,47 @@ export function workerIdOfTurn(ctx: { readonly session: object }): string {
 }
 
 /**
- * Who a line is signed by: `copy`, the `seatId` of a copy minted for one
+ * Who a line is signed by: `copy`, the `workerId` of a copy minted for one
  * worker, checked against the copy's config before the model is offered the
  * tool; `worker`, the worker the turn loaded on a copy that runs every worker.
  */
 type Signer = "copy" | "worker";
 
-/** What {@link postAsSeat} is handed: the tool's input, and the seat's name to post under. */
-const postAsSeatInputSchema = z.object({ mailbox: z.string(), body: z.string(), author: z.string() });
+/** What {@link postAsWorker} is handed: the tool's input, and the worker's name to post under. */
+const postAsWorkerInputSchema = z.object({ mailbox: z.string(), body: z.string(), author: z.string() });
 
-type PostAsSeatInput = z.infer<typeof postAsSeatInputSchema>;
+type PostAsWorkerInput = z.infer<typeof postAsWorkerInputSchema>;
 
 /**
- * One dispatch into the named mailbox's own `post`, as the seat. The author is
- * the seat's `seatId`, read by the block before it, which declares it.
+ * One dispatch into the named mailbox's own `post`, as the worker. The author is
+ * the worker's `workerId`, read by the block before it, which declares it.
  * `{ id }`: a mailbox is an existing session.
  */
-const postAsSeat = dispatcher({
+const postAsWorker = dispatcher({
   name: "post-to-mailbox-dispatch",
   flowKind: MAILBOX_KIND,
-  action: MAILBOX_SEAT_POST_ACTION,
-  inputSchema: postAsSeatInputSchema,
-  session: { id: (input: PostAsSeatInput) => input.mailbox },
-  payload: (input: PostAsSeatInput) => ({ body: input.body, author: input.author }),
+  action: MAILBOX_WORKER_POST_ACTION,
+  inputSchema: postAsWorkerInputSchema,
+  session: { id: (input: PostAsWorkerInput) => input.mailbox },
+  payload: (input: PostAsWorkerInput) => ({ body: input.body, author: input.author }),
 });
 
-/** What {@link answerRoutedPost} is handed: a routed post's answer, as the seat. */
-const answerAsSeatInputSchema = postAsSeatInputSchema.extend({ postId: z.string() });
+/** What {@link answerRoutedPost} is handed: a routed post's answer, as the worker. */
+const answerAsWorkerInputSchema = postAsWorkerInputSchema.extend({ postId: z.string() });
 
-type AnswerAsSeatInput = z.infer<typeof answerAsSeatInputSchema>;
+type AnswerAsWorkerInput = z.infer<typeof answerAsWorkerInputSchema>;
 
 /**
- * One dispatch into the post's mailbox's own `answer`, as the seat. The
+ * One dispatch into the post's mailbox's own `answer`, as the worker. The
  * mailbox keeps the post's first kept answer and lands no other.
  */
-const answerAsSeat = dispatcher({
+const answerAsWorker = dispatcher({
   name: "answer-in-mailbox-dispatch",
   flowKind: MAILBOX_KIND,
   action: MAILBOX_ANSWER_ACTION,
-  inputSchema: answerAsSeatInputSchema,
-  session: { id: (input: AnswerAsSeatInput) => input.mailbox },
-  payload: (input: AnswerAsSeatInput) => ({
+  inputSchema: answerAsWorkerInputSchema,
+  session: { id: (input: AnswerAsWorkerInput) => input.mailbox },
+  payload: (input: AnswerAsWorkerInput) => ({
     postId: input.postId,
     body: input.body,
     author: input.author,
@@ -196,8 +196,8 @@ const markHanded = handler({
  * turn marked `handed`. The tool and the agent kind's landing both answer
  * through it, so a routed post's answer has one way in.
  */
-export const answerRoutedPost = sequencer({ name: "answer-in-mailbox", inputSchema: answerAsSeatInputSchema })
-  .step(answerAsSeat)
+export const answerRoutedPost = sequencer({ name: "answer-in-mailbox", inputSchema: answerAsWorkerInputSchema })
+  .step(answerAsWorker)
   .tap(markHanded);
 
 /**
@@ -205,21 +205,21 @@ export const answerRoutedPost = sequencer({ name: "answer-in-mailbox", inputSche
  * `answer`, a plain `post` (not a routed turn, or another mailbox), or
  * nothing because the turn has `answered` it.
  */
-type ToolLine = PostAsSeatInput & { postId?: string; as: "answer" | "post" | "answered" };
+type ToolLine = PostAsWorkerInput & { postId?: string; as: "answer" | "post" | "answered" };
 
-/** The tool's line as the seat, and what it is against the turn's routed post. */
+/** The tool's line as the worker, and what it is against the turn's routed post. */
 const toolLineFor = (signer: Signer) => handler({
   name: "post-to-mailbox-line",
   inputSchema: postToMailboxInputSchema,
-  outputSchema: postAsSeatInputSchema.extend({
+  outputSchema: postAsWorkerInputSchema.extend({
     postId: z.string().optional(),
     as: z.enum(["answer", "post", "answered"]),
   }),
   requestStateSchema: routedTurnStateSchema,
-  ...(signer === "copy" ? { flowConfigSchema: seatIdConfigSchema } : {}),
+  ...(signer === "copy" ? { flowConfigSchema: workerIdConfigSchema } : {}),
   execute: async (input: PostToMailboxInput, ctx): Promise<ToolLine> => {
     const author =
-      signer === "copy" ? String((ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY]) : workerIdOfTurn(ctx);
+      signer === "copy" ? String((ctx.flow.config as Record<string, unknown>)[WORKER_ID_KEY]) : workerIdOfTurn(ctx);
     const line = { ...input, author };
     const routed = ctx.request.state.mailboxRoutedPost;
     if (routed === undefined || routed.mailboxId !== input.mailbox) return { ...line, as: "post" };
@@ -228,11 +228,11 @@ const toolLineFor = (signer: Signer) => handler({
   },
 });
 
-/** The line, as {@link postAsSeat} takes it. */
-const toPost = (line: ToolLine): PostAsSeatInput => ({ mailbox: line.mailbox, body: line.body, author: line.author });
+/** The line, as {@link postAsWorker} takes it. */
+const toPost = (line: ToolLine): PostAsWorkerInput => ({ mailbox: line.mailbox, body: line.body, author: line.author });
 
 /** The line, as {@link answerRoutedPost} takes it. */
-const toAnswer = (line: ToolLine): AnswerAsSeatInput => ({
+const toAnswer = (line: ToolLine): AnswerAsWorkerInput => ({
   ...toPost(line),
   postId: line.postId!,
 });
@@ -252,7 +252,7 @@ const postToMailboxFor = (signer: Signer) => sequencer({
 })
   .step(toolLineFor(signer))
   .stepIf((line: ToolLine) => line.as === "answer", toAnswer, answerRoutedPost)
-  .stepIf((value: ToolLine | { sessionId: string }) => "as" in value && value.as === "post", toPost, postAsSeat)
+  .stepIf((value: ToolLine | { sessionId: string }) => "as" in value && value.as === "post", toPost, postAsWorker)
   .map((value: { sessionId: string } | { mailbox: string }) =>
     "sessionId" in value
       ? {
@@ -269,7 +269,7 @@ const postToMailboxFor = (signer: Signer) => sequencer({
 
 /**
  * The mailbox-post capability: one catalog tool, `post-to-mailbox`, on the
- * default `tools` preset. Compose it into a kind's `uses`; a seat names the
+ * default `tools` preset. Compose it into a kind's `uses`; a worker names the
  * tool in `tools:` to use it.
  */
 export const mailboxPostCapability: DefinedCapability = defineCapability({
@@ -282,7 +282,7 @@ export const mailboxPostCapability: DefinedCapability = defineCapability({
 
 /**
  * The same capability for a copy that runs every worker, which has no
- * `seatId` of its own: each line is signed by the worker the turn loaded.
+ * `workerId` of its own: each line is signed by the worker the turn loaded.
  * `defineAgentWorkerFlow({ installation })` puts it in place of
  * {@link mailboxPostCapability}; an app's own worker flow on an installation
  * uses it directly.

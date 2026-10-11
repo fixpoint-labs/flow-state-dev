@@ -39,7 +39,7 @@ it("the member and the outsider read the organization's workers and projects, wi
     stores: inMemoryStores(),
     harness: harnessStub({}).slot,
     workspace: { root, remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
     projects: [{ id: "storefront", title: "Storefront", members: [LAB_USERS.member.userId] }],
   });
@@ -55,7 +55,7 @@ it("the member and the outsider read the organization's workers and projects, wi
     expect(snapshot.projects, `${who.userId}'s projects`).toMatchObject({ ok: true });
     if (!snapshot.inventory.ok) continue;
     expect(snapshot.inventory.value.workstreams).toEqual([]);
-    seen[who.userId] = snapshot.inventory.value.seats.map((s) => s.id).sort();
+    seen[who.userId] = snapshot.inventory.value.workers.map((s) => s.id).sort();
   }
   // One organization, one inventory: each person reads the same workers, the EM and the coder among them.
   const owner = seen[LAB_USERS.owner.userId]!;

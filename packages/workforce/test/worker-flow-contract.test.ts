@@ -48,10 +48,10 @@ describe("a flow that meets the contract", () => {
       configSchema: z.object({
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
-        seatSkills: z.array(z.any()).default([]),
-        seatTools: z.array(z.any()).default([]),
-        seatPackages: z.array(z.any()).optional(),
-        seatId: z.string().optional(),
+        workerSkills: z.array(z.any()).default([]),
+        workerTools: z.array(z.any()).default([]),
+        workerPackages: z.array(z.any()).optional(),
+        workerId: z.string().optional(),
         delegates: z.array(z.string()).default([]),
         desk: z.string().default("front")
       })
@@ -116,16 +116,16 @@ describe("configuration (BR-2)", () => {
       configSchema: z.object({
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
-        seatSkills: z.array(z.any()).default([]),
-        seatPackages: z.array(z.any()).optional(),
-        seatId: z.string().optional()
+        workerSkills: z.array(z.any()).default([]),
+        workerPackages: z.array(z.any()).optional(),
+        workerId: z.string().optional()
       })
     });
     const problems = workerFlowProblems("short", short);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('"short"');
-    expect(problems[0]).toContain("`seatTools`");
-    expect(problems[0]).not.toContain("`seatId`");
+    expect(problems[0]).toContain("`workerTools`");
+    expect(problems[0]).not.toContain("`workerId`");
   });
 
   it("refuses a flow that takes a configuration key with a type no hire supplies (K1)", () => {
@@ -133,25 +133,25 @@ describe("configuration (BR-2)", () => {
       configSchema: z.object({
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
-        seatSkills: z.array(z.any()).default([]),
-        seatTools: z.array(z.any()).default([]),
-        seatPackages: z.array(z.any()).optional(),
-        seatId: z.number().optional()
+        workerSkills: z.array(z.any()).default([]),
+        workerTools: z.array(z.any()).default([]),
+        workerPackages: z.array(z.any()).optional(),
+        workerId: z.number().optional()
       })
     });
     const problems = workerFlowProblems("numbered", numbered);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('"numbered"');
-    expect(problems[0]).toContain("`seatId`");
+    expect(problems[0]).toContain("`workerId`");
   });
 
   it("refuses a flow whose list accepts only an empty one", () => {
     const empty = flowWith("empty-skills", {
-      configSchema: workerConfigSchema().extend({ seatSkills: z.array(z.never()).default([]) })
+      configSchema: workerConfigSchema().extend({ workerSkills: z.array(z.never()).default([]) })
     });
     const problems = workerFlowProblems("empty-skills", empty);
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("`seatSkills`");
+    expect(problems[0]).toContain("`workerSkills`");
   });
 
   it("refuses a flow whose block would replace the whole configuration", () => {
@@ -159,7 +159,7 @@ describe("configuration (BR-2)", () => {
       name: "flattens-the-bag",
       inputSchema: message,
       outputSchema: message,
-      flowConfigSchema: z.object({ seatId: z.string() }).transform(() => "flat"),
+      flowConfigSchema: z.object({ workerId: z.string() }).transform(() => "flat"),
       execute: (input) => input
     });
     const flow = flowWith("flattened", {
@@ -175,14 +175,14 @@ describe("configuration (BR-2)", () => {
   });
 
   it("refuses a flow that accepts a configuration key but rewrites it", () => {
-    // Every worker on it would read the same `seatId`.
-    const fixed = flowWith("fixed-seat", {
-      configSchema: workerConfigSchema().extend({ seatId: z.string().transform(() => "fixed") })
+    // Every worker on it would read the same `workerId`.
+    const fixed = flowWith("fixed-worker", {
+      configSchema: workerConfigSchema().extend({ workerId: z.string().transform(() => "fixed") })
     });
-    const problems = workerFlowProblems("fixed-seat", fixed);
+    const problems = workerFlowProblems("fixed-worker", fixed);
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain('"fixed-seat"');
-    expect(problems[0]).toContain('`seatId` reads "fixed" where the hire gave "probe"');
+    expect(problems[0]).toContain('"fixed-worker"');
+    expect(problems[0]).toContain('`workerId` reads "fixed" where the hire gave "probe"');
   });
 
   it("refuses a flow that replaces the instructions a hire supplies with its own", () => {
@@ -362,19 +362,19 @@ describe("reading a flow's refusal of a worker's configuration", () => {
   });
 
   it("reads an undeclared top-level key as a contract key, and skips the flow's own", () => {
-    const read = contractKeysRefused(refusal([["seatTools"], "unrecognized_keys"], [["notAContractKey"], "unrecognized_keys"]));
-    expect(read).toEqual({ ...none, undeclared: ["seatTools"] });
+    const read = contractKeysRefused(refusal([["workerTools"], "unrecognized_keys"], [["notAContractKey"], "unrecognized_keys"]));
+    expect(read).toEqual({ ...none, undeclared: ["workerTools"] });
   });
 
   it("reads a wrong value at a contract key, at the top or inside it", () => {
-    expect(contractKeysRefused(refusal([["seatId"], "invalid_type"])).wrongValue).toEqual(["seatId"]);
-    expect(contractKeysRefused(refusal([["seatSkills", 0, "name"], "invalid_type"])).wrongValue).toEqual(["seatSkills"]);
-    expect(contractKeysRefused(refusal([["seatTools", "extra"], "unrecognized_keys"])).wrongValue).toEqual(["seatTools"]);
+    expect(contractKeysRefused(refusal([["workerId"], "invalid_type"])).wrongValue).toEqual(["workerId"]);
+    expect(contractKeysRefused(refusal([["workerSkills", 0, "name"], "invalid_type"])).wrongValue).toEqual(["workerSkills"]);
+    expect(contractKeysRefused(refusal([["workerTools", "extra"], "unrecognized_keys"])).wrongValue).toEqual(["workerTools"]);
   });
 
   it("names no contract key for a path inside the flow's own settings", () => {
     const read = contractKeysRefused(
-      refusal([["own", "seatId"], "invalid_type"], [["own", "seatId"], "unrecognized_keys"], [["seatIdentity"], "invalid_type"])
+      refusal([["own", "workerId"], "invalid_type"], [["own", "workerId"], "unrecognized_keys"], [["workerIdentity"], "invalid_type"])
     );
     expect(read).toEqual(none);
   });
@@ -383,16 +383,16 @@ describe("reading a flow's refusal of a worker's configuration", () => {
     const read = contractKeysRefused(
       refusal(
         [["instructions"], "unrecognized_keys"],
-        [["seatId"], "invalid_type", "Expected number; received string"],
+        [["workerId"], "invalid_type", "Expected number; received string"],
         [["model"], "custom", "choose custom; front reserved"]
       )
     );
-    expect(read).toEqual({ ...none, undeclared: ["instructions"], wrongValue: ["seatId"] });
+    expect(read).toEqual({ ...none, undeclared: ["instructions"], wrongValue: ["workerId"] });
   });
 
   it("reads a block that would change the bag at a contract key", () => {
-    const read = contractKeysRefused(refusal([["seatTools"], "block_contributes"], [["model"], "block_contributes"]));
-    expect(read).toEqual({ ...none, wrongValue: ["seatTools"] });
+    const read = contractKeysRefused(refusal([["workerTools"], "block_contributes"], [["model"], "block_contributes"]));
+    expect(read).toEqual({ ...none, wrongValue: ["workerTools"] });
   });
 
   it("reads an issue about the whole bag as one, never as a pass", () => {
@@ -401,7 +401,7 @@ describe("reading a flow's refusal of a worker's configuration", () => {
   });
 
   it("marks anything that isn't a config refusal unread", () => {
-    expect(contractKeysRefused(new Error('"seatId" is not a declared setting')).unread).toBe(true);
+    expect(contractKeysRefused(new Error('"workerId" is not a declared setting')).unread).toBe(true);
     expect(contractKeysRefused(new FlowConfigRefusalError("no issues", [])).unread).toBe(true);
     expect(contractKeysRefused("thrown string").unread).toBe(true);
   });
@@ -410,13 +410,13 @@ describe("reading a flow's refusal of a worker's configuration", () => {
     const real = flowWith("reworded");
     const reworded = Object.assign(
       () => {
-        throw new Error('Flow "reworded" rejected its configuration: "seatId" is unknown.');
+        throw new Error('Flow "reworded" rejected its configuration: "workerId" is unknown.');
       },
       { kind: "reworded", actions: real.actions, resources: real.resources }
     );
     const problems = workerFlowProblems("reworded", reworded as never);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("can't read");
-    expect(problems[0]).toContain('rejected its configuration: "seatId" is unknown.');
+    expect(problems[0]).toContain('rejected its configuration: "workerId" is unknown.');
   });
 });

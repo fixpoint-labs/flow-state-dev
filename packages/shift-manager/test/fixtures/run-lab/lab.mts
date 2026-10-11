@@ -61,7 +61,7 @@ import {
   defineCoordinatorFlow,
   defineSessionBoard,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
@@ -292,7 +292,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerKind(kind, kind === ownWorker?.flow)])),
   };
   const copies = hireWorkforce(installation);
-  // The seat write takes caller-supplied rows, so it is internal only.
+  // The worker write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_KIND,
     internal: { actions: { ...inventoryWriterActions(INVENTORY_WRITER_KIND) } },
@@ -341,10 +341,10 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   };
 
   const inventory = await openInventory(
-    { seats: inventorySeats(installation), mailboxes: [] },
+    { workers: inventoryWorkers(installation), mailboxes: [] },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
-      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
+      workerWriter: { flowKind: INVENTORY_WRITER_KIND },
       userId: RUN_LAB_USER_ID,
       orgId,
     },

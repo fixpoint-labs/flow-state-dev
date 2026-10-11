@@ -4,13 +4,13 @@
  *
  * The row's run link names a session and a request, never a flow. The run's
  * flow is the one its session records as its owner (`flowId`), read once when
- * the task opens: a seat can hand its rows to another flow than the board's,
+ * the task opens: a worker can hand its rows to another flow than the board's,
  * and a flow-scoped route answers 404 for a request its flow does not own. So
  * the request's status, its live stream and the abort all go through that
  * flow, never the board's.
  *
  * Nothing here looks for a run any other way: no listing, no key rebuilt from
- * the task, no "latest session of this seat".
+ * the task, no "latest session of this worker".
  */
 import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";

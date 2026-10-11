@@ -1,5 +1,5 @@
 /**
- * TEAMS lists every seat the organization's inventory registers: the
+ * TEAMS lists every worker the organization's inventory registers: the
  * standard workers its files declare, each under its team.
  *
  * A fake Lab behind the clients: one session, one manifest that declares the
@@ -14,19 +14,19 @@ import { serveLab, type ServedLab } from "./helpers/serve-lab";
 const ORG = "acme";
 
 type Lab = {
-  seats: Array<{ id: string; kind: string }>;
+  workers: Array<{ id: string; kind: string }>;
   /** The mailbox rows; one mailbox when omitted. */
   mailboxes?: unknown[];
 };
 
 function clientsFor(lab: Lab): LabClients {
   const collections: Record<string, unknown[]> = {
-    seats: lab.seats,
+    workers: lab.workers,
     mailboxes: lab.mailboxes ?? [{ id: "eng.general", kind: "mailbox", members: [] }],
   };
   const manifest = {
     resources: [
-      { kind: "collection", ref: "seats", pattern: "inventory/seats/*", scope: "org", client: { state: { read: true } } },
+      { kind: "collection", ref: "workers", pattern: "inventory/workers/*", scope: "org", client: { state: { read: true } } },
       { kind: "collection", ref: "mailboxes", pattern: "inventory/mailboxes/*", scope: "org", client: { state: { read: true } } },
     ],
   };
@@ -56,16 +56,16 @@ async function teams(lab: Lab) {
 }
 
 describe("TEAMS", () => {
-  it("lists every registered seat, a dotless org seat under Staff", async () => {
+  it("lists every registered worker, a dotless org worker under Staff", async () => {
     const value = await teams({
-      seats: [
+      workers: [
         { id: "eng.lead", kind: "agent" },
         { id: "chief-of-staff", kind: "agent" },
         // A team named like the organization is a team like any other.
         { id: "acme.support", kind: "agent" },
       ],
     });
-    expect(value.seats.map((seat) => [seat.id, seat.team, seat.name])).toEqual([
+    expect(value.workers.map((worker) => [worker.id, worker.team, worker.name])).toEqual([
       ["eng.lead", "eng", "lead"],
       ["chief-of-staff", "Staff", "chief-of-staff"],
       ["acme.support", "acme", "support"],
@@ -89,8 +89,8 @@ describe("TEAMS and a real Lab", () => {
     if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("not loaded");
     expect(snapshot.orgId).toBe("ops");
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
-    const seats = snapshot.inventory.value.seats;
-    expect(seats.map((seat) => [seat.id, seat.team]).sort()).toEqual(
+    const workers = snapshot.inventory.value.workers;
+    expect(workers.map((worker) => [worker.id, worker.team]).sort()).toEqual(
       opened.tree.workers.map((worker) => [worker.id, "ops"]).sort(),
     );
   });

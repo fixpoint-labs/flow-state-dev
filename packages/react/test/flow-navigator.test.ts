@@ -64,12 +64,12 @@ function fakeServer(
 
 const sections = [
   { label: "Mailboxes", kinds: ["chat"] },
-  { label: "Seats", kinds: ["agent"] },
+  { label: "Workers", kinds: ["agent"] },
 ];
 
-const manySeats = [
+const manyWorkers = [
   entry("chat", "chat", "singleton"),
-  ...Array.from({ length: 40 }, (_, i) => entry(`seat-${i}`, "agent", "collection")),
+  ...Array.from({ length: 40 }, (_, i) => entry(`worker-${i}`, "agent", "collection")),
 ];
 
 function mount(server: ReturnType<typeof fakeServer>, props: Record<string, unknown> = {}) {
@@ -106,7 +106,7 @@ afterEach(() => {
 
 describe("FlowNavigator · what a click costs the server", () => {
   it("reads the flow list ONCE for two sections", async () => {
-    const server = fakeServer(manySeats, []);
+    const server = fakeServer(manyWorkers, []);
     mount(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
@@ -114,7 +114,7 @@ describe("FlowNavigator · what a click costs the server", () => {
   });
 
   it("makes ZERO session-list requests when a collection kind holding 40 instances opens", async () => {
-    const server = fakeServer(manySeats, []);
+    const server = fakeServer(manyWorkers, []);
     mount(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
@@ -128,19 +128,19 @@ describe("FlowNavigator · what a click costs the server", () => {
   });
 
   it("makes exactly one request when one instance opens", async () => {
-    const server = fakeServer(manySeats, []);
+    const server = fakeServer(manyWorkers, []);
     mount(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-7"));
+    await click(instanceRow("worker-7"));
 
     await waitFor(() => expect(server.listSessions).toHaveBeenCalledTimes(1));
-    expect(server.calls[0]).toEqual({ flowId: "seat-7", userId: "u" });
+    expect(server.calls[0]).toEqual({ flowId: "worker-7", userId: "u" });
   });
 
   it("treats a singleton kind row as the leaf — one request, no instance level", async () => {
-    const server = fakeServer(manySeats, []);
+    const server = fakeServer(manyWorkers, []);
     mount(server);
 
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
@@ -152,7 +152,7 @@ describe("FlowNavigator · what a click costs the server", () => {
   });
 
   it("does not re-read a leaf on every toggle", async () => {
-    const server = fakeServer(manySeats, []);
+    const server = fakeServer(manyWorkers, []);
     mount(server);
 
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
@@ -169,7 +169,7 @@ describe("FlowNavigator · what a click costs the server", () => {
 });
 
 describe("FlowNavigator · an ownerless session row (BR-12)", () => {
-  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  const flows = [entry("chat", "chat", "singleton"), entry("worker-a", "agent", "collection")];
 
   it("lists it under a singleton kind, whose address IS its kind", async () => {
     const server = fakeServer(flows, [{ id: "orphan", kind: "chat" }]);
@@ -187,7 +187,7 @@ describe("FlowNavigator · an ownerless session row (BR-12)", () => {
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
 
     // Not misfiled under a copy that does not own it. The promise is "never
     // misfiled", not "always reachable".
@@ -203,7 +203,7 @@ describe("FlowNavigator · sections", () => {
     mount(server);
 
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
-    expect(document.querySelector('[data-empty-section="Seats"]')).toBeTruthy();
+    expect(document.querySelector('[data-empty-section="Workers"]')).toBeTruthy();
     // Not an error, and Mailboxes still drew its kind.
     expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
   });
@@ -216,7 +216,7 @@ describe("FlowNavigator · sections", () => {
     );
     mount(server);
 
-    // In flight: "No seats on this server" is a claim about the server, and we
+    // In flight: "No workers on this server" is a claim about the server, and we
     // do not have one yet.
     await waitFor(() => expect(screen.queryAllByText("Loading flows…")).toHaveLength(2));
     expect(document.querySelector("[data-empty-section]")).toBeNull();
@@ -227,7 +227,7 @@ describe("FlowNavigator · sections", () => {
     });
 
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
-    expect(document.querySelector('[data-empty-section="Seats"]')).toBeTruthy();
+    expect(document.querySelector('[data-empty-section="Workers"]')).toBeTruthy();
   });
 
   it("surfaces a failed flow-list read with a retry, and retries on demand", async () => {
@@ -251,7 +251,7 @@ describe("FlowNavigator · sections", () => {
     await screen.findByRole("alert");
 
     // The failure is reported once, above, with its retry. Repeating it per
-    // section as "No seats on this server" states the registry is empty on the
+    // section as "No workers on this server" states the registry is empty on the
     // strength of a request that never came back.
     expect(document.querySelectorAll("[data-empty-section]")).toHaveLength(0);
     expect(screen.queryByText(/on this server/)).toBeNull();
@@ -289,8 +289,8 @@ describe("FlowNavigator · the rail at 256px, fully expanded (V6, BR-27)", () =>
   // padding values passes on a rail whose labels land in the wrong column.
   it("stays inside exactly one scroll container", async () => {
     const server = fakeServer(
-      [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")],
-      [{ id: "s1", kind: "agent", owner: "seat-a" }]
+      [entry("chat", "chat", "singleton"), entry("worker-a", "agent", "collection")],
+      [{ id: "s1", kind: "agent", owner: "worker-a" }]
     );
     const { container } = mount(server);
 
@@ -298,7 +298,7 @@ describe("FlowNavigator · the rail at 256px, fully expanded (V6, BR-27)", () =>
     // Expand everything — a collapsed rail proves nothing here.
     await click(kindRow("chat"));
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
 
     const scrollers = Array.from(container.querySelectorAll<HTMLElement>("*")).filter(
@@ -312,8 +312,8 @@ describe("FlowNavigator · the rail at 256px, fully expanded (V6, BR-27)", () =>
 describe("FlowNavigator · slots (BR-17)", () => {
   it("fills host affordances without publishing a class name", async () => {
     const server = fakeServer(
-      [entry("seat-a", "agent", "collection")],
-      [{ id: "s1", kind: "agent", owner: "seat-a" }]
+      [entry("worker-a", "agent", "collection")],
+      [{ id: "s1", kind: "agent", owner: "worker-a" }]
     );
     mount(server, {
       slots: {
@@ -327,10 +327,10 @@ describe("FlowNavigator · slots (BR-17)", () => {
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
 
     await waitFor(() =>
-      expect(document.querySelector('[data-toolbar="seat-a"]')).toBeTruthy()
+      expect(document.querySelector('[data-toolbar="worker-a"]')).toBeTruthy()
     );
     expect(document.querySelectorAll('[data-slot="kind"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-slot="instance"]')).toHaveLength(1);
@@ -354,7 +354,7 @@ describe("FlowNavigator · a host affordance is beside the row, not inside it", 
   // nowhere to go but up into the row handler.
   const flows = [
     entry("chat", "chat", "singleton"),
-    entry("seat-a", "agent", "collection"),
+    entry("worker-a", "agent", "collection"),
   ];
 
   const withAffordance = (server: ReturnType<typeof fakeServer>) =>
@@ -398,18 +398,18 @@ describe("FlowNavigator · a host affordance is beside the row, not inside it", 
   });
 
   it("keeps it out of the instance row's button, and its click off the row handler", async () => {
-    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "worker-a" }]);
     withAffordance(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
 
-    const trailing = trailingOf(instanceRow("seat-a"));
+    const trailing = trailingOf(instanceRow("worker-a"));
     expect(trailing.getAttribute("data-affordance")).toBe("instance");
-    expect(instanceRow("seat-a").contains(trailing)).toBe(false);
+    expect(instanceRow("worker-a").contains(trailing)).toBe(false);
 
     await click(trailing);
-    expect(instanceRow("seat-a").getAttribute("aria-expanded")).toBe("false");
+    expect(instanceRow("worker-a").getAttribute("aria-expanded")).toBe("false");
     // The row never opened, so no leaf read was made.
     expect(server.listSessions).toHaveBeenCalledTimes(0);
   });
@@ -444,12 +444,12 @@ describe("FlowNavigator · a host affordance is beside the row, not inside it", 
   });
 
   it("renders no interactive element inside another, anywhere in the rail", async () => {
-    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "worker-a" }]);
     withAffordance(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
 
     // Includes `leafToolbar`'s host, which draws on the leaf's row beside its
@@ -465,24 +465,24 @@ describe("FlowNavigator · selection", () => {
   it("reports the session AND the leaf it was listed under", async () => {
     const picked: unknown[] = [];
     const server = fakeServer(
-      [entry("seat-a", "agent", "collection")],
-      [{ id: "s1", kind: "agent", owner: "seat-a" }]
+      [entry("worker-a", "agent", "collection")],
+      [{ id: "s1", kind: "agent", owner: "worker-a" }]
     );
     mount(server, { onSelectSession: (id: string, leaf: unknown) => picked.push([id, leaf]) });
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await click(await screen.findByText("s1"));
 
     expect(picked).toEqual([
-      ["s1", { kind: "agent", address: "seat-a", cardinality: "collection" }],
+      ["s1", { kind: "agent", address: "worker-a", cardinality: "collection" }],
     ]);
   });
 });
 
 describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR-1 – BR-3, BR-7)", () => {
-  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  const flows = [entry("chat", "chat", "singleton"), entry("worker-a", "agent", "collection")];
 
   /** Counts its own mounts and unmounts, the way a host's toolbar effects would. */
   const lifecycle = { mounted: 0, unmounted: 0 };
@@ -513,32 +513,32 @@ describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR
   });
 
   it("draws it in the instance row's frame, after the row's own trailing content, never in the button", async () => {
-    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "worker-a" }]);
     withToolbar(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
     // Closed: the row's own copy is drawn, the leaf's actions are not.
-    expect(instanceRow("seat-a").parentElement!.querySelector("[data-copy]")).toBeTruthy();
+    expect(instanceRow("worker-a").parentElement!.querySelector("[data-copy]")).toBeTruthy();
     expect(document.querySelector("[data-toolbar]")).toBeNull();
 
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     const toolbar = await waitFor(() => {
-      const found = document.querySelector<HTMLElement>('[data-toolbar="seat-a"]');
+      const found = document.querySelector<HTMLElement>('[data-toolbar="worker-a"]');
       expect(found).toBeTruthy();
       return found!;
     });
-    const frame = instanceRow("seat-a").parentElement!;
+    const frame = instanceRow("worker-a").parentElement!;
     expect(frame.contains(toolbar)).toBe(true);
-    expect(instanceRow("seat-a").contains(toolbar)).toBe(false);
+    expect(instanceRow("worker-a").contains(toolbar)).toBe(false);
     // Nothing of the toolbar's is left under the row as a line of its own.
-    expect(document.querySelector('[data-leaf="seat-a"]')!.contains(toolbar)).toBe(false);
+    expect(document.querySelector('[data-leaf="worker-a"]')!.contains(toolbar)).toBe(false);
 
     // Tab order follows the DOM: the row, its own copy, then the leaf's actions.
     const copy = frame.querySelector("[data-copy]")!;
     const follows = (a: Node, b: Node) =>
       (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    expect(follows(instanceRow("seat-a"), copy)).toBe(true);
+    expect(follows(instanceRow("worker-a"), copy)).toBe(true);
     expect(follows(copy, toolbar)).toBe(true);
   });
 
@@ -566,11 +566,11 @@ describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await click(kindRow("chat"));
     await waitFor(() => expect(screen.getAllByText("No sessions yet")).toHaveLength(2));
 
-    for (const rowButton of [instanceRow("seat-a"), kindRow("chat")]) {
+    for (const rowButton of [instanceRow("worker-a"), kindRow("chat")]) {
       expect(Array.from(rowButton.parentElement!.children)).toEqual([rowButton]);
     }
   });
@@ -583,10 +583,10 @@ describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR
     await click(kindRow("agent"));
     expect(lifecycle).toEqual({ mounted: 0, unmounted: 0 });
 
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await waitFor(() => expect(lifecycle).toEqual({ mounted: 1, unmounted: 0 }));
 
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     expect(lifecycle).toEqual({ mounted: 1, unmounted: 1 });
     expect(document.querySelector("[data-toolbar]")).toBeNull();
   });
@@ -597,31 +597,31 @@ describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    const button = instanceRow("seat-a");
+    const button = instanceRow("worker-a");
     button.focus();
 
     await click(button);
-    await waitFor(() => expect(document.querySelector('[data-toolbar="seat-a"]')).toBeTruthy());
-    expect(instanceRow("seat-a")).toBe(button);
+    await waitFor(() => expect(document.querySelector('[data-toolbar="worker-a"]')).toBeTruthy());
+    expect(instanceRow("worker-a")).toBe(button);
     expect(document.activeElement).toBe(button);
     expect(server.listSessions).toHaveBeenCalledTimes(1);
 
     await click(button);
-    expect(instanceRow("seat-a")).toBe(button);
+    expect(instanceRow("worker-a")).toBe(button);
     expect(document.activeElement).toBe(button);
     expect(server.listSessions).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("FlowNavigator · an open leaf's detail sits on its own line under the row", () => {
-  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  const flows = [entry("chat", "chat", "singleton"), entry("worker-a", "agent", "collection")];
   const follows = (a: Node, b: Node) =>
     (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
   const detailOf = (address: string) =>
     document.querySelector<HTMLElement>(`[data-detail="${address}"]`);
 
   it("draws it under an open leaf's row, outside the row, and only while the leaf is open", async () => {
-    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "worker-a" }]);
     mount(server, {
       slots: {
         leafDetail: (leaf: { address: string; kind: string }) =>
@@ -632,21 +632,21 @@ describe("FlowNavigator · an open leaf's detail sits on its own line under the 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
     // Closed: nothing to show, and nothing mounted.
-    expect(detailOf("seat-a")).toBeNull();
+    expect(detailOf("worker-a")).toBeNull();
 
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     const detail = await waitFor(() => {
-      expect(detailOf("seat-a")).toBeTruthy();
-      return detailOf("seat-a")!;
+      expect(detailOf("worker-a")).toBeTruthy();
+      return detailOf("worker-a")!;
     });
     expect(detail.textContent).toBe("About agent");
     // Its own line: not in the row's frame, so the row stays one line, and
     // between the row and the leaf's sessions.
-    const frame = instanceRow("seat-a").parentElement!;
+    const frame = instanceRow("worker-a").parentElement!;
     expect(frame.contains(detail)).toBe(false);
     expect(follows(frame, detail)).toBe(true);
     await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
-    expect(follows(detail, document.querySelector('[data-leaf="seat-a"]')!)).toBe(true);
+    expect(follows(detail, document.querySelector('[data-leaf="worker-a"]')!)).toBe(true);
 
     // A singleton's kind row is its leaf, so its detail is drawn under that row.
     await click(kindRow("chat"));
@@ -657,8 +657,8 @@ describe("FlowNavigator · an open leaf's detail sits on its own line under the 
     expect(kindRow("chat").parentElement!.contains(chatDetail)).toBe(false);
     expect(follows(kindRow("chat").parentElement!, chatDetail)).toBe(true);
 
-    await click(instanceRow("seat-a"));
-    expect(detailOf("seat-a")).toBeNull();
+    await click(instanceRow("worker-a"));
+    expect(detailOf("worker-a")).toBeNull();
     expect(detailOf("chat")).toBeTruthy();
   });
 
@@ -668,14 +668,14 @@ describe("FlowNavigator · an open leaf's detail sits on its own line under the 
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await waitFor(() => expect(screen.queryByText("No sessions yet")).toBeTruthy());
 
     // The row's frame, then its sessions. Nothing between them.
-    const item = instanceRow("seat-a").closest("li")!;
+    const item = instanceRow("worker-a").closest("li")!;
     expect(Array.from(item.children)).toEqual([
-      instanceRow("seat-a").parentElement,
-      item.querySelector(':scope > [data-leaf="seat-a"]'),
+      instanceRow("worker-a").parentElement,
+      item.querySelector(':scope > [data-leaf="worker-a"]'),
     ]);
   });
 });
@@ -737,21 +737,21 @@ describe("FlowNavigator · tree lines (BR-26 – BR-28)", () => {
     const server = fakeServer(
       [
         entry("chat", "chat", "singleton"),
-        entry("seat-a", "agent", "collection"),
-        entry("seat-b", "agent", "collection"),
+        entry("worker-a", "agent", "collection"),
+        entry("worker-b", "agent", "collection"),
       ],
-      [{ id: "s1", kind: "agent", owner: "seat-a" }]
+      [{ id: "s1", kind: "agent", owner: "worker-a" }]
     );
     mount(server);
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     await click(kindRow("chat"));
     // An open leaf holding only a note still gets its line.
     await waitFor(() => expect(screen.queryByText("No sessions yet")).toBeTruthy());
 
-    for (const parent of [kindRow("agent"), instanceRow("seat-a"), kindRow("chat")]) {
+    for (const parent of [kindRow("agent"), instanceRow("worker-a"), kindRow("chat")]) {
       const guides = guidesUnder(parent);
       expect(guides).toHaveLength(1);
       // Out of flow and inert, so drawing it moves no row and takes no click.
@@ -759,12 +759,12 @@ describe("FlowNavigator · tree lines (BR-26 – BR-28)", () => {
       expect(guides[0]!.style.pointerEvents).toBe("none");
       expect(guides[0]!.style.borderLeftStyle).toBe("dashed");
     }
-    expect(guidesUnder(instanceRow("seat-b"))).toHaveLength(0);
+    expect(guidesUnder(instanceRow("worker-b"))).toHaveLength(0);
   });
 });
 
 describe("FlowNavigator · row actions show on hover or focus (BR-29 – BR-34)", () => {
-  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  const flows = [entry("chat", "chat", "singleton"), entry("worker-a", "agent", "collection")];
   // The area holding the row's actions: the parent of what the host put there.
   const trailingOf = (rowButton: HTMLElement) =>
     rowButton.parentElement!.querySelector<HTMLElement>("[data-affordance]")!.parentElement!;
@@ -791,17 +791,17 @@ describe("FlowNavigator · row actions show on hover or focus (BR-29 – BR-34)"
 
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     await click(kindRow("agent"));
-    await click(instanceRow("seat-a"));
+    await click(instanceRow("worker-a"));
     // Open is not enough: an open leaf's row stays quiet until pointed at.
-    expect(opacity(instanceRow("seat-a"))).toBe("0");
+    expect(opacity(instanceRow("worker-a"))).toBe("0");
     expect(opacity(kindRow("agent"))).toBe("0");
 
     const calls = rowTrailing.mock.calls.length;
-    const frame = instanceRow("seat-a").parentElement!;
+    const frame = instanceRow("worker-a").parentElement!;
     await act(async () => {
       fireEvent.mouseEnter(frame);
     });
-    expect(opacity(instanceRow("seat-a"))).toBe("1");
+    expect(opacity(instanceRow("worker-a"))).toBe("1");
     expect(opacity(kindRow("agent"))).toBe("0");
     // Only the pointed-at row re-rendered: no slot was asked for anything again.
     expect(rowTrailing.mock.calls.length).toBe(calls);
@@ -809,7 +809,7 @@ describe("FlowNavigator · row actions show on hover or focus (BR-29 – BR-34)"
     await act(async () => {
       fireEvent.mouseLeave(frame);
     });
-    expect(opacity(instanceRow("seat-a"))).toBe("0");
+    expect(opacity(instanceRow("worker-a"))).toBe("0");
   });
 
   it("shows them while focus is anywhere in the row, and hides them without removing them", async () => {

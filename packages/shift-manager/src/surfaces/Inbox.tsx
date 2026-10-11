@@ -1,5 +1,5 @@
 /**
- * Inbox (S10): every pending approval and question in the seat sessions the
+ * Inbox (S10): every pending approval and question in the worker sessions the
  * Lab lists for this person, dispatch runs included, oldest first (BR-24).
  * A list and a detail pane; the detail draws the ask with the same card a
  * workstream's Stream uses, and answers it through the same resume (BR-25).
@@ -12,7 +12,7 @@
  * the ask's session.
  *
  * Under the detail, a reply box sends a line into the session the ask sits in,
- * through the door of the seat that owns that session (BR-21). A seat whose
+ * through the door of the worker that owns that session (BR-21). A worker whose
  * kind has no door gets the box disabled, saying so; Approve and Reject are
  * untouched (BR-22).
  */
@@ -120,7 +120,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                         {ask.item.message ?? "(no message)"}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {ask.seatId ?? "unknown seat"} · task — ·{" "}
+                        {ask.workerId ?? "unknown worker"} · task — ·{" "}
                         <span data-testid="inbox-item-workstream">{streams.length === 0 ? "no workstream" : streams.map((w) => w.id).join(", ")}</span>
                       </Meta>
                     </span>
@@ -142,7 +142,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
             <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6">
               <div className="flex max-w-[660px] flex-col gap-[18px]">
                 <Meta className="text-muted-foreground" testId="inbox-detail-head">
-                  {selected.seatId ?? "unknown seat"} asked, in session {selected.sessionId}
+                  {selected.workerId ?? "unknown worker"} asked, in session {selected.sessionId}
                 </Meta>
                 <ScreenTitle scale="detail" testId="inbox-detail-title">
                   {selected.item.message ?? "(no message)"}
@@ -271,8 +271,8 @@ function replyRoute(ask: Ask, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: 
   // A session written before instance ownership names no flow, so no door.
   if (ask.flowId === null) return { blocked: ask.unanswerable ?? "This session names no flow to send through." };
   if (!snapshot.inventory.ok) return { blocked: snapshot.inventory.failure.message };
-  const door = doorOf(rosterOf(snapshot).seats, ask.flowId);
-  if (door === null) return { blocked: `${ask.seatId ?? ask.flowId} ${gaps.turn.replyNoDoor}` };
+  const door = doorOf(rosterOf(snapshot).workers, ask.flowId);
+  if (door === null) return { blocked: `${ask.workerId ?? ask.flowId} ${gaps.turn.replyNoDoor}` };
   return { blocked: null, flowId: ask.flowId, door };
 }
 
@@ -295,8 +295,8 @@ function Reply({
     <div>
       <TurnComposer
         testId="inbox-reply"
-        label={`Reply to ${ask.seatId ?? "this worker"}`}
-        placeholder={`Reply to ${ask.seatId ?? "this worker"}…`}
+        label={`Reply to ${ask.workerId ?? "this worker"}`}
+        placeholder={`Reply to ${ask.workerId ?? "this worker"}…`}
         blocked={route.blocked}
         send={async (message, held) => {
           // The box is disabled while blocked; a send that got here anyway

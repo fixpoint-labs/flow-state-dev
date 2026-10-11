@@ -135,7 +135,7 @@ export interface ReadResourcesDirectoryResult {
  *
  * A worker's folder is an ADDRESS, not a visibility boundary. Its documents are
  * minted under a worker-qualified ref and installed on the worker kind's flow
- * like any other; what makes one private to the seat that owns it is
+ * like any other; what makes one private to the worker that owns it is
  * `flowIsolation: true` in that document's own frontmatter, which this reader
  * carries verbatim and never inspects.
  *
@@ -144,7 +144,7 @@ export interface ReadResourcesDirectoryResult {
  * walk somewhere else entirely, is a wiring mistake, not a per-document one.
  *
  * A root with neither `org/` nor `teams/` is an empty result: an app may
- * declare no documents in files, and a team, or a seat, may have no
+ * declare no documents in files, and a team, or a worker, may have no
  * `resources/` folder.
  * Everything else that goes wrong lands in `errors`, so one bad file never
  * costs an app its other documents.

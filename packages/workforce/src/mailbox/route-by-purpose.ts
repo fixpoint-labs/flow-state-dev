@@ -11,13 +11,13 @@
  *    itself held, or whose route is not recorded yet, holds nothing.
  * 2. **One evaluator call** (block name `mailbox-route`): which member should
  *    answer? It reads the mailbox's last lines and the post, and chooses among
- *    the mailbox's members whose seat hears posts and this caller can reach
+ *    the mailbox's members whose worker hears posts and this caller can reach
  *    (the wake's own test), each described by its `WORKER.md` `description:`.
- *    A seat with no description (a runtime hire has none) is not a choice; it
+ *    A worker with no description (a runtime hire has none) is not a choice; it
  *    can still be the fallback, and be held.
  * 3. **The fallback.** The call failed, or answered with something that is not
  *    an option: the mailbox's `routing: fallback:` member takes the post. If the
- *    caller cannot reach the fallback's seat either, nobody does.
+ *    caller cannot reach the fallback's worker either, nobody does.
  *
  * Only the evaluator call's own failure reaches the fallback; any other error
  * fails the fan-out like any other, and so does a cancel until the route is
@@ -42,7 +42,7 @@ import { choice, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { bestFitEvaluationFailed, needsBestFitCall, placeBestFit, type BestFitMiss } from "../best-fit";
-import { seatDescription } from "../seat-description";
+import { workerDescription } from "../worker-description";
 import type { WorkerInstallation } from "../workers/installation";
 import { runsWorkersOf } from "../workers/register";
 import { boundMailbox } from "./mailbox-flow";
@@ -59,7 +59,7 @@ import {
   type MailboxRouteRecord,
   type RouteDecision
 } from "./mailbox-route";
-import { hearingSeatsById, reachableSeat } from "./wake-member-seats";
+import { hearingWorkersById, reachableWorker } from "./wake-member-workers";
 
 /** Options for {@link routeByPurpose}. */
 export interface RouteByPurposeOptions {
@@ -85,7 +85,7 @@ const ROUTE_QUESTION =
 
 /** Everything the decision is made from: the post's case, and who this caller can reach. */
 const routeCaseSchema = routeRequestSchema.extend({
-  /** The members this caller can route to: each has a seat that hears posts and the caller can reach. */
+  /** The members this caller can route to: each has a worker that hears posts and the caller can reach. */
   reachable: z.array(z.string()),
   /** Member id → its description, for each reachable member that has one: the evaluator's choices. */
   options: z.record(z.string()),
@@ -101,25 +101,25 @@ function said(line: { author?: string; principal: string; body: string }) {
 }
 
 /**
- * Build a mailbox kind's route from the seats the host hired.
+ * Build a mailbox kind's route from the workers the host hired.
  *
- * @param seats The seats `hireWorkforce` returned, the same ones passed to
- *   `wakeMemberSeats`. Only those that hear posts can be routed to.
+ * @param workers The workers `hireWorkforce` returned, the same ones passed to
+ *   `wakeMemberWorkers`. Only those that hear posts can be routed to.
  * @param options `model`: the evaluation model the one call runs on. Required;
  *   the package names no default.
  * @returns The route, for `defineMailboxFlow({ route })`.
  */
-export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByPurposeOptions): MailboxRoute {
+export function routeByPurpose(workers: readonly FlowInstance[], options: RouteByPurposeOptions): MailboxRoute {
   if (options?.model === undefined) {
     throw new Error(
       "routeByPurpose needs a `model`: the evaluation model the route's one call runs on. " +
         "The package names no default."
     );
   }
-  const hearing = hearingSeatsById(seats, options.installation);
-  /** A member's description: its standard worker's on a shared copy, else the minted seat's. */
-  const describe = (member: string, seat: FlowInstance): string | undefined => {
-    if (options.installation === undefined || !runsWorkersOf(seat, options.installation)) return seatDescription(seat);
+  const hearing = hearingWorkersById(workers, options.installation);
+  /** A member's description: its standard worker's on a shared copy, else the minted worker's. */
+  const describe = (member: string, worker: FlowInstance): string | undefined => {
+    if (options.installation === undefined || !runsWorkersOf(worker, options.installation)) return workerDescription(worker);
     const described = options.installation.standardWorker(member)?.declared.description;
     return typeof described === "string" && described.trim() !== "" ? described : undefined;
   };
@@ -132,14 +132,14 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     execute: (request, ctx): RouteCase => {
       // Reachable members can be held and can be the fallback. Only those with
       // a description are the evaluator's options: it picks by purpose, and a
-      // seat hired at runtime has none to pick by.
+      // worker hired at runtime has none to pick by.
       const reachable: string[] = [];
       const options: Record<string, string> = {};
       for (const member of boundMailbox(ctx.session.state)?.members ?? []) {
-        const seat = reachableSeat(hearing.get(member) ?? [], ctx);
-        if (seat === undefined) continue;
+        const worker = reachableWorker(hearing.get(member) ?? [], ctx);
+        if (worker === undefined) continue;
         reachable.push(member);
-        const description = describe(member, seat);
+        const description = describe(member, worker);
         if (description !== undefined) options[member] = description;
       }
       const held = request.holder;
@@ -238,7 +238,7 @@ function ladderCase(routeCase: RouteCase) {
 function missReason(miss: BestFitMiss): string {
   switch (miss.kind) {
     case "none-reachable":
-      return "no member of the mailbox has a seat this caller can reach that hears posts";
+      return "no member of the mailbox has a worker this caller can reach that hears posts";
     case "none-described":
       return "no member this caller can reach has a description to route by";
     case "evaluation-failed":
@@ -266,6 +266,6 @@ function place(
   if (placed.by === "fallback") return { by: "fallback", member: placed.member, reason };
   return {
     by: "failed",
-    reason: `${reason}; the fallback "${routeCase.fallback}" has no seat this caller can reach that hears posts`
+    reason: `${reason}; the fallback "${routeCase.fallback}" has no worker this caller can reach that hears posts`
   };
 }

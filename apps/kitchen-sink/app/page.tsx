@@ -58,7 +58,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
-import { COORDINATOR_KINDS, defaultConversation, isCoordinatorKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { COORDINATOR_KINDS, defaultConversation, isCoordinatorKind, WORKER_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
@@ -80,7 +80,7 @@ type MobilePanel = "chat" | "artifacts";
  * started from the roster panel's "Talk", which names its worker. Set this to
  * `false` to ship the rail with coordinators only.
  */
-const SHOW_SEATS_IN_RAIL = true;
+const SHOW_WORKERS_IN_RAIL = true;
 
 /**
  * The `fetch` the roster and the person's conversations with workers are read
@@ -99,7 +99,7 @@ const panelFetch: ClientFetch = (input, init) => fetch(input, init);
  */
 const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
   { label: "Coordinators", kinds: COORDINATOR_KINDS },
-  ...(SHOW_SEATS_IN_RAIL ? [{ label: "Workers", kinds: SEAT_KINDS }] : []),
+  ...(SHOW_WORKERS_IN_RAIL ? [{ label: "Workers", kinds: WORKER_KINDS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
 ];
 
@@ -234,7 +234,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     autoPlayTTS: ttsEnabled,
   });
 
-  // A coordinator's or a seat's session, when one is picked in the rail. Its
+  // A coordinator's or a worker's session, when one is picked in the rail. Its
   // panel has a composer of its own, which calls the picked flow's own action
   // on this session; the assistant's composer stays wired to the assistant.
   // It follows the whole session (`live`), because others write here too: a
@@ -604,7 +604,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         </div>
 
         {/* The model named here is the assistant's own preference, and only the
-            assistant answers with it. A picked coordinator or seat answers through
+            assistant answers with it. A picked coordinator or worker answers through
             its model intents (an `FSDEV_*` override lands there), and each reply
             carries the model that produced it, so the bar names none there. */}
         <ClientDataBar

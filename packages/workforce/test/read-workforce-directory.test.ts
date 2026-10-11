@@ -335,7 +335,7 @@ Body.
 
     // The third contract key, refused at this door for the reason the other two
     // are: a hand-built roster never passes the loader, and a file that reaches
-    // a caller carrying this key is a file whose seat runs on team
+    // a caller carrying this key is a file whose worker runs on team
     // instructions its team never wrote. THREE doors — this one, hire, and the
     // team's own TEAM.md — one constant, one wording.
     it("refuses a worker file that declares the team-instructions key", async () => {
@@ -364,11 +364,11 @@ Body.
     // the one an author's file meets first — and because a key that is refused
     // at one door and accepted at the other is how the same file gets two
     // answers depending on who read it.
-    it("refuses a worker file that declares the seat-tools key", async () => {
+    it("refuses a worker file that declares the worker-tools key", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({
           "teams/engineering/workers/intake/WORKER.md":
-            "---\ndescription: The front door.\nseatTools: []\n---\nBody.\n",
+            "---\ndescription: The front door.\nworkerTools: []\n---\nBody.\n",
         }),
       );
 
@@ -379,17 +379,17 @@ Body.
       const { message } = errors[0]!.error;
       expect(message).toContain("WORKER.md");
       expect(message).toContain("intake/");
-      expect(message).toContain("seatTools");
+      expect(message).toContain("workerTools");
       expect(message).toContain("not a setting a worker declares");
       expect(message).toContain("tools:");
     });
 
     // The fifth, for the fourth's reason.
-    it("refuses a worker file that declares the seat-packages key", async () => {
+    it("refuses a worker file that declares the worker-packages key", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({
           "teams/engineering/workers/intake/WORKER.md":
-            "---\ndescription: The front door.\nseatPackages: []\n---\nBody.\n",
+            "---\ndescription: The front door.\nworkerPackages: []\n---\nBody.\n",
         }),
       );
 
@@ -397,7 +397,7 @@ Body.
       expect(errors.map((e) => e.path)).toEqual(["teams/engineering/workers/intake"]);
       const { message } = errors[0]!.error;
       expect(message).toContain("intake/");
-      expect(message).toContain("seatPackages");
+      expect(message).toContain("workerPackages");
       expect(message).toContain("not a setting a worker declares");
     });
 
@@ -518,7 +518,7 @@ Body.
 
     it("reports a worker slot it cannot stat instead of dropping it", async () => {
       // The slot exists — `readdir` lists it — but `lstat` fails for a reason
-      // that is not absence. Treating that as "absent" takes the seat out of
+      // that is not absence. Treating that as "absent" takes the worker out of
       // the roster with `errors` empty, which the caller's fatal-on-errors
       // guard cannot see.
       //
@@ -627,7 +627,7 @@ describe("the loader's boundary", () => {
       .filter((f) => f.endsWith(".ts"))
       .map((f) => readFileSync(join(dir, f), "utf8"));
 
-    // The defect this loader exists to avoid: handing back a species the seat
+    // The defect this loader exists to avoid: handing back a species the worker
     // factory owns. Asserted on the module's imports rather than left to prose,
     // because a return type can drift back one helpful commit at a time.
     for (const source of sources) {

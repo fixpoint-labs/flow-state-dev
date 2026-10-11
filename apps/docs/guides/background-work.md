@@ -96,7 +96,7 @@ Having its own session is also what it costs you. The run keeps its own state, i
 
 For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToLineage` and the conversation and every session under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
-Dispatching is declared in the flow. A `dispatcher()` block sends a single piece of work. A task board seat holding a dispatcher sends every row it claims. There is no client call that starts either one.
+Dispatching is declared in the flow. A `dispatcher()` block sends a single piece of work. A task board worker holding a dispatcher sends every row it claims. There is no client call that starts either one.
 
 ### From a block: `dispatcher()`
 
@@ -131,9 +131,9 @@ Run the dispatcher and it sends one request to the `investigate` entry and retur
 
 Read next: **[Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow)** for the `session` policies, the return shape, and every refusal by name.
 
-### From a task board seat
+### From a task board worker
 
-A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the seat's position instead and the board hands each claimed row off to a dispatch run. How many runs that is depends on the seat's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the seat names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
+A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the worker's position instead and the board hands each claimed row off to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -167,13 +167,13 @@ export default defineFlow({
 })();
 ```
 
-The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline seat would get, and settles the row itself. Which session a row lands in is the seat's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
+The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
 
 Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
 
-A board with a seat that hands off needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
+A board with a worker that hands off needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
 
-Read next: **[Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
+Read next: **[Workers that hand off](/docs/orchestration/task-board#workers-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
 Handing off comes with bounds:
 

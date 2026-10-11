@@ -7,16 +7,16 @@ profile so the package never imports from the goal corpus; the checks reach in
 here instead.
 
 Two halves of one claim have each been proved and had never met. The pentest lab
-shows that a post reaches seats declared in Markdown — but every seat in it
+shows that a post reaches workers declared in Markdown — but every worker in it
 produces a line of text. `labs/conductor` shows that a board row becomes a
 supervised coding run with its own checkout and a verdict read before the row
 settles — but the thing that row reaches is a hand-written TypeScript flow, not a
-seat that came out of a folder.
+worker that came out of a folder.
 
 This runs the join. One tree of Markdown, pointed at once: a row filed by one
-declared seat wakes a **different** declared seat, in a session of its own on
-its flow's one copy, into a supervised coding run whose prompt was built out of that seat's own files. A
-third seat, declared on the same kind, is never reached.
+declared worker wakes a **different** declared worker, in a session of its own on
+its flow's one copy, into a supervised coding run whose prompt was built out of that worker's own files. A
+third worker, declared on the same kind, is never reached.
 
 Seven checks drive it. The first two differ by **one expression** — the harness
 slot; the third adds the two ends of the path neither of them reaches:
@@ -27,7 +27,7 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`goals/devforce-lab/it-commits-from-the-seats-own-file/`](../../../../goals/devforce-lab/it-commits-from-the-seats-own-file/) | The honesty check. A real coding agent in that same slot, and the one leg a stub cannot reach — a commit the base ref does not have. |
 | [`goals/devforce-lab/it-ships-an-artifact-a-person-can-open/`](../../../../goals/devforce-lab/it-ships-an-artifact-a-person-can-open/) | The product check. A **post** in a workstream the EM leads is what starts the work, and the work is published to an address that outlives the run and judged against a condition the brief stated first. |
 | [`goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/`](../../../../goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/) | The board check. A person opens Storefront's `feature` workstream with the EM as its lead; a row the EM files there ends as one completed row on that workstream session's board, which its owner reads and everyone else in the organization is refused. No model. |
-| [`goals/devforce-lab/it-waits-for-a-person-before-it-files/`](../../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
+| [`goals/devforce-lab/it-waits-for-a-person-before-it-files/`](../../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM worker asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
 | [`goals/devforce-lab/it-codes-in-the-projects-repository/`](../../../../goals/devforce-lab/it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
 | [`goals/devforce-lab/it-answers-a-conversations-task/`](../../../../goals/devforce-lab/it-answers-a-conversations-task/) | The conversation check. A coordinator files a task for the coder from a conversation: the coder answers it from the right project's code in a checkout of its own, the conversation hears it once, and a task that can't be done is heard failing, with Jev judging the answer against the goal. Scripted legs, and a real-model leg when a key serves it. |
 | [`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`](../../../../goals/devforce-lab/it-names-the-project-a-coders-task-works-in/) | The project-list check. Asked to have the coder look at "our repo", the chief of staff reads the person's projects and files the task for the one with a repository without asking; with two, it asks, naming both; a project the person isn't a member of never appears. Real model. |
@@ -49,8 +49,8 @@ workforce/
     resources/projects.ts                          the projects collection
   teams/
     eng/
-      resources/feature-brief.md                   the working seat's brief
-      skills/commit-style/SKILL.md                 every eng seat holds it
+      resources/feature-brief.md                   the working worker's brief
+      skills/commit-style/SKILL.md                 every eng worker holds it
       workers/em/WORKER.md                         flow: em      — names no harness; delegates: the coder and the reviewer
       workers/coder/WORKER.md                      flow: coder
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
@@ -88,7 +88,7 @@ no opinion at that spot — not because a convention is missing.
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 
-`harness-stub.mts`, `harness.mts`, `phase.mts` and `seat-config.mts` are
+`harness-stub.mts`, `harness.mts`, `phase.mts` and `worker-config.mts` are
 supporting parts of those.
 
 ## What it works around
@@ -113,7 +113,7 @@ The EM worker now has a third door beside `file` and a person's line in a workst
 approval before it files, and files only if a person approves. Deny files nothing and says so.
 
 The door is off unless the host asks for it. `openLab` takes the feature to ask about, turns on
-durable execution, and raises the ask once in the EM seat's own session, as the lab's person.
+durable execution, and raises the ask once in the EM worker's own session, as the lab's person.
 Opening again over the same store finds the earlier ask, answered or not, and raises nothing;
 a denied feature stays denied until the store is fresh. The other checks don't ask for
 it, so they run exactly as before.
@@ -126,7 +126,7 @@ const lab = await openLab({
   stores,
   harness: stub.slot,
   workspace,
-  coderSeatId,
+  coderWorkerId,
   ask: { issue: "search-bar", goal: "Add a search bar to the header" },
 });
 // The EM's session now holds one pending approval. Answer it through

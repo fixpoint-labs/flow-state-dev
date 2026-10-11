@@ -1,5 +1,5 @@
 /**
- * The seat factory: a worker record becomes one addressable, configured copy of
+ * The worker factory: a worker record becomes one addressable, configured copy of
  * a flow the app already defined.
  *
  * The design fact the rest of this file follows from: the flow's own closed
@@ -41,15 +41,15 @@ import {
   PACKAGES_KEY,
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
-  REFUSED_SEAT_ID_KEY_MESSAGE,
-  REFUSED_SEAT_PACKAGES_KEY_MESSAGE,
-  REFUSED_SEAT_SKILLS_KEY_MESSAGE,
-  REFUSED_SEAT_TOOLS_KEY_MESSAGE,
+  REFUSED_WORKER_ID_KEY_MESSAGE,
+  REFUSED_WORKER_PACKAGES_KEY_MESSAGE,
+  REFUSED_WORKER_SKILLS_KEY_MESSAGE,
+  REFUSED_WORKER_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
-  SEAT_ID_KEY,
-  SEAT_PACKAGES_KEY,
-  SEAT_SKILLS_KEY,
-  SEAT_TOOLS_KEY,
+  WORKER_ID_KEY,
+  WORKER_PACKAGES_KEY,
+  WORKER_SKILLS_KEY,
+  WORKER_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
   colocatedResourceMessage,
   oneNameMessage,
@@ -58,19 +58,19 @@ import {
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
 import { readDeclaredFlow } from "./declared-flow";
 import {
-  SEAT_RESOURCES_KEY,
-  parseSeatResources,
-  resolveSeatResources,
-  verifySeatNarrowing,
-  type SeatResourceGrant
-} from "./seat-resources";
+  WORKER_RESOURCES_KEY,
+  parseWorkerResources,
+  resolveWorkerResources,
+  verifyWorkerNarrowing,
+  type WorkerResourceGrant
+} from "./worker-resources";
 import {
-  SEAT_REFERENCES_KEY,
+  WORKER_REFERENCES_KEY,
   applyReferenceWall,
-  verifySeatReferenceWall
-} from "./seat-references";
-import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
-import { recordSeatDescription } from "./seat-description";
+  verifyWorkerReferenceWall
+} from "./worker-references";
+import { heldPackageProblems, resolveHeldPackages } from "./worker-packages";
+import { recordWorkerDescription } from "./worker-description";
 import { workerFlowProblems } from "./worker-flow-contract";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-flow";
 
@@ -79,15 +79,15 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-fl
  *
  * `resources`, `references` and `packages` join them rather than travelling to
  * the kind as settings: each is an instruction to THIS step about what to mint
- * the seat with, not a value any kind declares. A kind that happened to declare a
+ * the worker with, not a value any kind declares. A kind that happened to declare a
  * setting of either name no longer receives an authored one — both keys are
- * public and pinned here, and a seat file cannot mean two things at once.
+ * public and pinned here, and a worker file cannot mean two things at once.
  */
 const RESERVED_KEYS = [
   "flow",
   "description",
-  SEAT_RESOURCES_KEY,
-  SEAT_REFERENCES_KEY,
+  WORKER_RESOURCES_KEY,
+  WORKER_REFERENCES_KEY,
   PACKAGES_KEY
 ] as const;
 
@@ -282,36 +282,36 @@ export interface HireOptions {
   workerFlows?: Record<string, WorkerFlowEntry>;
 
   /**
-   * The blocks each seat's own folders REGISTER, keyed by worker id and then by
-   * block name — `fsdev gen`'s `seatBlocks` export, passed straight through.
+   * The blocks each worker's own folders REGISTER, keyed by worker id and then by
+   * block name — `fsdev gen`'s `workerBlocks` export, passed straight through.
    *
    * **Registration, not a grant.** An entry here makes that name resolvable by
-   * that seat; the seat's `tools:` is still what decides whether it may call
+   * that worker; the worker's `tools:` is still what decides whether it may call
    * it, and a registered block the file never names is not on the model's
    * toolset. A name resolves worker folder → team folder → the app's catalog,
    * first match wins; the first two arrive here already collapsed by the
    * generated map, and this step is where the last hop happens.
    *
-   * Per seat and never installed on the kind: a kind's capabilities and
-   * resources are shared by every seat of it, so one worker's folder installed
+   * Per worker and never installed on the kind: a kind's capabilities and
+   * resources are shared by every worker of it, so one worker's folder installed
    * there would change every sibling. That is why a block here may USE a store
    * the kind has and may not DECLARE one — see
    * {@link colocatedResourceMessage}.
    *
-   * Optional. Omitted, every seat hires exactly as it did before this existed.
+   * Optional. Omitted, every worker hires exactly as it did before this existed.
    */
-  seatBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
+  workerBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
 
   /**
    * The blocks each package carries, keyed by the package's address and then
    * by block name — `fsdev gen`'s `packageBlocks` export, passed straight
    * through.
    *
-   * A package's blocks reach only the seats that HOLD the package: the ones
+   * A package's blocks reach only the workers that HOLD the package: the ones
    * with it in their own `packages/` folder, and the ones whose `packages:`
    * line takes it from their team's or the org's library. They are never put
-   * in a kind's catalog, so no other seat can name them. A seat holding a
-   * package with no `tools:` line can call every block in it; a seat that
+   * in a kind's catalog, so no other worker can name them. A worker holding a
+   * package with no `tools:` line can call every block in it; a worker that
    * writes a `tools:` line can call the ones it lists.
    *
    * Optional. Omitted, a held package brings its instructions and no tools.
@@ -328,7 +328,7 @@ export interface HireOptions {
    * process: a later hire that finds the same board unattended says nothing.
    *
    * **A warning, never a refusal**, and the reason is in the evidence rather
-   * than in a preference: a seat may legitimately live in another process, and
+   * than in a preference: a worker may legitimately live in another process, and
    * this check cannot see it. So a missing declaration is *probably* a mistake
    * and cannot be proved to be one, which is exactly the shape a warning is
    * for.
@@ -343,7 +343,7 @@ export interface HireOptions {
    * The documents this app declared, keyed by ref — the map
    * `resourcesFromDocs(documents)` returns, handed over unchanged.
    *
-   * **Handed over, never worked out.** A seat's `resources:` grant narrows the
+   * **Handed over, never worked out.** A worker's `resources:` grant narrows the
    * DOCUMENTS in the map its kind declares at flow level and leaves the rest of
    * that map — the app's boards, its stores — standing. Telling a document from
    * a board is what this answers, and the app is the only party that knows:
@@ -354,9 +354,9 @@ export interface HireOptions {
    * The same list the app already spreads into its own flow-level map, so there
    * is one catalog and not a second table describing the same documents.
    *
-   * Optional, and consulted only for a seat that declares `resources:`. A
-   * roster where no seat does hires exactly as it did before this existed. A
-   * seat that DOES declare one while this is absent refuses, rather than
+   * Optional, and consulted only for a worker that declares `resources:`. A
+   * roster where no worker does hires exactly as it did before this existed. A
+   * worker that DOES declare one while this is absent refuses, rather than
    * resolving every ref to nothing — a lockout that reads like a typo.
    */
   documents?: DeclaredResources;
@@ -367,11 +367,11 @@ export interface HireOptions {
    *
    * **Handed over for the reason `documents` is, and used for more.** It says
    * which entries on a kind's map are references, which is what the derived
-   * tree wall narrows: a seat reaches the references at or above its place in
-   * the tree, and no others. That wall applies whether or not the seat declares
+   * tree wall narrows: a worker reaches the references at or above its place in
+   * the tree, and no others. That wall applies whether or not the worker declares
    * `references:` — the key narrows within it, and can never widen past it.
    *
-   * Optional. Absent, no entry is a reference, no wall applies, and every seat
+   * Optional. Absent, no entry is a reference, no wall applies, and every worker
    * is minted exactly as it was before this existed.
    *
    * A ref may not appear in both this map and {@link HireOptions.documents}:
@@ -406,7 +406,7 @@ type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
  *   means "a flow that declares no settings". A configured kind is rejected —
  *   *Type 'ZodObject<…>' is not assignable to type 'undefined'*.
  * - `FlowOf<ZodTypeAny>` alone flips that failure onto the settings-less kind a
- *   thin seat is hired into — *Type 'undefined' is not assignable to type
+ *   thin worker is hired into — *Type 'undefined' is not assignable to type
  *   'ZodTypeAny'*.
  */
 type AnyFlowType = FlowOf<ZodTypeAny> | FlowOf<undefined>;
@@ -444,20 +444,20 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Why one seat's own block registry cannot be used as written — every reason,
+ * Why one worker's own block registry cannot be used as written — every reason,
  * or an empty list.
  *
- * Checked against the REGISTRY rather than against the names the seat declared,
+ * Checked against the REGISTRY rather than against the names the worker declared,
  * on purpose: registering a name is a promise that the name resolves to
  * something callable, so a registry the framework cannot keep that promise over
- * is broken whether or not this particular seat happens to name it. Waiting
+ * is broken whether or not this particular worker happens to name it. Waiting
  * until it is named would make the same tree pass or fail depending on one line
  * of a Markdown file.
  *
  * Collected, not thrown, so one run names every problem — the bargain the rest
  * of this step makes.
  */
-function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>): string[] {
+function workerBlockProblems(registry: Record<string, BlockDefinition<any, any>>): string[] {
   const problems: string[] = [];
   for (const [key, block] of Object.entries(registry)) {
     const blockName = (block as { name?: unknown }).name;
@@ -472,12 +472,12 @@ function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>):
 }
 
 /**
- * Split a seat's declared tool names by where each one resolved.
+ * Split a worker's declared tool names by where each one resolved.
  *
- * The seat's own registry is nearer than the app's catalog, so it answers first
+ * The worker's own registry is nearer than the app's catalog, so it answers first
  * — the worker → team → org precedence, with the first two already collapsed
  * onto the registry. What resolved there becomes a live block on
- * {@link SEAT_TOOLS_KEY}; what did not stays a NAME on `tools`, which is what
+ * {@link WORKER_TOOLS_KEY}; what did not stays a NAME on `tools`, which is what
  * the kind checks its catalog against.
  *
  * A `tools:` that is not an array of strings is left exactly as the author
@@ -487,17 +487,17 @@ function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>):
 function resolveDeclaredTools(
   declared: unknown,
   registry: Record<string, BlockDefinition<any, any>>
-): { catalogNames: unknown; seatTools: Array<BlockDefinition<any, any>> } {
+): { catalogNames: unknown; workerTools: Array<BlockDefinition<any, any>> } {
   if (!Array.isArray(declared) || declared.some((name) => typeof name !== "string")) {
-    return { catalogNames: declared, seatTools: [] };
+    return { catalogNames: declared, workerTools: [] };
   }
   const catalogNames: string[] = [];
-  const seatTools: Array<BlockDefinition<any, any>> = [];
+  const workerTools: Array<BlockDefinition<any, any>> = [];
   for (const name of declared as string[]) {
-    if (Object.hasOwn(registry, name)) seatTools.push(registry[name]!);
+    if (Object.hasOwn(registry, name)) workerTools.push(registry[name]!);
     else catalogNames.push(name);
   }
-  return { catalogNames, seatTools };
+  return { catalogNames, workerTools };
 }
 
 /**
@@ -513,17 +513,17 @@ function resolveDeclaredTools(
  * @param options   `workerFlows`: the worker flows the app defined.
  *                  Optional — the built-in `agent` flow is always available
  *                  underneath, and a flow passed under `agent` replaces it for
- *                  every seat.
+ *                  every worker.
  * @returns One `FlowInstance` per record, ordered by id. Not for registering.
  * @throws If a worker flow misses the contract (naming every problem with
  *   every flow), or if any record cannot be hired (naming every bad worker).
  */
-export function mintSeats(
+export function mintWorkers(
   manifests: WorkerManifest[],
   options: HireOptions = {}
 ): FlowInstance[] {
   // The built-in sits UNDERNEATH the caller's, so a caller who registers their
-  // own `agent` wins — for every seat, not just the ones that name it. This is
+  // own `agent` wins — for every worker, not just the ones that name it. This is
   // precedence, not extension: configuring the built-in's tools or skills means
   // replacing the kind (`defineAgentWorkerFlow({ ... })` registered here), never a
   // second option on this function. A roster hired with `workerFlows: {}`
@@ -557,7 +557,7 @@ export function mintSeats(
   const available = availableKinds(Object.keys(flows));
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const seats: FlowInstance[] = [];
+  const workers: FlowInstance[] = [];
   const problems: string[] = [];
   // Which WORKERS were refused, which is not `problems.length`: one worker can
   // contribute several reasons — two unresolved grants, two malformed entries —
@@ -566,7 +566,7 @@ export function mintSeats(
   // The workers whose one refusal came from their kind's own minter.
   const kindRefusedWorkers = new Set<string>();
   const seen = new Set<string>();
-  const seatBlocks = options.seatBlocks ?? {};
+  const workerBlocks = options.workerBlocks ?? {};
   const packageBlocks = options.packageBlocks ?? {};
 
   for (const manifest of ordered) {
@@ -594,7 +594,7 @@ export function mintSeats(
     // declared setting` — which reads as a misspelt setting, not as a key the
     // framework refuses. The case that has to be caught here is the other one: a
     // flow whose `configSchema` has NOT been renamed still declares `persona`
-    // and so accepts it, and the seat hires configured the old way carrying no
+    // and so accepts it, and the worker hires configured the old way carrying no
     // `instructions` at all, with nothing said anywhere.
     if (Object.hasOwn(settings, REFUSED_PERSONA_KEY)) {
       refuse(REFUSED_PERSONA_KEY_MESSAGE);
@@ -603,17 +603,17 @@ export function mintSeats(
 
     // The other imposed key, refused here for the same reason: a hand-built
     // roster never passes the loader, and a flow whose `configSchema` declares
-    // `seatSkills` would accept an authored one and run with a skill set no
+    // `workerSkills` would accept an authored one and run with a skill set no
     // folder backs.
-    if (Object.hasOwn(settings, SEAT_SKILLS_KEY)) {
-      refuse(REFUSED_SEAT_SKILLS_KEY_MESSAGE);
+    if (Object.hasOwn(settings, WORKER_SKILLS_KEY)) {
+      refuse(REFUSED_WORKER_SKILLS_KEY_MESSAGE);
       continue;
     }
 
     // The third contract key, refused for the sharper version of the same
     // reason. Every hireable kind now DECLARES `teamInstructions` by composing
     // the contract, so an authored one would not be caught by the closed
-    // schema the way an undeclared key is — it would be accepted, and the seat
+    // schema the way an undeclared key is — it would be accepted, and the worker
     // would run on team instructions its team never wrote. A team's
     // instructions belong to its team.
     if (Object.hasOwn(settings, TEAM_INSTRUCTIONS_KEY)) {
@@ -623,31 +623,31 @@ export function mintSeats(
 
     // The fourth contract key, refused for the reason the other two imposed
     // keys are: a kind composing the contract declares it, so an authored one
-    // would be accepted and the seat would run carrying tools no folder of its
-    // backs — silently, and only for that seat.
-    if (Object.hasOwn(settings, SEAT_TOOLS_KEY)) {
-      refuse(REFUSED_SEAT_TOOLS_KEY_MESSAGE);
+    // would be accepted and the worker would run carrying tools no folder of its
+    // backs — silently, and only for that worker.
+    if (Object.hasOwn(settings, WORKER_TOOLS_KEY)) {
+      refuse(REFUSED_WORKER_TOOLS_KEY_MESSAGE);
       continue;
     }
 
-    // The fifth, for the same reason: a seat carrying packages no folder of
+    // The fifth, for the same reason: a worker carrying packages no folder of
     // its holds.
-    if (Object.hasOwn(settings, SEAT_PACKAGES_KEY)) {
-      refuse(REFUSED_SEAT_PACKAGES_KEY_MESSAGE);
+    if (Object.hasOwn(settings, WORKER_PACKAGES_KEY)) {
+      refuse(REFUSED_WORKER_PACKAGES_KEY_MESSAGE);
       continue;
     }
 
-    // The sixth, and the sharpest case: an authored `seatId` would be accepted
-    // by every composed kind, and the seat would sign what it files or posts
-    // as whichever seat the record named.
-    if (Object.hasOwn(settings, SEAT_ID_KEY)) {
-      refuse(REFUSED_SEAT_ID_KEY_MESSAGE);
+    // The sixth, and the sharpest case: an authored `workerId` would be accepted
+    // by every composed kind, and the worker would sign what it files or posts
+    // as whichever worker the record named.
+    if (Object.hasOwn(settings, WORKER_ID_KEY)) {
+      refuse(REFUSED_WORKER_ID_KEY_MESSAGE);
       continue;
     }
 
     // A body is instructions; whitespace is not. An empty string handed to a
     // flow that declares `instructions` would be a worse lie than omitting it —
-    // and it would turn every thin seat into a failed hire.
+    // and it would turn every thin worker into a failed hire.
     if (manifest.body.trim().length > 0) {
       if (Object.hasOwn(settings, INSTRUCTIONS_KEY)) {
         refuse(
@@ -707,11 +707,11 @@ export function mintSeats(
 
     const factory = entry.flow;
 
-    // The seat's own skills, imposed on EVERY record — loaded or hand-built,
+    // The worker's own skills, imposed on EVERY record — loaded or hand-built,
     // non-empty or empty, whatever kind this is.
     //
     // No probe of what the kind declares. The probe's other arm was silence:
-    // a seat whose folders declared skills minted, ran, and held none, with
+    // a worker whose folders declared skills minted, ran, and held none, with
     // nothing said anywhere. Handing the bag over unconditionally turns that
     // into one loud refusal at boot, which an author can act on.
     //
@@ -719,23 +719,23 @@ export function mintSeats(
     // *nothing to give*, and the bag is handed over all the same. The record
     // still distinguishes *never read for* (absent) from *read and empty*, and
     // that distinction stays on the record, where it belongs.
-    settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
+    settings[WORKER_SKILLS_KEY] = manifest.skills ?? [];
 
-    // The seat's own id, on EVERY record: the one per-seat fact a block inside
-    // the seat can read, since the flow's id is kept off the block context.
+    // The worker's own id, on EVERY record: the one per-worker fact a block inside
+    // the worker can read, since the flow's id is kept off the block context.
     // Written here and nowhere else, so every mint path (files, the runtime
     // `hire` tool, the boot reload) carries it. A hired record's `id` is its
     // org-qualified address, so it brings the logical id a mailbox's
-    // `members:` lists on `manifest.seatId`; a file record's `id` is that id.
-    settings[SEAT_ID_KEY] = manifest.id;
+    // `members:` lists on `manifest.workerId`; a file record's `id` is that id.
+    settings[WORKER_ID_KEY] = manifest.id;
 
-    // The seat's TEAM-level instructions — and **only when the record carries
+    // The worker's TEAM-level instructions — and **only when the record carries
     // them**, which is the opposite of the line above and deliberately so.
     //
-    // `seatSkills` is imposed on every record because present-and-empty is a
-    // real answer for a seat's skills: the folders were read and held nothing.
+    // `workerSkills` is imposed on every record because present-and-empty is a
+    // real answer for a worker's skills: the folders were read and held nothing.
     // A team layer has no such answer. A team that wrote no instructions and a
-    // team with no file at all both mean *this seat is told nothing extra*, and
+    // team with no file at all both mean *this worker is told nothing extra*, and
     // handing `""` over would make them a value every kind's schema can see —
     // a different bag for every team in every tree that has no file, and the
     // trap the body rule above already names.
@@ -751,25 +751,25 @@ export function mintSeats(
       settings[TEAM_INSTRUCTIONS_KEY] = manifest.teamInstructions;
     }
 
-    // The seat's own block registry, and the names its file resolved out of it.
-    // Imposed on EVERY record for the reason `seatSkills` is: present-and-empty
+    // The worker's own block registry, and the names its file resolved out of it.
+    // Imposed on EVERY record for the reason `workerSkills` is: present-and-empty
     // is the answer for *nothing registered*, and the bag is handed over all
     // the same.
-    const registry = seatBlocks[manifest.id] ?? {};
-    const registryProblems = seatBlockProblems(registry);
+    const registry = workerBlocks[manifest.id] ?? {};
+    const registryProblems = workerBlockProblems(registry);
     if (registryProblems.length > 0) {
       for (const problem of registryProblems) refuse(problem);
       continue;
     }
-    // The packages this seat holds: its own folder's, then the ones its
+    // The packages this worker holds: its own folder's, then the ones its
     // `packages:` line takes from its team's or the org's library. Their
-    // blocks join the seat's registry for resolving a written `tools:` line —
-    // a package's blocks are the seat's own for that purpose — after every
+    // blocks join the worker's registry for resolving a written `tools:` line —
+    // a package's blocks are the worker's own for that purpose — after every
     // name among them has been shown to be one tool. This step cannot see a
     // kind's catalog, so a named package block that is also a catalog key is
     // refused by the kind at its mint (the built-in one does), not here.
-    // The seat id it was hired as, not a hired seat's org-qualified address:
-    // the same id the reference wall places the seat by.
+    // The worker id it was hired as, not a hired worker's org-qualified address:
+    // the same id the reference wall places the worker by.
     const { held, problems: heldProblems } = resolveHeldPackages(
       manifest.id,
       manifest.declared[PACKAGES_KEY],
@@ -784,23 +784,23 @@ export function mintSeats(
     const withPackages = { ...registry };
     for (const { blocks } of held) Object.assign(withPackages, blocks);
 
-    const { catalogNames, seatTools } = resolveDeclaredTools(settings["tools"], withPackages);
+    const { catalogNames, workerTools } = resolveDeclaredTools(settings["tools"], withPackages);
     // Only a record that WROTE a `tools:` line carries the key onward, and it
     // keeps carrying it after the split even when every name moved onto
-    // `seatTools` and the list emptied. The built-in kind reads an unset
+    // `workerTools` and the list emptied. The built-in kind reads an unset
     // `tools` (omitted, or a hand-built key with no value) as "wrote no line"
     // (grant what the file picked) and a set one as "wrote a line" (grant
     // exactly that line), so an omitted `tools:` must never be filled in here
     // or anywhere after.
     if (Object.hasOwn(settings, "tools")) settings["tools"] = catalogNames;
-    settings[SEAT_TOOLS_KEY] = seatTools;
+    settings[WORKER_TOOLS_KEY] = workerTools;
 
-    // Only for a seat that holds one, like the team's instructions: a seat
+    // Only for a worker that holds one, like the team's instructions: a worker
     // holding nothing hands its kind exactly the bag it did before packages
     // existed. The kind decides what a held package does; this step decides
     // only which ones are held.
     if (held.length > 0) {
-      settings[SEAT_PACKAGES_KEY] = held.map(({ manifest: pkg, blocks }) => ({
+      settings[WORKER_PACKAGES_KEY] = held.map(({ manifest: pkg, blocks }) => ({
         name: pkg.name,
         path: pkg.path,
         ...(pkg.instructions === undefined ? {} : { instructions: pkg.instructions }),
@@ -808,37 +808,37 @@ export function mintSeats(
       }));
     }
 
-    // The seat's document allowlist, resolved against what the app declared.
+    // The worker's document allowlist, resolved against what the app declared.
     //
     // **Only for a record that DECLARES the key**, and the map is passed only
     // then. A flow instance's `resources` option REPLACES the definition's
-    // flow-level map, so a seat that restricted nothing must be minted with no
-    // map at all: passing an empty one locks every existing seat out of every
+    // flow-level map, so a worker that restricted nothing must be minted with no
+    // map at all: passing an empty one locks every existing worker out of every
     // document, and reconstructing "everything" diverges the moment the kind's
     // map changes. Absent is not empty here, at either end.
-    let seatResources: DeclaredResources | undefined;
-    let seatGrants: readonly SeatResourceGrant[] = [];
-    // Whether the seat NARROWED its documents, which is no longer the same
+    let workerResources: DeclaredResources | undefined;
+    let workerGrants: readonly WorkerResourceGrant[] = [];
+    // Whether the worker NARROWED its documents, which is no longer the same
     // question as whether it is minted with a map: the reference wall below
-    // gives a map to a seat that granted nothing. `verifySeatNarrowing` asks
+    // gives a map to a worker that granted nothing. `verifyWorkerNarrowing` asks
     // about the grant, so it has to read this and not the map — keyed on the
-    // map, a seat that declared no `resources:` would have every document on
+    // map, a worker that declared no `resources:` would have every document on
     // its kind reported as having escaped a narrowing nobody asked for.
-    const narrowedDocuments = Object.hasOwn(manifest.declared, SEAT_RESOURCES_KEY);
+    const narrowedDocuments = Object.hasOwn(manifest.declared, WORKER_RESOURCES_KEY);
     if (narrowedDocuments) {
-      const parsed = parseSeatResources(manifest.declared[SEAT_RESOURCES_KEY]);
+      const parsed = parseWorkerResources(manifest.declared[WORKER_RESOURCES_KEY]);
       if (parsed.problems.length > 0) {
         for (const problem of parsed.problems) refuse(problem);
         continue;
       }
       const kindResources = (factory.resources ?? {}) as DeclaredResources;
-      const resolved = resolveSeatResources({
+      const resolved = resolveWorkerResources({
         grants: parsed.grants ?? [],
         catalog: options.documents,
         kindResources,
-        // The kind's own flow-level keys, which is the subset a seat's map
+        // The kind's own flow-level keys, which is the subset a worker's map
         // replaces. Falling back to every key would read the kind's BLOCK
-        // resources as flow-level ones and copy them onto the seat's map,
+        // resources as flow-level ones and copy them onto the worker's map,
         // where they would override the blocks that declared them.
         kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
         kind
@@ -847,38 +847,38 @@ export function mintSeats(
         for (const problem of resolved.problems) refuse(problem);
         continue;
       }
-      seatResources = resolved.resources;
-      seatGrants = parsed.grants ?? [];
+      workerResources = resolved.resources;
+      workerGrants = parsed.grants ?? [];
     }
 
-    // The reference wall: derived from where this seat and each reference sit
-    // in the tree, and applied to whatever map the seat would otherwise get.
+    // The reference wall: derived from where this worker and each reference sit
+    // in the tree, and applied to whatever map the worker would otherwise get.
     //
     // **Unconditional, unlike the block above.** A `resources:` grant is a
-    // narrowing a seat asks for, so it runs only when the seat asks; the wall
-    // is a boundary, so it runs for every seat whether or not its file says
+    // narrowing a worker asks for, so it runs only when the worker asks; the wall
+    // is a boundary, so it runs for every worker whether or not its file says
     // anything. What keeps that from touching an app with no references is the
     // wall itself: a kind holding none hands `base` straight back, including
-    // handing back `undefined` so the seat is minted with no map at all.
+    // handing back `undefined` so the worker is minted with no map at all.
     //
-    // Placed by the seat id, not the address: a runtime hire answers on an
+    // Placed by the worker id, not the address: a runtime hire answers on an
     // org-qualified address (`acme.engineering.ada`), and its place in the
-    // tree is the seat id it was hired as (`engineering.ada`).
+    // tree is the worker id it was hired as (`engineering.ada`).
     const placedAs = manifest.id;
     const wall = applyReferenceWall({
-      seatId: placedAs,
-      declared: manifest.declared[SEAT_REFERENCES_KEY],
-      hasDeclared: Object.hasOwn(manifest.declared, SEAT_REFERENCES_KEY),
+      workerId: placedAs,
+      declared: manifest.declared[WORKER_REFERENCES_KEY],
+      hasDeclared: Object.hasOwn(manifest.declared, WORKER_REFERENCES_KEY),
       catalog: options.references,
       kindResources: (factory.resources ?? {}) as DeclaredResources,
       kindFlowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
-      base: seatResources
+      base: workerResources
     });
     if (wall.problems.length > 0) {
       for (const problem of wall.problems) refuse(problem);
       continue;
     }
-    seatResources = wall.resources;
+    workerResources = wall.resources;
 
     // True only while the kind's own minter runs, so the catch below can tell
     // the kind's refusal (its `configSchema`) from a throw after it.
@@ -886,27 +886,27 @@ export function mintSeats(
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
-      // SKIPPED, not admission passed: a thin seat minted without its kind's
+      // SKIPPED, not admission passed: a thin worker minted without its kind's
       // schema ever seeing it. Every record meets the schema now, including the
       // thinnest one there is.
-      const seat = minter(factory)({
+      const worker = minter(factory)({
         id: manifest.id,
         config: settings,
-        ...(seatResources !== undefined ? { resources: seatResources } : {})
+        ...(workerResources !== undefined ? { resources: workerResources } : {})
       });
       minting = false;
 
-      // The narrowing is checked on the seat that was BUILT, not on the map it
+      // The narrowing is checked on the worker that was BUILT, not on the map it
       // was built from. `defineFlow` merges the blocks' own declarations on top
       // of the instance's map, so a document a block also declares comes back
-      // after the seat's map has removed it — and nothing readable off the kind
+      // after the worker's map has removed it — and nothing readable off the kind
       // distinguishes that document from one no block mentions. Only the
-      // instance knows. Skipped when the seat narrowed nothing, which denies
+      // instance knows. Skipped when the worker narrowed nothing, which denies
       // nothing.
       if (narrowedDocuments && options.documents !== undefined) {
-        const escaped = verifySeatNarrowing({
-          minted: seat.resources as DeclaredResources | undefined,
-          grants: seatGrants,
+        const escaped = verifyWorkerNarrowing({
+          minted: worker.resources as DeclaredResources | undefined,
+          grants: workerGrants,
           catalog: options.documents,
           kind
         });
@@ -917,14 +917,14 @@ export function mintSeats(
       }
 
       // The same check for the wall, and it exists for the same substrate
-      // reason: a reference a block ALSO declares comes back after the seat's
+      // reason: a reference a block ALSO declares comes back after the worker's
       // map removed it, and only the built instance shows that. Read off the
       // minted flow rather than predicted from the kind.
-      const crossed = verifySeatReferenceWall({
-        minted: seat.resources as DeclaredResources | undefined,
+      const crossed = verifyWorkerReferenceWall({
+        minted: worker.resources as DeclaredResources | undefined,
         allowed: wall.reachable,
         catalog: options.references,
-        seatId: placedAs,
+        workerId: placedAs,
         kind
       });
       if (crossed.length > 0) {
@@ -932,10 +932,10 @@ export function mintSeats(
         continue;
       }
 
-      // Beside the seat, never in its settings: see `seat-description.ts`.
+      // Beside the worker, never in its settings: see `worker-description.ts`.
       const description = manifest.declared.description;
-      if (typeof description === "string") recordSeatDescription(seat, description);
-      seats.push(seat);
+      if (typeof description === "string") recordWorkerDescription(worker, description);
+      workers.push(worker);
     } catch (error) {
       // The flow's own refusal, with the worker's id in front of it. The flow
       // already met the contract, so this is about the worker's own settings.
@@ -947,9 +947,9 @@ export function mintSeats(
   // **An entry addressed to a worker this call is not hiring is not a problem.**
   // A short roster is a supported mode — `readWorkforce` reports a folder that
   // produced no worker and loads the rest, and a caller may hire what loaded —
-  // while `seatBlocks` is generated from the WHOLE tree. So the two sets
+  // while `workerBlocks` is generated from the WHOLE tree. So the two sets
   // legitimately differ, and refusing the difference broke the documented mode:
-  // one skipped worker turned every other seat's hire into a refusal, which is
+  // one skipped worker turned every other worker's hire into a refusal, which is
   // how `refused 2 of 1 worker` became a sentence this function could print.
   //
   // Nothing is lost by staying quiet. The generated map cannot address a worker
@@ -974,11 +974,11 @@ export function mintSeats(
   // Once per process per board (see `firstInProcess`), so a hot reload stays
   // quiet while a board that newly goes unattended still prints.
   for (const boardId of options.mailboxBoards ?? []) {
-    for (const warning of unattendedBoardWarnings([boardId], seats)) {
+    for (const warning of unattendedBoardWarnings([boardId], workers)) {
       if (firstInProcess(`workforce/unattended-board/${boardId}`)) console.warn(warning);
     }
   }
-  return seats;
+  return workers;
 }
 
 /**
@@ -986,7 +986,7 @@ export function mintSeats(
  * copies it registers.
  *
  * Hire does not attach boards. A caller that surfaces the same warning on a
- * tool result (the seat-hire capability) reads them here rather than
+ * tool result (the worker-hire capability) reads them here rather than
  * re-deriving the text, so the mint and the tool stay one story.
  *
  * Read off the hired instances' merged `resources` rather than off the kinds:
@@ -995,13 +995,13 @@ export function mintSeats(
  */
 export function unattendedBoardWarnings(
   boardIds: readonly string[],
-  seats: readonly FlowInstance[]
+  workers: readonly FlowInstance[]
 ): string[] {
   if (boardIds.length === 0) return [];
 
   const declared = new Set<string>();
-  for (const seat of seats) {
-    for (const key of Object.keys(seat.resources ?? {})) declared.add(key);
+  for (const worker of workers) {
+    for (const key of Object.keys(worker.resources ?? {})) declared.add(key);
   }
 
   const warnings: string[] = [];
@@ -1017,9 +1017,9 @@ export function unattendedBoardWarnings(
       `[workforce] mailbox "${mailboxId}" holds board "${boardName}" (ledger "${boardId}"), ` +
         `and no flow registered in this ` +
         `call declares it. Rows filed there will sit pending until something drains them — ` +
-        `declare the board on the seat that runs the work ` +
+        `declare the board on the worker that runs the work ` +
         `(\`resources: { [board.id]: board }\` with \`mailboxBoard("${mailboxId}", "${boardName}")\`), ` +
-        `or ignore this if that seat runs in another process.`
+        `or ignore this if that worker runs in another process.`
     );
   }
   return warnings;

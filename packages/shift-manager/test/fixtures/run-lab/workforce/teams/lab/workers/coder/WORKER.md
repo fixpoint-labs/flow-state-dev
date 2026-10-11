@@ -1,6 +1,6 @@
 ---
 description: Works each task it is handed.
-flow: seat
+flow: worker
 ---
 
 Work the task you are handed.

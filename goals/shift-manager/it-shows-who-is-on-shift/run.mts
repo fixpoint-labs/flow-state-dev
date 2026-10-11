@@ -215,7 +215,7 @@ type Store = {
 };
 
 /** The seat this script's own rule gives an assignee: its id, or its name after the team. Exactly one, or none. */
-function seatOf(seats: string[], assignee: string): string | undefined {
+function workerOf(seats: string[], assignee: string): string | undefined {
   const found = seats.filter((id) => id === assignee || id.slice(id.indexOf(".") + 1) === assignee);
   return found.length === 1 ? found[0] : undefined;
 }
@@ -234,12 +234,12 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     return manifests.get(kind)!;
   };
   // The inventory, through the first session whose flow publishes it, by its key patterns.
-  let seatRows: Array<{ id: string; kind: string | null }> = [];
+  let workerRows: Array<{ id: string; kind: string | null }> = [];
   for (const host of topLevel) {
     const resources = await published(host);
-    const seatsRef = resources.find((r) => r.pattern === "inventory/seats/*")?.ref;
-    if (seatsRef === undefined) continue;
-    seatRows = (await api.collection(host.id, seatsRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
+    const workersRef = resources.find((r) => r.pattern === "inventory/seats/*")?.ref;
+    if (workersRef === undefined) continue;
+    workerRows = (await api.collection(host.id, workersRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
     break;
   }
   // Every row on every conversation's board: the person's one conversation
@@ -257,12 +257,12 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     }
     break;
   }
-  const seats = seatRows.map((s) => s.id);
+  const seats = workerRows.map((s) => s.id);
   // Pending person-asks on the seats' sessions, by the seat each session names.
-  const asks = (await pendingSeatAsks(api, sessions, seatRows)).map((a) => ({ seat: a.seatId, id: a.suspensionId }));
-  const unmatched = rows.filter((r) => seatOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
+  const asks = (await pendingSeatAsks(api, sessions, workerRows)).map((a) => ({ seat: a.seatId, id: a.suspensionId }));
+  const unmatched = rows.filter((r) => workerOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
   const workers = seats.map((id): Worker => {
-    const mine = rows.filter((r) => seatOf(seats, r.assignee) === id);
+    const mine = rows.filter((r) => workerOf(seats, r.assignee) === id);
     const word = (s: string) => (s === "awaiting_review" ? "parked" : s);
     const running = mine.filter((r) => word(r.status) === "in_progress");
     const parked = mine.filter((r) => word(r.status) === "parked");

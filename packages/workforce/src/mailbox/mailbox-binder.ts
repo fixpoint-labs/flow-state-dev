@@ -290,7 +290,7 @@ function validate(
     };
   }
 
-  // A body is a charter; whitespace is not. Same rule the seat factory applies
+  // A body is a charter; whitespace is not. Same rule the worker factory applies
   // to a worker's instructions, and the same refusal when both are present.
   if (manifest.body.trim().length > 0 && Object.hasOwn(declared, INSTRUCTIONS_KEY)) {
     return {
@@ -400,7 +400,7 @@ function validate(
       problem:
         `declares \`${ROUTING_KEY}:\` and runs on mailbox kind "${selected.kind}", which was built ` +
         `without a route. Build the kind with \`defineMailboxFlow({ notify, route: ` +
-        `routeByPurpose(seats, { model }) })\`, or drop the \`${ROUTING_KEY}:\` line.`
+        `routeByPurpose(workers, { model }) })\`, or drop the \`${ROUTING_KEY}:\` line.`
     };
   }
   const members = isListOfNames(declared.members) ? declared.members : [];
@@ -415,7 +415,7 @@ function validate(
   if (!route.members.includes(routing.fallback)) {
     return {
       problem:
-        `declares \`${ROUTING_KEY}:\` with \`${FALLBACK_KEY}: ${routing.fallback}\`, and no seat ` +
+        `declares \`${ROUTING_KEY}:\` with \`${FALLBACK_KEY}: ${routing.fallback}\`, and no worker ` +
         `the route was built with hears posts for it. Every post the route cannot place would ` +
         `reach nobody. Hire "${routing.fallback}" on a kind that hears posts, or name another ` +
         `member.`

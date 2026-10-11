@@ -159,7 +159,7 @@ describe("the EM files from the workstream it leads", () => {
       harness: stub.slot,
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
-      coderSeatId: CODER,
+      coderWorkerId: CODER,
       inventory: true,
       projects: [{ id: STOREFRONT.id, title: "Storefront", repository: remote.url, members: [LAB_USERS.member.userId] }],
       // As shipped: the seed's own `feature` is the member's, so Alice's coordinator can't hand to it.

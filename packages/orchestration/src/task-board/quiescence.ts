@@ -27,7 +27,7 @@
  *
  * `drained` used to mean "every task reached a terminal status", which was the
  * same sentence as the one above while every worker ran inside the claiming
- * request. A board with a `dispatcher({ type: "task" })` seat breaks that
+ * request. A board with a `dispatcher({ type: "task" })` assignee breaks that
  * equivalence: the hand-off leaves the row `in_progress`, owned by a child session
  * that settles it from its own session, and the launching request has no more
  * work to do on it. Counting it kept that request parked in `idleWait` until
@@ -35,7 +35,7 @@
  * question.
  *
  * So the classifier now takes `runsElsewhere` and both of its counting arms
- * honour it. It is supplied by the board from its own dispatcher seats,
+ * honour it. It is supplied by the board from its own dispatcher assignees,
  * and is `undefined` for every board that declares none — an inline board's
  * `in_progress` row still holds the drain open, unchanged and deliberately so.
  *
@@ -91,7 +91,7 @@ export interface BoardQuiescenceOptions {
   shouldExit?: (collection: TaskCollectionRef) => boolean;
   /**
    * Rows whose work is *routed* to a child session rather than this drain
-   * (FIX-982). Omitted by every board with no dispatcher seat, which is
+   * (FIX-982). Omitted by every board with no dispatcher assignee, which is
    * what keeps this classifier's answer for those boards bit-for-bit what it
    * was.
    *

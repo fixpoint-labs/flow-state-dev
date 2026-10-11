@@ -1,14 +1,14 @@
 /**
  * The model's door onto a mailbox board, and the two fences around it.
  *
- * The door is the **kind-installed capability**: a seat composes
+ * The door is the **kind-installed capability**: a worker composes
  * `mailboxBoardTaskTools(board)` and holds the eight task tools over that
- * ledger. It cannot be a block in the seat's own `blocks/` folder, because a
- * mailbox board is an org-scoped resource and a seat-folder block declaring one
+ * ledger. It cannot be a block in the worker's own `blocks/` folder, because a
+ * mailbox board is an org-scoped resource and a worker-folder block declaring one
  * is refused by name at hire — which is what makes the capability the only
  * door rather than the recommended one.
  *
- * The sharpest case here is the freeze: a seat's board that hands off freezes
+ * The sharpest case here is the freeze: a worker's board that hands off freezes
  * the ledger's assignee, and a write through the SAME id — the mailbox's side
  * of the fence — must then decline. Two `defineTaskCollection` calls sharing an
  * id would share rows and not that policy, so the negative control below uses a
@@ -33,7 +33,7 @@ import {
   workerConfigSchema,
   type MailboxManifest,
 } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 // Package-internal: the board module's joins and resolvers are not public
 // surface, so a test reaches them where they live.
 import { resolveMailboxBoard } from "../src/mailbox/mailbox-board";
@@ -97,11 +97,11 @@ function sessionApi(stores: any) {
 }
 
 /**
- * One mailbox holding one board, and one seat whose model reaches the same
+ * One mailbox holding one board, and one worker whose model reaches the same
  * ledger through the capability.
  *
- * The seat's record declares `tools: []` — written out rather than omitted,
- * because that is the line an author reads as "this seat reaches nothing", and
+ * The worker's record declares `tools: []` — written out rather than omitted,
+ * because that is the line an author reads as "this worker reaches nothing", and
  * a capability's controls are exempt from it by contract.
  */
 async function lab(script: Array<Record<string, unknown>>) {
@@ -109,13 +109,13 @@ async function lab(script: Array<Record<string, unknown>>) {
   const [mailbox] = mailboxInstances(roster);
   const triage = mailboxBoard("eng.feature", "triage");
 
-  const [seat] = mintSeats(
+  const [worker] = mintWorkers(
     [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
     { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
   );
 
   const state = createFlowState({
-    flows: { [mailbox!.kind]: mailbox!, [seat!.id]: seat! },
+    flows: { [mailbox!.kind]: mailbox!, [worker!.id]: worker! },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": mockGenerator({ name: "agent-answer", script } as never) }
@@ -147,7 +147,7 @@ async function lab(script: Array<Record<string, unknown>>) {
     triage,
     mailbox: (actionName: string, input: unknown) =>
       act(mailbox!, "eng.feature", actionName, input),
-    seat: (message: string) => act(seat!, "s_eng_coder", "run", { message }),
+    worker: (message: string) => act(worker!, "s_eng_coder", "run", { message }),
     row: (taskId: string) =>
       runtime.stores.resourceState
         .get("org", ORG_ID, `eng.feature.triage/${taskId}`)
@@ -161,14 +161,14 @@ describe("one ledger, two doors", () => {
     // The row id is MINTED — neither door lets a caller choose one — so the
     // tool call's arguments are filled in once the row exists. The mock copies
     // the script array but not the entries in it, so the object below is the
-    // same one it reads when the seat runs.
+    // same one it reads when the worker runs.
     const args: { taskId?: string; reason: string } = { reason: "not needed" };
     const run = await lab([
       {
         toolCalls: [
           {
             toolCallId: "c1",
-            // Board-qualified. The eight names are fixed strings, so a seat
+            // Board-qualified. The eight names are fixed strings, so a worker
             // holding two boards needs the qualifier to address either.
             toolName: "cancelTask_eng_feature_triage",
             args
@@ -189,7 +189,7 @@ describe("one ledger, two doors", () => {
 
       args.taskId = taskId;
 
-      const answered = await run.seat("settle it");
+      const answered = await run.worker("settle it");
       expect(answered.error).toBeUndefined();
 
       // The same row, reached from the other side of the fence. A second
@@ -215,7 +215,7 @@ describe("one ledger, two doors", () => {
       { text: "filed" }
     ]);
     try {
-      const answered = await run.seat("file some work");
+      const answered = await run.worker("file some work");
       expect(answered.error).toBeUndefined();
 
       const read = await run.mailbox("readBoard", { board: "triage" });
@@ -232,18 +232,18 @@ describe("one ledger, two doors", () => {
   });
 });
 
-describe("a seat holding two boards", () => {
+describe("a worker holding two boards", () => {
   it("composes the capability twice and reaches each ledger by its own tools", async () => {
     const roster = [record("eng.feature", ["triage", "review"])];
     const [mailbox] = mailboxInstances(roster);
     const triage = mailboxBoard("eng.feature", "triage");
     const review = mailboxBoard("eng.feature", "review");
 
-    // Two boards on one seat is an ordinary shape, not an exotic one. It is
+    // Two boards on one worker is an ordinary shape, not an exotic one. It is
     // also the shape a fixed capability name and eight fixed tool names make
     // impossible: the capability collides at build, and the tools collide at
     // the generator's own uniqueness assert.
-    const [seat] = mintSeats(
+    const [worker] = mintWorkers(
       [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
       {
         workerFlows: {
@@ -255,7 +255,7 @@ describe("a seat holding two boards", () => {
     );
 
     const state = createFlowState({
-      flows: { [mailbox!.kind]: mailbox!, [seat!.id]: seat! },
+      flows: { [mailbox!.kind]: mailbox!, [worker!.id]: worker! },
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({
         generators: {
@@ -285,13 +285,13 @@ describe("a seat holding two boards", () => {
         userId: USER_ID,      });
 
       // Both ledgers really are installed — without this the assertions below
-      // could pass on a seat that quietly dropped the second board.
-      const declared = Object.keys((seat as { resources?: object }).resources ?? {});
+      // could pass on a worker that quietly dropped the second board.
+      const declared = Object.keys((worker as { resources?: object }).resources ?? {});
       expect(declared).toContain("eng.feature.triage");
       expect(declared).toContain("eng.feature.review");
 
       const answered = (await runAction({
-        flow: seat!,
+        flow: worker!,
         actionName: "run",
         input: { message: "file it on review" },
         userId: USER_ID,
@@ -329,12 +329,12 @@ describe("a seat holding two boards", () => {
   });
 });
 
-describe("the seat's `tools:` fence", () => {
-  it("leaves the board's eight controls in place on a seat declaring `tools: []`", async () => {
-    // Both cases above already ran on a seat whose record says `tools: []`.
-    // This one states the claim directly, on the hired seat, so a reader does
+describe("the worker's `tools:` fence", () => {
+  it("leaves the board's eight controls in place on a worker declaring `tools: []`", async () => {
+    // Both cases above already ran on a worker whose record says `tools: []`.
+    // This one states the claim directly, on the hired worker, so a reader does
     // not have to infer it from a passing tool call.
-    const [seat] = mintSeats(
+    const [worker] = mintWorkers(
       [{ id: "eng.fenced", declared: { flow: AGENT_KIND, tools: [] }, body: "Fenced." }],
       {
         workerFlows: {
@@ -347,8 +347,8 @@ describe("the seat's `tools:` fence", () => {
 
     // The ledger reached the flow through the capability alone — nothing
     // declared it beside the `uses` entry.
-    expect(Object.keys(seat!.resources ?? {})).toContain("eng.fenced-mailbox.triage");
-    expect(seat!.config.tools).toEqual([]);
+    expect(Object.keys(worker!.resources ?? {})).toContain("eng.fenced-mailbox.triage");
+    expect(worker!.config.tools).toEqual([]);
   });
 });
 
@@ -388,7 +388,7 @@ describe("a handed-off board's assignee freeze", () => {
       }
     });
 
-    // Declaring dispatcher seats is what freezes the ledger: the child
+    // Declaring dispatcher workers is what freezes the ledger: the child
     // session a handed-off row runs in is keyed off the assignee, so changing
     // it while the attempt runs redirects nothing.
     const drain = withHandOff
@@ -467,7 +467,7 @@ describe("a handed-off board's assignee freeze", () => {
   });
 });
 
-describe("a mailbox-board tool colocated in a seat's own folder", () => {
+describe("a mailbox-board tool colocated in a worker's own folder", () => {
   it("is refused by name at hire, because the board is an org-scoped resource", () => {
     const triage = mailboxBoard("eng.colocated", "triage");
     const colocated = handler({
@@ -485,9 +485,9 @@ describe("a mailbox-board tool colocated in a seat's own folder", () => {
 
     let message = "";
     try {
-      mintSeats([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
+      mintWorkers([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
-        seatBlocks: { "eng.colo": { "file-triage": colocated } }
+        workerBlocks: { "eng.colo": { "file-triage": colocated } }
       });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);

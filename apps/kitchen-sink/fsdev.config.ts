@@ -30,7 +30,7 @@ import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
-import { mergeSeatFlows } from "@flow-state-dev/workforce";
+import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -87,10 +87,10 @@ for (const failedPath of workforce.errors) {
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a
 // worker is a session on its flow's copy, created naming the worker: a
 // person's conversation with `support.help` is a session on `coordinator`.
-// `mergeSeatFlows` refuses a copy at an id a flow of this app already holds
+// `mergeWorkerFlows` refuses a copy at an id a flow of this app already holds
 // rather than letting it replace that flow.
 const flowstate = createFlowState({
-  flows: mergeSeatFlows(
+  flows: mergeWorkerFlows(
     {
       chatAgent: chatAgentFlow,
       richTextComponent: richTextComponentFlow,

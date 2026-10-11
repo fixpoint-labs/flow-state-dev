@@ -281,7 +281,7 @@ function DispatchRunProvenance({
         data-dispatch-run-origin={origin}
         title={
           origin === "re-used"
-            ? "Dispatched work. This session is a worker seat's, re-entered by every row that seat runs."
+            ? "Dispatched work. This session belongs to a worker, re-entered by every row that worker runs."
             : "Dispatched work. A dispatcher started this session rather than a person."
         }
         className="rounded bg-slate-800 px-1 text-[9px] uppercase tracking-wide text-slate-400"

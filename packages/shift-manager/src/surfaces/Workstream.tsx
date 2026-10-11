@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
 import { EmptyState, PartialMark, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare, StatusWord, Tabs } from "../components/ui";
 import { COLUMNS } from "../lib/columns";
-import { byColumn, seatStates, type LoadedSnapshot } from "../lib/derive";
+import { byColumn, workerStates, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Workstream } from "../lib/reads";
 import { navigate, WORKSTREAM_TABS, type WorkstreamTab } from "../lib/routes";
@@ -134,8 +134,8 @@ function Brief({ workstream }: { workstream: Workstream }) {
 /** The workstream's right panel (S8, BR-23). */
 export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; workstream: Workstream; gaps: Gaps }) {
   const { refresh } = useLab();
-  const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
-  const states = seatStates(snapshot);
+  const workers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
+  const states = workerStates(snapshot);
   const boards = snapshot.boards[workstream.id];
   const columns = boards?.ok === true ? byColumn(boards.value.rows) : undefined;
   return (
@@ -152,14 +152,14 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
         </h3>
         <ul className="space-y-1">
           {workstream.members.map((member) => {
-            const seat = seats.find((s) => s.id === member);
+            const worker = workers.find((s) => s.id === member);
             return (
-              <li key={member} className="flex items-center justify-between text-sm" data-testid="panel-member" data-seat-id={member}>
+              <li key={member} className="flex items-center justify-between text-sm" data-testid="panel-member" data-worker-id={member}>
                 <span>{member}</span>
-                {seat === undefined ? (
-                  <span className="text-xs text-muted-foreground">not in the seat inventory</span>
+                {worker === undefined ? (
+                  <span className="text-xs text-muted-foreground">not in the worker inventory</span>
                 ) : (
-                  <StatusWord status={states.seats.get(seat.id)!.status} />
+                  <StatusWord status={states.workers.get(worker.id)!.status} />
                 )}
               </li>
             );

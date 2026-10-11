@@ -23,7 +23,7 @@ import type { WorkforceCapabilityOptions } from "../src/workforce-capability";
 /** The replacement, and the shape every case below is measured against. */
 export const supported = createWorkforceCapability({
   roster: { workers: [], mailboxes: [] },
-  inventory: { seats: "seatInventory", mailboxes: "mailboxInventory" }
+  inventory: { workers: "workerInventory", mailboxes: "mailboxInventory" }
 });
 
 /** A domain with no inventory key is an ordinary state, not a missing argument. */

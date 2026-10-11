@@ -111,15 +111,15 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
   });
 
   it("a notice lost after the ending is paid by the person's next touch of the board, once (BR-11)", async () => {
-    const judgment = askingJudgment("Count seats", (results) =>
-      results.includes("eng.tasker did: Count seats") ? "Forty seats." : `unexpected: ${results}`
+    const judgment = askingJudgment("Count workers", (results) =>
+      results.includes("eng.tasker did: Count workers") ? "Forty workers." : `unexpected: ${results}`
     );
     const host = await askingHost(judgment.model);
     try {
       const conv = await host.conversation("alice", "lead");
       // Every notice's send is lost, as a process dying after the ending's write would lose it.
       const lost = await host.loseDispatches("onTaskSettled");
-      const asked = await host.act("alice", conv, "run", { message: "how many seats?" });
+      const asked = await host.act("alice", conv, "run", { message: "how many workers?" });
       expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
       await host.settled();
       expect(lost.lost()).toBeGreaterThan(0);
@@ -136,7 +136,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
       await host.settled();
 
       expect(judgment.seen).toHaveLength(2);
-      expect((await host.messages(conv)).filter((m) => m.text === "Forty seats.")).toHaveLength(1);
+      expect((await host.messages(conv)).filter((m) => m.text === "Forty workers.")).toHaveLength(1);
       expect((await host.rows("alice"))[0]!.resumeOwed ?? false).toBe(false);
     } finally {
       await host.dispose();

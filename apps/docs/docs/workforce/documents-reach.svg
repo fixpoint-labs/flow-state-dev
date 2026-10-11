@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" role="img" aria-labelledby="title desc">
   <title id="title">references and resources: where the text lives and who reaches it</title>
-  <desc id="desc">A document in references is the file itself, re-read on each request; nothing running in the product can write it, and the folder is the boundary: the seat ada reaches the organization's references, its own team's, and its own folder's, but not a teammate's folder, another team's, or the folder of an org seat such as build, which reaches only the organization's references and its own. A document in resources is seeded from the file at first boot and is then a stored org-scoped row the product writes; its folder is only a namespace, so to keep a team's documents to that team you filter the records before installing them.</desc>
+  <desc id="desc">A document in references is the file itself, re-read on each request; nothing running in the product can write it, and the folder is the boundary: the worker ada reaches the organization's references, its own team's, and its own folder's, but not a teammate's folder, another team's, or the folder of an org worker such as build, which reaches only the organization's references and its own. A document in resources is seeded from the file at first boot and is then a stored org-scoped row the product writes; its folder is only a namespace, so to keep a team's documents to that team you filter the records before installing them.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
@@ -66,7 +66,7 @@
   <text x="354" y="304" class="code">workers/build/</text>
   <text x="354" y="320" class="code">  references/</text>
   <text x="354" y="348" class="nope">ada cannot:</text>
-  <text x="354" y="364" class="nope">an org seat</text>
+  <text x="354" y="364" class="nope">an org worker</text>
 
   <!-- resources -->
   <rect x="524" y="84" width="368" height="324" rx="14" class="wall-org"/>
@@ -82,7 +82,7 @@
 
   <rect x="540" y="270" width="336" height="122" rx="10" class="box"/>
   <text x="554" y="294" class="h">The folder is a namespace only</text>
-  <text x="554" y="316" class="p">Every seat on a flow that installed it</text>
+  <text x="554" y="316" class="p">Every worker on a flow that installed it</text>
   <text x="554" y="334" class="p">reaches it, any team included.</text>
   <text x="554" y="360" class="muted">To keep it to a team, filter the records</text>
   <text x="554" y="376" class="muted">before you install them.</text>
@@ -92,5 +92,5 @@
   <text x="44" y="452" class="h">Not a copy</text>
   <text x="44" y="476" class="p">A reference is never stored: the file in your repository is the only copy. Change it by editing and deploying.</text>
   <text x="44" y="496" class="p">A resource row is not the file. After its first write, the row is the text and the file is only where it started.</text>
-  <text x="44" y="516" class="p">Each organization gets its own row. flowIsolation: true gives each seat its own row instead of one shared.</text>
+  <text x="44" y="516" class="p">Each organization gets its own row. flowIsolation: true gives each worker its own row instead of one shared.</text>
 </svg>

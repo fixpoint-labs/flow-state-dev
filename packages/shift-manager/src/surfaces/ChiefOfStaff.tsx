@@ -1,23 +1,23 @@
 /**
  * Chief of Staff (FIX-1722): where Shift Manager opens. The shift summary,
- * then the person's conversation with the Lab's chief-of-staff seat; the right
+ * then the person's conversation with the Lab's chief-of-staff worker; the right
  * panel lists each workstream's counts and who is on call.
  *
- * **The summary is Shift Manager's, not the seat's (D1).** It is drawn from
+ * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
  * theirs. Each ask is drawn by Inbox's card and answered through Inbox's path,
  * so answering it in either place clears both (BR-4 to BR-8).
  *
- * **The conversation is the seat's session (BR-10 to BR-18).** Which seat is
+ * **The conversation is the worker's session (BR-10 to BR-18).** Which worker is
  * the chief of staff is one rule, `chiefOfStaffOf`. A line goes in through the
- * seat's door by the one send path, and shows *delivered* only once the
+ * worker's door by the one send path, and shows *delivered* only once the
  * session holds it. What is drawn below it is what the session stores, read
  * back when the view opens and after each line, never on the snapshot's
- * refresh. Nothing is drawn in the seat's voice that its session doesn't hold.
+ * refresh. Nothing is drawn in the worker's voice that its session doesn't hold.
  *
  * **Drawn in design v2's form (v2:120-180).** A 720px feed under v2's header,
  * the summary as unboxed prose with its asks in one bordered list, each
- * tagged with the highlighter; the seat's messages labelled with the time;
+ * tagged with the highlighter; the worker's messages labelled with the time;
  * and the composer pinned under the feed with suggestions above it. The
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
@@ -33,10 +33,10 @@ import { useSessionItems } from "../components/flow-state/session-items-context"
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
+import { chiefOfStaffOf, workerStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
-import type { Seat } from "../lib/reads";
+import type { Worker } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { chiefOfStaffSuggestions } from "../lib/shell";
 import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
@@ -44,7 +44,7 @@ import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** What Shift Manager calls the chief of staff seat (FIX-1747); the seat keeps its id. */
+/** What Shift Manager calls the chief of staff worker (FIX-1747); the worker keeps its id. */
 const NAME = "Shift Coordinator";
 
 export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
@@ -59,7 +59,7 @@ export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot;
 
 /**
  * v2's header (v2:125-128): the 40px CS square, the title, and a mono line
- * with the seat's status and what it watches, or *working…* while it works on
+ * with the worker's status and what it watches, or *working…* while it works on
  * a line from this page (v2:1424).
  */
 function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
@@ -67,10 +67,10 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   let status: string | undefined;
   let watching: string | null = null;
   if (snapshot.inventory.ok) {
-    const { seats, workstreams } = snapshot.inventory.value;
-    const cos = chiefOfStaffOf(seats);
-    status = cos.kind === "one" ? seatStates(snapshot).seats.get(cos.seat.id)?.status : undefined;
-    watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(seats.length, "worker", "workers")}`;
+    const { workers, workstreams } = snapshot.inventory.value;
+    const cos = chiefOfStaffOf(workers);
+    status = cos.kind === "one" ? workerStates(snapshot).workers.get(cos.worker.id)?.status : undefined;
+    watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(workers.length, "worker", "workers")}`;
   }
   return (
     <header className="flex items-center gap-3" data-testid="cos-header">
@@ -114,7 +114,7 @@ function NeedsYouTag() {
  * The summary: what waits on the person, and what is running (D1). Drawn as
  * v2 draws the opening of the feed, unboxed 16px prose under a mono label
  * (v2:135-136), with the asks as v2's one bordered list (v2:138-153). The
- * label says whose summary it is: Shift Manager's, not the seat's.
+ * label says whose summary it is: Shift Manager's, not the worker's.
  */
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh } = useLab();
@@ -159,7 +159,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {ask.seatId ?? "unknown seat"} asks{" · "}
+                  {ask.workerId ?? "unknown worker"} asks{" · "}
                   <button
                     type="button"
                     className="text-info hover:text-foreground"
@@ -186,11 +186,11 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
     return (
       <ConversationFrame testId="cos">
         {lead}
-        <SectionFailure what="The shift coordinator" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />
+        <SectionFailure what="The shift coordinator" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-worker-failure" />
       </ConversationFrame>
     );
   }
-  const cos = chiefOfStaffOf(snapshot.inventory.value.seats);
+  const cos = chiefOfStaffOf(snapshot.inventory.value.workers);
   if (cos.kind === "none") {
     return (
       <ConversationFrame testId="cos">
@@ -209,8 +209,8 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
         <section className="border border-dashed p-4 text-sm" data-testid="cos-several">
           <p>{gaps.chiefOfStaff.several}</p>
           <ul className="mt-1 list-inside list-disc text-muted-foreground">
-            {cos.seats.map((seat) => (
-              <li key={seat.id}>{seat.id}</li>
+            {cos.workers.map((worker) => (
+              <li key={worker.id}>{worker.id}</li>
             ))}
           </ul>
         </section>
@@ -218,12 +218,12 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
     );
   }
   return (
-    <Talk key={cos.seat.id} seat={cos.seat} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions(snapshot)} />
+    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions(snapshot)} />
   );
 }
 
 /**
- * An ask the seat raised: a needs-you line that opens Inbox, where it is
+ * An ask the worker raised: a needs-you line that opens Inbox, where it is
  * answered, until the person has answered it (the session holds its resume).
  * Answered, it is the registry's own card.
  */
@@ -252,19 +252,19 @@ function AskLine({ item }: { item: OutputItem }) {
 }
 
 /**
- * The conversation with the Shift Coordinator seat: the shared conversation
- * component, with the summary above it, an ask the seat raised drawn as a
+ * The conversation with the Shift Coordinator worker: the shared conversation
+ * component, with the summary above it, an ask the worker raised drawn as a
  * needs-you line that opens Inbox (where it is answered), and a line the
  * palette handed over sent by its composer.
  */
 function Talk({
-  seat,
+  worker,
   sessions,
   gaps,
   lead,
   suggestions,
 }: {
-  seat: Seat;
+  worker: Worker;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
   lead: ReactNode;
@@ -277,7 +277,7 @@ function Talk({
   return (
     <Conversation
       testId="cos"
-      seat={seat}
+      worker={worker}
       sessions={sessions}
       gaps={gaps}
       name={NAME}
@@ -297,11 +297,11 @@ function Talk({
 export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const { refresh } = useLab();
   const streams = streamCounts(snapshot);
-  const states = seatStates(snapshot);
-  const onCall = [...states.seats.values()].filter((state) => state.status === "on call");
+  const states = workerStates(snapshot);
+  const onCall = [...states.workers.values()].filter((state) => state.status === "on call");
   // The delegates and tasks panels: only for a chief of staff that runs on the coordinator flow.
-  const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.seats) : undefined;
-  const cos = found?.kind === "one" && found.seat.kind === COORDINATOR_FLOW ? found.seat : undefined;
+  const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
+  const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
       <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">STREAMS</p>
@@ -347,17 +347,17 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
         </p>
       ) : (
         <ul className="space-y-0.5">
-          {onCall.map(({ seat }) => (
-            <li key={seat.id}>
+          {onCall.map(({ worker }) => (
+            <li key={worker.id}>
               <button
                 type="button"
-                onClick={() => navigate({ level: "roster", team: seat.team })}
+                onClick={() => navigate({ level: "roster", team: worker.team })}
                 className="flex w-full items-center gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
                 data-testid="cos-on-call"
-                data-seat-id={seat.id}
+                data-worker-id={worker.id}
               >
                 <ShiftMark status="on call" />
-                <span className="truncate">{seat.id}</span>
+                <span className="truncate">{worker.id}</span>
               </button>
             </li>
           ))}
@@ -366,9 +366,9 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
       {cos !== undefined ? (
         <>
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
-          <DelegatesPanel key={cos.id} seat={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
+          <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
-          <TasksPanel key={`tasks-${cos.id}`} seat={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} />
+          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} />
         </>
       ) : null}
     </div>

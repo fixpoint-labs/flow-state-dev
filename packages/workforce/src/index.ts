@@ -1,5 +1,5 @@
 /**
- * `@flow-state-dev/workforce` — the seat factory and its persona helpers.
+ * `@flow-state-dev/workforce` — the worker factory and its persona helpers.
  *
  * The package supplies `hireWorkforce`, which turns worker records into one
  * configured, addressable flow copy each, and declares `WorkerManifest`, the
@@ -22,7 +22,7 @@
  * the built-in `agent` kind, whose flow `defineAgentWorkerFlow` builds — called
  * with no arguments it *is* the built-in, and called with arguments it is how
  * an app replaces it. Beside the
- * seat factory sit two helpers: `definePersona`, which declares the persona
+ * worker factory sit two helpers: `definePersona`, which declares the persona
  * resources a flow renders as a system prompt, and `createWorkforceCapability`,
  * which surfaces a roster through the capability system.
  *
@@ -40,14 +40,14 @@
  * collections.ts` is canonical for what each one holds and how they join back
  * to the declared records.
  *
- * And beside the inventory sits the **roster**: the durable record of seats
+ * And beside the inventory sits the **roster**: the durable record of workers
  * hired while the app was running, which files cannot hold because a runtime
  * hire writes no file. `roster/collections.ts` owns the row,
  * `roster/reload.ts` owns reading a whole roster back at the next boot, and
  * the two are a different contract from the inventory's on purpose — a roster
- * row is deletable because firing a seat is half of what a roster is for,
- * while an inventory row means *was registered here*. A declared seat's
- * inventory row is never removed; a runtime-hired seat's is removed by its
+ * row is deletable because firing a worker is half of what a roster is for,
+ * while an inventory row means *was registered here*. A declared worker's
+ * inventory row is never removed; a runtime-hired worker's is removed by its
  * fire, and only while it carries the incarnation fired. A mailbox's row stays.
  */
 
@@ -82,8 +82,8 @@ export {
   type WorkerLookupAnswer,
   type WorkerLookupOptions
 } from "./worker-lookup";
-export { mergeSeatFlows } from "./merge-seat-flows";
-export { seatDoorOf, type SeatDoor } from "./seat-door";
+export { mergeWorkerFlows } from "./merge-worker-flows";
+export { workerDoorOf, type WorkerDoor } from "./worker-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
 export {
@@ -96,39 +96,39 @@ export {
   type ShadowedReference,
 } from "./clear-shadowed-references";
 export {
-  SEAT_REFERENCES_KEY,
-  parseDeclaredSeatId,
+  WORKER_REFERENCES_KEY,
+  parseDeclaredWorkerId,
   placeOfReference,
-  placeOfSeat,
-  referenceReachableBySeat,
-  type DeclaredSeatId,
+  placeOfWorker,
+  referenceReachableByWorker,
+  type DeclaredWorkerId,
   type TreePlace,
-} from "./seat-references";
+} from "./worker-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";
 export type {
   ResourceModuleExport,
   ResourceModules,
   WorkerResourceModuleExport,
 } from "./resource-modules";
-export type { SeatCapabilitySelection } from "./seat-capabilities";
+export type { WorkerCapabilitySelection } from "./worker-capabilities";
 // Agent discovery (FIX-817) — the workforce's two domains, and the worker-file
-// key that narrows which of a scope's domains one seat reads.
+// key that narrows which of a scope's domains one worker reads.
 export {
   workforceManifestSources,
   type DeclaredWorkforce,
   type InventoryKeys,
   type WorkforceManifestSourceOptions,
 } from "./manifest-sources";
-// `seatDiscoverSelection` / `narrowToSeatSelection` stay internal: the
+// `workerDiscoverSelection` / `narrowToWorkerSelection` stay internal: the
 // capability is their only caller, and an export with no consumer is a
-// contract nobody asked for. `SEAT_DISCOVER_KEY` is public because the key it
+// contract nobody asked for. `WORKER_DISCOVER_KEY` is public because the key it
 // names is authored by hand in a `WORKER.md` and a second spelling of it is
 // the bug this package refuses rather than resolves.
-export { SEAT_DISCOVER_KEY } from "./seat-discovery";
+export { WORKER_DISCOVER_KEY } from "./worker-discovery";
 export {
   workerConfigSchema,
-  seatSkillSchema,
-  seatPackageSchema,
+  workerSkillSchema,
+  workerPackageSchema,
   type WorkerConfig
 } from "./worker-config";
 export type { WorkerManifest, TeamManifest, ResourceDoc, PackageManifest } from "./manifest";

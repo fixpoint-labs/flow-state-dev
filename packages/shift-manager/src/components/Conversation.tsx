@@ -1,15 +1,15 @@
 /**
- * A conversation with a seat, as one component any view can draw: the seat's
+ * A conversation with a worker, as one component any view can draw: the worker's
  * session as a feed, and a composer under it that sends into that session.
  *
- *     <Conversation seat={seat} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
+ *     <Conversation worker={worker} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
  *
  * That is the whole of it: the read, the feed (the registry's renderers, with
  * tool calls as quiet lines), following the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; otherwise the person's latest with
- * the seat), the name over the seat's messages, the text for an empty conversation, what
+ * the worker), the name over the worker's messages, the text for an empty conversation, what
  * sits above the feed (`lead`), a line to hand in (`autoSend`), suggestions,
  * the composer's `scale`, and `renderItem` to draw an item its own way (read
  * the session's other items with `useSessionItems()`).
@@ -27,10 +27,10 @@ import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
-import { delegateOf, openConversation, useSeatConversation } from "../lib/conversation";
+import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
 import { useLab } from "../lib/lab-data";
-import type { Seat } from "../lib/reads";
+import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
@@ -64,9 +64,9 @@ export function ConversationFrame({
   );
 }
 
-/** A conversation with `seat`: the feed and the composer under it. See the file's header. */
+/** A conversation with `worker`: the feed and the composer under it. See the file's header. */
 export function Conversation({
-  seat,
+  worker,
   session,
   sessions,
   gaps,
@@ -82,18 +82,18 @@ export function Conversation({
   scale = "default",
   testId = "conversation",
 }: {
-  seat: Seat;
-  /** The session this conversation is, when the view found it: every line goes there. Absent, the person's latest with the seat. */
+  worker: Worker;
+  /** The session this conversation is, when the view found it: every line goes there. Absent, the person's latest with the worker. */
   session?: string;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
-  /** What the shell calls the seat: over its messages, and in the composer. */
+  /** What the shell calls the worker: over its messages, and in the composer. */
   name: string;
   /** Drawn above the feed, in the same scrolling column. */
   lead?: ReactNode;
   /** Shown before a first line. */
   emptyText?: string;
-  /** A line from this page is in flight: say the seat has it. */
+  /** A line from this page is in flight: say the worker has it. */
   working?: boolean;
   /** Called as a line goes out; returns the call that says it settled. */
   startWork?: () => () => void;
@@ -109,7 +109,7 @@ export function Conversation({
   testId?: string;
 }) {
   const { clients, refresh } = useLab();
-  const conversation = useSeatConversation(seat, sessions, session);
+  const conversation = useWorkerConversation(worker, sessions, session);
   // The feed opens where it starts, and follows once the person reaches the end or sends a line.
   const feed = useFollowLatest({ startAtEnd: false });
   const { sessionId, opened, read, failure, reread } = conversation;
@@ -117,10 +117,10 @@ export function Conversation({
   // A run of tool calls stays one segment: the feed draws it as one quiet line.
   const shown = useMemo(() => (read === undefined ? [] : buildItemRenderStream(read.items, shiftManagerRenderers)), [read]);
 
-  // Nothing is sent into a conversation the screen hasn't read, or to a seat with no door.
+  // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
-    seat.door === null || seat.kind === null
-      ? `${seat.id} ${gaps.turn.noDoor}`
+    worker.door === null || worker.kind === null
+      ? `${worker.id} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
         : sessionId !== null && sessionId !== opened && read === undefined
@@ -142,9 +142,9 @@ export function Conversation({
         const settled = startWork?.();
         feed.follow();
         try {
-          // A first line opens its session naming the seat's worker before the door's request runs in it.
-          if (sessionId === null) await openConversation(clients, { id: seat.id, kind: seat.kind! }, target);
-          const sent = await sendTurn(clients, { sessionId: target, flowId: seat.kind!, door: seat.door! }, message, {
+          // A first line opens its session naming the worker's worker before the door's request runs in it.
+          if (sessionId === null) await openConversation(clients, { id: worker.id, kind: worker.kind! }, target);
+          const sent = await sendTurn(clients, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
             onHeld: () => {
               // The session holds the line: read it back now, so it is drawn while the reply is in flight.
               conversation.open(target);
@@ -174,7 +174,7 @@ export function Conversation({
         aria-label={`Conversation with ${name}`}
         className="flex flex-col gap-6"
         data-testid={`${testId}-conversation`}
-        data-seat-id={seat.id}
+        data-worker-id={worker.id}
         data-session-id={sessionId ?? ""}
       >
         {failure !== undefined ? (
@@ -225,9 +225,9 @@ export function Conversation({
                       data-role={role}
                     >
                       {item.type === "message" && role === "assistant" ? (
-                        // v2's label over each of the seat's messages: its name and the time it was written (v2:135).
+                        // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
                         <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {(delegateOf(seat, item) ?? name).toUpperCase()}
+                          {(delegateOf(worker, item) ?? name).toUpperCase()}
                           <span className="tracking-normal" data-look="message-time">
                             {clockTime(item.ts)}
                           </span>
@@ -248,7 +248,7 @@ export function Conversation({
           </FlowProvider>
         )}
         {working ? (
-          // v2's thinking line (v2:167-169), saying only what is true: the seat has the line.
+          // v2's thinking line (v2:167-169), saying only what is true: the worker has the line.
           <p className="flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground" data-testid={`${testId}-working`}>
             <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
             {name} is working on it…

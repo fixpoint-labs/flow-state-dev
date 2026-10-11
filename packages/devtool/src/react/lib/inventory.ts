@@ -25,7 +25,7 @@ import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } 
 
 /** The three published key patterns, by the section each one fills. */
 export const INVENTORY_PATTERNS = {
-  seats: "inventory/seats/*",
+  workers: "inventory/workers/*",
   mailboxes: "inventory/mailboxes/*",
   memberships: "inventory/members/**",
 } as const;
@@ -34,7 +34,7 @@ export const INVENTORY_PATTERNS = {
 export type InventoryCollection = keyof typeof INVENTORY_PATTERNS;
 
 /** The three, in the order the tab shows them. */
-export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["seats", "mailboxes", "memberships"];
+export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["workers", "mailboxes", "memberships"];
 
 /** Where one collection sits on this session's flow: its ref, and whether the browser may read it. */
 export type InventoryDeclaration = { ref: string; readable: boolean };
@@ -129,12 +129,12 @@ export async function readEveryPage(
   }
 }
 
-/** A seat row as the tab shows it. */
-export type SeatRow = { id: string; kind: string | null };
+/** A worker row as the tab shows it. */
+export type WorkerRow = { id: string; kind: string | null };
 /** A mailbox row as the tab shows it. `members` is empty and `registeredAt` null on a row that predates them. */
 export type MailboxRow = { id: string; kind: string | null; members: string[]; registeredAt: string | null };
 /** A membership row as the tab shows it. */
-export type MembershipRow = { seatId: string; mailboxId: string };
+export type MembershipRow = { workerId: string; mailboxId: string };
 
 function field(row: unknown, key: string): unknown {
   return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
@@ -144,8 +144,8 @@ function text(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** A seat row's fields, as stored. A missing kind reads as unknown, never throws. */
-export function toSeatRow(row: unknown): SeatRow {
+/** A worker row's fields, as stored. A missing kind reads as unknown, never throws. */
+export function toWorkerRow(row: unknown): WorkerRow {
   return { id: text(field(row, "id")) ?? "", kind: text(field(row, "kind")) };
 }
 
@@ -165,22 +165,22 @@ export function toMailboxRow(row: unknown): MailboxRow {
 
 /** A membership row's fields, as stored. */
 export function toMembershipRow(row: unknown): MembershipRow {
-  return { seatId: text(field(row, "seatId")) ?? "", mailboxId: text(field(row, "mailboxId")) ?? "" };
+  return { workerId: text(field(row, "workerId")) ?? "", mailboxId: text(field(row, "mailboxId")) ?? "" };
 }
 
 /**
- * The mailboxes each seat's membership rows name, keyed by seat id.
+ * The mailboxes each worker's membership rows name, keyed by worker id.
  *
  * Read off the membership collection alone. A mailbox row's own `members` is
  * never consulted, so when the two disagree the tab shows both and the
  * mismatch stays visible.
  */
-export function mailboxesBySeat(memberships: readonly MembershipRow[]): Map<string, string[]> {
-  const bySeat = new Map<string, string[]>();
+export function mailboxesByWorker(memberships: readonly MembershipRow[]): Map<string, string[]> {
+  const byWorker = new Map<string, string[]>();
   for (const row of memberships) {
-    const mailboxes = bySeat.get(row.seatId) ?? [];
+    const mailboxes = byWorker.get(row.workerId) ?? [];
     mailboxes.push(row.mailboxId);
-    bySeat.set(row.seatId, mailboxes);
+    byWorker.set(row.workerId, mailboxes);
   }
-  return bySeat;
+  return byWorker;
 }

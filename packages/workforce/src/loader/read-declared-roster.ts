@@ -40,14 +40,14 @@ import type {
  * Which reader reported a problem — the one thing the flattening adds that the
  * entries themselves cannot carry.
  *
- * Once five channels are one list, "a document failed" and "a seat's skill
+ * Once five channels are one list, "a document failed" and "a worker's skill
  * failed" are the same shape, and a caller that wants to treat them
  * differently has nothing to branch on. This is that.
  */
 export type DeclaredProblemLayer =
   /** A worker slot, or a structural folder above one. */
   | "worker"
-  /** One seat's skills, at any of the levels it reads (three for a team seat, two for an org seat). */
+  /** One worker's skills, at any of the levels it reads (three for a team worker, two for an org worker). */
   | "skill"
   /** A team's own `TEAM.md`. */
   | "team"
@@ -75,11 +75,11 @@ export interface DeclaredProblem {
    */
   error: Error;
   /**
-   * The seat this cost a skill — set on the `skill` layer and nowhere else.
+   * The worker this cost a skill — set on the `skill` layer and nowhere else.
    *
-   * A level shared by several seats fails once per seat that reads it, not
+   * A level shared by several workers fails once per worker that reads it, not
    * once for the level, because that is what it really cost: each of those
-   * seats is running short. `readWorkforce` already reports it per seat, and
+   * workers is running short. `readWorkforce` already reports it per worker, and
    * this keeps that rather than collapsing it.
    */
   worker?: string;
@@ -162,12 +162,12 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
 
   const problems: DeclaredProblem[] = [
     ...workforce.errors.map((e) => ({ layer: "worker" as const, path: e.path, error: e.error })),
-    ...workforce.skillErrors.flatMap((seat) =>
-      seat.errors.map((e) => ({
+    ...workforce.skillErrors.flatMap((worker) =>
+      worker.errors.map((e) => ({
         layer: "skill" as const,
         path: e.path,
         error: e.error,
-        worker: seat.worker,
+        worker: worker.worker,
       })),
     ),
     ...workforce.teamErrors.map((e) => ({ layer: "team" as const, path: e.path, error: e.error })),

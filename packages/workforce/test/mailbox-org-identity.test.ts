@@ -17,7 +17,7 @@
  * principal, or — as here, with no resolver configured — from `DEFAULT_ORG_ID`.
  * So what is pinned now is that a mailbox is never opened WITHOUT one, on every
  * path including the repair, because "no org identity" is the state that made
- * a woken seat fail to read its own documents.
+ * a woken worker fail to read its own documents.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -109,7 +109,7 @@ describe("openMailboxes org identity", () => {
     await openMailboxes([record("engineering.standup")], { client, userId: OWNER });
 
     // The whole point: not "the binder passed a field" but "the session the
-    // seat is later woken in carries an org", which is what an org-scoped
+    // worker is later woken in carries an org", which is what an org-scoped
     // resource lookup is matched against. This app configures no resolver, so
     // that org is the framework default — supplied by the server, not chosen
     // by the caller.
@@ -122,7 +122,7 @@ describe("openMailboxes org identity", () => {
 
   it("never opens a mailbox with no organization at all", async () => {
     // The state this whole seam exists to prevent, and the one an app used to
-    // land in by simply not passing an `orgId`: a mailbox whose woken seat
+    // land in by simply not passing an `orgId`: a mailbox whose woken worker
     // cannot read its own org-scoped documents. It is now unreachable rather
     // than merely discouraged — there is no input that produces it.
     const { client, sessionOf } = hostedClient();

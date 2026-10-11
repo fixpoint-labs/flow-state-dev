@@ -227,19 +227,19 @@ describe("a carried core that dispatches to another flow is not checked against 
     await expect(runCarried(plainFlow(), { block: agent as never })).resolves.toBeDefined();
   });
 
-  it("skips this flow's task-binding check when the seat names another flow", async () => {
-    // Same-flow, this unbound seat is "held by no board". Across a flow
+  it("skips this flow's task-binding check when the worker names another flow", async () => {
+    // Same-flow, this unbound worker is "held by no board". Across a flow
     // boundary the sender cannot see the destination's gate, so the walk
     // must not apply that check here — the seam resolves the destination.
-    const seat = dispatcher({
-      name: "seat-cross",
+    const worker = dispatcher({
+      name: "worker-cross",
       type: "task",
       flowKind: "billing",
       action: "charge",
       session: "per-task"
     });
     const guarded = handler({ name: "ordinary-root-cross-task", execute: () => ({ ok: true }) }).rescue([
-      { block: seat }
+      { block: worker }
     ]);
     const result = await runCarried(plainFlow(), { block: guarded as never });
     expect(result.error).toBeUndefined();
@@ -259,25 +259,25 @@ describe("a carried core that dispatches to another flow is not checked against 
 
 describe("a carried task dispatcher must be held by the board that gates its entry", () => {
   // Target existence is not routability for a hand-off. The entry runs behind
-  // ONE board's gate; a seat another board holds would claim a row on its own
+  // ONE board's gate; a worker another board holds would claim a row on its own
   // ledger and have the child refuse it at the gate — after the dispatch was
   // accepted — so the row sits `in_progress` until lease recovery. `defineFlow`
   // refuses two boards on one entry statically; a carried core needs the same
   // rule at adoption.
   const boardA = { boardId: "board-a", gate: (entry: never) => entry };
   const boardB = { boardId: "board-b", gate: (entry: never) => entry };
-  let seats = 0;
-  function seat(name: string) {
-    seats += 1;
+  let workers = 0;
+  function worker(name: string) {
+    workers += 1;
     return dispatcher({
-      name: `${name}-${seats}`,
+      name: `${name}-${workers}`,
       type: "task",
       action: "implement",
       session: "per-task"
     });
   }
   function flowGatedFor(binding: typeof boardB) {
-    const held = seat("seat-static");
+    const held = worker("worker-static");
     bindTaskDispatcher(held, binding as never);
     return defineFlow({
       kind: "carried-core",
@@ -292,7 +292,7 @@ describe("a carried task dispatcher must be held by the board that gates its ent
       task: { actions: { implement: { block: handler({ name: "implement", execute: () => null }) } } }
     } as never)({ id: "carried-core" });
   }
-  function carriedWith(dispatcherBlock: ReturnType<typeof seat>) {
+  function carriedWith(dispatcherBlock: ReturnType<typeof worker>) {
     return {
       block: handler({ name: "ordinary-root-5", execute: () => ({ ok: true }) }).rescue([
         { block: dispatcherBlock }
@@ -300,9 +300,9 @@ describe("a carried task dispatcher must be held by the board that gates its ent
     };
   }
 
-  it("refuses a seat another board holds, naming both boards", async () => {
+  it("refuses a worker another board holds, naming both boards", async () => {
     const flow = flowGatedFor(boardB);
-    const foreign = seat("seat-a");
+    const foreign = worker("worker-a");
     bindTaskDispatcher(foreign, boardA as never);
 
     // Rejects rather than resolving with an `error`, like every refusal above:
@@ -312,16 +312,16 @@ describe("a carried task dispatcher must be held by the board that gates its ent
     await expect(run).rejects.toThrow(/held by board "board-a"/);
   });
 
-  it("refuses a seat no board holds", async () => {
+  it("refuses a worker no board holds", async () => {
     const flow = flowGatedFor(boardB);
-    await expect(runCarried(flow as never, carriedWith(seat("seat-unbound")))).rejects.toThrow(
+    await expect(runCarried(flow as never, carriedWith(worker("worker-unbound")))).rejects.toThrow(
       /held by no board/
     );
   });
 
-  it("allows a seat the gating board holds — the control", async () => {
+  it("allows a worker the gating board holds — the control", async () => {
     const flow = flowGatedFor(boardB);
-    const own = seat("seat-b");
+    const own = worker("worker-b");
     bindTaskDispatcher(own, boardB as never);
 
     const result = await runCarried(flow as never, carriedWith(own));

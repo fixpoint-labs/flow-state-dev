@@ -38,9 +38,9 @@ import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
-import { LAB_USER_ID, readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { LAB_USER_ID, readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { LAB_CONFIG, Scenario, serveLab, type ActResult, type BoardRow, type ChangeRecord } from "../run-scenario.mts";
-import type { WorkLine } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
+import type { WorkLine } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string; then: { goal: string; desk: string } };
@@ -272,7 +272,7 @@ async function main() {
 
   const served = await serveLab({ control: CONTROL, workDir: join(SHOTS, "server") });
   const lab = new Scenario(served, tree, routes);
-  const plannerFlow = tree.seatFlows[tree.plannerId]!;
+  const plannerFlow = tree.workerFlows[tree.plannerId]!;
   let browser: Browser | undefined;
   try {
     await lab.open();
@@ -344,12 +344,12 @@ async function main() {
     // A worker has no flow of its own: the navigator lists the one copy of the
     // flow it runs on, each worker's own session under it, and each task
     // session the planner's board opened under the copy of the flow it runs on.
-    for (const flow of new Set([...workers, tree.plannerId].map((id) => tree.seatFlows[id]!))) await openCopy(page, flow);
+    for (const flow of new Set([...workers, tree.plannerId].map((id) => tree.workerFlows[id]!))) await openCopy(page, flow);
     await page.locator(`[data-session-id="${lab.conversation}"]`).waitFor();
     const listed = await page.locator("[data-session-id]").evaluateAll((els) => els.map((el) => el.getAttribute("data-session-id")));
     for (const id of [...workers, tree.plannerId]) {
       if (!listed.includes(lab.seatSession(id))) {
-        fail("VB", `the navigator lists no session of ${id} under the copy of "${tree.seatFlows[id]}" (listed: ${listed.join(", ")})`);
+        fail("VB", `the navigator lists no session of ${id} under the copy of "${tree.workerFlows[id]}" (listed: ${listed.join(", ")})`);
       }
     }
     await openSession(page, plannerFlow, lab.conversation);
@@ -370,8 +370,8 @@ async function main() {
     if (runSession !== parkedLine.session) {
       fail("VB", `screen 2: the row names ${runSession} as its run, not ${parkedLine.session}, where it ran`);
     } else {
-      await openCopy(page, tree.seatFlows[owner]!);
-      await openSession(page, tree.seatFlows[owner]!, runSession);
+      await openCopy(page, tree.workerFlows[owner]!);
+      await openSession(page, tree.workerFlows[owner]!, runSession);
       childSession = await openBadgeSession(page);
       if (childSession !== parkedLine.session) {
         fail("VB", `screen 2: the navigator opened ${childSession}, not ${parkedLine.session}, where the row ran`);
@@ -494,7 +494,7 @@ async function main() {
     if (childSession !== undefined) {
       // Re-selected through the navigator, the way a person comes back to it.
       await openSession(page, plannerFlow, lab.conversation);
-      await openSession(page, tree.seatFlows[owner]!, childSession);
+      await openSession(page, tree.workerFlows[owner]!, childSession);
       const screen2b = await taskRow(page, firstId, (cells) => cells.Status === firstNow?.status);
       await page.screenshot({ path: join(SHOTS, "2b-task-session-answered.png") });
       if (screen2b === undefined) {

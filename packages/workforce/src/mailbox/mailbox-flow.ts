@@ -20,8 +20,8 @@
  * of a given mailbox is the SAME value. The `author` label is caller-supplied,
  * stored with `authorVerified: false`, and is a display claim, not a proof of
  * who wrote the line. The members check on `author` is a validity check against
- * the declared roster, not authentication. Whether a line is a seat's — and so
- * wakes nobody — is `seatAuthored`, set only by the seat post action and the
+ * the declared roster, not authentication. Whether a line is a worker's — and so
+ * wakes nobody — is `workerAuthored`, set only by the worker post action and the
  * answer entry. A `post`, public or dispatched, never sets it.
  */
 
@@ -60,11 +60,11 @@ import {
 import {
   defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   membershipKey,
-  seatInventoryRowSchema
+  workerInventoryRowSchema
 } from "../inventory/collections";
-import type { SeatInventoryRow } from "../inventory/collections";
+import type { WorkerInventoryRow } from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const MAILBOX_KIND = "mailbox";
@@ -103,7 +103,7 @@ export type MailboxSessionState = z.infer<typeof mailboxSessionStateSchema>;
 export const mailboxPostInputSchema = z
   .object({
     body: z.string().min(1),
-    /** Optional, unverified claim about which seat is posting. */
+    /** Optional, unverified claim about which worker is posting. */
     author: z.string().optional()
   })
   .strict();
@@ -111,7 +111,7 @@ export const mailboxPostInputSchema = z
 export type MailboxPostInput = z.infer<typeof mailboxPostInputSchema>;
 
 /**
- * The internal action a seat's answer to a routed post goes through: the
+ * The internal action a worker's answer to a routed post goes through: the
  * built-in agent kind's landing and its post tool send a routed turn's answer
  * here, not to `post`. Declared only on a kind built with a route and a
  * notify slot, the only kind that routes a post.
@@ -119,14 +119,14 @@ export type MailboxPostInput = z.infer<typeof mailboxPostInputSchema>;
 export const MAILBOX_ANSWER_ACTION = "answer";
 
 /**
- * The internal action a seat's own mailbox post goes through. A cross-flow
+ * The internal action a worker's own mailbox post goes through. A cross-flow
  * `post` is not this: `internal` is the generic address, and a claimed
- * `author` on it does not mark the line a seat's.
+ * `author` on it does not mark the line a worker's.
  */
-export const MAILBOX_SEAT_POST_ACTION = "seatPost";
+export const MAILBOX_WORKER_POST_ACTION = "workerPost";
 
 /**
- * What an answer carries: the post it answers, the words, and the seat.
+ * What an answer carries: the post it answers, the words, and the worker.
  * Closed, and never caller-addressed: a caller who could name a post could
  * take its one answer.
  */
@@ -243,7 +243,7 @@ export function boundMailbox(
  * The line a post makes, or the mailbox's refusal. Writes nothing: each append
  * keeps the line itself.
  */
-function lineFor(input: MailboxPostInput, ctx: BlockContext, seatAuthored: boolean): MailboxTranscriptLine {
+function lineFor(input: MailboxPostInput, ctx: BlockContext, workerAuthored: boolean): MailboxTranscriptLine {
   const mailbox = boundMailbox(ctx.session.state);
   if (mailbox === undefined) {
     throw new MailboxPostRefusedError(
@@ -254,7 +254,7 @@ function lineFor(input: MailboxPostInput, ctx: BlockContext, seatAuthored: boole
   }
 
   // A validity check against the declared roster, NOT authentication. The
-  // claim stays unverified either way; this only stops a line naming a seat
+  // claim stays unverified either way; this only stops a line naming a worker
   // the mailbox has never heard of.
   if (input.author !== undefined && !mailbox.members.includes(input.author)) {
     throw new MailboxPostRefusedError(
@@ -271,7 +271,7 @@ function lineFor(input: MailboxPostInput, ctx: BlockContext, seatAuthored: boole
     // closed so there is no caller value to take.
     principal: ctx.session.identity.userId ?? ctx.session.identity.id,
     ...(input.author === undefined ? {} : { author: input.author }),
-    ...(seatAuthored ? { seatAuthored: true as const } : {}),
+    ...(workerAuthored ? { workerAuthored: true as const } : {}),
     authorVerified: false as const,
     body: input.body
   };
@@ -280,18 +280,18 @@ function lineFor(input: MailboxPostInput, ctx: BlockContext, seatAuthored: boole
 /**
  * The append: the whole of what the post entry's queue hold covers.
  *
- * `seatAuthored` is which entry this handler serves. The seat post action
+ * `workerAuthored` is which entry this handler serves. The worker post action
  * passes true. Public `post` and a dispatched `post` pass false. It is not
  * read from `input`.
  */
-function appendPostFor(seatAuthored: boolean) {
+function appendPostFor(workerAuthored: boolean) {
   return handler({
-    name: seatAuthored ? "mailbox-append-seat-post" : "mailbox-append-post",
+    name: workerAuthored ? "mailbox-append-worker-post" : "mailbox-append-post",
     inputSchema: mailboxPostInputSchema,
     outputSchema: mailboxTranscriptLineSchema,
     sessionStateSchema: routeLedgerStateSchema,
     execute: async (input: MailboxPostInput, ctx): Promise<MailboxTranscriptLine> => {
-      const line = lineFor(input, ctx, seatAuthored);
+      const line = lineFor(input, ctx, workerAuthored);
       // A route ledger left by a kind built with a route would miss this line,
       // and every line after it, so it goes before the line is kept. Once: the
       // next post finds none, and posts on a mailbox that never had one write
@@ -384,21 +384,21 @@ async function keepRoutedLine(
  * {@link keepRoutedLine}. On a mailbox that declares `routing:`, a person's
  * post comes out with its case.
  */
-const appendRoutedPostFor = (routing: Readonly<Record<string, MailboxRouting>>, seatAuthored: boolean) =>
+const appendRoutedPostFor = (routing: Readonly<Record<string, MailboxRouting>>, workerAuthored: boolean) =>
   handler({
-    name: seatAuthored ? "mailbox-append-routed-seat-post" : "mailbox-append-routed-post",
+    name: workerAuthored ? "mailbox-append-routed-worker-post" : "mailbox-append-routed-post",
     inputSchema: mailboxPostInputSchema,
     outputSchema: keptPostSchema,
     sessionStateSchema: routedMailboxStateSchema,
     execute: async (input: MailboxPostInput, ctx): Promise<KeptPost> => {
-      const line = lineFor(input, ctx, seatAuthored);
+      const line = lineFor(input, ctx, workerAuthored);
       const postCase = (await keepRoutedLine(ctx, line))?.postCase;
       return postCase === undefined || routing[ctx.session.identity.id] === undefined ? { line } : { line, postCase };
     }
   });
 
 /**
- * A seat's answer to a routed post: the post's one answer, or nothing (`null`)
+ * A worker's answer to a routed post: the post's one answer, or nothing (`null`)
  * when it has one. Checked like a post (`lineFor`), so a refused answer writes
  * nothing, then kept by {@link keepRoutedLine}, whose one write refuses a
  * second answer. Two deliveries of one post land one line; a hand-off refused
@@ -489,7 +489,7 @@ export type MailboxFileTaskInput = z.infer<typeof mailboxFileTaskInputSchema>;
 /** What filing one row hands back: where it landed, and which row it is. */
 export const mailboxFileTaskOutputSchema = z.object({
   board: z.string(),
-  /** The minted ledger id — the same string a seat declares. */
+  /** The minted ledger id — the same string a worker declares. */
   boardId: z.string(),
   taskId: z.string(),
   status: z.string()
@@ -656,7 +656,7 @@ const fileTaskFor = (
       const { boardId, mailbox, ledger } = await ledgerNamed(ctx, boardIds, input.board);
 
       // A validity check against the declared roster, NOT authentication. The
-      // claim stays unverified either way; this only stops a row naming a seat
+      // claim stays unverified either way; this only stops a row naming a worker
       // the mailbox has never heard of.
       if (input.author !== undefined && !mailbox.members.includes(input.author)) {
         throw new MailboxPostRefusedError(
@@ -727,7 +727,7 @@ const readBoardFor = (boardIds: readonly string[]) =>
  * One board's eight task tools as actions, for a mailbox that declared
  * `boardActions: true` (FIX-1629).
  *
- * The same guarded verbs a seat's model holds through `mailboxBoardTaskTools`,
+ * The same guarded verbs a worker's model holds through `mailboxBoardTaskTools`,
  * so a refusal is the verb's own and comes back as `{ ok: false, error }`. The
  * one thing added is the fence a mailbox needs and a board on its own flow
  * does not: every mailbox shares this flow, so `cancelTask_eng_feature_work`
@@ -764,10 +764,10 @@ const mailboxFanOutInputSchema = z.object({
   principal: z.string(),
   author: z.string().optional(),
   /**
-   * The post arrived on the internal seat entry. Set by that entry when it
+   * The post arrived on the internal worker entry. Set by that entry when it
    * builds this payload. A caller's `author` never sets it.
    */
-  seatAuthored: z.literal(true).optional(),
+  workerAuthored: z.literal(true).optional(),
   postCase: postCaseSchema.optional()
 });
 
@@ -777,7 +777,7 @@ export type MailboxFanOutInput = z.infer<typeof mailboxFanOutInputSchema>;
  * What a notify block is handed, once per declared member per post, or once
  * in all for a routed post.
  *
- * `seatAuthored`, `routed` and `recent` are set by the mailbox's own fan-out
+ * `workerAuthored`, `routed` and `recent` are set by the mailbox's own fan-out
  * and nothing else: a caller's post has no field that reaches them.
  */
 export const mailboxNotifyInputSchema = z.object({
@@ -791,11 +791,11 @@ export const mailboxNotifyInputSchema = z.object({
   /** The poster's unverified claim. Display only; it does not withhold a wake. */
   author: z.string().optional(),
   /**
-   * The mailbox marked this delivery as a seat's own post or answer. Copied
+   * The mailbox marked this delivery as a worker's own post or answer. Copied
    * from the internal entry. Absent on a public post, including one that
    * claims an `author`.
    */
-  seatAuthored: z.literal(true).optional(),
+  workerAuthored: z.literal(true).optional(),
   /**
    * `true` when the mailbox's route picked this member, the one member the
    * post is delivered to. Absent on every other delivery. A kind that hears
@@ -881,10 +881,10 @@ const noteHandOffRefusal = handler({
 export const INVENTORY_REGISTER_MAILBOX = "registerMailboxInInventory";
 
 /**
- * The action the boot binder dispatches ONCE, carrying the roster's seats.
+ * The action the boot binder dispatches ONCE, carrying the roster's workers.
  *
  * **Pinned**, for the same reason. One run for the whole roster rather than one
- * per seat: a seat holds no session, so there is no per-seat place this has to
+ * per worker: a worker holds no session, so there is no per-worker place this has to
  * land, and the rows are a straight copy of what the binder already holds.
  *
  * Lives in `internal.actions`, never the public map — its whole input is the
@@ -892,7 +892,7 @@ export const INVENTORY_REGISTER_MAILBOX = "registerMailboxInInventory";
  * own direct, trusted `runAction({
     orgId: DEFAULT_ORG_ID, source: "internal", ... })` call.
  */
-export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
+export const INVENTORY_REGISTER_WORKERS = "registerWorkersInInventory";
 
 /** Nothing a caller supplies reaches the mailbox's row. */
 const registerMailboxInputSchema = z.object({}).strict();
@@ -904,20 +904,20 @@ export const inventoryMailboxRegisteredSchema = z.object({
   members: z.array(z.string())
 });
 
-/** The roster's seats, as the binder holds them. */
-const registerSeatsInputSchema = z
-  .object({ seats: z.array(seatInventoryRowSchema) })
+/** The roster's workers, as the binder holds them. */
+const registerWorkersInputSchema = z
+  .object({ workers: z.array(workerInventoryRowSchema) })
   .strict();
 
-/** What the seat write reports: how many rows landed. */
-export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
+/** What the worker write reports: how many rows landed. */
+export const inventoryWorkersRegisteredSchema = z.object({ written: z.number() });
 
 /**
- * Write one seat row from a boot. A seat's row is its standard worker's, the
+ * Write one worker row from a boot. A worker's row is its standard worker's, the
  * same on every process, so a later boot's write replaces an earlier one's.
  */
-async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<void> {
-  await seats.upsert(row.id, row);
+async function publishBootWorkerRow(workers: ResourceCollectionRef, row: WorkerInventoryRow): Promise<void> {
+  await workers.upsert(row.id, row);
 }
 
 /**
@@ -940,9 +940,9 @@ async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInvento
  * @returns Both entries, keyed by their action name. The blocks declare the
  *   collections they touch, so installing an entry installs its collection
  *   too. **Split them across `actions` and `internal.actions` — do not spread
- *   the whole return into `actions`.** `registerSeats`'s whole input is
+ *   the whole return into `actions`.** `registerWorkers`'s whole input is
  *   caller-supplied row data with nothing to check it against, so a public
- *   caller could write fabricated seat rows; `registerMailbox` has no such
+ *   caller could write fabricated worker rows; `registerMailbox` has no such
  *   risk (empty input, derives its row from the mailbox's own session state),
  *   so it is the one safe to leave public. `defineMailboxFlow`'s own built-in
  *   kind makes exactly this split — read it there for the mechanics.
@@ -955,7 +955,7 @@ async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInvento
  *     session: { stateSchema: briefingState },
  *     actions: { ...myActions, registerMailboxInInventory: writer.registerMailboxInInventory },
  *     internal: {
- *       actions: { registerSeatsInInventory: writer.registerSeatsInInventory }
+ *       actions: { registerWorkersInInventory: writer.registerWorkersInInventory }
  *     }
  *   });
  */
@@ -966,7 +966,7 @@ export function inventoryWriterActions(kind: string) {
   // flow that installs it.
   const mailboxes = defineMailboxInventoryCollection();
   const memberships = defineMembershipIndexCollection();
-  const seats = defineSeatInventoryCollection();
+  const workers = defineWorkerInventoryCollection();
 
   const registerMailbox = handler({
     name: "mailbox-register-in-inventory",
@@ -1006,7 +1006,7 @@ export function inventoryWriterActions(kind: string) {
       // same throw on the same member every time, and a run that had already
       // written part of itself before hitting it would keep re-adding to a
       // half-written state instead of leaving nothing behind.
-      const membershipKeys = members.map((seatId) => membershipKey(seatId, id));
+      const membershipKeys = members.map((workerId) => membershipKey(workerId, id));
 
       // The membership rows go FIRST, and the mailbox row that names them
       // goes last. Neither write is transactional with the other — a store
@@ -1021,7 +1021,7 @@ export function inventoryWriterActions(kind: string) {
       // header).
       for (let i = 0; i < members.length; i++) {
         await ctx.resources.memberships.upsert(membershipKeys[i], {
-          seatId: members[i],
+          workerId: members[i],
           mailboxId: id
         });
       }
@@ -1038,41 +1038,41 @@ export function inventoryWriterActions(kind: string) {
     }
   });
 
-  const registerSeats = handler({
-    name: "inventory-register-seats",
-    inputSchema: registerSeatsInputSchema,
-    outputSchema: inventorySeatsRegisteredSchema,
-    resources: { seats },
+  const registerWorkers = handler({
+    name: "inventory-register-workers",
+    inputSchema: registerWorkersInputSchema,
+    outputSchema: inventoryWorkersRegisteredSchema,
+    resources: { workers },
     execute: async (input, ctx) => {
       if (ctx.org === undefined) {
         throw new Error(
-          "the seat rows cannot be written: this request carries no organization, and the " +
-            "inventory is org-scoped storage. Run the seat write under the same `orgId` the " +
+          "the worker rows cannot be written: this request carries no organization, and the " +
+            "inventory is org-scoped storage. Run the worker write under the same `orgId` the " +
             "mailboxes were opened with."
         );
       }
 
       const problems: string[] = [];
       let written = 0;
-      for (const row of input.seats) {
+      for (const row of input.workers) {
         try {
-          await publishBootSeatRow(ctx.resources.seats, row);
+          await publishBootWorkerRow(ctx.resources.workers, row);
           written += 1;
         } catch (error) {
           problems.push(
-            `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`
+            `worker "${row.id}" — ${error instanceof Error ? error.message : String(error)}`
           );
         }
       }
 
-      // Every row is attempted before anything is reported: one seat the store
-      // refuses is not an org with no seat inventory. The throw is what carries
+      // Every row is attempted before anything is reported: one worker the store
+      // refuses is not an org with no worker inventory. The throw is what carries
       // the failure back out — a boot door hands back an action's return value
       // in a shape this package cannot read, so a `problems` field on the
       // output would reach nobody.
       if (problems.length > 0) {
         throw new Error(
-          `${problems.length} of ${input.seats.length} seat rows could not be written:\n  - ` +
+          `${problems.length} of ${input.workers.length} worker rows could not be written:\n  - ` +
             problems.join("\n  - ")
         );
       }
@@ -1088,10 +1088,10 @@ export function inventoryWriterActions(kind: string) {
         "from the mailbox's own session state. Boot machinery: takes no input, and re-running " +
         "it writes the same rows."
     },
-    [INVENTORY_REGISTER_SEATS]: {
-      block: registerSeats,
+    [INVENTORY_REGISTER_WORKERS]: {
+      block: registerWorkers,
       description:
-        "Write the org's seat rows into the live inventory. Boot machinery, called once by " +
+        "Write the org's worker rows into the live inventory. Boot machinery, called once by " +
         "`openInventory` with the roster it was hired from."
     }
   };
@@ -1167,7 +1167,7 @@ export interface DefineMailboxFlowOptions {
   inventory?: boolean;
 
   /**
-   * The route, from `routeByPurpose(seats, { model })`. A mailbox on this kind
+   * The route, from `routeByPurpose(workers, { model })`. A mailbox on this kind
    * that declares `routing:` sends each person's post to one member, the one
    * the route picks, instead of to every member. A mailbox without the line
    * fans out as before. Needs `notify`: the route picks a member, and the
@@ -1244,19 +1244,19 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
   // carries its block under a key only this package holds.
   const routeBlock = options.route?.[ROUTE_BLOCK];
   if (options.route !== undefined && routeBlock === undefined) {
-    throw new Error("defineMailboxFlow: `route` must be what routeByPurpose(seats, { model }) returned.");
+    throw new Error("defineMailboxFlow: `route` must be what routeByPurpose(workers, { model }) returned.");
   }
   if (routeBlock !== undefined && notify === undefined) {
     throw new Error(
       "defineMailboxFlow: a `route` needs a `notify` block to deliver to. Pass the wake as well: " +
-        "`defineMailboxFlow({ notify: wakeMemberSeats(seats), route })`."
+        "`defineMailboxFlow({ notify: wakeMemberWorkers(workers), route })`."
     );
   }
   const routing = options.routing ?? {};
 
   // One declaration object per minted id, always from the memo. Two separate
   // `defineTaskCollection` calls sharing an id share ROWS and not POLICY — the
-  // handed-off assignee freeze is a WeakSet on the declaration — so the seat's
+  // handed-off assignee freeze is a WeakSet on the declaration — so the worker's
   // board and the mailbox's own writes must pass one value.
   const boardResources = Object.fromEntries(
     boardIds.map((id) => [id, mailboxBoardLedger(id)])
@@ -1302,12 +1302,12 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
 
   /**
    * This mailbox's `routing:` fallback, when the route places this post: a
-   * person's post (not `seatAuthored`) to a mailbox that declares the line, on
-   * a kind built with a route. A seat's post is never routed; it fans out as
+   * person's post (not `workerAuthored`) to a mailbox that declares the line, on
+   * a kind built with a route. A worker's post is never routed; it fans out as
    * unrouted. A claimed `author` is not that mark.
    */
   const fallbackFor = (post: MailboxFanOutInput, ctx: BlockContext): string | undefined =>
-    routeBlock === undefined || post.seatAuthored === true
+    routeBlock === undefined || post.workerAuthored === true
       ? undefined
       : routing[ctx.session.identity.id]?.fallback;
 
@@ -1322,7 +1322,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
       body: post.body,
       principal: post.principal,
       ...(post.author === undefined ? {} : { author: post.author }),
-      ...(post.seatAuthored === true ? { seatAuthored: true as const } : {})
+      ...(post.workerAuthored === true ? { workerAuthored: true as const } : {})
     }));
 
   /** A routed post's delivery: the one member the route picked, or none when it placed the post with nobody. */
@@ -1407,25 +1407,25 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     body: line.body,
     principal: line.principal,
     ...(line.author === undefined ? {} : { author: line.author }),
-    ...(line.seatAuthored === true ? { seatAuthored: true as const } : {})
+    ...(line.workerAuthored === true ? { workerAuthored: true as const } : {})
   });
 
   /**
    * One mailbox post. Public `post` and a dispatched `post` share the
-   * non-seat append. The seat post action is the only one that passes
-   * `seatAuthored`, and it does not read that from `input`.
+   * non-worker append. The worker post action is the only one that passes
+   * `workerAuthored`, and it does not read that from `input`.
    */
-  const mailboxPostFor = (seatAuthored: boolean) => {
-    const appendPlain = appendPostFor(seatAuthored);
+  const mailboxPostFor = (workerAuthored: boolean) => {
+    const appendPlain = appendPostFor(workerAuthored);
     if (handOff === undefined) return appendPlain;
     const head = sequencer({
-      name: seatAuthored ? "mailbox-post-internal" : "mailbox-post",
+      name: workerAuthored ? "mailbox-post-internal" : "mailbox-post",
       inputSchema: mailboxPostInputSchema,
       outputSchema: mailboxTranscriptLineSchema
     });
     if (routeBlock === undefined) return head.step(appendPlain).tap(fanOutOf, handOff);
     return head
-      .step(appendRoutedPostFor(routing, seatAuthored))
+      .step(appendRoutedPostFor(routing, workerAuthored))
       .tap(
         ({ line, postCase }: KeptPost) => ({ ...fanOutOf(line), ...(postCase === undefined ? {} : { postCase }) }),
         handOff
@@ -1433,10 +1433,10 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
       .map(({ line }: KeptPost) => line);
   };
   const post = mailboxPostFor(false);
-  const seatLine = mailboxPostFor(true);
+  const workerLine = mailboxPostFor(true);
 
-  // A seat's answer to a routed post, on the only kind that routes one: the
-  // line, handed off like any seat's line, or nothing when the post has its
+  // A worker's answer to a routed post, on the only kind that routes one: the
+  // line, handed off like any worker's line, or nothing when the post has its
   // answer already.
   const answer =
     handOff === undefined || routeBlock === undefined
@@ -1452,7 +1452,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     cardinality: "singleton",
     session: { stateSchema: mailboxSessionStateSchema },
     // The ledgers, and nothing else: no board, no drain, no task entry. A
-    // mailbox HOLDS rows; running them stays on the seat's side of the fence,
+    // mailbox HOLDS rows; running them stays on the worker's side of the fence,
     // and `defineFlow` asks nothing of a flow that declares only a collection.
     resources: boardResources,
     actions: {
@@ -1496,7 +1496,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
       // action client at boot, and an internal dispatch resolves from a
       // different map.
       //
-      // `registerSeats` is deliberately NOT here — see `internal.actions`
+      // `registerWorkers` is deliberately NOT here — see `internal.actions`
       // below for why.
       ...(inventoryActions === undefined
         ? {}
@@ -1505,9 +1505,9 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     internal: {
       actions: {
         // `read`, the board actions, and `post` are the same blocks a client
-        // reaches. A dispatched `post` is not a seat: `internal` is the
-        // generic cross-flow address. A seat's own line is `seatPost`, and
-        // only that entry sets `seatAuthored`.
+        // reaches. A dispatched `post` is not a worker: `internal` is the
+        // generic cross-flow address. A worker's own line is `workerPost`, and
+        // only that entry sets `workerAuthored`.
         //
         // Both registrations are required, and so is repeating `concurrency`:
         // `resolveEntry` reads one map per dispatch type and never falls
@@ -1515,7 +1515,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // internal dispatch, and the arbiter reads `concurrency` off whichever
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
         post: { block: post, concurrency: "queue" },
-        [MAILBOX_SEAT_POST_ACTION]: { block: seatLine, concurrency: "queue" },
+        [MAILBOX_WORKER_POST_ACTION]: { block: workerLine, concurrency: "queue" },
         // Here only, never in `actions`: the answer names the post it answers,
         // so a caller who could reach it could take that post's one answer.
         // On the post queue's key (the session), so answers and posts are one
@@ -1528,12 +1528,12 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // Beside `fileTask` and `readBoard`, so another flow's dispatch lands on
         // the same implementation a caller reaches.
         ...boardTaskActions,
-        // `registerSeats` lives ONLY here, never in the public `actions` map
+        // `registerWorkers` lives ONLY here, never in the public `actions` map
         // above. Unlike `registerMailbox`, it has no session state to derive
-        // from — a seat has no session — so its whole input IS the row data,
+        // from — a worker has no session — so its whole input IS the row data,
         // with nothing in this package to check it against. Public
         // reachability would let any principal that can reach this flow write
-        // fabricated `{ id, kind }` pairs into the org's seat inventory.
+        // fabricated `{ id, kind }` pairs into the org's worker inventory.
         // `internal.actions` resolves from its own map (`resolveEntry`,
         // `@flow-state-dev/engine`) that a caller-addressed dispatch can never
         // reach — `dispatchTypeOf` maps every caller-facing transport source
@@ -1545,7 +1545,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // that function's own doc comment.
         ...(inventoryActions === undefined
           ? {}
-          : { [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS] }),
+          : { [INVENTORY_REGISTER_WORKERS]: inventoryActions[INVENTORY_REGISTER_WORKERS] }),
         ...(fanOut === undefined
           ? {}
           : {

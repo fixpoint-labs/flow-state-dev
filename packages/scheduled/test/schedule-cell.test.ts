@@ -132,7 +132,7 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
     },
   });
 
-const seatKind = kind("research", "collection");
+const workerKind = kind("research", "collection");
 const appKind = kind("reminders", "singleton");
 
 /** The user's cell in one org, where every flow keeps their schedule rows. */
@@ -386,9 +386,9 @@ describe("a schedule created through the collection fires into the org that save
 describe("a hired worker's dynamic schedules", () => {
   it("fires a schedule the worker's own run created, from her cell in its org", async () => {
     const h = boot();
-    const seat = h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
+    const worker = h.register(workerKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
-      await h.runPlan(seat, "weekly", "acme");
+      await h.runPlan(worker, "weekly", "acme");
       expect(await h.stores.resourceState.get("user", cellOf("alice", "acme"), "schedules/weekly")).toBeDefined();
 
       const response = await h.dispatch("acme.~alice.research", formatScheduleId("acme", "alice", "weekly"));
@@ -403,7 +403,7 @@ describe("a hired worker's dynamic schedules", () => {
 
   it("does not resolve a dispatch naming another org than the worker's pin", async () => {
     const h = boot();
-    h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
+    h.register(workerKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
       // A real row in her globex cell, naming globex: not this worker's.
       await h.plant(cellOf("alice", "globex"), "weekly", { orgId: "globex" });
@@ -416,7 +416,7 @@ describe("a hired worker's dynamic schedules", () => {
 
   it("does not tell another person's schedule apart from a missing one on a private worker", async () => {
     const h = boot();
-    h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
+    h.register(workerKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
       // Bob's row really exists in his own Acme cell. Addressed through
       // Alice's private worker it must answer exactly like a missing row.

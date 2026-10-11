@@ -196,6 +196,6 @@ describe("the package stays a skin", () => {
 
   it("imports only its fonts and names no Workforce word in the stylesheet", () => {
     for (const [line] of css.matchAll(/@import[^;]*;/g)) expect(line).toMatch(/^@import "@fontsource\/[a-z-]+\/latin-\d+\.css";$/);
-    expect(css).not.toMatch(/workforce|needs you|roster|seat/i);
+    expect(css).not.toMatch(/workforce|needs you|roster|worker/i);
   });
 });

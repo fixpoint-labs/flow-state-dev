@@ -17,18 +17,18 @@ import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 /**
- * Run a seat's action as a person would: in a session of the asker flow's one
- * copy, opened naming the seat's worker first.
+ * Run a worker's action as a person would: in a session of the asker flow's one
+ * copy, opened naming the worker's worker first.
  */
-async function seatAction(
+async function workerAction(
   clients: ReturnType<typeof createLabClients>,
-  seatId: string,
+  workerId: string,
   action: string,
   input: unknown,
   sessionId: string,
 ) {
   await clients.sessions
-    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: seatId } })
+    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: workerId } })
     .catch((error: unknown) => {
       if ((error as { status?: number }).status !== 409) throw error;
     });
@@ -232,7 +232,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await seatAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    await workerAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     beforeRender?.();
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
@@ -248,7 +248,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     return JSON.stringify((state.items ?? []).filter((item) => (item as { role?: string }).role === "user"));
   }
 
-  it("shows delivered only once the seat's session holds the line, through its door", async () => {
+  it("shows delivered only once the worker's session holds the line, through its door", async () => {
     const { clients } = await openOnAsk();
     // The asker asks before doing anything, so its session holds no tool call before the ask.
     expect((await screen.findByTestId("inbox-from-session-none")).textContent).toBe("No tool call before this ask.");
@@ -321,12 +321,12 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     expect(screen.queryByTestId("inbox-session-truncated")).toBeNull();
   });
 
-  it("keeps the draft and shows the seat's own reason when its door refuses", async () => {
+  it("keeps the draft and shows the worker's own reason when its door refuses", async () => {
     await openOnAsk();
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
     fireEvent.click(screen.getByTestId("inbox-reply-send"));
-    expect((await screen.findByTestId("inbox-reply-error", {}, { timeout: 5_000 })).textContent).toBe("This seat won't take that line.");
+    expect((await screen.findByTestId("inbox-reply-error", {}, { timeout: 5_000 })).textContent).toBe("This worker won't take that line.");
     expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("refused");
     expect(input.value).toBe(ASKER_REFUSED_LINE);
     expect(screen.queryByTestId("inbox-reply-retry")).toBeNull();
@@ -373,7 +373,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     expect(await userLines(clients, "s_ops_asker")).toContain("did it land");
   });
 
-  it("is disabled for a seat whose kind has no door, and Approve still answers (BR-22)", async () => {
+  it("is disabled for a worker whose kind has no door, and Approve still answers (BR-22)", async () => {
     await openOnAsk({ doors: false });
     expect((screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.getByTestId("inbox-reply-blocked").textContent).toBe(`ops.asker ${GAPS.turn.replyNoDoor}`);
@@ -387,8 +387,8 @@ describe("Jump to a declared document (BR-10)", () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    // A seat session, before the page boots, makes a flow that serves the document listable.
-    await seatAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    // A worker session, before the page boots, makes a flow that serves the document listable.
+    await workerAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
 
@@ -417,7 +417,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     for (let i = 0; i < asks; i += 1) {
-      await seatAction(clients, "ops.asker", "ask", { what: `ship part ${i}` }, `s_ops_asker_${i}`);
+      await workerAction(clients, "ops.asker", "ask", { what: `ship part ${i}` }, `s_ops_asker_${i}`);
     }
     setURL(`${lab.baseUrl}${path}`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
@@ -446,7 +446,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
     expect(screen.queryByTestId("nav-cos-count")).toBeNull();
     expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("cos");
-    // Shift Manager names the view Shift Coordinator; the seat keeps its id (FIX-1747).
+    // Shift Manager names the view Shift Coordinator; the worker keeps its id (FIX-1747).
     // The entry's label and the screen's title carry the name; v2's square beside each carries initials.
     expect(screen.getByTestId("nav-cos").querySelector("[data-look=nav-label]")!.textContent).toBe("Shift Coordinator");
     expect(within(screen.getByTestId("cos-header")).getByText("Shift Coordinator")).toBeTruthy();
@@ -502,24 +502,24 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
     // ops.asker's pending ask puts it on call, by the rule Roster uses.
-    expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-seat-id"))).toEqual(["ops.asker"]);
+    expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-worker-id"))).toEqual(["ops.asker"]);
   });
 
-  it("names the missing seat in place of the conversation, with the summary still drawn (BR-11)", async () => {
+  it("names the missing worker in place of the conversation, with the summary still drawn (BR-11)", async () => {
     await openCos("/");
     const none = (await screen.findByTestId("cos-none")).textContent ?? "";
     expect(none).toContain(GAPS.chiefOfStaff.none.title);
-    // Org seats have shipped: the copy names where to declare the seat today, and promises nothing.
+    // Org workers have shipped: the copy names where to declare the worker today, and promises nothing.
     expect(none).toContain("org/workers/chief-of-staff/");
     expect(none).not.toMatch(/once .* ship|FIX-\d+/);
     expect(screen.getByTestId("cos-summary")).toBeTruthy();
     expect(screen.queryByTestId("cos-composer")).toBeNull();
   });
 
-  it("opens the conversation with the first line, shows delivered once the session holds it, and draws the seat's stored reply (BR-14 to BR-17)", async () => {
+  it("opens the conversation with the first line, shows delivered once the session holds it, and draws the worker's stored reply (BR-14 to BR-17)", async () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
     const conversation = await screen.findByTestId("cos-conversation");
-    expect(conversation.getAttribute("data-seat-id")).toBe("ops.chief-of-staff");
+    expect(conversation.getAttribute("data-worker-id")).toBe("ops.chief-of-staff");
     expect(conversation.textContent).not.toMatch(/chief of staff/i);
     expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
 
@@ -542,7 +542,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     vi.restoreAllMocks();
 
-    // The session the door opened is the seat's, and holds the line and the reply drawn.
+    // The session the door opened is the worker's, and holds the line and the reply drawn.
     const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
     const opened = await clients.sessions.getSession(sessionId);
     expect(opened.flowId).toBe(ASKER_KIND);
@@ -567,7 +567,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   it("names the coordinator on Send, clears a held line into the conversation at once, and shows it working until the reply", async () => {
     await openCos("/", { chiefOfStaff: true });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLInputElement;
-    // The seat's id stays chief-of-staff; what the person sees is its name.
+    // The worker's id stays chief-of-staff; what the person sees is its name.
     expect(input.getAttribute("aria-label")).toBe("Message Shift Coordinator");
     expect(input.placeholder).toBe("Message Shift Coordinator…");
     const release = holdSlowLines();
@@ -591,7 +591,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   // A finished turn raised no ask, but it may have changed the organization: a project it
   // created is listed without a reload.
   it("lists a project the chief of staff's turn created, without a reload", async () => {
-    await openCos("/", { chiefOfStaff: true, seatsStartProjects: true });
+    await openCos("/", { chiefOfStaff: true, workersStartProjects: true });
     // The composer is drawn from the read snapshot, whose PROJECTS hold no project yet.
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     expect(screen.queryByTestId("projects-failure")).toBeNull();
@@ -602,16 +602,16 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect((await screen.findByTestId("nav-project-launch", undefined, { timeout: 5_000 })).textContent).toContain("Project launch");
   });
 
-  it("keeps the draft and shows the seat's reason when its door refuses (BR-15)", async () => {
+  it("keeps the draft and shows the worker's reason when its door refuses (BR-15)", async () => {
     await openCos("/", { chiefOfStaff: true });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
     fireEvent.click(screen.getByTestId("cos-composer-send"));
-    expect((await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This seat won't take that line.");
+    expect((await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This worker won't take that line.");
     expect(input.value).toBe(ASKER_REFUSED_LINE);
   });
 
-  // A gated change (fire, retire) stops the seat's turn on the person's approval. The line
+  // A gated change (fire, retire) stops the worker's turn on the person's approval. The line
   // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
   it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
@@ -714,7 +714,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await seatAction(clients, "ops.chief-of-staff", "message", { message: "earlier" }, "s_cos_earlier");
+    await workerAction(clients, "ops.chief-of-staff", "message", { message: "earlier" }, "s_cos_earlier");
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     let failing = false;
@@ -749,7 +749,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     setURL(lab.baseUrl);
-    await seatAction(clients, "ops.chief-of-staff", "ask", { what: "ship it" }, "s_cos_asked");
+    await workerAction(clients, "ops.chief-of-staff", "ask", { what: "ship it" }, "s_cos_asked");
     let suspension: { requestId: string; suspensionId: string } | undefined;
     await waitFor(async () => {
       const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension"] });
@@ -775,8 +775,8 @@ describe("Chief of Staff (FIX-1722)", () => {
   it("says what the Lab answered, with Retry, for asks or a conversation's board that didn't load (BR-8)", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
-    // A seat session, so there are asks to read.
-    await seatAction(createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    // A worker session, so there are asks to read.
+    await workerAction(createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
@@ -799,7 +799,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(within(board).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
-  it("disables the composer for a seat that takes no message (BR-13)", async () => {
+  it("disables the composer for a worker that takes no message (BR-13)", async () => {
     await openCos("/", { chiefOfStaff: true, doors: false });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);

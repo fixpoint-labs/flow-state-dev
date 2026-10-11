@@ -33,9 +33,9 @@
  * And, re-pointed at this roster, by `specs/issues/FIX-1585/BUSINESS-RULES.md`:
  * BR-1 and BR-2 (a line labelled `devuser` survives a reload), BR-17 (a failed
  * "Talk" shows in the worker's roster row, opens nothing, and can be pressed
- * again). FIX-1585's BR-15 (a seat of a kind with no action takes no
+ * again). FIX-1585's BR-15 (a worker of a kind with no action takes no
  * messages) is checked on the panel itself, in `test/picked-session-panel`:
- * the rail lists only the kinds the shell names, so a seat of any other kind
+ * the rail lists only the kinds the shell names, so a worker of any other kind
  * never reaches the page.
  *
  * And by `specs/issues/FIX-1609/BUSINESS-RULES.md`, re-pointed at this
@@ -154,7 +154,7 @@ async function keptLines(page: Page): Promise<Line[]> {
 }
 
 /**
- * Wait until a seat has answered the post carrying `mark`: a line by a seat
+ * Wait until a worker has answered the post carrying `mark`: a line by a worker
  * after it. Not graded; what did not happen fails on the page, after the
  * reload. It also releases the route's hold, so the next test's post is
  * routed afresh.
@@ -199,7 +199,7 @@ function answersTo(drawn: Array<{ label: string; text: string }>, mark: string) 
 }
 
 /**
- * `seat`'s session for the person's conversation with the coordinator, opened
+ * `worker`'s session for the person's conversation with the coordinator, opened
  * and drawn, or `undefined` when it has none. A delegate keeps one session per
  * conversation: the run the conversation started, created naming the worker.
  *
@@ -207,12 +207,12 @@ function answersTo(drawn: Array<{ label: string; text: string }>, mark: string) 
  * and the session to draw its first turn: a turn counted as missing is read
  * off a loaded session, never off one still fetching.
  */
-async function delegateSessionOf(page: Page, seat: string): Promise<Locator | undefined> {
+async function delegateSessionOf(page: Page, worker: string): Promise<Locator | undefined> {
   await page.reload();
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
   const parent = await conversationId(page);
-  const runs = (await sessionsOf(page, seat, true)).filter((s) => s.parentSessionId === parent);
-  expect(runs.length, `${seat} has ${runs.length} sessions for the conversation with ${COORDINATOR}`).toBeLessThanOrEqual(1);
+  const runs = (await sessionsOf(page, worker, true)).filter((s) => s.parentSessionId === parent);
+  expect(runs.length, `${worker} has ${runs.length} sessions for the conversation with ${COORDINATOR}`).toBeLessThanOrEqual(1);
   if (runs.length === 0) return undefined;
   const leaf = await openWorkerCopy(page);
   const run = leaf.locator(`[data-session-id="${runs[0]!.id}"]`);
@@ -249,17 +249,17 @@ test("a new support.devices conversation keeps the message and the reply across 
   page,
   consoleErrors: _consoleErrors,
 }) => {
-  const message = `[scenario:talk-to-seat] where is order ${token()}?`;
+  const message = `[scenario:talk-to-worker] where is order ${token()}?`;
   await openShell(page);
   await rosterRow(page, "support.devices").getByTestId("roster-talk").click();
 
   const panel = picked(page);
-  await panel.getByLabel("Message this seat").fill(message);
+  await panel.getByLabel("Message this worker").fill(message);
   await panel.getByRole("button", { name: "Send" }).click();
   // Read in the conversation: the live view can draw the message while the
   // composer still holds its text, until the server has taken the send.
   await expect(panel.getByRole("log").getByText(message, { exact: true })).toBeVisible();
-  await expect(panel.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
+  await expect(panel.getByText(/\[reply:talk-to-worker\]/)).toBeVisible();
 
   // The conversation that was opened, so the reload can come back to it. It
   // is a session the server lists as the person's with the worker.
@@ -272,7 +272,7 @@ test("a new support.devices conversation keeps the message and the reply across 
   await (await openWorkerCopy(page)).locator(`[data-session-id="${sessionId}"]`).click();
   const kept = picked(page);
   await expect(kept.getByText(message, { exact: true })).toBeVisible();
-  await expect(kept.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
+  await expect(kept.getByText(/\[reply:talk-to-worker\]/)).toBeVisible();
 });
 
 test("a failed Talk shows in the worker's roster row, opens nothing, and can be pressed again", async ({
@@ -301,7 +301,7 @@ test("a failed Talk shows in the worker's roster row, opens nothing, and can be 
 
   refuse = false;
   await button.click();
-  await expect(picked(page).getByLabel("Message this seat")).toBeVisible();
+  await expect(picked(page).getByLabel("Message this worker")).toBeVisible();
   await expect(worker.getByTestId("roster-talk-error")).toHaveCount(0);
   // The refused create's own 503 is the one console error this scenario causes.
   consoleErrors.splice(0, consoleErrors.length, ...consoleErrors.filter((e) => !e.includes("503")));
@@ -334,7 +334,7 @@ test("a post to support.help runs the specialist it was routed to once, in its o
     await post(panel, line);
     await answerLanded(page, line);
   }
-  // Time for a wrongly woken seat to run, so its absence below is not a race.
+  // Time for a wrongly woken worker to run, so its absence below is not a race.
   await page.waitForTimeout(1_500);
 
   // One session for the conversation, whatever else the worker holds.
@@ -348,8 +348,8 @@ test("a post to support.help runs the specialist it was routed to once, in its o
   await expect(conversation!.locator('[data-message-role="assistant"]').filter({ hasText: "[reply:wake]" })).not.toHaveCount(0);
 
   // The other specialists never heard either post.
-  for (const seat of SPECIALISTS.filter((s) => s !== "support.fsd")) {
-    const other = await delegateSessionOf(page, seat);
+  for (const worker of SPECIALISTS.filter((s) => s !== "support.fsd")) {
+    const other = await delegateSessionOf(page, worker);
     if (other === undefined) continue;
     for (const line of [first, second]) {
       await expect(other.locator('[data-message-role="user"]').filter({ hasText: line })).toHaveCount(0);
@@ -365,7 +365,7 @@ test("a specialist's answer is one line under its own name, and the line wakes n
   const line = `[route:support.devices] [scenario:reply-in-mailbox] ${mark} when do refunds post?`;
   await post(await openHelpDesk(page), line);
   await answerLanded(page, mark);
-  // Time for a wrongly woken seat to run, so its absence below is not a race.
+  // Time for a wrongly woken worker to run, so its absence below is not a race.
   await page.waitForTimeout(1_500);
 
   const answers = answersTo(await drawnAfterReload(page, mark), mark);
@@ -373,16 +373,16 @@ test("a specialist's answer is one line under its own name, and the line wakes n
   expect(answers.map((l) => l.label)).toEqual(["support.devices"]);
   expect(answers[0]!.text).toContain(`[reply:in-mailbox] ${mark}`);
 
-  for (const seat of SPECIALISTS) {
-    const routed = seat === "support.devices";
-    const conversation = await delegateSessionOf(page, seat);
+  for (const worker of SPECIALISTS) {
+    const routed = worker === "support.devices";
+    const conversation = await delegateSessionOf(page, worker);
     if (conversation === undefined) {
-      expect(routed, `${seat} has no session for the conversation with ${COORDINATOR}`).toBe(false);
+      expect(routed, `${worker} has no session for the conversation with ${COORDINATOR}`).toBe(false);
       continue;
     }
     const turns = conversation.locator('[data-message-role="user"]').filter({ hasText: mark });
-    // The routed specialist heard the person's post once; its own line reached no seat.
-    await expect(turns, `${seat}'s turns carrying ${mark}`).toHaveCount(routed ? 1 : 0);
+    // The routed specialist heard the person's post once; its own line reached no worker.
+    await expect(turns, `${worker}'s turns carrying ${mark}`).toHaveCount(routed ? 1 : 0);
     if (routed) await expect(turns).toContainText(`devuser, through ${COORDINATOR}: ${line}`);
   }
 });

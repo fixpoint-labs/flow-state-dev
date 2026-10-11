@@ -260,7 +260,7 @@ describe("the gate of a task entry served by many ledgers", () => {
         actionName: "work",
         input: {
           boardId: ledgerId,
-          seat: "work",
+          assignee: "work",
           taskId: "t1",
           attempt: row.attempts + attemptOffset,
           createdAt: row.createdAt,

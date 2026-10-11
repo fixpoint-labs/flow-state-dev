@@ -63,9 +63,9 @@ export interface DiscoveredResourceModule {
    *
    * The one thing about a module's position the ref does not already carry, and
    * the one thing anything downstream asks: such a module may be a resource and
-   * may **not** be a capability, because every seat of a kind shares that kind's
+   * may **not** be a capability, because every worker of a kind shares that kind's
    * capabilities and one installed from a single worker's folder would quietly
-   * change every other seat.
+   * change every other worker.
    */
   atWorkerRoot: boolean;
 }

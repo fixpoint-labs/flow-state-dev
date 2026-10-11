@@ -37,9 +37,9 @@ export type ResourceModuleExport = DefinedCapability | DeclaredResourceEntry;
  * A module in a single worker's OWN `resources/` folder: a resource, and never
  * a capability.
  *
- * Every seat of a kind shares that kind's capabilities, so a capability
- * installed from one worker's folder would quietly change every other seat of
- * that kind. Giving one seat behaviour nobody else has needs a per-seat
+ * Every worker of a kind shares that kind's capabilities, so a capability
+ * installed from one worker's folder would quietly change every other worker of
+ * that kind. Giving one worker behaviour nobody else has needs a per-worker
  * install, which the convention rules out on purpose — so the honest answer is
  * to refuse the file rather than to install it kind-wide or skip it in silence.
  *

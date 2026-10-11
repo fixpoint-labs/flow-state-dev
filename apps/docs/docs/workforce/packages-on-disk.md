@@ -39,7 +39,7 @@ Run `fsdev gen` after adding or removing a block, as you would for any other `bl
 
 Where the folder sits decides who holds it.
 
-- **A worker's own.** `workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`. That worker holds it, always. An [org seat](./workers-on-disk.md#the-tree) keeps its own at `workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`.
+- **A worker's own.** `workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`. That worker holds it, always. An [org worker](./workers-on-disk.md#the-tree) keeps its own at `workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`.
 - **A team's library.** `workforce/teams/<team>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/packages/<name>/blocks/<block>.ts`. A worker on that team holds it once it names it.
 - **The org's library.** `workforce/org/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/packages/<name>/blocks/<block>.ts`. Any worker holds it once it names it.
 
@@ -70,12 +70,12 @@ A package's tools reach only the workers that hold it. They are not in your app'
 
 ## In your app
 
-`fsdev gen` writes a `packageBlocks` export onto `workforce.gen.ts`, keyed by each package's folder and then by block name. Pass it to `createWorkerInstallation` beside `seatBlocks`:
+`fsdev gen` writes a `packageBlocks` export onto `workforce.gen.ts`, keyed by each package's folder and then by block name. Pass it to `createWorkerInstallation` beside `workerBlocks`:
 
 ```ts
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
+import { kinds, packageBlocks, workerBlocks } from "./workforce/workforce.gen";
 
 const { workers, errors, packageErrors } = await readWorkforce("./workforce");
 if (errors.length || packageErrors.length) {
@@ -83,13 +83,13 @@ if (errors.length || packageErrors.length) {
   throw new Error(`workforce failed to load:\n${reported.join("\n")}`);
 }
 
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, seatBlocks, packageBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, workerBlocks, packageBlocks });
 const flows = hireWorkforce(installation);
 ```
 
 Leave `packageBlocks` out and a held package brings its instructions and no tools.
 
-`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org seat has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided from its `packages:` line, when its configuration is checked.
+`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org worker has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided from its `packages:` line, when its configuration is checked.
 
 ## When a file is wrong
 
@@ -125,10 +125,10 @@ A preset that builds its tools per turn isn't checked at startup. If one of thos
 
 ## In a kind of your own
 
-A seat that holds at least one package receives it on the `seatPackages` setting, one entry per package in the order it holds them:
+A worker that holds at least one package receives it on the `workerPackages` setting, one entry per package in the order it holds them:
 
 ```ts
-seatPackages?: Array<{
+workerPackages?: Array<{
   name: string;           // the folder's name
   path: string;           // e.g. "teams/support/packages/escalation"
   instructions?: string;  // the PACKAGE.md body, absent when empty
@@ -136,7 +136,7 @@ seatPackages?: Array<{
 }>;
 ```
 
-A seat that holds none doesn't get the key. Compose [`workerConfigSchema()`](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) into your kind's `configSchema` and it accepts the setting. What your kind does with it is up to you. A worker file that writes `seatPackages:` itself is refused by name.
+A worker that holds none doesn't get the key. Compose [`workerConfigSchema()`](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) into your kind's `configSchema` and it accepts the setting. What your kind does with it is up to you. A worker file that writes `workerPackages:` itself is refused by name.
 
 ## What this does not do
 

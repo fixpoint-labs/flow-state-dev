@@ -47,26 +47,26 @@ export const COORDINATOR_ASK = { action: "run", field: "message" } as const;
  * every flow under `workforce/flows/workers/`, of which this app has none. Each
  * runs as one copy, holding every worker's conversations on it.
  */
-export const SEAT_KINDS = ["agent"] as const;
+export const WORKER_KINDS = ["agent"] as const;
 
 /**
- * What a seat's composer sends: the one action its kind answers a person with,
+ * What a worker's composer sends: the one action its kind answers a person with,
  * and that action's one input field. A kind with nothing to answer with says
- * so instead, and its seats get no composer, only this reason.
+ * so instead, and its workers get no composer, only this reason.
  */
-export type SeatAsk =
+export type WorkerAsk =
   | { readonly action: string; readonly field: string }
   | { readonly none: string };
 
 /**
- * Each seat kind's answer, written down rather than picked from the served
+ * Each worker kind's answer, written down rather than picked from the served
  * schemas: a kind that grew a second one-string action would be picked from
  * silently, where a missing or wrong entry here fails
  * `test/workforce-shell.test.ts` instead.
  */
-export const SEAT_ASKS = {
+export const WORKER_ASKS = {
   agent: { action: "run", field: "message" },
-} as const satisfies Record<(typeof SEAT_KINDS)[number], SeatAsk>;
+} as const satisfies Record<(typeof WORKER_KINDS)[number], WorkerAsk>;
 
 /**
  * The delegate a coordinator handed a post to, read off the run's `topic`: the
@@ -86,9 +86,9 @@ export function delegateOfRun(run: { readonly topic?: string }): string | undefi
   }
 }
 
-/** A seat kind's answer, or `undefined` for a kind the shell does not know. */
-export function seatAskFor(kind: string): SeatAsk | undefined {
-  return (SEAT_ASKS as Record<string, SeatAsk | undefined>)[kind];
+/** A worker kind's answer, or `undefined` for a kind the shell does not know. */
+export function workerAskFor(kind: string): WorkerAsk | undefined {
+  return (WORKER_ASKS as Record<string, WorkerAsk | undefined>)[kind];
 }
 
 /**
@@ -97,7 +97,7 @@ export function seatAskFor(kind: string): SeatAsk | undefined {
  * upgrade still holds that session, and it must never be the conversation the
  * page opens by default (BP-030).
  */
-export const LEGACY_SEAT_HIRES_TAG = "seat-hires";
+export const LEGACY_WORKER_HIRES_TAG = "worker-hires";
 
 /**
  * The conversation the page opens on: the most recent of the assistant's
@@ -109,5 +109,5 @@ export const LEGACY_SEAT_HIRES_TAG = "seat-hires";
 export function defaultConversation<T extends { readonly tags?: readonly string[] }>(
   sessions: readonly T[],
 ): T | undefined {
-  return sessions.find((session) => !(session.tags?.includes(LEGACY_SEAT_HIRES_TAG) ?? false));
+  return sessions.find((session) => !(session.tags?.includes(LEGACY_WORKER_HIRES_TAG) ?? false));
 }

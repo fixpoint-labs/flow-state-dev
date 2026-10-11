@@ -11,9 +11,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { INSTRUCTIONS_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, TEAM_INSTRUCTIONS_KEY } from "../src/manifest";
+import { INSTRUCTIONS_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, TEAM_INSTRUCTIONS_KEY } from "../src/manifest";
 import { workerConfigSchema, type WorkerConfig } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 
@@ -32,11 +32,11 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 
 function refusalOf(manifests: WorkerManifest[], kinds: Record<string, never>): string {
   try {
-    mintSeats(manifests, { workerFlows: kinds });
+    mintWorkers(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
-  throw new Error("expected a refusal, got seats");
+  throw new Error("expected a refusal, got workers");
 }
 
 describe("workerConfigSchema — the bag itself", () => {
@@ -45,11 +45,11 @@ describe("workerConfigSchema — the bag itself", () => {
   // the answer for "nothing to give".
   it("parses an empty bag into the two imposed collections and the delegate list, empty, and no other key", () => {
     const parsed = workerConfigSchema().parse({});
-    expect(parsed).toEqual({ [SEAT_SKILLS_KEY]: [], [SEAT_TOOLS_KEY]: [], delegates: [] });
+    expect(parsed).toEqual({ [WORKER_SKILLS_KEY]: [], [WORKER_TOOLS_KEY]: [], delegates: [] });
   });
 
   // Absent, not empty — both of them. An empty string would be a different
-  // value for every seat with no body and every team with no file, and
+  // value for every worker with no body and every team with no file, and
   // downstream that reads as "instructions that say nothing".
   it("leaves both instruction keys absent rather than defaulting them to empty", () => {
     const parsed = workerConfigSchema().parse({});
@@ -67,13 +67,13 @@ describe("workerConfigSchema — the bag itself", () => {
   });
 
   // Structural, not a second parser — but a skill that lost its body on the way
-  // is a skill that will fail much later, in the seeder, per seat.
+  // is a skill that will fail much later, in the seeder, per worker.
   it("refuses a skill record whose shape did not survive the trip", () => {
     expect(() =>
-      workerConfigSchema().parse({ [SEAT_SKILLS_KEY]: [{ name: "triage" }] })
+      workerConfigSchema().parse({ [WORKER_SKILLS_KEY]: [{ name: "triage" }] })
     ).toThrow();
     expect(() =>
-      workerConfigSchema().parse({ [SEAT_SKILLS_KEY]: [{ name: "", skillMd: "x" }] })
+      workerConfigSchema().parse({ [WORKER_SKILLS_KEY]: [{ name: "", skillMd: "x" }] })
     ).toThrow();
   });
 
@@ -85,7 +85,7 @@ describe("workerConfigSchema — the bag itself", () => {
 
   it("types the parsed bag as WorkerConfig", () => {
     const parsed: WorkerConfig = workerConfigSchema().parse({});
-    expect(parsed[SEAT_SKILLS_KEY]).toEqual([]);
+    expect(parsed[WORKER_SKILLS_KEY]).toEqual([]);
   });
 });
 
@@ -108,12 +108,12 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
 
   const kinds = { "contract-triage": triage, "contract-triage-strict": strictTriage } as never;
 
-  it("hires a seat and hands it both its own setting and the contract's", () => {
-    const [seat] = mintSeats(
+  it("hires a worker and hands it both its own setting and the contract's", () => {
+    const [worker] = mintWorkers(
       [record({ id: "support.desk", declared: { flow: "contract-triage", desk: "mezzanine" } })],
       { workerFlows: kinds }
     );
-    expect(seat!.config).toMatchObject({ desk: "mezzanine", [SEAT_SKILLS_KEY]: [] });
+    expect(worker!.config).toMatchObject({ desk: "mezzanine", [WORKER_SKILLS_KEY]: [] });
   });
 
   // BR-13 — extending the contract does NOT open the schema. The framework

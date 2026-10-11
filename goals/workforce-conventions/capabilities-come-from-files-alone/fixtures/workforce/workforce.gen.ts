@@ -21,6 +21,6 @@ export const resourceModules = {
   "teams/support/research": resource_teams__support__research,
 } satisfies ResourceModules;
 
-export const seatBlocks = {};
+export const workerBlocks = {};
 
 export const packageBlocks = {};

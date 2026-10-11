@@ -41,7 +41,7 @@ import {
   WORKER_ID_STATE_KEY,
   defineCoordinatorFlow,
   defineSessionBoard,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
@@ -240,7 +240,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
 
   const runtime = await flowState.getRuntime();
   const inventory = await openInventory(
-    { seats: [...inventorySeats(installation), ORG_SEAT], mailboxes: [] },
+    { seats: [...inventoryWorkers(installation), ORG_SEAT], mailboxes: [] },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({
@@ -257,7 +257,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         if (result?.error !== undefined) throw new Error(`${request.action}: ${String((result.error as Error).message ?? result.error)}`);
         return result;
       },
-      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
+      workerWriter: { flowKind: INVENTORY_WRITER_KIND },
       userId: SHIFT_LAB_USER_ID,
       orgId,
     },

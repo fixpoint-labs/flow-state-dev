@@ -8,13 +8,13 @@
  */
 
 export {
-  INVENTORY_SEAT_WRITER_SESSION,
+  INVENTORY_WORKER_WRITER_SESSION,
   openInventory,
   type InventoryActionRequest,
   type InventoryBinding,
   type InventoryRoster,
-  type InventorySeat,
-  type InventorySeatWriter,
+  type InventoryWorker,
+  type InventoryWorkerWriter,
   type OpenInventoryOptions
 } from "./open-inventory";
 
@@ -22,12 +22,12 @@ export {
   mailboxInventoryRowSchema,
   defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   membershipIndexRowSchema,
   membershipKey,
   membershipPrefix,
-  seatInventoryRowSchema,
+  workerInventoryRowSchema,
   type MailboxInventoryRow,
   type MembershipIndexRow,
-  type SeatInventoryRow
+  type WorkerInventoryRow
 } from "./collections";

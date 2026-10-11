@@ -45,8 +45,8 @@ const ASK_FEATURE = (
 
 const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
-const coderSeatId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
-if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
+const coderWorkerId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
+if (coderWorkerId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
 const members = (roster.mailboxes[0]?.declared.members as string[] | undefined) ?? [];
 const emSeats = members.filter((m) => kindOf(m) === EM_KIND);
 if (emSeats.length !== 1) throw new Error(`wanted one EM seat in the mailbox, found ${emSeats.length}`);
@@ -61,7 +61,7 @@ const lab = await openLab({
   harness: recordingHarness,
   runTimeoutMs: RUN_TIMEOUT_MS,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
-  coderSeatId,
+  coderWorkerId,
   mailboxes: { addresses: { [emSeatId]: emSeatId }, log: createNotifyLog() },
   inventory: true,
   ask: ASK_FEATURE,

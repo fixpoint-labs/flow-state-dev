@@ -20,7 +20,7 @@
  *   settles the attempt as a gate failure. The row goes back for retry still
  *   naming this run, and the retry's claim clears it.
  *
- * The end-to-end hand-off (real drain, real child sessions, every seat policy)
+ * The end-to-end hand-off (real drain, real child sessions, every assignee policy)
  * is `integration-tests/src/scenarios/task-board-run-link.test.ts`.
  */
 import { describe, expect, it } from "vitest";
@@ -41,7 +41,7 @@ import { createFakeResourceCollection } from "../helpers";
 const USER_ID = "u_run_link_gate";
 const BOARD_ID = "run-link-board";
 const LEDGER = "run-link-ledger";
-const SEAT = "coder";
+const ASSIGNEE = "coder";
 
 type Fault = "none" | "decline" | "throw" | "commit-then-throw" | "state-write-throws";
 
@@ -69,7 +69,7 @@ async function harness(fault: Fault) {
   const parent = await ledger();
   // Two attempts, so a gate failure the rescue settles goes back for retry
   // rather than ending the row.
-  await parent.addTask({ id: "t1", goal: "do it", assignee: SEAT, input: {}, maxAttempts: 2 });
+  await parent.addTask({ id: "t1", goal: "do it", assignee: ASSIGNEE, input: {}, maxAttempts: 2 });
   const claimed = (await parent.claim("drain", { leaseDurationMs: 10_000 }))!;
 
   const inject = (inner: TaskCollectionRef): TaskCollectionRef => {
@@ -138,7 +138,7 @@ async function harness(fault: Fault) {
       actionName: "implement",
       input: {
         boardId: BOARD_ID,
-        seat: SEAT,
+        assignee: ASSIGNEE,
         taskId: "t1",
         attempt: claimed.attempts,
         createdAt: claimed.createdAt,

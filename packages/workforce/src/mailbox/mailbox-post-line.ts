@@ -2,7 +2,7 @@
  * The shape of one mailbox post as a browser sees it: the component name a
  * post's line is emitted under, and the line itself.
  *
- * A leaf module on purpose (BP-019), like `../seat-hire-keys.ts`. A client
+ * A leaf module on purpose (BP-019), like `../worker-hire-keys.ts`. A client
  * that shows a mailbox filters the session's items on
  * {@link MAILBOX_POST_COMPONENT}, and these used to live in `mailbox-flow.ts`,
  * which imports the mailbox board and, through the orchestration skills
@@ -29,7 +29,7 @@ export const mailboxTranscriptLineSchema = z.object({
    * mailbox — see `mailbox-flow.ts`'s module header. Never caller-supplied.
    */
   principal: z.string(),
-  /** The poster's claim about which seat wrote the line. Unverified. */
+  /** The poster's claim about which worker wrote the line. Unverified. */
   author: z.string().optional(),
   /**
    * Always `false` in this floor. Spelled out rather than omitted so a reader
@@ -37,12 +37,12 @@ export const mailboxTranscriptLineSchema = z.object({
    */
   authorVerified: z.literal(false),
   /**
-   * The line arrived through the mailbox's `seatPost` action or its answer
-   * entry: a seat's own dispatch. A `post`, public or dispatched, never sets
+   * The line arrived through the mailbox's `workerPost` action or its answer
+   * entry: a worker's own dispatch. A `post`, public or dispatched, never sets
    * it, and it is never copied from the caller's input. Absent on those
    * posts, including one that claims an `author`.
    */
-  seatAuthored: z.literal(true).optional(),
+  workerAuthored: z.literal(true).optional(),
   body: z.string()
 });
 

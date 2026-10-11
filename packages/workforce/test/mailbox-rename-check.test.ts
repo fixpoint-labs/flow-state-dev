@@ -69,12 +69,12 @@ describe("check-mailbox-rename", () => {
   it("counts a product line planted among survivors, rather than letting the file's survivor rule absorb it", () => {
     const planted = {
       ...GREEN,
-      "packages/bullmq/src/stream-bridge.ts": `${GREEN["packages/bullmq/src/stream-bridge.ts"]}// a post on the support channel wakes its member seats\n`,
+      "packages/bullmq/src/stream-bridge.ts": `${GREEN["packages/bullmq/src/stream-bridge.ts"]}// a post on the support channel wakes its member workers\n`,
     };
     const result = scan(planted);
     expect(result.ok).toBe(false);
     expect(result.productHits).toEqual([
-      { path: "packages/bullmq/src/stream-bridge.ts", line: 3, text: "// a post on the support channel wakes its member seats" },
+      { path: "packages/bullmq/src/stream-bridge.ts", line: 3, text: "// a post on the support channel wakes its member workers" },
     ]);
   });
 
@@ -113,9 +113,9 @@ describe("check-mailbox-rename", () => {
     "A mailbox gives every writer a channel back in.",
     "Post to the support channel from Slack.",
     "Either channel wakes its members.",
-    "Each seat has a separate channel for its team.",
+    "Each worker has a separate channel for its team.",
     "The error channels collect the failed posts.",
-    "Open the runtime channel before the seats boot.",
+    "Open the runtime channel before the workers boot.",
   ])("holds a survivor phrase to the files it covers, so a pipe sentence elsewhere that shares it still counts: %s", (line) => {
     const result = scan({ ...GREEN, "apps/docs/docs/workforce/overview.md": `${line}\n` });
     expect(result.productHits).toEqual([{ path: "apps/docs/docs/workforce/overview.md", line: 1, text: line }]);
@@ -125,9 +125,9 @@ describe("check-mailbox-rename", () => {
     expect(scan({ ...GREEN, ...DOCS })).toMatchObject({ ok: true, productHits: [], pathHits: [], unclassified: [] });
 
     // The same pipe-meaning sentence, planted past the upgrade section, counts.
-    const planted = `${DOCS[MAILBOXES_PAGE]}\nA post on the support channel wakes its member seats.\n`;
+    const planted = `${DOCS[MAILBOXES_PAGE]}\nA post on the support channel wakes its member workers.\n`;
     expect(scan({ ...GREEN, ...DOCS, [MAILBOXES_PAGE]: planted }).productHits).toEqual([
-      { path: MAILBOXES_PAGE, line: 14, text: "A post on the support channel wakes its member seats." },
+      { path: MAILBOXES_PAGE, line: 14, text: "A post on the support channel wakes its member workers." },
     ]);
 
     // An allowlisted line is held to its exact text, so an edit to it counts.

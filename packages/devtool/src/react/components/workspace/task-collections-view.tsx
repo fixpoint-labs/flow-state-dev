@@ -11,7 +11,7 @@
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
  *
- * A task whose seat hands its rows off to a `task` entry is run by a dispatch run
+ * A task whose worker hands its rows off to a `task` entry is run by a dispatch run
  * rather than by the request you are looking at, so its row carries a link into that
  * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.
@@ -397,13 +397,13 @@ function DispatchRunLink({
   }
 
   // The entry the run runs (`implement`, from a `task:implement` coordinate).
-  // A linked run's key names this very row or its seat, so repeating it here
+  // A linked run's key names this very row or its worker, so repeating it here
   // says nothing the row does not; the entry is the part that is new. The id
   // stands in when no entry was stamped.
   const label = decodeDispatchRunEntry(dispatchRun.coordinate)?.action ?? dispatchRun.id;
   // A match is page-local. `linkDispatchRunsToTasks` establishes that the
   // pairing is unambiguous IN THE LOADED PAGE; an older unlisted dispatch run
-  // whose key names the same task id or seat would fit too, and it would belong
+  // whose key names the same task id or worker would fit too, and it would belong
   // to a different board — the FIX-1088 class, where task events carry no board
   // identity to settle it.
   //

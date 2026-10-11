@@ -209,7 +209,7 @@ describe("useLeafSessions · what it shows", () => {
   it("BR-6 · an Error with a message shows that message", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("seat-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail(new Error("sessions down")));
@@ -219,7 +219,7 @@ describe("useLeafSessions · what it shows", () => {
   it("BR-7 · a failure that is not an Error shows the session list's own text", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("seat-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail({ status: 500 }));
@@ -230,7 +230,7 @@ describe("useLeafSessions · what it shows", () => {
     const source = sessionSource();
     const { rerender } = renderHook(
       ({ tick }: { tick: number }) =>
-        useLeafSessions(source as never, { ...leaf("seat-a"), tick } as never, "u", false, true),
+        useLeafSessions(source as never, { ...leaf("worker-a"), tick } as never, "u", false, true),
       { initialProps: { tick: 0 } }
     );
     await settle();
@@ -245,7 +245,7 @@ describe("useLeafSessions · the closed leaf", () => {
   it("BR-13 · a leaf mounted closed asks for nothing and reports no sessions, loading, no error", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("seat-a"), "u", false, false)
+      useLeafSessions(source as never, leaf("worker-a"), "u", false, false)
     );
     await settle();
 
@@ -258,7 +258,7 @@ describe("useLeafSessions · the closed leaf", () => {
   it("BR-14 · refreshing a closed leaf sends no request", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("seat-a"), "u", false, false)
+      useLeafSessions(source as never, leaf("worker-a"), "u", false, false)
     );
     await settle();
 
@@ -381,14 +381,14 @@ describe("usePanelItem · late and racing responses", () => {
   it("BR-1 · discards a response that lands after the topic changed", async () => {
     const source = itemSource();
     const { result, rerender } = renderHook(
-      ({ topic }) => usePanelItem(source as never, "s1", "roster", topic, "Seat failed"),
-      { initialProps: { topic: "seat-a" } }
+      ({ topic }) => usePanelItem(source as never, "s1", "roster", topic, "Worker failed"),
+      { initialProps: { topic: "worker-a" } }
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
-    rerender({ topic: "seat-b" });
+    rerender({ topic: "worker-b" });
     await waitFor(() => expect(source.calls).toHaveLength(2));
 
-    await act(async () => source.calls[0]!.release({ topic: "seat-a", clientData: { id: "a" } }));
+    await act(async () => source.calls[0]!.release({ topic: "worker-a", clientData: { id: "a" } }));
     await settle();
 
     expect(result.current).toMatchObject({ item: null, isLoading: true, error: null });
@@ -397,14 +397,14 @@ describe("usePanelItem · late and racing responses", () => {
   it("BR-2 · an older read resolving last never overwrites a newer one", async () => {
     const source = itemSource();
     const { result } = renderHook(() =>
-      usePanelItem<{ id: string }>(source as never, "s1", "roster", "seat-a", "Seat failed")
+      usePanelItem<{ id: string }>(source as never, "s1", "roster", "worker-a", "Worker failed")
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     act(() => result.current.refresh());
     await waitFor(() => expect(source.calls).toHaveLength(2));
 
-    await act(async () => source.calls[1]!.release({ topic: "seat-a", clientData: { id: "newer" } }));
-    await act(async () => source.calls[0]!.release({ topic: "seat-a", clientData: { id: "older" } }));
+    await act(async () => source.calls[1]!.release({ topic: "worker-a", clientData: { id: "newer" } }));
+    await act(async () => source.calls[0]!.release({ topic: "worker-a", clientData: { id: "older" } }));
     await settle();
 
     expect(result.current.item).toEqual({ id: "newer" });
@@ -415,19 +415,19 @@ describe("usePanelItem · what it shows and when it asks", () => {
   it("BR-7 · a failure that is not an Error shows the panel's own text", async () => {
     const source = itemSource();
     const { result } = renderHook(() =>
-      usePanelItem(source as never, "s1", "roster", "seat-a", "Failed to load this seat")
+      usePanelItem(source as never, "s1", "roster", "worker-a", "Failed to load this worker")
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail(42));
-    await waitFor(() => expect(result.current.error).toBe("Failed to load this seat"));
+    await waitFor(() => expect(result.current.error).toBe("Failed to load this worker"));
   });
 
   it("BR-9 · mounting sends exactly one request, addressed to the session, ref and topic", async () => {
     const source = itemSource();
-    renderHook(() => usePanelItem(source as never, "s1", "roster", "seat-a", "Seat failed"));
+    renderHook(() => usePanelItem(source as never, "s1", "roster", "worker-a", "Worker failed"));
     await settle();
     expect(source.getCollectionItemState).toHaveBeenCalledTimes(1);
-    expect(source.calls[0]!.args).toEqual(["s1", "roster", "seat-a"]);
+    expect(source.calls[0]!.args).toEqual(["s1", "roster", "worker-a"]);
   });
 });
 
@@ -450,9 +450,9 @@ describe("a panel with no client of its own", () => {
           })
       )
     );
-    const seatRow = (seatId: string) => ({
-      topic: seatId,
-      clientData: { seatId, flow: "agent", instructions: null }
+    const workerRow = (workerId: string) => ({
+      topic: workerId,
+      clientData: { workerId, flow: "agent", instructions: null }
     });
     const tree = (baseUrl: string) =>
       createElement(
@@ -466,13 +466,13 @@ describe("a panel with no client of its own", () => {
     await waitFor(() => expect(pending).toHaveLength(2));
     expect(pending.map((p) => p.origin)).toEqual(["https://a.example", "https://b.example"]);
 
-    await act(async () => pending[1]!.release({ items: [seatRow("from-b")] }));
-    await act(async () => pending[0]!.release({ items: [seatRow("from-a")] }));
+    await act(async () => pending[1]!.release({ items: [workerRow("from-b")] }));
+    await act(async () => pending[0]!.release({ items: [workerRow("from-a")] }));
     await settle();
 
-    const seats = [...document.querySelectorAll("[data-seat-id]")].map((el) =>
-      el.getAttribute("data-seat-id")
+    const workers = [...document.querySelectorAll("[data-worker-id]")].map((el) =>
+      el.getAttribute("data-worker-id")
     );
-    expect(seats).toEqual(["from-b"]);
+    expect(workers).toEqual(["from-b"]);
   });
 });

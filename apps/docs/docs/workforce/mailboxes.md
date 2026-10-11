@@ -15,9 +15,9 @@ A mailbox can also be [routed](#routing-a-mailbox). A post someone sends then go
 
 ## What a mailbox is
 
-![Where each part of a mailbox lives. The mailbox kind is one registered instance, and every mailbox is a session on it. The support.desk session holds its members and charter in session state, and its transcript as mailbox-post items, with mailbox-route items recording where a routed post went. A woken seat answers from a session of its own. A post is checked against the members in the session's state, never the inventory's copy. The board's rows live in the organization's task ledger, under the mailbox's id plus the board's name, and the board names are read from MAILBOX.md at every start. The inventory row is organization data too: a copy of the members, for finding which mailboxes a seat is in. Only the seat's answer line reaches the mailbox.](./mailbox-parts.svg)
+![Where each part of a mailbox lives. The mailbox kind is one registered instance, and every mailbox is a session on it. The support.desk session holds its members and charter in session state, and its transcript as mailbox-post items, with mailbox-route items recording where a routed post went. A woken worker answers from a session of its own. A post is checked against the members in the session's state, never the inventory's copy. The board's rows live in the organization's task ledger, under the mailbox's id plus the board's name, and the board names are read from MAILBOX.md at every start. The inventory row is organization data too: a copy of the members, for finding which mailboxes a worker is in. Only the worker's answer line reaches the mailbox.](./mailbox-parts.svg)
 
-Each mailbox is a session on a mailbox kind, the built-in `mailbox` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's seat, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which mailboxes a seat is in.
+Each mailbox is a session on a mailbox kind, the built-in `mailbox` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's worker, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which mailboxes a worker is in.
 
 :::tip When a mailbox, and when something else
 
@@ -174,7 +174,7 @@ A session's organization is fixed when the session is created, and re-opening ca
 
 ## Posting and reading
 
-A mailbox has two actions, `post` and `read`, reachable both by a client and by another flow. A client `post` and a dispatched `post` are the same kind of line: neither is a seat's. `read` is the same call either way.
+A mailbox has two actions, `post` and `read`, reachable both by a client and by another flow. A client `post` and a dispatched `post` are the same kind of line: neither is a worker's. `read` is the same call either way.
 
 ```ts
 const postToStandup = dispatcher({
@@ -189,7 +189,7 @@ const postToStandup = dispatcher({
 
 The flow you address is the **kind**; the mailbox is the **session id**. Address `{ id }`, never `{ key }`: a key-derived session is a child of whoever dispatched it, so the same key lands somewhere different for every poster and the mailbox never sees the post. Nothing detects that mistake.
 
-That dispatch is a `post`. It does not set `seatAuthored`, so [`wakeMemberSeats`](#waking-agent-seats) wakes hearing members, whether or not the payload sets `author`. `author` is an unverified label. It has to name a declared member, or the post is refused (`author-not-a-member`) and nothing is written. A seat's `post-to-mailbox` tool and a routed answer are the lines with `seatAuthored: true`, and those wake nobody.
+That dispatch is a `post`. It does not set `workerAuthored`, so [`wakeMemberWorkers`](#waking-agent-workers) wakes hearing members, whether or not the payload sets `author`. `author` is an unverified label. It has to name a declared member, or the post is refused (`author-not-a-member`) and nothing is written. A worker's `post-to-mailbox` tool and a routed answer are the lines with `workerAuthored: true`, and those wake nobody.
 
 Over HTTP the address is the same: the kind where the flow goes in the URL, and the mailbox's id where the session goes.
 
@@ -201,7 +201,7 @@ curl -X POST https://your-app.example/api/flows/mailbox/engineering.standup/acti
 
 The call answers `202` with the request it started. The action's return value isn't part of that answer, so read the posted lines from the session's items, as [Showing a mailbox on screen](#showing-a-mailbox-on-screen) does.
 
-That HTTP call is a client `post`. It may include `author`. The line keeps that claim with `authorVerified: false`, and it never has `seatAuthored`, including when `author` is set. `wakeMemberSeats` wakes each hearing hired member on it, whether or not `author` is set. A woken seat of the built-in `agent` kind sees the writer as `author`, or as `principal` when there is no `author`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
+That HTTP call is a client `post`. It may include `author`. The line keeps that claim with `authorVerified: false`, and it never has `workerAuthored`, including when `author` is set. `wakeMemberWorkers` wakes each hearing hired member on it, whether or not `author` is set. A woken worker of the built-in `agent` kind sees the writer as `author`, or as `principal` when there is no `author`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
 
 `read` gives back the mailbox: its description, its members, and the transcript.
 
@@ -218,7 +218,7 @@ That HTTP call is a client `post`. It may include `author`. The line keeps that 
 }
 ```
 
-That line is a client `post` that set `author`. `authorVerified` is `false`. There is no `seatAuthored`. The same body through the dispatcher above is the same kind of line.
+That line is a client `post` that set `author`. `authorVerified` is `false`. There is no `workerAuthored`. The same body through the dispatcher above is the same kind of line.
 
 `read` takes no input on a mailbox.
 
@@ -245,7 +245,7 @@ To post from the page, call the mailbox's own action on the same session:
 await mailbox.sendAction("post", { body });
 ```
 
-`post` takes `{ body, author? }`. `author` is an unverified label, kept on the line with `authorVerified: false`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written. It does not decide who `wakeMemberSeats` wakes. A client `post` wakes each hearing hired member whether or not you set `author`. `principal` is the identity your server resolved for the request, and it is the same on every line of the mailbox.
+`post` takes `{ body, author? }`. `author` is an unverified label, kept on the line with `authorVerified: false`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written. It does not decide who `wakeMemberWorkers` wakes. A client `post` wakes each hearing hired member whether or not you set `author`. `principal` is the identity your server resolved for the request, and it is the same on every line of the mailbox.
 
 An agent's answer, or a post from another tab, is a request the page didn't send. Add `live: true` and it appears within about a second, with no reload:
 
@@ -258,7 +258,7 @@ const mailbox = useSession("engineering.standup", {
 const busy = mailbox.childSessions.filter((run) => run.status === "active");
 ```
 
-`busy` lists the runs posts have started that haven't finished. Each row's `flowId` is the seat's address, so the page can say who is working.
+`busy` lists the runs posts have started that haven't finished. Each row's `flowId` is the worker's address, so the page can say who is working.
 
 ## What the transcript proves, and what it doesn't
 
@@ -266,7 +266,7 @@ A session belongs to one user. That means **every line of a given mailbox carrie
 
 `author`, when the caller set one, is an unverified label. The line stores it beside `authorVerified: false`, and `authorVerified` is always `false`. There is no verified per-participant identity on a line. A post claiming an `author` who is not in the mailbox's members is refused (`author-not-a-member`) and nothing is written. That check is against the declared roster, not proof of who is calling.
 
-A line a seat wrote also has `seatAuthored: true`. A client `post` never does, including one that sets `author`. `wakeMemberSeats` does not wake anyone for a line with `seatAuthored: true`. `seatAuthored` is not a verified name.
+A line a worker wrote also has `workerAuthored: true`. A client `post` never does, including one that sets `author`. `wakeMemberWorkers` does not wake anyone for a line with `workerAuthored: true`. `workerAuthored` is not a verified name.
 
 A mailbox transcript shows that the mailbox's own principal ran the post. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, these fields give you a much weaker guarantee than their names suggest.
 
@@ -290,24 +290,24 @@ const wakeMember = handler({
   inputSchema: mailboxNotifyInputSchema,
   outputSchema: z.object({ notified: z.string() }),
   execute: (input: MailboxNotifyInput) => {
-    // { mailboxId, member, postId, body, principal, author?, seatAuthored?, routed?, recent? }
-    if (input.seatAuthored === true) return { notified: "" };
+    // { mailboxId, member, postId, body, principal, author?, workerAuthored?, routed?, recent? }
+    if (input.workerAuthored === true) return { notified: "" };
     // send to whatever address you hold for `input.member`
     return { notified: input.member };
   },
 });
 ```
 
-`seatAuthored` is `true` on a seat's own post and absent otherwise. Skip on `true` and nobody is told about that post. `author` is an unverified claim. Comparing `input.author` to `input.member` only skips a delivery when the caller claimed that name, which a client `post` can do without being a seat. `principal` is the mailbox session's user and is the same on every line, so it does not name the poster.
+`workerAuthored` is `true` on a worker's own post and absent otherwise. Skip on `true` and nobody is told about that post. `author` is an unverified claim. Comparing `input.author` to `input.member` only skips a delivery when the caller claimed that name, which a client `post` can do without being a worker. `principal` is the mailbox session's user and is the same on every line, so it does not name the poster.
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 
-Your app supplies the addresses. The `notify` slot takes any block, so to reach real recipients, make it a router rather than a handler. Declare one dispatcher per recipient, like the one in [Posting and reading](#posting-and-reading), with `flowKind` set to that recipient's address. Pick which one runs from `input.member`. [`utility.keyedRouter`](../fundamentals/blocks.md#keyedrouter) does that lookup, and its `fallback` takes any member you have no dispatcher for. For agent seats you don't have to build this yourself: see [Waking agent seats](#waking-agent-seats).
+Your app supplies the addresses. The `notify` slot takes any block, so to reach real recipients, make it a router rather than a handler. Declare one dispatcher per recipient, like the one in [Posting and reading](#posting-and-reading), with `flowKind` set to that recipient's address. Pick which one runs from `input.member`. [`utility.keyedRouter`](../fundamentals/blocks.md#keyedrouter) does that lookup, and its `fallback` takes any member you have no dispatcher for. For agent workers you don't have to build this yourself: see [Waking agent workers](#waking-agent-workers).
 
-### Waking agent seats
+### Waking agent workers
 
 Most apps want a post to reach the agents in the mailbox and nobody else. Workforce ships that as
-one call. Hand `wakeMemberSeats` the flows `hireWorkforce` returned and the installation, and put
+one call. Hand `wakeMemberWorkers` the flows `hireWorkforce` returned and the installation, and put
 what it returns in the notify slot:
 
 ```ts
@@ -316,28 +316,28 @@ import {
   mailboxInstances,
   defineMailboxFlow,
   hireWorkforce,
-  wakeMemberSeats,
+  wakeMemberWorkers,
 } from "@flow-state-dev/workforce";
 
 const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds });
 const flows = hireWorkforce(installation);   // first: the wake reaches the workers on these flows
 const mailboxFlows = mailboxInstances(mailboxes, {
-  kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(flows, { installation }) }) },
+  kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberWorkers(flows, { installation }) }) },
 });
 ```
 
 For each post, it decides per member whether that member runs:
 
-- **A member runs** when the line is not a seat's (`seatAuthored` is absent) and the member's seat
-  can hear a post. A client `post` is that line, whether or not it sets `author`. A seat of the
+- **A member runs** when the line is not a worker's (`workerAuthored` is absent) and the member's worker
+  can hear a post. A client `post` is that line, whether or not it sets `author`. A worker of the
   built-in `agent` kind can hear a post. It runs its ordinary answer, with the post as its turn,
   `<writer> in <mailbox>: <body>`. The writer is the post's `author`, or its `principal` when there
   is no `author`: `support.lead in support.desk: can someone look at the refund queue?`.
-- **No worker runs** when the line is a worker's (`seatAuthored: true`). A seat's `post-to-mailbox`
+- **No worker runs** when the line is a worker's (`workerAuthored: true`). A worker's `post-to-mailbox`
   call and a routed answer are that line. A post another flow dispatches with action `post` is not.
   A member whose worker can hear posts
   gets nothing at all, and `fallback` is not sent to them. To have
-  agents hear a seat's post, write your own notify block and run it when `seatAuthored`
+  agents hear a worker's post, write your own notify block and run it when `workerAuthored`
   is `true`.
 - **The `fallback` block runs**, or nothing if you passed none, for every other member: one whose
   flow can't hear a post, or one that names no standard worker on the flows you passed. A user's
@@ -353,24 +353,24 @@ guaranteed order. The conversation is a child of the mailbox's session, so an or
 listing does not show it. List with dispatch runs included (`include: "dispatch-runs"`, or
 `includeDispatchRuns` on `FlowNavigator`) to find it.
 
-A busy mailbox keeps growing each seat's conversation, and a seat remembers only as far back as
+A busy mailbox keeps growing each worker's conversation, and a worker remembers only as far back as
 its history window reaches. Nothing summarizes older posts for it.
 
 Pass your own notify block as `fallback` to handle every member the wake doesn't run. It
 receives the same input a notify block does:
 
 ```ts
-defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) });
+defineMailboxFlow({ notify: wakeMemberWorkers(workers, { fallback: yourNotify }) });
 ```
 
-| Member | Post from a client | Post from a worker (`seatAuthored: true`) |
+| Member | Post from a client | Post from a worker (`workerAuthored: true`) |
 | --- | --- | --- |
 | Its worker can hear posts, and the mailbox's caller can reach it | The worker runs | Nothing |
 | Any other member | `fallback` | `fallback` |
 
 Your block runs only for members the wake skips. It never sees a member whose worker can hear
 posts and is reachable, so logging, email or dispatch for those members has to happen somewhere else. To skip a
-worker's line in your block, read `input.seatAuthored === true`, as the handler earlier on this
+worker's line in your block, read `input.workerAuthored === true`, as the handler earlier on this
 page does. `author` is an unverified claim, so comparing it to `member` only skips
 a delivery when the caller claimed that name.
 
@@ -378,7 +378,7 @@ a delivery when the caller claimed that name.
 
 A kind can hear a post by declaring an internal entry named `onMailboxPost` that takes
 `MailboxNotifyInput`. An internal entry is one only a dispatch can reach, never a client. That
-declaration is all `wakeMemberSeats` looks for.
+declaration is all `wakeMemberWorkers` looks for.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -406,7 +406,7 @@ export const triager = workerFlow((installation) =>
 `author` is an optional label on a `post`. The line keeps it with `authorVerified: false`, and
 `authorVerified` is always `false`. There is no verified per-participant identity on a line. An
 `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
-Setting `author` does not set `seatAuthored`, and it does not decide who `wakeMemberSeats` wakes.
+Setting `author` does not set `workerAuthored`, and it does not decide who `wakeMemberWorkers` wakes.
 
 ## Routing a mailbox
 
@@ -430,10 +430,10 @@ routing:
 Then give the mailbox kind the route. It needs the flows `hireWorkforce` returned, the installation, and a model that can evaluate:
 
 ```ts
-import { defineMailboxFlow, routeByPurpose, wakeMemberSeats } from "@flow-state-dev/workforce";
+import { defineMailboxFlow, routeByPurpose, wakeMemberWorkers } from "@flow-state-dev/workforce";
 
 defineMailboxFlow({
-  notify: wakeMemberSeats(flows, { installation }),
+  notify: wakeMemberWorkers(flows, { installation }),
   route: routeByPurpose(flows, { model: "typesafe-ai/jev", installation }),
 });
 ```
@@ -458,20 +458,20 @@ For each client `post`, in this order:
    A post whose route isn't recorded yet holds nothing either, so of two posts sent close together,
    the second may be routed by what it says rather than held.
 2. **One evaluator call.** Otherwise the route asks one question: which member should answer?
-   The choices are the members whose seat can hear a post and has a description, each described
+   The choices are the members whose worker can hear a post and has a description, each described
    by the `description:` in its `WORKER.md`. The model also sees the mailbox's recent lines, which
    is how "it fails right after the password" reaches the specialist who asked about the password.
    When no member has a description, there is no call and the fallback
    takes the post.
 3. **The fallback.** If the call fails, or answers with anything outside the choices, the
    fallback member takes the post. A model that can't evaluate fails every call, so every post
-   goes to the fallback. If the person posting can't reach any seat of the fallback's, nobody
+   goes to the fallback. If the person posting can't reach any worker of the fallback's, nobody
    answers, and the route records why. A fallback with a description is also one of the choices
    in step 2, so a description such as "Anything that fits none of the other specialists" lets the
    evaluator send it the posts that fit nobody else.
 
-Only that member receives the post. Nobody else in the mailbox is told about it. A seat's line
-(`seatAuthored: true`) is never routed, and `wakeMemberSeats` wakes nobody for it. A client `post`
+Only that member receives the post. Nobody else in the mailbox is told about it. A worker's line
+(`workerAuthored: true`) is never routed, and `wakeMemberWorkers` wakes nobody for it. A client `post`
 is routed whether or not it sets `author`.
 
 Write the `description:` lines for the route to read. "Printers, laptops, phones and wifi" routes
@@ -501,25 +501,25 @@ the fallback. A mailbox on a kind built without a route keeps no record.
 
 ### The answer lands in the mailbox
 
-The routed member answers the way any woken seat does, in its own conversation. For a seat of the
-built-in `agent` kind, the reply is then posted into the mailbox as that seat's line. The model
-doesn't have to call [`post-to-mailbox`](#a-seat-answering-in-the-mailbox). If it does, its first
+The routed member answers the way any woken worker does, in its own conversation. For a worker of the
+built-in `agent` kind, the reply is then posted into the mailbox as that worker's line. The model
+doesn't have to call [`post-to-mailbox`](#a-worker-answering-in-the-mailbox). If it does, its first
 call into that mailbox is handed over as the answer, and the reply is handed over after it. The
 reply lands only if the tool's answer didn't, for instance because the mailbox failed to write it.
-An empty reply posts nothing. It ends the seat's run as failed, unless the tool already handed an
+An empty reply posts nothing. It ends the worker's run as failed, unless the tool already handed an
 answer over in that turn.
 
 Whether it comes from the tool or the reply, the answer lands through an
 [internal entry](#making-a-kind-of-your-own-hear-posts) of the mailbox, not through its `post`. An
 internal entry is one only a dispatch can reach, never a client, so no client can answer for a
 member. The entry checks the line the way `post` does: the
-`author` is the seat's `seatId`, which the model can't set, and an author who isn't a member is
-refused. The line has `seatAuthored: true`.
+`author` is the worker's `workerId`, which the model can't set, and an author who isn't a member is
+refused. The line has `workerAuthored: true`.
 
 Each post gets at most one answer line. Once one lands, any other answer to that post lands
 nothing, even one sent at the same moment. An answer the mailbox refuses writes nothing and doesn't
 use up the post's one answer line. The refusal shows up as a failed request on the mailbox's
-session, and the seat isn't told.
+session, and the worker isn't told.
 
 A [kind of your own](#making-a-kind-of-your-own-hear-posts) gets `routed: true` and the recent
 lines as `recent` on its delivery. Its reply is not posted for it.
@@ -531,7 +531,7 @@ them and whoever they went to. That's how "where can I buy it?" finds its "it" w
 came up with another member. The lines are there for that one answer and aren't kept in the
 member's conversation. What the conversation keeps is every post routed to the member and its
 answers, as far back as its history window reaches. Any other line older than the last 20 is out of
-its view. A seat woken in an unrouted mailbox, or talked to directly, gets no lines.
+its view. A worker woken in an unrouted mailbox, or talked to directly, gets no lines.
 
 ### What routing can't do
 
@@ -582,11 +582,11 @@ Pass it as `modelResolver` to the `createFlowState` your test builds. Each call 
 choice outside the members offered, or an `answers` function that throws, sends the post to the
 fallback. `route.calls` records every call, so a held post shows up as no call at all.
 
-## A seat answering in the mailbox
+## A worker answering in the mailbox
 
-Waking a seat runs it in its own conversation, so its answer stays there unless it posts it. To
-let an agent seat answer where the post was made, give its kind the mailbox-post capability and
-name the tool in the seat's worker file:
+Waking a worker runs it in its own conversation, so its answer stays there unless it posts it. To
+let an agent worker answer where the post was made, give its kind the mailbox-post capability and
+name the tool in the worker's worker file:
 
 ```ts
 import { mailboxPostCapability, defineAgentWorkerFlow } from "@flow-state-dev/workforce";
@@ -602,32 +602,32 @@ tools: [post-to-mailbox]
 ```
 
 In a [routed mailbox](#routing-a-mailbox) the member a post was routed to doesn't need the tool:
-its reply is posted for it. The tool is for everything else, such as a seat you talk to directly
+its reply is posted for it. The tool is for everything else, such as a worker you talk to directly
 that wants to say something in a mailbox.
 
-The model calls `post-to-mailbox` with the mailbox's id and what to say. A woken seat reads the id
-off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The
+The model calls `post-to-mailbox` with the mailbox's id and what to say. A woken worker reads the id
+off the post it heard, from the turn described in [Waking agent workers](#waking-agent-workers). The
 tool's input is `{ mailbox, body }` and nothing else, so a call that adds an `author` is refused.
-The line's `author` is the seat's `seatId`: its record id, the name the mailbox's `members:` lists.
-The model cannot set it. The line has `seatAuthored: true`. A routed member's first call into that
-mailbox is the post's answer (below). Any other call is the seat's own post, not the `post` another
-flow reaches with `dispatcher({ action: "post" })`. A seat that doesn't name the tool is never
+The line's `author` is the worker's `workerId`: its record id, the name the mailbox's `members:` lists.
+The model cannot set it. The line has `workerAuthored: true`. A routed member's first call into that
+mailbox is the post's answer (below). Any other call is the worker's own post, not the `post` another
+flow reaches with `dispatcher({ action: "post" })`. A worker that doesn't name the tool is never
 offered it.
 
 On a turn answering a routed post, the first call into that post's mailbox is the post's answer. It lands
 the way [a routed answer](#the-answer-lands-in-the-mailbox) does: at most one line per post, under
 the same author, and the turn's reply lands only if the tool's answer didn't. A later call there in
 that turn posts nothing and tells the model its answer was already handed to the mailbox. A call
-into any other mailbox goes through `seatPost`.
+into any other mailbox goes through `workerPost`.
 
-`wakeMemberSeats` wakes nobody for that line, because it has `seatAuthored: true` (see
-[Waking agent seats](#waking-agent-seats)), so seats won't wake each other. A client `post` that
+`wakeMemberWorkers` wakes nobody for that line, because it has `workerAuthored: true` (see
+[Waking agent workers](#waking-agent-workers)), so workers won't wake each other. A client `post` that
 sets the same `author` wakes hearing members.
 
 What it won't do:
 
-- The seat must be a member. The mailbox refuses any other author and writes nothing, and the
-  seat is not told: the tool reports that it handed the post over, not that it landed. The
+- The worker must be a member. The mailbox refuses any other author and writes nothing, and the
+  worker is not told: the tool reports that it handed the post over, not that it landed. The
   refusal shows up as a failed request on the mailbox's session.
 - Only the built-in mailbox kind takes these posts. A mailbox id nobody opened, or one on another
   kind, fails the call by name.
@@ -687,16 +687,16 @@ A dispatcher is a block, so it can also be a tool. Hand it to a generator and th
 ```ts
 const fileOntoDesk = dispatcher({
   name: "desk-clerk-file",
-  description: "File this onto a board: followups for work a seat runs, escalations for a person.",
+  description: "File this onto a board: followups for work a worker runs, escalations for a person.",
   flowKind: "mailbox",
   action: "fileTask",
   inputSchema: z.object({ board: z.enum(["followups", "escalations"]), goal: z.string() }),
   session: { id: () => "support.desk" },
-  payload: (input, ctx) => ({ ...input, author: ctx.flow.config.seatId }),
+  payload: (input, ctx) => ({ ...input, author: ctx.flow.config.workerId }),
 });
 ```
 
-The model picks the board and writes the goal. The `author` is the seat's own `seatId`, which hiring gives every seat, not something the model chooses. The tool's result is the dispatch, not the row: the row is written when the mailbox runs `fileTask`, a moment later. If the mailbox refuses it, say because the author is not a member, the model has already been told the filing was sent, and the refusal is a failed request on the mailbox's session.
+The model picks the board and writes the goal. The `author` is the worker's own `workerId`, which hiring gives every worker, not something the model chooses. The tool's result is the dispatch, not the row: the row is written when the mailbox runs `fileTask`, a moment later. If the mailbox refuses it, say because the author is not a member, the model has already been told the filing was sent, and the refusal is a failed request on the mailbox's session.
 
 The dispatch goes into an existing session by its id, which needs the in-process dispatcher or queue workers that share a lease backend. Under an external dispatcher without one, it is refused with a `DispatchRefusedError` whose `refused` is `"external-dispatcher"`. To tell the model the board is unavailable rather than letting the tool fail, put the dispatcher in a sequencer and handle the error in the sequencer's `.rescue()`.
 
@@ -736,7 +736,7 @@ import { BoardList } from "@flow-state-dev/react";
 
 Every task filed through `fileTask` shows up on the list. Status changes a worker makes while draining the board show only after something else makes the list read again, such as a remount. See [A board as a list](./ui.md#a-board-as-a-list).
 
-Board ledgers are organization-scoped, so the read resolves against the organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. `run` names the run a seat is working the row in, or last worked it in, so a board view can open it. See [Which run is working a task](../orchestration/task-board.md#which-run-is-working-a-task).
+Board ledgers are organization-scoped, so the read resolves against the organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. `run` names the run a worker is working the row in, or last worked it in, so a board view can open it. See [Which run is working a task](../orchestration/task-board.md#which-run-is-working-a-task).
 
 ### Working the rows
 
@@ -793,7 +793,7 @@ Each board then gains `cancelTask_support_help_escalations` and its seven siblin
 
 The part after the tool name is the mailbox's id and the board's name, joined, with every character that can't go in a name turned into `_`, so two boards can end up with the same name: `eng.feature`'s `work` and `eng_feature`'s `work` both give `eng_feature_work`. If either of them has opted in, `mailboxInstances` refuses the roster with an error naming both boards. Rename a mailbox or a board to fix it.
 
-It is off by default, and that's deliberate. Anyone who can reach the mailbox can then settle or reassign its rows, including one a seat is working on, and the roster check `fileTask` makes on `author` doesn't apply to these. Each action works only in its own mailbox's session, so one mailbox can't reach another's board through them. Turn it on for boards people are meant to work from outside a run, and for development.
+It is off by default, and that's deliberate. Anyone who can reach the mailbox can then settle or reassign its rows, including one a worker is working on, and the roster check `fileTask` makes on `author` doesn't apply to these. Each action works only in its own mailbox's session, so one mailbox can't reach another's board through them. Turn it on for boards people are meant to work from outside a run, and for development.
 
 A board that no worker flow declares warns at `hireWorkforce`, naming the mailbox and the board. Nothing is refused: a mailbox may keep a board that only people read. The warning prints once per server process, so a hot reload under `next dev` doesn't repeat it.
 
@@ -951,8 +951,8 @@ Mailboxes used to be called channels, everywhere: the record file, the folder, t
   | The built-in kind, as a `flowKind` or in `/api/flows/<kind>/…` | `"channel"` | `"mailbox"` |
   | A transcript line's item `component` | `channel-post` | `mailbox-post` |
   | A route decision's item `component` | `channel-route` | `mailbox-route` |
-  | A seat's `tools:` in `WORKER.md` | `post-to-channel` | `post-to-mailbox` |
-  | A seat's `discover:` in `WORKER.md` | `channels` | `mailboxes` |
+  | A worker's `tools:` in `WORKER.md` | `post-to-channel` | `post-to-mailbox` |
+  | A worker's `discover:` in `WORKER.md` | `channels` | `mailboxes` |
   | `createWorkforceCapability`'s `roster` and `inventory` keys | `channels` | `mailboxes` |
   | The inventory collection's key prefix | `inventory/channels/` | `inventory/mailboxes/` |
 

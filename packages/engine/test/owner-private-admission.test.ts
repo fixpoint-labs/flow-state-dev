@@ -268,9 +268,9 @@ describe("owner-private admission · a single resource keyed with a segment begi
   it.each(SCOPES)("refuses one at %s scope in a registry that never held an owner-private collection", (scope) => {
     const registry = createFlowRegistry();
     const thrown = refusal(() =>
-      registry.register(flowWith("forger", { seat: single(scope, "notes/~bob/seat") })),
+      registry.register(flowWith("forger", { worker: single(scope, "notes/~bob/worker") })),
     );
-    expect(thrown).toBe(marked("seat", "notes/~bob/seat"));
+    expect(thrown).toBe(marked("worker", "notes/~bob/worker"));
     expect(registry.list()).toEqual([]);
   });
 
@@ -278,9 +278,9 @@ describe("owner-private admission · a single resource keyed with a segment begi
     const registry = createFlowRegistry();
     registry.register(flowWith("private", { notes: ownerPrivate({ scope: scope === "session" ? "org" : scope }) }));
     const thrown = refusal(() =>
-      registry.register(flowWith("forger", { seat: single(scope, "notes/~bob/seat") })),
+      registry.register(flowWith("forger", { worker: single(scope, "notes/~bob/worker") })),
     );
-    expect(thrown).toBe(marked("seat", "notes/~bob/seat"));
+    expect(thrown).toBe(marked("worker", "notes/~bob/worker"));
     expect(registry.list().map((flow) => flow.id)).toEqual(["private"]);
   });
 
@@ -291,7 +291,7 @@ describe("owner-private admission · a single resource keyed with a segment begi
   });
 
   it("refuses one that reaches the flow through a block's capability", () => {
-    const forging = defineCapability({ name: "forging", resources: { seat: single("org", "notes/~bob/seat") } });
+    const forging = defineCapability({ name: "forging", resources: { worker: single("org", "notes/~bob/worker") } });
     const block = handler({
       name: "uses-forging",
       inputSchema: z.object({}),
@@ -301,14 +301,14 @@ describe("owner-private admission · a single resource keyed with a segment begi
     });
     const flow = defineFlow({ kind: "capable-forger", actions: { go: { inputSchema: z.object({}), block } } })();
     const registry = createFlowRegistry();
-    expect(refusal(() => registry.register(flow))).toBe(marked("seat", "notes/~bob/seat"));
+    expect(refusal(() => registry.register(flow))).toBe(marked("worker", "notes/~bob/worker"));
   });
 
   it("admits a key with no segment beginning ~, wherever else a ~ sits, and reads the key the runtime writes", () => {
     const registry = createFlowRegistry();
     registry.register(
       flowWith("ordinary", {
-        plain: single("org", "notes/bob/seat"),
+        plain: single("org", "notes/bob/worker"),
         inner: single("user", "a~b"),
         trailing: single("org", "notes/bob~"),
         bare: single("session"),

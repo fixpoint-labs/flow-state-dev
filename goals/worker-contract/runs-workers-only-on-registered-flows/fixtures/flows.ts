@@ -147,9 +147,9 @@ export function defineFlows(workers: WorkerInstallation) {
     configSchema: z.object({
       instructions: z.string().optional(),
       teamInstructions: z.string().optional(),
-      seatSkills: z.array(z.any()).default([]),
-      seatTools: z.array(z.any()).default([]),
-      seatPackages: z.array(z.any()).optional(),
+      workerSkills: z.array(z.any()).default([]),
+      workerTools: z.array(z.any()).default([]),
+      workerPackages: z.array(z.any()).optional(),
       seatId: z.number().optional(),
     }),
     ...bound,

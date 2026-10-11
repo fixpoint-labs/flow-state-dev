@@ -5,8 +5,8 @@
  * **The doors.** `teamInstructions` is the third key the framework imposes, and
  * the sharper of the refused ones: every hireable kind DECLARES it by composing
  * the admission contract, so an authored one is not caught by the closed schema
- * the way an undeclared key is. It would be accepted, and the seat would run on
- * team instructions its team never wrote — silently, and only for that seat. So
+ * the way an undeclared key is. It would be accepted, and the worker would run on
+ * team instructions its team never wrote — silently, and only for that worker. So
  * it is refused at all three places a record can arrive: the team's own file, a
  * worker's file, and the hire.
  *
@@ -29,7 +29,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { readTeamsDirectory } from "../src/loader/read-teams-directory";
 import { readWorkforce } from "../src/loader/read-workforce";
 import { readWorkforceDirectory } from "../src/loader/read-workforce-directory";
@@ -79,7 +79,7 @@ const record = (over: Partial<WorkerManifest> = {}): WorkerManifest => ({
 
 const refusalOf = (roster: WorkerManifest[]): string => {
   try {
-    mintSeats(roster);
+    mintWorkers(roster);
     return "";
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -142,8 +142,8 @@ describe("three doors, one constant", () => {
    * is the channel `readWorkforce` itself fills, so a blanket refusal would
    * reject the loader's own output.
    *
-   * So a caller hand-building records is in the loader's seat, and what it puts
-   * on the record is what the seat receives. That is exactly the arrangement
+   * So a caller hand-building records is in the loader's worker, and what it puts
+   * on the record is what the worker receives. That is exactly the arrangement
    * `skills` already has. It is worth a spec rather than a comment because the
    * docs claimed the stronger thing for a while, and a fence documented wider
    * than it is gets trusted at the width it was documented.
@@ -156,25 +156,25 @@ describe("three doors, one constant", () => {
    * hand-built record already controls the app and could put any text in a
    * prompt by other means. Narrowing the docs to what is enforced buys the same
    * honesty that provenance would, without the machinery. And the deciding
-   * reason is the pair: `manifest.skills` → `seatSkills` has exactly this
+   * reason is the pair: `manifest.skills` → `workerSkills` has exactly this
    * shape and has shipped for months without anyone calling it a hole, so
    * adding provenance to one half would leave the two inconsistent and the
    * next reader rightly asking which one is wrong. If provenance is ever worth
    * having it is worth having for both, as its own change.
    */
   it("does not refuse the record FIELD, which is the loader's own channel", () => {
-    const [seat] = mintSeats([record({ teamInstructions: "Built by hand, not read." })]);
+    const [worker] = mintWorkers([record({ teamInstructions: "Built by hand, not read." })]);
 
-    expect((seat!.config as Record<string, unknown>)[TEAM_INSTRUCTIONS_KEY]).toBe(
+    expect((worker!.config as Record<string, unknown>)[TEAM_INSTRUCTIONS_KEY]).toBe(
       "Built by hand, not read.",
     );
     // The sibling field behaves the same way, which is what makes the line
     // above a convention rather than an oversight in this one key.
-    const [withSkills] = mintSeats([
+    const [withSkills] = mintWorkers([
       record({ id: "engineering.scribe", skills: [{ name: "hand-built", skillMd: "---\n---\n" }] }),
     ]);
     expect(
-      ((withSkills!.config as { seatSkills: Array<{ name: string }> }).seatSkills ?? []).map(
+      ((withSkills!.config as { workerSkills: Array<{ name: string }> }).workerSkills ?? []).map(
         (skill) => skill.name,
       ),
     ).toEqual(["hand-built"]);
@@ -217,7 +217,7 @@ describe("three doors, one constant", () => {
 
 describe("the prompt seam", () => {
   /**
-   * Run one turn against a hired seat and hand back the system message the
+   * Run one turn against a hired worker and hand back the system message the
    * model was actually given.
    *
    * Through the real flow and the real generator, because the claim is about
@@ -225,20 +225,20 @@ describe("the prompt seam", () => {
    * green for a seam that never wired the helper to the prompt slot at all.
    */
   async function systemPromptOf(manifest: WorkerManifest): Promise<string> {
-    const [seat] = mintSeats([manifest]);
+    const [worker] = mintWorkers([manifest]);
     const answer = mockGenerator({ name: "agent-answer", script: [{ text: "noted" }] });
     const stores = createInMemoryStores();
     const sessionId = "seam-session";
-    await seedOwnedSession(stores, sessionId, seat!);
+    await seedOwnedSession(stores, sessionId, worker!);
 
     const result = await testFlow({
       sessionId,
-      flow: seat!,
+      flow: worker!,
       action: "run",
       userId: USER_ID,
       input: { message: "hello" },
       stores,
-      // The skills collection every seat of this kind carries lives at org
+      // The skills collection every worker of this kind carries lives at org
       // scope, so a run without an org has nowhere to resolve it from.
       seed: { org: { state: {} } },
       generators: { "agent-answer": answer },
@@ -259,12 +259,12 @@ describe("the prompt seam", () => {
    * and only the order. Assembly on this path is plain concatenation with no
    * override, precedence or conflict-resolution mechanism anywhere in it, so a
    * green run here says exactly nothing about which line a model follows when a
-   * team's instruction and a seat's contradict each other — that is the model's
+   * team's instruction and a worker's contradict each other — that is the model's
    * behaviour, not the framework's. Asserting on index positions rather than on
-   * "the seat's text wins" is the difference between checking the property and
+   * "the worker's text wins" is the difference between checking the property and
    * checking a neighbour of it.
    */
-  it("puts the team's text before the seat's own", async () => {
+  it("puts the team's text before the worker's own", async () => {
     const prompt = await systemPromptOf(
       record({ body: "Sweep the named hosts.", teamInstructions: "Stay inside the scope." }),
     );
@@ -277,8 +277,8 @@ describe("the prompt seam", () => {
   });
 
   // BR-18 — the team's text alone, with no stray separator and no blank line
-  // standing in for the body the seat does not have.
-  it("gives a bodyless seat its team's text alone", async () => {
+  // standing in for the body the worker does not have.
+  it("gives a bodyless worker its team's text alone", async () => {
     const prompt = await systemPromptOf(record({ body: "", teamInstructions: "Stay in scope." }));
 
     expect(prompt).toContain("Stay in scope.");
@@ -289,12 +289,12 @@ describe("the prompt seam", () => {
   /**
    * BR-19 — the off-state, and the regression guard for the whole feature.
    *
-   * A seat whose team wrote nothing gets **byte for byte** what it got before
-   * this layer existed. Compared against a prompt captured from the same seat
+   * A worker whose team wrote nothing gets **byte for byte** what it got before
+   * this layer existed. Compared against a prompt captured from the same worker
    * on the same path, so the assertion is about this change rather than about
    * whatever else the kind happens to put in a system message.
    */
-  it("gives a seat whose team has no file exactly the prompt it had before", async () => {
+  it("gives a worker whose team has no file exactly the prompt it had before", async () => {
     const withoutLayer = await systemPromptOf(record({ body: "Sweep the named hosts." }));
 
     expect(withoutLayer).toContain("Sweep the named hosts.");
@@ -303,7 +303,7 @@ describe("the prompt seam", () => {
     // for a missing layer, which the slot's filter would happily keep.
     expect(withoutLayer.startsWith("\n")).toBe(false);
 
-    // The control: the same seat WITH a team layer differs, so the assertion
+    // The control: the same worker WITH a team layer differs, so the assertion
     // above is about the layer's absence and not about an observer that never
     // moves.
     const withLayer = await systemPromptOf(
@@ -345,7 +345,7 @@ describe("a kind that ignores the layer", () => {
       },
     });
 
-    const seats = mintSeats(
+    const minted = mintWorkers(
       [
         record({
           id: "engineering.lead",
@@ -360,9 +360,9 @@ describe("a kind that ignores the layer", () => {
       { workerFlows: { "quiet-desk": quiet as never } },
     );
 
-    expect(seats).toHaveLength(2);
+    expect(minted).toHaveLength(2);
     const config = (id: string) =>
-      seats.find((seat) => seat.id === id)!.config as Record<string, unknown>;
+      minted.find((worker) => worker.id === id)!.config as Record<string, unknown>;
 
     // The layer arrived for the record that carried it...
     expect(config("engineering.lead")[TEAM_INSTRUCTIONS_KEY]).toBe("Stay in scope.");
@@ -374,12 +374,12 @@ describe("a kind that ignores the layer", () => {
 describe("end to end, from files", () => {
   /**
    * The whole path in one spec: two teams' files read by the real loader,
-   * hired by the real factory, each seat's bag carrying its own team's text.
+   * hired by the real factory, each worker's bag carrying its own team's text.
    *
    * One shared bag is always right for somebody, so the sibling's value is
    * asserted as well as its own.
    */
-  it("carries each team's own instructions into its seats' bags, and not its sibling's", async () => {
+  it("carries each team's own instructions into its minted' bags, and not its sibling's", async () => {
     await writeWorker("pentest", "recon", "description: Recon.");
     await writeWorker("billing", "desk", "description: Billing desk.");
     await writeTeamMd("pentest", "---\ndescription: Red team.\n---\n\nStay in scope.\n");
@@ -388,34 +388,34 @@ describe("end to end, from files", () => {
     const { workers, teamErrors } = await readWorkforce(root);
     expect(teamErrors).toEqual([]);
 
-    const seats = mintSeats(workers);
+    const minted = mintWorkers(workers);
     const config = (id: string) =>
-      seats.find((seat) => seat.id === id)!.config as Record<string, unknown>;
+      minted.find((worker) => worker.id === id)!.config as Record<string, unknown>;
 
     expect(config("pentest.recon")[TEAM_INSTRUCTIONS_KEY]).toBe("Stay in scope.\n");
     expect(config("billing.desk")[TEAM_INSTRUCTIONS_KEY]).toBe("Never refund blind.\n");
-    // Two values, never merged: the seat's own instructions stay its own.
+    // Two values, never merged: the worker's own instructions stay its own.
     expect(config("pentest.recon")["instructions"]).toBe("Body.\n");
   });
 });
 
 /**
- * Give a seat's session a record naming its owning instance. `testFlow` seeds
+ * Give a worker's session a record naming its owning instance. `testFlow` seeds
  * one without a `flowId`, which a collection flow reads as a pre-ownership row
  * and refuses; seeding first wins.
  */
 async function seedOwnedSession(
   stores: ReturnType<typeof createInMemoryStores>,
   sessionId: string,
-  seat: FlowInstance,
+  worker: FlowInstance,
 ): Promise<void> {
   const now = new Date().toISOString();
   await stores.session.set(
     sessionId,
     {
       id: sessionId,
-      flowKind: seat.kind,
-      flowId: seat.id,
+      flowKind: worker.kind,
+      flowId: worker.id,
       userId: USER_ID,
       orgId: "test-org",
       state: {},

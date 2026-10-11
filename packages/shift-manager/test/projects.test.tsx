@@ -70,7 +70,7 @@ function openApp(baseUrl: string, path: string, userId = ASK_LAB_USER_ID): LabCl
 // snapshot's, proved below without a Lab ("grouping is the snapshot's"); a
 // project's workstreams are its entries now (project-workstreams.test.tsx).
 describe("PROJECTS (BR-22, D3)", () => {
-  it("a Lab whose inventory lists seats and projects but no workstreams still shows its projects, and no No project", async () => {
+  it("a Lab whose inventory lists workers and projects but no workstreams still shows its projects, and no No project", async () => {
     const { baseUrl } = await lab();
     openApp(baseUrl, "/inbox");
     await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
@@ -81,7 +81,7 @@ describe("PROJECTS (BR-22, D3)", () => {
 
   it("a member who holds no session on a flow that declares the projects still sees them, and a Lab with no project setup has no coordinator", async () => {
     const { baseUrl } = await lab();
-    // OTHER is a member of both projects, created none of them, and holds only a seat's session.
+    // OTHER is a member of both projects, created none of them, and holds only a worker's session.
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
     await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
     openApp(baseUrl, "/p/desk/stream", OTHER);
@@ -268,7 +268,7 @@ describe("grouping is the snapshot's (V4)", () => {
       inventory: {
         ok: true,
         value: {
-          seats: [],
+          workers: [],
           workstreams: [
             { id: "eng.a", kind: "mailbox", members: [] },
             { id: "ops.b", kind: "mailbox", members: [] },

@@ -125,7 +125,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
     projects: [{ id: APOLLO.id, title: "Apollo", members: [BOB.userId] }],
   });
@@ -392,7 +392,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     openApp(alice.clients, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     expect(conversation.getAttribute("data-session-id")).toBe(await projectCoordinator(alice, setup));
-    expect(conversation.getAttribute("data-seat-id")).toBe("project-coordinator");
+    expect(conversation.getAttribute("data-worker-id")).toBe("project-coordinator");
     // Stream draws no entry, so it never reads them; nor does Brief.
     const entryReads = () => seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
     expect(entryReads()).toEqual([]);

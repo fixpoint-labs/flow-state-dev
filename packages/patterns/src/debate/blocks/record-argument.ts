@@ -1,7 +1,7 @@
 /**
  * Tap factory that appends a debater's turn to the transcript resource
  * and adds-then-completes a Task in the audit collection. One tap is
- * built per debater seat so the agent's name and stance are bound at
+ * built per debater so the agent's name and stance are bound at
  * build time and render clearly in DevTool.
  */
 import { handler } from "@flow-state-dev/core";

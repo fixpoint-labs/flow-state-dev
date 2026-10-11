@@ -76,7 +76,7 @@ export const backgroundWorkLedger = defineTaskCollection({
  * **Never truncate this.** It used to be cut to 60 characters and reused as the
  * display label, which meant two different prompts sharing their first 59
  * characters derived the *same* child session and the panel showed one row mixing
- * both jobs. The dispatch key a seat derives is length-framed
+ * both jobs. The dispatch key an assignee derives is length-framed
  * (`taskSessionKeyFor` in `core/src/types/dispatch.ts`) precisely so two distinct
  * addresses can never alias; truncating the other half of the identity at the
  * app layer gave that back. Display truncation belongs at the render edge —
@@ -112,7 +112,7 @@ function renderOutput(output: unknown): string {
  * Build the `background-work` pipeline from the resolved router config.
  *
  * The board is constructed here rather than at module scope because its worker
- * takes the router's model resolver, and because the hand-off its seat
+ * takes the router's model resolver, and because the hand-off its assignee
  * carries reaches the flow through this pipeline being a route — a board
  * nobody composes declares nothing.
  */
@@ -227,7 +227,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // and costs the honest status.
     onError: "fail",
     workers: {
-      // The seat is a dispatcher: it hands each row off to the flow's
+      // The assignee is a dispatcher: it hands each row off to the flow's
       // `brief` task entry (`briefWorker`, declared below) instead of running
       // anything in the drain. Keyed on the task's `metadata.topic`: two
       // requests on one topic land in the same child session and continue its
@@ -428,7 +428,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
 
   // The task entry rides along so the flow can declare it under
   // `task: { actions }`: the block that runs in the child session for each row
-  // the seat hands off. `defineFlow` puts it behind the board's claim gate,
+  // the assignee hands off. `defineFlow` puts it behind the board's claim gate,
   // and refuses the flow if the hand-off is reachable and the entry is not
   // declared. Cast: a registry is heterogeneous, so `TaskWorker` fixes its
   // output at `unknown` while this worker settles a `string` — the same

@@ -81,7 +81,7 @@ import mailbox_standup from "./flows/mailboxes/standup";
 import worker_request_triage from "./flows/workers/request-triage";
 import resource_teams__engineering__research from "./teams/engineering/resources/research";
 import teamblock_engineering__build_status from "./teams/engineering/blocks/build-status";
-import seatblock_engineering__triage__page_oncall from "./teams/engineering/workers/triage/blocks/page-oncall";
+import workerblock_engineering__triage__page_oncall from "./teams/engineering/workers/triage/blocks/page-oncall";
 
 export const kinds = {
   "request-triage": worker_request_triage,
@@ -99,17 +99,17 @@ export const resourceModules = {
   "teams/engineering/research": resource_teams__engineering__research,
 } satisfies ResourceModules;
 
-export const seatBlocks = {
+export const workerBlocks = {
   "engineering.triage": {
     "build-status": teamblock_engineering__build_status,
-    "page-oncall": seatblock_engineering__triage__page_oncall,
+    "page-oncall": workerblock_engineering__triage__page_oncall,
   },
 } satisfies Record<string, Record<string, BlockDefinition>>;
 
 export const packageBlocks = {};
 ```
 
-A binding is where the file was found plus its name, with hyphens as underscores: `worker_`, `mailbox_` and `block_` for the three top-level folders, `resource_` and the document ref for a module in a `resources/` folder, `teamblock_` or `seatblock_` with the team or the seat for a block folder inside the team tree, and `packageblock_` with the package's folder for a block inside a [package](./packages-on-disk.md). The imports arrive in one group per walk — the three top-level folders first, then the resource modules, then the blocks in the team tree, then the package blocks — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
+A binding is where the file was found plus its name, with hyphens as underscores: `worker_`, `mailbox_` and `block_` for the three top-level folders, `resource_` and the document ref for a module in a `resources/` folder, `teamblock_` or `workerblock_` with the team or the worker for a block folder inside the team tree, and `packageblock_` with the package's folder for a block inside a [package](./packages-on-disk.md). The imports arrive in one group per walk — the three top-level folders first, then the resource modules, then the blocks in the team tree, then the package blocks — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
 
 Each export feeds a parameter that already exists:
 
@@ -118,15 +118,15 @@ Each export feeds a parameter that already exists:
 | `kinds` | `createWorkerInstallation`'s `workerFlows` |
 | `mailboxKinds` | `mailboxInstances` |
 | `blocks` | a task board's `workers`, or a worker kind's [tool catalog](./built-in-worker.md#tools) |
-| `seatBlocks` | `createWorkerInstallation` again |
+| `workerBlocks` | `createWorkerInstallation` again |
 | `packageBlocks` | `createWorkerInstallation`, for the [packages](./packages-on-disk.md) a worker holds |
 | `resourceModules` | `splitResourceModules`, whose halves go to the kind's `uses` and the flow's resource map |
 
 ```ts
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
-import { kinds, seatBlocks } from "./workforce/workforce.gen";
+import { kinds, workerBlocks } from "./workforce/workforce.gen";
 
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, seatBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, workerBlocks });
 const flows = hireWorkforce(installation);
 ```
 
@@ -177,7 +177,7 @@ Where the folder sits decides **who can resolve the name**:
 | `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |
 | a package's `blocks/` | the workers that hold that [package](./packages-on-disk.md) |
 
-An org seat (`workforce/org/workers/<worker>/`) has no `blocks/` folder of its own, and `fsdev gen` refuses one there. It gets tools from the catalog and from the packages it holds.
+An org worker (`workforce/org/workers/<worker>/`) has no `blocks/` folder of its own, and `fsdev gen` refuses one there. It gets tools from the catalog and from the packages it holds.
 
 A name is resolved nearest first: the worker's own folder, then its team's, then the catalog. The first match wins, so a worker can keep a private `summarize` without renaming the team's. A package's block is never hidden that way: one that shares a name with a block in the worker's own or team folder, or with a catalog tool the worker lists, is refused at the hire.
 
@@ -185,17 +185,17 @@ The org-level half is one line in your app, on the option the built-in kind alre
 
 ```ts
 import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { blocks, kinds, seatBlocks } from "./workforce/workforce.gen";
+import { blocks, kinds, workerBlocks } from "./workforce/workforce.gen";
 
 const installation = createWorkerInstallation({
   standardWorkers: workers,
   workerFlows: () => ({ ...kinds, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
-  seatBlocks,
+  workerBlocks,
 });
 const flows = hireWorkforce(installation);
 ```
 
-The other two ride `seatBlocks`, which needs no option on the flow: a worker's registered blocks are that worker's, resolved into its configuration on each turn.
+The other two ride `workerBlocks`, which needs no option on the flow: a worker's registered blocks are that worker's, resolved into its configuration on each turn.
 
 Then a worker names what it wants:
 

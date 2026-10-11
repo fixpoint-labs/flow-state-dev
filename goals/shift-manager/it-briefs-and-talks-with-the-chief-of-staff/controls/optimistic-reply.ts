@@ -10,7 +10,7 @@
  * - `openConversation` opens nothing, and `sendTurn` resolves at once and
  *   sends nothing, so the composer reads *delivered* while no session holds
  *   the line.
- * - `useSeatConversation` hands back the lines typed here, each with a reply
+ * - `useWorkerConversation` hands back the lines typed here, each with a reply
  *   written here, in place of what the session stores.
  *
  * The goal must fail at "talk" ("delivered was drawn while no session …
@@ -18,7 +18,7 @@
  */
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { useSeatConversation as useStoredConversation, type SeatConversation } from "../../../../packages/shift-manager/src/lib/conversation.ts";
+import { useWorkerConversation as useStoredConversation, type WorkerConversation } from "../../../../packages/shift-manager/src/lib/conversation.ts";
 import type { Seat } from "../../../../packages/shift-manager/src/lib/reads.ts";
 import type { sendTurn as realSendTurn } from "../../../../packages/shift-manager/src/lib/send.ts";
 
@@ -37,7 +37,7 @@ export const sendTurn: typeof realSendTurn = async (_clients, _target, message) 
 };
 
 /** The real hook, with the session's items replaced by the lines typed here and a canned reply to each. */
-export function useSeatConversation(seat: Seat, sessions: readonly SessionSummary[]): SeatConversation {
+export function useWorkerConversation(seat: Seat, sessions: readonly SessionSummary[]): WorkerConversation {
   const stored = useStoredConversation(seat, sessions);
   if (typed.length === 0) return stored;
   const items = typed.flatMap((line, i) => [

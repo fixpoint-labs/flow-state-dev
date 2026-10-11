@@ -1,9 +1,9 @@
 /**
  * The fence: a worker's document is *that worker's alone* when its own
- * frontmatter says so, and readable by every sibling seat when it does not.
+ * frontmatter says so, and readable by every sibling worker when it does not.
  *
  * This file is the durable form of a settlement. The claim — that isolating a
- * document per seat needs no framework machinery, only a line in the author's
+ * document per worker needs no framework machinery, only a line in the author's
  * file — was argued three ways and priced wrong twice before it was measured,
  * and the run that settled it was a throwaway that no longer exists. Prose in a
  * decision record is not evidence anyone can re-run, so the measurement lives
@@ -11,8 +11,8 @@
  *
  * Nothing on the path is stubbed. Two real `.md` files, the real frontmatter
  * parse, the real reader, the real install, the production `hireWorkforce`, two
- * real per-seat execution contexts over ONE set of stores. Sharing the stores is
- * the whole point: two seats with their own stores would read their own rows
+ * real per-worker execution contexts over ONE set of stores. Sharing the stores is
+ * the whole point: two workers with their own stores would read their own rows
  * whether the fence worked or not, which is a green that proves nothing.
  *
  * **What makes this go red.** Adding `flowIsolation` to the refused-declaration
@@ -20,7 +20,7 @@
  * that set is one shared list, so refusing the key "for the worker level"
  * refuses it at all three, and every isolated document in every tree quietly
  * becomes shared with nothing thrown. No test of the reader's own rules would
- * notice. This one would — the isolated seat starts reading its sibling's row.
+ * notice. This one would — the isolated worker starts reading its sibling's row.
  *
  * Model-free and deterministic: nothing here reaches a provider.
  */
@@ -32,7 +32,7 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { readResourcesDirectory } from "../src/loader";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { resourcesFromDocs } from "../src/resources-from-docs";
 import { DERIVED_RESOURCE_KEYS, type WorkerManifest } from "../src/manifest";
@@ -41,7 +41,7 @@ import { workerDoor } from "./worker-door";
 const ORG_ID = "test-org";
 const TEAM = "pentest";
 
-/** The two seats. Both are hired into ONE kind, from one flow definition. */
+/** The two workers. Both are hired into ONE kind, from one flow definition. */
 const ALICE = `${TEAM}.alice`;
 const BOB = `${TEAM}.bob`;
 
@@ -71,7 +71,7 @@ function treeWithDocuments(isolate: boolean): string {
   writeFileSync(
     join(slot, "diary.md"),
     `---
-description: The seat's own working notes.
+description: The worker's own working notes.
 ${isolate ? "flowIsolation: true\n" : ""}---
 
 Notes go here.
@@ -95,8 +95,8 @@ const REF = {
   shared: `teams/${TEAM}/workers/recon/shared`,
 } as const;
 
-/** Two seats of one kind, hired the way an app hires them, over one store set. */
-async function hireTwoSeatsOver(root: string) {
+/** Two workers of one kind, hired the way an app hires them, over one store set. */
+async function hireTwoWorkersOver(root: string) {
   const { documents, errors } = await readResourcesDirectory(root);
   expect(errors).toEqual([]);
 
@@ -107,46 +107,46 @@ async function hireTwoSeatsOver(root: string) {
     kind: "recon",
     cardinality: "collection",
     actions: { ...workerDoor, run: { inputSchema: z.string(), block: noop } },
-    // Admission, not decoration: a hireable kind declares where a seat's
+    // Admission, not decoration: a hireable kind declares where a worker's
     // instructions and resolved skills arrive, or `hireWorkforce` refuses the
     // whole roster. This kind adds no settings of its own, so it composes the
     // bag bare. It changes nothing the fence measures — the documents and the
-    // per-seat instance ids are minted the same either way.
+    // per-worker instance ids are minted the same either way.
     configSchema: workerConfigSchema(),
     resources,
   });
 
-  // `flow: "recon"` is what puts both seats in the kind that declares the
+  // `flow: "recon"` is what puts both workers in the kind that declares the
   // documents. Without it they are hired into the built-in `agent` kind, which
-  // carries its own resources and none of these — a seat with nothing to read,
+  // carries its own resources and none of these — a worker with nothing to read,
   // which is not what this file is measuring.
   const manifests: WorkerManifest[] = [
-    { id: ALICE, declared: { description: "Recon seat.", flow: "recon" }, body: "" },
-    { id: BOB, declared: { description: "Recon seat.", flow: "recon" }, body: "" },
+    { id: ALICE, declared: { description: "Recon worker.", flow: "recon" }, body: "" },
+    { id: BOB, declared: { description: "Recon worker.", flow: "recon" }, body: "" },
   ];
 
   // The production factory, not a hand-built pair of instances: what makes the
-  // fence work is that `hireWorkforce` mints one flow INSTANCE ID per seat, and
+  // fence work is that `hireWorkforce` mints one flow INSTANCE ID per worker, and
   // a hand-built pair would be assuming exactly the thing under test.
-  const seats = mintSeats(manifests, { workerFlows: { recon: reconFlow } });
-  expect(seats.map((s) => s.id)).toEqual([ALICE, BOB]);
+  const workers = mintWorkers(manifests, { workerFlows: { recon: reconFlow } });
+  expect(workers.map((s) => s.id)).toEqual([ALICE, BOB]);
 
-  // Both seats really carry the documents. Without this, a roster hired into
+  // Both workers really carry the documents. Without this, a roster hired into
   // the wrong kind — which is one missing `flow:` key away — would give every
-  // seat an empty registry, and "bob cannot read alice's row" would be green
+  // worker an empty registry, and "bob cannot read alice's row" would be green
   // because nobody can read anything.
-  for (const seat of seats) {
-    expect(Object.keys(seat.resources ?? {}).sort()).toEqual([REF.diary, REF.shared].sort());
+  for (const worker of workers) {
+    expect(Object.keys(worker.resources ?? {}).sort()).toEqual([REF.diary, REF.shared].sort());
   }
 
   const stores = createInMemoryStores();
-  const contextFor = async (seatId: string) => {
-    const seat = seats.find((s) => s.id === seatId)!;
+  const contextFor = async (workerId: string) => {
+    const worker = workers.find((s) => s.id === workerId)!;
     return createExecutionContext({
-      flow: seat,
+      flow: worker,
       actionName: "run",
-      requestId: `req_${seatId}`,
-      sessionId: `sess_${seatId}`,
+      requestId: `req_${workerId}`,
+      sessionId: `sess_${workerId}`,
       userId: "one-human",
       orgId: ORG_ID,
       stores,
@@ -158,7 +158,7 @@ async function hireTwoSeatsOver(root: string) {
     });
   };
 
-  return { documents, resources, seats, stores, contextFor };
+  return { documents, resources, workers, stores, contextFor };
 }
 
 describe("a worker document's fence", () => {
@@ -166,7 +166,7 @@ describe("a worker document's fence", () => {
   // Asserted separately from the behaviour because these are the two places a
   // refusal would eat it: the reader's declared bag, and the built resource.
   it("carries `flowIsolation` off real YAML through to the installed resource", async () => {
-    const { documents, resources } = await hireTwoSeatsOver(treeWithDocuments(true));
+    const { documents, resources } = await hireTwoWorkersOver(treeWithDocuments(true));
 
     const diary = documents.find((d) => d.ref === REF.diary)!;
     expect(diary.declared["flowIsolation"]).toBe(true);
@@ -178,8 +178,8 @@ describe("a worker document's fence", () => {
   });
 
   // The behaviour itself, in one run over one set of stores.
-  it("gives each seat its own rows for an isolated document and one shared row for the other", async () => {
-    const { contextFor } = await hireTwoSeatsOver(treeWithDocuments(true));
+  it("gives each worker its own rows for an isolated document and one shared row for the other", async () => {
+    const { contextFor } = await hireTwoWorkersOver(treeWithDocuments(true));
 
     const alice = await contextFor(ALICE);
     await alice.resources[REF.diary]!.patchState({ text: "alice-secret" });
@@ -192,16 +192,16 @@ describe("a worker document's fence", () => {
     expect((bob.resources[REF.diary]!.state as { text?: string }).text ?? "").toBe("");
 
     // And the document that did not ask for a fence is genuinely shared: the
-    // control that stops this file passing because the seats never shared a
+    // control that stops this file passing because the workers never shared a
     // store at all.
     expect((bob.resources[REF.shared]!.state as { text?: string }).text).toBe("alice-secret");
   });
 
-  // Where the rows actually land, which is what "per seat" means underneath:
-  // the isolated one is namespaced by the seat's flow instance id, the shared
+  // Where the rows actually land, which is what "per worker" means underneath:
+  // the isolated one is namespaced by the worker's flow instance id, the shared
   // one sits at the bare org identity.
-  it("keys the isolated document by the seat's own instance id and the shared one at the bare org", async () => {
-    const { contextFor, stores } = await hireTwoSeatsOver(treeWithDocuments(true));
+  it("keys the isolated document by the worker's own instance id and the shared one at the bare org", async () => {
+    const { contextFor, stores } = await hireTwoWorkersOver(treeWithDocuments(true));
 
     const alice = await contextFor(ALICE);
     await alice.resources[REF.diary]!.patchState({ text: "alice-secret" });
@@ -221,12 +221,12 @@ describe("a worker document's fence", () => {
    *
    * Same tree, same pipeline, one line deleted from the author's file. If this
    * passed, the two specs above would be green for some reason other than the
-   * one they claim — the seats not really sharing a store, `patchState` not
+   * one they claim — the workers not really sharing a store, `patchState` not
    * really persisting — and the whole file would be worthless. Bob reading
    * Alice's diary here is what makes Bob NOT reading it above mean something.
    */
-  it("shares the very same document across both seats once the frontmatter line is gone", async () => {
-    const { documents, resources, contextFor } = await hireTwoSeatsOver(treeWithDocuments(false));
+  it("shares the very same document across both workers once the frontmatter line is gone", async () => {
+    const { documents, resources, contextFor } = await hireTwoWorkersOver(treeWithDocuments(false));
 
     expect(documents.find((d) => d.ref === REF.diary)!.declared["flowIsolation"]).toBeUndefined();
     expect((resources[REF.diary] as { flowIsolation?: boolean }).flowIsolation).toBeUndefined();

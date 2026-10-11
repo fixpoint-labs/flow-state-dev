@@ -20,7 +20,7 @@ export const blocks = {};
 
 export const resourceModules = {};
 
-export const seatBlocks = {};
+export const workerBlocks = {};
 
 export const packageBlocks = {
   "teams/support/workers/iris/packages/ticket-desk": {

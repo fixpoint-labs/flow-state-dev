@@ -1,6 +1,6 @@
 /**
  * The live inventory's two writers, on the real path: `openInventory` for the
- * seat rows, and each mailbox for its own.
+ * worker rows, and each mailbox for its own.
  *
  * `inventory-collections.test.ts` covers the floor these rows land on — org
  * boundary, cross-flow sharing, key shape. This file covers who writes them and
@@ -24,19 +24,19 @@ import { z } from "zod";
 import {
   MAILBOX_KIND,
   INVENTORY_REGISTER_MAILBOX,
-  INVENTORY_REGISTER_SEATS,
-  INVENTORY_SEAT_WRITER_SESSION,
+  INVENTORY_REGISTER_WORKERS,
+  INVENTORY_WORKER_WRITER_SESSION,
   mailboxInstances,
   defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   inventoryWriterActions,
   membershipPrefix,
   openMailboxes,
   openInventory,
   type MailboxManifest,
   type InventoryBinding,
-  type InventorySeat
+  type InventoryWorker
 } from "../src/index";
 import { workforceManifestSources } from "../src/manifest-sources";
 import { mailboxSessionStateSchema } from "../src/index";
@@ -63,7 +63,7 @@ function record(id: string, declared: Record<string, unknown> = {}): MailboxMani
  * calling the factories again here is what turns "the rows are shared" from a
  * claim into a measurement.
  */
-const seatsCollection = defineSeatInventoryCollection();
+const workersCollection = defineWorkerInventoryCollection();
 const mailboxesCollection = defineMailboxInventoryCollection();
 const membershipsCollection = defineMembershipIndexCollection();
 
@@ -71,12 +71,12 @@ const readInventory = handler({
   name: "read-inventory",
   inputSchema: z.object({ membershipsOf: z.string().optional() }),
   outputSchema: z.object({
-    seats: z.array(z.unknown()),
+    workers: z.array(z.unknown()),
     mailboxes: z.array(z.unknown()),
     memberships: z.array(z.unknown())
   }),
   resources: {
-    seats: seatsCollection,
+    workers: workersCollection,
     mailboxes: mailboxesCollection,
     memberships: membershipsCollection
   },
@@ -87,7 +87,7 @@ const readInventory = handler({
         ? await ctx.resources.memberships.list()
         : await ctx.resources.memberships.list(membershipPrefix(input.membershipsOf));
     return {
-      seats: (await ctx.resources.seats.list()).map(state),
+      workers: (await ctx.resources.workers.list()).map(state),
       mailboxes: (await ctx.resources.mailboxes.list()).map(state),
       memberships: memberships.map(state)
     };
@@ -246,7 +246,7 @@ async function host(roster: MailboxManifest[], options: HostOptions = {}) {
         ...rest
       } as never);
       return (result.output ?? result) as {
-        seats: any[];
+        workers: any[];
         mailboxes: any[];
         memberships: any[];
       };
@@ -349,47 +349,47 @@ function sessionApi(stores: any) {
   };
 }
 
-const SEATS: InventorySeat[] = [
+const WORKERS: InventoryWorker[] = [
   { id: "eng.lead", kind: "agent", actions: {} },
   { id: "eng.coder", kind: "coder", actions: {} }
 ];
 
-/** The usual call: seats through the built-in kind, mailboxes through their own. */
+/** The usual call: workers through the built-in kind, mailboxes through their own. */
 function bind(
   lab: Awaited<ReturnType<typeof host>>,
   options: {
-    seats?: InventorySeat[];
+    workers?: InventoryWorker[];
     mailboxes?: MailboxManifest[];
     orgId?: string | undefined;
-    seatWriterKind?: string;
+    workerWriterKind?: string;
   } = {}
 ): Promise<InventoryBinding> {
   return openInventory(
-    { seats: options.seats ?? SEATS, mailboxes: options.mailboxes ?? [] },
+    { workers: options.workers ?? WORKERS, mailboxes: options.mailboxes ?? [] },
     {
       run: lab.run as never,
       userId: USER_ID,
       orgId: "orgId" in options ? options.orgId : ORG_ID,
-      seatWriter: { flowKind: options.seatWriterKind ?? MAILBOX_KIND }
+      workerWriter: { flowKind: options.workerWriterKind ?? MAILBOX_KIND }
     }
   );
 }
 
 describe("what one boot writes", () => {
 
-  it("gives every seat and every open mailbox a row, read back from a flow that is not a mailbox (BR-8, BR-14, BR-21)", async () => {
+  it("gives every worker and every open mailbox a row, read back from a flow that is not a mailbox (BR-8, BR-14, BR-21)", async () => {
     const roster = [record("eng.standup"), record("eng.retro", { members: ["eng.lead"] })];
     const lab = await host(roster, { inventory: true });
     try {
       const result = await bind(lab, { mailboxes: roster });
       expect(result.problems).toEqual([]);
-      expect(result).toMatchObject({ seats: 2, mailboxes: 2 });
+      expect(result).toMatchObject({ workers: 2, mailboxes: 2 });
 
       const rows = await lab.read();
 
-      expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
-      // A seat whose actions declare no door is registered with none.
-      expect(rows.seats.find((row) => row.id === "eng.coder")).toEqual({
+      expect(rows.workers.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
+      // A worker whose actions declare no door is registered with none.
+      expect(rows.workers.find((row) => row.id === "eng.coder")).toEqual({
         id: "eng.coder",
         kind: "coder",
         door: null,
@@ -418,16 +418,16 @@ describe("what one boot writes", () => {
     const roster = [record("eng.standup", { members: ["eng.lead"] })];
     const lab = await host(roster, { inventory: true });
     try {
-      await bind(lab, { mailboxes: roster, seats: [{ id: "eng.lead", kind: "agent", actions: {} }] });
+      await bind(lab, { mailboxes: roster, workers: [{ id: "eng.lead", kind: "agent", actions: {} }] });
 
       // Read out of storage rather than through the collection, because what is
       // being pinned is the key an already-persisted org would have to keep.
       expect(await lab.keys()).toEqual([
         "inventory/mailboxes/eng.standup",
         "inventory/members/eng.lead/eng.standup",
-        "inventory/seats/eng.lead"
+        "inventory/workers/eng.lead"
       ]);
-      expect(await lab.row("inventory/seats/eng.lead")).toEqual({
+      expect(await lab.row("inventory/workers/eng.lead")).toEqual({
         id: "eng.lead",
         kind: "agent",
         door: null,
@@ -449,7 +449,7 @@ describe("what one boot writes", () => {
     try {
       await bind(lab, {
         mailboxes: roster,
-        seats: [...SEATS, { id: "eng.leadership", kind: "agent", actions: {} }]
+        workers: [...WORKERS, { id: "eng.leadership", kind: "agent", actions: {} }]
       });
 
       const mine = await lab.read({ membershipsOf: "eng.lead" });
@@ -486,7 +486,7 @@ describe("what the binder refuses to carry", () => {
     const lab = await host(opened, { inventory: true });
     try {
       const edited = [record("eng.standup", { members: ["ops.oncall", "ops.sre"] })];
-      await bind(lab, { mailboxes: edited, seats: [] });
+      await bind(lab, { mailboxes: edited, workers: [] });
 
       const rows = await lab.read();
       // The red state is this row holding ["ops.oncall", "ops.sre"] — exactly
@@ -539,15 +539,15 @@ describe("what the binder refuses to carry", () => {
     }
   });
 
-  it("refuses seats with no seatWriter, naming what to pass", async () => {
+  it("refuses workers with no workerWriter, naming what to pass", async () => {
     const lab = await host([], { inventory: true });
     try {
       await expect(
         openInventory(
-          { seats: SEATS, mailboxes: [] },
+          { workers: WORKERS, mailboxes: [] },
           { run: lab.run as never, userId: USER_ID, orgId: ORG_ID }
         )
-      ).rejects.toThrow(/seatWriter/);
+      ).rejects.toThrow(/workerWriter/);
       expect(await lab.keys()).toEqual([]);
     } finally {
       await lab.dispose();
@@ -576,20 +576,20 @@ describe("running it twice", () => {
     }
 
     // A second boot over the SAME storage, from a roster that lost a mailbox and
-    // a seat. Nothing is reconciled: a binder that dropped what its roster no
+    // a worker. Nothing is reconciled: a binder that dropped what its roster no
     // longer names would take a live mailbox's row with it.
     const shrunk = [record("eng.standup")];
     const second = await host(shrunk, { inventory: true, adapter });
     try {
       const result = await bind(second, {
         mailboxes: shrunk,
-        seats: [{ id: "eng.lead", kind: "agent", actions: {} }]
+        workers: [{ id: "eng.lead", kind: "agent", actions: {} }]
       });
       expect(result.problems).toEqual([]);
 
       const rows = await second.read();
       expect(rows.mailboxes.map((row) => row.id).sort()).toEqual(["eng.retro", "eng.standup"]);
-      expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
+      expect(rows.workers.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
       // The mailbox that was open before this boot keeps the moment it opened,
       // rather than being restamped by a binder that has no idea when that was.
       expect((await second.row("inventory/mailboxes/eng.standup"))!.openedAt).toBe(openedAt);
@@ -746,22 +746,22 @@ describe("the registration action itself", () => {
     }
   });
 
-  it("registerSeatsInInventory cannot be reached through the public door", async () => {
+  it("registerWorkersInInventory cannot be reached through the public door", async () => {
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true, open: roster });
     try {
       // `lab.act` dispatches exactly the way a caller-addressed HTTP/MCP
       // request would — no `source`, which resolves as `"http"` (public).
       // Unlike `registerMailbox`, this action's whole input is the row data,
-      // so a public hit on it would let a caller write any seat it chose.
-      const attempt = await lab.act(INVENTORY_SEAT_WRITER_SESSION, INVENTORY_REGISTER_SEATS, {
-        seats: [{ id: "attacker.fake", kind: "agent", actions: {} }]
+      // so a public hit on it would let a caller write any worker it chose.
+      const attempt = await lab.act(INVENTORY_WORKER_WRITER_SESSION, INVENTORY_REGISTER_WORKERS, {
+        workers: [{ id: "attacker.fake", kind: "agent", actions: {} }]
       });
       expect(attempt.error).toBeDefined();
       expect(String((attempt.error as Error).message)).toContain(
-        `does not define action "${INVENTORY_REGISTER_SEATS}"`
+        `does not define action "${INVENTORY_REGISTER_WORKERS}"`
       );
-      expect(await lab.row("inventory/seats/attacker.fake")).toBeUndefined();
+      expect(await lab.row("inventory/workers/attacker.fake")).toBeUndefined();
     } finally {
       await lab.dispose();
     }

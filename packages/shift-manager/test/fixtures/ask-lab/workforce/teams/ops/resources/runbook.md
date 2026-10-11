@@ -1,5 +1,5 @@
 ---
-description: What the desk does when a seat asks for approval.
+description: What the desk does when a worker asks for approval.
 client:
   content:
     read: true

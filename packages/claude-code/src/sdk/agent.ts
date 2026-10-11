@@ -141,7 +141,7 @@ export interface ClaudeCodeAgentOptions {
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /**
    * Run the agent as **handed-off background work** — the block a task board
-   * seat's `dispatcher({ type: "task" })` targets, declared on the flow under
+   * worker's `dispatcher({ type: "task" })` targets, declared on the flow under
    * `task: { actions }` and run in a child session. Default `false`: an
    * in-session agent that keeps conversation state — the `sdkSessionId` resume
    * handle and the `sdkAgentRuns` log — which is the behaviour every existing

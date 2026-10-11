@@ -21,22 +21,22 @@
  * The rule that puts a knob on the app rather than on a worker: one that
  * cannot be honoured per worker must not be declared per worker. A knob that
  * is neither app-level nor a worker setting belongs to a replacement kind,
- * registered under `agent` by the caller, which wins for every seat.
+ * registered under `agent` by the caller, which wins for every worker.
  *
- * **What a seat can call is decided by its own file, in one of two ways.** A
+ * **What a worker can call is decided by its own file, in one of two ways.** A
  * worker that WRITES a `tools:` line gets exactly that list: a hard runtime
  * fence, not a hint. An empty list means none, regardless of what else the
  * app's catalog carries or what a capability attached through `uses` would
  * otherwise contribute (FIX-1393). A worker that writes NO `tools:` line gets
  * the tools of every capability preset its own file picked under
  * `capabilities:` — picking is the choice (FIX-1459). Presets the kind switches
- * on by default grant nothing a seat did not pick. The hire keeps an omitted
+ * on by default grant nothing a worker did not pick. The hire keeps an omitted
  * line omitted, never `[]`, so the two cases survive to the tools slot below;
  * either way the generator declares `tools:` and core's fence stays up. See
  * `docs/architecture/capabilities.md` → *The tools fence*. What the fence
  * deliberately does NOT hold back is a framework
  * **control** a capability declares through `controlTools` — the skill loader
- * this seat switched on. A seat only holds those because its own config asked,
+ * this worker switched on. A worker only holds those because its own config asked,
  * and they are built
  * inside their capability and never exported, so no `tools:` list could name
  * one back in. The skills library is handed the
@@ -45,15 +45,15 @@
  * or a tool the app never registered still fails loud at build time — but the
  * library never puts a catalog tool on the generator itself. The generator's
  * own tools slot below stays the only stock tool-registration path, so a
- * seat's own file is the one thing that decides what it can call, no matter
+ * worker's own file is the one thing that decides what it can call, no matter
  * what `allowed-tools` a bound skill declares.
  *
  * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
  * (FIX-1393): core drops a capability's catalog-granted tools when the block
- * declares `tools:`, and this kind declares it on every seat. Catalog tools a
+ * declares `tools:`, and this kind declares it on every worker. Catalog tools a
  * capability contributes are therefore copied onto this kind's catalog at
- * construction, so a seat can name them in `tools:` the same way it names an
- * app-passed tool. An empty list still means none. A seat with no `tools:`
+ * construction, so a worker can name them in `tools:` the same way it names an
+ * app-passed tool. An empty list still means none. A worker with no `tools:`
  * line gets a preset's tools by picking the preset, which the tools slot adds
  * itself. What the fence does not touch is a capability's `controlTools` — see
  * the paragraph above.
@@ -97,24 +97,24 @@ import {
   answerRoutedPost,
   mailboxPostCapability,
   routedTurnStateSchema,
-  seatIdConfigSchema,
+  workerIdConfigSchema,
   workerIdOfTurn,
   workerMailboxPostCapability
 } from "./mailbox-post-capability";
-import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
+import { WORKER_PACKAGES_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
-  catalogSeatCapabilities,
-  resolveSeatCapabilities,
+  catalogWorkerCapabilities,
+  resolveWorkerCapabilities,
   packageToolCollisions,
   pickedToolCollisions,
-  seatCapabilityProblems,
+  workerCapabilityProblems,
   selectedPresetTools,
-  type SeatCapabilityCatalog,
-  type SeatCapabilitySelection
-} from "./seat-capabilities";
-import { SEAT_DISCOVER_KEY } from "./seat-discovery";
-import { seatSkillSchema, workerConfigSchema } from "./worker-config";
-import { seatConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
+  type WorkerCapabilityCatalog,
+  type WorkerCapabilitySelection
+} from "./worker-capabilities";
+import { WORKER_DISCOVER_KEY } from "./worker-discovery";
+import { workerSkillSchema, workerConfigSchema } from "./worker-config";
+import { turnConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
 import type { WorkerInstallation } from "./workers/installation";
 
 /**
@@ -136,7 +136,7 @@ export const AGENT_KIND = "agent";
 const DEFAULT_MODEL = "intent/chat";
 
 /**
- * Where up-front skill matching publishes its result, when a seat turns it on.
+ * Where up-front skill matching publishes its result, when a worker turns it on.
  *
  * Explicit rather than the generator's own block state because the matcher runs
  * *before* the generator and so cannot reach a downstream block's state — see
@@ -145,43 +145,43 @@ const DEFAULT_MODEL = "intent/chat";
 const ACTIVE_SKILLS_STATE = { scope: "session", field: "activeSkills" } as const;
 
 /**
- * The parts of a seat's settings bag this file reads off a running block's
+ * The parts of a worker's settings bag this file reads off a running block's
  * context, where the bag's type is erased.
  *
  * Narrow on purpose — it exists so the two per-execution reads below are not
  * bare `any`, not to restate {@link settingsSchema}, which remains the one
- * definition of what a seat may declare.
+ * definition of what a worker may declare.
  */
-interface SeatConfig {
+interface WorkerConfig {
   /** Absent when the worker's file wrote no `tools:` line — never `[]` for that. */
   tools?: string[];
-  seatSkills: InitialSkill[];
+  workerSkills: InitialSkill[];
   skills: { active: string[]; activateTool: boolean; enableLlmClassifier: boolean };
-  capabilities: SeatCapabilitySelection;
+  capabilities: WorkerCapabilitySelection;
   /**
-   * The seat's own instructions — its file's body. Optional: a bodyless worker
-   * is a weak seat, not a failed hire, so the key is absent rather than empty.
+   * The worker's own instructions — its file's body. Optional: a bodyless worker
+   * is a weak worker, not a failed hire, so the key is absent rather than empty.
    */
   instructions?: string;
   /**
-   * The seat's TEAM-level instructions, imposed by the hire when its team wrote
+   * The worker's TEAM-level instructions, imposed by the hire when its team wrote
    * any. Absent — never `""` — when the team wrote none or has no file at all.
    */
   teamInstructions?: string;
   /**
-   * The packages this seat holds, imposed by the hire only when it holds one.
-   * Each package's instructions follow the seat's own in the prompt; its blocks
-   * are offered when the seat wrote no `tools:` line.
+   * The packages this worker holds, imposed by the hire only when it holds one.
+   * Each package's instructions follow the worker's own in the prompt; its blocks
+   * are offered when the worker wrote no `tools:` line.
    */
-  seatPackages?: Array<{ name: string; path: string; instructions?: string; tools: GeneratorTool[] }>;
+  workerPackages?: Array<{ name: string; path: string; instructions?: string; tools: GeneratorTool[] }>;
 }
 
 /**
- * The instructions of every package a seat holds, in the order it holds them,
- * as one prompt entry — or `undefined` when it holds none with any, so a seat
+ * The instructions of every package a worker holds, in the order it holds them,
+ * as one prompt entry — or `undefined` when it holds none with any, so a worker
  * holding nothing gets the prompt it had before packages existed.
  */
-function packageInstructionsOf(packages: SeatConfig["seatPackages"]): string | undefined {
+function packageInstructionsOf(packages: WorkerConfig["workerPackages"]): string | undefined {
   const texts = (packages ?? []).flatMap((held) =>
     held.instructions === undefined ? [] : [held.instructions]
   );
@@ -189,7 +189,7 @@ function packageInstructionsOf(packages: SeatConfig["seatPackages"]): string | u
 }
 
 /**
- * The names a seat's `tools:` line resolved to a held package's block that the
+ * The names a worker's `tools:` line resolved to a held package's block that the
  * kind's catalog also carries — one message each, naming the package and the
  * catalog. Only names the line actually granted count: a package block the
  * line left out is never offered, so a catalog key of the same name clashes
@@ -197,10 +197,10 @@ function packageInstructionsOf(packages: SeatConfig["seatPackages"]): string | u
  */
 function packageCatalogCollisions(
   catalog: ToolCatalog,
-  seatTools: ReadonlyArray<{ name?: unknown }> | undefined,
+  workerTools: ReadonlyArray<{ name?: unknown }> | undefined,
   packages: ReadonlyArray<{ path: string; tools: ReadonlyArray<{ name?: unknown }> }>
 ): string[] {
-  const granted = new Set((seatTools ?? []).map((tool) => tool.name));
+  const granted = new Set((workerTools ?? []).map((tool) => tool.name));
   const problems: string[] = [];
   for (const held of packages) {
     for (const tool of held.tools) {
@@ -217,8 +217,8 @@ function packageCatalogCollisions(
 }
 
 /**
- * This seat's own skills, off its config — the per-execution read the whole
- * per-seat catalog hangs on.
+ * This worker's own skills, off its config — the per-execution read the whole
+ * per-worker catalog hangs on.
  *
  * O(1) by construction: the array was resolved when the roster was read and is
  * carried on the bag. Nothing here may walk, parse or touch storage — it runs
@@ -227,17 +227,17 @@ function packageCatalogCollisions(
  * Defensive `?? []` because the bag is erased at this point and a replacement
  * kind registered under `agent` could hand over a config without the key.
  */
-function seatSkillsOf(ctx: BlockContext): InitialSkill[] {
-  return (seatConfigOf(ctx) as Partial<SeatConfig>).seatSkills ?? [];
+function workerSkillsOf(ctx: BlockContext): InitialSkill[] {
+  return (turnConfigOf(ctx) as Partial<WorkerConfig>).workerSkills ?? [];
 }
 
 /**
- * Whether this seat turned the mid-turn activate tool on. The other erased read
+ * Whether this worker turned the mid-turn activate tool on. The other erased read
  * — it picks which of the two answering generators runs, and the default is
  * off, so anything other than an explicit `true` takes the plain arm.
  */
 function activateToolOn(ctx: BlockContext): boolean {
-  return (seatConfigOf(ctx) as Partial<SeatConfig>).skills?.activateTool === true;
+  return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
 }
 
 /** What the app supplies. Everything else is a worker's own setting. */
@@ -250,12 +250,12 @@ export interface AgentWorkerFlowOptions {
    * a file on disk can only carry its name, so only the app holds the map.
    */
   catalog?: ToolCatalog;
-  /** Skills seeded into the library every seat of this kind reads. */
+  /** Skills seeded into the library every worker of this kind reads. */
   skills?: InitialSkill[];
   /** Default model for workers that name none. Defaults to {@link DEFAULT_MODEL}. */
   model?: string;
   /**
-   * Model the up-front matcher's third tier uses, when a seat opts in. Mirrors
+   * Model the up-front matcher's third tier uses, when a worker opts in. Mirrors
    * `createSkillActivator`'s option of the same name.
    *
    * An app-level option rather than a worker setting because the matcher is
@@ -285,18 +285,18 @@ export interface AgentWorkerFlowOptions {
    * statically somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
    * dynamically and its stores are *not* installed by that entry alone.
    *
-   * **A seat picks presets from what this option installs.** A worker file's
+   * **A worker picks presets from what this option installs.** A worker file's
    * `capabilities:` key names a capability listed here and the presets that
-   * seat wants; a name that is not a top-level static entry of this array is
+   * worker wants; a name that is not a top-level static entry of this array is
    * refused at the mint. Selecting only ever ADDS to what the entry already
-   * carries — see `./seat-capabilities`.
+   * carries — see `./worker-capabilities`.
    *
    * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
    * catalog-granted tools when the consuming block declares `tools:`, and this
-   * kind declares it on every seat — so a preset that ships a tool reaches a
+   * kind declares it on every worker — so a preset that ships a tool reaches a
    * worker only when that worker's own file picks the preset and writes no
    * `tools:` line, or names the tool in its line. A preset switched on here by
-   * default grants no seat anything it did not pick. A capability's
+   * default grants no worker anything it did not pick. A capability's
    * `controlTools` are exempt by design.
    */
   uses?: UsesSlot;
@@ -366,21 +366,21 @@ export interface AgentWorkerFlowOptions {
  * What one worker of this kind configures, in its file.
  *
  * **Composed from the admission contract rather than written beside it.** The
- * four settings a seat's bag may carry — a worker's own instructions, its
+ * four settings a worker's bag may carry — a worker's own instructions, its
  * team's, the skills its folders resolved, and the blocks those folders
  * registered that its `tools:` named — come from
  * `workerConfigSchema()`, and this kind's own settings are extended on at the
  * top level. That is the move every hireable kind makes, so the one kind that
  * ships with the framework teaches the rule rather than standing outside it.
  *
- * `seatSkills` is re-declared below rather than inherited untouched: the SHAPE
- * stays the contract's (`seatSkillSchema`), and the refinement on top of it is
+ * `workerSkills` is re-declared below rather than inherited untouched: the SHAPE
+ * stays the contract's (`workerSkillSchema`), and the refinement on top of it is
  * this kind's, because only this kind holds the app's own skill names to
- * collide a seat's against.
+ * collide a worker's against.
  */
 function settingsSchema(
   options: AgentWorkerFlowOptions,
-  seatCapabilities: SeatCapabilityCatalog
+  workerCapabilities: WorkerCapabilityCatalog
 ) {
   const catalog = options.catalog ?? {};
   const appSkillNames = new Set((options.skills ?? []).map((skill) => skill.name));
@@ -413,7 +413,7 @@ function settingsSchema(
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
-              `names tool "${name}", which nothing registers for this seat — neither its own ` +
+              `names tool "${name}", which nothing registers for this worker — neither its own ` +
               `\`blocks/\` folder nor the app's tool catalog. ` +
               `Known catalog tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentWorkerFlow)"}. ` +
               `Put the block in this worker's own \`blocks/\` folder and re-run \`fsdev gen\`, ` +
@@ -424,7 +424,7 @@ function settingsSchema(
       }),
 
     /**
-     * The seat's own skills — the contract's key, re-declared here to add ONE
+     * The worker's own skills — the contract's key, re-declared here to add ONE
      * refinement this kind alone can make.
      *
      * The shape and the story are `workerConfigSchema()`'s: imposed by the hire
@@ -433,14 +433,14 @@ function settingsSchema(
      * the app's own skill names and so cannot live on a contract every kind
      * shares.
      */
-    [SEAT_SKILLS_KEY]: z
-      .array(seatSkillSchema)
+    [WORKER_SKILLS_KEY]: z
+      .array(workerSkillSchema)
       .default([])
-      .superRefine((seatSkills, ctx) => {
+      .superRefine((workerSkills, ctx) => {
         // Both sources fill ONE catalog, so a bare name arriving from both has
-        // no answer — the same rule the loader already applies across a seat's
+        // no answer — the same rule the loader already applies across a worker's
         // levels, rather than a second precedence story beside it.
-        for (const skill of seatSkills) {
+        for (const skill of workerSkills) {
           if (!appSkillNames.has(skill.name)) continue;
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -462,7 +462,7 @@ function settingsSchema(
          * **Default empty**, because being colocated with a worker makes a
          * skill *reachable*, not always-in-context: a folder dropped beside a
          * worker costs that worker nothing until someone types `/name`, turns
-         * on the activate tool, or lists the skill here. A name the seat does
+         * on the activate tool, or lists the skill here. A name the worker does
          * not hold is refused at the mint, listing what it does hold.
          */
         active: z.array(z.string()).default([]),
@@ -471,9 +471,9 @@ function settingsSchema(
          * Let the model pull a held skill into context mid-turn, with a tool.
          *
          * **Default off.** Turning it on installs the load tool *and* a listing
-         * of everything the seat holds, and that listing is a per-turn token
+         * of everything the worker holds, and that listing is a per-turn token
          * cost proportional to the catalog — which is exactly what a
-         * zero-configuration worker must not be charged. Left off, a seat's
+         * zero-configuration worker must not be charged. Left off, a worker's
          * skills are still reachable by slash and by the always-on list.
          */
         activateTool: z.boolean().default(false),
@@ -491,14 +491,14 @@ function settingsSchema(
          * a zero-configuration worker must not spend an extra model call per
          * turn deciding whether a skill applies. Left off, skills are still
          * reachable — a slash hit still activates them, and `active` and
-         * `activateTool` above are the seat's other two doors.
+         * `activateTool` above are the worker's other two doors.
          */
         enableLlmClassifier: z.boolean().default(false)
       })
       .default({}),
 
     /**
-     * The capabilities this seat picks up from what its kind carries, and the
+     * The capabilities this worker picks up from what its kind carries, and the
      * presets it wants from each.
      *
      * ```yaml
@@ -507,15 +507,15 @@ function settingsSchema(
      * ```
      *
      * **Default empty**, which carries every installed capability's own
-     * defaults — what every seat gets today. Naming presets ADDS to that; a
-     * seat has no way to switch one off, because what a workforce may do is
+     * defaults — what every worker gets today. Naming presets ADDS to that; a
+     * worker has no way to switch one off, because what a workforce may do is
      * the app's call and a worker file is not where it is reversed.
      *
      * Refused **at the mint**, by name: an unknown capability, an undeclared
-     * preset, and the three presets that cannot travel the per-seat path (one
+     * preset, and the three presets that cannot travel the per-worker path (one
      * the app turned off, one on a capability with open config, and one whose
      * surface has to exist before a request runs). The whole selection is
-     * validated before a seat answers anything, because a typo surfacing as a
+     * validated before a worker answers anything, because a typo surfacing as a
      * failed turn in front of a user is worse than the silence this key
      * closes.
      */
@@ -523,42 +523,42 @@ function settingsSchema(
       .record(z.string(), z.array(z.string()))
       .default({})
       .superRefine((selection, ctx) => {
-        for (const message of seatCapabilityProblems(seatCapabilities, selection)) {
+        for (const message of workerCapabilityProblems(workerCapabilities, selection)) {
           ctx.addIssue({ code: z.ZodIssueCode.custom, message });
         }
       }),
 
     /**
-     * Which discovery domains this seat sees (FIX-817).
+     * Which discovery domains this worker sees (FIX-817).
      *
      * ```yaml
-     * discover: [seats, mailboxes]
+     * discover: [workers, mailboxes]
      * ```
      *
-     * **Omit the key to see every domain the seat's scope carries** — today's
+     * **Omit the key to see every domain the worker's scope carries** — today's
      * reach, unchanged. Naming domains NARROWS to those; an empty list asks to
      * see none. There is no spelling that widens: a domain the app did not
      * install is not reached by a file naming it, because the narrowing is an
      * intersection over the registry the app built.
      *
      * A misspelled domain is refused **at the mint**, by name, listing the four
-     * — a typo that silently narrowed a seat to nothing would surface as a
+     * — a typo that silently narrowed a worker to nothing would surface as a
      * planner that quietly stopped finding anybody. A correctly spelled domain
      * the scope does not carry is NOT a refusal: it is the add-never-widen rule
-     * doing its job, and the seat simply sees nothing for it.
+     * doing its job, and the worker simply sees nothing for it.
      *
      * Read per turn by `createWorkforceCapability`'s door — see
-     * `./seat-discovery`.
+     * `./worker-discovery`.
      */
-    [SEAT_DISCOVER_KEY]: z.array(z.enum(MANIFEST_DOMAINS)).optional()
+    [WORKER_DISCOVER_KEY]: z.array(z.enum(MANIFEST_DOMAINS)).optional()
   });
 }
 
 /**
- * Refuse an always-on name this seat does not hold, by name, listing what it
+ * Refuse an always-on name this worker does not hold, by name, listing what it
  * does hold.
  *
- * **Not at the mint, and not by choice.** `skills.active` and `seatSkills` are
+ * **Not at the mint, and not by choice.** `skills.active` and `workerSkills` are
  * two settings, so the check spans them — and a flow's `configSchema` must be a
  * plain `z.object`, because the framework closes undeclared keys on it and a
  * `.superRefine()` wrapper would make that impossible (`closeConfigSchema`,
@@ -566,8 +566,8 @@ function settingsSchema(
  * outright: *"a rule spanning two settings belongs in the block that reads
  * them."* This is that block — it is the one that reads `skills.active`.
  *
- * So the refusal lands on the seat's first turn instead of at boot. It is still
- * fatal, still names the skill, and still lists what the seat holds; what is
+ * So the refusal lands on the worker's first turn instead of at boot. It is still
+ * fatal, still names the skill, and still lists what the worker holds; what is
  * lost is the collected roster-wide report a mint-time refusal would have
  * joined.
  */
@@ -602,17 +602,17 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  */
 /**
  * Catalog tools a kind's `uses` already grants — capability tools fill the
- * kind catalog so a seat can name them in `tools:`.
+ * kind catalog so a worker can name them in `tools:`.
  *
- * Not the only route a preset's tool reaches a seat: a seat with no `tools:`
+ * Not the only route a preset's tool reaches a worker: a worker with no `tools:`
  * line gets the tools of the presets it picked through the tools slot. This
- * fill is how a seat that WRITES a line names a tool from a preset the kind has
+ * fill is how a worker that WRITES a line names a tool from a preset the kind has
  * on by default.
  *
  * Core drops a capability's catalog tools when the consuming block declares
  * `tools:` (FIX-1393). This kind always declares that slot, so a grant that
- * stayed only on the capability would be a name no seat could call. Filling
- * the catalog is what makes "kind installs via `uses`, seat names the tool"
+ * stayed only on the capability would be a name no worker could call. Filling
+ * the catalog is what makes "kind installs via `uses`, worker names the tool"
  * one path rather than two.
  *
  * Static arrays only. A preset whose `tools` is a function cannot be named
@@ -648,7 +648,7 @@ function catalogToolsFromUses(uses: UsesSlot | undefined): ToolCatalog {
 /**
  * The kind's catalog: capability grants first, the app's map on top only when
  * the two agree. A collision of different instances is a construction error
- * rather than a silent overlay — the seat's `tools:` would otherwise name
+ * rather than a silent overlay — the worker's `tools:` would otherwise name
  * one tool and call the other.
  */
 function mergeKindCatalog(
@@ -688,7 +688,7 @@ function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
  * What the app's catalog declares, merged into one set for the answer
  * generators to declare as their own.
  *
- * **The gap this closes, and why it is not obvious.** A seat reaches its tools
+ * **The gap this closes, and why it is not obvious.** A worker reaches its tools
  * through the `tools:` slot below, which is a resolver that runs per turn off
  * `ctx.flow.config`. `defineFlow` collects `declaredResources` by a STATIC walk
  * over the flow's action blocks (`defineFlow.ts`), and nothing a runtime
@@ -699,25 +699,25 @@ function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
  * block that calls the tools, which keeps each one's own prefetch mode intact.
  *
  * Kind-wide by construction, and deliberately: the catalog is the kind's, so
- * its stores belong to every seat of it — including seats whose `tools:` never
+ * its stores belong to every worker of it — including workers whose `tools:` never
  * name the tool. That is the same bill `uses` already presents, and it is why
- * this is safe where collecting a SEAT's declarations would not be.
+ * this is safe where collecting a WORKER's declarations would not be.
  *
- * The tools of every preset a seat may pick count too, on or off for the kind:
- * a seat with no `tools:` line reaches them through the same per-turn resolver.
+ * The tools of every preset a worker may pick count too, on or off for the kind:
+ * a worker with no `tools:` line reaches them through the same per-turn resolver.
  * Only presets that list their tools as an array can be read here; a preset
  * whose tools are a function is known only per turn.
  */
 function catalogDeclaredResources(
   catalog: ToolCatalog,
-  seatCapabilities: SeatCapabilityCatalog
+  workerCapabilities: WorkerCapabilityCatalog
 ): DeclaredResources | undefined {
   const merged: DeclaredResources = {};
   /** Accessor key → the catalog key that claimed it, so a clash can name both. */
   const claimedBy: Record<string, string> = {};
 
   const entries: Array<[string, unknown]> = Object.entries(catalog);
-  for (const capability of seatCapabilities.values()) {
+  for (const capability of workerCapabilities.values()) {
     for (const tools of capability.presetTools.values()) {
       if (!Array.isArray(tools)) continue;
       for (const tool of tools) {
@@ -758,7 +758,7 @@ function catalogDeclaredResources(
  * Called with no arguments this returns the built-in — the kind a worker file
  * that names no `flow:` is hired into. Called with arguments it returns a
  * configured one; register it as `workerFlows: { agent: defineAgentWorkerFlow({ ... }) }`
- * and it wins for every seat on the roster.
+ * and it wins for every worker on the roster.
  *
  * Define once, hire many: call this at module scope or app bootstrap, never
  * per hire or per request.
@@ -822,7 +822,7 @@ const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer
  * @param share The sharing flow's kind, answer name and extra tools.
  */
 export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: AgentTurnShare = AGENT_TURN) {
-  // A copy that runs every worker has no `seatId` of its own: its mailbox
+  // A copy that runs every worker has no `workerId` of its own: its mailbox
   // lines are signed by the worker each turn loads.
   const options: AgentWorkerFlowOptions =
     given.installation === undefined
@@ -830,24 +830,24 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       : { ...given, uses: given.uses?.map((use) => (use === mailboxPostCapability ? workerMailboxPostCapability : use)) };
   const catalog = mergeKindCatalog(options.uses, options.catalog);
   // Before anything is built from it. A catalog key that disagrees with its
-  // block's own name would hand the model a tool no seat's `tools:` can
+  // block's own name would hand the model a tool no worker's `tools:` can
   // authorize, and the kind is the door that holds the map.
   assertOneNamePerCatalogEntry(catalog);
-  // Read once, here: it is what a seat's `capabilities:` is validated against
-  // at the mint AND what the per-seat entry below resolves through, and two
+  // Read once, here: it is what a worker's `capabilities:` is validated against
+  // at the mint AND what the per-worker entry below resolves through, and two
   // readings of one `uses` array is how the two halves drift apart.
-  const seatCapabilityCatalog = catalogSeatCapabilities(options.uses);
+  const workerCapabilityCatalog = catalogWorkerCapabilities(options.uses);
   // What the catalog's own blocks and pickable presets' tools need, so the
   // flow installs it. See the function's note: without this a tool that
   // declares a store is advertised with nothing behind it.
-  const catalogResources = catalogDeclaredResources(catalog, seatCapabilityCatalog);
-  const settings = settingsSchema({ ...options, catalog }, seatCapabilityCatalog);
+  const catalogResources = catalogDeclaredResources(catalog, workerCapabilityCatalog);
+  const settings = settingsSchema({ ...options, catalog }, workerCapabilityCatalog);
   /**
    * The settings this turn runs with: the configuration of the worker the
    * turn resolved, or the copy's own config on a copy minted for one worker.
    */
   const turnConfig = (ctx: { readonly session: object; readonly flow?: { readonly config: unknown } }) =>
-    seatConfigOf(ctx) as z.infer<typeof settings>;
+    turnConfigOf(ctx) as z.infer<typeof settings>;
   const inputSchema = z.object({ message: z.string() });
   /**
    * The answer's own input: the turn, and on a routed mailbox post the
@@ -860,7 +860,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const appSkills = options.skills ?? [];
 
   /**
-   * What THIS seat's catalog is seeded from — the app's skills plus its own.
+   * What THIS worker's catalog is seeded from — the app's skills plus its own.
    *
    * Kept to an O(1) read of an already-resolved array, because it runs on every
    * render of every binding: before each step of the generator's tool loop, and
@@ -868,18 +868,18 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
    * are non-empty, which is the uncommon case; a name in both is already
    * refused at the mint, so there is nothing to reconcile here.
    */
-  const seatCatalog = (ctx: BlockContext): InitialSkill[] => {
-    const seat = seatSkillsOf(ctx);
-    if (seat.length === 0) return appSkills;
-    if (appSkills.length === 0) return seat;
-    return [...appSkills, ...seat];
+  const workerCatalog = (ctx: BlockContext): InitialSkill[] => {
+    const worker = workerSkillsOf(ctx);
+    if (worker.length === 0) return appSkills;
+    if (appSkills.length === 0) return worker;
+    return [...appSkills, ...worker];
   };
 
   // `catalog` is passed so a bound skill's declared `allowed-tools` are
   // validated against it (author feedback: a typo or an uncataloged tool
   // fails loud at build time) — but `registerCatalogTools: false` keeps the
   // library's own whole-catalog registration (see the bindings below) from
-  // putting every app tool on the generator regardless of a seat's own
+  // putting every app tool on the generator regardless of a worker's own
   // `tools:` setting. That registration path stays off; the generator's own
   // `tools:` slot below, fenced at the mint by the `tools` schema, is the
   // only stock tool-registration path.
@@ -890,13 +890,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     catalog,
     registerCatalogTools: false,
     scope: "user",
-    // Per-execution rather than a fixed array: the catalog is the SEAT's, and
-    // a block deliberately cannot see which instance it is, so the seat's own
+    // Per-execution rather than a fixed array: the catalog is the WORKER's, and
+    // a block deliberately cannot see which instance it is, so the worker's own
     // set has to arrive on its config and be read from there.
-    initialSkills: seatCatalog,
-    // Every seat gets its own drawer. The storage layer keys an isolated
-    // resource on the flow instance id, and a seat is minted with the worker's
-    // id — so two seats' catalogs are two different buckets, with no second
+    initialSkills: workerCatalog,
+    // Every worker gets its own drawer. The storage layer keys an isolated
+    // resource on the flow instance id, and a worker is minted with the worker's
+    // id — so two workers' catalogs are two different buckets, with no second
     // collection key, prefix or scope. (A collection seeded before this was
     // switched on re-seeds from the new key; the old rows are orphaned, not
     // lost — BP-030.)
@@ -915,10 +915,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // generator and so cannot reach its block state.
   //
   // TWO bindings, because `dynamicActivation` is a build-time preset and the
-  // activate tool is a per-seat switch — the same shape, and the same reason,
+  // activate tool is a per-worker switch — the same shape, and the same reason,
   // as the two activators further down. The plain binding is what a
-  // zero-configuration seat gets: the reader, and no tool and no catalog
-  // listing. `allowed` is omitted on both, so when a seat does turn the tool
+  // zero-configuration worker gets: the reader, and no tool and no catalog
+  // listing. `allowed` is omitted on both, so when a worker does turn the tool
   // on it reaches everything it holds.
   //
   // ---------------------------------------------------------------------
@@ -927,13 +927,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // Two bindings x two activators x two generators is the widest thing in
   // this file, and it looks like over-engineering until you try to collapse
   // it. Both switches — `skills.activateTool` and
-  // `skills.enableLlmClassifier` — are per SEAT, while both mechanisms that
+  // `skills.enableLlmClassifier` — are per WORKER, while both mechanisms that
   // implement them are fixed at CONSTRUCTION: `dynamicActivation` is a
   // preset resolved when `skills.with()` is bound, and
   // `enableLlmClassifier` is read by `createSkillActivator` when it builds
   // its pipeline. A kind is built once and hired many times, so neither can
-  // see the seat, and building one of each and choosing at run time is the
-  // only shape that honours a per-seat switch at all.
+  // see the worker, and building one of each and choosing at run time is the
+  // only shape that honours a per-worker switch at all.
   //
   // The real fix is a RUNTIME toggle in `@flow-state-dev/orchestration` —
   // a binding whose load tool installs per execution, and an activator
@@ -957,12 +957,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   } as never);
 
   /**
-   * What THIS seat's own file added on top of the kind's capabilities — the
+   * What THIS worker's own file added on top of the kind's capabilities — the
    * presets it named that the kind does not already carry.
    *
-   * A dynamic entry because it is the only `uses` slot that can see a seat: a
+   * A dynamic entry because it is the only `uses` slot that can see a worker: a
    * kind is built once and hired many times, so a static entry is resolved
-   * before any seat exists. It carries the DELTA only; every capability stays
+   * before any worker exists. It carries the DELTA only; every capability stays
    * on its own static entry, which is what keeps a preset from being resolved
    * on both paths (the framework merges the two independently and dedupes
    * across neither).
@@ -971,10 +971,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
    * passes no `uses` builds exactly the block it built before this key existed
    * rather than one carrying an inert dynamic resolver.
    */
-  const seatCapabilities = (ctx: BlockContext) =>
-    resolveSeatCapabilities(
-      seatCapabilityCatalog,
-      (seatConfigOf(ctx) as Partial<SeatConfig>).capabilities
+  const workerCapabilities = (ctx: BlockContext) =>
+    resolveWorkerCapabilities(
+      workerCapabilityCatalog,
+      (turnConfigOf(ctx) as Partial<WorkerConfig>).capabilities
     );
   // The session's task board, on an installation: a worker whose session
   // lists a delegate that takes a task files through it (FIX-1802 D1). Its
@@ -986,7 +986,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       : undefined);
   const usesEntries = [
     ...(options.uses ?? []),
-    ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : []),
+    ...(workerCapabilityCatalog.size > 0 ? [workerCapabilities] : []),
     ...(board !== undefined ? [board.tools, board.questions] : [])
   ];
 
@@ -997,7 +997,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
       // The earlier turns of THIS conversation, so a follow-up keeps its
-      // subject. A conversation is one session: a seat has one per mailbox it
+      // subject. A conversation is one session: a worker has one per mailbox it
       // hears and one per direct conversation, so nothing said in one reaches
       // another. Bounded by the session's history window (the framework's
       // default, 50 turns); older turns fall out rather than being summarized.
@@ -1017,8 +1017,8 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       uses: [binding, ...usesEntries],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
-      // Three layers, in this order every time: the seat's TEAM speaks first,
-      // then the seat's own file, then the packages it holds. The array is the framework's own prompt
+      // Three layers, in this order every time: the worker's TEAM speaks first,
+      // then the worker's own file, then the packages it holds. The array is the framework's own prompt
       // slot, which resolves each entry, drops the absent ones and joins the
       // rest — so the filter and the join stay the framework's single rule
       // instead of a second copy of it living here.
@@ -1027,35 +1027,35 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // layer, and that is load-bearing rather than stylistic: the slot drops
       // `null`/`undefined` but keeps `""`, so an empty string would survive
       // the filter and show up as a leading blank line in the prompt of every
-      // seat whose team wrote nothing.
+      // worker whose team wrote nothing.
       //
       // WHAT THE ORDER BUYS, AND WHAT IT DOES NOT. The position is fixed and
       // checkable, and that is the whole promise. It is NOT a precedence rule.
       // Assembly on this path is plain concatenation with no override,
       // precedence or conflict-resolution mechanism anywhere in it, so if a
-      // team says *never touch production* and a seat says *restart the
+      // team says *never touch production* and a worker says *restart the
       // production queue*, what happens is whatever the MODEL does with two
       // contradictory sentences. No doc line, test or PR sentence here should
-      // claim the seat's text "wins": a check on the composed string proves
+      // claim the worker's text "wins": a check on the composed string proves
       // order, which is a neighbour of precedence and not precedence. Making
-      // the seat's line genuinely win would mean resolving contradictions
+      // the worker's line genuinely win would mean resolving contradictions
       // before the prompt is sent — a different and much larger feature.
       //
       // The shared default worker system prompt is still unshipped and still
       // owned elsewhere; per contract C1 this kind consumes it and defines no
       // second one. When it lands it goes at the FRONT of this array — the
-      // framework, then the team, then the seat — and nothing else moves. Do
+      // framework, then the team, then the worker — and nothing else moves. Do
       // not grow this into a compose helper, a registry or a type: an org-wide
       // fourth layer is the point at which the seam should be re-decided
       // rather than widened a second time.
       //
-      // A held package's instructions come third, after the seat's own: the
-      // seat holds the package, so its text reads as part of what this seat is
+      // A held package's instructions come third, after the worker's own: the
+      // worker holds the package, so its text reads as part of what this worker is
       // told. The same caveat holds — order, not precedence.
       prompt: [
         (_input, ctx) => turnConfig(ctx).teamInstructions,
         (_input, ctx) => turnConfig(ctx).instructions,
-        (_input, ctx) => packageInstructionsOf(turnConfig(ctx)[SEAT_PACKAGES_KEY])
+        (_input, ctx) => packageInstructionsOf(turnConfig(ctx)[WORKER_PACKAGES_KEY])
       ],
       model: (_input, ctx) => turnConfig(ctx).model,
       // A routed mailbox post's lines before it, for this turn only: the
@@ -1063,13 +1063,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // so the lines are not kept in the conversation or sent on a later
       // turn. Absent on every other turn.
       context: [(input) => recentLinesContext(input.recent)],
-      // The seat's granted tools. With a written `tools:` line, both halves of
+      // The worker's granted tools. With a written `tools:` line, both halves of
       // it: `tools` holds the names that resolved to the app's CATALOG;
-      // `seatTools` holds the blocks that resolved to this seat's own folders,
+      // `workerTools` holds the blocks that resolved to this worker's own folders,
       // already resolved at the hire step so this slot stays cheap — it runs
       // before every step of every turn. With NO line (`tools` absent, never
-      // `[]`), the tools of the presets the seat's own file picked, read from
-      // its selection as written; `seatTools` is empty then, because the hire
+      // `[]`), the tools of the presets the worker's own file picked, read from
+      // its selection as written; `workerTools` is empty then, because the hire
       // fills it only from a written line. The generator's fence sees ONE
       // declared list and cannot tell where a tool came from, which is the
       // point: a colocated block or a chosen tool is not an exemption from the
@@ -1077,22 +1077,22 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       //
       // With no line, a held package's blocks are chosen too: holding the
       // package is the choice. With a line they are not added here — a
-      // package block the line names already resolved onto `seatTools` at the
-      // hire, like a block in the seat's own folder.
+      // package block the line names already resolved onto `workerTools` at the
+      // hire, like a block in the worker's own folder.
       tools: async (_input, ctx): Promise<GeneratorTool[]> => {
         const config = turnConfig(ctx);
         const listed = config.tools;
         const named =
           listed === undefined
             ? [
-                ...(await selectedPresetTools(seatCapabilityCatalog, config.capabilities, ctx)),
-                ...(config[SEAT_PACKAGES_KEY] ?? []).flatMap((held) => held.tools)
+                ...(await selectedPresetTools(workerCapabilityCatalog, config.capabilities, ctx)),
+                ...(config[WORKER_PACKAGES_KEY] ?? []).flatMap((held) => held.tools)
               ]
             : listed.map((toolName) => catalog[toolName] as GeneratorTool);
-        const own = config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
+        const own = config[WORKER_TOOLS_KEY] as GeneratorTool[] | undefined;
         // The sharing flow's own tools, on every worker it runs.
         const extra = share.extraTools ?? [];
-        // Materialized only when the seat has both, which is the uncommon case.
+        // Materialized only when the worker has both, which is the uncommon case.
         if ((own === undefined || own.length === 0) && extra.length === 0) return named;
         return [...named, ...(own ?? []), ...extra];
       },
@@ -1105,21 +1105,21 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const answerWithActivateTool = answerWith(skillsBindingWithActivateTool, answerNames[1]);
 
   // `createSkillActivator` takes `enableLlmClassifier` at construction, so
-  // one instance can't honour a per-seat switch on tier 3 alone. Two full
+  // one instance can't honour a per-worker switch on tier 3 alone. Two full
   // activators are built instead — both carry tier 1 (slash) only, both with
   // tier 2 (keyword) turned off via `enableKeywordMatch: false`, since
   // keyword matching is not part of this kind's contract; only the second
-  // also carries tier 3 (the model classifier). The seat's switch picks
+  // also carries tier 3 (the model classifier). The worker's switch picks
   // between them below with two mutually exclusive `.tapIf` steps, so tier 1
   // runs on every turn regardless of the switch, tier 2 never runs on either
   // branch, and only tier 3 is conditional.
   //
-  // Built once per kind, not per seat — same as before.
+  // Built once per kind, not per worker — same as before.
   const matcherWithoutClassifier = createSkillActivator({
     enableLlmClassifier: false,
     enableKeywordMatch: false,
     activeState: ACTIVE_SKILLS_STATE,
-    initialSkills: seatCatalog
+    initialSkills: workerCatalog
   });
   const matcherWithClassifier = createSkillActivator({
     enableLlmClassifier: true,
@@ -1127,24 +1127,24 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     activeState: ACTIVE_SKILLS_STATE,
     ...(options.classifierModel ? { classifierModel: options.classifierModel } : {}),
     ...(options.confidenceThreshold !== undefined ? { confidenceThreshold: options.confidenceThreshold } : {}),
-    initialSkills: seatCatalog
+    initialSkills: workerCatalog
   });
 
   /**
-   * The seat's always-on skills, appended to whatever the matcher resolved.
+   * The worker's always-on skills, appended to whatever the matcher resolved.
    *
    * **After** the matcher, not inside it: the matcher's apply step REPLACES the
    * active set (per-turn semantics, by design), so defaults written before it
    * would be wiped every turn. Appending afterwards is idempotent — the shared
    * `pushActiveSkill` dedupes by name+mode — and costs one state write on a
-   * seat that lists any, and nothing at all on one that does not.
+   * worker that lists any, and nothing at all on one that does not.
    *
    * `mode: "inline"` is stamped rather than read off the persisted manifest,
    * matching the matcher's own apply step and for its reason: a pre-migration
    * record can still say `"pattern"`, which the binding reader would then skip.
    */
-  const appendSeatDefaults = handler({
-    name: "append-seat-default-skills",
+  const appendWorkerDefaults = handler({
+    name: "append-worker-default-skills",
     inputSchema,
     outputSchema: z.object({ added: z.number() }),
     flowConfigSchema: settings,
@@ -1154,7 +1154,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     execute: async (_input, ctx) => {
       const names = turnConfig(ctx).skills.active;
       // The cross-field refusal the mint could not carry — see the note there.
-      assertHeldSkills(names, seatSkillsOf(ctx), appSkills);
+      assertHeldSkills(names, workerSkillsOf(ctx), appSkills);
       if (names.length === 0) return { added: 0 };
       const activatedAt = Date.now();
       // The REAL delta, not `names.length`. `pushActiveSkill` dedupes by
@@ -1215,7 +1215,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const answered = sequencer({ name: "agent-run", inputSchema: turnInputSchema, flowConfigSchema: settings })
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier === true, matcherWithClassifier)
-    .tap(appendSeatDefaults)
+    .tap(appendWorkerDefaults)
     // Two arms rather than two `.stepIf`s: the answer is the sequencer's OUTPUT,
     // and a second conditional step would have to be typed against the first
     // one's result. A branch says what this is — one answer, built two ways —
@@ -1280,15 +1280,15 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     // Unset is no line even when the key is present, as the per-turn tools slot reads it.
     if (config.tools === undefined) {
       const problems = [
-        ...pickedToolCollisions(seatCapabilityCatalog, config.capabilities),
-        ...packageToolCollisions(seatCapabilityCatalog, config.capabilities, config[SEAT_PACKAGES_KEY] ?? [])
+        ...pickedToolCollisions(workerCapabilityCatalog, config.capabilities),
+        ...packageToolCollisions(workerCapabilityCatalog, config.capabilities, config[WORKER_PACKAGES_KEY] ?? [])
       ];
       return problems.length > 0 ? `This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}` : undefined;
     }
     const problems = packageCatalogCollisions(
       catalog,
-      config[SEAT_TOOLS_KEY] as ReadonlyArray<{ name?: unknown }> | undefined,
-      config[SEAT_PACKAGES_KEY] ?? []
+      config[WORKER_TOOLS_KEY] as ReadonlyArray<{ name?: unknown }> | undefined,
+      config[WORKER_PACKAGES_KEY] ?? []
     );
     return problems.length > 0 ? problems.join(" ") : undefined;
   };
@@ -1319,7 +1319,7 @@ function defineAgentFlowAround(
   /**
    * Marks the turn as the answer to a routed post, so the post tool and the
    * landing below know which post it is. Request state, not session state:
-   * one seat session can answer two routed posts at once (a follow-up held for
+   * one worker session can answer two routed posts at once (a follow-up held for
    * it), and each is its own request.
    */
   const markRoutedTurn = handler({
@@ -1361,8 +1361,8 @@ function defineAgentFlowAround(
       z.object({ answeredAlready: z.literal(true) })
     ]),
     requestStateSchema: routedTurnStateSchema,
-    // A copy minted for one worker signs as its `seatId`, checked at the mint.
-    ...(options.installation === undefined ? { flowConfigSchema: seatIdConfigSchema } : {}),
+    // A copy minted for one worker signs as its `workerId`, checked at the mint.
+    ...(options.installation === undefined ? { flowConfigSchema: workerIdConfigSchema } : {}),
     execute: async (reply: unknown, ctx) => {
       // Run only on a routed turn (the `tapIf` below), which is marked.
       const routed = ctx.request.state.mailboxRoutedPost!;
@@ -1373,13 +1373,13 @@ function defineAgentFlowAround(
           body: reply,
           author:
             options.installation === undefined
-              ? String((ctx.flow.config as Record<string, unknown>).seatId)
+              ? String((ctx.flow.config as Record<string, unknown>).workerId)
               : workerIdOfTurn(ctx)
         };
       }
       if (routed.handed === true) return { answeredAlready: true as const };
       throw new Error(
-        `This seat was routed a post in ${routed.mailboxId} and its turn ended with an empty reply, ` +
+        `This worker was routed a post in ${routed.mailboxId} and its turn ended with an empty reply, ` +
           "so nothing was posted to the mailbox."
       );
     }
@@ -1390,11 +1390,11 @@ function defineAgentFlowAround(
     .stepIf((answer) => !("answeredAlready" in answer), answerRoutedPost);
 
   /**
-   * A mailbox post as this seat hears it. Every delivery runs `run` on the
-   * heard turn. A routed one (the mailbox's route picked this seat, and only
+   * A mailbox post as this worker hears it. Every delivery runs `run` on the
+   * heard turn. A routed one (the mailbox's route picked this worker, and only
    * the fan-out says so) also carries the mailbox's lines before the post,
    * which the answer sees as context, and ends with the reply posted into the
-   * mailbox as the seat. The reply is not otherwise posted: an unrouted post
+   * mailbox as the worker. The reply is not otherwise posted: an unrouted post
    * reaches the mailbox only if the turn calls the post tool.
    */
   const heardPost = sequencer({ name: "agent-heard-post", inputSchema: mailboxNotifyInputSchema })
@@ -1424,7 +1424,7 @@ function defineAgentFlowAround(
 
   const flow = defineFlow({
     kind: AGENT_KIND,
-    // Required by contract C2. A plain singleton's seats mint and are then
+    // Required by contract C2. A plain singleton's workers mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
     // this kind reaches the registry rather than stopping at the mint.
     cardinality: "collection",
@@ -1436,7 +1436,7 @@ function defineAgentFlowAround(
     // A delegated post's run that is cancelled before its answer went back
     // tells the coordinator, so its round doesn't wait for the deadline.
     request: { ...(bound.request ?? {}), onFinished: delegatedPostOnFinished },
-    // `userMessage` keeps the caller's message as their turn, so a seat's
+    // `userMessage` keeps the caller's message as their turn, so a worker's
     // conversation holds both sides and survives a reload.
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
@@ -1453,10 +1453,10 @@ function defineAgentFlowAround(
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})
     },
-    // A mailbox's notify block reaches a seat here: a dispatch resolves only
+    // A mailbox's notify block reaches a worker here: a dispatch resolves only
     // internal entries, so this is never caller-addressed. It runs `run`'s own
-    // sequence, so a seat answers a post exactly as it answers a person; the
-    // only difference is that the post, as the seat hears it, is the turn.
+    // sequence, so a worker answers a post exactly as it answers a person; the
+    // only difference is that the post, as the worker hears it, is the turn.
     // Default concurrency on purpose: a queued request is refused after the
     // engine's wait, which would drop a post arriving behind a slow answer.
     internal: {
@@ -1491,17 +1491,17 @@ function defineAgentFlowAround(
    * same flow with one more check at its door, not a different one.
    */
   const mint = (mintOptions?: Parameters<typeof flow>[0]) => {
-    const seat = flow(mintOptions);
-    const problem = mintProblems(seat.config as never);
+    const worker = flow(mintOptions);
+    const problem = mintProblems(worker.config as never);
     if (problem !== undefined) throw new Error(problem);
-    return seat;
+    return worker;
   };
   return Object.assign(mint, flow) as typeof flow;
 }
 
 /**
- * A mailbox post as an agent seat hears it: `<writer> in <mailbox>: <body>`.
- * The writer is the post's `author` (a seat wrote it), else its `principal`;
+ * A mailbox post as an agent worker hears it: `<writer> in <mailbox>: <body>`.
+ * The writer is the post's `author` (a worker wrote it), else its `principal`;
  * the mailbox is the mailbox's session id. A routed post adds one sentence
  * saying where the reply goes.
  */

@@ -334,19 +334,19 @@ describe("the header's worker", () => {
   it("resolves the row's worker by its id, though another team's worker shares its name, as the inspector does", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, false);
-    const seat = { id: row.assignee!, name: row.assignee!.split(".").at(-1)! };
+    const worker = { id: row.assignee!, name: row.assignee!.split(".").at(-1)! };
     // Another team's worker with the same short name, listed first.
     rewriteRows(
       (url) => url.includes("/resources/") && !isBoardRead(url),
       (rows) => {
-        const mine = rows.find((r) => r.id === seat.id);
-        return mine === undefined ? rows : [{ ...mine, id: `zz.${seat.name}` }, ...rows];
+        const mine = rows.find((r) => r.id === worker.id);
+        return mine === undefined ? rows : [{ ...mine, id: `zz.${worker.name}` }, ...rows];
       },
     );
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
-    await waitFor(() => expect(screen.getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(seat.id));
-    expect(screen.getByTestId("task-status").textContent).toContain(seat.id);
-    expect(screen.getByTestId("task-status").textContent).not.toContain(`zz.${seat.name}`);
+    await waitFor(() => expect(screen.getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(worker.id));
+    expect(screen.getByTestId("task-status").textContent).toContain(worker.id);
+    expect(screen.getByTestId("task-status").textContent).not.toContain(`zz.${worker.name}`);
   }, 30_000);
 });
 
@@ -387,7 +387,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const row = await heldRow(opened, true);
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
-    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(opened.lab.ownWorker!.id);
+    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(opened.lab.ownWorker!.id);
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
     expect(within(inspector).getByTestId("inspector-harness-gap").textContent).toBe(GAPS.task.harness);
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });

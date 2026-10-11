@@ -4,7 +4,7 @@
 
 **Outcome:** A developer opens any task in the DevTool's Tasks tab, reads its whole record in place, changes its state from the same row through the flow's own actions, and sees the result on the row without a reload. On a laptop-width window the parked row's status and reason are in view before anything is opened.
 
-**Input:** The `multi-seat-collab` hire (`packages/shift-manager/test/fixtures/multi-seat-collab/`), with no model, and `fixtures/input.json`: a piece of work with a question only a person can settle, the answer, a spare row to file on the planner's conversation, and a cancel reason. Both are **held out**. The desk's owning worker and the planner come off the tree at run time, and every row is found by the id the ledger gave it. A different question, answer, or spare row must pass too.
+**Input:** The `multi-seat-collab` hire (`packages/shift-manager/test/fixtures/multi-worker-collab/`), with no model, and `fixtures/input.json`: a piece of work with a question only a person can settle, the answer, a spare row to file on the planner's conversation, and a cancel reason. Both are **held out**. The desk's owning worker and the planner come off the tree at run time, and every row is found by the id the ledger gave it. A different question, answer, or spare row must pass too.
 
 **Signal:** Chromium on the shipped DevTool bundle, rebuilt at the start of the run, at a **1280×800** window. The lab's driver files the piece on the planner's conversation's board over HTTP, for the delegate the app routes its desk to, so the builder parks it by design. After that, every change this goal grades is made from a row on screen. Every failure line names its leg.
 

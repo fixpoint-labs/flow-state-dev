@@ -110,7 +110,7 @@ describe("the mailbox kind", () => {
       expect(line?.principal).toBe(USER_ID);
       expect(line?.author).toBe("engineering.lead");
       expect(line?.authorVerified).toBe(false);
-      expect(line?.seatAuthored).toBeUndefined();
+      expect(line?.workerAuthored).toBeUndefined();
     } finally {
       await state.dispose();
     }

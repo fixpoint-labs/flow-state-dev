@@ -3,7 +3,7 @@
  * here and read from nothing the caller sends.
  *
  * Kitchen-sink authenticates nobody. Without a resolver of its own it would run
- * as the framework's development organization, whose id is not a legal seat
+ * as the framework's development organization, whose id is not a legal worker
  * address, so every hire in the app would be refused. So the app names one
  * real organization instead, and `fsdev.config.ts` hands
  * {@link resolveKitchenSinkPrincipal} to `createFlowState` as the host-level
@@ -26,7 +26,7 @@
  *
  * What it costs, stated for anyone copying this: anyone who can open a deployed
  * copy of this app is `devuser` in `kitchen-sink`, and can hire and fire its
- * seats. This is a stand-in for sign-in, not a form of it.
+ * workers. This is a stand-in for sign-in, not a form of it.
  */
 import type { ResolvePrincipalFn } from "@flow-state-dev/core/types";
 

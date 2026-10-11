@@ -98,14 +98,14 @@ given with `configSchema`; each copy is created with a bag of values matching it
 inside that copy reads them from `ctx.flow.config`.
 
 The line to hold: **anything a copy is given goes in the bag; anything a copy learns goes in its own
-storage.** A seat's harness and model are given. Its current task and its counters are learned —
+storage.** A worker's harness and model are given. Its current task and its counters are learned —
 those belong in [isolated state](../persistence/overview.md#who-owns-a-record), because the bag is
 fixed when the copy is created and frozen for the copy's life.
 
 ```ts
 import { z } from "zod";
 
-const seatConfig = z.object({
+const workerConfig = z.object({
   harness: z.enum(["claude-code", "codex", "cursor"]),
   model: z.string(),
   personaPath: z.string().optional(),
@@ -114,7 +114,7 @@ const seatConfig = z.object({
 const engineerWork = handler({
   name: "engineer-work",
   // What this block needs of whatever flow installs it.
-  flowConfigSchema: seatConfig,
+  flowConfigSchema: workerConfig,
   execute: async (input, ctx) => {
     const { harness, model } = ctx.flow.config;
     // ...
@@ -124,7 +124,7 @@ const engineerWork = handler({
 const engineer = defineFlow({
   kind: "engineer",
   cardinality: "collection",
-  configSchema: seatConfig,
+  configSchema: workerConfig,
   actions: { work: { block: engineerWork } },
 });
 
@@ -133,7 +133,7 @@ export const bob = engineer({ id: "eng-bob", config: { harness: "codex", model: 
 ```
 
 One definition, one block graph, two registered copies that behave differently. A roster mints the
-rest in a loop — `engineer({ id: seat.id, config: seat.config })` per row — with no graph rebuilt.
+rest in a loop — `engineer({ id: worker.id, config: worker.config })` per row — with no graph rebuilt.
 
 A copy carries only settings the definition declared. A key that isn't in the schema throws where
 the copy is created, naming the flow, the id and the key:
@@ -148,7 +148,7 @@ Keys are closed at the top level of the bag. A nested object is closed only if y
 `.strict()` to any nested shape you want typos refused in:
 
 ```ts
-const seatConfig = z.object({
+const workerConfig = z.object({
   harness: z.string(),
   limits: z.object({ retries: z.number().default(1) }).strict(),
 });
@@ -277,14 +277,14 @@ const documents = defineFlow({
   },
   task: {
     actions: {
-      implement: { block: implementBlock },     // reached by a task-board seat in this flow
+      implement: { block: implementBlock },     // reached by a task-board worker in this flow
     },
   },
 });
 ```
 
 - **`internal.actions`** — reached by a `dispatcher({ action })` block running in this flow, which sends the work to a session of its own (a *dispatch run*) or to one that already exists. See [Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow).
-- **`task.actions`** — reached by a `dispatcher({ action, session })` sitting as a seat on a task board, which hands each claimed task to a dispatch run. See [Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off).
+- **`task.actions`** — reached by a `dispatcher({ action, session })` sitting as a worker on a task board, which hands each claimed task to a dispatch run. See [Workers that hand off](/docs/orchestration/task-board#workers-that-hand-off).
 
 Each map is looked up on its own. An action named `summarize` does not satisfy a dispatcher whose action is the internal entry `summarize`, and `defineFlow()` throws at definition time when a reachable dispatcher names an entry its map does not hold. Both maps nest under `actions`; the flat spelling `internal: { summarize: { block } }` is refused by name.
 

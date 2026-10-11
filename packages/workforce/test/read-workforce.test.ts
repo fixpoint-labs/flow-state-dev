@@ -3,7 +3,7 @@
  *
  * The gap it closes is the whole point: both halves already existed and neither
  * called the other, so a roster read off disk hired workers holding nothing.
- * What is pinned here is that the join is per SEAT — two seats reading two
+ * What is pinned here is that the join is per WORKER — two workers reading two
  * different sets, never one shared bucket — and that neither half's collected
  * errors are lost on the way through.
  */
@@ -13,7 +13,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { readWorkforce } from "../src/loader/read-workforce";
 
 let root: string;
@@ -48,10 +48,10 @@ async function writeSkill(levelPath: string, name: string, description: string):
 const skillNames = (skills: { name: string }[] | undefined) =>
   (skills ?? []).map((s) => s.name).sort();
 
-const seat = (workers: Array<{ id: string }>, id: string) => workers.find((w) => w.id === id)!;
+const worker = (workers: Array<{ id: string }>, id: string) => workers.find((w) => w.id === id)!;
 
 describe("readWorkforce", () => {
-  it("gives each seat the union of the levels it can see", async () => {
+  it("gives each worker the union of the levels it can see", async () => {
     await writeSkill("org/skills", "house-style", "everyone's");
     await writeWorker("qa", "tester");
     await writeSkill("teams/qa/skills", "regression", "qa's");
@@ -61,17 +61,17 @@ describe("readWorkforce", () => {
 
     expect(errors).toEqual([]);
     expect(skillErrors).toEqual([]);
-    expect(skillNames(seat(workers, "qa.tester").skills)).toEqual([
+    expect(skillNames(worker(workers, "qa.tester").skills)).toEqual([
       "house-style",
       "regression",
       "write-regression",
     ]);
   });
 
-  // The failure this whole change exists to fix: two seats reading one bucket.
-  // Asserted on CONTENTS, not on the presence of a field — two seats each
+  // The failure this whole change exists to fix: two workers reading one bucket.
+  // Asserted on CONTENTS, not on the presence of a field — two workers each
   // holding every skill would pass a field check and be exactly the bug.
-  it("gives two seats on two teams disjoint sets", async () => {
+  it("gives two workers on two teams disjoint sets", async () => {
     await writeWorker("qa", "tester");
     await writeWorker("sec", "auditor");
     await writeSkill("teams/qa/workers/tester/skills", "write-regression", "qa's own");
@@ -79,8 +79,8 @@ describe("readWorkforce", () => {
 
     const { workers } = await readWorkforce(root);
 
-    expect(skillNames(seat(workers, "qa.tester").skills)).toEqual(["write-regression"]);
-    expect(skillNames(seat(workers, "sec.auditor").skills)).toEqual(["threat-model"]);
+    expect(skillNames(worker(workers, "qa.tester").skills)).toEqual(["write-regression"]);
+    expect(skillNames(worker(workers, "sec.auditor").skills)).toEqual(["threat-model"]);
   });
 
   // The folder already says whose it is — nothing lists it anywhere.
@@ -90,18 +90,18 @@ describe("readWorkforce", () => {
 
     const { workers } = await readWorkforce(root);
 
-    expect(Object.hasOwn(seat(workers, "qa.tester").declared, "skills")).toBe(false);
-    expect(skillNames(seat(workers, "qa.tester").skills)).toEqual(["write-regression"]);
+    expect(Object.hasOwn(worker(workers, "qa.tester").declared, "skills")).toBe(false);
+    expect(skillNames(worker(workers, "qa.tester").skills)).toEqual(["write-regression"]);
   });
 
-  // An empty set, not an absent field: a loaded seat has been read for, and the
+  // An empty set, not an absent field: a loaded worker has been read for, and the
   // hire step tells the two apart.
-  it("gives a seat with no skills anywhere an empty set", async () => {
+  it("gives a worker with no skills anywhere an empty set", async () => {
     await writeWorker("qa", "tester");
 
     const { workers } = await readWorkforce(root);
 
-    expect(seat(workers, "qa.tester").skills).toEqual([]);
+    expect(worker(workers, "qa.tester").skills).toEqual([]);
   });
 
   it("carries the body and frontmatter through unchanged", async () => {
@@ -109,8 +109,8 @@ describe("readWorkforce", () => {
 
     const { workers } = await readWorkforce(root);
 
-    expect(seat(workers, "qa.tester").body.trim()).toBe("You test.");
-    expect(seat(workers, "qa.tester").declared).toMatchObject({ tools: ["board"] });
+    expect(worker(workers, "qa.tester").body.trim()).toBe("You test.");
+    expect(worker(workers, "qa.tester").declared).toMatchObject({ tools: ["board"] });
   });
 
   it("collects a worker-slot failure rather than throwing", async () => {
@@ -123,9 +123,9 @@ describe("readWorkforce", () => {
     expect(errors.map((e) => e.path)).toEqual(["teams/qa/workers/empty"]);
   });
 
-  // Attributable: a skill failure names the seat it cost, which is what a
+  // Attributable: a skill failure names the worker it cost, which is what a
   // flattened list could not say.
-  it("collects a skill failure under the seat it cost", async () => {
+  it("collects a skill failure under the worker it cost", async () => {
     await writeWorker("qa", "tester");
     const dir = path.join(root, "teams", "qa", "workers", "tester", "skills", "broken");
     await fs.mkdir(dir, { recursive: true });
@@ -159,7 +159,7 @@ describe("readWorkforce then hireWorkforce: a refused package in a worker's own 
 
     const { workers, packageErrors } = await readWorkforce(root);
     expect(packageErrors.map((e) => e.path)).toContain("teams/support/workers/clerk/packages/refunds");
-    expect(seat(workers, "support.clerk").packages ?? []).toEqual([]);
+    expect(worker(workers, "support.clerk").packages ?? []).toEqual([]);
 
     const issueRefund = handler({
       name: "issue-refund",
@@ -168,7 +168,7 @@ describe("readWorkforce then hireWorkforce: a refused package in a worker's own 
       execute: () => ({ ok: true }),
     });
     expect(() =>
-      mintSeats(workers, {
+      mintWorkers(workers, {
         packageBlocks: { "teams/support/workers/clerk/packages/refunds": { "issue-refund": issueRefund } },
       }),
     ).toThrow(/worker "support\.clerk"[\s\S]*teams\/support\/workers\/clerk\/packages\/refunds/);

@@ -105,7 +105,7 @@ export function referenceBody(raw: string): string {
  *
  * It exists so the wall can tell that a kind is holding references before it
  * has a catalog to recognise them with — which is the one way the wall could be
- * switched off. See `./seat-references`.
+ * switched off. See `./worker-references`.
  *
  * Deliberately no brand field. A marker property would be a second place the
  * same fact lives, and one a hand-built entry could set.

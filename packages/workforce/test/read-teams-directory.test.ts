@@ -1,6 +1,6 @@
 /**
  * The `TEAM.md` reader — a team's own description and the instructions every
- * seat on it carries.
+ * worker on it carries.
  *
  * The premise first (`the premise` below): before this reader existed, a
  * `TEAM.md` planted in a tree was read by nothing and reported by nothing. That
@@ -73,7 +73,7 @@ describe("the premise", () => {
     const { readWorkforceDirectory } = await import("../src/loader/read-workforce-directory");
     const { workers, errors } = await readWorkforceDirectory(root);
 
-    // The seat still loads — the file changes nothing about the worker walk.
+    // The worker still loads — the file changes nothing about the worker walk.
     expect(workers.map((w) => w.id)).toEqual(["pentest.recon"]);
     // And the file itself is neither a record nor a complaint, at that door.
     expect(errors).toEqual([]);
@@ -297,7 +297,7 @@ describe("refused declarations", () => {
   /**
    * BR-8 — the keys this convention derives or has already spent.
    *
-   * `id` is the folder's; `flow` would read the file as a second seat door,
+   * `id` is the folder's; `flow` would read the file as a second worker door,
    * which is the one failure this epic refuses outright; `instructions` is the
    * body, and two sources for one value have no precedence rule.
    */
@@ -367,7 +367,7 @@ describe("the join", () => {
   });
 
   // BR-12's other arm: a team whose file loaded but whose body was whitespace
-  // hands its seats nothing, and is NOT the same as the file being absent —
+  // hands its workers nothing, and is NOT the same as the file being absent —
   // the team record still loads, carrying its description.
   it("gives a team's workers no layer when its TEAM.md has an empty body", async () => {
     await writeWorker("pentest", "recon");
@@ -438,10 +438,10 @@ describe("the read happens once per team", () => {
    * V9 — the N+1 guard, COUNTED.
    *
    * A team's instructions are one value per team, so the file is read once
-   * however many seats sit under it. Asserting the records came out right
+   * however many workers sit under it. Asserting the records came out right
    * passes with a read per worker, which is the failure this exists for: the
-   * skills join reads inside the worker loop because skills are per seat, and
-   * copying that shape here would buy a file read per seat for a value
+   * skills join reads inside the worker loop because skills are per worker, and
+   * copying that shape here would buy a file read per worker for a value
    * identical every time.
    */
   it("reads a team's TEAM.md exactly once for a team of many workers", async () => {

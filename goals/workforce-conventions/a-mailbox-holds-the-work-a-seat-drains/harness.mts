@@ -273,7 +273,7 @@ out.notified = notified;
 
 // ---- V14: which declared members' seats can hear a post -------------------
 //
-// Read off the seats the app registered, the way Workforce's `wakeMemberSeats`
+// Read off the seats the app registered, the way Workforce's `wakeMemberWorkers`
 // reads it: a seat can hear a post when its kind declares the internal
 // `onMailboxPost` entry. Reported, not graded — run.mts decides what the
 // fan-out owed each member.

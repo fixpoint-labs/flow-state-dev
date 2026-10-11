@@ -30,7 +30,7 @@ type Fixture = {
   ownerUser: string;
   peerUser: string;
   foreignUser: string;
-  orgSeat: string;
+  orgWorker: string;
   privateSeat: string;
   unregisteredSeat: string;
   marker: string;
@@ -78,7 +78,7 @@ const seatWork = handler({
   },
 });
 
-const seatKind = defineFlow({
+const workerKind = defineFlow({
   kind: "seat",
   cardinality: "collection",
   configSchema: z.object({ marker: z.string().nullable().default(null) }),
@@ -108,7 +108,7 @@ const orgBoard = taskBoard({
   boardId: BOARD_ID,
   collection: ledger(),
   workers: {
-    org: seatHandOff("to-org-seat", fixture.orgSeat),
+    org: seatHandOff("to-org-seat", fixture.orgWorker),
     private: seatHandOff("to-private-seat", fixture.privateSeat),
     ghost: seatHandOff("to-unregistered-seat", fixture.unregisteredSeat),
   },
@@ -139,11 +139,11 @@ await runGoal(async (failures) => {
       stores: { default: { primary: inMemoryStores() } },
     });
     state.register(
-      seatKind({ id: fixture.orgSeat, config: { marker: fixture.marker } }) as unknown as FlowInstance,
+      workerKind({ id: fixture.orgWorker, config: { marker: fixture.marker } }) as unknown as FlowInstance,
       { pin: { orgId: fixture.ownerOrg } },
     );
     state.register(
-      seatKind({ id: fixture.privateSeat, config: { marker: fixture.marker } }) as unknown as FlowInstance,
+      workerKind({ id: fixture.privateSeat, config: { marker: fixture.marker } }) as unknown as FlowInstance,
       { pin: { orgId: fixture.ownerOrg, userId: fixture.ownerUser } },
     );
     const router = (await state.getRouter()) as {
@@ -236,7 +236,7 @@ await runGoal(async (failures) => {
     if (settled?.status !== "completed") fail("a", `owner row ${id} ended ${settled?.status}`);
   }
   const ownerMarkers = await A.markers(owner);
-  for (const seat of [fixture.orgSeat, fixture.privateSeat]) {
+  for (const seat of [fixture.orgWorker, fixture.privateSeat]) {
     if (!ownerMarkers.some((m) => m.seat === seat && m.marker === fixture.marker)) {
       fail("a", `${seat} did not write ${fixture.marker} for the owner`);
     }
@@ -246,7 +246,7 @@ await runGoal(async (failures) => {
   // (b) Another organization's board: both seats refused.
   const B = await boot();
   await B.drain("b", foreign);
-  const foreignOrgSeat = await B.expectRefused("b", foreign, ROWS.org, fixture.orgSeat);
+  const foreignOrgSeat = await B.expectRefused("b", foreign, ROWS.org, fixture.orgWorker);
   await B.expectRefused("b", foreign, ROWS.private, fixture.privateSeat);
   const acmeMarkersAsForeign = Object.values(
     await B.runtime.stores.resourceState.getByPrefix("org", fixture.ownerOrg, "seen/"),
@@ -258,8 +258,8 @@ await runGoal(async (failures) => {
   await C.drain("c", peer);
   await C.expectRefused("c", peer, ROWS.private, fixture.privateSeat);
   if ((await C.row(peer, ROWS.org))?.status !== "completed") fail("c", "teammate's org-seat row did not complete");
-  if (!(await C.markers(peer)).some((m) => m.seat === fixture.orgSeat && m.marker === fixture.marker)) {
-    fail("c", `${fixture.orgSeat} did not run for the teammate`);
+  if (!(await C.markers(peer)).some((m) => m.seat === fixture.orgWorker && m.marker === fixture.marker)) {
+    fail("c", `${fixture.orgWorker} did not run for the teammate`);
   }
   await C.dispose();
 
@@ -269,7 +269,7 @@ await runGoal(async (failures) => {
   // the row and seat, which differ by construction.
   const seamAnswer = (error: string, address: string) =>
     error.slice(error.indexOf("no flow instance")).replaceAll(address, "<address>");
-  const asOrg = seamAnswer(foreignOrgSeat, fixture.orgSeat);
+  const asOrg = seamAnswer(foreignOrgSeat, fixture.orgWorker);
   const asGhost = seamAnswer(ghost, fixture.unregisteredSeat);
   if (!ghost.includes(": flow-not-found")) fail("d", `the unregistered address was not refused: ${ghost}`);
   if (asOrg !== asGhost) fail("d", `refusals differ:\n  pinned:       ${asOrg}\n  unregistered: ${asGhost}`);
@@ -278,7 +278,7 @@ await runGoal(async (failures) => {
   const evidence =
     failures.length > 0
       ? ""
-      : `owner's drain ran ${fixture.orgSeat} and ${fixture.privateSeat} (marker ${fixture.marker}); ` +
+      : `owner's drain ran ${fixture.orgWorker} and ${fixture.privateSeat} (marker ${fixture.marker}); ` +
         `${fixture.otherOrg}'s drain errored both rows unheld with no session minted and no marker; ` +
         `the teammate's drain errored the private row and ran the org seat; ` +
         `a pinned-out refusal read the same as ${fixture.unregisteredSeat}: "${foreignOrgSeat}"`;

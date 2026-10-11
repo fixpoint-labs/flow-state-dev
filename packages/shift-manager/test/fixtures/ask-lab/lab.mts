@@ -1,5 +1,5 @@
 /**
- * The ask-lab — a small Lab Shift Manager's tests open, whose seats ask a person
+ * The ask-lab — a small Lab Shift Manager's tests open, whose workers ask a person
  * before they act.
  *
  * Neither goal tree raises an ask on `main` today, so this is the tree the
@@ -32,7 +32,7 @@ import {
   createWorkerInstallation,
   defineCoordinatorFlow,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   resourcesFromDocs,
   defineProjectBlocks,
@@ -111,8 +111,8 @@ export type AskLabOptions = {
   /** Open the inventory at boot. Default true. */
   inventory?: boolean;
   /**
-   * Register each seat with its actions, so its inventory row names its door.
-   * Default true. `false` registers id and kind only: every seat reads as a
+   * Register each worker with its actions, so its inventory row names its door.
+   * Default true. `false` registers id and kind only: every worker reads as a
    * kind with no door.
    */
   doors?: boolean;
@@ -131,13 +131,13 @@ export type AskLabOptions = {
   /**
    * With `bearer`, the organization the person is bound to instead of
    * {@link ASK_LAB_ORG_ID}. `"ops"` names the organization like the Lab's
-   * declared team, so a declared seat's id reads as an address in it.
+   * declared team, so a declared worker's id reads as an address in it.
    */
   orgId?: string;
-  /** Add a seat named `chief-of-staff` to the ops team, on the asker kind. Default false. */
+  /** Add a worker named `chief-of-staff` to the ops team, on the asker kind. Default false. */
   chiefOfStaff?: boolean;
   /** Let the asker kind's `message` door start projects (`startProjectLine`). Default false. */
-  seatsStartProjects?: boolean;
+  workersStartProjects?: boolean;
   /**
    * Projects to create once the inventory is open, each as `owner` (default
    * the Lab's person) through the project writes' own `createProject`.
@@ -157,7 +157,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
   const asker = defineAskerFlow(installation, resourcesFromDocs(tree.documents), {
-    projects: options.seatsStartProjects,
+    projects: options.workersStartProjects,
     inventory: declared,
   });
   workerFlows = {
@@ -167,7 +167,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   const copies = hireWorkforce(installation);
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    // The seat write takes caller-supplied rows, so it is internal only.
+    // The worker write takes caller-supplied rows, so it is internal only.
     ...(declared
       ? {
           [INVENTORY_WRITER_KIND]: defineFlow({
@@ -238,12 +238,12 @@ export async function openAskLab(options: AskLabOptions = {}) {
     };
     const binding = await openInventory(
       {
-        seats: options.doors === false
-          ? inventorySeats(installation).map((seat) => ({ ...seat, actions: {} }))
-          : inventorySeats(installation),
+        workers: options.doors === false
+          ? inventoryWorkers(installation).map((worker) => ({ ...worker, actions: {} }))
+          : inventoryWorkers(installation),
         mailboxes: [],
       },
-      { run, seatWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: ASK_LAB_USER_ID, orgId },
+      { run, workerWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 

@@ -52,8 +52,8 @@ import {
 } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { RAISE_ASK_STEP, raiseAsk, seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
-import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/seat-config.mts";
+import { RAISE_ASK_STEP, raiseAsk, workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
+import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/worker-config.mts";
 
 stripIntentOverrides();
 
@@ -80,7 +80,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 }
 
 const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
-const EM_SESSION = seatSessionId(fixture.coordinatorSeat);
+const EM_SESSION = workerSessionId(fixture.coordinatorSeat);
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -107,7 +107,7 @@ async function open(
     stores,
     harness: stub.slot,
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-    coderSeatId: fixture.assignedSeat,
+    coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     ask: feature,
     // Model-free (no key is read): a row on a session's board is judged before it closes,
@@ -187,7 +187,7 @@ async function answer(
 ): Promise<{ status: number; body: any }> {
   return await lab.door(
     "POST",
-    `${lab.seats[fixture.coordinatorSeat]!.id}/requests/${ask.requestId}/resume`,
+    `${lab.workers[fixture.coordinatorSeat]!.id}/requests/${ask.requestId}/resume`,
     { body: { suspensionId: ask.suspensionId, action }, bearer },
   );
 }
@@ -196,7 +196,7 @@ async function answer(
 async function requestReaches(lab: Lab, requestId: string, want: string[]): Promise<string> {
   let last = "";
   for (let waited = 0; waited < wait.timeoutMs; waited += wait.pollMs) {
-    const r = await lab.door("GET", `${lab.seats[fixture.coordinatorSeat]!.id}/requests/${requestId}/status`);
+    const r = await lab.door("GET", `${lab.workers[fixture.coordinatorSeat]!.id}/requests/${requestId}/status`);
     last = r.body?.status ?? r.body?.request?.status ?? `http ${r.status}`;
     if (want.includes(last)) return last;
     await sleep(wait.pollMs);
@@ -495,7 +495,7 @@ await runGoal(async (failures) => {
         [0, 1].map(() =>
           raiseAsk({
             state: lab.state,
-            emFlow: lab.seats[fixture.coordinatorSeat]!,
+            emFlow: lab.workers[fixture.coordinatorSeat]!,
             emWorker: fixture.coordinatorSeat,
             feature: other,
             principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },

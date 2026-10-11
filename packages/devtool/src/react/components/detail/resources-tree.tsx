@@ -143,7 +143,7 @@ function ScopeBadge({ scope }: { scope: "session" | "user" | "org" }) {
  * `llmWritable`, which asks a different question (is a model offered a write
  * tool) and is opt-in, so a mark taken from it would brand most of the tree
  * and stop distinguishing anything. Nor from where the resource was loaded: a
- * `references/` document and a document held under a seat's read-only grant
+ * `references/` document and a document held under a worker's read-only grant
  * are sealed two different ways and arrive as the same setting, and a
  * folder-derived mark would be silent about the second.
  *
@@ -151,7 +151,7 @@ function ScopeBadge({ scope }: { scope: "session" | "user" | "org" }) {
  * which is false in two supported cases: a `writable: false` COLLECTION still
  * permits `create` / `getOrCreate` / `delete`, none of which consult the flag,
  * and the flag lives on the definition rather than the storage cell, so a
- * seat's read-only grant (a shallow copy with both doors shut) leaves the same
+ * worker's read-only grant (a shallow copy with both doors shut) leaves the same
  * shared org or user cell writable through any other flow's own definition.
  *
  * The tooltip therefore scopes itself to what this handle refuses and stops

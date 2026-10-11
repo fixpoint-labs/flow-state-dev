@@ -23,7 +23,7 @@ const repo = join(pkg, "../..");
 const tsx = join(pkg, "node_modules", ".bin", "tsx");
 const assets = fileURLToPath(new URL("./fixtures/assets", import.meta.url));
 const devtoolAssets = fileURLToPath(new URL("./fixtures/devtool-assets", import.meta.url));
-const lab = join(repo, "packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts");
+const lab = join(repo, "packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts");
 const devteam = join(pkg, "teams/devteam/fsdev.config.mts");
 
 const running: ChildProcess[] = [];
@@ -89,7 +89,7 @@ describe("the shift-manager command", () => {
     const app = run(["--config", lab]);
     const { origin, devtool } = await app.listening;
     expect(await page(origin, "/w/anything/stream")).toContain("shift-manager-test-pages");
-    const sessions = await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent("u_multi_seat_collab")}`);
+    const sessions = await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent("u_multi_worker_collab")}`);
     expect(sessions.status).toBe(200);
     expect(devtool).toBeDefined();
     expect(app.output()).toContain(`config: ${lab}`);
@@ -162,7 +162,7 @@ describe("the shift-manager command", () => {
   }, 120_000);
 
   it("resolves a relative --config from the directory it ran in (BR-4)", async () => {
-    const { origin } = await run(["--config", "packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts"], { cwd: repo }).listening;
+    const { origin } = await run(["--config", "packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts"], { cwd: repo }).listening;
     expect(await page(origin)).toContain("shift-manager-test-pages");
   }, 120_000);
 

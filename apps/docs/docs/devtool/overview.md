@@ -116,7 +116,7 @@ When a block fails, the detail panel surfaces enough context to diagnose without
 
 ## Dispatched runs
 
-Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs it in a **dispatch run**: a session of its own that keeps going after the request which started it has returned. None of that work shows up in the starting conversation's stream or trace. See [Dispatched work](/docs/server/background-work) for what the server records about one.
+Some work leaves the session you are watching. A dispatcher block, or a task board worker that hands its rows off, runs it in a **dispatch run**: a session of its own that keeps going after the request which started it has returned. None of that work shows up in the starting conversation's stream or trace. See [Dispatched work](/docs/server/background-work) for what the server records about one.
 
 The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent.
 
@@ -169,17 +169,17 @@ See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onr
 
 ## Inventory
 
-If your app writes a [workforce inventory](/docs/workforce/inventory), the Inventory tab shows the organization's registered seats, mailboxes and memberships from one session. Open any mailbox's session and pick the tab.
+If your app writes a [workforce inventory](/docs/workforce/inventory), the Inventory tab shows the organization's registered workers, mailboxes and memberships from one session. Open any mailbox's session and pick the tab.
 
 The tab appears on a session whose flow declares at least one of the three inventory collections. It has one section per collection:
 
-- **Registered seats:** Id, Kind, and Mailboxes, the mailboxes that seat's membership rows name. Mailboxes shows only when the flow declares the membership collection.
+- **Registered workers:** Id, Kind, and Mailboxes, the mailboxes that worker's membership rows name. Mailboxes shows only when the flow declares the membership collection.
 - **Registered mailboxes:** Id, Kind, Members, and Registered, the time the mailbox first registered.
-- **Registered memberships:** Seat and Mailbox.
+- **Registered memberships:** Worker and Mailbox.
 
-A mailbox's session declares all three. Some flows declare only part. A collection the flow doesn't declare reads "Not installed on this flow.", which is different from an empty section such as "No seats registered." When nothing is registered anywhere, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
+A mailbox's session declares all three. Some flows declare only part. A collection the flow doesn't declare reads "Not installed on this flow.", which is different from an empty section such as "No workers registered." When nothing is registered anywhere, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
 
-Every row is labelled registered. Rows are never removed, so a fired seat stays listed, and a mailbox's members are the ones it had when it registered. The tab is a record of what has been registered here. It can't tell you which seats are working now.
+Every row is labelled registered. Rows are never removed, so a fired worker stays listed, and a mailbox's members are the ones it had when it registered. The tab is a record of what has been registered here. It can't tell you which workers are working now.
 
 The tab works with `FSDEV_DEBUG_ENDPOINTS=0`. Each request carries the DevTool's bearer token, from `devtool.bearerToken` in your config or the Settings sheet (see [Connecting to a secured flow](./setup.md#connecting-to-a-secured-flow)). It reads every page of each collection.
 
@@ -191,7 +191,7 @@ A read that fails is never shown as an empty section. A refused read names its s
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.
 
-The Resources panel reads from a privileged debug endpoint and shows the full server-side state, except for workforce roster seats owned by a user other than the session's user. Each entry can be toggled between the raw server view, the client view (what production clients receive after `client.data` projection), and a diff between the two. Production clients see only what each resource's `client` config allows. See [Debug vs client state](./debug-vs-client-state.md) for the mental model and how to enable the endpoint locally.
+The Resources panel reads from a privileged debug endpoint and shows the full server-side state, except for workforce roster workers owned by a user other than the session's user. Each entry can be toggled between the raw server view, the client view (what production clients receive after `client.data` projection), and a diff between the two. Production clients see only what each resource's `client` config allows. See [Debug vs client state](./debug-vs-client-state.md) for the mental model and how to enable the endpoint locally.
 
 ## Replay
 

@@ -9,8 +9,8 @@
  * same debug route the panel reads. A `resources/` document on the same hire
  * is the control — it must not carry the mark.
  *
- * A seat only holds a document its kind declares, so the kind lives here and
- * declares both. Model-free: the seat's action is a plain handler, run only so
+ * A worker only holds a document its kind declares, so the kind lives here and
+ * declares both. Model-free: the worker's action is a plain handler, run only so
  * the session the snapshot is keyed by exists.
  */
 import { afterAll, describe, expect, it } from "vitest";
@@ -27,12 +27,12 @@ import {
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { referencesFromDocs } from "../src/references-from-docs";
 import { resourcesFromDocs } from "../src/resources-from-docs";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 
 const KIND = "desk";
-const SEAT = "engineering.ada";
+const WORKER = "engineering.ada";
 const SESSION = "sess_devtool_seal";
 
 /** The org handbook — `org/references/handbook.md`, sealed by the convention. */
@@ -86,9 +86,9 @@ type SnapshotEntry = { primaryName: string; aliases: string[]; writable?: boolea
 const SETTLE_POLLS = 200;
 
 /**
- * Wait for the seat's run to finish, and throw unless it `completed`. A run
+ * Wait for the worker's run to finish, and throw unless it `completed`. A run
  * still in flight, or one that ended any other way (`failed`, `aborted`, …),
- * has not proved the seat was served, so the snapshot read must not go ahead
+ * has not proved the worker was served, so the snapshot read must not go ahead
  * on it.
  */
 async function completed(
@@ -102,11 +102,11 @@ async function completed(
   }
   if (record === undefined || record.status === "in_progress") {
     throw new Error(
-      `the seat's run did not settle within ${SETTLE_POLLS} polls; last status: ${record?.status ?? "no record"}`,
+      `the worker's run did not settle within ${SETTLE_POLLS} polls; last status: ${record?.status ?? "no record"}`,
     );
   }
   if (record.status !== "completed") {
-    throw new Error(`the seat's run ended "${record.status}", not "completed"`);
+    throw new Error(`the worker's run ended "${record.status}", not "completed"`);
   }
 }
 
@@ -117,22 +117,22 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   const documents = resourcesFromDocs(roster.documents);
   const references = referencesFromDocs(roster.references);
 
-  const [seat] = mintSeats(
-    [{ id: SEAT, declared: { flow: KIND, description: SEAT }, body: "" }],
+  const [worker] = mintWorkers(
+    [{ id: WORKER, declared: { flow: KIND, description: WORKER }, body: "" }],
     { workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never }, documents, references },
   );
 
   const stores = createInMemoryStores();
   const registry = createFlowRegistry();
-  registry.register(seat!);
+  registry.register(worker!);
   const router = createFlowApiRouter({ registry, stores, debugEndpointsEnabled: true, debugAllowAnonymousLocal: true });
 
   const run = await router.POST(
-    new Request(`http://localhost/api/flows/${SEAT}/${SESSION}/actions/run`, {
+    new Request(`http://localhost/api/flows/${WORKER}/${SESSION}/actions/run`, {
       method: "POST",
       body: JSON.stringify({ userId: "user_1", input: {} }),
     }),
-    { params: { path: [SEAT, SESSION, "actions", "run"] } },
+    { params: { path: [WORKER, SESSION, "actions", "run"] } },
   );
   expect(run.status).toBe(202);
   const { request } = (await run.json()) as { request: { id: string } };
@@ -146,7 +146,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   return ((await res.json()) as { resources: SnapshotEntry[] }).resources;
 }
 
-describe("the DevTool's read-only mark, on a hired seat", () => {
+describe("the DevTool's read-only mark, on a hired worker", () => {
   it("marks the team's reference read-only and leaves its ordinary document writable", async () => {
     const entries = await devtoolResources(await tree());
     const reference = entries.find((e) => e.aliases.includes(REFERENCE));

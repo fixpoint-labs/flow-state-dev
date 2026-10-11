@@ -12,7 +12,7 @@
  *   BR-16 a fallback outside `members:`, no `fallback:`, an unknown subkey, or a
  *         `routing:` that is not a mapping, refuses;
  *   BR-17 `routing:` on a kind built without a route refuses;
- *   BR-28 a fallback whose member has no seat, among those the route was built
+ *   BR-28 a fallback whose member has no worker, among those the route was built
  *         with, that hears posts refuses.
  * BR-18 and BR-19 need a running host and live with the route's own checks
  * (`mailbox-route.test.ts`).
@@ -24,11 +24,11 @@ import {
   mailboxInstances,
   defineMailboxFlow,
   routeByPurpose,
-  wakeMemberSeats,
+  wakeMemberWorkers,
   workerConfigSchema,
   type MailboxManifest
 } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { workerDoor } from "./worker-door";
 
 /** A kind of the app's own that takes notes when asked and hears no posts. */
@@ -39,7 +39,7 @@ const note = defineFlow({
   actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
 } as never);
 
-const seats = mintSeats(
+const workers = mintWorkers(
   [
     { id: "support.devices", declared: { description: "Printers, laptops, phones and wifi." }, body: "Devices." },
     { id: "support.general", declared: { description: "Anything that fits no one else." }, body: "General." },
@@ -48,10 +48,10 @@ const seats = mintSeats(
   { workerFlows: { note: note as never } }
 );
 
-const route = routeByPurpose(seats, { model: mockEvaluationModel() });
+const route = routeByPurpose(workers, { model: mockEvaluationModel() });
 
 /** The built-in mailbox kind with the wake and the route: a routed host's kind. */
-const routedKind = defineMailboxFlow({ notify: wakeMemberSeats(seats), route });
+const routedKind = defineMailboxFlow({ notify: wakeMemberWorkers(workers), route });
 
 function record(id: string, declared: Record<string, unknown>): MailboxManifest {
   return { id, declared, body: "Ask the support team." };
@@ -70,13 +70,13 @@ function refusal(manifests: MailboxManifest[], kind = routedKind): string | unde
 }
 
 describe("routing: in a MAILBOX.md", () => {
-  it("binds a fallback that is a member with a seat that hears posts, on a kind built with a route (BR-15)", () => {
+  it("binds a fallback that is a member with a worker that hears posts, on a kind built with a route (BR-15)", () => {
     expect(
       refusal([record("support.help", { members: MEMBERS, routing: { fallback: "support.general" } })])
     ).toBeUndefined();
   });
 
-  it("names the route's members: the seats passed that hear posts, by the id a mailbox lists", () => {
+  it("names the route's members: the workers passed that hear posts, by the id a mailbox lists", () => {
     expect([...route.members].sort()).toEqual(["support.devices", "support.general"]);
   });
 
@@ -115,7 +115,7 @@ describe("routing: in a MAILBOX.md", () => {
   it("refuses routing: on a kind built without a route, the built-in included (BR-17)", () => {
     const withoutRoute = refusal(
       [record("support.help", { members: MEMBERS, routing: { fallback: "support.general" } })],
-      defineMailboxFlow({ notify: wakeMemberSeats(seats) })
+      defineMailboxFlow({ notify: wakeMemberWorkers(workers) })
     );
     expect(withoutRoute).toMatch(/mailbox "support\.help"/);
     expect(withoutRoute).toMatch(/`routing:`/);
@@ -141,11 +141,11 @@ describe("routing: in a MAILBOX.md", () => {
     ).toThrow(/mailbox "support\.help" — declares `routing:` and runs on mailbox kind "briefing", which was built without a route/);
   });
 
-  it("refuses a fallback whose member has no seat among the route's that hears posts, naming it (BR-28)", () => {
+  it("refuses a fallback whose member has no worker among the route's that hears posts, naming it (BR-28)", () => {
     const message = refusal([record("support.help", { members: MEMBERS, routing: { fallback: "support.notes" } })]);
     expect(message).toMatch(/mailbox "support\.help"/);
     expect(message).toMatch(/"support\.notes"/);
-    expect(message).toMatch(/no seat the route was built with hears posts for it/);
+    expect(message).toMatch(/no worker the route was built with hears posts for it/);
   });
 
   it("leaves a mailbox with no routing: line unrouted on a routed kind, binding as before (BR-18)", () => {
@@ -163,13 +163,13 @@ describe("routing: in a MAILBOX.md", () => {
 
 describe("routeByPurpose", () => {
   it("refuses to be built without a model", () => {
-    expect(() => routeByPurpose(seats, {} as never)).toThrow(/model/);
+    expect(() => routeByPurpose(workers, {} as never)).toThrow(/model/);
   });
 });
 
 describe("defineMailboxFlow({ route })", () => {
   it("refuses a route no routeByPurpose call made", () => {
-    expect(() => defineMailboxFlow({ notify: wakeMemberSeats(seats), route: { members: [] } as never })).toThrow(
+    expect(() => defineMailboxFlow({ notify: wakeMemberWorkers(workers), route: { members: [] } as never })).toThrow(
       /routeByPurpose/
     );
   });

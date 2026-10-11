@@ -5,7 +5,7 @@
  *
  * A board is a task ledger a `MAILBOX.md` declares by local name and the
  * framework mints an id for. The mailbox HOLDS it — files rows onto it and
- * reads it — and never runs it; draining stays on the seat's side, which is
+ * reads it — and never runs it; draining stays on the worker's side, which is
  * what `mailboxBoard` and `mailboxBoardTaskTools` are for.
  *
  * No `node:fs` here — reading a `MAILBOX.md` off disk is the `./loader`
@@ -18,13 +18,13 @@ export { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
 
 export {
   MAILBOX_KIND,
-  MAILBOX_SEAT_POST_ACTION,
+  MAILBOX_WORKER_POST_ACTION,
   MAILBOX_POST_COMPONENT,
   MailboxPostRefusedError,
   INVENTORY_REGISTER_MAILBOX,
-  INVENTORY_REGISTER_SEATS,
+  INVENTORY_REGISTER_WORKERS,
   inventoryMailboxRegisteredSchema,
-  inventorySeatsRegisteredSchema,
+  inventoryWorkersRegisteredSchema,
   inventoryWriterActions,
   mailboxFileTaskInputSchema,
   mailboxFileTaskOutputSchema,
@@ -51,7 +51,7 @@ export {
   type DefineMailboxFlowOptions
 } from "./mailbox-flow";
 
-export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
+export { wakeMemberWorkers, type WakeMemberWorkersOptions } from "./wake-member-workers";
 
 export { routeByPurpose, type RouteByPurposeOptions } from "./route-by-purpose";
 

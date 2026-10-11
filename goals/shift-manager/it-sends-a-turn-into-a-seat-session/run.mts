@@ -54,7 +54,7 @@ import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { mailboxBoard } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
+import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -454,7 +454,7 @@ await runGoal(async (failures) => {
     await leg("Inbox, EM door", async (fail) => {
       await open(page, served.devteam.origin, "/inbox");
       await page.getByTestId("inbox-item").first().click();
-      const emSession = seatSessionId(em.id);
+      const emSession = workerSessionId(em.id);
       const line = token("em");
       await page.getByTestId("inbox-reply-input").fill(line);
       const sent = await sendAndWatch(page, "inbox-reply", () => api.holds(emSession, "user", line));

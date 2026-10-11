@@ -98,7 +98,7 @@ transports](https://flow-state.dev/docs/advanced/inbound-transports#execution-co
 
 **`worker-only` starts background work in-process, and it is not durable.** That
 mode installs no dispatcher, so a dispatch (what a `dispatcher()` block and a task
-board's hand-off seat both send) runs the work inside the worker process and
+board's hand-off worker both send) runs the work inside the worker process and
 enqueues nothing. If the process stops, nothing re-runs it. A
 `worker-only` process is a good place to *consume* durable jobs and a poor place
 to *start* them; start them from `colocated` or `dispatch-only`. See [Work that

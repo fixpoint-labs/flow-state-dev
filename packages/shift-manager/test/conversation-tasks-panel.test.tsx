@@ -11,7 +11,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
-import { toSeat } from "../src/lib/reads";
+import { toWorker } from "../src/lib/reads";
 
 type Row = { id: string; goal: string; status: string; assignee?: string; attempts: number };
 let rows: Row[] = [];
@@ -31,7 +31,7 @@ vi.mock("../src/lib/conversation-tasks", () => ({
   },
 }));
 
-const cos = toSeat({ id: "chief-of-staff", kind: "coordinator", door: "run" })!;
+const cos = toWorker({ id: "chief-of-staff", kind: "coordinator", door: "run" })!;
 
 beforeEach(() => {
   rows = [];
@@ -56,7 +56,7 @@ const shown = () =>
 
 describe("the tasks panel (S11)", () => {
   it("says tasks belong to a conversation before there is one, and reads nothing", async () => {
-    render(<TasksPanel seat={cos} sessionId={null} readAt={1} />);
+    render(<TasksPanel worker={cos} sessionId={null} readAt={1} />);
     await settle();
     expect(screen.getByTestId("cos-tasks-none")).toBeTruthy();
     expect(calls).toEqual([]);
@@ -67,7 +67,7 @@ describe("the tasks panel (S11)", () => {
       { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
       { id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 },
     ];
-    render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
     expect(calls).toEqual(["list coordinator s1"]);
     expect(shown()).toEqual([
@@ -79,20 +79,20 @@ describe("the tasks panel (S11)", () => {
   });
 
   it("says so when the conversation has filed nothing", async () => {
-    render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
     expect(screen.getByTestId("cos-tasks-empty")).toBeTruthy();
   });
 
   it("reads again when the Lab is read again, and only then", async () => {
     rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
-    const view = render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    const view = render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
-    view.rerender(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    view.rerender(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
     expect(calls).toEqual(["list coordinator s1"]);
     rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
-    view.rerender(<TasksPanel seat={cos} sessionId="s1" readAt={2} />);
+    view.rerender(<TasksPanel worker={cos} sessionId="s1" readAt={2} />);
     await settle();
     expect(calls).toEqual(["list coordinator s1", "list coordinator s1"]);
     expect(shown()).toEqual([{ id: "t1", status: "completed", text: expect.stringContaining("Audit the licenses") }]);
@@ -100,15 +100,15 @@ describe("the tasks panel (S11)", () => {
 
   it("never shows one conversation's tasks under another, but keeps its own list while reading it again", async () => {
     rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
-    const view = render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    const view = render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
     // Same conversation, read again: its list stays up until the new answer lands.
-    view.rerender(<TasksPanel seat={cos} sessionId="s1" readAt={2} />);
+    view.rerender(<TasksPanel worker={cos} sessionId="s1" readAt={2} />);
     expect(shown().map((task) => task.id)).toEqual(["t1"]);
     await settle();
     // Another conversation: the first one's tasks are gone before its read answers.
     rows = [{ id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 }];
-    view.rerender(<TasksPanel seat={cos} sessionId="s2" readAt={2} />);
+    view.rerender(<TasksPanel worker={cos} sessionId="s2" readAt={2} />);
     expect(shown()).toEqual([]);
     expect(screen.getByTestId("cos-tasks-reading")).toBeTruthy();
     await settle();
@@ -117,7 +117,7 @@ describe("the tasks panel (S11)", () => {
 
   it("shows why the read failed", async () => {
     refusal = "This conversation keeps no task board.";
-    render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
     expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
   });
@@ -129,7 +129,7 @@ describe("the tasks panel (S11)", () => {
 
     it("is read again while a task is open, and reloads the Lab when one ends, so the coordinator's turn on it shows", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
-      render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
       await tick(0);
       expect(calls).toHaveLength(1);
       await tick(TASKS_POLL_MS);
@@ -143,7 +143,7 @@ describe("the tasks panel (S11)", () => {
 
     it("reads nothing more while no task is open and none just ended", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
-      render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
       await tick(0);
       await tick(TASKS_POLL_MS * 20);
       expect(calls).toEqual(["list coordinator s1"]);

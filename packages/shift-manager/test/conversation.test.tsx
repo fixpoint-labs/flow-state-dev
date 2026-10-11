@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * <Conversation> is the one way a view shows and sends into a conversation with
- * a seat. Drawn here as a view that isn't the Shift Coordinator's: another seat
+ * a worker. Drawn here as a view that isn't the Shift Coordinator's: another worker
  * and name, its own test ids, its own rendering of an item. The read and the
  * send are stood in for; what is checked is what the component does with them:
  * the session it reads and sends into, when it lets a line go, the read-back
@@ -12,7 +12,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { ClientHttpError, type SessionSummary } from "@flow-state-dev/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
-import type { Seat } from "../src/lib/reads";
+import type { Worker } from "../src/lib/reads";
 import { TurnNotDelivered } from "../src/lib/send";
 
 const read = vi.fn();
@@ -27,7 +27,7 @@ vi.mock("../src/lib/send", async (original) => ({ ...(await original<typeof impo
 import { Conversation } from "../src/components/Conversation";
 
 // A worker on the shared `agent` flow: its sessions are that flow's, naming it as their worker.
-const seat = { id: "eng.reviewer", kind: "agent", door: "talk" } as unknown as Seat;
+const worker = { id: "eng.reviewer", kind: "agent", door: "talk" } as unknown as Worker;
 const session = (id: string): SessionSummary =>
   ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "eng.reviewer" }, createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
 const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text });
@@ -46,7 +46,7 @@ afterEach(() => cleanup());
 const drawn = (sessions: SessionSummary[], over: Partial<Parameters<typeof Conversation>[0]> = {}) =>
   render(
     <Conversation
-      seat={seat}
+      worker={worker}
       sessions={sessions}
       gaps={GAPS}
       name="Reviewer"
@@ -81,7 +81,7 @@ describe("what a view of its own draws", () => {
     expect(container.querySelector('[data-look="rev-feed"]')).toBeNull();
   });
 
-  it("reads the seat's session, labels its messages with the view's name, and lets the view draw them", async () => {
+  it("reads the worker's session, labels its messages with the view's name, and lets the view draw them", async () => {
     read.mockResolvedValue({ items: [item("a", "Looks good"), item("b", "One nit")], truncated: false });
     drawn([session("s1")]);
     expect((await screen.findAllByTestId("mine")).map((n) => n.textContent)).toEqual(["Looks good", "One nit"]);
@@ -89,7 +89,7 @@ describe("what a view of its own draws", () => {
     expect(screen.getAllByText("REVIEWER")).toHaveLength(2);
   });
 
-  it("says the seat has the line while one from this page is in flight", () => {
+  it("says the worker has the line while one from this page is in flight", () => {
     drawn([], { working: true });
     expect(screen.getByTestId("rev-working").textContent).toContain("Reviewer is working on it");
   });
@@ -105,13 +105,13 @@ describe("when a line may go", () => {
     expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
   });
 
-  it("sends nothing to a seat that takes no message, and says why", () => {
-    drawn([], { seat: { id: "eng.reviewer", kind: "agent", door: null } as unknown as Seat });
+  it("sends nothing to a worker that takes no message, and says why", () => {
+    drawn([], { worker: { id: "eng.reviewer", kind: "agent", door: null } as unknown as Worker });
     expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("eng.reviewer");
   });
 
   it("sends nothing to a worker whose flow it can't name, since its session couldn't be opened", () => {
-    drawn([], { seat: { id: "eng.reviewer", kind: null, door: "talk" } as unknown as Seat });
+    drawn([], { worker: { id: "eng.reviewer", kind: null, door: "talk" } as unknown as Worker });
     expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("eng.reviewer");
   });
 
@@ -132,7 +132,7 @@ describe("when a line may go", () => {
 });
 
 describe("sending", () => {
-  it("goes through the one send path, to the seat's door, into the session read", async () => {
+  it("goes through the one send path, to the worker's door, into the session read", async () => {
     sendTurn.mockResolvedValue(delivered);
     drawn([session("s1")]);
     await send("ship it?");

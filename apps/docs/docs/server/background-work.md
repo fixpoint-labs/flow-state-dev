@@ -137,10 +137,10 @@ dispatcher can branch on `refused` knowing no run has started. A `key` or
 `id` function that returns an empty string throws a plain `Error` naming the
 block.
 
-A task board seat can start a job the same way: a `dispatcher({ action, session
+A task board worker can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and that run lands in the same listings. See [Task board →
-Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
+Workers that hand off](../orchestration/task-board.md#workers-that-hand-off).
 
 ### Starting a job on another flow
 
@@ -314,9 +314,9 @@ absent on a row that records no owner.
 
 `topic` and `coordinate` are display labels. `coordinate` is the entry the run
 was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,
-`task:implement` for a task-board seat that hands off. `topic` is the key the
+`task:implement` for a task-board worker that hands off. `topic` is the key the
 run's session was derived from — what a `dispatcher()`'s `session: { key }`
-function returned, or the composed key a task seat's `session` policy produced.
+function returned, or the composed key a task worker's `session` policy produced.
 
 Nothing routes, authorizes or identifies from either label, and both are
 optional, as are `status` and `flowId`. Guard all four with `== null`. A row with no labels is
@@ -437,7 +437,7 @@ error, if any, and the action's return value when you ask for that too
 for the shape.
 
 A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`
-when a task-board seat handed the work off, and carries a `metadata.dispatch`
+when a task-board worker handed the work off, and carries a `metadata.dispatch`
 bag:
 
 ```json

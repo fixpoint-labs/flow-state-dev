@@ -17,7 +17,7 @@
  */
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { FlowProvider, FlowNavigator, Roster, BoardColumns, BoardList, SeatDetail } from "@flow-state-dev/react";
+import { FlowProvider, FlowNavigator, Roster, BoardColumns, BoardList, WorkerDetail } from "@flow-state-dev/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Message } from "@/components/flow-state/message";
@@ -155,8 +155,8 @@ const flowClient = { listFlows: async () => flows } as never;
 const sessionClient = { listSessions: async () => sessions } as never;
 
 const seats = [
-  { topic: "billing", clientData: { seatId: "billing", flow: "agent", instructions: "Handle refunds." } },
-  { topic: "triage", clientData: { seatId: "triage", flow: "agent", instructions: null } },
+  { topic: "billing", clientData: { workerId: "billing", flow: "agent", instructions: "Handle refunds." } },
+  { topic: "triage", clientData: { workerId: "triage", flow: "agent", instructions: null } },
 ];
 const cards = ["pending", "in_progress", "parked", "blocked", "completed"].map((status, i) => ({
   topic: `card-${i}`,
@@ -302,8 +302,8 @@ function Page() {
           <Part name="board-list" component="BoardList">
             <BoardList sessionId="sess-1" boardRef="support.queue" resourceClient={boardSource} />
           </Part>
-          <Part name="seat-detail" component="SeatDetail">
-            <SeatDetail sessionId="sess-1" kind="agent" seatId="billing" resourceClient={seatSource} />
+          <Part name="seat-detail" component="WorkerDetail">
+            <WorkerDetail sessionId="sess-1" kind="agent" workerId="billing" resourceClient={seatSource} />
           </Part>
         </main>
       </SessionItemsProvider>

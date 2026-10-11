@@ -96,7 +96,7 @@ describe("readDeclaredRoster", () => {
     const roster = await readDeclaredRoster(root);
 
     // Unsorted, deliberately. The sequence IS the contract: worker slots, then
-    // each seat's skills, then team files, then documents, then mailboxes.
+    // each worker's skills, then team files, then documents, then mailboxes.
     expect(roster.problems.map((p) => p.layer)).toEqual([
       "worker",
       "skill",
@@ -175,19 +175,19 @@ describe("readDeclaredRoster", () => {
     }
   });
 
-  it("reports a shared skills level once per affected seat, not once for the level (BR-3)", async () => {
+  it("reports a shared skills level once per affected worker, not once for the level (BR-3)", async () => {
     await writeWorker("qa", "reviewer");
     await writeWorker("qa", "tester");
-    // A broken skill at the ORG level — a level both seats read.
+    // A broken skill at the ORG level — a level both workers read.
     await fs.mkdir(path.join(root, "org", "skills", "house-style"), { recursive: true });
 
     const roster = await readDeclaredRoster(root);
     const skills = roster.problems.filter((p) => p.layer === "skill");
 
-    // One entry per seat that lost a skill. Flattening to one would say the
-    // level failed; what actually happened is two seats running short.
-    // Unsorted: the entries follow the seats' walk order, so each entry's
-    // `worker` has to be the seat it was attached to rather than either name.
+    // One entry per worker that lost a skill. Flattening to one would say the
+    // level failed; what actually happened is two workers running short.
+    // Unsorted: the entries follow the workers' walk order, so each entry's
+    // `worker` has to be the worker it was attached to rather than either name.
     expect(skills).toHaveLength(2);
     expect(skills.map((p) => p.worker)).toEqual(["qa.reviewer", "qa.tester"]);
     expect(new Set(skills.map((p) => p.path)).size).toBe(1);

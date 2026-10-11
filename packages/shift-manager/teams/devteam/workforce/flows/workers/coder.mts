@@ -67,9 +67,9 @@ import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import {
   defineReadOwnFacts,
   INSPECT_ENTRY,
-  seatOf,
-  seatSettingsSchema,
-} from "../../../seat-config.mts";
+  workerOf,
+  workerSettingsSchema,
+} from "../../../worker-config.mts";
 
 /** The kind id the working `WORKER.md` names. **Pinned** — the basename must match. */
 export const CODER_KIND = "coder";
@@ -130,7 +130,7 @@ function namesFeatureWork(input: unknown): boolean {
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const { installation } = options;
-  const readOwnFacts = defineReadOwnFacts(seatOf(installation, CODER_KIND));
+  const readOwnFacts = defineReadOwnFacts(workerOf(installation, CODER_KIND));
   const judge = options.judge === undefined ? {} : { judge: options.judge };
 
   // Feature work: a task that names an issue and a phase.
@@ -201,7 +201,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // Registered once, at its kind, which is what the coordinator's
     // dispatcher names in `flowKind`; the worker is named by the row's session.
     cardinality: "collection",
-    configSchema: seatSettingsSchema(),
+    configSchema: workerSettingsSchema(),
     session: installation.session(),
     // Installed at flow level. Org-scoped, and organization identity is
     // unconditional, so the org registry is always built for a request that

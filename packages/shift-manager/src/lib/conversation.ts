@@ -1,14 +1,14 @@
 /**
- * One person's conversation with one seat, read from the seat's session.
+ * One person's conversation with one worker, read from the worker's session.
  *
- * The session is the newest direct one the snapshot lists on the seat's flow
- * naming the seat's worker, or the one a first line just opened, until the
+ * The session is the newest direct one the snapshot lists on the worker's flow
+ * naming the worker's worker, or the one a first line just opened, until the
  * snapshot lists it (BR-14). Its items are read when the view opens and after
  * each line, never on the snapshot's refresh. Nothing is sent into a
  * conversation the screen hasn't read; one a line opened here holds nothing
  * the person hasn't seen.
  *
- * Used by `<Conversation>`; a view that wants a conversation with a seat draws
+ * Used by `<Conversation>`; a view that wants a conversation with a worker draws
  * that component, and calls this only to build its own.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,10 +17,10 @@ import { COORDINATOR_JUDGMENT, COORDINATOR_KIND, WORKER_ID_STATE_KEY } from "@fl
 import type { LabClients } from "./connection";
 import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
-import { describeFailure, workerOf, type Failure, type Seat } from "./reads";
+import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
 import { readSessionItems, RunReadError, type SessionItems } from "./run";
 
-/** The flow a coordinator seat runs on, whose conversations carry its delegates' answers. */
+/** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
 export const COORDINATOR_FLOW = COORDINATOR_KIND;
 
 /**
@@ -30,22 +30,22 @@ export const COORDINATOR_FLOW = COORDINATOR_KIND;
  * coordinator's own turn stamps its messages with its answer generator's
  * name.
  */
-export function delegateOf(seat: Pick<Seat, "kind">, item: { readonly agentName?: string }): string | undefined {
-  if (seat.kind !== COORDINATOR_FLOW) return undefined;
+export function delegateOf(worker: Pick<Worker, "kind">, item: { readonly agentName?: string }): string | undefined {
+  if (worker.kind !== COORDINATOR_FLOW) return undefined;
   const author = item.agentName;
   return author === undefined || author.startsWith(COORDINATOR_JUDGMENT) ? undefined : author;
 }
 
 /**
- * The id of the person's conversation with `seat`: their newest session on
- * the seat's flow that names the seat's worker and has no parent session, or
+ * The id of the person's conversation with `worker`: their newest session on
+ * the worker's flow that names the worker's worker and has no parent session, or
  * `null` when they have none. A store that nulls absent keys hands back
  * `null` for a parent, so the guard is `== null`.
  */
-export function conversationSession(sessions: readonly SessionSummary[], seat: Pick<Seat, "id" | "kind">): string | null {
+export function conversationSession(sessions: readonly SessionSummary[], worker: Pick<Worker, "id" | "kind">): string | null {
   let newest: SessionSummary | undefined;
   for (const session of sessions) {
-    if (session.flowKind !== seat.kind || workerOf(session) !== seat.id || session.parentSessionId != null) continue;
+    if (session.flowKind !== worker.kind || workerOf(session) !== worker.id || session.parentSessionId != null) continue;
     if (newest === undefined || session.createdAt > newest.createdAt) newest = session;
   }
   return newest?.id ?? null;
@@ -58,11 +58,11 @@ export function conversationSession(sessions: readonly SessionSummary[], seat: P
  */
 export function currentConversation(
   sessions: readonly SessionSummary[],
-  seat: Pick<Seat, "id" | "kind">,
+  worker: Pick<Worker, "id" | "kind">,
   opened: string | null,
 ): string | null {
   if (opened !== null && !sessions.some((session) => session.id === opened)) return opened;
-  return conversationSession(sessions, seat);
+  return conversationSession(sessions, worker);
 }
 
 /**
@@ -76,24 +76,24 @@ export function newConversationId(): string {
 }
 
 /**
- * Open `sessionId` on the seat's flow, naming the seat's worker in its
+ * Open `sessionId` on the worker's flow, naming the worker's worker in its
  * starting state. A session a failed earlier attempt already opened under that
  * id is the one the line goes to, so a conflict is not an error.
  */
-export async function openConversation(clients: LabClients, seat: { id: string; kind: string }, sessionId: string): Promise<void> {
+export async function openConversation(clients: LabClients, worker: { id: string; kind: string }, sessionId: string): Promise<void> {
   try {
     await clients.sessions.createSession({
-      flowKind: seat.kind,
+      flowKind: worker.kind,
       userId: clients.userId,
       sessionId,
-      state: { [WORKER_ID_STATE_KEY]: seat.id },
+      state: { [WORKER_ID_STATE_KEY]: worker.id },
     });
   } catch (error) {
     if (!(error instanceof ClientHttpError && error.status === 409)) throw error;
   }
 }
 
-export interface SeatConversation {
+export interface WorkerConversation {
   /** The conversation's session, or `null` before a first line. */
   sessionId: string | null;
   /** The session a first line opened here, until the snapshot lists it. */
@@ -111,14 +111,14 @@ export interface SeatConversation {
 }
 
 /**
- * @param seat The seat the conversation is with.
+ * @param worker The worker the conversation is with.
  * @param sessions The snapshot's sessions.
  * @param pinned The session the conversation is, when the view found it: that one, whatever the snapshot lists.
  */
-export function useSeatConversation(seat: Seat, sessions: readonly SessionSummary[], pinned?: string): SeatConversation {
+export function useWorkerConversation(worker: Worker, sessions: readonly SessionSummary[], pinned?: string): WorkerConversation {
   const { clients } = useLab();
   const [opened, setOpened] = useState<string | null>(null);
-  const sessionId = pinned ?? currentConversation(sessions, seat, opened);
+  const sessionId = pinned ?? currentConversation(sessions, worker, opened);
   // The id a first line goes to, kept across a failed send so a retry lands in
   // the same session if the Lab already opened it.
   const fresh = useRef<string | null>(null);

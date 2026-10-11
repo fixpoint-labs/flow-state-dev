@@ -13,7 +13,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
 import { elapsed, emptyInboxSentence, isQueued, tasksSummary } from "../src/lib/tasks";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import type { Ask, BoardRow, Seat } from "../src/lib/reads";
+import type { Ask, BoardRow, Worker } from "../src/lib/reads";
 
 let index = 0;
 function item(fields: Record<string, unknown>): OutputItem {
@@ -76,13 +76,13 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   ...extra,
 });
 
-function snapshot(rows: BoardRow[], asks: Ask[] = [], seats: Seat[] = []): LoadedSnapshot {
+function snapshot(rows: BoardRow[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
   const byMailbox = new Map<string, BoardRow[]>();
   for (const r of rows) byMailbox.set(r.mailboxId, [...(byMailbox.get(r.mailboxId) ?? []), r]);
   return {
     orgId: "org",
     readAt: 0,
-    inventory: { ok: true, value: { seats, workstreams: [], declared: {} } },
+    inventory: { ok: true, value: { workers, workstreams: [], declared: {} } },
     boards: Object.fromEntries([...byMailbox].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }])),
     asks: { ok: true, value: asks },
   } as unknown as LoadedSnapshot;
@@ -104,12 +104,12 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
   });
 
   it("the summary counts what is in flight (not queued, not done), the asks, the shift and the streams in flight", () => {
-    const seats = [
-      { id: "eng.coder", seatId: "eng.coder", name: "coder", team: "eng", kind: null },
-      { id: "eng.em", seatId: "eng.em", name: "em", team: "eng", kind: null },
-      { id: "eng.idle", seatId: "eng.idle", name: "idle", team: "eng", kind: null },
-    ] as unknown as Seat[];
-    const asks = [{ seatId: "eng.em" }] as unknown as Ask[];
+    const workers = [
+      { id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null },
+      { id: "eng.em", workerId: "eng.em", name: "em", team: "eng", kind: null },
+      { id: "eng.idle", workerId: "eng.idle", name: "idle", team: "eng", kind: null },
+    ] as unknown as Worker[];
+    const asks = [{ workerId: "eng.em" }] as unknown as Ask[];
     const s = snapshot(
       [
         row("A", "in_progress", { assignee: "eng.coder" }),
@@ -118,28 +118,28 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
         row("D", "completed", { mailboxId: "ops.other" }),
       ],
       asks,
-      seats,
+      workers,
     );
     expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 1 on shift · 1 on call · 2 streams");
   });
 
   it("the empty Inbox names the runs still going and who is on call (BR-19, I8)", () => {
-    const seats = [{ id: "eng.coder", seatId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Seat[];
-    expect(emptyInboxSentence(snapshot([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")], [], seats))).toBe(
+    const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
+    expect(emptyInboxSentence(snapshot([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
       "Nothing needs you. 2 sessions are still running and 0 workers are on call.",
     );
-    expect(emptyInboxSentence(snapshot([row("A", "parked", { assignee: "eng.coder" }), row("B", "in_progress")], [], seats))).toBe(
+    expect(emptyInboxSentence(snapshot([row("A", "parked", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
       "Nothing needs you. 1 session is still running and 1 worker is on call.",
     );
   });
 
   it("counts sessions, not rows: two running rows in one run session are one session, and an unlinked row is its own", () => {
-    const seats = [{ id: "eng.coder", seatId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Seat[];
+    const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
     const inOne = (id: string, attempt: number) => row(id, "in_progress", { run: { sessionId: "s_coder", requestId: `req_${id}`, attempt } });
-    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1)], [], seats))).toBe(
+    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1)], [], workers))).toBe(
       "Nothing needs you. 1 session is still running and 0 workers are on call.",
     );
-    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1), row("C", "in_progress")], [], seats))).toBe(
+    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1), row("C", "in_progress")], [], workers))).toBe(
       "Nothing needs you. 2 sessions are still running and 0 workers are on call.",
     );
   });

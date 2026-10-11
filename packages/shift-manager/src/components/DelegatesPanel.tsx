@@ -13,12 +13,12 @@ import { useEffect, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { addDelegate, readDelegates, removeDelegate, type DelegateList } from "../lib/delegates";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Seat } from "../lib/reads";
+import { describeFailure, type Worker } from "../lib/reads";
 import { useWorkforce } from "../lib/workforce";
 
 type Read = { list: DelegateList } | { failure: string } | undefined;
 
-export function DelegatesPanel({ seat, sessionId }: { seat: Seat; sessionId: string | null }) {
+export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionId: string | null }) {
   const { clients } = useLab();
   const workforce = useWorkforce();
   const [read, setRead] = useState<Read>(undefined);
@@ -28,10 +28,10 @@ export function DelegatesPanel({ seat, sessionId }: { seat: Seat; sessionId: str
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (sessionId === null || seat.kind === null) return;
+    if (sessionId === null || worker.kind === null) return;
     let closed = false;
     setRead(undefined);
-    readDelegates(clients, seat.kind, sessionId)
+    readDelegates(clients, worker.kind, sessionId)
       .then((list) => !closed && setRead({ list }))
       .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error).message }));
     workforce
@@ -41,9 +41,9 @@ export function DelegatesPanel({ seat, sessionId }: { seat: Seat; sessionId: str
     return () => {
       closed = true;
     };
-  }, [clients, workforce, seat.kind, sessionId]);
+  }, [clients, workforce, worker.kind, sessionId]);
 
-  if (sessionId === null || seat.kind === null) {
+  if (sessionId === null || worker.kind === null) {
     return (
       <p className="px-1 text-xs text-muted-foreground" data-testid="cos-delegates-none">
         Delegates belong to a conversation. Say something to start one.
@@ -65,9 +65,9 @@ export function DelegatesPanel({ seat, sessionId }: { seat: Seat; sessionId: str
     );
   }
 
-  const kind = seat.kind;
+  const kind = worker.kind;
   const listed = new Set(read.list.delegates.map((d) => d.worker));
-  const candidates = roster.filter((entry) => entry.id !== seat.id && !listed.has(entry.id));
+  const candidates = roster.filter((entry) => entry.id !== worker.id && !listed.has(entry.id));
   const change = async (run: () => Promise<DelegateList>) => {
     setBusy(true);
     setRefusal(null);

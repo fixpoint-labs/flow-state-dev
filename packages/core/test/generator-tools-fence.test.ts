@@ -14,7 +14,7 @@
  * The one carve-out is `controlTools`. A framework control is not a grant from
  * the app's catalog — the block composing the capability is what put it there,
  * and it is typically built inside the capability and never exported, so no
- * `tools:` list could name it back in. Fencing those would leave a seat
+ * `tools:` list could name it back in. Fencing those would leave a worker
  * advertising a tool in its prompt that it cannot call. See
  * `PresetDef.controlTools`.
  *
@@ -176,7 +176,7 @@ describe("declared `tools:` fences capability tools", () => {
   });
 
   it("`tools: []` does NOT hold back a capability's control tool", async () => {
-    // The carve-out. A seat that switched the skills loader on keeps that
+    // The carve-out. A worker that switched the skills loader on keeps that
     // surface even behind the tightest possible fence — it asked for it by
     // composing the capability.
     const block = generator({

@@ -2,7 +2,7 @@
  * `routeByPurpose` in a real in-process host: which member a person's post to a
  * routed mailbox reaches, and what the route records.
  *
- * The members are seats of a listening kind that records each delivery it
+ * The members are workers of a listening kind that records each delivery it
  * hears (whether it was routed, and the lines it carried), so what is graded
  * is who ran, never a router's decision. The route's evaluation is scripted by
  * block name (`mailbox-route`) and answers from the state it is handed: a post
@@ -11,7 +11,7 @@
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1610/BUSINESS-RULES.md`, V2):
  *   BR-2  one evaluator call, over the recent lines and the post, choosing among
- *         the members whose seat hears posts, each described verbatim; its pick
+ *         the members whose worker hears posts, each described verbatim; its pick
  *         runs alone;
  *   BR-1  the person's next post, with no line from that member since, is held:
  *         the same member, no call;
@@ -25,7 +25,7 @@
  *   BR-6  a fallback the caller cannot reach, or that is not a member of the open
  *         mailbox, runs nobody, recorded as failed;
  *   BR-7  nobody else receives a routed post;
- *   BR-8  a post on the internal seat entry takes no route and no call;
+ *   BR-8  a post on the internal worker entry takes no route and no call;
  *         a public post that only claims an `author` still takes the route;
  *   BR-18 a mailbox without `routing:` on a routed kind wakes every member;
  *   BR-19 `routing:` added to an open mailbox's file routes it from the next
@@ -47,13 +47,13 @@ import {
   mailboxNotifyInputSchema,
   defineMailboxFlow,
   routeByPurpose,
-  wakeMemberSeats,
+  wakeMemberWorkers,
   workerConfigSchema,
   type MailboxManifest,
   type MailboxNotifyInput,
   type WorkerManifest
 } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { failLineWrite, postedLines } from "./mailbox-post-lines";
 import { workerDoor } from "./worker-door";
 
@@ -68,8 +68,8 @@ const DESCRIPTIONS: Record<string, string> = {
 };
 const MEMBERS = [...Object.keys(DESCRIPTIONS), "support.notes"];
 
-/** One delivery a member's seat heard. */
-type Heard = { seat: string; body: string; routed?: boolean; recent?: string[] };
+/** One delivery a member's worker heard. */
+type Heard = { worker: string; body: string; routed?: boolean; recent?: string[] };
 
 /** A listening kind that records each delivery; `failOn` makes one member's run throw. */
 function listeningKinds(failOn?: string) {
@@ -80,7 +80,7 @@ function listeningKinds(failOn?: string) {
     outputSchema: z.object({ ok: z.boolean() }),
     execute: (post: MailboxNotifyInput) => {
       heard.push({
-        seat: post.member,
+        worker: post.member,
         body: post.body,
         ...(post.routed === undefined ? {} : { routed: post.routed }),
         ...(post.recent === undefined ? {} : { recent: post.recent.map((line) => line.body) })
@@ -114,7 +114,7 @@ function workers(pinGeneralTo?: string, undescribed?: string): WorkerManifest[] 
       body: "",
     })),
     { id: "support.notes", declared: { flow: "note", description: "Takes notes." }, body: "" },
-    // A seat that hears posts and has no description, as a runtime hire reloads.
+    // A worker that hears posts and has no description, as a runtime hire reloads.
     ...(undescribed === undefined ? [] : [{ id: undescribed, declared: { flow: "listener" }, body: "" }])
   ];
 }
@@ -141,7 +141,7 @@ function manifests(helpMembers = MEMBERS): MailboxManifest[] {
   ];
 }
 
-/** A routed host: the tree's seats, the wake, the route, and one scripted resolver. */
+/** A routed host: the tree's workers, the wake, the route, and one scripted resolver. */
 function host(
   options: {
     failOn?: string;
@@ -155,22 +155,22 @@ function host(
   } = {}
 ) {
   const { heard, kinds } = listeningKinds(options.failOn);
-  const seats = mintSeats(workers(options.pinGeneralTo, options.undescribed), { workerFlows: kinds });
+  const minted = mintWorkers(workers(options.pinGeneralTo, options.undescribed), { workerFlows: kinds });
   const route = scriptedRoute();
   const [mailbox] = mailboxInstances(options.mailboxes ?? manifests(), {
     kinds: {
       mailbox: defineMailboxFlow({
-        notify: wakeMemberSeats(seats),
-        ...(options.withoutRoute ? {} : { route: routeByPurpose(seats, { model: "typesafe-ai/jev" }) })
+        notify: wakeMemberWorkers(minted),
+        ...(options.withoutRoute ? {} : { route: routeByPurpose(minted, { model: "typesafe-ai/jev" }) })
       }) as never
     }
   });
   const state = createFlowState({
-    flows: { [mailbox!.id]: mailbox!, ...Object.fromEntries(seats.map((seat) => [seat.id, seat])) },
+    flows: { [mailbox!.id]: mailbox!, ...Object.fromEntries(minted.map((worker) => [worker.id, worker])) },
     stores: { default: { primary: options.stores ?? inMemoryStores() } },
     modelResolver: options.resolver?.(route) ?? createMockModelResolver({ evaluators: { "mailbox-route": route } })
   });
-  return { mailbox: mailbox!, state, heard, route, seats };
+  return { mailbox: mailbox!, state, heard, route, workers: minted };
 }
 
 async function bind(stores: StoreRegistry, sessionId: string, members: string[], orgId = DEFAULT_ORG_ID) {
@@ -200,12 +200,12 @@ async function post(
   sessionId: string,
   body: string,
   author?: string,
-  mode?: "seat" | "internal"
+  mode?: "worker" | "internal"
 ) {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow: mailbox,
-    actionName: mode === "seat" ? "seatPost" : "post",
+    actionName: mode === "worker" ? "workerPost" : "post",
     input: author === undefined ? { body } : { body, author },
     userId: USER_ID,
     sessionId,
@@ -340,7 +340,7 @@ async function recordFor(stores: StoreRegistry, marker: string) {
 }
 
 /** Who heard the post whose body contains `marker`. */
-const who = (heard: Heard[], marker: string) => heard.filter((h) => h.body.includes(marker)).map((h) => h.seat).sort();
+const who = (heard: Heard[], marker: string) => heard.filter((h) => h.body.includes(marker)).map((h) => h.worker).sort();
 
 /** The evaluator calls made for the post whose body contains `marker`. */
 const callsFor = (route: MockEvaluationModel, marker: string) =>
@@ -359,7 +359,7 @@ describe("a person's post to a routed mailbox", () => {
       expect(heard.find((h) => h.body.includes("laptop"))?.routed).toBe(true);
       const calls = callsFor(route, "laptop");
       expect(calls).toHaveLength(1);
-      // The options: the members with a seat that hears posts, each by its description.
+      // The options: the members with a worker that hears posts, each by its description.
       const question = (calls[0]!.questions as { member: { criteria: Record<string, string | null> } }).member;
       expect(question.criteria).toEqual(DESCRIPTIONS);
       expect(await recordFor(runtime.stores, "laptop")).toMatchObject({ by: "evaluated", member: "support.devices" });
@@ -379,12 +379,12 @@ describe("a person's post to a routed mailbox", () => {
       await bind(runtime.stores, HELP, members);
       await post(runtime, mailbox, HELP, "[route:support.devices] my laptop won't join the wifi");
       await settle(runtime, HELP, 1);
-      // A purpose is what the evaluator picks by: a seat with none is not a choice.
+      // A purpose is what the evaluator picks by: a worker with none is not a choice.
       const question = (callsFor(route, "laptop")[0]!.questions as { member: { criteria: Record<string, string | null> } })
         .member;
       expect(question.criteria).toEqual(DESCRIPTIONS);
 
-      await post(runtime, mailbox, HELP, "Try forgetting the network.", "support.devices", "seat");
+      await post(runtime, mailbox, HELP, "Try forgetting the network.", "support.devices", "worker");
       await settle(runtime, HELP, 2);
       await post(runtime, mailbox, HELP, "who do I ask about a parking pass?");
       await settle(runtime, HELP, 3);
@@ -437,7 +437,7 @@ describe("a person's post to a routed mailbox", () => {
       expect(callsFor(route, "charged twice")).toHaveLength(1);
 
       // accounts answers in the mailbox; the follow-up takes the call, with that line in view.
-      await post(runtime, mailbox, HELP, "Which card was charged?", "support.accounts", "seat");
+      await post(runtime, mailbox, HELP, "Which card was charged?", "support.accounts", "worker");
       await settle(runtime, HELP, 4);
       await post(runtime, mailbox, HELP, "[route:support.accounts] the visa one");
       await settle(runtime, HELP, 5);
@@ -459,13 +459,13 @@ describe("a person's post to a routed mailbox", () => {
       await bind(runtime.stores, HELP, MEMBERS);
       await post(runtime, mailbox, HELP, "[route:support.devices] my laptop won't join the wifi");
       await settle(runtime, HELP, 1);
-      await post(runtime, mailbox, HELP, "Does it see the network?", "support.devices", "seat");
+      await post(runtime, mailbox, HELP, "Does it see the network?", "support.devices", "worker");
       await settle(runtime, HELP, 2);
       await post(runtime, mailbox, HELP, "[route:support.general] where can I buy it?");
       await settle(runtime, HELP, 3);
 
       const delivered = heard.find((h) => h.body.includes("buy it"))!;
-      expect(delivered.seat).toBe("support.general");
+      expect(delivered.worker).toBe("support.general");
       expect(delivered.recent).toEqual([
         "[route:support.devices] my laptop won't join the wifi",
         "Does it see the network?"
@@ -545,7 +545,7 @@ describe("a person's post to a routed mailbox", () => {
       await bind(runtime.stores, HELP, MEMBERS);
       const notes = Array.from({ length: 21 }, (_, i) => `note ${i + 1}`);
       for (const [i, note] of notes.entries()) {
-        await post(runtime, mailbox, HELP, note, "support.notes", "seat");
+        await post(runtime, mailbox, HELP, note, "support.notes", "worker");
         await settle(runtime, HELP, i + 1);
       }
       for (let i = 0; i < 60; i += 1) await readMailbox(runtime, mailbox, HELP);
@@ -613,7 +613,7 @@ describe("a person's post to a routed mailbox", () => {
       await bind(runtime.stores, HELP, MEMBERS);
       await post(runtime, mailbox, HELP, "who do I ask about a parking pass?");
       await settle(runtime, HELP, 1);
-      await post(runtime, mailbox, HELP, "Parking is at reception.", "support.general", "seat");
+      await post(runtime, mailbox, HELP, "Parking is at reception.", "support.general", "worker");
       await settle(runtime, HELP, 2);
       await post(runtime, mailbox, HELP, "[route:off-list] and the gym?");
       await settle(runtime, HELP, 3);
@@ -707,7 +707,7 @@ describe("a person's post to a routed mailbox", () => {
 
         const [fanOut] = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "onPosted");
         expect(fanOut!.status).toBe("aborted");
-        expect(heard.map((h) => h.seat)).toEqual(woken);
+        expect(heard.map((h) => h.worker)).toEqual(woken);
         expect(await routeRecords(runtime.stores, HELP)).toHaveLength(records);
         const [line] = await postedLines(runtime.stores, HELP);
         const session = await runtime.stores.session.get(HELP);
@@ -830,12 +830,12 @@ describe("a person's post to a routed mailbox", () => {
 });
 
 describe("posts the route does not place", () => {
-  it("takes no route and no call for a post a seat wrote, and wakes nobody (BR-8)", async () => {
+  it("takes no route and no call for a post a worker wrote, and wakes nobody (BR-8)", async () => {
     const { mailbox, state, heard, route } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP, MEMBERS);
-      await post(runtime, mailbox, HELP, "[route:support.devices] I looked; it is fine.", "support.accounts", "seat");
+      await post(runtime, mailbox, HELP, "[route:support.devices] I looked; it is fine.", "support.accounts", "worker");
       await settle(runtime, HELP, 1);
 
       expect(heard).toEqual([]);

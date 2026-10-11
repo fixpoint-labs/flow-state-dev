@@ -27,7 +27,7 @@ import {
   COORDINATOR_KIND,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
@@ -85,7 +85,7 @@ const flowState = createFlowState({
 
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats: inventorySeats(installation), mailboxes: [] },
+  { seats: inventoryWorkers(installation), mailboxes: [] },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({
@@ -102,7 +102,7 @@ const opened = await openInventory(
       if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
       return result;
     },
-    seatWriter: { flowKind: INVENTORY_WRITER_KIND },
+    workerWriter: { flowKind: INVENTORY_WRITER_KIND },
     userId: USER_ID,
     orgId: DEFAULT_ORG_ID,
   },

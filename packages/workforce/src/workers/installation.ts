@@ -32,7 +32,7 @@ import { z } from "zod";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
-  mintSeats,
+  mintWorkers,
   resolveWorkerFlows,
   standardOnlyReason,
   type HireOptions,
@@ -87,8 +87,8 @@ export interface WorkerInstallationOptions {
    * `session` and `resources` can be handed back to it.
    */
   workerFlows?: HireOptions["workerFlows"] | (() => HireOptions["workerFlows"]);
-  /** The blocks each standard worker's own folders register (`fsdev gen`'s `seatBlocks`). */
-  seatBlocks?: HireOptions["seatBlocks"];
+  /** The blocks each standard worker's own folders register (`fsdev gen`'s `workerBlocks`). */
+  workerBlocks?: HireOptions["workerBlocks"];
   /** The blocks each package carries (`fsdev gen`'s `packageBlocks`). */
   packageBlocks?: HireOptions["packageBlocks"];
   /** The documents a worker may be granted (`resourcesFromDocs(...)`). */
@@ -440,16 +440,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
    */
   const mint = (
     manifest: WorkerManifest
-  ): { ok: true; seat: FlowInstance } | { ok: false; problems: string[] } => {
+  ): { ok: true; worker: FlowInstance } | { ok: false; problems: string[] } => {
     try {
-      const [seat] = mintSeats([manifest], {
+      const [worker] = mintWorkers([manifest], {
         workerFlows: workerFlowsOption(),
-        ...(options.seatBlocks !== undefined ? { seatBlocks: options.seatBlocks } : {}),
+        ...(options.workerBlocks !== undefined ? { workerBlocks: options.workerBlocks } : {}),
         ...(options.packageBlocks !== undefined ? { packageBlocks: options.packageBlocks } : {}),
         ...(options.documents !== undefined ? { documents: options.documents } : {}),
         ...(options.references !== undefined ? { references: options.references } : {})
       });
-      return { ok: true, seat: seat! };
+      return { ok: true, worker: worker! };
     } catch (error) {
       return { ok: false, problems: hireRefusalReasons(error, manifest.id) };
     }
@@ -764,8 +764,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
     const minted = mint(manifest);
     if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${minted.problems.join("; ")}.`);
-    const seat = (minted as { seat: FlowInstance }).seat;
-    const reached = (seat.resources ?? {}) as Record<string, unknown>;
+    const instance = (minted as { worker: FlowInstance }).worker;
+    const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
     // What the worker's grants let its model do with each grantable resource:
     // the mint narrows a read-only grant by turning its write flags off.
@@ -775,13 +775,13 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
-    markVerifiedWorker(ctx.session as object, workerId, seat.config as Readonly<Record<string, unknown>>, granted);
+    markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
     return {
       id: workerId,
       standard: worker.found === "standard",
       flow,
       description,
-      config: seat.config as Readonly<Record<string, unknown>>,
+      config: instance.config as Readonly<Record<string, unknown>>,
       reaches: (accessor: string) => Object.hasOwn(reached, accessor)
     };
   };

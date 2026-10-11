@@ -31,7 +31,7 @@ For a working example, the [kitchen-sink reference app](https://github.com/fixpo
 
 ## Hire a roster
 
-A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` is `engineering.lead`. An org seat belongs to no team: it lives at `org/workers/<name>/WORKER.md` and goes by its folder name alone, so `org/workers/chief-of-staff/` is `chief-of-staff`.
+A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` is `engineering.lead`. An org worker belongs to no team: it lives at `org/workers/<name>/WORKER.md` and goes by its folder name alone, so `org/workers/chief-of-staff/` is `chief-of-staff`.
 
 ```md
 ---
@@ -132,7 +132,7 @@ The name reaches the workers your files declare. A mailbox's board is the organi
 - [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
 - [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
-- [Inventory](./inventory) — a record of every seat and mailbox registered in an organization, readable by a block.
+- [Inventory](./inventory) — a record of every worker and mailbox registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
 - [The chief of staff](./chief-of-staff) — the one worker a person asks to hire or fire workers of their own, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.

@@ -238,7 +238,7 @@ export const PHRASE_SURVIVORS = [
   ["opens two channels", ["apps/docs/docs/resources/client-access.md"]],
   ["Four channels", ["docs/architecture/state-and-scopes.md"]],
   ["outbound channel", ["docs/architecture/webhook-transport.md"]],
-  ["no channel for a per-seat", ["docs/architecture/workforce-default-worker-kind.md"]],
+  ["no channel for a per-worker", ["docs/architecture/workforce-default-worker-kind.md"]],
   ["runtime channel", ["docs/architecture/capabilities.md"]],
   ["public-channel item", ["docs/architecture/items.md"]],
   [

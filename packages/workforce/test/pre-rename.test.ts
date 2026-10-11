@@ -225,7 +225,7 @@ describe("an agent asking for the old discovery domain (BR-18)", () => {
 
     expect(result.domains).toEqual([]);
     expect(result.problem).toContain(`Unknown domain "${OLD.discoveryDomain}"`);
-    expect(result.problem).toContain("seats, mailboxes, skills, resources");
+    expect(result.problem).toContain("workers, mailboxes, skills, resources");
   });
 });
 

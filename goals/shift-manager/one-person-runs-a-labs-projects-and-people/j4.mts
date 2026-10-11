@@ -258,9 +258,9 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
             if (fire === undefined || fire.sessionId === null || fire.requestId === null) failures.push(`J4: the fire was not asked: ${quote(fire)}`);
             else {
               const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
-              const data = asks[0]?.data as { verb?: string; seatId?: string } | undefined;
+              const data = asks[0]?.data as { verb?: string; workerId?: string } | undefined;
               if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${seat}", the turn ended ${fire.status} with ${asks.length} human_approval ask(s), not suspended on one: ${quote(fire)}`);
-              else if (data?.verb !== "fire" || data?.seatId !== seat) failures.push(`J4: the fire's ask names ${JSON.stringify(data)}, not fire "${seat}"`);
+              else if (data?.verb !== "fire" || data?.workerId !== seat) failures.push(`J4: the fire's ask names ${JSON.stringify(data)}, not fire "${seat}"`);
               else notes.push(`J4: asked to fire "${seat}", the turn suspended on one human_approval ${JSON.stringify(data)}; left unanswered`);
             }
           }

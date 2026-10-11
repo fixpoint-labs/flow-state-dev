@@ -46,7 +46,7 @@ import {
   createWorkerInstallation,
   hireWorkforce,
   openMailboxes,
-  wakeMemberSeats,
+  wakeMemberWorkers,
   workerConfigSchema,
   type MailboxManifest,
 } from "@flow-state-dev/workforce";
@@ -687,7 +687,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
   const instances = mailboxInstances(mailboxes, {
     kinds: {
       ...generated.mailboxKinds,
-      mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats, { installation, fallback: nameOnlyLine }) }) as never,
+      mailbox: defineMailboxFlow({ notify: wakeMemberWorkers(seats, { installation, fallback: nameOnlyLine }) }) as never,
     },
   });
   const state = createFlowState({

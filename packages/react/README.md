@@ -399,7 +399,7 @@ import { FlowNavigator } from "@flow-state-dev/react";
 <FlowNavigator
   sections={[
     { label: "Mailboxes", kinds: ["mailbox"] },
-    { label: "Seats",    kinds: ["agent"] },
+    { label: "Workers",    kinds: ["agent"] },
   ]}
   selectedSessionId={sessionId}
   onSelectSession={(picked) => setSessionId(picked)}
@@ -426,7 +426,7 @@ While a leaf is open, `leafToolbar` is called with the leaf's `kind`, `address` 
 
 ```tsx
 <FlowNavigator
-  sections={[{ label: "Seats", kinds: ["agent"] }]}
+  sections={[{ label: "Workers", kinds: ["agent"] }]}
   onSelectSession={(picked) => setSessionId(picked)}
   slots={{
     leafToolbar: (leaf) => (
@@ -450,11 +450,11 @@ Each level of the tree indents by the width of the expand arrow, so a row's arro
 }
 ```
 
-Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. The exception is an instance registered with a `pin`, such as a hired seat: it is listed only to a caller who could open it, so the navigator's `client` has to carry that caller's credential for it to appear. There is no `orgId` prop.
+Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. The exception is an instance registered with a `pin`, such as a hired worker: it is listed only to a caller who could open it, so the navigator's `client` has to carry that caller's credential for it to appear. There is no `orgId` prop.
 
 ### Roster
 
-`Roster` lists the seats hired in an organization. Reach for it when your app has a workforce and you want a standing panel showing who is on it.
+`Roster` lists the workers hired in an organization. Reach for it when your app has a workforce and you want a standing panel showing who is on it.
 
 ```tsx
 import { Roster } from "@flow-state-dev/react";
@@ -462,13 +462,13 @@ import { Roster } from "@flow-state-dev/react";
 <Roster sessionId={sessionId} collectionRef="roster" problems={bootProblems} />
 ```
 
-The seats come from the standing roster collection, which your session's flow declares. `collectionRef` is the key it is declared under, and it defaults to `roster`. That key is a single path segment, so it carries no slash.
+The workers come from the standing roster collection, which your session's flow declares. `collectionRef` is the key it is declared under, and it defaults to `roster`. That key is a single path segment, so it carries no slash.
 
-The seats it shows are the ones hired in the session's own organization. There is no `orgId` prop.
+The workers it shows are the ones hired in the session's own organization. There is no `orgId` prop.
 
-`problems` is the list of seats a boot reload could not restore. Reloading a roster hands back the seats it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries.
+`problems` is the list of workers a boot reload could not restore. Reloading a roster hands back the workers it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries.
 
-A seat row carries `seatId`, `flow` (the kind it was hired into) and `instructions`. It does not carry the seat's settings.
+A worker row carries `workerId`, `flow` (the kind it was hired into) and `instructions`. It does not carry the worker's settings.
 
 ### BoardColumns
 
@@ -510,25 +510,25 @@ A host that passes its own `resourceClient` and wants `live` also passes `fetche
 
 The list renders the `<li>` for every row and puts the task's id on it (`data-task-id`), so a `row` slot returns the body that goes inside one.
 
-### SeatDetail
+### WorkerDetail
 
-`SeatDetail` shows one seat: its kind, and its instructions when the organization's roster publishes them.
+`WorkerDetail` shows one worker: its kind, and its instructions when the organization's roster publishes them.
 
 ```tsx
-import { SeatDetail } from "@flow-state-dev/react";
+import { WorkerDetail } from "@flow-state-dev/react";
 
-<SeatDetail
+<WorkerDetail
   sessionId={sessionId}
   kind={row.kind}
-  seatId={seatId}
+  workerId={workerId}
   collectionRef="roster"
   resourceClient={resourceClient}
 />
 ```
 
-Pass `kind` from the row you already have — a navigator row carries it — so showing it costs no request. For the instructions it reads one item, `seatId`, from the roster collection your session's flow declares under `collectionRef` (defaults to `roster`, the same default `Roster` uses). Pass `seatId` only for a seat hired into the whole organization; leave it out for a seat declared in a worker file, or one a user hired for themselves, and the component says the instructions are not published without reading anything. Never derive `seatId` by hand-splitting a full seat address — a user-owned address's trailing segment can coincidentally equal an org-visible seat's own id, and reading with it would show that other seat's instructions.
+Pass `kind` from the row you already have — a navigator row carries it — so showing it costs no request. For the instructions it reads one item, `workerId`, from the roster collection your session's flow declares under `collectionRef` (defaults to `roster`, the same default `Roster` uses). Pass `workerId` only for a worker hired into the whole organization; leave it out for a worker declared in a worker file, or one a user hired for themselves, and the component says the instructions are not published without reading anything. Never derive `workerId` by hand-splitting a full worker address — a user-owned address's trailing segment can coincidentally equal an org-visible worker's own id, and reading with it would show that other worker's instructions.
 
-The instructions area keeps five states apart: the instructions, *none given*, *not published*, still reading, and could not be read. A read that failed says so rather than looking like a seat with nothing to show.
+The instructions area keeps five states apart: the instructions, *none given*, *not published*, still reading, and could not be read. A read that failed says so rather than looking like a worker with nothing to show.
 
 It reads through `resourceClient` the same way `Roster` and `BoardColumns` do, and with the same fallback: left out, it builds a client with no auth headers. Pass your own when your API needs them.
 
@@ -536,11 +536,11 @@ It reads through `resourceClient` the same way `Roster` and `BoardColumns` do, a
 
 Each panel reads through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
 
-`Roster`, `BoardColumns` and `BoardList` follow the list route's cursor for up to 1,000 pages rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders. A collection with pages left after 1,000 reads shows the error line and Retry instead of the rows read so far, because those aren't the whole list. Retry stops at the same point. If your `limit` is below 200, the list route's maximum, raising it lets the panel read further, and at `limit={200}` the ceiling is about 200,000 rows. Both hold only when the collection returns the page size you ask for: a projected collection may treat `limit` as a hint and return smaller pages, so raising it may not help there. A collection larger than that isn't one these panels are meant to show. A custom `resourceClient` whose cursor never ends hits the same error at any `limit`, and the fix belongs in that client. `SeatDetail` reads one item and has no `limit`.
+`Roster`, `BoardColumns` and `BoardList` follow the list route's cursor for up to 1,000 pages rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders. A collection with pages left after 1,000 reads shows the error line and Retry instead of the rows read so far, because those aren't the whole list. Retry stops at the same point. If your `limit` is below 200, the list route's maximum, raising it lets the panel read further, and at `limit={200}` the ceiling is about 200,000 rows. Both hold only when the collection returns the page size you ask for: a projected collection may treat `limit` as a hint and return smaller pages, so raising it may not help there. A collection larger than that isn't one these panels are meant to show. A custom `resourceClient` whose cursor never ends hits the same error at any `limit`, and the fix belongs in that client. `WorkerDetail` reads one item and has no `limit`.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
-Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`; `row` and `empty` on `BoardList`. `SeatDetail` has no slots.
+Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`; `row` and `empty` on `BoardList`. `WorkerDetail` has no slots.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 

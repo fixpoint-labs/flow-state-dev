@@ -62,9 +62,9 @@ import {
   ASK_ENTRY,
   defineReadOwnFacts,
   INSPECT_ENTRY,
-  seatOf,
-  seatSettingsSchema,
-} from "../../../seat-config.mts";
+  workerOf,
+  workerSettingsSchema,
+} from "../../../worker-config.mts";
 
 /** The kind id the coordinating `WORKER.md` names. **Pinned** — the basename must match. */
 export const EM_KIND = "em";
@@ -171,7 +171,7 @@ export interface EmWorkerFlowOptions {
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;
-  const readOwnFacts = defineReadOwnFacts(seatOf(installation, EM_KIND));
+  const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_KIND));
   const kit = defineSessionBoard({ installation, flowKind: EM_KIND });
   const toolNames = Object.keys(options.catalog);
   const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
@@ -194,7 +194,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     ],
     model: (_input: unknown, ctx: BlockContext) => {
       const model = settingsOf(ctx).model;
-      if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).seatId}" names no \`model:\`, so its turn has nothing to run on.`);
+      if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).workerId}" names no \`model:\`, so its turn has nothing to run on.`);
       return model;
     },
     tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => options.catalog[name]!),
@@ -344,7 +344,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     // Registered once, at its kind; every EM worker's session runs on it.
     cardinality: "collection",
     // A worker's `model:` and the tools its `tools:` line names from the catalog.
-    configSchema: seatSettingsSchema().extend({
+    configSchema: workerSettingsSchema().extend({
       model: z.string().min(1).optional(),
       tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
     }),

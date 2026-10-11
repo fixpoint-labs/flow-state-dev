@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 640" role="img" aria-label="Where each part of a mailbox lives. The mailbox kind is one registered instance, and every mailbox is a session on it. The support.desk session holds its members and charter in session state, and its transcript as mailbox-post items. A woken seat answers from a session of its own. The board rows and the inventory row are organization data outside the session. The session holds no board, the inventory's members list is a copy for finding mailboxes, and only the seat's answer line reaches the mailbox.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 640" role="img" aria-label="Where each part of a mailbox lives. The mailbox kind is one registered instance, and every mailbox is a session on it. The support.desk session holds its members and charter in session state, and its transcript as mailbox-post items. A woken worker answers from a session of its own. The board rows and the inventory row are organization data outside the session. The session holds no board, the inventory's members list is a copy for finding mailboxes, and only the worker's answer line reaches the mailbox.">
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -39,7 +39,7 @@
     <text class="p" x="46" y="246">session on it.</text>
     <text class="muted" x="46" y="272">Its address is the kind</text>
     <rect class="card" x="32" y="304" width="176" height="124" rx="10"/>
-    <text class="h" x="46" y="328">A hired seat</text>
+    <text class="h" x="46" y="328">A hired worker</text>
     <text class="code" x="46" y="350">support.devices</text>
     <text class="p" x="46" y="374">A flow copy of its</text>
     <text class="p" x="46" y="392">own, with sessions</text>
@@ -71,7 +71,7 @@
     <rect class="card-sess" x="256" y="382" width="384" height="86" rx="10"/>
     <text class="code" x="270" y="404">mailbox:support.desk</text>
     <text class="muted" x="420" y="404">on support.devices</text>
-    <text class="p" x="270" y="428">The woken seat's own session. Its reasoning stays here.</text>
+    <text class="p" x="270" y="428">The woken worker's own session. Its reasoning stays here.</text>
     <text class="p" x="270" y="448">Only its answer lands on the mailbox, as one line.</text>
   </g>
 
@@ -92,7 +92,7 @@
     <text class="code" x="702" y="366">support.desk</text>
     <text class="code" x="702" y="392">members: [ … ]</text>
     <text class="muted" x="702" y="418">A copy, for finding which</text>
-    <text class="muted" x="702" y="436">mailboxes a seat is in.</text>
+    <text class="muted" x="702" y="436">mailboxes a worker is in.</text>
     <text class="muted" x="702" y="454">Never the check on a post.</text>
   </g>
 
@@ -101,6 +101,6 @@
     <text class="h" x="32" y="526">Not a copy</text>
     <text class="p" x="32" y="550">The session holds no board. boards: [followups] is read from MAILBOX.md at every start, and the rows live in the org's ledger.</text>
     <text class="p" x="32" y="574">A post is checked against members in the mailbox's own session state. The inventory's members is never consulted.</text>
-    <text class="p" x="32" y="598">A seat's reasoning stays in its own session. The mailbox keeps only the line the seat posts.</text>
+    <text class="p" x="32" y="598">A worker's reasoning stays in its own session. The mailbox keeps only the line the worker posts.</text>
   </g>
 </svg>

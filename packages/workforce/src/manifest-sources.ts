@@ -1,15 +1,15 @@
 /**
- * The seats and mailboxes manifest sources (FIX-817) — the workforce's two
+ * The workers and mailboxes manifest sources (FIX-817) — the workforce's two
  * projections into the discovery door.
  *
  * ## Two layers, joined, because neither one alone is an honest answer
  *
  * The **declared** layer (a tree of `WORKER.md` and `MAILBOX.md`) is the only
- * place a *purpose* is written: a seat's `description:` is what an orchestrator
+ * place a *purpose* is written: a worker's `description:` is what an orchestrator
  * picks on. It cannot say what is live — a file has no idea whether its mailbox
  * was ever opened.
  *
- * The **live** layer (FIX-1405's `inventory/seats/*` and `inventory/mailboxes/*`)
+ * The **live** layer (FIX-1405's `inventory/workers/*` and `inventory/mailboxes/*`)
  * knows what actually got registered in this org. It cannot say what anything is
  * for: a row carries an id, a kind, and for a mailbox its members. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
@@ -26,7 +26,7 @@
  *
  * The direction of the error is deliberate. A partial roster (one boot's view
  * of a tree another process also writes to) under-reports rather than
- * over-reports, and a missing seat costs a planner one `discover` call while a
+ * over-reports, and a missing worker costs a planner one `discover` call while a
  * phantom one costs it the task.
  *
  * ## Where the declared half is read
@@ -49,7 +49,7 @@ import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
 import type { MailboxManifest, WorkerManifest } from "./manifest";
-import type { MailboxInventoryRow, SeatInventoryRow } from "./inventory/collections";
+import type { MailboxInventoryRow, WorkerInventoryRow } from "./inventory/collections";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -74,11 +74,11 @@ export interface DeclaredWorkforce {
  * A key is how a source finds its collection at call time; a domain whose key
  * is omitted registers no source at all, so the door simply carries one domain
  * fewer. That is the ordinary state for an app that opened mailboxes but wired
- * no seat inventory, and it reads as "nothing here" rather than as a fault.
+ * no worker inventory, and it reads as "nothing here" rather than as a fault.
  */
 export interface InventoryKeys {
-  /** Registry key for the seat inventory (`defineSeatInventoryCollection`). */
-  seats?: string;
+  /** Registry key for the worker inventory (`defineWorkerInventoryCollection`). */
+  workers?: string;
   /** Registry key for the mailbox inventory (`defineMailboxInventoryCollection`). */
   mailboxes?: string;
 }
@@ -125,7 +125,7 @@ function purposeOf(
  * **This lists the whole collection and keeps a subset, which is the thing
  * BP-033 tells you not to do.** Stated here rather than left for a reader to
  * find: an inventory row is never deleted, so the listed set grows with every
- * seat and mailbox ever registered in the org while the kept set stays bounded
+ * worker and mailbox ever registered in the org while the kept set stays bounded
  * by what the tree currently declares — and this sits behind a tool a model may
  * call on every step.
  *
@@ -154,24 +154,24 @@ async function listRows<T>(
 }
 
 /**
- * The seats domain: registered seats that are still declared.
+ * The workers domain: registered workers that are still declared.
  *
- * `kind` on the entry is the manifest kind (`"seat"`), not the flow kind the
- * seat was hired into — that one is a fact about how it runs and belongs on the
+ * `kind` on the entry is the manifest kind (`"worker"`), not the flow kind the
+ * worker was hired into — that one is a fact about how it runs and belongs on the
  * contract line, where a planner reads it only when it asks for detail.
  */
-function seatsSource(
+function workersSource(
   roster: DeclaredWorkforce,
   key: string,
 ): BlockManifestSource {
   const files = new Map(roster.workers.map((worker) => [worker.id, worker]));
   return {
-    domain: "seats",
+    domain: "workers",
     origin: "createWorkforceCapability",
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
       const declared = files;
       const entries: ManifestEntry[] = [];
-      for (const row of await listRows<SeatInventoryRow>(ctx, key, "seats")) {
+      for (const row of await listRows<WorkerInventoryRow>(ctx, key, "workers")) {
         // A row that lost its required fields reads back empty rather than
         // throwing (the collection's schema is closed and required) — guard it
         // the same way a row written before an optional field is guarded.
@@ -182,8 +182,8 @@ function seatsSource(
         const kind = row.state.kind;
         entries.push({
           id,
-          kind: "seat",
-          purpose: purposeOf(worker.declared, id, "seat", worker.body),
+          kind: "worker",
+          purpose: purposeOf(worker.declared, id, "worker", worker.body),
           contract:
             `Hired into the "${typeof kind === "string" && kind !== "" ? kind : "agent"}" ` +
             `worker kind. Hand it work by its id.`,
@@ -249,14 +249,14 @@ function mailboxesSource(roster: DeclaredWorkforce, key: string): BlockManifestS
  * ordinary door and calls this.
  *
  * @param options The boot-resolved roster and the inventory registry keys.
- * @returns Zero, one or two sources, seats first.
+ * @returns Zero, one or two sources, workers first.
  */
 export function workforceManifestSources(
   options: WorkforceManifestSourceOptions,
 ): BlockManifestSource[] {
   const sources: BlockManifestSource[] = [];
-  if (options.inventory.seats !== undefined) {
-    sources.push(seatsSource(options.roster, options.inventory.seats));
+  if (options.inventory.workers !== undefined) {
+    sources.push(workersSource(options.roster, options.inventory.workers));
   }
   if (options.inventory.mailboxes !== undefined) {
     sources.push(mailboxesSource(options.roster, options.inventory.mailboxes));

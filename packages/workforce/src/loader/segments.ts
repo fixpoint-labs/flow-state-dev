@@ -38,7 +38,7 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 /**
  * What a segment names, for the error to say.
  *
- * `Team` and `Worker` are the two halves of a seat's address, and `Mailbox` is
+ * `Team` and `Worker` are the two halves of a worker's address, and `Mailbox` is
  * the second half of a mailbox's — dot-joined the same way, because a mailbox
  * id is a flow instance id and a session id. `Document` is a file-declared
  * resource's name — the one segment that is a *file* rather than a folder, and

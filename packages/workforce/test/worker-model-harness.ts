@@ -122,7 +122,7 @@ function workerFlow(kind: string, installation: WorkerInstallation) {
         instructions: (config.instructions as string | undefined) ?? null,
         teamInstructions: (config.teamInstructions as string | undefined) ?? null,
         tone: String(config.tone),
-        skills: ((config.seatSkills as InitialSkill[] | undefined) ?? []).map((s) => s.name),
+        skills: ((config.workerSkills as InitialSkill[] | undefined) ?? []).map((s) => s.name),
         handbook: worker.reaches("handbook"),
         ledger: worker.reaches("ledger")
       };

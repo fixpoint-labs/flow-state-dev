@@ -1,7 +1,7 @@
 /**
  * A workstream's Stream (S7, BR-18 to BR-21): its mailbox's transcript, one
  * live stream for that session, older lines paged in; the pending asks of the
- * mailbox's member seats in the same feed, each at the time it was raised; and
+ * mailbox's member workers in the same feed, each at the time it was raised; and
  * a composer that posts through the mailbox's own `post` action.
  *
  * A line is drawn only once the mailbox holds it: a post keeps its draft
@@ -24,7 +24,7 @@ import { createSessionSSEClient } from "@flow-state-dev/client";
 import type { MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { AskCard } from "../components/AskCard";
 import { SectionFailure } from "../components/ui";
-import { addressedSeat, asksFor, doorOf, liveWorkers, mentionOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
+import { addressedWorker, asksFor, doorOf, liveWorkers, mentionOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type BoardRow, type Failure, type Workstream } from "../lib/reads";
 import { useFollowLatest } from "../lib/follow";
@@ -100,12 +100,12 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
   const addressing = useCallback(
     (name: string): Addressing => {
       const roster = rosterOf(snapshot);
-      const seat = addressedSeat(roster, workstream, name);
-      if (seat === undefined) return { blocked: `@${name} ${gaps.turn.noWorker}` };
+      const worker = addressedWorker(roster, workstream, name);
+      if (worker === undefined) return { blocked: `@${name} ${gaps.turn.noWorker}` };
       const boards = snapshot.boards[workstream.id];
       if (boards !== undefined && !boards.ok) return { blocked: boards.failure.message };
-      const rows = messageableRows(roster, boards?.value.rows ?? [], seat);
-      if (rows.length === 0) return { blocked: `${seat.id} ${gaps.turn.noTask}` };
+      const rows = messageableRows(roster, boards?.value.rows ?? [], worker);
+      if (rows.length === 0) return { blocked: `${worker.id} ${gaps.turn.noTask}` };
       return {
         blocked: null,
         rows,
@@ -115,8 +115,8 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
           const flowId = await resolveRunFlow(clients, link.sessionId).catch((error: unknown) => {
             throw new TurnNotDelivered("not-sent", describeFailure(error).message);
           });
-          const door = doorOf(roster.seats, flowId);
-          if (door === null) throw new TurnNotDelivered("refused", `${seat.id} ${gaps.turn.noDoor}`);
+          const door = doorOf(roster.workers, flowId);
+          if (door === null) throw new TurnNotDelivered("refused", `${worker.id} ${gaps.turn.noDoor}`);
           const sent = await sendTurn(clients, { sessionId: link.sessionId, flowId, door }, message);
           setReceipts((held) => [...held, { id: held.length, row }]);
           // It stopped short, maybe on a new ask: read the Lab again so this Stream and Inbox list whatever it raised.
@@ -174,7 +174,7 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
       <Composer
         key={workstream.id}
         addressing={addressing}
-        mentions={liveWorkers(snapshot, workstream).map((seat) => mentionOf(rosterOf(snapshot), workstream, seat))}
+        mentions={liveWorkers(snapshot, workstream).map((worker) => mentionOf(rosterOf(snapshot), workstream, worker))}
         send={(body) => {
           // A mailbox row written before it recorded its kind names no flow to post through.
           if (workstream.kind === null) throw new Error("This mailbox's inventory row names no flow kind, so there is no post action to send through.");
@@ -243,7 +243,7 @@ export function TranscriptLines({ lines, asks = [] }: { lines: readonly MailboxT
 
 /**
  * A member's pending ask, in the feed at the time it was raised (v2:229-298):
- * the seat, the highlighter's NEEDS YOU (the ask waits on the person, and only
+ * the worker, the highlighter's NEEDS YOU (the ask waits on the person, and only
  * while it does), the one ask card Inbox draws too, and a way to it in Inbox.
  * Answering it here clears it from Inbox: both read the same pending asks.
  */
@@ -252,7 +252,7 @@ function FeedAsk({ ask }: { ask: Ask }) {
     <li className="px-2 py-2.5" data-testid="feed-ask" data-suspension-id={ask.item.suspensionId}>
       <div className="flex items-baseline gap-2">
         <span className="text-[13.5px] font-semibold" data-look="feed-name">
-          {ask.seatId ?? "A worker"}
+          {ask.workerId ?? "A worker"}
         </span>
         <span className="bg-attention px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-[0.12em] text-attention-foreground" data-look="needs-tag">
           NEEDS YOU

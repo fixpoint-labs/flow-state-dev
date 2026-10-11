@@ -1,5 +1,5 @@
 /**
- * `hireWorkforce` — the seat factory.
+ * `hireWorkforce` — the worker factory.
  *
  * Every case here is a record arriving from the loader (or hand-built the same
  * way) and the copy — or the refusal — it produces. The refusals are the point
@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { mintSeats, type HireOptions } from "../src/hire";
+import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
@@ -76,7 +76,7 @@ const doorFlow = defineFlow({
  * is the shape the factory's guard exists for, and the only one that would take
  * the refused key in silence: a flow's config gate is closed, so an unknown key
  * is refused by the flow itself — but a key the flow DOES declare is accepted,
- * and a seat then boots configured the old way with nothing said.
+ * and a worker then boots configured the old way with nothing said.
  */
 const staleDeskFlow = defineFlow({
   kind: "stale-desk",
@@ -117,36 +117,36 @@ const intake = record({
 });
 
 function hireOne(manifest: WorkerManifest): FlowInstance {
-  const [seat] = mintSeats([manifest], { workerFlows: kinds });
-  return seat!;
+  const [worker] = mintWorkers([manifest], { workerFlows: kinds });
+  return worker!;
 }
 
 function refusalOf(
   manifests: WorkerManifest[],
   withKinds: HireOptions["workerFlows"] = kinds
 ): string {
-  let seats: FlowInstance[] | undefined;
+  let workers: FlowInstance[] | undefined;
   try {
-    seats = mintSeats(manifests, { workerFlows: withKinds });
+    workers = mintWorkers(manifests, { workerFlows: withKinds });
   } catch (error) {
-    expect(seats).toBeUndefined();
+    expect(workers).toBeUndefined();
     return error instanceof Error ? error.message : String(error);
   }
-  throw new Error(`expected a refusal, got ${seats.length} seat(s)`);
+  throw new Error(`expected a refusal, got ${workers.length} worker(s)`);
 }
 
 describe("hireWorkforce", () => {
   // 1
   it("mints one copy per record, carrying its own id, in id order", () => {
-    const seats = mintSeats([lead, intake], { workerFlows: kinds });
-    expect(seats.map((s) => s.id)).toEqual(["engineering.intake", "engineering.lead"]);
-    expect(seats.map((s) => s.kind)).toEqual(["intake", "custom-agent"]);
+    const workers = mintWorkers([lead, intake], { workerFlows: kinds });
+    expect(workers.map((s) => s.id)).toEqual(["engineering.intake", "engineering.lead"]);
+    expect(workers.map((s) => s.kind)).toEqual(["intake", "custom-agent"]);
   });
 
   // 2
   it("gives each copy its own settings, frozen, with no trace of its sibling's", () => {
-    const seats = mintSeats([lead, intake], { workerFlows: kinds });
-    const [thin, opinionated] = seats as [FlowInstance, FlowInstance];
+    const workers = mintWorkers([lead, intake], { workerFlows: kinds });
+    const [thin, opinionated] = workers as [FlowInstance, FlowInstance];
 
     expect(opinionated.config).toMatchObject({
       model: "openai/gpt-5.4-mini",
@@ -158,9 +158,9 @@ describe("hireWorkforce", () => {
     expect(Object.hasOwn(opinionated.config, "desk")).toBe(false);
     expect(thin.config).toEqual({
       desk: "front",
-      seatSkills: [],
-      seatTools: [],
-      seatId: "engineering.intake",
+      workerSkills: [],
+      workerTools: [],
+      workerId: "engineering.intake",
       delegates: []
     });
     expect(Object.hasOwn(thin.config, "model")).toBe(false);
@@ -168,15 +168,15 @@ describe("hireWorkforce", () => {
 
   // 3
   it("hands a record's body to its flow as `instructions`, verbatim, beside its declared settings", () => {
-    const seat = hireOne(lead);
-    // Whole-bag equality, not a subset: `seatSkills` is listed because the bag
-    // now genuinely carries it for every seat, and a `toMatchObject` here would
+    const worker = hireOne(lead);
+    // Whole-bag equality, not a subset: `workerSkills` is listed because the bag
+    // now genuinely carries it for every worker, and a `toMatchObject` here would
     // stop noticing a key the factory started adding by accident.
-    expect(seat.config).toEqual({
+    expect(worker.config).toEqual({
       instructions: LEAD_BODY,
-      seatSkills: [],
-      seatTools: [],
-      seatId: "engineering.lead",
+      workerSkills: [],
+      workerTools: [],
+      workerId: "engineering.lead",
       delegates: [],
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"]
@@ -186,9 +186,9 @@ describe("hireWorkforce", () => {
   // 4
   it("contributes no `instructions` key for an empty or whitespace-only body, and still hires", () => {
     for (const body of ["", "   \n\t  \n"]) {
-      const seat = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" }, body }));
-      expect(Object.hasOwn(seat.config, "instructions")).toBe(false);
-      expect(seat.id).toBe("engineering.intake");
+      const worker = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" }, body }));
+      expect(Object.hasOwn(worker.config, "instructions")).toBe(false);
+      expect(worker.id).toBe("engineering.intake");
     }
   });
 
@@ -199,14 +199,14 @@ describe("hireWorkforce", () => {
   // than being refused. Pinned because the page states it; without this the
   // prose rests on a guard nothing asserts.
   it("hires on the frontmatter value when the body is only whitespace, rather than refusing two sources", () => {
-    const seat = hireOne(
+    const worker = hireOne(
       record({
         id: "engineering.lead",
         declared: { flow: "custom-agent", instructions: "From the frontmatter." },
         body: "   \n\t  \n"
       })
     );
-    expect(seat.config).toMatchObject({ instructions: "From the frontmatter." });
+    expect(worker.config).toMatchObject({ instructions: "From the frontmatter." });
   });
 
   // 4 (the other half of "verbatim"). The emptiness test is on the TRIMMED
@@ -214,18 +214,18 @@ describe("hireWorkforce", () => {
   // its own leading and trailing whitespace, which the page also states.
   it("hands a non-empty body over untrimmed, whitespace included", () => {
     const padded = `\n\n  ${LEAD_BODY}  \n\n`;
-    const seat = hireOne(record({ ...lead, body: padded }));
-    expect(seat.config).toMatchObject({ instructions: padded });
+    const worker = hireOne(record({ ...lead, body: padded }));
+    expect(worker.config).toMatchObject({ instructions: padded });
   });
 
   // 4 (continued) — the thinnest record there is still meets the kind's schema.
   //
   // The positive half: nothing about a record declaring no settings and
   // carrying no body lets it skip admission. It hires, and the bag it was
-  // admitted with holds the seat's skills, present and empty.
+  // admitted with holds the worker's skills, present and empty.
   it("hires the thinnest possible record into a composed kind, bag and all", () => {
-    const seat = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" } }));
-    expect(seat.config).toMatchObject({ seatSkills: [], desk: "front" });
+    const worker = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" } }));
+    expect(worker.config).toMatchObject({ workerSkills: [], desk: "front" });
   });
 
   // ...and the refusal half, which is the one that fails on the old code. A
@@ -246,7 +246,7 @@ describe("hireWorkforce", () => {
   // No hireable kind is in that position any more: `instructions` is one of the
   // three settings the contract declares, so every composed kind has a door for
   // a worker's body and a bodied record hires into any of them. "Thin" is a
-  // property of a SEAT — a record with no body carries no `instructions` key,
+  // property of a WORKER — a record with no body carries no `instructions` key,
   // which case 4 above pins — and no longer a property a kind enforces.
   //
   // What survives is the refusal that now carries that weight: a body, or
@@ -284,14 +284,14 @@ describe("hireWorkforce", () => {
   // and register fine, and then run the wrong worker's graph. Refused when the
   // flows are registered, before any worker.
   it("refuses a flow passed under a key that is not its own kind", () => {
-    let seats: FlowInstance[] | undefined;
+    let workers: FlowInstance[] | undefined;
     let message = "";
     try {
-      seats = mintSeats([lead], { workerFlows: { ...kinds, "custom-agent": intakeFlow } });
+      workers = mintWorkers([lead], { workerFlows: { ...kinds, "custom-agent": intakeFlow } });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
-    expect(seats).toBeUndefined();
+    expect(workers).toBeUndefined();
     expect(message).toContain('worker flow "custom-agent"');
     expect(message).toContain('its kind is "intake"');
   });
@@ -361,13 +361,13 @@ describe("hireWorkforce", () => {
 
   // 10
   it("builds nothing partially — one bad record takes the whole call", () => {
-    let seats: FlowInstance[] | undefined;
+    let workers: FlowInstance[] | undefined;
     expect(() => {
-      seats = mintSeats([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
+      workers = mintWorkers([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
         workerFlows: kinds
       });
     }).toThrow();
-    expect(seats).toBeUndefined();
+    expect(workers).toBeUndefined();
   });
 
   // 11
@@ -379,7 +379,7 @@ describe("hireWorkforce", () => {
 
   // 12
   it("returns an empty roster for empty input", () => {
-    expect(mintSeats([], { workerFlows: kinds })).toEqual([]);
+    expect(mintWorkers([], { workerFlows: kinds })).toEqual([]);
   });
 
   // 13
@@ -390,7 +390,7 @@ describe("hireWorkforce", () => {
     expect(message).toContain('worker "engineering.lead"');
     expect(message).toContain("frontmatter");
     expect(message).toContain("body");
-    // No winner was picked: the hire refused rather than returning a seat.
+    // No winner was picked: the hire refused rather than returning a worker.
   });
 
   // 14 — the refused key. `persona` is not a setting the factory imposes and
@@ -416,7 +416,7 @@ describe("hireWorkforce", () => {
   // setting`, which reads as a typo rather than as a key the framework refuses. The
   // guard's real work is the case below: an app whose own `configSchema` has
   // not been renamed yet still DECLARES `persona`, so the flow accepts it. The
-  // seat hires, boots configured the old way, and carries no `instructions` —
+  // worker hires, boots configured the old way, and carries no `instructions` —
   // with nothing said anywhere. That is the failure this refusal exists to stop,
   // so it is the one asserted here.
   it("refuses the refused key where the flow's own schema would still have accepted it in silence", () => {
@@ -448,7 +448,7 @@ describe("hireWorkforce", () => {
 
   // The third contract key, and the sharper case of the two refused ones: every
   // composed kind DECLARES `teamInstructions`, so the closed schema would take
-  // an authored one happily and the seat would run on team instructions its
+  // an authored one happily and the worker would run on team instructions its
   // team never wrote. The control below is what makes that concrete.
   it("refuses a worker that declares `teamInstructions:` itself, by name", () => {
     // Control: the same kind, same record shape, a key it does declare — hires.
@@ -467,7 +467,7 @@ describe("hireWorkforce", () => {
   });
 
   // The hint must never accuse a kind that is demonstrably fine. This kind
-  // ACCEPTS the whole imposed bag, but declares `seatSkills` optional with no
+  // ACCEPTS the whole imposed bag, but declares `workerSkills` optional with no
   // default — so its probed default bag carries no such key, and a version of
   // the hint that inferred from probed defaults told its author they had never
   // composed the contract when all they had was a typo in their own setting.
@@ -478,14 +478,14 @@ describe("hireWorkforce", () => {
       configSchema: z.object({
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
-        seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() })).optional(),
+        workerSkills: z.array(z.object({ name: z.string(), skillMd: z.string() })).optional(),
         // Hand-declared alongside the other three: this kind's point is that it
         // accepts the whole imposed bag while probing to a bag without
-        // `seatSkills`, so it has to keep accepting every key the factory
+        // `workerSkills`, so it has to keep accepting every key the factory
         // imposes as the contract grows.
-        seatTools: z.array(z.any()).optional(),
-        seatPackages: z.array(z.any()).optional(),
-        seatId: z.string().optional(),
+        workerTools: z.array(z.any()).optional(),
+        workerPackages: z.array(z.any()).optional(),
+        workerId: z.string().optional(),
         delegates: z.array(z.string()).optional(),
         retries: z.number().default(3)
       }),
@@ -495,15 +495,15 @@ describe("hireWorkforce", () => {
 
     // It really does accept the bag — without this the test below would pass
     // for a kind that is genuinely missing the door.
-    const [ok] = mintSeats(
+    const [ok] = mintWorkers(
       [record({ id: "engineering.ok", declared: { flow: "optional-no-default" }, body: "Work." })],
       { workerFlows: withKind }
     );
-    expect(ok!.config).toMatchObject({ instructions: "Work.", seatSkills: [] });
+    expect(ok!.config).toMatchObject({ instructions: "Work.", workerSkills: [] });
 
     let message = "";
     try {
-      mintSeats(
+      mintWorkers(
         [
           record({
             id: "engineering.typo",
@@ -566,8 +566,8 @@ describe("hireWorkforce", () => {
   });
 
   it("reads `description` for nothing, and keeps it out of the settings bag", () => {
-    const seat = hireOne(lead);
-    expect(Object.hasOwn(seat.config, "description")).toBe(false);
+    const worker = hireOne(lead);
+    expect(Object.hasOwn(worker.config, "description")).toBe(false);
   });
 });
 
@@ -585,8 +585,8 @@ describe("hireWorkforce reads `flow:` (one row per value)", () => {
   const BLANK = "declares an empty `flow:`, which names no flow kind";
 
   it("hires the built-in `agent` kind for a record with no `flow` key", () => {
-    const seat = hireOne(record({ id: "engineering.plain", body: LEAD_BODY }));
-    expect(seat.kind).toBe("agent");
+    const worker = hireOne(record({ id: "engineering.plain", body: LEAD_BODY }));
+    expect(worker.kind).toBe("agent");
   });
 
   it.each([

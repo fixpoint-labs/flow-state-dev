@@ -1,5 +1,5 @@
 /**
- * Raising the EM seat's ask — the one step a host calls to put an approval in
+ * Raising the EM worker's ask — the one step a host calls to put an approval in
  * front of a person, before anyone has done anything.
  *
  * Its own module because two kinds of host call it:
@@ -7,9 +7,9 @@
  * than opening through the lab, such as an `fsdev` config Shift Manager serves. The
  * host keeps one option and one call; the rule for when to ask lives here.
  *
- * What it does, and nothing else: in the EM seat's own session (`s_<seat id>`,
+ * What it does, and nothing else: in the EM worker's own session (`s_<worker id>`,
  * the one `file` and `drain` run in, and which a session listing returns),
- * opened naming the EM worker if it isn't there yet ({@link openSeatSession}),
+ * opened naming the EM worker if it isn't there yet ({@link openWorkerSession}),
  * run the asking door as the given person until it suspends on a stock
  * `human_approval`. The answer is not this module's business: it arrives
  * through the engine's resume route, the one Shift Manager's Inbox uses.
@@ -46,7 +46,7 @@
 import { ensureSessionRecord, resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { ASK_ENTRY } from "./seat-config.mts";
+import { ASK_ENTRY } from "./worker-config.mts";
 
 /** The step's name, as every refusal spells it. */
 export const RAISE_ASK_STEP = "raiseAsk";
@@ -74,7 +74,7 @@ export interface AskFeature {
 }
 
 export interface RaiseAskOptions {
-  /** The flow state the seats are registered in. Must have durable execution on. */
+  /** The flow state the workers are registered in. Must have durable execution on. */
   state: FlowState;
   /** The EM kind's registered copy. */
   emFlow: FlowInstance;
@@ -97,28 +97,28 @@ export type RaiseAskResult =
   | { raised: false; reason: string; sessionId: string };
 
 /**
- * The session a seat's own actions run in — one per seat, stable across runs.
+ * The session a worker's own actions run in — one per worker, stable across runs.
  *
  * Top-level, not a dispatch run: nothing has to post first for it to exist.
  */
-export function seatSessionId(seatId: string): string {
-  return `s_${seatId.replace(/\./g, "_")}`;
+export function workerSessionId(workerId: string): string {
+  return `s_${workerId.replace(/\./g, "_")}`;
 }
 
 /**
- * Open a seat's own session ({@link seatSessionId}) on `flow`, naming its
+ * Open a worker's own session ({@link workerSessionId}) on `flow`, naming its
  * worker, unless it is there already. Through the engine's one session-birth
  * path, so the flow's create check judges the worker it names.
  *
  * @returns The session id.
  * @throws When the flow's create check refuses the worker.
  */
-export async function openSeatSession(
+export async function openWorkerSession(
   stores: Parameters<typeof ensureSessionRecord>[0],
   options: { flow: FlowInstance; workerId: string; principal: { userId: string; orgId: string } },
 ): Promise<string> {
   const { flow, workerId, principal } = options;
-  const sessionId = seatSessionId(workerId);
+  const sessionId = workerSessionId(workerId);
   const now = Date.now();
   await ensureSessionRecord(
     stores,
@@ -156,19 +156,19 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Raise the ask once, in the EM seat's own session, and return once it is
+ * Raise the ask once, in the EM worker's own session, and return once it is
  * pending.
  *
- * @param options The flow state, the EM seat, the feature and the person.
+ * @param options The flow state, the EM worker, the feature and the person.
  * @returns `raised: true` with the request id, or `raised: false` naming the
  *   claim, request or row that made another ask wrong.
- * @throws If durable execution is off, the seat has no asking door, a store
+ * @throws If durable execution is off, the worker has no asking door, a store
  *   refuses, or the request ended in anything but a pending suspension. Every
  *   message starts with {@link RAISE_ASK_STEP}.
  */
 export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult> {
   const { state, emFlow, emWorker, feature, principal } = options;
-  const sessionId = seatSessionId(emWorker);
+  const sessionId = workerSessionId(emWorker);
   const refuse = (why: string): never => {
     throw new Error(`${RAISE_ASK_STEP}: the ask for "${feature.issue}" was not raised — ${why}`);
   };
@@ -238,7 +238,7 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
 
   let result: { requestId?: string; error?: unknown };
   try {
-    await openSeatSession(stores, { flow: emFlow, workerId: emWorker, principal });
+    await openWorkerSession(stores, { flow: emFlow, workerId: emWorker, principal });
     // `runAction`, the entry the action route dispatches into, rather than the
     // route itself: the route answers 202 before the run reaches its gate, and
     // this step's promise is that the ask is pending when it returns.
@@ -273,7 +273,7 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   const request = await guarded("reading the new ask", () => stores.request.get(requestId));
   if (request === undefined) {
     await release();
-    return refuse("no request was recorded in the seat's session");
+    return refuse("no request was recorded in the worker's session");
   }
   if (request.status !== "suspended") {
     return refuse(`the request ended "${request.status}" instead of waiting on a person`);

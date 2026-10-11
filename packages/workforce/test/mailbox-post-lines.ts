@@ -16,7 +16,7 @@ export type PostedLine = {
   principal?: string;
   author?: string;
   authorVerified: boolean;
-  seatAuthored?: true;
+  workerAuthored?: true;
   body: string;
 };
 

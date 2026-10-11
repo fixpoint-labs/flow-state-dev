@@ -54,6 +54,6 @@ export {
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
 export { defineWorkerRosterFlow } from "./roster-flow";
-export { hireWorkforce, inventorySeats, type HireWorkforceOptions } from "./register";
+export { hireWorkforce, inventoryWorkers, type HireWorkforceOptions } from "./register";
 export { workerConfigOf } from "./verified-worker";
 export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";

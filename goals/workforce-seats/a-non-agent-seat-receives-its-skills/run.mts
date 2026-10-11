@@ -5,7 +5,7 @@
  * A workforce tree with an `org/skills/` folder, a team-level folder and a
  * worker's own is read by the real loader. Two seats of a non-agent kind are
  * hired from it and run an action to completion through the real HTTP router.
- * A block NESTED inside that action reads `ctx.flow.config.seatSkills`, and
+ * A block NESTED inside that action reads `ctx.flow.config.workerSkills`, and
  * what it saw is read back through `/state` after the stores are closed and the
  * host rebuilt.
  *
@@ -239,12 +239,12 @@ await runGoal(async (failures) => {
       if (hired !== undefined) {
         failures.push(`the flow with no contract registered ${hired.length} cop(ies) instead of refusing`);
       } else {
-        for (const name of [fixture.control.id, NO_CONTRACT_KIND, "seatSkills", "nothing was registered"]) {
+        for (const name of [fixture.control.id, NO_CONTRACT_KIND, "workerSkills", "nothing was registered"]) {
           if (!refusal.includes(name)) failures.push(`the refusal does not name "${name}": ${refusal}`);
         }
       }
       evidence.push(
-        "a flow whose schema omits seatSkills refuses the whole installation at boot, naming the worker, the flow and the missing key, and nothing is registered"
+        "a flow whose schema omits workerSkills refuses the whole installation at boot, naming the worker, the flow and the missing key, and nothing is registered"
       );
     }
 
@@ -275,14 +275,14 @@ await runGoal(async (failures) => {
           const status = requestId === undefined ? undefined : await settled(twinStores, requestId);
           const ran = await ranOn(router, session);
           if (status !== "completed") failures.push(`the hand-rolled worker's turn ended ${String(status)} (session ${opened}, action ${res?.status})`);
-          else if (ran.hasSeatSkills !== true) failures.push("the hand-rolled worker's turn carried no seatSkills key");
+          else if (ran.hasSeatSkills !== true) failures.push("the hand-rolled worker's turn carried no workerSkills key");
           else if (ran.desk !== HAND_ROLLED_WORKER.declared.desk) failures.push(`the hand-rolled worker's turn saw desk ${String(ran.desk)}`);
         } finally {
           (twinStores as unknown as { close(): void }).close();
         }
       }
       evidence.push(
-        "a hand-written schema that never calls workerConfigSchema() but takes the bag registers, and its worker's turn carries seatSkills, so (d)'s refusal is about what the schema takes and not about which helper built it"
+        "a hand-written schema that never calls workerConfigSchema() but takes the bag registers, and its worker's turn carries workerSkills, so (d)'s refusal is about what the schema takes and not about which helper built it"
       );
     }
   }

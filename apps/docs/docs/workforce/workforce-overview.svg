@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
-  <title id="title">Worker file, seat and session: where each lives</title>
+  <title id="title">Worker file, worker and session: where each lives</title>
   <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a flow kind with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -52,7 +52,7 @@
   <text x="58" y="302" class="code">teams/engineering/</text>
   <text x="58" y="318" class="code">  mailboxes/standup/</text>
   <text x="58" y="344" class="muted">Members and a charter.</text>
-  <text x="58" y="360" class="muted">Opens a session, not a seat.</text>
+  <text x="58" y="360" class="muted">Opens a session, not a worker.</text>
 
   <!-- Process -->
   <rect x="296" y="84" width="320" height="300" rx="14" class="wall-sess"/>

@@ -3,9 +3,9 @@
  * answer lands.
  *
  * Run on the real kinds, in one in-process host: the built-in mailbox kind
- * built with `routeByPurpose`, and agent seats carrying the mailbox-post
+ * built with `routeByPurpose`, and agent workers carrying the mailbox-post
  * capability, hired through `hireWorkforce`. The route's evaluation is scripted
- * by block name (`[route:<member>]` picks); the seats' answers are scripted by
+ * by block name (`[route:<member>]` picks); the workers' answers are scripted by
  * a marker in the post: `[answer:text]` replies in text, `[answer:tool]` posts
  * through the tool once, `[answer:tool-twice]` twice, `[answer:tool-then-away]`
  * once and then into a mailbox nobody opened, `[answer:tool-then-empty]` once
@@ -13,7 +13,7 @@
  * landing assertion is on the lines the mailbox stored.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1610/BUSINESS-RULES.md`, V3):
- *   BR-9  a text reply lands as the seat: one line, `author` its seat id;
+ *   BR-9  a text reply lands as the worker: one line, `author` its worker id;
  *   BR-10 the tool's first post for the post is the line; a second posts
  *         nothing and says the answer was handed over; the mailbox keeps one
  *         answer per post, so a second delivery lands no second line, two at
@@ -27,7 +27,7 @@
  *         answered post answered; only a dispatch reaches `answer`;
  *   BR-11 an empty reply lands nothing and fails the run, unless the turn
  *         answered through the tool first;
- *   BR-12 the landed line wakes no seat and takes no route;
+ *   BR-12 the landed line wakes no worker and takes no route;
  *   BR-13 the routed heard turn says the reply is posted to the mailbox; the
  *         unrouted one is unchanged;
  *   BR-14 an unrouted mailbox, and direct talk, land nothing on their own;
@@ -55,12 +55,12 @@ import {
   defineAgentWorkerFlow,
   defineMailboxFlow,
   routeByPurpose,
-  wakeMemberSeats,
+  wakeMemberWorkers,
   type MailboxManifest,
   type MailboxNotifyInput,
   type WorkerManifest,
 } from "../src/index";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 import { MAILBOX_ANSWER_ACTION, mailboxAnswerInputSchema } from "../src/mailbox/mailbox-flow";
 import { failLineWrite, postedLines } from "./mailbox-post-lines";
 
@@ -138,16 +138,16 @@ const manifests: MailboxManifest[] = [
   { id: LOUNGE, declared: { members: MEMBERS }, body: "Chat." }
 ];
 
-/** A test-only sender standing in for a mailbox's fan-out: one delivery to one seat, keyed as the wake keys it. */
-function redeliverFlow(seatId: string) {
+/** A test-only sender standing in for a mailbox's fan-out: one delivery to one worker, keyed as the wake keys it. */
+function redeliverFlow(workerId: string) {
   return defineFlow({
     kind: "redeliver-test",
     actions: {
       deliver: {
         inputSchema: mailboxNotifyInputSchema,
         block: dispatcher({
-          name: "redeliver-seat",
-          flowKind: seatId,
+          name: "redeliver-worker",
+          flowKind: workerId,
           action: "onMailboxPost",
           inputSchema: mailboxNotifyInputSchema,
           session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` }
@@ -157,7 +157,7 @@ function redeliverFlow(seatId: string) {
   })({ id: "redeliver-test" });
 }
 
-/** A test-only sender standing in for a seat's landing: one answer dispatched into the mailbox's own `answer`. */
+/** A test-only sender standing in for a worker's landing: one answer dispatched into the mailbox's own `answer`. */
 function answerFlow() {
   return defineFlow({
     kind: "answer-test",
@@ -178,12 +178,12 @@ function answerFlow() {
 
 function host() {
   const agent = defineAgentWorkerFlow({ uses: [mailboxPostCapability] });
-  const seats = mintSeats(workers(), { workerFlows: { agent } });
+  const minted = mintWorkers(workers(), { workerFlows: { agent } });
   const [mailbox] = mailboxInstances(manifests, {
     kinds: {
       mailbox: defineMailboxFlow({
-        notify: wakeMemberSeats(seats),
-        route: routeByPurpose(seats, { model: "test/route" })
+        notify: wakeMemberWorkers(minted),
+        route: routeByPurpose(minted, { model: "test/route" })
       }) as never
     }
   });
@@ -195,7 +195,7 @@ function host() {
       [mailbox!.id]: mailbox!,
       [redeliver.id]: redeliver,
       [answerer.id]: answerer,
-      ...Object.fromEntries(seats.map((seat) => [seat.id, seat]))
+      ...Object.fromEntries(minted.map((worker) => [worker.id, worker]))
     },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
@@ -204,8 +204,8 @@ function host() {
       policy: "allow"
     })
   });
-  const seat = (id: string) => seats.find((s) => s.id === id)!;
-  return { mailbox: mailbox!, state, answers, seat, redeliver, answerer };
+  const worker = (id: string) => minted.find((s) => s.id === id)!;
+  return { mailbox: mailbox!, state, answers, worker, redeliver, answerer };
 }
 
 async function bind(stores: StoreRegistry, sessionId: string) {
@@ -273,15 +273,15 @@ async function quiet(runtime: FlowStateRuntime): Promise<void> {
   }, "every request to settle, again");
 }
 
-/** The seat's conversation in a mailbox: its requests there, with items. */
-async function seatRequests(runtime: FlowStateRuntime, seatId: string, mailboxId: string) {
+/** The worker's conversation in a mailbox: its requests there, with items. */
+async function workerRequests(runtime: FlowStateRuntime, workerId: string, mailboxId: string) {
   const sessions = await runtime.stores.session.list({ parentage: "all" });
-  const session = sessions.find((s) => s.flowId === seatId && s.parentSessionId === mailboxId);
+  const session = sessions.find((s) => s.flowId === workerId && s.parentSessionId === mailboxId);
   if (session === undefined) return [];
   return runtime.stores.request.list({ sessionId: session.id, withItems: true });
 }
 
-/** The kept conversation messages of a seat's requests, as text. */
+/** The kept conversation messages of a worker's requests, as text. */
 function storedMessages(requests: Array<{ items?: unknown[] }>): string[] {
   return requests
     .flatMap((request) => request.items ?? [])
@@ -370,7 +370,7 @@ function failAnswerWrite(stores: StoreRegistry, mailboxId: string) {
 }
 
 describe("a routed agent's answer lands in the mailbox", () => {
-  it("posts a text reply as the seat, one line, which wakes no seat and takes no route (BR-9, BR-12)", async () => {
+  it("posts a text reply as the worker, one line, which wakes no worker and takes no route (BR-9, BR-12)", async () => {
     const { mailbox, state, answers } = host();
     try {
       const runtime = await state.getRuntime();
@@ -404,7 +404,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
   });
 
   it("ends a turn that answered through the tool and then said nothing as answered, not failed (BR-10, BR-11)", async () => {
-    const { mailbox, state, seat } = host();
+    const { mailbox, state, worker } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
@@ -412,7 +412,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
       await quiet(runtime);
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool." }]);
-      const [request] = await seatRequests(runtime, seat("support.devices").id, HELP);
+      const [request] = await workerRequests(runtime, worker("support.devices").id, HELP);
       expect(request!.status).toBe("completed");
     } finally {
       await state.dispose();
@@ -439,7 +439,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
   });
 
   it("posts only the tool's first call for the post; the second says the answer was handed over (BR-10)", async () => {
-    const { mailbox, state, seat } = host();
+    const { mailbox, state, worker } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
@@ -447,19 +447,19 @@ describe("a routed agent's answer lands in the mailbox", () => {
       await quiet(runtime);
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool, 1." }]);
-      const kept = JSON.stringify(await seatRequests(runtime, seat("support.devices").id, HELP));
+      const kept = JSON.stringify(await workerRequests(runtime, worker("support.devices").id, HELP));
       expect(kept).toMatch(/already handed to the mailbox/);
     } finally {
       await state.dispose();
     }
   });
 
-  it("lands no second line when the same post is delivered to the seat again (BR-10)", async () => {
+  it("lands no second line when the same post is delivered to the worker again (BR-10)", async () => {
     const { state, redeliver } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      // Twice, the same routed post, from one sender session: one seat conversation.
+      // Twice, the same routed post, from one sender session: one worker conversation.
       for (let delivery = 0; delivery < 2; delivery += 1) {
         const result = await runAction({
           orgId: DEFAULT_ORG_ID,
@@ -489,7 +489,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
     }
   });
 
-  it("lands no second line for a post delivered again after the seat has answered many others (BR-10)", async () => {
+  it("lands no second line for a post delivered again after the worker has answered many others (BR-10)", async () => {
     const { state, redeliver } = host();
     try {
       const runtime = await state.getRuntime();
@@ -528,7 +528,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
     }
   }, 60_000);
 
-  it("lands one line when the same post reaches the seat twice at once (BR-10)", async () => {
+  it("lands one line when the same post reaches the worker twice at once (BR-10)", async () => {
     const { state, redeliver, answers } = host();
     try {
       const runtime = await state.getRuntime();
@@ -548,7 +548,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
   });
 
   it("answers a post whose first hand-off was refused while a second delivery answered it: one line (BR-10)", async () => {
-    const { state, redeliver, seat, answers } = host();
+    const { state, redeliver, worker, answers } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
@@ -559,7 +559,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
       await deliver(runtime, redeliver, "p_overlap", "[answer:text] my laptop won't join the wifi");
       await until(
         async () =>
-          (await seatRequests(runtime, seat("support.devices").id, "redeliver-session")).some(
+          (await workerRequests(runtime, worker("support.devices").id, "redeliver-session")).some(
             (request) => request.status !== "in_progress"
           ),
         "the second delivery's turn"
@@ -568,7 +568,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
       await quiet(runtime);
 
       expect(answers.answers).toHaveLength(2);
-      expect(JSON.stringify(await seatRequests(runtime, seat("support.devices").id, "redeliver-session"))).toMatch(
+      expect(JSON.stringify(await workerRequests(runtime, worker("support.devices").id, "redeliver-session"))).toMatch(
         /session-not-found/
       );
       expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: "Re: my laptop won't join the wifi" }]);
@@ -581,13 +581,13 @@ describe("a routed agent's answer lands in the mailbox", () => {
     ["the landing", "[answer:text]", "Re: my laptop won't join the wifi"],
     ["the tool", "[answer:tool]", "From the tool."]
   ])("answers a post delivered again after the mailbox refused %s's hand-off: one line (BR-10)", async (_how, marker, line) => {
-    const { state, redeliver, seat } = host();
+    const { state, redeliver, worker } = host();
     try {
       const runtime = await state.getRuntime();
       // The mailbox's session is not open yet, so the first hand-off is refused.
       await deliver(runtime, redeliver, "p_refused", `${marker} my laptop won't join the wifi`);
       await quiet(runtime);
-      const [first] = await seatRequests(runtime, seat("support.devices").id, "redeliver-session");
+      const [first] = await workerRequests(runtime, worker("support.devices").id, "redeliver-session");
       expect(JSON.stringify(first)).toMatch(/session-not-found/);
 
       await bind(runtime.stores, HELP);
@@ -616,8 +616,8 @@ describe("a routed agent's answer lands in the mailbox", () => {
     }
   });
 
-  it("lands nothing on an empty reply and fails the run, recorded in the seat's conversation (BR-11)", async () => {
-    const { mailbox, state, seat } = host();
+  it("lands nothing on an empty reply and fails the run, recorded in the worker's conversation (BR-11)", async () => {
+    const { mailbox, state, worker } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
@@ -625,7 +625,7 @@ describe("a routed agent's answer lands in the mailbox", () => {
       await quiet(runtime);
 
       expect(await lines(runtime, HELP)).toHaveLength(1);
-      const [request] = await seatRequests(runtime, seat("support.devices").id, HELP);
+      const [request] = await workerRequests(runtime, worker("support.devices").id, HELP);
       expect(request!.status).toBe("failed");
       expect(JSON.stringify(request)).toMatch(/empty reply/);
     } finally {
@@ -721,7 +721,7 @@ describe("the mailbox keeps one answer per post", () => {
 
 describe("what a routed agent's turn sees", () => {
   it("hands the turn the lines before the post as context, which the conversation does not keep (BR-24, BR-25)", async () => {
-    const { mailbox, state, answers, seat } = host();
+    const { mailbox, state, answers, worker } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
@@ -735,7 +735,7 @@ describe("what a routed agent's turn sees", () => {
       expect(general.system).toContain("support.devices: Re: my laptop won't join the wifi");
       // The turn is the post alone; the lines are not in it, nor in what the conversation kept.
       expect(general.turn).not.toContain("laptop");
-      const kept = storedMessages(await seatRequests(runtime, seat("support.general").id, HELP));
+      const kept = storedMessages(await workerRequests(runtime, worker("support.general").id, HELP));
       expect(kept.length).toBeGreaterThan(0);
       expect(kept.join("\n")).not.toContain("laptop");
     } finally {
@@ -798,13 +798,13 @@ describe("an agent that was not routed", () => {
   });
 
   it("takes no lines on the public run action, and lands nothing (BR-14, BR-26)", async () => {
-    const { state, answers, seat } = host();
+    const { state, answers, worker } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
       const result = await runAction({
         orgId: DEFAULT_ORG_ID,
-        flow: seat("support.devices"),
+        flow: worker("support.devices"),
         actionName: "run",
         input: {
           message: "[answer:text] hello",

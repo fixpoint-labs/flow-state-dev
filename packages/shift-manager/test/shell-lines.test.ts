@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { toBoardRow, toSeat, toWorkstream, type Ask, type BoardRow } from "../src/lib/reads";
+import { toBoardRow, toWorker, toWorkstream, type Ask, type BoardRow } from "../src/lib/reads";
 import { chiefOfStaffSuggestions, clockTime, initialsOf, streamMark } from "../src/lib/shell";
 import { isChiefOfStaffWorking, startChiefOfStaffWork } from "../src/lib/working";
 
@@ -36,7 +36,7 @@ describe("a message's time (v2:135)", () => {
 
 /** Two workstreams, `eng.desk` (coder) and `eng.side` (reviewer), with `rows` and `asks`. */
 function snapshotOf(rows: BoardRow[], asks: Ask[]): LoadedSnapshot {
-  const seats = [toSeat({ id: "eng.coder", kind: "worker" })!, toSeat({ id: "eng.reviewer", kind: "worker" })!];
+  const workers = [toWorker({ id: "eng.coder", kind: "worker" })!, toWorker({ id: "eng.reviewer", kind: "worker" })!];
   return {
     readAt: 0,
     sessions: [],
@@ -44,7 +44,7 @@ function snapshotOf(rows: BoardRow[], asks: Ask[]): LoadedSnapshot {
     inventory: {
       ok: true,
       value: {
-        seats,
+        workers,
         workstreams: [
           toWorkstream({ id: "eng.desk", kind: "mailbox", members: ["eng.coder"] })!,
           toWorkstream({ id: "eng.side", kind: "mailbox", members: ["eng.reviewer"] })!,
@@ -60,8 +60,8 @@ function snapshotOf(rows: BoardRow[], asks: Ask[]): LoadedSnapshot {
   } as unknown as LoadedSnapshot;
 }
 const row = (mailbox: string, id: string, status: string): BoardRow => toBoardRow(`${mailbox}.work`, mailbox, id, { id, title: id, status, assignee: null });
-const ask = (seatId: string): Ask =>
-  ({ sessionId: `s_${seatId}`, seatId, flowId: seatId, parentSessionId: null, kind: "approval", item: { suspensionId: `q_${seatId}` }, since: 0, unanswerable: null }) as unknown as Ask;
+const ask = (workerId: string): Ask =>
+  ({ sessionId: `s_${workerId}`, workerId, flowId: workerId, parentSessionId: null, kind: "approval", item: { suspensionId: `q_${workerId}` }, since: 0, unanswerable: null }) as unknown as Ask;
 
 describe("Chief of Staff's suggestions (v2:174, 1421-1422)", () => {
   it("asks what blocks the stream that needs the person, ahead of one that only runs", () => {

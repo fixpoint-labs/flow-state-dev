@@ -135,9 +135,9 @@ describe("declaring a board", () => {
 });
 
 describe("the minted ledger", () => {
-  it("is ONE declaration object, shared by the mailbox and by a seat's helper", () => {
+  it("is ONE declaration object, shared by the mailbox and by a worker's helper", () => {
     // The assignee freeze is a WeakSet on the declaration, so two objects
-    // sharing an id share rows and not policy. Give the seat helper its own
+    // sharing an id share rows and not policy. Give the worker helper its own
     // `defineTaskCollection` call and this is the assertion that goes red.
     const instances = mailboxInstances([record("eng.feature", { boards: ["triage"] })]);
     const declared = (instances[0]!.resources as Record<string, unknown>)["eng.feature.triage"];
@@ -150,7 +150,7 @@ describe("the minted ledger", () => {
     expect(board.id).toBe("eng.feature.triage");
   });
 
-  it("refuses a bad name at the seat helper too, not only at bind", () => {
+  it("refuses a bad name at the worker helper too, not only at bind", () => {
     expect(() => mailboxBoard("eng.feature", "has.dot")).toThrow(/board name/i);
   });
 });

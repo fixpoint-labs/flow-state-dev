@@ -17,7 +17,7 @@
  *   BR-9   the line runs no specialist: the specialist heard the token once,
  *          in the person's post, and the others never.
  *
- * BR-15 (the seat's own conversation holds the tool call, never a copy of the
+ * BR-15 (the worker's own conversation holds the tool call, never a copy of the
  * line) left with the post tool: a delegate's answer is its turn's own reply,
  * which its session keeps.
  *
@@ -34,7 +34,7 @@ type Router = Awaited<ReturnType<FlowState["getRouter"]>>;
 
 const USER = "devuser";
 const COORDINATOR = "support.help";
-const SEAT = "support.devices";
+const WORKER = "support.devices";
 const OTHERS = ["support.accounts", "support.fsd", "support.general"];
 const LINE_MARKER = "[reply:in-mailbox]";
 
@@ -82,8 +82,8 @@ async function linesOf(router: Router, sessionId: string): Promise<Line[]> {
 type Item = { type?: string; role?: string; transient?: boolean; content?: Array<{ text?: string }> };
 
 /** Every session of a worker (its sessions on `agent`'s one copy) that mentions `token`, with its items. */
-async function conversationsHolding(router: Router, seat: string, token: string): Promise<Item[][]> {
-  const listed = await call(router, "GET", ["sessions"], undefined, `?flowId=agent&state.workerId=${encodeURIComponent(seat)}&userId=${USER}&include=dispatch-runs&limit=100`);
+async function conversationsHolding(router: Router, worker: string, token: string): Promise<Item[][]> {
+  const listed = await call(router, "GET", ["sessions"], undefined, `?flowId=agent&state.workerId=${encodeURIComponent(worker)}&userId=${USER}&include=dispatch-runs&limit=100`);
   const rows = (JSON.parse(listed.text) as { sessions: Array<{ id: string }> }).sessions;
   const out: Item[][] = [];
   for (const row of rows) {
@@ -108,7 +108,7 @@ async function until(predicate: () => Promise<boolean>, label: string, tries = 4
 const token = () => `reply-token-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /** The post each case sends, routed to the specialist. */
-const postBody = (mark: string) => `[route:${SEAT}] [scenario:reply-in-mailbox] ${mark} when do refunds post?`;
+const postBody = (mark: string) => `[route:${WORKER}] [scenario:reply-in-mailbox] ${mark} when do refunds post?`;
 
 /** Post as the page does, wait for the specialist's line, and give a wrongly woken specialist time to run. */
 async function postAndSettle(router: Router, mark: string): Promise<string> {
@@ -139,7 +139,7 @@ describe("V2 · a specialist answers in the person's conversation, under its own
     const [reply] = lines.slice(at + 1);
     expect(reply!.text).toContain(LINE_MARKER);
     expect(reply!.text).toContain(mark);
-    expect(reply).toMatchObject({ agentName: SEAT });
+    expect(reply).toMatchObject({ agentName: WORKER });
   });
 });
 
@@ -149,11 +149,11 @@ describe("V3 · a specialist's line wakes nobody", () => {
     const mark = token();
     await postAndSettle(router, mark);
 
-    const heard = (await conversationsHolding(router, SEAT, mark))
+    const heard = (await conversationsHolding(router, WORKER, mark))
       .flatMap(keptMessages)
       .filter((m) => m.role === "user" && textOf(m).includes(mark))
       .map(textOf);
-    expect(heard, `${SEAT}'s turns carrying the token`).toEqual([
+    expect(heard, `${WORKER}'s turns carrying the token`).toEqual([
       expect.stringContaining(`${USER}, through ${COORDINATOR}: ${postBody(mark)}`),
     ]);
     for (const other of OTHERS) {

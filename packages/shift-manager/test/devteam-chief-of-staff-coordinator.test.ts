@@ -143,7 +143,7 @@ async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-coordinator-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
   });
   return opened;

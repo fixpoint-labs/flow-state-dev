@@ -12,7 +12,7 @@ import { firstInProcess } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_KIND } from "../agent-worker-flow";
 import { checkWorkerFlows, unattendedBoardWarnings } from "../hire";
-import type { InventorySeat } from "../inventory/open-inventory";
+import type { InventoryWorker } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
 import type { WorkerInstallation } from "./installation";
@@ -103,12 +103,12 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
 }
 
 /**
- * The installation's standard workers as `openInventory` takes seats: each
+ * The installation's standard workers as `openInventory` takes workers: each
  * worker's id, the flow it runs on, and that flow's actions, which its door is
  * read from. The org's inventory lists these, the workers every member has; a
  * user's own workers are theirs, on their roster.
  */
-export function inventorySeats(installation: WorkerInstallation): InventorySeat[] {
+export function inventoryWorkers(installation: WorkerInstallation): InventoryWorker[] {
   const flows = installation.workerFlows();
   return installation.standardWorkers().map((worker) => {
     const kind = standardWorkerFlow(worker, AGENT_KIND)!;

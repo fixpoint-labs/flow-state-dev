@@ -6,7 +6,7 @@
  * the ones worth reading twice:
  *
  *  - **An empty board is not a loading board** (BR-22). Board wiring is
- *    explicit per seat, so "nothing here yet" is an ordinary steady state and
+ *    explicit per worker, so "nothing here yet" is an ordinary steady state and
  *    a spinner in that spot tells somebody to wait for something that is never
  *    coming. The test holds the two renders apart by their `data-state`, which
  *    is why a component that spun on an empty board would fail it — and that
@@ -89,9 +89,9 @@ function endlessSource(row: (n: number) => { topic: string; clientData: unknown 
   };
 }
 
-const seat = (seatId: string, flow = "agent") => ({
-  topic: seatId,
-  clientData: { seatId, flow, instructions: null }
+const worker = (workerId: string, flow = "agent") => ({
+  topic: workerId,
+  clientData: { workerId, flow, instructions: null }
 });
 
 const card = (id: string, status: string, extra: Record<string, unknown> = {}) => ({
@@ -104,8 +104,8 @@ const card = (id: string, status: string, extra: Record<string, unknown> = {}) =
 // ---------------------------------------------------------------------------
 
 describe("Roster", () => {
-  it("lists the organization's seats (BR-19)", async () => {
-    const source = fakeSource([seat("support.ada"), seat("eng.bob", "coder")]);
+  it("lists the organization's workers (BR-19)", async () => {
+    const source = fakeSource([worker("support.ada"), worker("eng.bob", "coder")]);
     render(
       createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" })
     );
@@ -118,8 +118,8 @@ describe("Roster", () => {
     expect(source.listCollectionItems).toHaveBeenCalledWith("s1", "roster", {});
   });
 
-  it("reports seats skipped at boot as a count AND a list (BR-20)", async () => {
-    const source = fakeSource([seat("support.ada")]);
+  it("reports workers skipped at boot as a count AND a list (BR-20)", async () => {
+    const source = fakeSource([worker("support.ada")]);
     render(
       createElement(Roster, {
         sessionId: "s1",
@@ -132,11 +132,11 @@ describe("Roster", () => {
 
     await waitFor(() => expect(screen.getByText("support.ada")).toBeTruthy());
     // Both numbers, never merged: what answers, and what was skipped. A count
-    // alone would let a roster of one seat and ninety skips look healthy.
+    // alone would let a roster of one worker and ninety skips look healthy.
     const block = document.querySelector("[data-roster-problems]");
     expect(block?.getAttribute("data-roster-problems")).toBe("1");
     expect(screen.getByText(/no kind named "retired"/)).toBeTruthy();
-    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe(
+    expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe(
       "1"
     );
   });
@@ -165,11 +165,11 @@ describe("Roster", () => {
   it("hands a slot `null` for a row written before instructions existed (BP-030)", async () => {
     // The projection copies only the keys a row HAS, so a pre-instructions row
     // arrives with the key absent, not null — verified against the real route.
-    // `RosterSeat` declares `string | null`, so a consumer writing
-    // `seat.instructions !== null` before touching it would throw on exactly
+    // `RosterWorker` declares `string | null`, so a consumer writing
+    // `worker.instructions !== null` before touching it would throw on exactly
     // the oldest rows in the store.
     const seen: Array<string | null | undefined> = [];
-    const legacyRow = { topic: "old.zed", clientData: { seatId: "old.zed", flow: "agent" } };
+    const legacyRow = { topic: "old.zed", clientData: { workerId: "old.zed", flow: "agent" } };
 
     render(
       createElement(Roster, {
@@ -177,7 +177,7 @@ describe("Roster", () => {
         resourceClient: fakeSource([legacyRow]),
         slots: {
           rowTrailing: (row) => {
-            seen.push(row.seat.instructions);
+            seen.push(row.worker.instructions);
             return null;
           }
         }
@@ -199,28 +199,28 @@ describe("Roster", () => {
   });
 
   it("counts a row with a non-string, non-null instructions as unreadable rather than rendering it (FIX-1500 bug 2)", async () => {
-    // `isSeat` now checks `instructions` too — a shape this version cannot
-    // cast to `RosterSeat` (and would otherwise throw handing to React as a
+    // `isWorker` now checks `instructions` too — a shape this version cannot
+    // cast to `RosterWorker` (and would otherwise throw handing to React as a
     // child) is dropped like any other unreadable row, same as `Roster`
-    // already does for a row missing `seatId`/`flow`.
-    const badRow = { topic: "bad.row", clientData: { seatId: "bad.row", flow: "agent", instructions: {} } };
-    render(createElement(Roster, { sessionId: "s1", resourceClient: fakeSource([seat("support.ada"), badRow]) }));
+    // already does for a row missing `workerId`/`flow`.
+    const badRow = { topic: "bad.row", clientData: { workerId: "bad.row", flow: "agent", instructions: {} } };
+    render(createElement(Roster, { sessionId: "s1", resourceClient: fakeSource([worker("support.ada"), badRow]) }));
 
     await waitFor(() => expect(screen.getByText("support.ada")).toBeTruthy());
     expect(screen.queryByText("bad.row")).toBeNull();
-    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe("1");
+    expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe("1");
     expect(document.querySelector("[data-roster-problems]")?.getAttribute("data-roster-problems")).toBe("1");
   });
 
   it("reads every page of the roster, not only the first (BR-19, V11)", async () => {
     // 51 rows past the route's default 50-row page (resource-routes.ts:388) —
-    // a panel that reads page one and stops truncates the last seat silently.
-    const seats = Array.from({ length: 51 }, (_, i) => seat(`seat-${String(i).padStart(3, "0")}`));
-    const source = pagedSource(seats);
+    // a panel that reads page one and stops truncates the last worker silently.
+    const workers = Array.from({ length: 51 }, (_, i) => worker(`worker-${String(i).padStart(3, "0")}`));
+    const source = pagedSource(workers);
     render(createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" }));
 
-    await waitFor(() => expect(screen.getByText("seat-050")).toBeTruthy());
-    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe(
+    await waitFor(() => expect(screen.getByText("worker-050")).toBeTruthy());
+    expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe(
       "51"
     );
     // Two requests: the first page and the one the cursor points to.
@@ -228,11 +228,11 @@ describe("Roster", () => {
   });
 
   it("errors rather than render a partial roster when the page ceiling is hit with rows left", async () => {
-    // `limit={1}` is a valid page size, so 1,001 seats need 1,001 pages — one
+    // `limit={1}` is a valid page size, so 1,001 workers need 1,001 pages — one
     // past the ceiling. Rendering the first 1,000 as the roster would drop a
-    // seat with nothing on screen to say so.
-    const seats = Array.from({ length: 1001 }, (_, i) => seat(`seat-${String(i).padStart(4, "0")}`));
-    const source = pagedSource(seats);
+    // worker with nothing on screen to say so.
+    const workers = Array.from({ length: 1001 }, (_, i) => worker(`worker-${String(i).padStart(4, "0")}`));
+    const source = pagedSource(workers);
     render(
       createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster", limit: 1 })
     );
@@ -240,8 +240,8 @@ describe("Roster", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByText(/more still to read/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-    expect(screen.queryByText("seat-0000")).toBeNull();
-    expect(document.querySelector("[data-roster-seats]")).toBeNull();
+    expect(screen.queryByText("worker-0000")).toBeNull();
+    expect(document.querySelector("[data-roster-workers]")).toBeNull();
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
   });
 
@@ -249,28 +249,28 @@ describe("Roster", () => {
     // A transport that hands back the same cursor every time. Without the
     // repeated-cursor check the panel asks 1,000 times before it errors.
     const source = {
-      listCollectionItems: vi.fn(async () => ({ items: [seat("seat-0000")], nextCursor: "stuck" }))
+      listCollectionItems: vi.fn(async () => ({ items: [worker("worker-0000")], nextCursor: "stuck" }))
     };
     render(createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByText(/same page cursor twice/)).toBeTruthy();
-    expect(document.querySelector("[data-roster-seats]")).toBeNull();
+    expect(document.querySelector("[data-roster-workers]")).toBeNull();
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 
   it("renders a roster that ends exactly on the last page the ceiling allows", async () => {
     // The other side of the boundary: 1,000 pages whose last carries no
     // cursor is a complete read, not a truncated one.
-    const seats = Array.from({ length: 1000 }, (_, i) => seat(`seat-${String(i).padStart(4, "0")}`));
-    const source = pagedSource(seats);
+    const workers = Array.from({ length: 1000 }, (_, i) => worker(`worker-${String(i).padStart(4, "0")}`));
+    const source = pagedSource(workers);
     render(
       createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster", limit: 1 })
     );
 
-    await waitFor(() => expect(screen.getByText("seat-0999")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("worker-0999")).toBeTruthy());
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe(
+    expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe(
       "1000"
     );
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);

@@ -35,11 +35,11 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
 
   const index = useMemo<Entry[]>(() => {
     const workstreams = snapshot.inventory.ok ? snapshot.inventory.value.workstreams : [];
-    const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
+    const workers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
     return [
       { group: "Views", label: "Shift Coordinator", hint: "where Shift Manager opens", to: { level: "cos" } },
       ...workstreams.map((w): Entry => ({ group: "Workstreams", label: w.id, hint: `${w.members.length} members`, to: { level: "workstream", mailboxId: w.id, tab: "stream" } })),
-      ...seats.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "roster", team: null } })),
+      ...workers.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "roster", team: null } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
@@ -60,10 +60,10 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
   const sendMessage = () => {
     const message = query.slice(MESSAGE_PREFIX.length).trim();
     if (message === "") return;
-    if (!snapshot.inventory.ok) return setSendFailure("The Lab's seats didn't load, so there is no one to send this to.");
-    const cos = chiefOfStaffOf(snapshot.inventory.value.seats);
+    if (!snapshot.inventory.ok) return setSendFailure("The Lab's workers didn't load, so there is no one to send this to.");
+    const cos = chiefOfStaffOf(snapshot.inventory.value.workers);
     if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
-    if (cos.seat.door === null) return setSendFailure(`${cos.seat.id} ${gaps.turn.noDoor}`);
+    if (cos.worker.door === null) return setSendFailure(`${cos.worker.id} ${gaps.turn.noDoor}`);
     handToChiefOfStaff(message);
     navigate({ level: "cos" });
     onClose();

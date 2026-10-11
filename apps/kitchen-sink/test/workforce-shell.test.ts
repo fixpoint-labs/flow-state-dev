@@ -8,9 +8,9 @@
  * cases fail on that drift.
  *
  * Red states produced before these were trusted:
- *   - add a kind to the tree and not to `SEAT_KINDS` or `COORDINATOR_KINDS`:
+ *   - add a kind to the tree and not to `WORKER_KINDS` or `COORDINATOR_KINDS`:
  *     the worker-flow case fails.
- *   - drop `agent`'s entry from `SEAT_ASKS`: the answering-action case fails,
+ *   - drop `agent`'s entry from `WORKER_ASKS`: the answering-action case fails,
  *     naming the kind with no entry.
  *   - misname `agent`'s field `message`: the answering-action case fails,
  *     naming the field the kind actually takes.
@@ -28,16 +28,16 @@ import {
   COORDINATOR_KINDS,
   defaultConversation,
   delegateOfRun,
-  SEAT_ASKS,
-  SEAT_KINDS,
+  WORKER_ASKS,
+  WORKER_KINDS,
   SHELL_COORDINATORS,
-  seatAskFor,
+  workerAskFor,
 } from "../lib/workforce-shell";
 
 describe("the shell's names match the workforce tree", () => {
   it("lists every worker flow the app runs workers on, the coordinator's apart", async () => {
     const { installation } = await buildKitchenSinkWorkforce();
-    expect([...SEAT_KINDS, ...COORDINATOR_KINDS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
+    expect([...WORKER_KINDS, ...COORDINATOR_KINDS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
     expect([...COORDINATOR_KINDS]).toEqual([COORDINATOR_KIND]);
   });
 
@@ -71,14 +71,14 @@ async function oneStringActions(kind: string): Promise<Record<string, string>> {
   return found;
 }
 
-describe("each seat kind's composer sends to an action the kind declares", () => {
-  it("names every seat kind, and no other", () => {
-    expect(Object.keys(SEAT_ASKS).sort()).toEqual([...SEAT_KINDS].sort());
+describe("each worker kind's composer sends to an action the kind declares", () => {
+  it("names every worker kind, and no other", () => {
+    expect(Object.keys(WORKER_ASKS).sort()).toEqual([...WORKER_KINDS].sort());
   });
 
-  it.each([...SEAT_KINDS])("%s: the named action takes exactly the named one string field, or it has none", async (kind) => {
-    const ask = seatAskFor(kind);
-    if (ask === undefined) throw new Error(`SEAT_ASKS has no entry for "${kind}"`);
+  it.each([...WORKER_KINDS])("%s: the named action takes exactly the named one string field, or it has none", async (kind) => {
+    const ask = workerAskFor(kind);
+    if (ask === undefined) throw new Error(`WORKER_ASKS has no entry for "${kind}"`);
     const actions = await oneStringActions(kind);
     if ("none" in ask) {
       // "None" is only honest where there is truly nothing to answer through.
@@ -99,17 +99,17 @@ describe("a coordinator's composer sends to the coordinator flow's door", () => 
 
 describe("the conversation the page opens on", () => {
   // A store kept across the upgrade still holds the session an earlier page's
-  // "Hire another" ran on, tagged `seat-hires`. Opening it by default would
+  // "Hire another" ran on, tagged `worker-hires`. Opening it by default would
   // put the person's turns in that administrative session.
   it("is the most recent, passing over the session an earlier page's hire ran on", () => {
-    const hires = { id: "sess-hires", tags: ["seat-hires"] };
+    const hires = { id: "sess-hires", tags: ["worker-hires"] };
     const chat = { id: "sess-chat", tags: [] };
     expect(defaultConversation([hires, chat])?.id).toBe("sess-chat");
     expect(defaultConversation([chat, hires])?.id).toBe("sess-chat");
   });
 
   it("is none when the hire session is all there is, so the page starts one", () => {
-    expect(defaultConversation([{ id: "sess-hires", tags: ["seat-hires"] }])).toBeUndefined();
+    expect(defaultConversation([{ id: "sess-hires", tags: ["worker-hires"] }])).toBeUndefined();
     expect(defaultConversation([])).toBeUndefined();
   });
 });

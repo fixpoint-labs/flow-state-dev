@@ -1,10 +1,10 @@
 /**
- * The Inventory tab — the organization's registered seats, mailboxes and
+ * The Inventory tab — the organization's registered workers, mailboxes and
  * memberships, read from one session.
  *
  * Shown on any session whose flow declares at least one of the three inventory
  * collections as browser-readable (a mailbox built with the inventory on
- * declares all three; a seat carrying the hire tools declares only the seat
+ * declares all three; a worker carrying the hire tools declares only the worker
  * collection). One section per collection; a collection the flow does not
  * declare reads *not installed on this flow*, which is never drawn as an empty
  * table.
@@ -31,13 +31,13 @@ import { Boxes } from "lucide-react";
 import { useDevTool } from "../../context/devtool-context";
 import {
   INVENTORY_COLLECTIONS,
-  mailboxesBySeat,
+  mailboxesByWorker,
   findInventoryCollections,
   hasReadableInventory,
   readEveryPage,
   toMailboxRow,
   toMembershipRow,
-  toSeatRow,
+  toWorkerRow,
   type InventoryCollection,
   type InventoryDeclarations,
   type InventoryRead,
@@ -148,22 +148,22 @@ function InventoryView({
     loaded.every((read) => read.rows.length === 0);
 
   const memberships = reads.memberships.status === "loaded" ? reads.memberships.rows.map(toMembershipRow) : [];
-  const seatMailboxes = mailboxesBySeat(memberships);
+  const workerMailboxes = mailboxesByWorker(memberships);
 
   return (
     <div className="flex flex-col gap-3 p-3" data-inventory-view="">
       <p className="text-[11px] text-slate-500">
-        Everything registered in this session's organization. A row stays once it is written: a seat
-        that was fired, or a mailbox a seat has left, is still listed as registered.
+        Everything registered in this session's organization. A row stays once it is written: a worker
+        that was fired, or a mailbox a worker has left, is still listed as registered.
       </p>
       {nothingRegistered && (
         <p className="rounded-md border border-slate-800 px-3 py-2 text-xs text-slate-300" role="status">
-          Nothing is registered in this organization yet. An app registers its seats and mailboxes by
+          Nothing is registered in this organization yet. An app registers its workers and mailboxes by
           calling <code>openInventory</code> at boot.
         </p>
       )}
 
-      <Section name="seats" title="Registered seats" read={reads.seats} noun="seats">
+      <Section name="workers" title="Registered workers" read={reads.workers} noun="workers">
         {(rows) => (
           <table className="w-full text-xs">
             <thead>
@@ -176,15 +176,15 @@ function InventoryView({
               </tr>
             </thead>
             <tbody>
-              {rows.map(toSeatRow).map((seat) => (
-                <tr key={seat.id} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{seat.id}</td>
-                  <td className="py-1.5 pr-2 text-slate-300">{seat.kind ?? "unknown"}</td>
+              {rows.map(toWorkerRow).map((worker) => (
+                <tr key={worker.id} className="border-b border-slate-800/50 align-top">
+                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{worker.id}</td>
+                  <td className="py-1.5 pr-2 text-slate-300">{worker.kind ?? "unknown"}</td>
                   {reads.memberships.status !== "not-installed" && (
                     <td className="py-1.5 pr-3 text-slate-300">
                       {reads.memberships.status === "failed"
                         ? "unknown (the membership read failed)"
-                        : (seatMailboxes.get(seat.id) ?? []).join(", ") || "none"}
+                        : (workerMailboxes.get(worker.id) ?? []).join(", ") || "none"}
                     </td>
                   )}
                 </tr>
@@ -228,14 +228,14 @@ function InventoryView({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-1.5 font-medium">Seat</th>
+                <th className="px-3 py-1.5 font-medium">Worker</th>
                 <th className="py-1.5 pr-3 font-medium">Mailbox</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(toMembershipRow).map((row) => (
-                <tr key={`${row.seatId}/${row.mailboxId}`} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{row.seatId}</td>
+                <tr key={`${row.workerId}/${row.mailboxId}`} className="border-b border-slate-800/50 align-top">
+                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{row.workerId}</td>
                   <td className="py-1.5 pr-3 font-mono text-[11px] text-slate-300">{row.mailboxId}</td>
                 </tr>
               ))}
