@@ -249,8 +249,8 @@ project. It reads every workstream and hands work only to the user's own."
 
 Replace the room lines with the project view in the screens table above: Stream is your own
 project coordinator, Board your own workstreams' boards, Workstreams every entry with its
-progress. Add the "Opening a workstream" paragraph above, and the DevTeam's workstream
-coordinator to its list of standard workers. Remove "The room reads only at set times" and the room's sentence in the DevTeam
+progress. Add the "Opening a workstream" paragraph above. *Amended by D3:* the DevTeam has no standard
+workstream coordinator, so its list of standard workers doesn't name one. Remove "The room reads only at set times" and the room's sentence in the DevTeam
 paragraph.
 
 ## UPDATE · `apps/docs/docs/workforce/inventory.md`
