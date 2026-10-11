@@ -228,8 +228,9 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     // Jev reads each line against the docs as the writer saw them, the control's cut included.
     judged = await judgeSilent(TASK, silent, sectionsOf(seen));
     for (const j of judged) {
-      const calls = j.calls === undefined ? "" : ` (calls: ${j.calls.map((c) => `${c.verdict} ${c.confidence.toFixed(2)}`).join(", ")})`;
-      const read = `${j.verdict} ${j.confidence.toFixed(2)}${calls}, read ${j.cited}`;
+      const said = (c: { verdict: string; confidence: number; gap?: number }) => `${c.verdict} ${c.confidence.toFixed(2)}${c.gap === undefined ? "" : ` (gap ${c.gap.toFixed(2)})`}`;
+      const calls = j.calls === undefined ? "" : ` (calls: ${j.calls.map(said).join(", ")})`;
+      const read = `${said(j)}${calls}, read ${j.cited}`;
       if (j.fails) failures.push(`J4 doc silent (judge: ${read}): ${j.line.slice(0, 400)}`);
       else notes.push(`J4 doc-silent line dropped (judge: ${read}): ${j.line.slice(0, 300)}`);
     }
