@@ -36,8 +36,6 @@
  *
  * Controls:
  *
- *   feature-door-only  the coder's work entry as before: the feature board
- *                      only. Must FAIL leg a on one line under eng.coder.
  *   no-filing-project  the hand-over drops the project the conversation works
  *                      in. Must FAIL leg b on carrying the marker.
  *   no-judge           the coder runs with no judge. Must FAIL leg d2 on
@@ -58,11 +56,10 @@ import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentL
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
-import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["feature-door-only", "no-filing-project", "no-judge"] as const;
+const CONTROLS = ["no-filing-project", "no-judge"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -411,7 +408,6 @@ await runGoal(async (failures) => {
     failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);
   };
   const controlOptions = {
-    ...(CONTROL === "feature-door-only" ? { featureDoorOnly: true } : {}),
     ...(CONTROL === "no-judge" ? { withoutJudge: true } : {}),
   };
   const stores = () => (CONTROL === "no-filing-project" ? droppingFilingProject(inMemoryStores()) : inMemoryStores());
@@ -430,10 +426,9 @@ await runGoal(async (failures) => {
       workspace: { root, remotes: { allow: ["file"] } },
       coderSeatId: CODER,
       logger: silentLogger,
-      mailboxes: { addresses: {}, log: createNotifyLog() },
       inventory: true,
       projects: [
-        { id: "storefront", title: "Storefront", members, workstreams: ["eng.feature"], repository: storefront.url },
+        { id: "storefront", title: "Storefront", members, repository: storefront.url },
         { id: "platform", title: "Platform", members },
         { id: "sandbox", title: "Sandbox", members },
         { id: fixture.secondProject.id, title: fixture.secondProject.title, members, repository: second.url },
@@ -607,11 +602,10 @@ await runGoal(async (failures) => {
         workspace: { root: mkdtempSync(join(tmpdir(), "conversation-task-live-")), remotes: { allow: ["file"] } },
         coderSeatId: CODER,
         logger: silentLogger,
-        mailboxes: { addresses: {}, log: createNotifyLog() },
         inventory: true,
         // The standard install's projects: storefront is the only one with a repository.
         projects: [
-          { id: "storefront", title: "Storefront", members, workstreams: ["eng.feature"], repository: storefront.url },
+          { id: "storefront", title: "Storefront", members, repository: storefront.url },
           { id: "platform", title: "Platform", members },
           { id: "sandbox", title: "Sandbox", members },
         ],

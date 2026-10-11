@@ -1,5 +1,5 @@
 /**
- * Goal check — a post on a mailbox becomes work a person can open and judge.
+ * Goal check — a post in a workstream becomes work a person can open and judge.
  *
  * **The third sibling.** `it-wakes-the-seat-a-file-declared` grades what the
  * plumbing carried, model-free. `it-commits-from-the-seats-own-file` grades that
@@ -11,9 +11,11 @@
  *
  * ## What it grades
  *
- * 1. **The mailbox is driven.** An operator posts one line. The line lands in
- *    the transcript, reaches the EM seat and nobody else, and **the board holds
- *    exactly one row** — enumerated, not looked up, because presence is not
+ * 1. **The workstream is driven.** A person posts one line in Storefront's
+ *    `feature` workstream, which the EM leads. The line lands in the
+ *    workstream session's transcript, the EM's turn files the coder's task, and
+ *    **the workstream session's board holds exactly one row**, naming the
+ *    feature and its phase — enumerated, not looked up, because presence is not
  *    exclusivity. Before the post there is no row (BR-6, BR-7, BR-8, BR-9).
  * 2. **The artifact outlives the run.** The work is published to a bare
  *    repository at a declared path; the store is closed, the temporary
@@ -78,16 +80,15 @@ import {
   harnessRunInputSchema,
   sequencer,
 } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { encodeUserSegment, type FlowInstance, type HarnessBlock } from "@flow-state-dev/core/types";
+import { runAction } from "@flow-state-dev/engine";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { boardMailboxOf, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
-import { createNotifyLog, type NotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
+import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { DRAIN_ENTRY, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../../../packages/shift-manager/teams/devteam/acceptance.mts";
 import {
   BASE_REF,
@@ -107,31 +108,18 @@ stripIntentOverrides();
 
 /** The seat the board's `coder` assignee is addressed to. */
 const ASSIGNED_SEAT = "eng.coder";
-/** The seat the mailbox post is delivered to. */
+/** The worker that leads the feature workstream, reads the post, and files the coder's task. */
 const COORDINATOR_SEAT = "eng.em";
-/** Declared on the mailbox, hired into the same kind as the coder, and never given work. */
+/** Hired into the same kind as the coder, one of the EM's delegates, and never given this work. */
 const REVIEWER_SEAT = "eng.reviewer";
-/**
- * The members this check's claim names. The mailbox's full member list is read
- * off `MAILBOX.md` at run time, not restated here: a list this check typed out
- * goes stale the moment the tree adds a member.
- */
-const CLAIMED_MEMBERS = [COORDINATOR_SEAT, ASSIGNED_SEAT, REVIEWER_SEAT];
+/** The project, and the workstream in it the post is made in. */
+const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
+const WORKSTREAM_REF = `shared/${STOREFRONT.id}/feature`;
 
-/** The feature, and the line an operator posts to ask for it. */
+/** The feature, and the line a person posts to ask for it. */
 const ISSUE = "greeting-module";
-const POST_LINE = `${ISSUE}: Add a greeting module to the repository.`;
-
-/** The row the EM files in answer, derived exactly as the manager derives it. */
-const TASK_ID = harnessTaskId(ISSUE, PHASE);
-
-/**
- * The row's storage key: the mailbox board's minted id, then the row id.
- * The id is read off the lab, which read it off the tree.
- */
-function rowKey(lab: Lab): string {
-  return `${lab.board.id}/${TASK_ID}`;
-}
+const GOAL = "Add a greeting module to the repository.";
+const POST_LINE = `${ISSUE}: ${GOAL}`;
 
 
 /** The branch prefix the manager cuts work on. */
@@ -179,7 +167,7 @@ const STORE_FILE = join(RUN_DIR, "lab.db");
 
 const RUN_TIMEOUT_MS = 10 * 60_000;
 const SETTLE_TIMEOUT_MS = 12 * 60_000;
-/** How long the fan-out has to turn a post into a row. It is one dispatch. */
+/** How long the EM's turn has to turn a post into a row: one model turn. */
 const FILED_TIMEOUT_MS = 30_000;
 /** How long a control's scripted run has to reach a terminal row state. */
 const CONTROL_SETTLE_TIMEOUT_MS = 120_000;
@@ -301,17 +289,15 @@ const unavailableHarness = () =>
 // ---------------------------------------------------------------------------
 
 /**
- * Wait for the post's row to appear, or give up.
+ * Wait for a control's row to appear on the EM's own session's board, or give up.
  *
- * The fan-out is deliberately **not** inside the post's own request — the
- * mailbox hands it off so delivery latency cannot eat the next poster's queue
- * budget — so the row lands a moment after `post()` returns. Reading it
- * immediately is a race that passes on a fast machine and fails on a slow one.
+ * The controls file through the EM's own `file` door, which costs no inference:
+ * what each one guards happens after the filing.
  */
 async function waitForRow(lab: Lab, budgetMs: number): Promise<Task | undefined> {
   const deadline = Date.now() + budgetMs;
   for (;;) {
-    const row = await lab.row(TASK_ID);
+    const row = await lab.featureRow(ISSUE);
     if (row !== undefined) return row;
     if (Date.now() >= deadline) return undefined;
     await sleep(250);
@@ -337,9 +323,68 @@ async function runBoardUntilSettled(lab: Lab, budgetMs: number): Promise<Task | 
   const deadline = Date.now() + budgetMs;
   let row: Task | undefined;
   while (Date.now() < deadline) {
-    row = await lab.row(TASK_ID);
+    row = await lab.featureRow(ISSUE);
     if (row !== undefined && row.status !== "in_progress" && row.status !== "pending") return row;
     if (row === undefined || row.status === "pending") await lab.drain(COORDINATOR_SEAT);
+    await sleep(1_000);
+  }
+  return row;
+}
+
+/** The EM's `feature` workstream session in Storefront: the one opening it created. */
+async function featureSession(lab: Lab): Promise<string> {
+  const runtime = await lab.state.getRuntime();
+  const [session] = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: "all", state: { workstreamId: WORKSTREAM_REF } });
+  if (session === undefined) throw new Error(`opening ${WORKSTREAM_REF} made no workstream session`);
+  return session.id;
+}
+
+/** Run one of the EM's actions in `sessionId`, as the lab's owner. */
+async function emAct(lab: Lab, sessionId: string, actionName: string, input: unknown): Promise<{ error?: unknown }> {
+  const runtime = await lab.state.getRuntime();
+  return (await runAction({
+    orgId: LAB_ORG_ID,
+    flow: lab.seats[COORDINATOR_SEAT] as FlowInstance,
+    actionName,
+    input,
+    userId: LAB_USER_ID,
+    sessionId,
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+  } as never)) as { error?: unknown };
+}
+
+/** Every row on the workstream session's board, by stored key, in the owner's storage. */
+async function workstreamRows(lab: Lab, sessionId: string): Promise<Record<string, Task>> {
+  return (await lab.stored("user", `tasks/${encodeUserSegment(`${sessionId}~`)}`)) as Record<string, Task>;
+}
+
+/** The workers the workstream session's board handed work to: each task session under it. */
+async function dispatchedFrom(lab: Lab, sessionId: string): Promise<Array<{ workerId: string | undefined }>> {
+  const runtime = await lab.state.getRuntime();
+  const children = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: { parentOf: sessionId } });
+  return children.map((child) => ({ workerId: (child.state as { workerId?: string } | undefined)?.workerId }));
+}
+
+/** The person's lines in a session: its user messages, oldest first. */
+async function postedLines(lab: Lab, sessionId: string): Promise<string[]> {
+  const runtime = await lab.state.getRuntime();
+  const requests = await runtime.stores.request.list({ sessionId, withItems: true } as never);
+  return requests
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .flatMap((request) => ((request as { items?: unknown[] }).items ?? []) as Array<Record<string, unknown>>)
+    .filter((item) => item.type === "message" && item.role === "user")
+    .map((item) => JSON.stringify(item.content ?? item.text ?? item));
+}
+
+/** Run the workstream session's board until its one row stops moving, or give up. */
+async function settleWorkstream(lab: Lab, sessionId: string, budgetMs: number): Promise<Task | undefined> {
+  const deadline = Date.now() + budgetMs;
+  let row: Task | undefined;
+  while (Date.now() < deadline) {
+    row = Object.values(await workstreamRows(lab, sessionId))[0];
+    if (row !== undefined && row.status !== "in_progress" && row.status !== "pending") return row;
+    if (row === undefined || row.status === "pending") await emAct(lab, sessionId, DRAIN_ENTRY, {});
     await sleep(1_000);
   }
   return row;
@@ -525,7 +570,6 @@ await runGoal(async (failures) => {
   // =========================================================================
 
   {
-    const log = createNotifyLog();
     const dirs = createScratchRepo("no-harness");
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
@@ -533,13 +577,14 @@ await runGoal(async (failures) => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: ASSIGNED_SEAT,
       logger: silentLogger,
-      mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      // No inference: what this control guards is not the judge.
+      withoutJudge: true,
       harness: () => unavailableHarness(),
     });
     try {
-      await lab.post?.(POST_LINE);
+      await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
       // **The row has to exist before its fate means anything.** Without this
-      // the control passes when the post files nothing at all — "no completed
+      // the control passes when the filing files nothing at all — "no completed
       // row and no branch" is equally true of a lab that never started, and a
       // control that green-lights on its own setup failing is worse than none.
       // Found the hard way: it passed vacuously exactly once, on a run where a
@@ -547,7 +592,7 @@ await runGoal(async (failures) => {
       const filed = await waitForRow(lab, FILED_TIMEOUT_MS);
       if (filed === undefined) {
         failures.push(
-          `control no-harness: the post filed no row, so "the row did not settle completed" ` +
+          `control no-harness: the filing filed no row, so "the row did not settle completed" ` +
             `says nothing about the harness`,
         );
         return { failures, evidence: "" };
@@ -602,12 +647,10 @@ await runGoal(async (failures) => {
   // tell the coder from the reviewer — and that is the whole of the claim.
   //
   // The perturbation is one thing: the board's `coder` assignee is addressed to
-  // the reviewer seat. A mailbox *notification* to a declared member is a
-  // different dispatch kind and is expected; what BR-8 forbids is work, and
-  // this is what work reaching the reviewer looks like.
+  // the reviewer seat. What BR-8 forbids is work, and this is what work
+  // reaching the reviewer looks like.
 
   {
-    const log = createNotifyLog();
     const dirs = createScratchRepo("reviewer");
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
@@ -615,16 +658,17 @@ await runGoal(async (failures) => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: REVIEWER_SEAT,
       logger: silentLogger,
-      mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      // No inference: what this control guards is not the judge.
+      withoutJudge: true,
       harness: () => inertHarness(),
     });
     try {
-      await lab.post?.(POST_LINE);
+      await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
       // Same reason as the control above: with no row there is nothing for the
       // board to hand anywhere, and "no dispatch named the reviewer" would be
       // true of a lab that never started.
       if ((await waitForRow(lab, FILED_TIMEOUT_MS)) === undefined) {
-        failures.push("control work-reaches-the-reviewer: the post filed no row to hand over");
+        failures.push("control work-reaches-the-reviewer: the filing filed no row to hand over");
         return { failures, evidence: "" };
       }
       // One pass is enough here, and this is the one control that does not wait
@@ -668,7 +712,6 @@ await runGoal(async (failures) => {
   // a model asked to ignore its brief is a slower way of writing this file.
 
   {
-    const log = createNotifyLog();
     const dirs = createScratchRepo("rejected");
     const stores = sqliteStores({ filename: ":memory:" });
     const lab = await openLab({
@@ -676,14 +719,15 @@ await runGoal(async (failures) => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: ASSIGNED_SEAT,
       logger: silentLogger,
-      mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      // No inference: what this control guards is not the judge.
+      withoutJudge: true,
       requireAcceptance: true,
       harness: ({ cwd }) => committingHarness(cwd),
     });
     try {
-      await lab.post?.(POST_LINE);
+      await lab.file(COORDINATOR_SEAT, { issue: ISSUE, goal: GOAL });
       if ((await waitForRow(lab, FILED_TIMEOUT_MS)) === undefined) {
-        failures.push("control rejected-work: the post filed no row to run");
+        failures.push("control rejected-work: the filing filed no row to run");
         return { failures, evidence: "" };
       }
       const row = await runBoardUntilSettled(lab, CONTROL_SETTLE_TIMEOUT_MS);
@@ -731,7 +775,6 @@ await runGoal(async (failures) => {
   mkdirSync(RUN_DIR, { recursive: true });
   const dirs = createScratchRepo("ships", { artifactRepo: ARTIFACT_REPO });
   const stores = sqliteStores({ filename: STORE_FILE });
-  const notifyLog: NotifyLog = createNotifyLog();
 
   /** Every prompt the manager built, so the anti-game reads what was actually sent. */
   const prompts: string[] = [];
@@ -756,9 +799,10 @@ await runGoal(async (failures) => {
     coderSeatId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
-    // Only the EM is addressed. Every other declared member of the mailbox is a
-    // true no-op in the fan-out — recorded and skipped, never dispatched to.
-    mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log: notifyLog },
+    // Storefront's `feature` workstream, opened by the lab's owner with the EM as its lead.
+    inventory: true,
+    projects: [{ id: STOREFRONT.id, title: "Storefront" }],
+    workstreams: [{ as: "owner", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: COORDINATOR_SEAT } }],
     harness: ({ cwd, resume, onSession }) =>
       sequencer({
         name: "devforce-ships-harness",
@@ -786,97 +830,67 @@ await runGoal(async (failures) => {
 
   /** Filled in once the run has been published, so the legs after `dispose` can read them. */
   let branch: string | undefined;
-  let mailboxId = "";
+  let workstream = "";
   let ledgerKey = "";
 
   try {
-    if (lab.post === undefined || lab.transcript === undefined || lab.mailboxId === undefined) {
-      return { failures: ["the lab opened no mailbox, so there is no door to post through"], evidence: "" };
-    }
-    mailboxId = lab.mailboxId;
-    ledgerKey = rowKey(lab);
+    workstream = await featureSession(lab);
 
     // ---- BR-9, first: the board does not start itself -------------------
-    if ((await lab.row(TASK_ID)) !== undefined) {
+    if (Object.keys(await workstreamRows(lab, workstream)).length !== 0) {
       failures.push("a row existed before anybody posted, so the post is not what files it");
       return { failures, evidence: "" };
     }
 
     // ---- BR-6, BR-7: the post drives the filing --------------------------
-    const posted = await lab.post(POST_LINE);
+    const posted = await emAct(lab, workstream, MESSAGE_ENTRY, { message: POST_LINE });
     if (posted.error !== undefined) {
-      return { failures: [`the post was refused — ${posted.error}`], evidence: "" };
+      return { failures: [`the post was refused — ${JSON.stringify(posted.error)}`], evidence: "" };
     }
 
-    const transcript = await lab.transcript();
-    if (transcript.length !== 1 || transcript[0]?.body !== POST_LINE) {
+    const transcript = await postedLines(lab, workstream);
+    if (transcript.length !== 1 || !transcript[0]!.includes(POST_LINE)) {
       failures.push(
-        `the mailbox's transcript carries ${transcript.length} line(s); wanted exactly the one ` +
-          `that was posted`,
+        `the workstream session's transcript carries ${transcript.length} line(s) from the person; wanted exactly ` +
+          `the one that was posted`,
       );
     }
 
-    const filedRow = await waitForRow(lab, FILED_TIMEOUT_MS);
+    const deadline = Date.now() + FILED_TIMEOUT_MS;
+    let filed: Record<string, Task> = {};
+    while (Object.keys(filed).length === 0 && Date.now() < deadline) {
+      filed = await workstreamRows(lab, workstream);
+      if (Object.keys(filed).length === 0) await sleep(250);
+    }
+    // **BR-7 says exactly one row, so enumerate — presence is not exclusivity.**
+    const rowKeys = Object.keys(filed);
+    const filedRow = Object.values(filed)[0];
     if (filedRow === undefined) {
       return {
-        failures: [`the post landed but no row "${TASK_ID}" was filed, so the EM seat was not reached`],
+        failures: [`the post landed but the EM filed no row on the workstream session's board`],
         evidence: "",
       };
     }
-
-    // **BR-7 says exactly one row, so enumerate — presence is not exclusivity.**
-    // Looking up the id this check expects can only ever confirm the first half:
-    // a regression that filed a second row under another id, or one per declared
-    // member, would leave the expected row exactly where it was and stay green.
-    const allRows = await lab.rows();
-    const rowKeys = Object.keys(allRows);
-    if (rowKeys.length !== 1 || rowKeys[0] !== rowKey(lab)) {
+    if (rowKeys.length !== 1) {
       failures.push(
-        `the board holds ${rowKeys.length} row(s) [${rowKeys.join(", ")}]; BR-7 says one post ` +
-          `files exactly one row, addressed to the coder assignee`,
+        `the workstream's board holds ${rowKeys.length} row(s) [${rowKeys.join(", ")}]; BR-7 says one post ` +
+          `files exactly one row, for the coder`,
       );
     }
-    if (filedRow.assignee !== "coder") {
-      failures.push(`the row is addressed to "${String(filedRow.assignee)}"; wanted the coder assignee`);
+    if (filedRow.assignee !== ASSIGNED_SEAT) {
+      failures.push(`the row is addressed to "${String(filedRow.assignee)}"; wanted ${ASSIGNED_SEAT}`);
+    }
+    const payload = filedRow.input as { issue?: unknown; phase?: unknown } | undefined;
+    if (payload?.issue !== ISSUE || payload?.phase !== "implement") {
+      failures.push(`the row names ${JSON.stringify(payload)}; wanted the feature "${ISSUE}" at implement`);
     }
     if (failures.length > 0) return { failures, evidence: "" };
+    ledgerKey = rowKeys[0]!;
 
-    // BR-8's positive half: exactly the EM was addressed, and every other
-    // declared member was seen and skipped. Not an absence — a record.
-    const skipped = [...notifyLog.skipped].sort();
-    // Every member the board's `MAILBOX.md` declares, read off the tree the lab opened.
-    const declaredMembers = (boardMailboxOf(lab.roster).declared.members as string[] | undefined) ?? [];
-    const expectedSkips = declaredMembers.filter((m) => m !== COORDINATOR_SEAT).sort();
-    const unseated = CLAIMED_MEMBERS.filter((member) => !declaredMembers.includes(member));
-    if (unseated.length > 0) {
-      failures.push(
-        `the mailbox declares [${declaredMembers.join(", ")}], without [${unseated.join(", ")}] — ` +
-          `the claim is about those members, so it would hold vacuously`,
-      );
-    }
-    if (notifyLog.addressed.join(",") !== COORDINATOR_SEAT) {
-      failures.push(
-        `the fan-out addressed [${notifyLog.addressed.join(", ")}]; wanted only ${COORDINATOR_SEAT}`,
-      );
-    }
-    if (skipped.join(",") !== expectedSkips.join(",")) {
-      failures.push(
-        `the fan-out skipped [${skipped.join(", ")}]; wanted [${expectedSkips.join(", ")}] — ` +
-          `a declared member the router never saw is a member the claim does not cover`,
-      );
-    }
-    if (notifyLog.refusals.length > 0) {
-      failures.push(`the fan-out recorded ${notifyLog.refusals.length} refusal(s): ${notifyLog.refusals.join("; ")}`);
-    }
-    if (failures.length > 0) return { failures, evidence: "" };
-
-    evidence.push(
-      `one post on ${lab.mailboxId} produced exactly one row (${TASK_ID}), with ` +
-        `${expectedSkips.length} declared member(s) seen and skipped`,
-    );
+    evidence.push(`one post in ${workstream} produced exactly one row (${filedRow.id}) for ${ASSIGNED_SEAT}, naming ${ISSUE} at implement`);
 
     // ---- the run --------------------------------------------------------
-    const row = await runBoardUntilSettled(lab, SETTLE_TIMEOUT_MS);
+    const row = await settleWorkstream(lab, workstream, SETTLE_TIMEOUT_MS);
 
     if (row?.status !== "completed") {
       failures.push(
@@ -886,7 +900,7 @@ await runGoal(async (failures) => {
     }
 
     // ---- BR-8, graded where the rule points: the board dispatch record ---
-    const dispatches = await lab.dispatched(COORDINATOR_SEAT);
+    const dispatches = await dispatchedFrom(lab, workstream);
     const toReviewer = dispatches.filter((child) => child.workerId === REVIEWER_SEAT);
     if (toReviewer.length > 0) {
       failures.push(
@@ -1068,7 +1082,7 @@ await runGoal(async (failures) => {
   // connection, which is a weaker claim than BR-11 makes.
   const freshRead = spawnSync(
     "pnpm",
-    ["tsx", REREAD, STORE_FILE, LAB_USER_ID, LAB_ORG_ID, ledgerKey, mailboxId],
+    ["tsx", REREAD, STORE_FILE, LAB_USER_ID, LAB_ORG_ID, ledgerKey, workstream],
     { encoding: "utf8", timeout: 120_000 },
   );
   if (freshRead.status !== 0) {

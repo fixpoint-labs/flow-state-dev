@@ -1,71 +1,84 @@
 /**
- * The `worker` kind — one file under `workforce/flows/workers/`, basename =
- * the kind id every worker `WORKER.md` names in its `flow:` line. Both worker
- * seats are hired onto it.
+ * The `worker` flow — one file under `workforce/flows/workers/`, basename =
+ * the flow every worker `WORKER.md` names in its `flow:` line. Both workers
+ * are hired onto it, one registered copy.
  *
- * The same-flow hand-off with a desk-narrowed claim is taken from
- * `goals/manager-queue-lab/lab/workforce/flows/workers/builder.mts`. What is
- * new here is the one thing this proof is about: a row that stops to ask a
- * person, and a row that, in finishing, files the next one for another desk.
+ * A worker takes tasks through its `work` entry, built by Workforce's
+ * `workerTaskEntry`: that is what makes it a delegate that takes a task, and
+ * what gives the planner, whose `delegates:` names both workers, its task
+ * actions. A row the planner files runs here in a task session of its own,
+ * opened by the planner's conversation's board and naming the worker the row
+ * was filed for. No routing key is read here: the row's assignee is the
+ * worker.
  *
- * ## The routing map is an argument, never the tree
+ * ## What the work reports
  *
- * `routes` (desk key -> seat id) is the app's. The worker's claim reads it and
- * nothing else; the worker's own `answersFor` line arrives in the seat's config
- * bag and is only ever *reported* back out, from inside the running row, so a
- * check can grade the row against the file of the seat that actually ran it.
- * Grading the map against itself would put the tree on both sides of routing
- * and the leg could not fail however badly a row was routed — the defect
- * `manager-queue-lab`'s README records shipping and fixing.
+ * The turn appends one line to a file outside the board. Everything in it is
+ * something only the running attempt can know: which worker this session runs
+ * as, what that worker's **own file** says in `answersFor:`, which task and
+ * attempt it is, which session it ran in, and the answer the row held. The
+ * desk a row is for comes off the row the planner filed, so a check can grade
+ * the two against each other without reading any routing.
  *
  * ## The park condition is the one line that is not free
  *
- * A resumed attempt is handed the same `input` that asked the question. A body
- * that decides to park by looking at *what it was asked* therefore parks again
- * forever. What changed is the **answer**, which the unpark wrote onto the row
- * as its `feedback` — so the body reads the row and parks only while no answer
- * is on it. `GOAL_CONTROL=ignore-the-answer` swaps that one decision for the
- * wrong one.
+ * A row parked on its worker's question goes back in the queue with the
+ * person's answer on it (`answerTask`), and its next attempt runs in the same
+ * task session. The row still says what it asks, so a body that decides to
+ * park by looking at *what it was asked* parks again forever. What changed is
+ * that the row is **answered** — so the body parks only while it is not.
+ * `GOAL_CONTROL=ignore-the-answer` swaps that one decision for the wrong one.
+ *
+ * The park is the conversation board's question park, written the way its
+ * `parkOnQuestion` tool writes it: on the conversation's own ledger, under
+ * the claim this attempt holds, from a running row, marked as a question, so
+ * the row is one `answerTask` answers. The turn is not a model, so it writes
+ * the park itself rather than calling the tool.
  *
  * Nothing under `flows/` is read as a convention file — the loader walks
- * `workers/`, `skills/`, `resources/` and `mailboxes/` under a team and ignores
- * the rest, which is why the code side can sit inside the tree.
+ * `workers/`, `skills/` and `resources/` under a team and ignores the rest,
+ * which is why the code side can sit inside the tree.
  */
 
-import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type {
-  TaskCollectionRef,
-  TaskDispatcher,
-  TaskWorkerInput,
+import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
+import {
+  getOrCreateTaskCollection,
+  resolveResourceCollection,
+  type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
-import { workerConfigSchema, type MailboxBoardCollection, type WorkerInstallation } from "@flow-state-dev/workforce";
-import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import {
+  FILING_SESSION_STATE_KEY,
+  TASK_ID_STATE_KEY,
+  defineSessionBoard,
+  workerConfigSchema,
+  workerTaskEntry,
+  type WorkerInstallation,
+} from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { pieceInputSchema } from "../piece.mts";
 import { hearingDoor } from "../../../../hearing-door.mts";
 
-/** The kind every worker `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
+/** The flow every worker `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
 export const WORKER_KIND = "worker";
 
-/** A worker seat's drain: work this seat's share of the board. */
-export const DRAIN_ENTRY = "drain";
-/** The person's door on a worker seat — answer a parked row and drain it. */
-export const ANSWER_ENTRY = "answer";
-/** The task entry the same-flow hand-off addresses. Reachable only through the claim gate. */
+/** The task entry a filed row is handed over through. */
 export const WORK_ENTRY = "work";
 
+/** The conversation ledger's resource key, which the task actions are named for (`addTask_tasks`). */
+const LEDGER_KEY = "tasks";
+
 /**
- * The worker-body perturbations, and only those. The routing-map controls
- * (`swapped-desks`, `one-seat`) are the host's, because the map is.
+ * The worker-body perturbations, and only those. The routing controls
+ * (`swapped-desks`, `one-worker`) are the filer's, because the assignee is.
  *
- * - `ignore-the-answer` — the body decides to park on the question in its
- *   input, not on whether the row carries an answer. The answered row re-parks
- *   and never finishes (BR-7a).
- * - `silent-park` — the body parks with no reason at all. Every headless leg
- *   still passes; only the screen that should show *why* goes red (BR-11).
+ * - `ignore-the-answer` — the body parks on the question the row carries, not
+ *   on whether the row has been answered. The answered row parks again and
+ *   never finishes.
+ * - `silent-park` — the body parks with no question at all. Every headless
+ *   leg still passes; only the screen that should show *why* goes red.
  */
 export type WorkerControl = "ignore-the-answer" | "silent-park";
 
@@ -73,82 +86,31 @@ export type WorkerControl = "ignore-the-answer" | "silent-park";
  * One line the work leaves behind — a real file, outside the board entirely.
  *
  * The board reports a completion on the very path under test, so execution is
- * proved here instead. Everything in a line is something only the running row
- * could know: which seat it is, what that seat's own file says, which session
- * it woke in, and what the ledger said about the claim it runs under.
+ * proved here instead.
  */
 export const workLineSchema = z.object({
   event: z.enum(["parked", "finished"]),
-  /** The worker that ran it, as the turn loaded it. */
-  seat: z.string(),
-  /** What that seat's OWN FILE says it answers for — the oracle, from the tree. */
+  /** The worker this task session runs as, resolved from the session by the installation. */
+  worker: z.string(),
+  /** What that worker's OWN FILE says it answers for — the oracle, from the tree. */
   declaredDesk: z.string(),
   taskId: z.string(),
+  /** The row's attempt this line is from. */
+  attempt: z.number(),
   goal: z.string(),
-  /** The child session this attempt ran in. */
+  /** The task session this attempt ran in. */
   session: z.string(),
-  /** The session that CLAIMED the row, as the ledger recorded it. */
-  claimedBySession: z.string().nullable(),
-  /** The request that claimed it — for an answered row, the answering request. */
-  claimedByRequest: z.string().nullable(),
-  /** The answer on the row when this attempt ran, if any. */
+  /** The conversation whose board filed the row, off the session's readonly state. */
+  filingSession: z.string(),
+  /** The answer on the row when this attempt ran, if it had been answered. */
   answer: z.string().nullable(),
-  /** On `finished`: the row this seat filed for the next desk. */
-  filed: z.string().nullable(),
-  /** On `finished`: what the ledger said when this seat tried to move its own row's assignee. */
-  reassign: z.object({ outcome: z.string(), reason: z.string().nullable() }).nullable(),
 });
 
 export type WorkLine = z.infer<typeof workLineSchema>;
 
-/**
- * A claim narrowed to the desks the APP routes to this seat.
- *
- * Resolved per seat at claim time off the worker the drain's session names,
- * because every worker seat shares one kind, one copy and one board object.
- *
- * The eligibility is the desk **or no assignee at all**. The second arm is
- * deliberate: the lab declares no `defaultWorker`, so a row filed for nobody
- * has to be *taken* somewhere before the keyed router can refuse it by name
- * (BR-5). Drop it and that row sits `pending` in silence. There is no status
- * arm — claimability is the substrate's call.
- *
- * A seat the map routes nothing to claims nothing, rather than falling back to
- * a bare claim that would eat another desk's rows.
- */
-function deskDispatcher(routes: Readonly<Record<string, string>>): TaskDispatcher {
-  return {
-    async claim(collection, workerId, ctx) {
-      const seat = workerOf(ctx);
-      const desks = new Set(
-        Object.entries(routes)
-          .filter(([, routedSeat]) => routedSeat === seat)
-          .map(([desk]) => desk),
-      );
-      if (desks.size === 0) return null;
-      return collection.claim(workerId, {
-        eligibility: (task) => task.assignee === undefined || desks.has(task.assignee),
-      });
-    },
-  };
-}
-
-/** The worker a session runs, as its state names it. Its create check confirmed it. */
-function workerOf(ctx: BlockContext): string {
-  return String((ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] ?? "");
-}
-
 export interface WorkerFlowOptions {
-  /** The installation whose workers run on this kind. */
+  /** The installation whose workers run on this flow. */
   installation: WorkerInstallation;
-  /** The mailbox's own ledger — the one `MAILBOX.md` declared by name. */
-  board: MailboxBoardCollection;
-  /**
-   * Desk key -> seat id: **the routing under test**, and the app's.
-   *
-   * Its keys are also the board's desk vocabulary — which keys have a body.
-   */
-  routes: Readonly<Record<string, string>>;
   /** Where each attempt leaves its line. */
   outbox: string;
   /** A worker-body perturbation, or none. */
@@ -156,118 +118,85 @@ export interface WorkerFlowOptions {
 }
 
 /**
- * Build the `worker` kind. Every worker seat is hired onto this one factory.
+ * Build the `worker` flow. Every worker is hired onto this one factory.
  *
- * @returns The flow factory `hireWorkforce` registers one copy of, which every worker seat runs on.
+ * @returns The flow `hireWorkforce` registers one copy of, which every worker runs on.
  */
 export function defineWorkerFlow(options: WorkerFlowOptions) {
-  const { board: ledger, routes, outbox, control, installation } = options;
+  const { installation, outbox, control } = options;
+  // Only for the conversation ledger's declaration: a worker here files
+  // nothing (no `delegates:`), so the flow carries none of the kit's actions.
+  const { resources: ledgerResources } = defineSessionBoard({ installation, flowKind: WORKER_KIND });
 
-  /** The board's name, which is also its capability's key on `ctx.cap`. */
-  const BOARD_NAME = `${WORKER_KIND}-desk-board`;
-
-  const board = taskBoard({
-    name: BOARD_NAME,
-    boardId: BOARD_NAME,
-    collection: ledger,
-    concurrency: 1,
-    dispatcher: deskDispatcher(routes),
-    // A parked row is not this drain's to wait on: the drain returns, the row
-    // stays parked and durable, and `unparkAndDrain` is the return trip.
-    onReview: "exit",
-    maxIterations: 200,
-    idlePollMs: 25,
-    // One hand-off per desk key. A row whose assignee is not among them —
-    // including one with no assignee — misses the router and is refused by
-    // name. No `defaultWorker`: a floor would make that refusal quiet.
-    workers: Object.fromEntries(
-      Object.keys(routes).map((desk) => [
-        desk,
-        dispatcher<TaskWorkerInput>({
-          name: `${WORKER_KIND}-hand-off-${desk}`,
-          action: WORK_ENTRY,
-          session: "per-task",
-          // The row runs as the seat whose drain claimed it.
-          state: (_task, ctx) => ({ [WORKER_ID_STATE_KEY]: workerOf(ctx) }),
-        }),
-      ]),
-    ),
-  });
+  /** The conversation's ledger at the partition this task session was opened for. */
+  const ledgerOf = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
+    const filing = (ctx.session.state as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
+    const collection = resolveResourceCollection(ctx, LEDGER_KEY);
+    if (typeof filing !== "string" || collection === undefined) {
+      throw new Error(`this session was not opened by a conversation's board (filing: ${String(filing)})`);
+    }
+    return getOrCreateTaskCollection({
+      ctx,
+      backing: "resource",
+      collectionId: LEDGER_KEY,
+      collection,
+      partition: filing,
+      immutableAssignee: true,
+    });
+  };
 
   /**
-   * One attempt at one row. Parks while the row carries no answer; otherwise
-   * does the work, files the next desk's row naming this one, and returns.
+   * One attempt at one row. Parks on the row's question while it has not been
+   * answered; otherwise does the work and returns.
    */
-  const runRow = handler({
-    name: "worker-run-row",
-    // Through the board's own capability, so every write below is
-    // board-mediated and carries the board's policy — including the frozen
-    // assignee a board that hands rows off imposes on its ledger. A ref built
-    // by hand over the raw resource would skip it.
-    uses: [board.capability],
-    inputSchema: taskWorkerInputSchema,
-    outputSchema: workLineSchema,
-    resources: { ...installation.resources },
-    execute: async (input: TaskWorkerInput, ctx: BlockContext): Promise<WorkLine> => {
-      const tasks: TaskCollectionRef = await (
-        ctx.cap as unknown as Record<string, { tasks(): Promise<TaskCollectionRef> }>
-      )[BOARD_NAME]!.tasks();
-      const row = tasks.get(input.taskId);
-      if (row === undefined) {
-        throw new Error(`row ${input.taskId} is not on the "${ledger.id}" ledger`);
-      }
-      const piece = pieceInputSchema.parse(input.input ?? {});
-      const answer = row.feedback ?? null;
-      const worker = await installation.resolveWorker(ctx, WORKER_KIND);
+  const turn = handler({
+    name: "worker-turn",
+    inputSchema: z.object({ message: z.string() }),
+    outputSchema: z.string(),
+    resources: { ...installation.resources, ...ledgerResources },
+    execute: async (_input: { message: string }, ctx: BlockContext): Promise<string> => {
+      const state = ctx.session.state as Record<string, unknown>;
+      const taskId = String(state[TASK_ID_STATE_KEY] ?? "");
+      const ledger = await ledgerOf(ctx);
+      const row = ledger.get(taskId);
+      if (row === undefined) throw new Error(`row ${taskId} is not on this conversation's board`);
+      const piece = pieceInputSchema.parse(row.input ?? {});
+      const answer = row.answered === true ? (row.feedback ?? null) : null;
+      const worker = await installation.resolveWorker(ctx as never, WORKER_KIND);
       const base = {
-        seat: worker.id,
+        worker: worker.id,
         declaredDesk: String((worker.config as { answersFor?: unknown }).answersFor),
-        taskId: input.taskId,
-        goal: input.goal,
+        taskId,
+        attempt: row.attempts,
+        goal: row.goal,
         session: String(ctx.session.identity.id),
-        claimedBySession: row.claimedBy?.sessionId ?? null,
-        claimedByRequest: row.claimedBy?.requestId ?? null,
+        filingSession: String(state[FILING_SESSION_STATE_KEY] ?? ""),
         answer,
       };
 
       // THE DECISION. Park while nothing has answered the question. The wrong
       // version — park whenever there is a question — is the control.
-      const mustAsk =
-        piece.asks !== undefined &&
-        (control === "ignore-the-answer" ? true : answer === null);
-
+      const mustAsk = piece.asks !== undefined && (control === "ignore-the-answer" ? true : answer === null);
       if (mustAsk) {
-        const line: WorkLine = { event: "parked", ...base, filed: null, reassign: null };
+        const line: WorkLine = { event: "parked", ...base };
         appendFileSync(outbox, `${JSON.stringify(line)}\n`, "utf8");
-        // The seat that owns the row parks it. Nobody drains on the person's
-        // behalf; the person answers through an action (ER-1).
-        await tasks.awaitReview(input.taskId, control === "silent-park" ? undefined : piece.asks);
-        return line;
+        // The worker that holds the row parks it, on its question. Nobody
+        // answers on the person's behalf; the person answers through the
+        // planner's conversation.
+        const parked = await ledger.awaitReview(taskId, control === "silent-park" ? undefined : piece.asks, {
+          claim: currentWorkerClaim(),
+          fromRunning: true,
+          onQuestion: true,
+        });
+        if (parked == null || parked.outcome === "declined") {
+          throw new Error(`row ${taskId} could not park on its question: ${JSON.stringify(parked)}`);
+        }
+        return `${worker.id} asked: ${piece.asks}`;
       }
 
-      // The work implies another desk's: file that row, naming this one. One
-      // board, a second row, a second assignee — that is the handoff (D2).
-      let filed: string | null = null;
-      let reassign: WorkLine["reassign"] = null;
-      if (piece.then !== undefined) {
-        const next = await tasks.addTask({
-          goal: piece.then.goal,
-          assignee: piece.then.desk,
-          input: { follows: input.taskId },
-        });
-        filed = next.id;
-        // The tempting shortcut — hand THIS row over by moving its assignee —
-        // is tried and its answer recorded, so a board that ever permitted it
-        // is caught (BR-14). Nothing below depends on it succeeding.
-        const moved = await tasks.setAssignee(input.taskId, piece.then.desk);
-        reassign = {
-          outcome: moved.outcome,
-          reason: moved.outcome === "declined" ? String(moved.reason) : null,
-        };
-      }
-      const line: WorkLine = { event: "finished", ...base, filed, reassign };
+      const line: WorkLine = { event: "finished", ...base };
       appendFileSync(outbox, `${JSON.stringify(line)}\n`, "utf8");
-      return line;
+      return `${worker.id} did: ${row.goal}`;
     },
   });
 
@@ -275,23 +204,11 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     kind: WORKER_KIND,
     cardinality: "collection",
     // Optional so the shared copy, which carries no worker's settings, builds;
-    // the host refuses a worker seat whose file names no `answersFor`.
+    // the host refuses a worker whose file names no `answersFor`.
     configSchema: workerConfigSchema().extend({ answersFor: z.string().min(1).optional() }),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: {
-      ...hearingDoor,
-      [DRAIN_ENTRY]: {
-        block: board.drain,
-        description: "Work this seat's share of the mailbox's board.",
-      },
-      // The person's door. An ordinary action on an ordinary session, so it
-      // carries the request's own principal and nothing derives a second one.
-      [ANSWER_ENTRY]: {
-        block: board.unparkAndDrain,
-        description: "Answer a parked row this seat owns, and put it back to work.",
-      },
-    },
-    task: { actions: { [WORK_ENTRY]: { block: runRow } } },
+    actions: { ...hearingDoor },
+    task: { actions: { [WORK_ENTRY]: workerTaskEntry({ name: "worker-task", turn }) } },
   } as never);
 }

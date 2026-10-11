@@ -1,93 +1,74 @@
 /**
- * Goal check — the DevForce feature mailbox carries the board its rows sit on.
+ * Goal check — the org sees a workstream's entry; only its owner sees the rows.
  *
- * A line posted on the feature mailbox ends as one completed row, and that row
- * is read back where Shift Manager reads a workstream: through the mailbox's own
- * `read` and `readBoard`, through the HTTP door a browser uses, and from the
- * organization's storage under the id the framework minted. Nothing here reads
- * the drain's report, the run record or the EM's output — all three are green
- * while the row sits on a ledger the mailbox does not hold.
+ * On the DevTeam lab, Alice (the lab's owner) opens Storefront's `feature`
+ * workstream with the EM as its lead. The EM files one row in that workstream
+ * session and drains it there, and the row ends completed. Then each person
+ * reads what Shift Manager reads, over the lab's HTTP routes with their own
+ * verified bearer: Alice reads the row on the workstream session's board;
+ * Bob (a project member) and an outsider (in the organization, on no
+ * project) read the workstream's entry, and are refused the rows.
  *
- * Model-free: the lab's scripted harness commits and finishes, as in the
- * contract gate. What is graded is where the row lives, not how the work went.
+ * Model-free: the lab's scripted harness commits and finishes. What is graded
+ * is where the row lives and who reads it, not how the work went.
  *
  * Legs:
  *
- *   0  BR-1        — the mailbox's file names the board; no file writes its minted id
- *   a  BR-2        — the mailbox lists exactly the boards its file declares
- *   b  BR-3 BR-4   — its board holds exactly the filed row, completed, assignee coder
- *   c  BR-7 BR-8   — the browser's door returns that row under the lab's bearer, only
- *                    client fields; with no verified organization it is refused
- *   d  BR-4 BR-9   — org storage holds it under the minted id, and no other copy exists
- *   e  BR-11       — hiring named no board as unattended
+ *   0  the tree declares no mailbox
+ *   a  the workstream session's board holds exactly the filed row, completed,
+ *      assignee eng.coder, read by its owner
+ *   b  Bob and the outsider read the entry: owner Alice, lead eng.em, its
+ *      session; a read with no verified organization is refused
+ *   c  Bob and the outsider are refused the rows on Alice's workstream session
+ *   d  the row is stored once, in Alice's storage under the workstream
+ *      session's partition, naming its issue and phase, and no copy is in
+ *      the organization's storage
  *
- * Control: `GOAL_CONTROL=kind-ledger` builds the two kinds on a user-scoped
- * ledger of their own, as they were before the board moved onto the mailbox.
- * The run still completes; the check must FAIL naming the mailbox's board
- * returning no rows. `GOAL_CONTROL=list` prints it.
+ * Control: `GOAL_CONTROL=em-session` files and drains on the EM's own
+ * session's board instead of the workstream session's. The run still
+ * completes; the check must FAIL on leg a, *the workstream session's board
+ * holds no row*. `GOAL_CONTROL=list` prints it.
  *
  * Run: pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts
  */
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { harnessTaskInputSchema } from "@flow-state-dev/harness-manager";
-import { harnessTaskId, joinIdentity, tenantSegment } from "@flow-state-dev/harness-manager/checkout";
-import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import { serve } from "@flow-state-dev/node";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { runGoal, silentLogger } from "../../lib/index.mts";
-import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { labApi, labRoutes } from "../../lib/shift-manager.mts";
+import { createLabClients } from "../../../packages/shift-manager/src/lib/connection.ts";
+import { readProject } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { createLabReader, PROJECT_READER_KIND, readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
-import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { DRAIN_ENTRY, EM_KIND, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["kind-ledger"] as const;
+const CONTROLS = ["em-session"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
 }
-
-/** The seat the board's `coder` assignee is addressed to — the app's address map. */
-const ASSIGNED_SEAT = "eng.coder";
-/** The seat a mailbox post is delivered to. */
-const COORDINATOR_SEAT = "eng.em";
-
-const ISSUE = "greeting-module";
-const POST_LINE = `${ISSUE}: Add a greeting module to the repository.`;
-/** The row id the EM's filing returns: the issue-and-phase, as the manager derives it. */
-const TASK_ID = harnessTaskId(ISSUE, PHASE);
-const SETTLE_BUDGET_MS = 120_000;
-/**
- * A pattern that matches `id` only where a file pins it as a value: a quoted
- * string that is exactly the id, or the id standing alone after `:`, `=`, `[`
- * or `,`. Word characters, dots and dashes on either side mean a longer name,
- * not this one.
- */
-function pinsOf(id: string): RegExp {
-  const lit = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(["'\`])${lit}\\1|[:=\\[,]\\s*${lit}(?![\\w.-])`);
+if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
+  console.error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${CONTROLS.join(", ")}`);
+  process.exit(2);
 }
 
-/** Fields a browser's read of a board may never carry. */
-const PRIVATE_ROW_FIELDS = ["input", "output", "metadata", "context", "claimedBy", "leaseUntil", "writeLog"];
-
-const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
+const CODER = "eng.coder";
+const EM = "eng.em";
+const STOREFRONT = { visibility: "shared", id: "storefront" } as const;
+const ISSUE = `greeting-${globalThis.crypto.randomUUID().slice(0, 8)}`;
+const GOAL = "Add a greeting module to the repository.";
+const LIST_TASKS = "listTasks_tasks";
+const SETTLE_BUDGET_MS = 60_000;
+const SETTLED = new Set(["completed", "errored", "cancelled"]);
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Every file under a directory, recursively, as [relative path, contents]. */
-function filesUnder(root: string, prefix = ""): Array<[string, string]> {
-  const out: Array<[string, string]> = [];
-  for (const entry of readdirSync(root)) {
-    const full = join(root, entry);
-    const rel = prefix === "" ? entry : `${prefix}/${entry}`;
-    if (statSync(full).isDirectory()) out.push(...filesUnder(full, rel));
-    else out.push([rel, readFileSync(full, "utf8")]);
-  }
-  return out;
-}
+const show = (value: unknown): string => JSON.stringify(value)?.slice(0, 400) ?? "undefined";
 
 /** What the harness "did": write a file and commit it, so the run completes. */
 const commitWork = (run: StubRun): void => {
@@ -95,187 +76,137 @@ const commitWork = (run: StubRun): void => {
   commitAll(run.cwd, "add greeting module");
 };
 
-/**
- * The control's ledger: user-scoped, under the id the kinds used before the
- * board moved onto the mailbox. Built here, never in the lab.
- */
-function kindLedger(): NonNullable<OpenLabOptions["ledger"]> {
-  const id = joinIdentity("devforce-tasks", tenantSegment(undefined), "feature");
-  return {
-    id,
-    collection: defineTaskCollection({ id, scope: "user" as const, stateSchema: harnessTaskInputSchema }),
-  };
-}
-
-/** Post, then run the EM's board until the row is completed or errored. */
-async function postAndSettle(lab: Lab): Promise<Task | undefined> {
-  const posted = await lab.post!(POST_LINE);
-  if (posted.error !== undefined) throw new Error(`the post was refused — ${posted.error}`);
-  const deadline = Date.now() + SETTLE_BUDGET_MS;
-  let row: Task | undefined;
-  while (Date.now() < deadline) {
-    row = await lab.row(TASK_ID);
-    if (row?.status === "completed" || row?.status === "errored") return row;
-    if (row === undefined || row.status === "pending") await lab.drain(COORDINATOR_SEAT);
-    await sleep(500);
-  }
-  return row;
-}
-
 await runGoal(async (failures) => {
   const evidence: string[] = [];
-  const note = (why: string): void => {
-    failures.push(CONTROL === "" ? why : `[control ${CONTROL}] ${why}`);
+  const note = (assertion: string, why: string): void => {
+    failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);
   };
 
-  // ---- (0) BR-1, read off the tree before anything is built ---------------
+  // ---- (0) the tree declares no mailbox ----------------------------------
   const roster = await readDeclaredRoster(LAB_TREE);
-  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  const declared = (mailbox?.declared.boards as string[] | undefined) ?? [];
-  if (mailbox === undefined) {
-    return { failures: ["no mailbox in the tree holds a board"], evidence: "" };
-  }
+  if (roster.mailboxes.length > 0) note("0:no-mailbox", `the tree declares ${show(roster.mailboxes.map((m) => m.id))}`);
 
-  const dirs = createScratchRepo("mailbox-board");
+  const dirs = createScratchRepo("workstream-board");
   const stub = harnessStub({ duringRun: commitWork });
-  const warnings: string[] = [];
-  const warn = console.warn;
-  console.warn = (...args: unknown[]) => {
-    warnings.push(args.map(String).join(" "));
-  };
-  let lab: Lab;
+  const lab = await openLab({
+    stores: inMemoryStores(),
+    harness: stub.slot,
+    workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+    coderSeatId: CODER,
+    logger: silentLogger,
+    // Model-free: the stub answers nothing a judge could pass.
+    withoutJudge: true,
+    inventory: true,
+    projects: [{ id: STOREFRONT.id, title: "Storefront", members: [LAB_USERS.member.userId] }],
+    workstreams: [{ as: "owner", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: EM } }],
+  });
+  const handle = await serve(lab.state, { host: "127.0.0.1", port: 0, basePath: "/api/flows", handleSignals: false });
+  await lab.state.ready();
+  const origin = `http://127.0.0.1:${handle.port}`;
+
   try {
-    lab = await openLab({
-      stores: inMemoryStores(),
-      harness: stub.slot,
-      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-      coderSeatId: ASSIGNED_SEAT,
-      logger: silentLogger,
-      mailboxes: {
-        addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT },
-        log: createNotifyLog(),
-      },
-      ...(CONTROL === "kind-ledger" ? { ledger: kindLedger() } : {}),
+    const runtime = await lab.state.getRuntime();
+    const [wsSession] = await runtime.stores.session.list({
+      orgId: LAB_ORG_ID,
+      parentage: "all",
+      state: { workstreamId: `shared/${STOREFRONT.id}/feature` },
     });
-  } finally {
-    console.warn = warn;
-  }
+    if (wsSession === undefined) throw new Error("opening Storefront's feature made no workstream session");
+    const workstream = wsSession.id;
+    const alice = labRoutes(origin, LAB_USERS.owner);
 
-  try {
-    const board = lab.board;
-    if (declared.length === 0) {
-      note(`the mailbox lists no board: "${mailbox.id}"'s file declares none`);
-      return { failures, evidence: "" };
-    }
-    if (declared.length !== 1 || declared[0] !== board.name) {
-      note(`the mailbox's file declares [${declared.join(", ")}]; the lab resolved "${board.name}"`);
-    }
-    // The minted id is the mailbox's id, a dot, and the local name — and no
-    // file in the tree or the lab's code pins it. Pinning is a value: a quoted
-    // string that is exactly the id, or the id standing alone after `:`, `=`,
-    // `[` or `,` (a YAML key, an assignment, a list entry). Prose and comments
-    // that name the id in passing are not a second declaration of it.
-    const pins = pinsOf(board.id);
-    const writers = [
-      ...filesUnder(LAB_TREE).map(([path, text]) => [`workforce/${path}`, text] as const),
-      ...filesUnder(LAB_ROOT)
-        .filter(([path]) => path.endsWith(".mts"))
-        .map(([path, text]) => [`lab/${path}`, text] as const),
-    ]
-      .filter(([, text]) => pins.test(text))
-      .map(([path]) => path);
-    if (writers.length > 0) note(`the board's minted id "${board.id}" is written in ${writers.join(", ")}`);
-    evidence.push(
-      `"${mailbox.id}"'s file declares boards [${declared.join(", ")}], minted "${board.id}", which no ` +
-        `file in the tree or the lab's code writes`,
-    );
-
-    // ---- the run ---------------------------------------------------------
-    const settled = await postAndSettle(lab);
-    if (settled?.status !== "completed") {
-      note(`the run did not complete the row (last status: ${settled?.status ?? "never filed"})`);
-      return { failures, evidence: "" };
-    }
-
-    // ---- (a) BR-2: the mailbox lists exactly its declared boards ---------
-    const read = await lab.mailboxAct!("read", {});
-    const listed = (read.output as { boards?: string[] } | undefined)?.boards ?? [];
-    if (read.error !== undefined || listed.join(",") !== declared.join(",")) {
-      note(
-        `the mailbox lists [${listed.join(", ")}]${read.error === undefined ? "" : ` (${read.error})`}; ` +
-          `its file declares [${declared.join(", ")}]`,
-      );
-    }
-
-    // ---- (b) BR-3, BR-4: the mailbox's board holds the filed row ---------
-    const readBoard = await lab.mailboxAct!("readBoard", { board: board.name });
-    const tasks = (readBoard.output as { tasks?: Task[] } | undefined)?.tasks ?? [];
-    if (readBoard.error !== undefined) {
-      note(`reading the mailbox's board was refused — ${readBoard.error}`);
-    } else if (tasks.length === 0) {
-      note(`the mailbox's board returned no rows`);
-    } else if (tasks.length !== 1 || tasks[0]!.id !== TASK_ID) {
-      note(`the mailbox's board returned [${tasks.map((t) => t.id).join(", ")}]; wanted exactly ${TASK_ID}`);
+    // ---- the run -----------------------------------------------------------
+    // The EM files and drains in its workstream session, through its own actions, as Alice.
+    // Under the control, it files on its own session's board instead.
+    if (CONTROL === "em-session") {
+      const filed = await lab.file(EM, { issue: ISSUE, goal: GOAL, maxAttempts: 1 });
+      if (filed.error !== undefined) throw new Error(`filing was refused — ${filed.error}`);
+      for (const deadline = Date.now() + SETTLE_BUDGET_MS; Date.now() < deadline; await sleep(200)) {
+        const row = await lab.featureRow(ISSUE);
+        if (row !== undefined && SETTLED.has(row.status)) break;
+        await lab.drain(EM);
+      }
     } else {
-      const row = tasks[0]!;
-      if (row.status !== "completed") note(`the mailbox's board shows the row "${row.status}"; the run completed it`);
-      if (row.assignee !== "coder") note(`the mailbox's board shows the row assigned "${row.assignee}"`);
+      const filed = await alice.act(EM_KIND, workstream, FILE_ENTRY, { issue: ISSUE, goal: GOAL, maxAttempts: 1 });
+      if (filed.error !== undefined) throw new Error(`filing was refused — ${filed.error}`);
+    }
+    const rowsAt = async (): Promise<Task[]> => {
+      const read = await alice.act(EM_KIND, workstream, LIST_TASKS, {});
+      if (read.error !== undefined) throw new Error(`Alice's read of her workstream's board failed — ${read.error}`);
+      return ((read.output as { tasks?: Task[] } | undefined)?.tasks ?? []) as Task[];
+    };
+    let rows: Task[] = await rowsAt();
+    for (const deadline = Date.now() + SETTLE_BUDGET_MS; Date.now() < deadline && CONTROL === ""; ) {
+      if (rows.length > 0 && rows.every((r) => SETTLED.has(r.status))) break;
+      if (rows.some((r) => r.status === "pending")) await alice.act(EM_KIND, workstream, DRAIN_ENTRY, {});
+      await sleep(200);
+      rows = await rowsAt();
     }
 
-    // ---- (c) BR-7, BR-8: the browser's door ------------------------------
-    const door = await lab.readBoardAtDoor!("bearer");
-    const doorRows = door.rows ?? [];
-    if (door.status !== 200) {
-      note(`the browser's door answered ${door.status} under the lab's bearer — ${door.error}`);
-    } else if (doorRows.length !== 1 || doorRows[0]!.id !== TASK_ID || doorRows[0]!.status !== "completed") {
-      note(
-        `the browser's door returned ${JSON.stringify(doorRows.map((r) => [r.id, r.status]))}; ` +
-          `wanted exactly [${TASK_ID}, completed]`,
-      );
+    // ---- (a) the workstream session's board, read by its owner -------------
+    const row = rows[0];
+    if (rows.length === 0) {
+      note("a:the-row", "the workstream session's board holds no row");
+    } else if (rows.length !== 1) {
+      note("a:the-row", `the workstream session's board holds ${rows.length} rows: ${show(rows.map((r) => r.id))}`);
     } else {
-      // What a board card never carries: the row's payloads, and the
-      // substrate's execution coordinates. Present on the stored row (the run
-      // wrote `output`, the manager wrote `metadata`), so their absence here
-      // is the door's doing.
-      const leaked = PRIVATE_ROW_FIELDS.filter((key) => Object.hasOwn(doorRows[0]!, key));
-      if (leaked.length > 0) note(`the browser's door published [${leaked.join(", ")}], which a browser may not see`);
+      if (row!.status !== "completed") note("a:completed", `the row is "${row!.status}"`);
+      if (row!.assignee !== CODER) note("a:assignee", `the row is assigned "${row!.assignee}"`);
+      if (stub.runs.length !== 1) note("a:ran-once", `the coder's harness ran ${stub.runs.length} times`);
     }
-    const orgless = await lab.readBoardAtDoor!("org-less");
-    if (orgless.status < 400) {
-      note(`the browser's door answered ${orgless.status} with no verified organization`);
-    }
-
-    // ---- (d) BR-4, BR-9: org storage, and no second copy ------------------
-    const key = `${board.id}/${TASK_ID}`;
-    const org = await lab.stored("org");
-    const stored = org[key] as Task | undefined;
-    if (stored?.status !== "completed") {
-      note(`org storage holds "${key}" as ${stored === undefined ? "nothing" : `"${stored.status}"`}`);
-    }
-    const copies = [
-      ...Object.keys(org).map((k) => `org:${k}`),
-      ...Object.keys(await lab.stored("user")).map((k) => `user:${k}`),
-    ].filter((k) => k.endsWith(`/${TASK_ID}`));
-    if (copies.length !== 1 || copies[0] !== `org:${key}`) {
-      note(`the row is stored under [${copies.join(", ")}]; wanted only org:${key}`);
-    }
-
-    // ---- (e) BR-11 --------------------------------------------------------
-    const unattended = warnings.filter((line) => line.includes(board.id));
-    if (unattended.length > 0) note(`hiring warned about the mailbox's board: ${unattended.join(" | ")}`);
-
     if (failures.length === 0) {
-      evidence.push(
-        `a post on "${mailbox.id}" ended as one completed row ${TASK_ID}; the mailbox lists ` +
-          `[${listed.join(", ")}] and its "${board.name}" board returns exactly that row, assignee coder; ` +
-          `the browser's door returns it under the lab's bearer with only client fields ` +
-          `(${Object.keys(doorRows[0]!).sort().join(", ")}) and answers ${orgless.status} with no ` +
-          `verified organization; org storage holds it under "${key}" and nowhere else; hiring ` +
-          `named no board as unattended`,
-      );
+      evidence.push(`a: Alice's workstream session's board holds one row ${row!.id}, completed by ${CODER}`);
     }
+
+    // ---- (b) the org reads the entry ----------------------------------------
+    const before = failures.length;
+    for (const [label, user] of [["Bob", LAB_USERS.member], ["the outsider", LAB_USERS.outsider]] as const) {
+      const clients = createLabClients({ userId: user.userId, baseUrl: origin, bearerToken: user.bearer });
+      await createLabReader(clients).read();
+      const read = await readProject(clients, readerSessionId(user.userId, PROJECT_READER_KIND), STOREFRONT);
+      const entry = read?.entries.find((e) => e.owner === LAB_USERS.owner.userId && e.id === "feature");
+      if (entry === undefined) {
+        note("b:reads-the-entry", `${label} reads Storefront's entries as ${show(read?.entries.map((e) => [e.owner, e.id]))}, without Alice's feature`);
+      } else if (entry.lead !== EM || entry.sessionId !== workstream) {
+        note("b:reads-the-entry", `${label} reads Alice's feature as led by ${entry.lead} in ${entry.sessionId}`);
+      }
+    }
+    const orgless = await labApi(origin, undefined).call("GET", `/sessions?userId=${encodeURIComponent(LAB_USERS.owner.userId)}`);
+    if (orgless.status < 400) note("b:org-less-refused", `a read with no verified organization answered ${orgless.status}`);
+    if (failures.length === before) {
+      evidence.push(`b: Bob and the outsider each read Alice's feature entry, led by ${EM} in ${workstream}; a read with no verified organization answered ${orgless.status}`);
+    }
+
+    // ---- (c) only the owner reads the rows ----------------------------------
+    const beforeC = failures.length;
+    for (const [label, user] of [["Bob", LAB_USERS.member], ["the outsider", LAB_USERS.outsider]] as const) {
+      const read = await labRoutes(origin, user).act(EM_KIND, workstream, LIST_TASKS, {});
+      const seen = ((read.output as { tasks?: Task[] } | undefined)?.tasks ?? []).length;
+      if (read.status === "completed" || seen > 0) {
+        note("c:rows-refused", `${label}'s read of Alice's workstream board ended ${read.status} with ${seen} row(s)`);
+      }
+    }
+    if (failures.length === beforeC) evidence.push("c: Bob's and the outsider's reads of Alice's workstream board were refused");
+
+    // ---- (d) where the row is stored ----------------------------------------
+    if (row !== undefined) {
+      const beforeD = failures.length;
+      const partition = `tasks/${encodeUserSegment(`${workstream}~`)}`;
+      const stored = await lab.stored("user");
+      const mine = Object.keys(stored).filter((key) => key.endsWith(`/${row.id}`));
+      if (mine.length !== 1 || !mine[0]!.startsWith(partition)) {
+        note("d:stored-once", `Alice's storage holds the row under ${show(mine)}, wanted one key under ${partition}`);
+      } else if (show((stored[mine[0]!] as Task).input) !== show({ issue: ISSUE, phase: "implement" })) {
+        note("d:names-its-work", `the stored row's payload is ${show((stored[mine[0]!] as Task).input)}, wanted its issue and phase`);
+      }
+      const inOrg = Object.keys(await lab.stored("org")).filter((key) => key.endsWith(`/${row.id}`));
+      if (inOrg.length > 0) note("d:no-org-copy", `the organization's storage holds the row under ${show(inOrg)}`);
+      if (failures.length === beforeD) evidence.push(`d: the row is stored once, at ${mine[0]}, naming ${ISSUE} at implement, and nowhere in the organization's storage`);
+    }
+
     return { failures, evidence: evidence.join("; ") };
   } finally {
+    await handle.close();
     await lab.dispose();
   }
 });

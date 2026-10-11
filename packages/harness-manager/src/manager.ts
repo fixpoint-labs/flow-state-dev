@@ -1826,10 +1826,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts, goal: input.goal, decided: null });
 
       // A row naming no issue and phase (a task a conversation filed) runs as
-      // this manager's phase, with its task id standing in for the issue.
+      // this manager's phase, with its task id standing in for the issue. So
+      // does a feature row on a board read from the claim: such a board mints
+      // its own task ids, unique in their partition, so there the task id
+      // keeps two rows with one payload out of one tree, as the derived id
+      // does on a fixed board.
       const payload = taskPayload(input, claim === null);
-      const { issue, phase: phaseName } = payload ?? { issue: input.taskId, phase: phase.phase };
-      if (payload !== undefined) assertFeatureRowIdentity(input.taskId, issue, phaseName, phase.phase);
+      const phaseName = payload?.phase ?? phase.phase;
+      const issue = payload === undefined || claim !== null ? input.taskId : payload.issue;
+      if (payload !== undefined) {
+        assertFeatureRowIdentity(input.taskId, payload.issue, phaseName, phase.phase, claim === null);
+      }
 
       // **A conductor serves one tenant, and refuses any other.**
       //
@@ -2759,11 +2766,19 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
 }
 
 /**
- * A feature row's identity checks: the row's phase is the manager's, and its id
- * is the one its `{ issue, phase }` payload derives. A row with no payload (a
- * task a conversation filed) has neither to check.
+ * A feature row's identity checks: the row's phase is the manager's, and, on a
+ * fixed board, its id is the one its `{ issue, phase }` payload derives. A row
+ * with no payload (a task a conversation filed) has neither to check. A row on
+ * a board read from the claim is keyed by its own task id, so it has no
+ * derived id to match.
  */
-function assertFeatureRowIdentity(taskId: string, issue: string, phaseName: string, configuredPhase: string): void {
+function assertFeatureRowIdentity(
+  taskId: string,
+  issue: string,
+  phaseName: string,
+  configuredPhase: string,
+  fixedBoard: boolean,
+): void {
   // **A manager runs exactly one phase, and it must be the one on the row.**
   // Without this the caller's phase names the checkout, the branch and the
   // run record while the CONFIGURED phase supplies the prompt and the
@@ -2801,7 +2816,10 @@ function assertFeatureRowIdentity(taskId: string, issue: string, phaseName: stri
   // artifact, one run's record overwritten by the other, and either run's
   // pull request satisfying the other's completion check. "Separate trees
   // pushing one ref is not isolation" is the rule `branchFor` states; this
-  // is the same collapse reached through the row id instead.
+  // is the same collapse reached through the row id instead. A board read
+  // from the claim builds those partitions from the task id rather than the
+  // payload, so the collapse can't happen there, and its ids are minted.
+  if (!fixedBoard) return;
   const canonicalId = harnessTaskId(issue, phaseName);
   if (taskId !== canonicalId) {
     throw new HarnessAttemptFailed(

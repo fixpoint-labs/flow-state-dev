@@ -27,7 +27,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import { readStatus } from "./columns";
 import { allRows, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
-import { describeFailure, type BoardRow, type Failure } from "./reads";
+import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
 import { interruptRun, readRunStatus, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
 /** How often, and how many times, a task screen re-reads its row. */
@@ -38,6 +38,11 @@ export const REREAD_AT_MOST = 30;
 export function mailboxOf(boardRef: string): string {
   const dot = boardRef.lastIndexOf(".");
   return dot > 0 ? boardRef.slice(0, dot) : boardRef;
+}
+
+/** Whether `boardRef` names a conversation's board (`<sessionId>.tasks`) rather than a workstream's. */
+export function isConversationBoard(boardRef: string): boolean {
+  return boardRef === conversationBoardRef(mailboxOf(boardRef));
 }
 
 /** Where the run stands for the screen. */
@@ -127,7 +132,12 @@ export function TaskProvider({
   // than calling the task missing.
   const mailboxBoards = snapshot.boards[mailboxOf(boardRef)];
   const [boardRead, setBoardRead] = useState(false);
-  const boardKnown = boardRead || (mailboxBoards?.ok === true && mailboxBoards.value.refs.includes(boardRef));
+  // A conversation's board is known once its conversation is the person's,
+  // since a task filed a moment ago is on no snapshot yet.
+  const boardKnown =
+    boardRead ||
+    (mailboxBoards?.ok === true && mailboxBoards.value.refs.includes(boardRef)) ||
+    (isConversationBoard(boardRef) && snapshot.sessions.some((session) => session.id === mailboxOf(boardRef)));
   const boardFailure = rowFailure ?? (!boardRead && mailboxBoards?.ok === false ? mailboxBoards.failure : undefined);
 
   /** One read of this task's board. Every read, polled or not, lands its rows or its failure the same way. */

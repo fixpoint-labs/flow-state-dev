@@ -6,18 +6,19 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite into a scratch directory and served by its own
- * command over the run-lab's `fsdev.config.mts`, devtool included: a
- * mailbox-attached board whose rows hand off to scripted runs that narrate a
- * step a second and hold until aborted. Chromium reaches each row by clicking,
- * from Tasks or from a board card. What the page draws is graded against the
- * tree on disk and the store, read by this script through the Lab's routes and
- * through each run's own flow, never against Shift Manager's reads.
+ * command over the run-lab's `fsdev.config.mts`, devtool included: the lead
+ * files tasks on its own conversation's board, each handed to a scripted run
+ * that narrates a step a second and holds until aborted. Chromium reaches each
+ * row by clicking, from Tasks or, once done, from Jump to. What the page draws
+ * is graded against the tree on disk and the store, read by this script
+ * through the Lab's routes and through each run's own flow, never against
+ * Shift Manager's reads.
  *
  * Legs (each failure is tagged `[<row>] <leg>`):
  *
- *   store         the board holds a held run on the drainer's flow, a held run
- *                 on a flow of its own, a finished run, and a row no run has
- *                 claimed (a precondition)
+ *   store         the board holds a held run on the flow two workers share, a
+ *                 held run on a worker's flow of its own, a finished run, and a
+ *                 row no run has claimed (a precondition)
  *   items equal the run session's
  *                 the Session's items equal, by id and in order, the items the
  *                 run session and its request stream hold for this task
@@ -39,13 +40,13 @@
  * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
  * fired):
  *
- *   worker-session        the Session reads the seat's newest other session.
+ *   worker-session        the Session reads the worker's newest other session.
  *                         Must fail at "items equal the run session's".
  *   optimistic-interrupt  Interrupt draws *interrupted* without aborting. Must
  *                         fail at "the request reads aborted first".
- *   board-flow            the run is opened through the board's flow. Must fail
- *                         at "items equal the run session's" on the row whose
- *                         run is on a flow of its own.
+ *   board-flow            the run is opened through the board's flow, the
+ *                         lead's. Must fail at "items equal the run session's"
+ *                         on every row, since no run is on the lead's flow.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts
  * Control:  GOAL_CONTROL=board-flow PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts
@@ -60,6 +61,7 @@ import type { Page } from "playwright";
 import { compareItemOrder, createSSEClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -91,19 +93,31 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // ---- the tree on disk ----------------------------------------------------------
 
-/** `drainerFlow` is the flow the drainer's file names: a worker has no flow of its own, so its runs are on that flow's one copy. */
-type Tree = { mailboxId: string; boardRef: string; drainerId: string; drainerFlow: string; members: string[] };
+/** The collection every conversation's board keeps its rows in, and stamps its tasks' items with. */
+const CONVERSATION_BOARD = "tasks";
+
+/**
+ * The lead is the worker whose file names delegates (other than a
+ * coordinator): its conversation keeps the board. `members` are its delegates;
+ * `sharedFlow` is the flow two of them share; any other flow is one delegate's
+ * own. Each flow is registered once, so a worker's runs are on its flow's one copy.
+ */
+type Tree = { leadId: string; leadFlow: string; members: string[]; sharedFlow: string };
 
 async function readTree(): Promise<Tree> {
   const roster = await readDeclaredRoster(TREE);
   if (roster.problems.length > 0) throw new Error(`the tree did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
-  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (mailbox === undefined) throw new Error("the tree declares no mailbox holding a board");
-  const members = (mailbox.declared.members as string[] | undefined) ?? [];
-  const drainer = roster.workers.find((w) => members.includes(w.id) && w.declared.flow !== undefined && w.declared.handoff === undefined);
-  if (drainer === undefined) throw new Error("the tree's mailbox has no member that drains its board");
-  return { mailboxId: mailbox.id, boardRef: `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`, drainerId: drainer.id, drainerFlow: String(drainer.declared.flow), members };
+  const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
+  if (lead === undefined) throw new Error("the tree declares no worker that files for delegates");
+  const members = lead.declared.delegates as string[];
+  const flowOf = (id: string) => String(roster.workers.find((w) => w.id === id)?.declared.flow);
+  const sharedFlow = members.map(flowOf).find((flow, i, all) => all.indexOf(flow) !== i);
+  if (sharedFlow === undefined) throw new Error("the tree puts no two of the lead's delegates on one flow");
+  return { leadId: lead.id, leadFlow: String(lead.declared.flow), members, sharedFlow };
 }
+
+/** The board this Lab files on: the lead's conversation's. */
+type Board = { conversation: string };
 
 // ---- building Shift Manager --------------------------------------------------------
 
@@ -180,6 +194,7 @@ async function startLab(pages: string): Promise<Running> {
 
 type Row = {
   id: string;
+  title: string;
   status: string;
   assignee: string | null;
   startedAt: number | null;
@@ -194,10 +209,21 @@ function labApi(origin: string) {
     return text.length === 0 ? null : JSON.parse(text);
   };
   const enc = encodeURIComponent;
-  const rows = async (tree: Tree): Promise<Row[]> => {
-    const body = await get(`/sessions/${enc(tree.mailboxId)}/resources/${enc(tree.boardRef)}?limit=200`);
-    return ((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map(({ clientData: r = {} }) => ({
+  /** The lead's conversation: the one top-level session on the lead's flow. */
+  const board = async (tree: Tree): Promise<Board> => {
+    const listed = ((await get(`/sessions`)).sessions ?? []) as Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
+    const conversations = listed.filter((s) => s.flowKind === tree.leadFlow && s.parentSessionId == null);
+    if (conversations.length !== 1) throw new Error(`store: ${conversations.length} conversations on the lead's flow, wanted one`);
+    return { conversation: conversations[0]!.id };
+  };
+  /** The conversation's rows: the person's whole ledger, read through the conversation, keeping its own partition's. */
+  const rows = async (board: Board): Promise<Row[]> => {
+    const body = await get(`/sessions/${enc(board.conversation)}/resources/${CONVERSATION_BOARD}?limit=200`);
+    const items = (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>;
+    const mine = items.filter((i) => sessionIdOfFiling(decodeURIComponent(i.topic.split("/")[0] ?? "")) === board.conversation);
+    return mine.map(({ clientData: r = {} }) => ({
       id: String(r.id),
+      title: String(r.title ?? r.goal),
       status: String(r.status),
       assignee: typeof r.assignee === "string" ? r.assignee : null,
       startedAt: typeof r.startedAt === "number" ? r.startedAt : null,
@@ -230,7 +256,7 @@ function labApi(origin: string) {
     const body = await get(`/sessions/${enc(run.sessionId)}/resources/${enc(ref)}?limit=200&topicPrefix=${enc(prefix)}`);
     return ((body.items ?? []) as Array<{ topic: string }>).map((i) => i.topic.split("/").slice(2).join("/"));
   };
-  return { rows, ownerOf, requestStatus, sessionItems, recorded };
+  return { board, rows, ownerOf, requestStatus, sessionItems, recorded };
 }
 type LabApi = ReturnType<typeof labApi>;
 
@@ -251,7 +277,7 @@ function follow(origin: string, flowId: string, requestId: string, onItem: (item
 }
 
 /** What the store holds for one task: its run session's items and its request's stream, this task's only, in stored order. */
-async function storedItems(origin: string, api: LabApi, tree: Tree, row: Row): Promise<string[]> {
+async function storedItems(origin: string, api: LabApi, row: Row): Promise<string[]> {
   const run = row.run!;
   const owner = await api.ownerOf(run.sessionId);
   const streamed: OutputItem[] = [];
@@ -263,7 +289,7 @@ async function storedItems(origin: string, api: LabApi, tree: Tree, row: Row): P
   // The attribution contract the substrate and every UI share, from core: this
   // task's items, board bookkeeping left out.
   const kept = [...byKey.values()].filter((item) => (item as { transient?: boolean }).transient !== true).sort(compareItemOrder);
-  return itemsForTask(kept, tree.boardRef, row.id).map((item) => item.id);
+  return itemsForTask(kept, CONVERSATION_BOARD, row.id).map((item) => item.id);
 }
 
 // ---- the page ----------------------------------------------------------------
@@ -285,14 +311,17 @@ const drawn = new Map<string, number>();
 
 const startsWith = (whole: string[], prefix: string[]) => prefix.every((id, i) => whole[i] === id);
 
-/** Reach a row by clicking: from Tasks while it's open, from its board card once it's done. */
-async function reach(page: Page, origin: string, tree: Tree, row: Row) {
+/**
+ * Reach a row by clicking: from Tasks while it's open, from Jump to once it's
+ * done, by its title (a conversation's board has no workstream Board tab).
+ */
+async function reach(page: Page, origin: string, row: Row) {
   await page.goto(`${origin}/tasks`);
   await page.getByTestId("shell").waitFor({ timeout: 20_000 });
   if (row.status === "completed" || row.status === "cancelled") {
-    await page.getByTestId(`nav-workstream-${tree.mailboxId}`).click();
-    await page.locator("[role=tab][data-tab=board]").click();
-    await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
+    await page.getByTestId("jump-to").click();
+    await page.getByTestId("jump-input").fill(row.title);
+    await page.locator(`[data-testid=jump-dialog] section[aria-label="Tasks"] [data-testid=jump-result]`).filter({ hasText: row.title }).first().click();
   } else {
     await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
     // Tasks hides queued rows until Queued is on; a person looking for any open row turns it on.
@@ -307,21 +336,21 @@ async function reach(page: Page, origin: string, tree: Tree, row: Row) {
 
 type Ctx = { page: Page; origin: string; devtool: string; api: LabApi; tree: Tree; fail: (leg: string, why: string) => void; evidence: string[] };
 
-async function checkItems({ page, origin, api, tree, fail }: Ctx, row: Row, running: boolean): Promise<void> {
+async function checkItems({ page, origin, api, fail }: Ctx, row: Row, running: boolean): Promise<void> {
   if (!(await visible(page, "session", 15_000))) {
     fail("items equal the run session's", `the Session never opened the run (${(await page.getByTestId("task-slot").textContent())?.slice(0, 200)})`);
     return;
   }
   // Store first, then the screen, then the store again: the screen must hold
   // everything the first read held, and nothing the second read doesn't, in order.
-  const first = await storedItems(origin, api, tree, row);
+  const first = await storedItems(origin, api, row);
   for (let waited = 0; waited < 3_000; waited += 100) {
     const shown = new Set(await drawnIds(page));
     if (first.every((id) => shown.has(id))) break;
     await sleep(100);
   }
   const shown = await drawnIds(page);
-  const second = await storedItems(origin, api, tree, row);
+  const second = await storedItems(origin, api, row);
   drawn.set(row.id, shown.length);
   if (first.length === 0) fail("items equal the run session's", "the store holds no item for this task, so there is nothing to compare");
   else if (!startsWith(shown, first) || !startsWith(second, shown)) {
@@ -378,7 +407,7 @@ async function checkInterrupt({ page, api, fail }: Ctx, row: Row): Promise<void>
 }
 
 async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row): Promise<void> {
-  const seat = tree.members.find((m) => m.split(".").at(-1) === row.assignee);
+  const seat = tree.members.find((m) => m === row.assignee);
   const shownSeat = await page.getByTestId("inspector-worker-id").getAttribute("data-seat-id");
   if (shownSeat !== seat) fail("inspector", `worker ${shownSeat}, the row is assigned ${seat}`);
   const started = await page.getByTestId("inspector-started-at").getAttribute("data-started-at");
@@ -478,28 +507,29 @@ await runGoal(async (failures) => {
   const tree = await readTree();
   // GOAL_PAGES serves pages built elsewhere, e.g. from the commit before this
   // screen existed, to record the before-state.
-  const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL, tree.drainerFlow));
+  const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL, tree.leadFlow));
   const evidence: string[] = [];
   const served = await startLab(pages);
   const browser = await launchChromium();
   try {
     const api = labApi(served.origin);
-    // The held runs are linked once the drain has handed them off.
+    // The held runs are linked once the board has handed them over.
+    const board = await api.board(tree);
     let rows: Row[] = [];
     for (let waited = 0; waited < 30_000; waited += 250) {
-      rows = await api.rows(tree);
+      rows = await api.rows(board);
       if (rows.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rows.some((r) => r.status === "completed")) break;
       await sleep(250);
     }
     const owners = new Map<string, string>();
     for (const row of rows) if (row.run !== null) owners.set(row.id, await api.ownerOf(row.run.sessionId));
     const held = rows.filter((r) => r.status === "in_progress" && r.run !== null);
-    // A run's owner is the flow its session is on: the drainer's flow, or a seat's flow of its own.
-    const onDrainer = held.find((r) => owners.get(r.id) === tree.drainerFlow);
-    const ownFlow = held.find((r) => owners.get(r.id) !== tree.drainerFlow);
+    // A run's owner is the flow its session is on: the shared flow, or a worker's flow of its own.
+    const onShared = held.find((r) => owners.get(r.id) === tree.sharedFlow);
+    const ownFlow = held.find((r) => owners.get(r.id) !== tree.sharedFlow);
     const finished = rows.find((r) => r.status === "completed" && r.run !== null);
     const unclaimed = rows.find((r) => r.run === null && r.status !== "in_progress");
-    if (onDrainer === undefined || ownFlow === undefined || finished === undefined || unclaimed === undefined) {
+    if (onShared === undefined || ownFlow === undefined || finished === undefined || unclaimed === undefined) {
       throw new Error(`store: the board does not hold the rows the goal reads: ${rows.map((r) => `${r.id} ${r.status} ${r.run === null ? "no run" : owners.get(r.id)}`).join("; ")}`);
     }
 
@@ -507,7 +537,7 @@ await runGoal(async (failures) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => pageErrors.push(e.message));
     const cases: Array<{ name: string; row: Row; running: boolean }> = [
-      { name: `held on ${tree.drainerId}`, row: onDrainer, running: true },
+      { name: `held on ${tree.sharedFlow}`, row: onShared, running: true },
       { name: `held on ${owners.get(ownFlow.id)}`, row: ownFlow, running: true },
       { name: "finished", row: finished, running: false },
     ];
@@ -524,7 +554,7 @@ await runGoal(async (failures) => {
     for (const { name, row, running } of cases) {
       const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
       const ctx: Ctx = { page, origin: served.origin, devtool: served.devtool, api, tree, fail, evidence };
-      await reach(page, served.origin, tree, row);
+      await reach(page, served.origin, row);
       await leg(fail, "items equal the run session's", () => checkItems(ctx, row, running));
       await leg(fail, "inspector", () => checkInspector(ctx, row));
       await leg(fail, "gaps", () => checkGaps(ctx, running));
@@ -532,14 +562,14 @@ await runGoal(async (failures) => {
       evidence.push(`${name}: ${drawn.get(row.id) ?? 0} items drawn = stored, run-state ${await page.getByTestId("run-state").getAttribute("data-state").catch(() => "none")}`);
     }
     // After the interrupts, each link still names the stopped run: Shift Manager wrote nothing to a row.
-    const after = await api.rows(tree);
+    const after = await api.rows(board);
     for (const { name, row } of cases) {
       const now = after.find((r) => r.id === row.id);
       if (JSON.stringify(now?.run) !== JSON.stringify(row.run)) failures.push(`[${name}] reach: the row's run link changed to ${JSON.stringify(now?.run)}`);
     }
 
     // The row no run has claimed.
-    await reach(page, served.origin, tree, unclaimed);
+    await reach(page, served.origin, unclaimed);
     const unclaimedFail = (name: string, why: string) => failures.push(`[unclaimed] ${name}: ${why}`);
     await leg(unclaimedFail, "no run", async () => {
       if (!(await visible(page, "session-no-run", 5_000))) unclaimedFail("no run", "the Session doesn't say no run has started");

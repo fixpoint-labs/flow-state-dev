@@ -40,6 +40,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inMemoryStores } from "@flow-state-dev/engine";
+import { runBoardSegment } from "@flow-state-dev/harness-manager";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
@@ -67,7 +68,7 @@ interface SeatFixture {
 }
 
 interface Fixture {
-  row: { issue: string; phase: string; taskId: string; goal: string };
+  row: { issue: string; phase: string; goal: string };
   assignedSeat: string;
   silentSeat: string;
   coordinatorSeat: string;
@@ -79,8 +80,13 @@ interface Fixture {
    * the chief of staff runs the `coordinator` kind, which has no inspect entry.
    */
   orgSeats: Record<string, { kind: string }>;
+  /**
+   * The team workers on the `coordinator` kind (`teams/<team>/workers/`), by
+   * id. Hired with the others and, like the org seats, outside the per-seat
+   * legs: the kind has no inspect entry.
+   */
+  teamCoordinators: Record<string, { kind: string }>;
   documents: string[];
-  mailboxes: string[];
   promptTokens: string[];
   tokenHomes: Record<string, string>;
   wait: { timeoutMs: number; pollMs: number };
@@ -210,6 +216,9 @@ async function open(label: string, over: Partial<OpenLabOptions> = {}): Promise<
     workspace,
     coderSeatId: fixture.assignedSeat,
     logger: silentLogger,
+    // Model-free: a row on a session's board is judged before it closes, and the stub
+    // answers nothing a judge could pass. The judge is it-answers-a-conversations-task's.
+    withoutJudge: true,
     ...controlOptions(),
     ...over,
   });
@@ -267,7 +276,7 @@ async function until(
   const deadline = Date.now() + timeoutMs;
   let row: Task | undefined;
   while (Date.now() < deadline) {
-    row = await lab.row(fixture.row.taskId);
+    row = await lab.featureRow(fixture.row.issue);
     if (row !== undefined && reached(row)) return row;
     await sleep(wait.pollMs);
   }
@@ -318,11 +327,15 @@ await runGoal(async (failures) => {
     // ---- (a) BR-1, BR-2 — the tree alone produced all of it ---------------
     {
       const seatIds = Object.keys(lab.seats).sort();
-      const wantedSeats = [...Object.keys(fixture.seats), ...Object.keys(fixture.orgSeats)];
+      const wantedSeats = [
+        ...Object.keys(fixture.seats),
+        ...Object.keys(fixture.orgSeats),
+        ...Object.keys(fixture.teamCoordinators),
+      ];
       if (!sameSet(seatIds, wantedSeats)) {
         note(`hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(wantedSeats)}`);
       }
-      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats })) {
+      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats, ...fixture.teamCoordinators })) {
         const seat = lab.seats[seatId] as { kind?: string } | undefined;
         if (seat === undefined) continue;
         if (seat.kind !== expected.kind) {
@@ -334,12 +347,9 @@ await runGoal(async (failures) => {
       if (!sameSet(docRefs, fixture.documents)) {
         note(`documents ${JSON.stringify(docRefs)}, wanted ${JSON.stringify(fixture.documents)}`);
       }
-      // The COMPLETE set, not its first element — a loader that started
-      // returning a second mailbox would otherwise leave this green.
+      // No mailbox: the team's feature and release work are workstreams the EM leads.
       const mailboxIds = lab.roster.mailboxes.map((mailbox) => mailbox.id);
-      if (!sameSet(mailboxIds, fixture.mailboxes)) {
-        note(`mailboxes ${JSON.stringify(mailboxIds)}, wanted ${JSON.stringify(fixture.mailboxes)}`);
-      }
+      if (mailboxIds.length > 0) note(`the tree declares mailboxes ${JSON.stringify(mailboxIds)}, wanted none`);
 
       // BR-2, both halves. One line of one `WORKER.md` is the only difference
       // between the two trees, and the corrected twin IS the real tree.
@@ -371,7 +381,7 @@ await runGoal(async (failures) => {
       evidence.push(
         `one root produced ${seatIds.length} seats on ${
           new Set(Object.values(fixture.seats).map((s) => s.kind)).size
-        } kinds, ${docRefs.length} documents and ${mailboxIds.length} mailbox; a tree naming an ` +
+        } kinds, ${docRefs.length} documents and no mailbox; a tree naming an ` +
           `unregistered kind refused the whole roster and its corrected twin hired cleanly`,
       );
     }
@@ -442,9 +452,14 @@ await runGoal(async (failures) => {
     {
       const filed = await lab.file(fixture.coordinatorSeat, filing);
       if (filed.error !== undefined) note(`filing the row was refused — ${filed.error}`);
+      // The board mints the row's id; the row names its issue and phase in its payload.
       const filedTaskId = (filed.output as { taskId?: string } | undefined)?.taskId;
-      if (filedTaskId !== fixture.row.taskId) {
-        note(`the EM seat filed row "${filedTaskId}", wanted "${fixture.row.taskId}"`);
+      const filedRow = await lab.featureRow(fixture.row.issue);
+      if (filedTaskId === undefined || filedRow?.id !== filedTaskId) {
+        note(`the EM seat filed row "${filedTaskId}", and the row naming ${fixture.row.issue} is "${filedRow?.id}"`);
+      }
+      if (JSON.stringify(filedRow?.input) !== JSON.stringify({ issue: fixture.row.issue, phase: fixture.row.phase })) {
+        note(`the filed row's payload is ${JSON.stringify(filedRow?.input)}, wanted its issue and phase`);
       }
 
       const drained = await lab.drain(fixture.coordinatorSeat);
@@ -492,7 +507,10 @@ await runGoal(async (failures) => {
 
     // ---- (d) BR-10, BR-11, BR-13 — the prompt, the checkout, the row ------
     {
-      const row = await lab.row(fixture.row.taskId);
+      const row = await lab.featureRow(fixture.row.issue);
+      // The board the row sits on: the EM's own session's, under its partition.
+      const rowKey = Object.keys(await lab.rows()).find((key) => key.endsWith(`/${row?.id}`));
+      const epic = runBoardSegment("tasks", decodeURIComponent(rowKey?.split("/")[1] ?? ""));
       // The FIRST run, deliberately: BR-10 and BR-11 are claims about what the
       // manager hands a run, and they are equally true of a retry. How many
       // runs one row gets is BR-9's claim, and it is graded there.
@@ -517,8 +535,8 @@ await runGoal(async (failures) => {
         // being THE derived checkout.
         const expected = checkoutPathFor(workspace, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
-          epic: lab.board.id,
-          issue: fixture.row.issue,
+          epic,
+          issue: row?.id ?? "",
           phase: PHASE,
         });
         if (run.cwd !== expected) {
@@ -531,9 +549,9 @@ await runGoal(async (failures) => {
         // between the issue and the phase must not land in the same tree.
         const shifted = checkoutPathFor(workspace, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
-          epic: lab.board.id,
-          issue: fixture.row.issue.slice(0, -1),
-          phase: `${fixture.row.issue.slice(-1)}-${PHASE}`,
+          epic,
+          issue: (row?.id ?? "").slice(0, -1),
+          phase: `${(row?.id ?? "").slice(-1)}-${PHASE}`,
         });
         if (shifted === expected) {
           note(`two different (issue, phase) pairs derive one checkout: ${expected}`);
@@ -562,7 +580,7 @@ await runGoal(async (failures) => {
       evidence.push(
         `the run was handed a prompt carrying all ${fixture.promptTokens.length} held-out tokens ` +
           `from the seat's own instructions, brief and skills, and the checkout the framework ` +
-          `derives for (${fixture.row.issue}, ${PHASE}); the row settled ${row?.status}`,
+          `derives for (${row?.id}, ${PHASE}); the row settled ${row?.status}`,
       );
     }
   } finally {
@@ -579,15 +597,16 @@ await runGoal(async (failures) => {
       if (row.status !== "errored") {
         note(`a hand-off to an unminted instance settled "${row.status}", wanted "errored"`);
       }
+      // Refused at the hand-off, by name: no worker of that id is one the EM's session hands to.
       const reason = `${row.error ?? ""} ${row.feedback ?? ""}`;
-      if (!reason.includes("flow-not-found") || !reason.includes(fixture.unknownSeat)) {
-        note(`the refusal names neither flow-not-found nor the id it could not find: ${reason}`);
+      if (!reason.includes(`"${fixture.unknownSeat}"`) || !reason.includes("delegates")) {
+        note(`the refusal does not name the id it could not hand to: ${reason}`);
       }
       if (missing.runs.length !== 0) {
         note(`a checkout was provisioned for a hand-off that could not be delivered`);
       }
       evidence.push(
-        `a hand-off naming an instance no seat minted errors the row by name (flow-not-found) ` +
+        `a hand-off naming an instance no seat minted errors the row by name (not one of the session's delegates) ` +
           `and provisions nothing`,
       );
     } finally {
@@ -609,23 +628,23 @@ await runGoal(async (failures) => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: fixture.assignedSeat,
       logger: silentLogger,
+      withoutJudge: true,
     });
     try {
+      // A session's board retries a not-done row at once: the retry is the re-pend,
+      // read off the second run's prompt rather than off a moment between attempts.
       await lab.file(fixture.coordinatorSeat, filing);
       await lab.drain(fixture.coordinatorSeat);
-      const first = await settled(lab);
-      if (first.status !== "pending") {
+      const second = await terminal(lab);
+      if (stub.runs.length !== 2) {
         note(
-          `a run that finished cleanly and left no commit settled "${first.status}" — the ` +
-            `done-condition is meant to be the authority on completion`,
+          `a run that finished cleanly and left no commit was run ${stub.runs.length} time(s) against a ` +
+            `budget of 2 — the done-condition is meant to be the authority on completion`,
         );
       }
-      if (!(first.feedback ?? "").includes("not done")) {
-        note(`the re-pended row carries no reason the next attempt can read: ${first.feedback}`);
+      if (stub.runs[1] !== undefined && !stub.runs[1].prompt.includes("not done")) {
+        note(`the retry's prompt carries no reason the last attempt was not done`);
       }
-
-      await lab.drain(fixture.coordinatorSeat);
-      const second = await settled(lab);
       if (second.status !== "errored") {
         note(`the row settled "${second.status}" with its retry budget spent, wanted "errored"`);
       }
@@ -636,7 +655,7 @@ await runGoal(async (failures) => {
         note(`the retry's prompt does not carry why the last attempt stopped`);
       }
       evidence.push(
-        `a clean finish that produced no commit re-pends the row with its reason attached, and ` +
+        `a clean finish that produced no commit is retried with its reason attached, and ` +
           `errors it once the retry budget is spent`,
       );
     } finally {
@@ -677,10 +696,10 @@ await runGoal(async (failures) => {
       );
     }
     // And the positive half, without which "it changed nothing" is equally
-    // true of a loader that reads nothing at all: the mailboxes/ folder beside
+    // true of a loader that reads nothing at all: the workers/ folder beside
     // it DOES load.
-    if (withDecoy.mailboxes.length === 0) {
-      note(`the tree produced no mailboxes, so "an unwalked folder loads as nothing" says nothing`);
+    if (!withDecoy.workers.some((w) => w.id === fixture.assignedSeat)) {
+      note(`the tree produced no ${fixture.assignedSeat}, so "an unwalked folder loads as nothing" says nothing`);
     }
 
     // BR-17, at the door the rule names.
@@ -709,7 +728,7 @@ await runGoal(async (failures) => {
         );
       }
       evidence.push(
-        `a boards/ folder loads as nothing while the mailboxes/ folder beside it loads, and an ` +
+        `a boards/ folder loads as nothing while the workers/ folder beside it loads, and an ` +
           `org-less read is refused at the transport door while the same read through the same ` +
           `door, carrying a verified bearer, lands with the seat's own facts`,
       );

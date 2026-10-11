@@ -17,7 +17,7 @@ import { asksOfTask, doorOf, rosterOf, seatFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
-import { mailboxOf, useTask } from "../lib/task";
+import { isConversationBoard, mailboxOf, useTask } from "../lib/task";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -64,7 +64,14 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}
-          <button type="button" className="hover:underline" onClick={() => navigate({ level: "workstream", mailboxId: mailboxOf(boardRef), tab: "board" })}>
+          <button type="button" className="hover:underline" onClick={() =>
+              navigate(
+                isConversationBoard(boardRef)
+                  ? { level: "tasks", by: "state" }
+                  : { level: "workstream", mailboxId: mailboxOf(boardRef), tab: "board" },
+              )
+            }
+          >
             {boardRef}
           </button>
         </p>

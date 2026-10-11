@@ -26,8 +26,8 @@
     "EM-INSTRUCTIONS-A17C3": "teams/eng/workers/em/WORKER.md",
     "HANDBOOK-DOC-D5A02": "org/resources/engineering-handbook.md"
   },
-  "charterToken": {
-    "FEATURE-CHARTER-0A8D6": "teams/eng/mailboxes/feature/MAILBOX.md"
-  },
-  "wait": { "timeoutMs": 60000, "pollMs": 100 }
+  "wait": {
+    "timeoutMs": 60000,
+    "pollMs": 100
+  }
 }

@@ -9,7 +9,9 @@
  * The models are scripted by block: best fit's evaluation answers the route
  * a test names (by default the chief of staff itself); the chief of staff's
  * judgment (`coordinator-judgment`) makes the tool calls a test names, then
- * stops; an `agent` worker's turn (`agent-answer`) answers with a fixed line.
+ * stops; the EM's turn (`devforce-em-turn`) makes the tool calls a test names
+ * for it, then answers "Filed."; an `agent` worker's turn (`agent-answer`)
+ * answers with a fixed line.
  *
  * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`, as amended by
  * `specs/issues/FIX-1833/`): BR-33 (the chief of staff runs on the
@@ -18,9 +20,15 @@
  * or a failed call to its turn, recorded with why), BR-34's
  * mechanism (hire, add, hand off), BR-10 (its delegate read is the
  * conversation's list, with what each takes), BR-9's record of a default that
- * can't take a post (the coder, which takes only its own board's rows), naming the delegate that
- * can, and the EM as a delegate that takes posts: it
- * files the feature line a handed-on post carries, or says it filed nothing.
+ * can't take a post (the coder, which takes only tasks), naming the delegate
+ * that can, and the EM as a delegate that takes posts: its turn files the
+ * coder's task on the board of the session the post reached.
+ *
+ * Retired here (BR-24): the cases that had the EM file nothing, and say so,
+ * for a line not in the `<issue-slug>: <what the feature is>` shape. That
+ * parse is gone: whether a post asks for a feature is the EM's model's
+ * judgement now, graded with a real model where the EM files from its
+ * workstream session (`devteam-em-workstream.test.ts`).
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,11 +36,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
+import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
+
+/** The EM's description, as its `WORKER.md` writes it: what a coordinator picks it by. */
+const EM_DESCRIPTION =
+  "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.";
 
 const COS = "chief-of-staff";
 
@@ -70,27 +81,34 @@ function scriptedRoute(route: Route) {
   };
 }
 
-/**
- * The judgment's tool calls, one per step, then a closing line; an agent
- * worker's turn answers with a fixed line; best fit's evaluation answers
- * `route`, by default the chief of staff itself, sure of it, so its own turn
- * takes the post.
- */
-function scripted(calls: ToolCall[], route: Route = { choice: COS, confidence: 0.95 }): ModelResolver {
+/** A model that makes `calls`, one per step, then answers `closing`; `steps()` counts its steps. */
+function stepping(id: string, calls: ToolCall[], closing: string): GeneratorModel & { steps: () => number } {
   // One call per step, each after the last one's result: a later call depends on an earlier one.
   let step = 0;
-  const judgment: GeneratorModel = {
-    modelId: "test/judgment",
+  return {
+    modelId: id,
     async generate() {
       throw new Error("the owned tool loop calls generateStep");
     },
     async generateStep() {
       const call = calls[step];
       step += 1;
-      if (call === undefined) return { text: "Handed on.", finishReason: "stop" };
-      return { toolCalls: [{ toolCallId: `t${step}`, ...call }], finishReason: "tool-calls" };
+      if (call === undefined) return { text: closing, finishReason: "stop" };
+      return { toolCalls: [{ toolCallId: `${id}-${step}`, ...call }], finishReason: "tool-calls" };
     },
+    steps: () => step,
   };
+}
+
+/**
+ * The judgment's tool calls, one per step, then a closing line; the EM's turn
+ * makes `em`'s calls, then answers "Filed."; an agent worker's turn answers
+ * with a fixed line; best fit's evaluation answers `route`, by default the
+ * chief of staff itself, sure of it, so its own turn takes the post.
+ */
+function scripted(calls: ToolCall[], route: Route = { choice: COS, confidence: 0.95 }, em: ToolCall[] = []): ModelResolver {
+  const judgment = stepping("test/judgment", calls, "Handed on.");
+  const emTurn = stepping("test/em", em, "Filed.");
   const helper: GeneratorModel = {
     modelId: "test/helper",
     async generate() {
@@ -100,11 +118,15 @@ function scripted(calls: ToolCall[], route: Route = { choice: COS, confidence: 0
       return { text: "The licenses are all MIT.", finishReason: "stop" };
     },
   };
-  return Object.assign((_id: string, block?: string) => (block?.startsWith("coordinator-judgment") ? judgment : helper), {
-    resolveId: (id: string) => id,
-    resolveEvaluationModel: () => scriptedRoute(route),
-    judgmentSteps: () => step,
-  }) as unknown as ModelResolver;
+  return Object.assign(
+    (_id: string, block?: string) =>
+      block?.startsWith("coordinator-judgment") ? judgment : block === EM_TURN ? emTurn : helper,
+    {
+      resolveId: (id: string) => id,
+      resolveEvaluationModel: () => scriptedRoute(route),
+      judgmentSteps: () => judgment.steps(),
+    },
+  ) as unknown as ModelResolver;
 }
 
 let model: ModelResolver | undefined;
@@ -122,7 +144,6 @@ async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-coordinator-")), remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
   });
   return opened;
@@ -195,7 +216,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     // the coder's takes a conversation's tasks (FIX-1866). What the chief of staff picks a hand-off
     // and a filing by.
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: "Files each feature on the team's board; never does the work itself.", takes: "posts" },
+      { worker: "eng.em", description: EM_DESCRIPTION, takes: "posts" },
       { worker: "eng.coder", description: "Does the work a filed row names, in a checkout of its own.", takes: "tasks" },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
@@ -245,14 +266,19 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const lab = await open();
     const id = await conversation(lab);
     const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], { choice: "eng.em", confidence: 0.9 });
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], { choice: "eng.em", confidence: 0.9 }, [
+      {
+        toolName: "addTask",
+        args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } },
+      },
+    ]);
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
     expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
     const items = await settledItems(lab, id);
     // One evaluation, over the EM (the coder takes no post) and the chief of staff itself, by its description.
     expect(routeCalls).toEqual([
       {
-        "eng.em": "Files each feature on the team's board; never does the work itself.",
+        "eng.em": EM_DESCRIPTION,
         [COS]: "The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
       },
     ]);
@@ -260,36 +286,16 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(items.filter((item) => item.type === "message" && item.role === "assistant").map((item) => item.agentName)).toEqual(["eng.em"]);
     const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
     expect(record.data).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }, { worker: "eng.coder", outcome: "skipped" }] });
-    // The row the door would file for the line typed alone, on the EM's board.
-    const taskId = harnessTaskId(issue, PHASE);
-    expect((await lab.row(taskId))?.goal).toBe("show a badge on the cart");
+    // The coder's task, on the board of the EM session the post reached: feature work, naming the issue
+    // and the phase, for the coder.
+    const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.issue === issue);
+    expect(filed).toEqual([
+      expect.objectContaining({ goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } }),
+    ]);
     // The EM's answer lands under its name, once.
     const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
-    expect(answers).toEqual([`Filed ${taskId} on the board.`]);
+    expect(answers).toEqual(["Filed."]);
   });
-
-  // Only a whole line in the door's feature shape files: not a colon inside a
-  // sentence, not a label, not a link, and nothing in the delivery's heading.
-  for (const post of [
-    "can the team make the cart nicer?",
-    "Please investigate: https://example.com",
-    "Context: label: value",
-    "Look at this one:\nhttps://example.com/cart",
-  ]) {
-    it(`has its EM delegate file nothing, and say so, for ${JSON.stringify(post)}`, async () => {
-      const lab = await open();
-      const id = await conversation(lab);
-      model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
-      const before = Object.keys(await lab.rows()).length;
-      expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
-      const items = await settledItems(lab, id);
-      const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
-      expect(answers).toEqual([
-        'Nothing filed: the line does not name a feature; this seat files from "<issue-slug>: <what the feature is>".',
-      ]);
-      expect(Object.keys(await lab.rows())).toHaveLength(before);
-    });
-  }
 
   it("tells a coordinator with rounds when the EM's handed-on run is cancelled, so the round doesn't wait for its deadline", async () => {
     // The EM's board read for one issue is held, so its run is still going when it is cancelled.
@@ -331,7 +337,9 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(hired.error).toBeUndefined();
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], undefined, [
+      { toolName: "addTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
+    ]);
     expect((await act(lab, id, "run", { message: `${issue}: the release notes` })).error).toBeUndefined();
 
     const runtime = await lab.state.getRuntime();
@@ -352,6 +360,11 @@ describe("the chief of staff as a coordinator (S10)", () => {
     });
   });
 });
+
+/** The lab user's stored rows under `prefix`, by key. */
+async function stored(lab: Lab, prefix: string): Promise<Record<string, unknown>> {
+  return lab.stored("user", prefix);
+}
 
 /** A stored message's text. */
 function textOf(item: { content?: unknown; text?: unknown }): string {

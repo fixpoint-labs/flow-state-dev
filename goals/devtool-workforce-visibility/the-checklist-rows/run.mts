@@ -8,13 +8,14 @@
  * `fsdev dev` over that lab's own config, so nothing here stands a workforce
  * up or shapes one for the inspection.
  *
- * - Row 4 (a parked row says why, with nothing expanded): the builder seat
- *   parks on a question by design, driven through the lab's own driver. This
- *   file only reads the screen.
- * - Row 5 (the organization's seats, mailboxes and who is in which): read from
- *   the mailbox's session on a second serve of the same config with the debug
- *   endpoints off, because row 4's driver reads the ledger over the debug
- *   route and row 5 must be green without it. See `row5.mts`.
+ * - Row 4 (a parked row says why, with nothing expanded): the planner files a
+ *   row for the builder on its own conversation's board, and the builder
+ *   parks it on a question by design, driven through the lab's own driver.
+ *   This file only reads the screen.
+ * - Row 5 (the organization's workers, and a coordinator's delegates): read
+ *   from the session the lab's boot wrote its inventory through, on a second
+ *   serve of the same config with the debug endpoints off, so row 5 is green
+ *   on the production read alone. See `row5.mts`.
  *
  * Row 6 (a sealed document is told apart from a writable one) is outside this
  * goal's claim. The owner deferred its live read until a real hire declares a
@@ -32,7 +33,7 @@ import type { Browser, Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
 import { Scenario, serveLab } from "../../multi-seat-collab/run-scenario.mts";
 import { WORKER_KIND } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 import { gradeRow5 } from "./row5.mts";
@@ -92,17 +93,15 @@ async function waitForBadge(page: Page, sessionId: string): Promise<void> {
 }
 
 /**
- * Open a session the way a person does: the kind, then its one copy (a seat
- * has none of its own; a copy's id is its kind), then the seat's own session
- * on it, then the run it spawned.
+ * Open a run the way a person does: the kind, then its one copy (a worker
+ * has none of its own; a copy's id is its kind), then the task session the
+ * row ran in, which the navigator lists under that copy.
  */
-async function openRun(page: Page, seatSession: string, run: string): Promise<void> {
+async function openRun(page: Page, run: string): Promise<void> {
   const kindRow = page.locator(`[data-kind="${WORKER_KIND}"]`);
   if ((await kindRow.getAttribute("aria-expanded")) !== "true") await kindRow.click();
   const copyRow = page.locator(`[data-instance-id="${WORKER_KIND}"]`);
   if ((await copyRow.getAttribute("aria-expanded")) !== "true") await copyRow.click();
-  await page.locator(`[data-session-id="${seatSession}"]`).click();
-  await waitForBadge(page, seatSession);
   await page.locator(`[data-session-id="${run}"]`).click();
   await waitForBadge(page, run);
 }
@@ -247,7 +246,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
   const owners = Object.entries(tree.declaredDesks).filter(([, desk]) => desk === piece.desk);
   if (owners.length !== 1) {
     throw new Error(
-      `the fixture's desk "${piece.desk}" must be answered for by exactly one seat's own file; ` +
+      `the fixture's desk "${piece.desk}" must be answered for by exactly one worker's own file; ` +
         `the tree declares ${JSON.stringify(tree.declaredDesks)}`,
     );
   }
@@ -259,15 +258,15 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
   let row5Evidence = "";
   try {
     browser = await launchChromium();
-    const lab = new Scenario(served, tree);
+    // The app's own desk -> delegate map; this goal's controls perturb the worker and the boot, not the filer.
+    const lab = new Scenario(served, tree, routesFor(""));
     await lab.open();
 
     // ---- the subject: a row the hire parks on its own ---------------------
     const filed = await lab.file({ goal: piece.goal, desk: piece.desk, asks: piece.asks });
-    if (filed.status !== "completed") {
-      throw new Error(`filing the piece ended ${filed.status ?? filed.refusal}`);
+    if (filed.status !== "completed" || filed.output?.ok !== true) {
+      throw new Error(`filing the piece ended ${filed.status ?? filed.refusal}: ${JSON.stringify(filed.output)}`);
     }
-    await lab.drainAll();
     const parked = await lab.waitForRow(
       (row) => String(row.goal).includes(piece.goal) && row.status === "parked",
     );
@@ -283,15 +282,15 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       fail("row 4", `the hire never parked the row it was given (ledger: ${JSON.stringify((await lab.rows()).map((r) => [r.id, r.status]))})`);
     } else if (typeof parked.feedback !== "string" || parked.feedback.length === 0) {
       fail("row 4", `the hire parked row ${parked.id} with no reason on it, so there is no reason for the screen to show`);
-    } else if (parkLine.seat !== owner) {
-      fail("row 4", `row ${parked.id} parked on ${parkLine.seat}, not ${owner}, whose own file answers for "${piece.desk}"`);
+    } else if (parkLine.worker !== owner) {
+      fail("row 4", `row ${parked.id} parked on ${parkLine.worker}, not ${owner}, whose own file answers for "${piece.desk}"`);
     } else {
       const reason = parked.feedback;
 
       // ---- the screen ------------------------------------------------------
       const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
       await page.goto(served.origin, { waitUntil: "networkidle" });
-      await openRun(page, lab.seatSession(owner), parkLine.session);
+      await openRun(page, parkLine.session);
       const onScreen = await readTaskRow(page, parked.id, (cells) => cells.Status === "parked");
       await page.screenshot({ path: join(SHOTS, "row4-parked.png") });
 

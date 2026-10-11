@@ -2,11 +2,12 @@
 
 **Issue:** FIX-1496
 
-**Outcome:** Somebody posts one line into a mailbox a Markdown file declared. A coordinator seat
-reads the post and files one row. A working seat the row names wakes in a checkout of its own, runs
-a real coding agent from a prompt built out of its own files, and leaves its work at an address that
-still resolves when the run is over — work that satisfies an acceptance check the brief named before
-the run started, written by the requester and applied from outside the checkout.
+**Outcome:** Somebody posts one line in a workstream: Storefront's `feature`, which the EM leads.
+The EM reads the post and files one row on that workstream session's board, for the coder. The
+coder wakes in a checkout of its own, runs a real coding agent from a prompt built out of its own
+files, and leaves its work at an address that still resolves when the run is over — work that
+satisfies an acceptance check the brief named before the run started, written by the requester and
+applied from outside the checkout.
 
 This is the third sibling in this lab, and it edits neither of the other two.
 `it-wakes-the-seat-a-file-declared` grades what the plumbing carried, model-free.
@@ -22,10 +23,9 @@ convention file and in none of the lab's own code, before the run starts.
 
 **Signal:**
 
-1. Before anybody posts, the board carries no row. After one post, the line is in the mailbox's
-   transcript, the fan-out addressed the EM seat and recorded every other member `MAILBOX.md`
-   declares as skipped (read off the tree, which must still declare the coder and the reviewer),
-   and exactly one row exists.
+1. Before anybody posts, the workstream session's board carries no row. After one post, the line
+   is the person's one line in the workstream session's transcript, and exactly one row exists on
+   that board, for the coder, naming the feature's issue and the implement phase.
 2. The board's dispatch record names the coder seat and never the reviewer seat, by the worker each child session names (`workerId`).
 3. The prompt the manager handed the agent carries all four held-out tokens.
 4. Exactly one branch under `conductor/` resolves at the published address **after** the store is
@@ -93,15 +93,15 @@ the check, for two reasons: writing one would put the answer in a file BR-2 scan
 seeded with the actual product is exactly the shape the rule is about.
 
 **Both lab-driving controls first assert that a row was filed.** Without that, `no-harness` and
-`work-reaches-the-reviewer` both pass when the post files nothing at all — "no completed row, no
-branch, no dispatch" is equally true of a lab that never started. That happened once, on a run where
-the post entry was declared in the wrong action map, and both controls reported green.
+`work-reaches-the-reviewer` both pass when nothing is filed at all — "no completed row, no branch,
+no dispatch" is equally true of a lab that never started. That happened once, on a run where the
+post entry was declared in the wrong action map, and both controls reported green.
 
-`work-reaches-the-reviewer` grades the **board** dispatch, never the notify delivery. A mailbox
-notification to a declared member is expected and is a different dispatch kind; a control that
-counted any dispatch to the reviewer would go red on correct behaviour.
+The three lab-driving controls file through the EM's own `file` door, on its own session's board,
+and run with no judge: what each guards (the harness, the hand-off, the done-condition) happens
+after the filing, and filing from a post takes a model turn. They stay free of inference.
 
-**Model:** real — Claude Code's own, through the Agent SDK. Requires a signed-in SDK.
+**Model:** real — Claude Code's own, through the Agent SDK, for the coding run (requires a signed-in SDK); `openai/gpt-5.4-mini` for the EM's turn that files from the post, and `typesafe-ai/jev` as the judge, through the AI Gateway.
 
 **Run:** `pnpm tsx goals/devforce-lab/it-ships-an-artifact-a-person-can-open/run.mts`
 
@@ -116,7 +116,7 @@ carries no `goal.md`, so the sweep walks past it; it is spelled `run.mts` so the
 
 ## What this establishes, and what it does not
 
-It establishes that a hired Workforce can take a request through a mailbox and hand back a work
+It establishes that a hired Workforce can take a request through a workstream and hand back a work
 product a person can open and judge. It does **not** establish that the product is *good* — only
 that it satisfies the acceptance condition its requester wrote down, which is the strongest claim a
 machine can make here and is deliberately weaker than a human review. It does not establish anything
@@ -169,3 +169,5 @@ while the same read with an org lands"*. The paragraph above is kept as history.
 | 2026-09-30 | a1b122eb1 | n/a | PASS | Local leg. Row read back in a fresh process from the organization's storage under the mailbox's board id; the transcript count reads mailbox-post items. The published branch carries `eng.feature.work`. |
 | 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | Claude Code (Agent SDK) | PASS | Local leg. 19 lab TypeScript files classified, `harness.mts` among them. |
 | 2026-10-04 | d5225ecd8+FIX-1756 | Claude Code (Agent SDK) | PASS | Local leg. The skip list is read off `MAILBOX.md`: 3 declared members seen and skipped (`chief-of-staff`, `eng.coder`, `eng.reviewer`). All nine controls red. Red on `d5225ecd8` before the change: *the fan-out skipped [chief-of-staff, eng.coder, eng.reviewer]; wanted [eng.coder, eng.reviewer]*. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | `openai/gpt-5.4-mini` (the EM's turn) + Claude Code (Agent SDK) + `typesafe-ai/jev` | PASS | Converted: the post is a line in Alice's Storefront `feature` workstream session, which the EM leads; the EM's turn filed exactly one row on that session's board, for `eng.coder`, naming `greeting-module` at implement (minted id `task_…`). The fan-out skip list went with the mailbox. Local leg: published branch 1 commit ahead of `main` at the address after the run was gone; the requester's check accepts the produced tree and rejects `main`; `src/greeting.js` (78 bytes) is in no lab file, fixture or prompt; a fresh process read the row `completed` (from the owner's storage under the workstream session's partition), 1 run record `succeeded`, 1 person's line. All nine controls red; the three lab-driving ones file through the EM's door with no judge. |
+| 2026-10-11 | `7af86476` (DevTeam off mailboxes, merged with FIX-1866 P3 `f4978593`) | `openai/gpt-5.4-mini` (the EM's turn) + Claude Code (Agent SDK) + `typesafe-ai/jev` | PASS | Re-run on the merged tree. |

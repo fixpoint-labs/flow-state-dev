@@ -15,8 +15,8 @@
  *
  *   screens  Chromium, as the projects' owner, after the owner made one private
  *            project over HTTP. PROJECTS equals the shared rows, then the
- *            owner's private ones, then No project; the cross-team project
- *            lists both teams' workstreams; every project's four tabs show
+ *            owner's private ones, then No project; the boot's workstreams
+ *            show in their project; every project's four tabs show
  *            it: Stream is the owner's own project coordinator for that
  *            project, Workstreams its entries with their progress, Board the
  *            owner's own workstream sessions in it, Brief its brief. No gap
@@ -149,7 +149,6 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
   const g = new Set(got);
   return `missing [${[...w].filter((x) => !g.has(x)).join(", ")}], extra [${[...g].filter((x) => !w.has(x)).join(", ")}]`;
 };
-const teamOf = (mailboxId: string) => mailboxId.split(".")[0]!;
 
 // ---- the controls' swaps -----------------------------------------------------
 
@@ -349,9 +348,8 @@ type LabApi = ReturnType<typeof labApi>;
 
 // ---- what the tree and the store hold ---------------------------------------
 
-type Tree = { mailboxes: Array<{ id: string; boards: boolean }> };
 type Visibility = "shared" | "private";
-type Row = { id: string; title: string; brief: string | null; ownerUserId: string; members: string[]; workstreams: string[]; repository?: string | null };
+type Row = { id: string; title: string; brief: string | null; ownerUserId: string; members: string[]; repository?: string | null };
 /** A project as a person reads it: where it lives, and its row. */
 type Held = { visibility: Visibility; row: Row };
 type Entry = {
@@ -369,12 +367,6 @@ type Entry = {
 };
 /** The Lab's project setup, as its projects flow answers `projectSetup`. */
 type Setup = { projectCoordinator: string; workstreamCoordinator: string; coordinatorFlow: string };
-
-async function readTree(): Promise<Tree> {
-  const roster = await readDeclaredRoster(TREE);
-  if (roster.problems.length > 0) throw new Error(`the tree did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
-  return { mailboxes: roster.mailboxes.map((c) => ({ id: c.id, boards: ((c.declared.boards as string[] | undefined) ?? []).length > 0 })) };
-}
 
 /** The flow a standard worker runs on, as its file names it. */
 async function flowOf(worker: string): Promise<string> {
@@ -408,11 +400,16 @@ async function sharedRows(api: LabApi): Promise<Row[]> {
   return ref === undefined ? [] : ((await api.collection(reader, ref)) as Row[]);
 }
 
-/** The inventory's mailboxes, read through a mailbox's session (the owner's), and the shared project rows. */
-async function readStore(api: LabApi, host: string): Promise<{ mailboxes: string[]; rows: Row[] }> {
-  const mailboxesRef = await refOf(api, host, (p) => p === "inventory/mailboxes/*", "org");
+/**
+ * The inventory's mailboxes, read through the person's roster session (none
+ * when it publishes no inventory: the DevTeam tree declares no mailbox), and
+ * the shared project rows.
+ */
+async function readStore(api: LabApi): Promise<{ mailboxes: string[]; rows: Row[] }> {
+  const reader = await api.readerSession();
+  const mailboxesRef = await refOf(api, reader, (p) => p === "inventory/mailboxes/*", "org");
   return {
-    mailboxes: mailboxesRef === undefined ? [] : (await api.collection(host, mailboxesRef)).map((r) => String(r.id)),
+    mailboxes: mailboxesRef === undefined ? [] : (await api.collection(reader, mailboxesRef)).map((r) => String(r.id)),
     rows: await sharedRows(api),
   };
 }
@@ -522,14 +519,16 @@ async function sidebarGroups(page: Page): Promise<Array<{ id: string; streams: s
 
 const showGroups = (gs: Array<{ id: string; streams: string[] }>) => gs.map((g) => `${g.id}[${g.streams.join(",")}]`).join(" ");
 
-/** PROJECTS as the store says `api`'s person should see it: their projects in order, then No project when it holds a workstream. */
+/**
+ * PROJECTS as the store says `api`'s person should see it: their projects in
+ * order, none listing a mailbox, then No project when the inventory holds a
+ * mailbox workstream.
+ */
 async function wantedGroups(api: LabApi, mailboxes: readonly string[]): Promise<Array<{ id: string; streams: string[] }>> {
   const held = await projectsOf(api);
-  const listed = new Set(held.flatMap((h) => h.row.workstreams));
-  const unlisted = mailboxes.filter((c) => !listed.has(c));
   return [
-    ...held.map((h) => ({ id: `${h.visibility}:${h.row.id}`, streams: h.row.workstreams.map((w) => (mailboxes.includes(w) ? w : `gone:${w}`)) })),
-    ...(unlisted.length === 0 ? [] : [{ id: ":unassigned", streams: unlisted }]),
+    ...held.map((h) => ({ id: `${h.visibility}:${h.row.id}`, streams: [] })),
+    ...(mailboxes.length === 0 ? [] : [{ id: ":unassigned", streams: [...mailboxes] }]),
   ];
 }
 
@@ -572,7 +571,7 @@ async function gradeStream(view: View, held: Held, setup: Setup, origin: string,
 /**
  * Every tab of one project, as `view`'s person reads it, graded against the
  * store read just before: Brief its brief; Workstreams its entries, with the
- * progress counted from them, and the mailbox workstreams its row lists;
+ * progress counted from them, and no mailbox list (a project lists none);
  * Board a lane for each of the person's own entries with a session, and no
  * one else's; Stream the person's own coordinator for the project.
  */
@@ -623,7 +622,7 @@ async function gradeTabs(view: View, held: Held, setup: Setup, origin: string, f
     if (!same(drawn, wantEntries)) fail(leg, `${name}'s Workstreams entries: ${diff(wantEntries, drawn)}`);
   }
   const mailboxes = await attr(page, "[data-testid=project-workstream]", "data-mailbox-id");
-  if (!same(mailboxes, row.workstreams)) fail(leg, `${name}'s Workstreams mailbox list: ${diff(row.workstreams, mailboxes)}`);
+  if (mailboxes.length > 0) fail(leg, `${name}'s Workstreams lists mailboxes, and a project lists none: ${mailboxes.join(", ")}`);
   await noGap("workstreams");
 
   await tab("board");
@@ -646,7 +645,7 @@ async function gradeTabs(view: View, held: Held, setup: Setup, origin: string, f
 // ---- the legs ----------------------------------------------------------------
 
 /** The four tabs and PROJECTS, as the owner, over every project they read. */
-async function screens(browser: Browser, origin: string, setup: Setup, owner: LabApi, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+async function screens(browser: Browser, origin: string, setup: Setup, owner: LabApi, fail: (leg: string, why: string) => void, evidence: string[]) {
   const { context, page, errors } = await personPage(browser, origin, owner.user, true);
   try {
     await page.goto(origin);
@@ -655,37 +654,28 @@ async function screens(browser: Browser, origin: string, setup: Setup, owner: La
     await openPage(page, origin, "/inbox");
 
     // ---- PROJECTS: shared rows, then the owner's private ones, then No project ----
-    const want = await wantedGroups(owner, (await readStore(owner, host)).mailboxes);
+    const want = await wantedGroups(owner, (await readStore(owner)).mailboxes);
     const groups = await sidebarGroups(page);
     if (showGroups(groups) !== showGroups(want)) fail("PROJECTS equals the store's rows", `the owner's drawn ${showGroups(groups) || "(nothing)"}, stored ${showGroups(want)}`);
     if (!want.some((g) => g.id.startsWith("private:"))) fail("store", "the owner reads no private project, so PROJECTS' private half grades nothing");
 
-    // ---- the cross-team project ---------------------------------------------
+    // ---- every project's four tabs, and the boot's workstreams in theirs ------
     const held = await projectsOf(owner);
-    const crossTeam = held.find((h) => new Set(h.row.workstreams.map(teamOf)).size >= 2);
-    if (crossTeam === undefined) fail("store", "no project row lists workstreams from two teams, so the cross-team check grades nothing");
-    else {
-      const group = groups.find((g) => g.id === `${crossTeam.visibility}:${crossTeam.row.id}`);
-      if (group === undefined || !same(group.streams, crossTeam.row.workstreams)) {
-        fail("the cross-team project", `PROJECTS groups ${group?.streams.join(", ") ?? "nothing"} under ${crossTeam.row.id}, its row lists ${crossTeam.row.workstreams.join(", ")}`);
-      }
-    }
-
-    // ---- every project's four tabs -------------------------------------------
     const view: View = { who: "the owner", page, api: owner };
     const streams = new Map<string, string>();
+    let booted: string | undefined;
     for (const h of held) {
-      const { stream } = await gradeTabs(view, h, setup, origin, fail);
+      const { stream, entries } = await gradeTabs(view, h, setup, origin, fail);
       if (stream !== undefined) streams.set(`${h.visibility}/${h.row.id}`, stream);
-      if (h === crossTeam) {
-        await openPage(page, origin, projectPath(h, "workstreams"));
-        const listedHere = await attr(page, "[data-testid=project-workstream]", "data-mailbox-id");
-        if (new Set(listedHere.map(teamOf)).size < 2) fail("the cross-team project", `${h.row.id}'s Workstreams tab lists one team's workstreams: ${listedHere.join(", ")}`);
-      }
+      // The profile opens its workstreams at boot as another member, each with its session: the
+      // owner's Workstreams tab, graded against the store just above, lists them.
+      const theirs = entries.filter((e) => e.owner !== owner.user.userId && e.sessionId !== null);
+      if (h.visibility === "shared" && theirs.length >= 2) booted ??= `${h.row.id}[${theirs.map((e) => `${e.owner}/${e.id}`).join(",")}]`;
     }
+    if (booted === undefined) fail("the boot's workstreams", "no shared project holds two workstreams another member opened at boot, so the owner's Workstreams tab lists nobody else's");
     if (new Set(streams.values()).size !== streams.size) fail("a project's four tabs", `two projects' Streams draw one coordinator session: ${[...streams].map(([p, s]) => `${p}=${s}`).join(" ")}`);
     if (errors.length > 0) fail("screens", `the page threw: ${errors.join(" | ")}`);
-    evidence.push(`screens: ${showGroups(groups)}; ${streams.size} of ${held.length} Streams each the owner's own ${setup.projectCoordinator} for its project`);
+    evidence.push(`screens: ${showGroups(groups)}; the boot's workstreams ${booted ?? "none"}; ${streams.size} of ${held.length} Streams each the owner's own ${setup.projectCoordinator} for its project`);
   } finally {
     await context.close();
   }
@@ -712,11 +702,11 @@ async function openFromPage(view: View, origin: string, held: Held, title: strin
  * are both on, from their own page; both read both, each Board and Stream is
  * its viewer's own, and the outsider reads them and can't open one.
  */
-async function entries(browser: Browser, origin: string, setup: Setup, apis: { owner: LabApi; member: LabApi; outsider: LabApi }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+async function entries(browser: Browser, origin: string, setup: Setup, apis: { owner: LabApi; member: LabApi; outsider: LabApi }, fail: (leg: string, why: string) => void, evidence: string[]) {
   const leg = "entries opened through the app show for both members";
   const { owner, member, outsider } = apis;
   const shared = (await projectsOf(owner)).filter((h) => h.visibility === "shared");
-  const held = shared.find((h) => h.row.members.includes(member.user.userId) && !h.row.members.includes(outsider.user.userId) && h.row.workstreams.length > 0) ?? shared.find((h) => h.row.members.includes(member.user.userId));
+  const held = shared.find((h) => h.row.members.includes(member.user.userId) && !h.row.members.includes(outsider.user.userId)) ?? shared.find((h) => h.row.members.includes(member.user.userId));
   if (held === undefined) throw new Error(`no shared project lists ${member.user.userId} as a member`);
   const titles = { owner: `${fixture.opened.owner} ${RUN_STAMP}`, member: `${fixture.opened.member} ${RUN_STAMP}` };
 
@@ -753,7 +743,7 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
     for (const who of ["owner", "member"] as const) {
       const view = views[who];
       await openPage(view.page, origin, "/inbox");
-      const want = await wantedGroups(view.api, (await readStore(owner, host)).mailboxes);
+      const want = await wantedGroups(view.api, (await readStore(owner)).mailboxes);
       const groups = await sidebarGroups(view.page);
       if (showGroups(groups) !== showGroups(want)) fail("PROJECTS equals the store's rows", `${view.who}'s drawn ${showGroups(groups) || "(nothing)"}, stored ${showGroups(want)}`);
       const { stream, entries: read } = await gradeTabs(view, held, setup, origin, fail);
@@ -804,11 +794,11 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
  * owners' entries never meet, since each owner's key is their own; each
  * owner's own opens and updates race on their one entry.
  */
-async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: LabApi[] }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: LabApi[] }, fail: (leg: string, why: string) => void, evidence: string[]) {
   const leg = "a write race lands whole";
   const racers = [apis.owner, apis.member, ...apis.crowd];
   const shared = (await projectsOf(apis.owner)).filter((h) => h.visibility === "shared" && racers.every((r) => h.row.members.includes(r.user.userId) || h.row.ownerUserId === r.user.userId));
-  const held = shared.find((h) => h.row.workstreams.length === 0) ?? shared[0];
+  const held = shared[0];
   if (held === undefined) {
     fail("store", "no shared project lists every racer, so the write race races nothing");
     return;
@@ -880,12 +870,12 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
  * for one written for them. Titles carry this run's stamp, so no file in the
  * repository names the rows graded here.
  */
-async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, why: string) => void, evidence: string[]) {
   const leg = "cos";
   const { owner, member: person } = apis;
   const named = owner.user.userId;
   const titles = fixture.cos.titles.map((t) => `${t} ${RUN_STAMP}`);
-  const before = new Set((await readStore(owner, host)).rows.map((r) => r.id));
+  const before = new Set((await readStore(owner)).rows.map((r) => r.id));
 
   // A conversation is a session on the flow the chief of staff's file names, naming it.
   const flow = await flowOf(COS);
@@ -921,7 +911,7 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
   };
   if (status !== "completed") fail(leg, `the chief of staff's turn ended ${status}`);
 
-  const created = (await readStore(owner, host)).rows.filter((r) => !before.has(r.id));
+  const created = (await readStore(owner)).rows.filter((r) => !before.has(r.id));
   const createdPrivate = (await privateRows(person, session))?.filter((r) => !beforePrivate.has(r.id));
   if (createdPrivate === undefined) {
     fail(leg, `the person's conversation with the chief of staff publishes no user-scope projects/* collection, so no private project of theirs can be read`);
@@ -964,22 +954,22 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
 type Kept = { held: Held; entries: Entry[] };
 
 const rowKey = (r: Row) =>
-  JSON.stringify({ title: r.title, brief: r.brief ?? null, owner: r.ownerUserId, members: sorted(r.members), workstreams: r.workstreams, repository: r.repository ?? null });
+  JSON.stringify({ title: r.title, brief: r.brief ?? null, owner: r.ownerUserId, members: sorted(r.members), repository: r.repository ?? null });
 const entryKey = (e: Entry) =>
   JSON.stringify({ key: e.key, title: e.title, lead: e.lead, sessionId: e.sessionId, status: e.status, due: e.due, objectives: e.objectives, openedAt: e.openedAt, updatedAt: e.updatedAt });
 
-async function whatIsHeld(owner: LabApi, host: string): Promise<Kept[]> {
+async function whatIsHeld(owner: LabApi): Promise<Kept[]> {
   const kept: Kept[] = [];
   for (const held of await projectsOf(owner)) kept.push({ held, entries: await entriesOf(owner, { visibility: held.visibility, id: held.row.id }) });
   return kept;
 }
 
 /** After the Lab restarts on the same store: every project row, shared and private, and every entry is as it was. */
-async function restarted(before: Kept[], owner: LabApi, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+async function restarted(before: Kept[], owner: LabApi, fail: (leg: string, why: string) => void, evidence: string[]) {
   const leg = "a restart keeps the projects and their entries";
   let now: Kept[];
   try {
-    now = await whatIsHeld(owner, host);
+    now = await whatIsHeld(owner);
   } catch (error) {
     fail(leg, `the projects could not be read after the restart: ${(error as Error).message}`);
     return;
@@ -1017,8 +1007,6 @@ await runGoal(async (failures) => {
   const fired = swap === undefined ? undefined : join(SCRATCH, `fired-${CONTROL}-${RUN_STAMP}.log`);
   const evidence: string[] = [];
   const fail = (leg: string, why: string) => failures.push(`${leg}: ${why}`);
-  const tree = await readTree();
-  const host = tree.mailboxes[0]!.id;
   mkdirSync(join(SCRATCH, "stores"), { recursive: true });
   const store = join(mkdtempSync(join(SCRATCH, "stores", "devteam-")), "devteam.sqlite");
   let served = await startLab(pages, fired, store);
@@ -1029,7 +1017,7 @@ await runGoal(async (failures) => {
       crowd: LAB_CROWD.map((user) => labApi(served.origin, user)),
       outsider: labApi(served.origin, LAB_USERS.outsider),
     };
-    const { rows } = await readStore(apis.owner, host);
+    const { rows } = await readStore(apis.owner);
     if (rows.length === 0) fail("store", "the Lab holds no project row, so every leg grades nothing");
     for (const row of rows) {
       if (row.ownerUserId !== apis.owner.user.userId) fail("store", `${row.id} is owned by ${row.ownerUserId}, not the profile's person`);
@@ -1046,23 +1034,23 @@ await runGoal(async (failures) => {
       if (made.status !== "completed") fail("store", `the owner's private project was not created: ${made.status} ${made.error ?? ""}`);
       const browser = await launchChromium();
       try {
-        await screens(browser, served.origin, setup, apis.owner, host, fail, evidence);
-        await entries(browser, served.origin, setup, apis, host, fail, evidence);
+        await screens(browser, served.origin, setup, apis.owner, fail, evidence);
+        await entries(browser, served.origin, setup, apis, fail, evidence);
       } finally {
         await browser.close();
       }
-      await race(setup, apis, host, fail, evidence);
+      await race(setup, apis, fail, evidence);
 
       // Stop the Lab and start it again on the same store.
-      const before = await whatIsHeld(apis.owner, host);
+      const before = await whatIsHeld(apis.owner);
       served.child.kill("SIGTERM");
       await served.exited;
       served = await startLab(pages, fired, store);
-      await restarted(before, labApi(served.origin, LAB_USERS.owner), host, fail, evidence);
+      await restarted(before, labApi(served.origin, LAB_USERS.owner), fail, evidence);
     }
     // Last, on the Lab as it now runs: its rows are the member's.
     if (COS_LEG) {
-      await cos({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, host, fail, evidence);
+      await cos({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, fail, evidence);
     }
   } finally {
     served.child.kill("SIGTERM");

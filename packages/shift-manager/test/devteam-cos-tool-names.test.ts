@@ -24,15 +24,10 @@ function projectTools() {
 }
 
 describe("chief of staff tools presented with .as()", () => {
-  it("setWorkstreams is the project block under the tool's own name", () => {
-    const { blocks, tools } = projectTools();
-    const tool = tools.setWorkstreams;
-    expect(tool.name).toBe("setWorkstreams");
-    expect(tool.description).toMatch(/^Replace a project's workstreams with this list of full mailbox ids\./);
-    // No wrapper: the tool is the Workforce block, with its own kind and schemas.
-    expect(tool.kind).toBe(blocks.setWorkstreams.kind);
-    expect(tool.kind).not.toBe("sequencer");
-    expect(tool.inputSchema).toBe(blocks.setWorkstreams.inputSchema);
+  it("the project tools are createProject, setRepository, openWorkstream and listProjects: none lists mailboxes on a project", () => {
+    // A project's workstreams are the entries `openWorkstream` writes; there is
+    // no tool left that writes a list of mailbox ids onto a project row.
+    expect(Object.keys(projectTools().tools).sort()).toEqual(["createProject", "listProjects", "openWorkstream", "setRepository"]);
   });
 
   it("hire is the Workforce hire block under the tool's own name", () => {

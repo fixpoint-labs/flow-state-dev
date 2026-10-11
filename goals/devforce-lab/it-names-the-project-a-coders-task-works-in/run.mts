@@ -41,7 +41,6 @@ import { listProjectsOutputSchema } from "@flow-state-dev/workforce";
 import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -194,11 +193,10 @@ await runGoal(async (failures) => {
     workspace: { root: mkdtempSync(join(tmpdir(), "names-the-project-")), remotes: { allow: ["file"] } },
     coderSeatId: CODER,
     logger: silentLogger,
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
     // The standard install's projects: storefront is the only one with a repository.
     projects: [
-      { id: "storefront", title: "Storefront", members, workstreams: ["eng.feature"], repository: storefront.url },
+      { id: "storefront", title: "Storefront", members, repository: storefront.url },
       { id: "platform", title: "Platform", members },
       { id: "sandbox", title: "Sandbox", members },
     ],

@@ -1,4 +1,5 @@
 {
   "issue": "night-mode-toggle",
-  "goal": "Add a night-mode toggle to the settings page."
+  "goal": "Add a night-mode toggle to the settings page.",
+  "project": { "visibility": "shared", "id": "storefront" }
 }

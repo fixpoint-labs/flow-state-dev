@@ -35,7 +35,7 @@
  * suspends. Leg 1 must go red on "a row existed before any approval".
  */
 
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -62,7 +62,6 @@ interface Fixture {
   coordinatorSeat: string;
   assignedSeat: string;
   silentSeat: string;
-  mailbox: string;
   wait: { timeoutMs: number; pollMs: number };
 }
 
@@ -111,6 +110,9 @@ async function open(
     coderSeatId: fixture.assignedSeat,
     logger: silentLogger,
     ask: feature,
+    // Model-free (no key is read): a row on a session's board is judged before it closes,
+    // and the stub answers nothing a judge could pass.
+    withoutJudge: true,
     ...(CONTROL === "no-gate" ? { fileBeforeAsking: true } : {}),
     ...over,
   });
@@ -282,10 +284,11 @@ await runGoal(async (failures) => {
           note("1", `the ask allows ${JSON.stringify(ask.allow)}, wanted approve and reject`);
         }
       }
-      const members =
-        lab.roster.mailboxes.find((c) => c.id === fixture.mailbox)?.declared.members ?? [];
-      if (!(members as string[]).includes(fixture.coordinatorSeat)) {
-        note("1", `the feature mailbox's declared members ${JSON.stringify(members)} omit the EM`);
+      // The EM files for the coder because its file names the coder among its delegates.
+      const delegates =
+        (lab.roster.workers.find((w) => w.id === fixture.coordinatorSeat)?.declared.delegates as string[] | undefined) ?? [];
+      if (!delegates.includes(fixture.assignedSeat)) {
+        note("1", `the EM's declared delegates ${JSON.stringify(delegates)} omit the coder`);
       }
       if ((await lab.dispatched(fixture.coordinatorSeat)).length !== 0) {
         note("1", "the EM dispatched before any answer");
@@ -332,8 +335,8 @@ await runGoal(async (failures) => {
         const rows = await lab.rows();
         const ids = Object.values(rows).map((r) => r.id);
         if (ids.length !== 1) note("2", `after approve the board holds ${ids.length} row(s): ${ids.join(", ")}`);
-        if (row !== undefined && !row.id.startsWith(feature.issue)) {
-          note("2", `the row "${row.id}" is not derived from "${feature.issue}"`);
+        if (row !== undefined && (row.input as { issue?: string } | undefined)?.issue !== feature.issue) {
+          note("2", `the row "${row.id}" names ${JSON.stringify(row.input)}, not "${feature.issue}"`);
         }
         if (row?.status !== "completed") note("2", `the row settled "${row?.status}", wanted "completed"`);
         const reached = (await lab.dispatched(fixture.coordinatorSeat)).map((d) => d.workerId);
@@ -422,11 +425,6 @@ await runGoal(async (failures) => {
     const root = mkdtempSync(join(tmpdir(), "devforce-tree-no-em-"));
     cpSync(LAB_TREE, root, { recursive: true });
     rmSync(join(root, "teams/eng/workers/em"), { recursive: true });
-    const charter = join(root, "teams/eng/mailboxes/feature/MAILBOX.md");
-    writeFileSync(
-      charter,
-      readFileSync(charter, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
-    );
     // The chief of staff delegates to the EM, and an installation refuses a
     // delegate that isn't a standard worker, so the tree drops it there too.
     const chiefOfStaff = join(root, "org/workers/chief-of-staff/WORKER.md");
@@ -434,6 +432,18 @@ await runGoal(async (failures) => {
       chiefOfStaff,
       readFileSync(chiefOfStaff, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
     );
+    // The teams' coordinator workers whose one delegate is the EM have nobody
+    // to hand to without it, so the tree drops them as well.
+    for (const team of readdirSync(join(root, "teams"))) {
+      const workersDir = join(root, "teams", team, "workers");
+      if (!existsSync(workersDir)) continue;
+      for (const worker of readdirSync(workersDir, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+        const file = join(workersDir, worker.name, "WORKER.md");
+        if (readFileSync(file, "utf8").includes(`delegates: [${fixture.coordinatorSeat}]\n`)) {
+          rmSync(join(workersDir, worker.name), { recursive: true });
+        }
+      }
+    }
     let refused: string | undefined;
     try {
       const { lab } = await open("ask-no-em", inMemoryStores(), { root });
@@ -489,7 +499,7 @@ await runGoal(async (failures) => {
             emWorker: fixture.coordinatorSeat,
             feature: other,
             principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
-            ledger: lab.ledger,
+            filed: lab.featureRow,
           }),
         ),
       );

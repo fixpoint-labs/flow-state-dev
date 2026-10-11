@@ -252,7 +252,7 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
     }
     await setup.close();
     if (row === undefined) return fail("DevForce filed no row after its ask was approved");
-    const ch = tree.mailboxes[0]!.id;
+    const ch = tree.mailboxes[0]?.id;
     const project = (await readStore(api, tree, userId)).projects[0]?.id;
     const task = `/tasks/${encodeURIComponent(row.ref)}/${encodeURIComponent(row.id)}`;
     const addresses: Array<{ path: string; surface: string | string[]; owner: string }> = [
@@ -265,8 +265,13 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
       { path: "/p/unassigned/board", surface: ["project-board", "project-board-none"], owner: "No project's board (FIX-1718)" },
       { path: "/p/unassigned/workstreams", surface: ["project-workstreams", "project-workstreams-none"], owner: "No project's workstreams (FIX-1718)" },
       { path: "/p/unassigned/brief", surface: "project-brief-none", owner: "No project's brief (FIX-1718)" },
-      { path: `/w/${encodeURIComponent(ch)}/stream`, surface: "workstream", owner: "a workstream (FIX-1650)" },
-      ...["board", "brief", "results"].map((tab) => ({ path: `/w/${encodeURIComponent(ch)}/${tab}`, surface: "workstream", owner: `a workstream's ${tab} (FIX-1651)` })),
+      // A mailbox workstream's own address, when the tree declares one.
+      ...(ch === undefined
+        ? []
+        : [
+            { path: `/w/${encodeURIComponent(ch)}/stream`, surface: "workstream", owner: "a workstream (FIX-1650)" },
+            ...["board", "brief", "results"].map((tab) => ({ path: `/w/${encodeURIComponent(ch)}/${tab}`, surface: "workstream", owner: `a workstream's ${tab} (FIX-1651)` })),
+          ]),
       { path: "/inbox", surface: "inbox", owner: "Inbox (FIX-1652)" },
       { path: "/tasks", surface: "tasks", owner: "Tasks, NOW, TIME and COST (FIX-1651; session data)" },
       ...["session", "diff", "checks", "brief"].map((tab) => ({ path: `${task}/${tab}`, surface: "task-frame", owner: `a task's ${tab} (FIX-1651; FIX-1652)` })),

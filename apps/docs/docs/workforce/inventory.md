@@ -233,7 +233,7 @@ if (mailboxesRef !== undefined) {
 // mailboxes[0] → { id: "engineering.standup", kind: "mailbox", members: [...], openedAt: "..." }
 ```
 
-The patterns are `inventory/seats/*`, `inventory/mailboxes/*` and `inventory/members/**`. A mailbox built with `mailboxInstances(roster.mailboxes, { inventory: true })` declares all three, so any mailbox's session can read the whole inventory. 
+The patterns are `inventory/seats/*`, `inventory/mailboxes/*` and `inventory/members/**`. A mailbox built with `mailboxInstances(roster.mailboxes, { inventory: true })` declares all three, so any mailbox's session can read the whole inventory. Workforce's roster flow (`workforce-roster`) declares `inventory/seats/*` too, so every person's roster session reads the workers, in a Lab with no mailbox as well. 
 
 **Which organization:** the session's. The server takes it from the session, and the session took it from your principal resolver when it was created. Nothing in the request can name a different one.
 

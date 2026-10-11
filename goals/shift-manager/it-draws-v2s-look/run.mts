@@ -63,6 +63,7 @@ import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { RUN_STAMP, goalTmpDir, loadFixture, repoPath, runGoal } from "../../lib/index.mts";
 import { EM_KIND } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { PROJECTS_KIND } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, pendingSeatAsks, pickShift, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
@@ -93,7 +94,7 @@ if (CONTROL !== "" && process.env.GOAL_PAGES !== undefined) {
   process.exit(2);
 }
 
-const fixture = loadFixture<{ devteam: { issue: string; text: string }; desk: { line: string; reply: string } }>(import.meta.url);
+const fixture = loadFixture<{ devteam: { issue: string; text: string; workstream: string }; desk: { line: string; reply: string } }>(import.meta.url);
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("shift-manager-v2-look");
 const V2 = repoPath("specs", "epics", "FIX-1649", "assets", "design", "v2", "shift-manager-v2.dc.html");
@@ -649,24 +650,32 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
-async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
+async function readStore(api: LabApi, tree: string, userId: string, boards: readonly string[] = []): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
-  const host = roster.mailboxes[0]!.id;
-  const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
-  const seatsRef = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-    (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
-  )?.ref;
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
+  // The inventory, read through the first of the person's sessions whose flow declares it.
+  let seatsAt: { host: string; ref: string } | undefined;
+  for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
+    if (session.parentSessionId != null) continue;
+    const manifest = await api.get(`/sessions/${encodeURIComponent(String(session.id))}/manifest`);
+    const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
+      (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+    )?.ref;
+    if (ref !== undefined) {
+      seatsAt = { host: String(session.id), ref };
+      break;
+    }
+  }
   // A seat's name is its address after the team: `<team>.<name>` (the tree's convention).
   const seats =
-    seatsRef === undefined
+    seatsAt === undefined
       ? []
-      : (await api.collection(host, seatsRef)).map((r) => {
+      : (await api.collection(seatsAt.host, seatsAt.ref)).map((r) => {
           const id = String(r.id);
           return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
   // The person's pending asks on the seats' sessions, by seat ("" for a session naming none).
   // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
-  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const asks = new Map<string, number>();
   for (const ask of await pendingSeatAsks(api, listing.sessions ?? [], seats)) asks.set(ask.seatId ?? "", (asks.get(ask.seatId ?? "") ?? 0) + 1);
   const mailboxes: Store["mailboxes"] = {};
@@ -694,6 +703,12 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
       asks: members.reduce((n, m) => n + (asks.get(m) ?? 0), 0),
     };
   }
+  // A workstream session's own board: its rows, named by the session as the app names them.
+  for (const session of boards) {
+    const rows = await sessionBoardRows(api, session);
+    allRows.push(...rows.map((r) => ({ ...r, mailboxId: session })));
+    running += rows.filter((r) => r.status === "in_progress").length;
+  }
   return {
     teams: new Set(seats.map((s) => (s.id.includes(".") ? s.id.split(".")[0] : "Staff"))).size,
     seats: seats.length,
@@ -708,15 +723,40 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
   };
 }
 
-/** The flow kind the inventory registers a mailbox under: the flow its `post` action is on. */
-async function mailboxKind(api: LabApi, mailbox: string): Promise<string> {
-  const manifest = await api.get(`/sessions/${encodeURIComponent(mailbox)}/manifest`);
-  const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-    (r) => r.kind === "collection" && r.pattern === "inventory/mailboxes/*",
-  )?.ref;
-  const kind = ref === undefined ? undefined : (await api.collection(mailbox, ref)).find((r) => r.id === mailbox)?.kind;
-  if (kind === undefined) throw new Error(`the inventory registers no mailbox ${mailbox}`);
-  return String(kind);
+/**
+ * The rows on one session's own board. The organization keeps every
+ * session's rows in one `tasks` collection, each under a topic naming the
+ * session that filed it (`<sessionId>~<suffix>/<id>`), so the read keeps the
+ * ones this session filed.
+ */
+async function sessionBoardRows(api: LabApi, sessionId: string): Promise<Array<Record<string, any>>> {
+  const rows: Array<Record<string, any>> = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page += 1) {
+    const body = await api.get(
+      `/sessions/${encodeURIComponent(sessionId)}/resources/tasks?limit=200${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+    );
+    for (const item of (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, any> }>) {
+      const filing = decodeURIComponent(item.topic.split("/")[0] ?? "");
+      if (filing.slice(0, filing.lastIndexOf("~")) === sessionId) rows.push(item.clientData ?? {});
+    }
+    if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
+    cursor = body.nextCursor;
+  }
+  return rows;
+}
+
+/** POST an action and wait for its request to finish; its status. */
+async function act(api: LabApi, flow: string, sessionId: string, action: string, input: unknown, userId: string): Promise<string> {
+  const posted = await api.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(action)}`, { userId, input });
+  if (posted.status !== 202) throw new Error(`${action} on ${sessionId}: ${posted.status} ${JSON.stringify(posted.body)}`);
+  const requestId = String(posted.body?.request?.id);
+  for (let waited = 0; waited < 30_000; waited += 100) {
+    const { body } = await api.call("GET", `/${encodeURIComponent(flow)}/requests/${encodeURIComponent(requestId)}/status`);
+    if (body?.status !== "in_progress") return String(body?.status);
+    await sleep(100);
+  }
+  return "in_progress";
 }
 
 /**
@@ -753,7 +793,7 @@ async function settle(page: Page, shift: Shift): Promise<void> {
 }
 
 /** Open `screen` by clicking, the way a person reaches it, and wait for it to draw. */
-async function open(page: Page, screen: Screen, ids: { mailbox: string; taskId: string | null }): Promise<void> {
+async function open(page: Page, screen: Screen, ids: { mailbox: string; project: string; taskId: string | null }): Promise<void> {
   const ready = (testId: string) => page.getByTestId(testId).first().waitFor({ timeout: 20_000 });
   switch (screen) {
     case "workstream":
@@ -805,10 +845,20 @@ async function open(page: Page, screen: Screen, ids: { mailbox: string; taskId: 
       return;
     case "project":
       // ---- slice C: the project holding the workstream, on its Board, under the team strip ----
-      await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.mailbox}"]) [data-testid^=nav-project-]`).click();
+      // The project the person's workstream is open in; its Board draws a lane for each workstream
+      // session of the person's own there, and the sweep opened one, led by the EM, before it began.
+      await page.getByTestId(`nav-project-${ids.project}`).click();
       await ready("project");
       await page.locator("[role=tab][data-tab=board]").click();
       await ready("project-lane");
+      // The lane reads its session's tasks before it draws them.
+      await page
+        .locator("[data-testid=project-lane] :is([data-testid=cos-tasks-empty], [data-testid=cos-tasks], [data-testid=cos-tasks-failure])")
+        .first()
+        .waitFor({ timeout: 20_000 })
+        .catch(async () => {
+          throw new Error(`devteam: the project's lane drew no tasks within 20 s: "${((await page.getByTestId("project-lane").first().textContent()) ?? "").trim()}"`);
+        });
       // ---- end slice C ----
   }
 }
@@ -830,44 +880,58 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     if (injected?.userId === undefined) throw new Error(`${lab}: the page was handed no userId`);
     const api = labApi(served.origin, injected.bearerToken);
     const roster = await readDeclaredRoster(LABS[lab].tree);
-    const mailbox = roster.mailboxes[0]!.id;
+    // Neither Lab declares a mailbox, so neither has a mailbox workstream, and the sweep opens
+    // no workstream or Board screen on either.
+    const mailbox = roster.mailboxes[0]?.id ?? "";
+    let project = "";
+    const boards: string[] = [];
 
     let taskId: string | null = null;
     let screens: readonly Screen[];
     if (lab === "devteam") {
-      // File one row through the mailbox's own post, and wait for it to run.
-      const kind = await mailboxKind(api, mailbox);
-      const posted = await api.call("POST", `/${encodeURIComponent(String(kind))}/${encodeURIComponent(mailbox)}/actions/post`, {
-        userId: injected.userId,
-        input: { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` },
-      });
-      if (posted.status !== 202) throw new Error(`devteam: the filing post answered ${posted.status} ${JSON.stringify(posted.body)}`);
-      const board = `${mailbox}.${((roster.mailboxes[0]!.declared.boards as string[]) ?? [])[0]}`;
-      // The EM seat runs the board when asked to drain it; in a session of its own, so its
-      // ask, pending in the seat's session, stays pending.
-      for (let waited = 0; waited < 30_000; waited += 250) {
-        if ((await api.collection(mailbox, board)).length > 0) break;
-        await sleep(250);
-      }
-      const em = roster.workers.find((w) => w.declared.flow === EM_KIND && ((roster.mailboxes[0]!.declared.members as string[]) ?? []).includes(w.id));
-      if (em === undefined) throw new Error("devteam: the mailbox has no EM member to drain its board");
-      // A worker has no flow address of its own: the drain runs in a session of the flow its file names, created naming it.
-      const drainSession = `goal_look_drain_${RUN_STAMP}`;
-      const opened = await api.call("POST", `/${encodeURIComponent(EM_KIND)}/sessions`, { userId: injected.userId, sessionId: drainSession, state: { workerId: em.id } });
-      if (opened.status !== 201) throw new Error(`devteam: a session with the EM on "${EM_KIND}" answered ${opened.status} ${JSON.stringify(opened.body)}`);
-      const drained = await api.call("POST", `/${encodeURIComponent(EM_KIND)}/${drainSession}/actions/drain`, { userId: injected.userId, input: {} });
-      if (drained.status !== 202) throw new Error(`devteam: the EM's drain answered ${drained.status} ${JSON.stringify(drained.body)}`);
+      // The person opens a workstream led by the EM in the first shared project, as the app opens
+      // one, and files one feature on its session's board through the EM's own `file` door. The
+      // board hands it to the coder at once, whose run stops on an ask.
+      await page.locator("[data-testid=project-group]").first().waitFor({ timeout: 20_000 });
+      project =
+        (await page
+          .locator("[data-testid=project-group][data-visibility=shared]")
+          .first()
+          .getAttribute("data-project-id")) ?? "";
+      if (project === "") throw new Error("devteam: PROJECTS lists no shared project to open a workstream in");
+      const lead = roster.workers.find((w) => w.declared.flow === EM_KIND)?.id;
+      if (lead === undefined) throw new Error(`devteam: the tree declares no worker on the "${EM_KIND}" flow to lead a workstream`);
+      const projects = await api.call("POST", `/${encodeURIComponent(PROJECTS_KIND)}/sessions`, { userId: injected.userId });
+      if (projects.status !== 201) throw new Error(`devteam: no ${PROJECTS_KIND} session: ${projects.status} ${JSON.stringify(projects.body)}`);
+      const opened = await act(
+        api,
+        PROJECTS_KIND,
+        String(projects.body.session.id),
+        "openWorkstream",
+        { project: { visibility: "shared", id: project }, id: "feature", title: fixture.devteam.workstream, lead },
+        injected.userId,
+      );
+      if (opened !== "completed") throw new Error(`devteam: opening ${project}'s workstream ended ${opened}`);
+      const found = await api.get(
+        `/sessions?userId=${encodeURIComponent(injected.userId)}&include=dispatch-runs&flowKind=${encodeURIComponent(EM_KIND)}&state.workstreamId=${encodeURIComponent(`shared/${project}/feature`)}`,
+      );
+      const session = found.sessions?.[0]?.id;
+      if (typeof session !== "string") throw new Error(`devteam: opening ${project}'s workstream made no workstream session`);
+      boards.push(session);
+      const filed = await act(api, EM_KIND, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, injected.userId);
+      if (filed !== "completed") throw new Error(`devteam: the filing ended ${filed}`);
       for (let waited = 0; waited < 30_000 && taskId === null; waited += 250) {
-        const row = (await api.collection(mailbox, board)).find((r) => r.status === "in_progress" && r.run != null);
+        const row = (await sessionBoardRows(api, session)).find((r) => r.status === "in_progress" && r.run != null);
         if (row !== undefined) taskId = String(row.id);
         else await sleep(250);
       }
       if (taskId === null) {
-        const rows = (await api.collection(mailbox, board)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
-        throw new Error(`devteam: the filed row never ran, so the sweep has no live run to read (board ${board}: ${rows.join("; ") || "no rows"})`);
+        const rows = (await sessionBoardRows(api, session)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
+        throw new Error(`devteam: the filed row never ran, so the sweep has no live run to read (${session}'s board: ${rows.join("; ") || "no rows"})`);
       }
+      for (let waited = 0; waited < 30_000 && (await pendingAsks(api, injected.userId)) === 0; waited += 250) await sleep(250);
       if ((await pendingAsks(api, injected.userId)) === 0) throw new Error("devteam: no ask is pending, so Inbox has nothing to select");
-      screens = SCREENS;
+      screens = SCREENS.filter((screen) => screen !== "workstream" && screen !== "board");
     } else {
       // One exchange through the chief of staff's door, as a person sends it.
       await page.getByTestId("cos").waitFor({ timeout: 20_000 });
@@ -883,12 +947,12 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     await page.reload();
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
     // The desk Lab's exchange above waited for the seat's reply to be drawn.
-    const store = { ...(await readStore(api, LABS[lab].tree, injected.userId)), replied: lab === "desk" };
+    const store = { ...(await readStore(api, LABS[lab].tree, injected.userId, boards)), replied: lab === "desk" };
     evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, ${store.asks} ask(s) pending, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
 
     const counts: string[] = [];
     for (const screen of screens) {
-      await open(page, screen, { mailbox, taskId });
+      await open(page, screen, { mailbox, project, taskId });
       for (const shift of SHIFTS) {
         await pickShift(page, shift);
         for (const width of WIDTHS) {
@@ -923,7 +987,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       });
       // ---- slice D ----
       // The desk's sweep ends on another screen; go back to Chief of Staff.
-      await open(page, "cos", { mailbox, taskId });
+      await open(page, "cos", { mailbox, project, taskId });
       // ---- end slice D ----
       await page.setViewportSize({ width: WIDTHS[0], height: 1000 });
       await page.getByTestId("cos-composer-input").fill(fixture.desk.line);

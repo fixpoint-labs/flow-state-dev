@@ -113,6 +113,33 @@ A worker that files from a session it was **posted** to still answers the post a
 
 How a filed task runs, how the filing session hears it ended, and how to manage it from your app are on the coordinators page, under [Handing out tasks](./coordinators.md#handing-out-tasks). They work the same for every worker.
 
+## Showing a person's boards in your app
+
+A browser reads a person's boards through the `tasks` collection on any of that person's sessions. The session has to be on a flow that keeps boards: the built-in worker flow, the coordinator flow, or your own flow built with `defineSessionBoard`. On any other session the read fails with a 404, `Unknown resource "tasks"`. The read covers the task rows of every session that person has filed from, of all three kinds above, so you don't need a request per session. It never returns another person's rows.
+
+Pass the first segment of a row's `topic`, URI-decoded, to `sessionIdOfFiling` to get the id of the session that filed the task. `clientData` holds the board's fields: `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. A task's input, output and metadata are never sent.
+
+```ts
+import { createResourceClient, readEveryCollectionPage } from "@flow-state-dev/client";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
+
+const resources = createResourceClient();
+
+async function tasksBySession(anySessionId: string) {
+  const rows = await readEveryCollectionPage(resources, anySessionId, "tasks", { limit: 200 });
+  const bySession = new Map<string, unknown[]>();
+  for (const row of rows) {
+    const filedFrom = sessionIdOfFiling(decodeURIComponent(row.topic.split("/")[0]!));
+    const tasks = bySession.get(filedFrom) ?? [];
+    tasks.push(row.clientData);
+    bySession.set(filedFrom, tasks);
+  }
+  return bySession;
+}
+```
+
+The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `readEveryCollectionPage` follows `nextCursor` to the last page. To page yourself, call `resources.listCollectionItems(sessionId, "tasks", { cursor })` with each page's `nextCursor`.
+
 ## Splitting a task
 
 A worker given a task can split it, as long as it has delegates of its own that take tasks. It files the pieces on its own task session's board, for its own delegates, and its task waits until every piece has ended. Then the task completes with what the pieces returned, or fails naming the pieces that failed for good, and the session above hears it.

@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="How the lab is wired, left to right. On disk, the Markdown tree under lab/workforce/teams/eng: one MAILBOX.md for the mailbox eng.queue, naming three members and declaring boards: [work]; a planner WORKER.md with flow: planner; a builder WORKER.md with flow: worker and answersFor: build; a reviewer WORKER.md with flow: worker and answersFor: review. In the middle, the code: host.mts reads the tree, refuses it unless it is exactly one planner and two workers, and hires every seat with hireLab, given the app's desk-to-seat map ROUTES from fsdev.config.mts, build to eng.builder and review to eng.reviewer; the map is never read off the tree. The two kinds sit in lab/workforce/flows/workers: planner.mts, whose one action file dispatches into the mailbox's own fileTask door, and worker.mts, whose board worker-desk-board claims only the desks the map routes to the seat, hands each row to the work task entry in its own child session, and exposes the drain and answer actions. On the right, what runs: fsdev.config.mts default-exports one FlowState holding the mailbox and the three seats over SQLite, the shipped fsdev dev serves it with --config, and the shipped DevTool reads it. run-scenario.mts drives the server over HTTP: file on eng.planner, drain on each worker seat, answer on the owning seat. The person's answer enters only through the owning seat's own answer action, and the person holds no claim.">
+     aria-label="How the lab is wired, left to right. On disk, the Markdown tree under lab/workforce/teams/eng: a queue WORKER.md on flow: coordinator, delegating to the planner and both workers, routing to everyone; a planner WORKER.md with flow: planner and delegates naming the two workers; a builder WORKER.md with flow: worker and answersFor: build; a reviewer WORKER.md with flow: worker and answersFor: review. No file declares a board. In the middle, the code: host.mts reads the tree, refuses it unless it is exactly one coordinator, one planner and two workers, and hires every worker with hireLab; it also holds the app's desk-to-delegate map ROUTES, build to eng.builder and review to eng.reviewer, which the filer reads and nothing reads off the tree. The two flows sit in lab/workforce/flows/workers: planner.mts, which carries the filing kit (defineSessionBoard), so the planner's conversation files with addTask_tasks on its own board, and worker.mts, whose work task entry (workerTaskEntry) runs each row filed for its worker in a task session of its own, where it may park on the row's question. On the right, what runs: fsdev.config.mts default-exports one FlowState holding the hired flows over SQLite, the shipped fsdev dev serves it with --config, and the shipped DevTool reads it. run-scenario.mts drives the server over HTTP: addTask_tasks and answerTask_tasks on the planner's conversation. The person's answer enters only through that conversation's answerTask_tasks, which re-queues the row with the answer, and the person holds no claim.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -33,12 +33,12 @@
 
   <g id="tree">
     <rect class="n-box" x="16" y="34" width="280" height="62" rx="5"/>
-    <text class="t-b" x="28" y="53">mailboxes/queue/MAILBOX.md</text>
-    <text class="t-s" x="28" y="70">members: eng.planner, eng.builder,</text>
-    <text class="t-s" x="28" y="85">  eng.reviewer · boards: [work]</text>
+    <text class="t-b" x="28" y="53">workers/queue/WORKER.md</text>
+    <text class="t-s" x="28" y="70">flow: coordinator · delegates: eng.planner,</text>
+    <text class="t-s" x="28" y="85">  eng.builder, eng.reviewer · routing: everyone</text>
     <rect class="n-box" x="16" y="108" width="280" height="44" rx="5"/>
     <text class="t-b" x="28" y="127">workers/planner/WORKER.md</text>
-    <text class="t-s" x="28" y="143">flow: planner</text>
+    <text class="t-s" x="28" y="143">flow: planner · delegates: the two workers</text>
     <rect class="n-box" x="16" y="164" width="280" height="44" rx="5"/>
     <text class="t-b" x="28" y="183">workers/builder/WORKER.md</text>
     <text class="t-s" x="28" y="199">flow: worker · answersFor: build</text>
@@ -53,18 +53,18 @@
     <rect class="n-code" x="330" y="34" width="296" height="74" rx="5"/>
     <text class="t-b" x="342" y="53">host.mts</text>
     <text class="t-s" x="342" y="70">readLabTree · refused unless exactly</text>
-    <text class="t-s" x="342" y="84">1 planner + 2 workers</text>
-    <text class="t-s" x="342" y="98">hireLab({ tree, routes }) → hireWorkforce</text>
+    <text class="t-s" x="342" y="84">1 coordinator, 1 planner, 2 workers</text>
+    <text class="t-s" x="342" y="98">hireLab({ tree, outbox }) → hireWorkforce</text>
     <rect class="n-code" x="330" y="124" width="296" height="62" rx="5"/>
     <text class="t-b" x="342" y="143">flows/workers/planner.mts</text>
-    <text class="t-s" x="342" y="160">action file → the mailbox's own</text>
-    <text class="t-s" x="342" y="174">fileTask door · no board, no drain</text>
+    <text class="t-s" x="342" y="160">defineSessionBoard · the filing kit:</text>
+    <text class="t-s" x="342" y="174">addTask_tasks on its conversation's board</text>
     <rect class="n-code" x="330" y="200" width="296" height="98" rx="5"/>
     <text class="t-b" x="342" y="219">flows/workers/worker.mts</text>
-    <text class="t-s" x="342" y="236">board worker-desk-board · onReview: exit</text>
-    <text class="t-s" x="342" y="251">claims only the desks ROUTES gives it</text>
-    <text class="t-s" x="342" y="266">each row → task entry work, own session</text>
-    <text class="t-s" x="342" y="281">actions: drain · answer</text>
+    <text class="t-s" x="342" y="236">task entry work: workerTaskEntry</text>
+    <text class="t-s" x="342" y="251">runs the rows filed for its worker</text>
+    <text class="t-s" x="342" y="266">each row in a task session of its own</text>
+    <text class="t-s" x="342" y="281">parks on the row's question</text>
     <text class="t-s" x="342" y="312">flows/piece.mts · the row's input, shared</text>
     <path class="flow" d="M296 65 L318 65 L318 71 L330 71"/>
     <path class="flow" d="M296 130 L318 130 L318 155 L330 155"/>
@@ -75,10 +75,10 @@
   <g id="runs">
     <rect class="n-run" x="660" y="34" width="264" height="104" rx="5"/>
     <text class="t-b" x="672" y="53">fsdev.config.mts</text>
-    <text class="t-s" x="672" y="70">ROUTES · the app's desk → seat map</text>
+    <text class="t-s" x="672" y="70">ROUTES (host.mts) · desk → delegate</text>
     <text class="t-s" x="672" y="84">  build → eng.builder</text>
     <text class="t-s" x="672" y="98">  review → eng.reviewer</text>
-    <text class="t-s" x="672" y="114">one FlowState: mailbox + 3 seats</text>
+    <text class="t-s" x="672" y="114">one FlowState: the hired flows</text>
     <text class="t-s" x="672" y="128">over SQLite · GOAL_CONTROL read here</text>
     <rect class="n-run" x="660" y="160" width="264" height="44" rx="5"/>
     <text class="t-b" x="672" y="179">fsdev dev --config</text>
@@ -93,7 +93,7 @@
   <g id="driver">
     <rect class="n-box" x="330" y="336" width="296" height="44" rx="5"/>
     <text class="t-b" x="342" y="355">run-scenario.mts · the driver</text>
-    <text class="t-s" x="342" y="371">HTTP: file · drain · answer · reads the ledger</text>
+    <text class="t-s" x="342" y="371">HTTP: addTask · answerTask · reads the store</text>
     <path class="flow" d="M626 358 L651 358 L651 182 L660 182"/>
   </g>
 
@@ -103,7 +103,7 @@
     <text class="t-b" x="28" y="431">the person</text>
     <text class="t-s" x="28" y="447">one principal · holds no claim</text>
     <path class="human" d="M296 434 L321 434 L321 281 L330 281"/>
-    <text class="t-h" x="340" y="426">answer · the owning seat's own action, on that seat's session</text>
-    <text class="t-s" x="340" y="444">unpark with the answer; that seat's drain runs the row again</text>
+    <text class="t-h" x="340" y="426">answerTask_tasks · on the planner's own conversation</text>
+    <text class="t-s" x="340" y="444">the row re-queues with the answer; its task session runs it</text>
   </g>
 </svg>

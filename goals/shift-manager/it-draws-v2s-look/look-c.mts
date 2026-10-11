@@ -3,6 +3,12 @@
  * the project's team strip and Board lanes (FIX-1737 slice C: W1, W5, W11, T7, T9, T13, P2,
  * P5, P7, P8), with the exceptions and graded regions those screens add.
  *
+ * v2 draws a project's Board as one grid of its workstreams' lanes across the
+ * five columns. The project Board shipped instead (b2f2d4c2) draws a lane for
+ * each of the person's own workstream sessions in the project, holding that
+ * session's tasks as a list, so the columns are graded on a workstream's Board
+ * tab, and the project's lanes by rows citing the shipped source.
+ *
  * Kept beside `run.mts`, which spreads them into its table, so each screen's
  * rows sit together. Every row cites the v2 line it came from, and `run.mts`'s
  * setup fails when that line no longer holds what the row claims.
@@ -10,8 +16,10 @@
 import type { Exception, Row, Screen } from "./run.mts";
 
 const WORKSTREAM: readonly Screen[] = ["workstream", "board"];
-/** Where the Board is drawn: a workstream's Board tab, and its project's Board, one lane per workstream. */
-const BOARDS: readonly Screen[] = ["board", "project"];
+/** Where v2's column Board is drawn: a workstream's Board tab. */
+const BOARDS: readonly Screen[] = ["board"];
+/** The change that shipped a project's Board as the person's own workstream sessions' lanes. */
+const OWN_BOARDS = "b2f2d4c2";
 
 /** The five columns, in the order v2 draws them (v2:1327), and the one v2 tints. */
 const COLUMN_ORDER = ["QUEUED", "RUNNING", "IN REVIEW", "NEEDS YOU", "DONE"] as const;
@@ -51,7 +59,7 @@ export const SLICE_C_ROWS: Row[] = [
   },
   { id: "ask in inbox", audit: "W11", v2: { line: 290, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=feed-ask-inbox]", on: ["workstream"], min: ({ store }) => feed(store).asks, want: { family: "mono", size: 12 } },
 
-  // A workstream's Board, and each lane of its project's (P5, P7, P8): columns in v2's order, hairlines, no fill but RUNNING's tint.
+  // A workstream's Board (P5, P7, P8): columns in v2's order, hairlines, no fill but RUNNING's tint.
   ...COLUMN_ORDER.map(
     (column, i): Row => ({
       id: `board column ${i + 1}, ${column}`,
@@ -104,6 +112,36 @@ export const SLICE_C_ROWS: Row[] = [
   { id: "team strip", audit: "P2", v2: { line: 513, has: "padding:8px 22px;border-bottom:1px solid rgba(var(--inkrgb),.12)" }, select: "[data-testid=team-strip]", on: ["project"], min: 1, want: {} },
   { id: "team strip name", audit: "P2", v2: { line: 516, has: "font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em" }, select: "[data-testid=team-strip-team] > span:first-child", on: ["project"], min: ({ store }) => store.teams, want: { family: "mono", size: 10.5, tracking: 0.12 } },
   { id: "team strip meta", audit: "P2", v2: { line: 518, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=team-strip-team] > span:nth-child(2)", on: ["project"], min: ({ store }) => store.teams, want: { family: "mono", size: 11 } },
+
+  // The project's Board, as shipped: one lane per workstream session the person opened in it, its title over its
+  // tasks. The sweep opens one led by the EM, which holds the one running row it filed.
+  {
+    id: "project lane title",
+    audit: "P5",
+    shipped: { file: "packages/shift-manager/src/surfaces/Project.tsx", has: '<h3 className="pb-1 text-xs font-medium">{entry.title}</h3>', ref: OWN_BOARDS },
+    select: "[data-testid=project-lane] > h3",
+    on: ["project"],
+    min: 1,
+    want: { family: "sans", size: 12, weight: 500 },
+  },
+  {
+    id: "project lane, no tasks",
+    audit: "P5",
+    shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-empty">', ref: OWN_BOARDS },
+    select: "[data-testid=project-lane] > [data-testid=cos-tasks-empty]",
+    on: ["project"],
+    min: 0,
+    want: { family: "sans", size: 12 },
+  },
+  {
+    id: "project lane running square",
+    audit: "P5",
+    shipped: { file: "packages/shift-manager/src/components/TasksPanel.tsx", has: '<StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />', ref: OWN_BOARDS },
+    select: "[data-testid=project-lane] [data-testid=cos-task] > [data-state-square=run]",
+    on: ["project"],
+    min: ({ store }) => (store.running > 0 ? 1 : 0),
+    want: { square: "run" },
+  },
 ];
 
 export const SLICE_C_EXCEPTIONS: Exception[] = [
@@ -114,6 +152,11 @@ export const SLICE_C_EXCEPTIONS: Exception[] = [
   { id: "load older", select: "[data-testid=load-older]", why: "pages a long transcript in; v2's feed is one page" },
   { id: "empty feed", select: "[data-testid=feed-empty]", why: "v2 draws no empty feed" },
   { id: "reading", select: "[data-testid=transcript] > p", why: "the feed's loading line; v2 draws no loading state" },
+  {
+    id: "project lane task",
+    select: "[data-testid=project-lane] [data-testid=cos-task], [data-testid=project-lane] [data-testid=cos-task] > span, [data-testid=project-lane] [data-testid=cos-task] > span *",
+    why: "a lane's task, drawn as the shipped task list (b2f2d4c2): v2 has no lane, and its task cards wait on FIX-1651's step (P6), like the board card",
+  },
 ];
 
 /** The regions these screens add to those graded whole. */
@@ -125,4 +168,5 @@ export const SLICE_C_WHOLE = [
   "[data-testid=session-ask]",
   "[data-testid=inspector-needs]",
   "[data-testid=team-strip]",
+  "[data-testid=project-board]",
 ];

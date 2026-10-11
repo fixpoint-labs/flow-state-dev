@@ -49,6 +49,7 @@ import { createServer } from "node:net";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -219,15 +220,16 @@ await runGoal(async (failures) => {
   const tree = await readDeclaredRoster(join(project, "lab", "workforce"));
   if (tree.problems.length > 0) throw new Error(`the Lab's tree did not load: ${tree.problems.map((p) => p.path).join(", ")}`);
   const workers = tree.workers.map((w) => w.id);
-  const mailbox = tree.mailboxes.find((m) => ((m.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (mailbox === undefined) throw new Error("the Lab's tree holds no mailbox with a board, so no task has a run to trace");
-  const boardRef = `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`;
+  // The worker that files: its file names delegates, and it is no coordinator.
+  // Its tasks are on its own conversation's board, which the Lab opens at boot.
+  const lead = tree.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
+  if (lead === undefined) throw new Error("the Lab's tree holds no worker that files for delegates, so no task has a run to trace");
 
-  // The change leg b saves: a hand-off worker moved onto the flow another one is on.
-  const handoff = tree.workers.filter((w) => typeof w.declared.handoff === "string");
-  const moved = handoff.find((w) => handoff.some((o) => o.declared.flow !== w.declared.flow));
-  const onto = handoff.find((o) => moved !== undefined && o.declared.flow !== moved.declared.flow);
-  if (moved === undefined || onto === undefined) throw new Error("the Lab's tree has no two hand-off workers on different flows to move one between");
+  // The change leg b saves: one of the lead's delegates moved onto the flow another one is on.
+  const takers = tree.workers.filter((w) => (lead.declared.delegates as string[]).includes(w.id));
+  const moved = takers.find((w) => takers.some((o) => o.declared.flow !== w.declared.flow));
+  const onto = takers.find((o) => moved !== undefined && o.declared.flow !== moved.declared.flow);
+  if (moved === undefined || onto === undefined) throw new Error("the Lab's tree has no two of the lead's delegates on different flows to move one between");
   const from = String(moved.declared.flow);
   const to = String(onto.declared.flow);
 
@@ -248,11 +250,22 @@ await runGoal(async (failures) => {
     } else evidence.push(`TEAMS draws the tree's ${workers.length} workers [${sorted(workers).join(", ")}]`);
 
     // ---- a: Open trace ---------------------------------------------------------
-    const rowsBody = await fetch(`${served.origin}/api/flows/sessions/${encodeURIComponent(mailbox.id)}/resources/${encodeURIComponent(boardRef)}?limit=200`).then((r) => r.json(), () => null);
-    const rows = ((rowsBody?.items ?? []) as Array<{ clientData?: { id?: string; run?: { sessionId?: string } | null } }>).map((i) => i.clientData ?? {});
+    // The lead's conversation, and its board: the person's conversation ledger read through it, its own rows kept.
+    const listed = await fetch(`${served.origin}/api/flows/sessions`).then((r) => r.json(), () => null);
+    const conversation = ((listed?.sessions ?? []) as Array<{ id: string; flowKind: string; parentSessionId?: string | null }>).find(
+      (s) => s.flowKind === lead.declared.flow && s.parentSessionId == null,
+    )?.id;
+    const boardRef = `${conversation}.tasks`;
+    const rowsBody =
+      conversation === undefined
+        ? null
+        : await fetch(`${served.origin}/api/flows/sessions/${encodeURIComponent(conversation)}/resources/tasks?limit=200`).then((r) => r.json(), () => null);
+    const rows = ((rowsBody?.items ?? []) as Array<{ topic: string; clientData?: { id?: string; run?: { sessionId?: string } | null } }>)
+      .filter((i) => conversation !== undefined && sessionIdOfFiling(decodeURIComponent(i.topic.split("/")[0] ?? "")) === conversation)
+      .map((i) => i.clientData ?? {});
     const traced = rows.find((r) => typeof r.run?.sessionId === "string");
     if (traced === undefined) {
-      failed("a:Open trace opens the Lab's session", `the store holds no task with a run on ${boardRef} (${rows.length} rows)`);
+      failed("a:Open trace opens the Lab's session", `the store holds no task with a run on the lead's conversation's board ${boardRef} (${rows.length} rows)`);
     } else {
       const session = traced.run!.sessionId!;
       await page.goto(`${served.origin}/tasks/${encodeURIComponent(boardRef)}/${encodeURIComponent(traced.id!)}/session`);

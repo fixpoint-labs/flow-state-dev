@@ -21,11 +21,11 @@ different valid feature still passes a correct implementation.
 1. opened with the ask: the session listing, read as Inbox reads it (`GET /sessions?include=dispatch-runs`
    through the lab's door with its verified bearer), returns the EM seat's own session `s_eng_em`;
    its requests hold exactly one pending `human_approval` naming both held-out strings and allowing
-   approve and reject; the feature mailbox declares the EM as a member; the board holds **no row**;
+   approve and reject; the EM's file names the coder among its `delegates:`; the board holds **no row**;
    nothing dispatched; the coder not reached *(AR-2, AR-3, AR-4)*;
 2. Approve, through `POST /eng.em/requests/:id/resume`: first a resume with no bearer (401) and one
    with `submit` (409) are refused and it stays pending; then approve answers 202, the request
-   completes, exactly one row (derived from the held-out slug) settles `completed`, handed to the
+   completes, exactly one row (naming the held-out slug in its payload) settles `completed`, handed to the
    coder seat by `workerId` and never to the reviewer, the coder reached once, nothing left pending
    *(AR-8, AR-9, AR-11, AR-13)*;
 3. Deny, on a fresh open: the request completes, no row, no dispatch, the coder not reached, and the
@@ -56,7 +56,8 @@ row's status alone.
 |---|---|---|
 | `no-gate` | the asking door files before it suspends | leg 1, "a row existed before any approval" (and legs 3 and 4c, a row after Deny) |
 
-**Model:** n/a (model-free by design; no key is read).
+**Model:** n/a (model-free by design; no key is read). The lab runs with no judge: a row on a
+session's board is judged before it closes, and the stub answers nothing a judge could pass.
 
 **Run:** `pnpm tsx goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts`
 
@@ -80,3 +81,7 @@ run as before.
 | 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `no-gate`: legs 1, 3, 4c and 10 (a row before any approval). |
 | 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The ask raised in `s_eng_em`, a session on `em` naming the EM; answered through `em`'s resume route; approve filed one row handed to `eng.coder` by worker id; deny filed nothing. |
 | 2026-10-09 | fix/closure-children-one-copy (main 57d2c10e9) | n/a | PASS | Leg 6's tree without the EM also drops it from the chief of staff's `delegates:`: an installation refuses a standard worker that delegates to one it doesn't have (FIX-1791 P1). Before, leg 6 failed "the open failed without naming the step: createWorkerInstallation: …". `no-gate` FAILs on leg 1 (and 3, 4c and 10). |
+| 2026-10-10 | 2a5e9b1b+uncommitted (FIX-1792 P3) | n/a | PASS | DevTeam's `eng.triage` and `ops.oncall` are now `coordinator` workers delegating only to the EM. Leg 6's tree without the EM drops every team worker whose one delegate is the EM, as it already strips the EM from the chief of staff's line. Before, leg 6 failed "the open failed without naming the step: createWorkerInstallation: standard worker \"eng.triage\" names \"eng.em\" in `delegates:`, which isn't a standard worker". `no-gate` FAILs on legs 1, 3, 4c and 10. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | FAIL (control) | `no-gate` FAILs leg 1 "a row existed before any approval: tasks/s%5Feng%5Fem%7E…/task_…", and legs 3, 4c and 10 as before; leg 2 now goes red with it too (the row filed before the ask runs and errors at once on the EM's session board, so approve finds it settled). |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | PASS | Converted: the feature mailbox is gone, so leg 1 reads the EM's `delegates:` (it names the coder) instead of the mailbox's members; the row is minted on the EM's session board and found by the issue its payload names; leg 8 hands `raiseAsk` the lab's `featureRow` instead of the mailbox ledger; leg 6's tree has no charter to edit. All legs green, keyless, `withoutJudge`. |
+| 2026-10-11 | `7af86476` (DevTeam off mailboxes, merged with FIX-1866 P3 `f4978593`) | n/a | PASS; `no-gate` FAIL (expected) | Re-run on the merged tree. `no-gate` fails at legs 1, 2, 3, 4c and 10, the ones that grade the gate. |

@@ -1,16 +1,18 @@
 // @vitest-environment happy-dom
 /**
- * The task screen against a real Lab, in a DOM (V1 to V5). The run-lab hands
- * rows to scripted runs that hold until stopped; what the screen draws is
- * compared with what the Lab's routes and stores hold.
+ * The task screen against a real Lab, in a DOM (V1 to V5). The run-lab's lead
+ * files tasks on its own conversation's board for scripted runs that hold
+ * until stopped; what the screen draws is compared with what the Lab's routes
+ * and stores hold. A conversation's board is read as the person's whole
+ * `tasks` collection, through one of their sessions, and the screen keeps its
+ * conversation's rows.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createLabClients } from "../src/lib/connection";
-import { toBoardRow, type BoardRow } from "../src/lib/reads";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -34,18 +36,18 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
   const s = await serveLab(lab.flowState);
   served.push({ lab, served: s });
   const clients = createLabClients({ baseUrl: s.baseUrl, userId: RUN_LAB_USER_ID });
-  const runtime = await lab.flowState.getRuntime();
+  const boardRef = conversationBoardRef(lab.conversation);
   // The oracle reads the store directly: the page's `fetch` is the DOM's, and
   // is not this test's to share.
-  const rows = async (): Promise<BoardRow[]> =>
-    Promise.all(
-      lab.filed.map(async (f) => {
-        const stored = (await runtime.stores.resourceState.get("org", DEFAULT_ORG_ID, `${lab.ledger.id}/${f.taskId}`))?.state;
-        return toBoardRow(lab.ledger.id, lab.mailbox.id, f.taskId, stored);
-      }),
-    );
-  return { lab, served: s, clients, rows };
+  const rows = async (): Promise<BoardRow[]> => {
+    const stored = new Map((await lab.storedRows()).map((row) => [row.id, row]));
+    return lab.filed.map((f) => toBoardRow(boardRef, lab.conversation, f.taskId, stored.get(f.taskId)));
+  };
+  return { lab, served: s, clients, rows, boardRef };
 }
+
+/** Whether `url` is a read of the person's conversation boards: the snapshot's, or one task screen's. */
+const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith(`/resources/${CONVERSATION_BOARD_COLLECTION}`);
 
 async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${baseUrl}${path}`);
@@ -54,10 +56,10 @@ async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
   await screen.findByTestId("shell");
 }
 
-/** A held row on the drainer's flow (or on a flow of its own), once its run is linked. */
+/** A held row on the shared flow (or on a worker's flow of its own), once its run is linked. */
 async function heldRow(opened: Awaited<ReturnType<typeof openLab>>, own: boolean): Promise<BoardRow> {
-  const seat = opened.lab.seats.find((s) => (own ? s.flow !== undefined : s.flow === undefined && s.policy === "per-task"))!;
-  const filed = opened.lab.filed.find((f) => f.kind === "held" && f.seatId === seat.id)!;
+  const worker = opened.lab.workers.find((w) => (own ? w.id === opened.lab.ownWorker!.id : w.flow === opened.lab.sharedFlow!))!;
+  const filed = opened.lab.filed.find((f) => f.kind === "held" && f.workerId === worker.id)!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && r.run !== null), "the held run's link");
 }
 
@@ -143,11 +145,11 @@ describe("a row with no run (BR-3)", () => {
       seen.push(new URL(String(input instanceof Request ? input.url : input), window.location.href).pathname);
       return real(input, init);
     });
-    await renderAt(opened.served.baseUrl, `/tasks/${opened.lab.ledger.id}/${waiting.taskId}/session`);
+    await renderAt(opened.served.baseUrl, `/tasks/${opened.boardRef}/${waiting.taskId}/session`);
     await screen.findByTestId("session-no-run");
     expect((screen.getByTestId("task-interrupt") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId("run-state").textContent).toBe("nothing is running");
-    const reads = () => seen.filter((p) => p.endsWith(`/resources/${opened.lab.ledger.id}`)).length;
+    const reads = () => seen.filter(isBoardRead).length;
     const after = reads();
     await act(() => new Promise((r) => setTimeout(r, 2_500)));
     expect(reads()).toBe(after);
@@ -163,7 +165,7 @@ describe("a row with no run (BR-3)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       const response = await real(input, init);
-      if (!url.includes(`/resources/${opened.lab.ledger.id}`) || hidden <= 0) return response;
+      if (!isBoardRead(url) || hidden <= 0) return response;
       hidden -= 1;
       const body = (await response.json()) as { items: Array<{ clientData: Record<string, unknown> }> };
       for (const item of body.items) if (item.clientData.id === row.id) delete item.clientData.run;
@@ -197,7 +199,7 @@ function rewriteRows(match: (url: string) => boolean, edit: (rows: Array<Record<
   });
 }
 
-/** A per-worker row once it has finished, with its run linked. */
+/** A short row once it has finished, with its run linked. */
 async function finishedRow(opened: Awaited<ReturnType<typeof openLab>>): Promise<BoardRow> {
   const short = opened.lab.filed.find((f) => f.kind === "short")!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === short.taskId && r.status === "completed" && r.run !== null), "a finished row", 20_000);
@@ -212,7 +214,7 @@ describe("following the row as the board moves it", () => {
     // linked, then claimed with a new run. The screen must move to that run.
     let boardReads = 0;
     rewriteRows(
-      (url) => url.includes(`/resources/${opened.lab.ledger.id}`),
+      isBoardRead,
       (rows) => {
         boardReads += 1;
         return rows.map((r) =>
@@ -232,7 +234,7 @@ describe("following the row as the board moves it", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (failing && url.includes(`/resources/${opened.lab.ledger.id}`)) {
+      if (failing && isBoardRead(url)) {
         return new Response(JSON.stringify({ error: "board store unavailable" }), { status: 503 });
       }
       return real(input, init);
@@ -256,7 +258,7 @@ describe("following the row as the board moves it", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (!url.includes(`/resources/${opened.lab.ledger.id}`)) return real(input, init);
+      if (!isBoardRead(url)) return real(input, init);
       boardReads += 1;
       if (boardReads === 2) return new Response(JSON.stringify({ error: "board store unavailable" }), { status: 503 });
       const response = await real(input, init);
@@ -329,13 +331,13 @@ describe("the Session draws with Shift Manager's registry copies (ER-6)", () => 
 });
 
 describe("the header's worker", () => {
-  it("resolves a name two teams share to the seat in this row's mailbox, as the inspector does", async () => {
+  it("resolves the row's worker by its id, though another team's worker shares its name, as the inspector does", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, false);
-    const seat = opened.lab.seats.find((s) => s.flow === undefined && s.policy === "per-task")!;
-    // Another team's seat with the same short name, listed first.
+    const seat = { id: row.assignee!, name: row.assignee!.split(".").at(-1)! };
+    // Another team's worker with the same short name, listed first.
     rewriteRows(
-      (url) => url.includes("/resources/") && !url.includes(opened.lab.ledger.id),
+      (url) => url.includes("/resources/") && !isBoardRead(url),
       (rows) => {
         const mine = rows.find((r) => r.id === seat.id);
         return mine === undefined ? rows : [{ ...mine, id: `zz.${seat.name}` }, ...rows];
@@ -385,8 +387,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const row = await heldRow(opened, true);
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
-    const seat = opened.lab.seats.find((s) => s.flow !== undefined)!;
-    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(seat.id);
+    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(opened.lab.ownWorker!.id);
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
     expect(within(inspector).getByTestId("inspector-harness-gap").textContent).toBe(GAPS.task.harness);
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
@@ -402,17 +403,9 @@ describe("the inspector (BR-18 to BR-23)", () => {
   it("links the rows a task waits on and the rows waiting on it, from the one board read (BR-22)", async () => {
     const opened = await openLab();
     const held = await heldRow(opened, false);
+    // The waiting task was filed depending on this held one.
     const waiting = opened.lab.filed.find((f) => f.kind === "waiting")!;
-    // This board's filing action takes no dependencies, so the read is given one.
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input instanceof Request ? input.url : input);
-      const response = await real(input, init);
-      if (!url.includes(`/resources/${opened.lab.ledger.id}`)) return response;
-      const body = (await response.json()) as { items: Array<{ clientData: Record<string, unknown> }> };
-      for (const item of body.items) if (item.clientData.id === waiting.taskId) item.clientData.deps = [held.id];
-      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-    });
+    expect((await opened.rows()).find((r) => r.id === waiting.taskId)!.deps).toEqual([held.id]);
     await renderAt(opened.served.baseUrl, `/tasks/${held.boardRef}/${waiting.taskId}/brief`);
     const after = await screen.findByTestId("inspector-after");
     expect(within(after).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([held.id]);

@@ -71,6 +71,8 @@ const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 
 /** The group a seat with no team sits in, as the design names it. */
 const STAFF = "Staff";
+/** The collection Workforce keeps every conversation's board in, as a flow's manifest publishes it. */
+const CONVERSATION_LEDGER = "tasks";
 const STATUSES = ["on shift", "on call", "off shift"] as const;
 type Status = (typeof STATUSES)[number];
 
@@ -160,19 +162,23 @@ function labApi(origin: string) {
     if (response.status !== 200) throw new Error(`GET ${path}: ${response.status} ${text.slice(0, 200)}`);
     return JSON.parse(text);
   };
-  const collection = async (sessionId: string, ref: string): Promise<Array<Record<string, any>>> => {
-    const rows: Array<Record<string, any>> = [];
+  /** Every entry of a collection, with the topic it is kept under. */
+  const entries = async (sessionId: string, ref: string): Promise<Array<{ topic: string; data: Record<string, any> }>> => {
+    const rows: Array<{ topic: string; data: Record<string, any> }> = [];
     let cursor: string | undefined;
     for (let page = 0; page < 100; page += 1) {
       const body = await get(
         `/sessions/${encodeURIComponent(sessionId)}/resources/${encodeURIComponent(ref)}?limit=200${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
       );
-      rows.push(...((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map((i) => i.clientData ?? {}));
+      rows.push(
+        ...((body.items ?? []) as Array<{ topic?: string; clientData?: Record<string, any> }>).map((i) => ({ topic: String(i.topic ?? ""), data: i.clientData ?? {} })),
+      );
       if (body.nextCursor == null || body.nextCursor === cursor) break;
       cursor = body.nextCursor;
     }
     return rows;
   };
+  const collection = async (sessionId: string, ref: string) => (await entries(sessionId, ref)).map((e) => e.data);
   const items = async (sessionId: string, types: string[]): Promise<Array<Record<string, any>>> => {
     const out: Array<Record<string, any>> = [];
     for (let offset = 0, page = 0; page < 100; page += 1) {
@@ -183,7 +189,7 @@ function labApi(origin: string) {
     }
     return out;
   };
-  return { get, collection, items };
+  return { get, entries, collection, items };
 }
 type LabApi = ReturnType<typeof labApi>;
 
@@ -199,7 +205,14 @@ type Worker = {
   /** How many of its rows are queued (pending or blocked). */
   queued: number;
 };
-type Store = { workers: Worker[]; teams: string[]; asks: number; signature: string };
+type Store = {
+  workers: Worker[];
+  teams: string[];
+  asks: number;
+  signature: string;
+  /** The boards the rows are on, by ref. */
+  boards: string[];
+};
 
 /** The seat this script's own rule gives an assignee: its id, or its name after the team. Exactly one, or none. */
 function seatOf(seats: string[], assignee: string): string | undefined {
@@ -209,31 +222,40 @@ function seatOf(seats: string[], assignee: string): string | undefined {
 
 async function readStore(api: LabApi, userId: string): Promise<Store & { unmatched: string[] }> {
   const sessions = ((await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`)).sessions ?? []) as Array<Record<string, any>>;
-  // The inventory, through a mailbox's session, by its published key patterns.
-  const mailboxIds: string[] = [];
+  const topLevel = sessions.filter((s) => s.parentSessionId == null);
+  const manifests = new Map<string, Array<{ kind: string; ref: string; pattern: string }>>();
+  /** The collections a session's flow publishes, read once per flow. */
+  const published = async (session: Record<string, any>) => {
+    const kind = String(session.flowKind);
+    if (!manifests.has(kind)) {
+      const resources = (await api.get(`/sessions/${encodeURIComponent(session.id)}/manifest`)).resources ?? [];
+      manifests.set(kind, (resources as Array<{ kind: string; ref: string; pattern: string }>).filter((r) => r.kind === "collection"));
+    }
+    return manifests.get(kind)!;
+  };
+  // The inventory, through the first session whose flow publishes it, by its key patterns.
   let seatRows: Array<{ id: string; kind: string | null }> = [];
-  for (const host of sessions.filter((s) => s.flowKind === "mailbox" && String(s.id).includes("."))) {
-    const manifest = await api.get(`/sessions/${encodeURIComponent(host.id)}/manifest`);
-    const refOf = (pattern: string) => (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-    const seatsRef = refOf("inventory/seats/*");
-    const mailboxesRef = refOf("inventory/mailboxes/*");
-    if (seatsRef === undefined || mailboxesRef === undefined) continue;
+  for (const host of topLevel) {
+    const resources = await published(host);
+    const seatsRef = resources.find((r) => r.pattern === "inventory/seats/*")?.ref;
+    if (seatsRef === undefined) continue;
     seatRows = (await api.collection(host.id, seatsRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
-    mailboxIds.push(...(await api.collection(host.id, mailboxesRef)).map((r) => String(r.id)));
     break;
   }
-  // Every row on every board a mailbox's manifest lists for it.
+  // Every row on every conversation's board: the person's one conversation
+  // ledger, read through the first session whose flow publishes it. A row is
+  // kept under its conversation's partition, the conversation's session id or
+  // that id and a `~` suffix, and its board is `<conversation>.<ledger>`.
   const rows: Array<{ key: string; id: string; status: string; assignee: string }> = [];
-  for (const mailboxId of mailboxIds) {
-    const manifest = await api.get(`/sessions/${encodeURIComponent(mailboxId)}/manifest`);
-    const refs = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>)
-      .filter((r) => r.kind === "collection" && r.ref.startsWith(`${mailboxId}.`) && r.pattern === `${r.ref}/**`)
-      .map((r) => r.ref);
-    for (const ref of refs) {
-      for (const row of await api.collection(mailboxId, ref)) {
-        rows.push({ key: `${ref}/${row.id}`, id: String(row.id), status: String(row.status), assignee: String(row.assignee ?? "") });
-      }
+  for (const host of topLevel) {
+    if (!(await published(host)).some((r) => r.ref === CONVERSATION_LEDGER)) continue;
+    for (const { topic, data } of await api.entries(host.id, CONVERSATION_LEDGER)) {
+      const partition = decodeURIComponent(topic.slice(0, topic.indexOf("/")));
+      const holder = sessions.find((s) => partition === s.id || partition.startsWith(`${s.id}~`))?.id ?? partition;
+      const ref = `${holder}.${CONVERSATION_LEDGER}`;
+      rows.push({ key: `${ref}/${data.id}`, id: String(data.id), status: String(data.status), assignee: String(data.assignee ?? "") });
     }
+    break;
   }
   const seats = seatRows.map((s) => s.id);
   // Pending person-asks on the seats' sessions, by the seat each session names.
@@ -261,6 +283,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     asks: asks.length,
     signature: JSON.stringify([rows.map((r) => [r.key, r.status, r.assignee]).sort(), asks.map((a) => a.id).sort(), [...seats].sort()]),
     unmatched,
+    boards: [...new Set(rows.map((r) => r.key.slice(0, r.key.lastIndexOf("/"))))],
   };
 }
 
@@ -396,7 +419,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
     if (after.signature !== store.signature) fail("store", "the store changed while the page was graded, so the grade is not of one state");
     if (pageErrors.length > 0) fail("roster", `the page threw: ${pageErrors.join(" | ")}`);
     evidence.push(
-      `spread ${n}: ${store.workers.length} workers in [${store.teams.join(", ")}]; ${store.workers
+      `spread ${n}: rows on [${store.boards.join(", ")}]; ${store.workers.length} workers in [${store.teams.join(", ")}]; ${store.workers
         .map((w) => `${w.id} ${w.status} ${w.held.length} held ${w.waits.length} waits${w.queued > 0 ? ` ${w.queued} queued` : ""}`)
         .join("; ")}`,
     );

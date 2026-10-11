@@ -1,14 +1,14 @@
 /**
  * The task screen's run reads against a real Lab (V1, V3, V5): the run-lab,
- * whose board hands rows to scripted runs that hold until stopped, one of them
- * on a flow other than the board drainer's.
+ * whose lead files tasks on its own conversation's board for scripted runs
+ * that hold until stopped, one of them on a flow no other worker shares.
  *
  * Every expectation is graded against the Lab's own store, read through its
  * routes or its stores, never against a list written here.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { createLabReader, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, conversationBoardRef, createLabReader, type BoardRow } from "../src/lib/reads";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   followRequest,
@@ -30,15 +30,15 @@ let lab: Opened;
 let served: ServedLab;
 let clients: LabClients;
 
-/** The board's rows, as Shift Manager's own board read returns them. */
+/** The lead's conversation board's rows, as Shift Manager's own board read returns them. */
 async function rows(): Promise<BoardRow[]> {
-  return createLabReader(clients).readBoard(lab.mailbox.id, lab.ledger.id);
+  return createLabReader(clients).readBoard(lab.conversation, conversationBoardRef(lab.conversation));
 }
 
-/** The row for a filed task, once its run has linked itself. */
-async function linked(kind: "held" | "short", seatFlow: "own" | "drainer"): Promise<BoardRow> {
-  const seat = lab.seats.find((s) => (seatFlow === "own" ? s.flow !== undefined : s.flow === undefined && s.policy === "per-task"));
-  const filed = lab.filed.find((f) => f.kind === kind && (kind === "short" || f.seatId === seat!.id))!;
+/** The row for a filed task, once its run has linked itself: held on the shared flow, or on a worker's own. */
+async function linked(kind: "held" | "short", workerFlow: "own" | "shared"): Promise<BoardRow> {
+  const worker = lab.workers.find((w) => (workerFlow === "own" ? w.id === lab.ownWorker!.id : w.flow === lab.sharedFlow!));
+  const filed = lab.filed.find((f) => f.kind === kind && (kind === "short" || f.workerId === worker!.id))!;
   return eventually(async () => (await rows()).find((r) => r.id === filed.taskId && r.run !== null), `${filed.taskId}'s run link`);
 }
 
@@ -54,28 +54,28 @@ afterAll(async () => {
 });
 
 describe("finding the run (V1, D1)", () => {
-  it("reads the link off the row, and the run's flow off its session, for a seat on the drainer's flow and one on its own", async () => {
-    const same = await linked("held", "drainer");
+  it("reads the link off the row, and the run's flow off its session, for a worker on the shared flow and one on its own", async () => {
+    const same = await linked("held", "shared");
     const own = await linked("held", "own");
     const runtime = await lab.flowState.getRuntime();
     for (const row of [same, own]) {
       const stored = (await runtime.stores.session.get(row.run!.sessionId)) as { flowId?: string } | undefined;
       expect(await resolveRunFlow(clients, row.run!.sessionId)).toBe(stored?.flowId);
     }
-    // The seat on a flow of its own runs on that flow, not the drainer's.
-    expect(await resolveRunFlow(clients, own.run!.sessionId)).not.toBe(lab.drainerFlow);
-    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.drainerFlow);
+    // The worker on a flow of its own runs on that flow, not the shared one.
+    expect(await resolveRunFlow(clients, own.run!.sessionId)).toBe(lab.ownWorker!.flow);
+    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.sharedFlow!);
   });
 
-  it("opens the cross-flow run through its session's flow, and fails through the board drainer's", async () => {
+  it("opens the cross-flow run through its session's flow, and fails through the lead's", async () => {
     const own = await linked("held", "own");
     const flowId = await resolveRunFlow(clients, own.run!.sessionId);
     expect(await readRunStatus(clients, { flowId, requestId: own.run!.requestId })).toBe("in_progress");
-    // The negative: the drainer's flow does not own this request.
-    await expect(readRunStatus(clients, { flowId: lab.drainerFlow, requestId: own.run!.requestId })).rejects.toThrow(/404|not found/i);
+    // The negative: the flow of the board the task is on does not own this request.
+    await expect(readRunStatus(clients, { flowId: lab.leadFlow, requestId: own.run!.requestId })).rejects.toThrow(/404|not found/i);
   });
 
-  it("a row never claimed names no run", async () => {
+  it("a task never claimed names no run", async () => {
     const waiting = lab.filed.find((f) => f.kind === "waiting")!;
     const row = (await rows()).find((r) => r.id === waiting.taskId)!;
     expect(row.status).toBe("pending");
@@ -85,10 +85,12 @@ describe("finding the run (V1, D1)", () => {
 
 describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
   it("a running request's items are in the session read while it runs, the stream brings the rest, and both are this task's alone", async () => {
-    const row = await linked("held", "drainer");
+    const row = await linked("held", "shared");
+    const collection = collectionOfBoard(row.boardRef);
     // The session read already holds what the running request has finished so far, and only its own.
     const { items: stored } = await readSessionItems(clients, row.run!.sessionId);
-    const storedShown = taskItems(stored, row.boardRef, row.id).items;
+    const storedShown = taskItems(stored, collection, row.id).items;
+    expect(storedShown.length).toBeGreaterThan(0);
     expect(storedShown.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
 
     const flowId = await resolveRunFlow(clients, row.run!.sessionId);
@@ -102,14 +104,14 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
     try {
       // A step arrives live, about a second after the one before.
       const seen = await eventually(async () => {
-        const shown = taskItems(mergeItems(stored, streamed), row.boardRef, row.id);
+        const shown = taskItems(mergeItems(stored, streamed), collection, row.id);
         return shown.items.filter((i) => i.type === "message").length >= 3 ? shown : undefined;
       }, "three narrated steps on the stream");
       expect(seen.shared).toBe(false);
       expect(seen.items.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
       // A fresh session read of the still-running request now carries its finished steps too.
       const { items: later } = await readSessionItems(clients, row.run!.sessionId);
-      const laterShown = taskItems(later, row.boardRef, row.id).items;
+      const laterShown = taskItems(later, collection, row.id).items;
       expect(laterShown.filter((i) => i.type === "message").length).toBeGreaterThanOrEqual(3);
       expect(laterShown.every((i) => i.requestId === row.run!.requestId)).toBe(true);
     } finally {
@@ -117,22 +119,26 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
     }
   });
 
-  it("the per-worker seat's shared session shows only the stamped items of the task opened, and says it is shared", async () => {
+  // Retired under BR-24: a session one worker kept across its tasks has no
+  // subject on a conversation's board, which opens one task session per task.
+  // What it guarded, a task's view never holding another task's items, is
+  // held here: one worker's two tasks ran in two sessions, and each holds
+  // only its own task's items and says it is not shared.
+  it("one worker's two finished tasks ran in two sessions, each holding only its own task's items", async () => {
     const shorts = lab.filed.filter((f) => f.kind === "short");
     const both = await eventually(async () => {
       const all = await rows();
       const done = shorts.map((f) => all.find((r) => r.id === f.taskId)!);
       return done.every((r) => r.status === "completed" && r.run !== null) ? done : undefined;
     }, "both short rows to finish", 20_000);
-    expect(both[0]!.run!.sessionId).toBe(both[1]!.run!.sessionId);
-    const { items } = await readSessionItems(clients, both[0]!.run!.sessionId);
-    const first = taskItems(items, both[0]!.boardRef, both[0]!.id);
-    const second = taskItems(items, both[1]!.boardRef, both[1]!.id);
-    expect(first.shared && second.shared).toBe(true);
-    expect(first.items.every((i) => i.taskId === both[0]!.id)).toBe(true);
-    expect(second.items.every((i) => i.taskId === both[1]!.id)).toBe(true);
-    // Negative: the whole session is more than either task's share of it.
-    expect(first.items.length).toBeLessThan(items.length);
+    expect(both[0]!.run!.sessionId).not.toBe(both[1]!.run!.sessionId);
+    for (const row of both) {
+      const { items } = await readSessionItems(clients, row.run!.sessionId);
+      const mine = taskItems(items, collectionOfBoard(row.boardRef), row.id);
+      expect(mine.shared).toBe(false);
+      expect(mine.items.length).toBeGreaterThan(0);
+      expect(mine.items.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
+    }
   });
 });
 
@@ -149,7 +155,7 @@ describe("what the run recorded (V5; BR-19, BR-20)", () => {
     ]);
     expect(recorded.files?.rows).toEqual([{ path: "notes/audit.md", kind: "created" }]);
 
-    const same = await linked("held", "drainer");
+    const same = await linked("held", "shared");
     expect(await readRecordedWork(clients, same.run!)).toEqual({ plan: null, files: null });
   });
 });
