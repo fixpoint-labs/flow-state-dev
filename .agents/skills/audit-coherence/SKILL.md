@@ -54,7 +54,7 @@ Hunt all three. They differ in where the fix lands.
 
 ## Workflow
 
-1. **Scope.** Two shapes:
+1. **Scope.** Three shapes:
    - **Codebase slice** (a package, subsystem, or theme like "streaming" / "state").
      No argument → propose a scope rather than boiling the ocean; a focused audit that
      finds real conflicts beats a shallow whole-repo pass.
@@ -65,7 +65,16 @@ Hunt all three. They differ in where the fix lands.
      spec but the design feels off" failure a line-level review can't see; weigh a
      coherence break as reshape-the-approach, not patch-the-lines.
 
-   The three kinds of incoherence below apply in both shapes.
+   - **A job** ("how a result comes back", "how a worker asks", "how work is delivered") —
+     scoped by what the code *does*, not where it lives. Use this when the surface for one job
+     spans packages: a package-scoped audit sees one piece of each overlap and calls it fine.
+     **Required output: a surface map** — every public method, tool, action and internal entry
+     that does the job, across packages, with its package, what it does in one line, and what it
+     should become (keep / fold into X / retire). The overlaps fall out of the map; the findings
+     table below ranks them. `epic-lifecycle` runs this at wrap for each job the epic added a
+     method to.
+
+   The three kinds of incoherence below apply in all three shapes.
 2. **Map the patterns in scope.** For the target area, enumerate the recurring
    shapes: how blocks are composed, how state is modeled, how errors are handled, how
    resources are wired, naming conventions, boundary rules. Use `zoom-out` shape

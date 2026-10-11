@@ -753,6 +753,14 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   ledger is where that becomes visible. This is also where the Fable-escalation trial is
   *measured* — the ledger's `design-off` trend is the evidence it's earning its cost.
 
+  **The same worker maps the jobs the batch grew.** For each job the epic added a public
+  method, tool or action to (deliver work, wait for a result, answer, report an ending…), it
+  runs `audit-coherence` with that **job** as the scope, across packages, and puts the surface
+  map's fold candidates in the lessons PR as proposed follow-ups. Per-spec review and
+  `cross-spec-review` both stop at the epic's edge; a job's surface grows across epics and
+  projects, and wrap is the cheapest moment to fold what just landed. No job grew → write
+  `job audit: none grew` in the lessons PR body and move on.
+
   **The skip is partial, and the split is deliberate.** An epic with no rework worth measuring
   skips the *grounding-proposal* pass — no tenet/BP sharpening, and the lessons PR carries rows
   only. It does **not** skip the PR, and it does **not** skip the ledger rows: **always append the factual rows, including for a clean epic.** A clean
@@ -1000,6 +1008,10 @@ step. So:
   epic to get parallelism — run those as independent `issue-lifecycle` sessions.
 - Composes `issue-lifecycle` (one lifecycle definition, reused per issue). It does
   not reimplement the lifecycle.
+- **A child that carries out an epic decision doesn't leave quietly.** Canceling or descoping
+  it requires a note on the epic, in the same step, saying whether the decision still stands
+  and why the child went. Otherwise the epic keeps a decision nothing implements, and the next
+  reader trusts it.
 - **A standing engineering-manager posture over this skill — engineering forks decided
   rather than surfaced — is [`epic-em`](../epic-em/SKILL.md).** Opt-in, and it moves no gate.
 - **A product-manager posture on top of that one — the epic shaped to a provable outcome and
