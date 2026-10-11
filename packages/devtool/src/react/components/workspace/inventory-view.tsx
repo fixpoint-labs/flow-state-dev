@@ -2,12 +2,11 @@
  * The Inventory tab — the organization's registered workers, read from one
  * session.
  *
- * Shown on any session whose flow declares the inventory collection as
- * browser-readable (a seat carrying the hire tools declares it). One section
- * per collection; a collection the flow does not declare reads *not installed
- * on this flow*, which is never drawn as an empty table.
+ * Shown on any session whose flow declares the seat inventory as
+ * browser-readable (a seat carrying the hire tools declares it). A flow that
+ * does not declare it shows no tab, never an empty table.
  *
- * Every request — the manifest and every page of every collection — goes
+ * Every request — the manifest and every page of the collection — goes
  * through the DevTool's shared `resourceClient`, so it carries the bearer
  * token like every other panel. The read is the production collection route,
  * never the debug one, so the tab works with the debug endpoints off. The
@@ -26,120 +25,83 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Boxes } from "lucide-react";
 import { useDevTool } from "../../context/devtool-context";
-import {
-  INVENTORY_COLLECTIONS,
-  findInventoryCollections,
-  hasReadableInventory,
-  readEveryPage,
-  toSeatRow,
-  type InventoryCollection,
-  type InventoryDeclarations,
-  type InventoryRead,
-} from "../../lib/inventory";
+import { readEveryPage, seatInventoryRef, toSeatRow, type InventoryRead } from "../../lib/inventory";
 import { TabsContent, TabsTrigger } from "../ui/tabs";
 
 /** The tab's value in the workspace `Tabs`. */
 const INVENTORY_TAB = "inventory";
 
-const InventoryContext = createContext<InventoryDeclarations | null>(null);
+/** The seat inventory's ref, once the manifest says the tab belongs. `null` while loading, or when it does not. */
+const InventoryContext = createContext<string | null>(null);
 
 /**
- * Read the session's resource manifest once and share which inventory
- * collections its flow declares. Renders its children immediately; the tab
- * trigger and content appear once the manifest says they belong.
+ * Read the session's resource manifest once and share the seat inventory's
+ * ref. Renders its children immediately; the tab trigger and content appear
+ * once the manifest says they belong.
  *
  * A manifest read that fails shows no tab: without the manifest there is no
- * telling which collections exist, and the session's other panels report the
- * same failure on their own reads.
+ * telling whether the collection exists, and the session's other panels report
+ * the same failure on their own reads.
  */
 export function InventoryProvider({ sessionId, children }: { sessionId: string | null; children: ReactNode }) {
   const { resourceClient } = useDevTool();
-  const [declarations, setDeclarations] = useState<InventoryDeclarations | null>(null);
+  const [ref, setRef] = useState<string | null>(null);
 
   useEffect(() => {
-    setDeclarations(null);
+    setRef(null);
     if (sessionId === null) return;
     let cancelled = false;
     resourceClient
       .getResourceManifest(sessionId)
       .then((manifest) => {
-        if (!cancelled) setDeclarations(findInventoryCollections(manifest));
+        if (!cancelled) setRef(seatInventoryRef(manifest) ?? null);
       })
       .catch(() => {
-        if (!cancelled) setDeclarations(null);
+        if (!cancelled) setRef(null);
       });
     return () => {
       cancelled = true;
     };
   }, [resourceClient, sessionId]);
 
-  return <InventoryContext.Provider value={declarations}>{children}</InventoryContext.Provider>;
+  return <InventoryContext.Provider value={ref}>{children}</InventoryContext.Provider>;
 }
 
-/** The declarations, when the manifest lists a readable inventory collection; otherwise `null`. */
-function useReadableInventory(): InventoryDeclarations | null {
-  const declarations = useContext(InventoryContext);
-  return declarations !== null && hasReadableInventory(declarations) ? declarations : null;
-}
-
-/** The tab's trigger, rendered only on a session that declares a readable inventory collection. */
+/** The tab's trigger, rendered only on a session that declares a readable seat inventory. */
 export function InventoryTabTrigger() {
-  return useReadableInventory() === null ? null : <TabsTrigger value={INVENTORY_TAB}>Inventory</TabsTrigger>;
+  return useContext(InventoryContext) === null ? null : <TabsTrigger value={INVENTORY_TAB}>Inventory</TabsTrigger>;
 }
 
 /** The tab's panel. Reads only while the tab is open (an inactive panel unmounts). */
 export function InventoryTabContent({ sessionId }: { sessionId: string | null }) {
-  const declarations = useReadableInventory();
-  if (declarations === null || sessionId === null) return null;
+  const ref = useContext(InventoryContext);
+  if (ref === null || sessionId === null) return null;
   return (
     <TabsContent value={INVENTORY_TAB} className="flex-1 min-h-0 m-0 overflow-auto">
-      <InventoryView sessionId={sessionId} declarations={declarations} />
+      <InventoryView sessionId={sessionId} inventoryRef={ref} />
     </TabsContent>
   );
 }
 
-type Reads = Record<InventoryCollection, InventoryRead> | null;
-
-/**
- * One section per collection, for a session whose declarations are already known.
- */
-function InventoryView({
-  sessionId,
-  declarations,
-}: {
-  sessionId: string;
-  declarations: InventoryDeclarations;
-}) {
+/** The seat section, for a session whose inventory ref is already known. */
+function InventoryView({ sessionId, inventoryRef }: { sessionId: string; inventoryRef: string }) {
   const { resourceClient } = useDevTool();
-  const [reads, setReads] = useState<Reads>(null);
+  const [read, setRead] = useState<InventoryRead | null>(null);
 
   useEffect(() => {
-    setReads(null);
+    setRead(null);
     let cancelled = false;
-    void Promise.all(
-      INVENTORY_COLLECTIONS.map(async (name): Promise<[InventoryCollection, InventoryRead]> => {
-        const declared = declarations[name];
-        if (declared === undefined) return [name, { status: "not-installed" }];
-        return [name, await readEveryPage(resourceClient, sessionId, declared.ref)];
-      }),
-    ).then((entries) => {
-      if (!cancelled) setReads(Object.fromEntries(entries) as Record<InventoryCollection, InventoryRead>);
+    void readEveryPage(resourceClient, sessionId, inventoryRef).then((next) => {
+      if (!cancelled) setRead(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [resourceClient, sessionId, declarations]);
+  }, [resourceClient, sessionId, inventoryRef]);
 
-  if (reads === null) {
+  if (read === null) {
     return <p className="p-3 text-xs text-slate-500">Reading the inventory…</p>;
   }
-
-  const loaded = INVENTORY_COLLECTIONS.map((name) => reads[name]).filter(
-    (read): read is Extract<InventoryRead, { status: "loaded" }> => read.status === "loaded",
-  );
-  const nothingRegistered =
-    INVENTORY_COLLECTIONS.every((name) => reads[name].status !== "failed") &&
-    loaded.every((read) => read.rows.length === 0);
 
   return (
     <div className="flex flex-col gap-3 p-3" data-inventory-view="">
@@ -147,14 +109,14 @@ function InventoryView({
         Everything registered in this session's organization. A row stays once it is written: a worker
         that was fired is still listed as registered.
       </p>
-      {nothingRegistered && (
+      {read.status === "loaded" && read.rows.length === 0 && (
         <p className="rounded-md border border-slate-800 px-3 py-2 text-xs text-slate-300" role="status">
           Nothing is registered in this organization yet. An app registers its workers by calling{" "}
           <code>openInventory</code> at boot.
         </p>
       )}
 
-      <Section name="seats" title="Registered seats" read={reads.seats} noun="seats">
+      <Section name="seats" title="Registered seats" read={read} noun="seats">
         {(rows) => (
           <table className="w-full text-xs">
             <thead>
@@ -179,8 +141,8 @@ function InventoryView({
 }
 
 /**
- * One collection's section. The three outcomes render three different ways,
- * and none of them as another: absent, failed and empty each say what they are.
+ * The seat section. Failed, empty and a table render three different ways,
+ * and none of them as another.
  */
 function Section({
   name,
@@ -189,7 +151,7 @@ function Section({
   noun,
   children,
 }: {
-  name: InventoryCollection;
+  name: string;
   title: string;
   read: InventoryRead;
   noun: string;
@@ -206,9 +168,7 @@ function Section({
         {title}
         {read.status === "loaded" && <span className="text-[10px] font-normal text-slate-500">{read.rows.length}</span>}
       </h3>
-      {read.status === "not-installed" ? (
-        <p className="px-3 py-2 text-xs italic text-slate-500">Not installed on this flow.</p>
-      ) : read.status === "failed" ? (
+      {read.status === "failed" ? (
         <p className="px-3 py-2 text-xs text-rose-300" role="alert">
           {read.httpStatus === 403
             ? `The ${noun} read was refused (403): ${read.message}.`

@@ -1,17 +1,16 @@
 /**
- * The Inventory tab's model: whether a session's flow declares the
- * organization's inventory collection, and every row it holds, read through
- * the production collection read.
+ * The Inventory tab's model: the ref of the organization's seat inventory,
+ * when a session's flow declares it as browser-readable, and every row it
+ * holds, read through the production collection read.
  *
  * The DevTool takes no dependency on the package that defines the collection.
  * It finds it by its published key pattern in the session's resource
  * manifest, and uses whatever ref the flow gave it. The pattern is the
  * contract; a ref is only the name one flow chose.
  *
- * Three outcomes per collection, kept apart on purpose because a reader must
- * never confuse them:
+ * No readable collection means no tab. A read that runs is one of two
+ * outcomes, kept apart because a reader must never confuse them:
  *
- *  - **not installed** — the manifest lists no collection with that pattern.
  *  - **loaded** — every page was read. Zero rows is a real answer: the
  *    collection is there and nothing is registered in it.
  *  - **failed** — a page was refused or errored. Named with its status and how
@@ -23,53 +22,31 @@
 import type { ResourceClient, ResourceManifest } from "@flow-state-dev/client";
 import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } from "@flow-state-dev/client";
 
-/** The published key pattern, by the section it fills. */
-export const INVENTORY_PATTERNS = {
-  seats: "inventory/seats/*",
-} as const;
-
-/** An inventory collection. */
-export type InventoryCollection = keyof typeof INVENTORY_PATTERNS;
-
-/** The collections, in the order the tab shows them. */
-export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["seats"];
-
-/** Where one collection sits on this session's flow: its ref, and whether the browser may read it. */
-export type InventoryDeclaration = { ref: string; readable: boolean };
-
-/** The collection's declaration on this flow, or `undefined` when the flow does not declare it. */
-export type InventoryDeclarations = Record<InventoryCollection, InventoryDeclaration | undefined>;
+/** The seat inventory's published key pattern. */
+export const SEAT_INVENTORY_PATTERN = "inventory/seats/*";
 
 /** Page size for every read — the collection route's maximum. */
 const INVENTORY_PAGE_SIZE = 200;
 
 /**
- * Find the inventory collection in a session's manifest, by pattern.
+ * The ref of the browser-readable seat inventory on this flow.
  *
  * The manifest lists only collections with some client affordance, so one
  * declared with no browser read at all is indistinguishable here from one not
- * declared, and reads as not installed.
+ * declared. Either way there is no tab.
  */
-export function findInventoryCollections(manifest: ResourceManifest): InventoryDeclarations {
-  const found = {} as InventoryDeclarations;
-  for (const name of INVENTORY_COLLECTIONS) {
-    const entry = manifest.resources.find(
-      (resource) => resource.kind === "collection" && resource.pattern === INVENTORY_PATTERNS[name],
-    );
-    found[name] =
-      entry === undefined ? undefined : { ref: entry.ref, readable: entry.client.state?.read === true };
-  }
-  return found;
+export function seatInventoryRef(manifest: ResourceManifest): string | undefined {
+  const entry = manifest.resources.find(
+    (resource) =>
+      resource.kind === "collection" &&
+      resource.pattern === SEAT_INVENTORY_PATTERN &&
+      resource.client.state?.read === true,
+  );
+  return entry?.ref;
 }
 
-/** Whether the tab belongs on this session: the inventory collection is readable. */
-export function hasReadableInventory(declarations: InventoryDeclarations): boolean {
-  return INVENTORY_COLLECTIONS.some((name) => declarations[name]?.readable === true);
-}
-
-/** The outcome of reading one collection. See the module header. */
+/** The outcome of reading the seat inventory. See the module header. */
 export type InventoryRead =
-  | { status: "not-installed" }
   | { status: "loaded"; rows: unknown[] }
   | {
       status: "failed";
