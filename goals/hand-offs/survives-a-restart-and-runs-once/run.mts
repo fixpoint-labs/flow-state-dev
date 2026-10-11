@@ -18,9 +18,11 @@
  *
  * It refuses a dirty tree, records `HEAD`, re-checks both before each check,
  * and runs each check as its own process with its own `GOAL_CONTROL`, one
- * after another. A plain check passes on exit 0; a control passes only when it
- * printed "<assertion> failed, as it must" for every assertion it names and
- * nothing failed at setup. A check that cannot start (blocked) stops the run.
+ * after another. A plain check passes on exit 0. A control passes only when
+ * the tags its FAIL verdict lists are exactly the tags it must fail plus the
+ * co-failures its check documents, no more and no fewer: a missing co-failure,
+ * a setup failure, a throw or any other red tag is a finding (QR-12). A check
+ * that cannot start (blocked) stops the run.
  * It writes nothing to any store, and each check's full output is kept in a
  * log file it names.
  *
@@ -31,26 +33,52 @@ import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 
-interface Check {
+/** A check run as it is: it passes on exit 0. */
+interface PlainCheck {
   id: string;
   script: string;
-  control?: string;
-  /** For a control: the assertions it must fail, by name. */
-  mustFail?: string[];
+  control?: undefined;
 }
+
+/** A check run under one of its controls: graded on the exact set of tags that go red. */
+interface ControlCheck {
+  id: string;
+  script: string;
+  control: string;
+  /** The assertions it must fail, by name. */
+  mustFail: string[];
+  /**
+   * The co-failures its check documents. Required: the tags that go red must equal
+   * `mustFail` ∪ `alsoRed`, no more and no fewer, or it is a finding (QR-12).
+   */
+  alsoRed: string[];
+}
+
+type Check = PlainCheck | ControlCheck;
+
+/** J4's tags after the answer: with no answer accepted there is no task to finish, so all of them go red with `j:answered`. */
+const AFTER_THE_ANSWER = ["j:completed", "j:same-session", "j:names-ticket", "j:names-region", "j:one-draw", "j:one-completed", "j:second-answer", "j:still-answers", "j:row-unchanged"];
 
 const CHECKS: Check[] = [
   { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts" },
-  { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts", control: "no-run-once", mustFail: ["one-row"] },
-  { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts", control: "no-waker", mustFail: ["a:completed"] },
+  // Leg a's goal.md: `b:once` goes red with `one-row`; `a:word` goes red with `a:completed`.
+  { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts", control: "no-run-once", mustFail: ["one-row"], alsoRed: ["b:once"] },
+  { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts", control: "no-waker", mustFail: ["a:completed"], alsoRed: ["a:word"] },
   { id: "P1.b", script: "goals/coordinators/task-session-stays-open/run.mts" },
-  { id: "P1.b", script: "goals/coordinators/task-session-stays-open/run.mts", control: "new-session", mustFail: ["a:names-ticket", "c:names-ticket"] },
-  { id: "P1.b", script: "goals/coordinators/task-session-stays-open/run.mts", control: "drop-answer", mustFail: ["a:names-region"] },
+  // Leg b's verdict log: a fresh session per attempt also reddens the same-session tags, leg b's answer and the one-draw count.
+  {
+    id: "P1.b",
+    script: "goals/coordinators/task-session-stays-open/run.mts",
+    control: "new-session",
+    mustFail: ["a:names-ticket", "c:names-ticket"],
+    alsoRed: ["a:same-session", "b:names-ticket", "c:same-session", "c:one-draw"],
+  },
+  { id: "P1.b", script: "goals/coordinators/task-session-stays-open/run.mts", control: "drop-answer", mustFail: ["a:names-region"], alsoRed: [] },
   { id: "P1.c", script: "goals/coordinators/files-tasks-down-the-owners-chain/run.mts" },
   { id: "P1.d", script: "goals/coordinators/hands-each-post-to-its-delegates/run.mts" },
   { id: "P1.d", script: "goals/coordinators/routes-a-follow-up-by-its-conversation/run.mts" },
   { id: "J4", script: "goals/hand-offs/survives-a-restart-and-runs-once/legs/parked.mts" },
-  { id: "J4", script: "goals/hand-offs/survives-a-restart-and-runs-once/legs/parked.mts", control: "fresh-store", mustFail: ["j:answered"] },
+  { id: "J4", script: "goals/hand-offs/survives-a-restart-and-runs-once/legs/parked.mts", control: "fresh-store", mustFail: ["j:answered"], alsoRed: AFTER_THE_ANSWER },
 ];
 
 const LOGS = join(goalTmpDir("survives-a-restart-and-runs-once"), "logs", RUN_STAMP);
@@ -85,10 +113,17 @@ function run(check: Check, log: string): Promise<{ code: number; output: string 
   });
 }
 
-/** The tags a FAIL verdict lists, in order: `- one-row — …` gives `one-row`. */
-function failedTags(output: string): string[] {
-  const verdict = output.slice(output.lastIndexOf("FAIL —"));
-  return [...new Set([...verdict.matchAll(/^\s+- (\S+) —/gm)].map((m) => m[1]!))];
+/**
+ * What the last FAIL verdict in `output` lists: each failure's tag (`- one-row — …` gives `one-row`),
+ * and every bullet that names no tag (a throw, say), which no control is allowed to have.
+ * The control's own summary lines (`- control <name>: …`) are neither.
+ */
+function failedTags(output: string): { tags: string[]; untagged: string[] } {
+  const at = output.lastIndexOf("FAIL —");
+  if (at < 0) return { tags: [], untagged: [] };
+  const bullets = [...output.slice(at).matchAll(/^ {2}- (.*)$/gm)].map((m) => m[1]!).filter((b) => !b.startsWith("control "));
+  const tags = bullets.map((b) => /^(\S+) —/.exec(b)?.[1]).filter((t): t is string => t !== undefined);
+  return { tags: [...new Set(tags)], untagged: bullets.filter((b) => !/^\S+ —/.test(b)) };
 }
 
 await runGoal(async (failures) => {
@@ -109,17 +144,25 @@ await runGoal(async (failures) => {
       break;
     }
     let verdict: string;
+    const failed = failedTags(output);
     if (check.control === undefined) {
-      verdict = code === 0 ? "PASS" : `FAIL (${failedTags(output).join(", ")})`;
+      verdict = code === 0 ? "PASS" : `FAIL (${[...failed.tags, ...failed.untagged.map((u) => u.slice(0, 80))].join(", ")})`;
       if (code !== 0) failures.push(`${name}: FAIL — a finding (${log})`);
     } else {
-      const missed = (check.mustFail ?? []).filter((tag) => !output.includes(`${tag} failed, as it must`));
-      const atSetup = /^\s+- setup —/m.test(output);
+      // Exact, per QR-12: the red tags equal must-fail ∪ the documented co-failures, no more and no fewer.
+      const expected = new Set([...check.mustFail, ...check.alsoRed]);
+      const missed = [...expected].filter((tag) => !failed.tags.includes(tag));
+      const unexpected = [...failed.tags.filter((tag) => !expected.has(tag)), ...failed.untagged.map((u) => u.slice(0, 120))];
+      const problems = [
+        code === 0 ? "it passed" : "",
+        missed.length > 0 ? `expected red but green: ${missed.join(", ")}` : "",
+        unexpected.length > 0 ? `red outside its expected set: ${unexpected.join(", ")}` : "",
+      ].filter((p) => p !== "");
       verdict =
-        code !== 0 && missed.length === 0 && !atSetup
-          ? `FAIL as it must at ${check.mustFail!.join(", ")} (all red: ${failedTags(output).join(", ")})`
-          : `control did not fail as it must${missed.length > 0 ? `: ${missed.join(", ")} stayed green` : ""}${atSetup ? ": it failed at setup" : ""}${code === 0 ? ": it passed" : ""}`;
-      if (verdict.startsWith("control did not")) failures.push(`${name}: ${verdict} — a finding against the control (${log})`);
+        problems.length === 0
+          ? `FAIL as it must at ${check.mustFail.join(", ")}; red exactly its expected set: ${failed.tags.join(", ")}`
+          : `control did not fail as it must: ${problems.join("; ")}`;
+      if (problems.length > 0) failures.push(`${name}: ${verdict} — a finding (${log})`);
     }
     rows.push(`${sha.slice(0, 9)} · ${name} · ${verdict} · ${log}`);
     say(rows.at(-1)!);
