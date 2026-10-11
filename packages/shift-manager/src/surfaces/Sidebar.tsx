@@ -6,8 +6,8 @@
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `seatStates` result, so they agree with Roster. PROJECTS lists each project
- * with its workstreams, then No project; TEAMS is one row per
+ * `seatStates` result, so they agree with Roster. PROJECTS lists each project,
+ * then No project; TEAMS is one row per
  * team with a status square per seat, the person's own workers included,
  * opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
@@ -326,10 +326,8 @@ function SidebarRail({
 }
 
 /**
- * PROJECTS (BR-22): each project by title, its workstreams beneath it, a
- * project with none still listed; then No project with every workstream no
- * project lists, only when there is one. A workstream id whose mailbox left
- * the tree is shown as gone, with no link.
+ * PROJECTS (BR-22): each project by title, then No project with every mailbox
+ * workstream the inventory registers, only when there is one.
  */
 function ProjectsSection({
   snapshot,
@@ -362,20 +360,9 @@ function ProjectsSection({
   );
   return (
     <>
-      {view.value.projects.map(({ project, workstreams }) => (
+      {view.value.projects.map((project) => (
         <div key={`${project.visibility}/${project.id}`} data-testid="project-group" data-project-id={project.id} data-visibility={project.visibility}>
           {projectItem(project.id, project.title, project.visibility)}
-          <div className="pl-3">
-            {workstreams.map(({ id, workstream }) =>
-              workstream === undefined ? (
-                <p key={id} className="px-2 py-1 text-xs text-muted-foreground" data-testid="nav-workstream-gone" data-mailbox-id={id}>
-                  {id} · no longer in the Lab
-                </p>
-              ) : (
-                workstreamItem(workstream)
-              ),
-            )}
-          </div>
         </div>
       ))}
       {view.value.noProject.length === 0 ? null : (

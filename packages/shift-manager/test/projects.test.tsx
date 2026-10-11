@@ -315,7 +315,7 @@ describe("grouping is the snapshot's (V4)", () => {
     const view = projectsOf(snapshot([stale]));
     expect(spy).not.toHaveBeenCalled();
     if (!view.ok) throw new Error("expected a view");
-    expect(view.value.projects.map((g) => [g.project.id, g.workstreams])).toEqual([["s", []]]);
+    expect(view.value.projects.map((project) => project.id)).toEqual(["s"]);
     expect(view.value.noProject.map((w) => w.id)).toEqual(["eng.a", "ops.b", "ops.c"]);
   });
 

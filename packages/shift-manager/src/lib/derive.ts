@@ -262,25 +262,14 @@ export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Se
   return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
 }
 
-/**
- * One mailbox workstream in a list: its id, and the workstream the inventory
- * registers under that id, `undefined` when none is.
- */
-export type ListedWorkstream = { id: string; workstream: Workstream | undefined };
-
-/**
- * A project, with the mailbox workstreams it lists: none, since a project
- * lists no mailbox. Its workstreams are its entries, read on its screen.
- */
-export type ProjectGroup = { project: Project; workstreams: ListedWorkstream[] };
-
-/** PROJECTS: every project, then the mailbox workstreams, which no project lists. */
-export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] };
+/** PROJECTS: every project, then the mailbox workstreams, which sit under No project. */
+export type ProjectsView = { projects: Project[]; noProject: Workstream[] };
 
 /**
  * PROJECTS (BR-22, D3): every project the person reads, shared ones and their
- * own private ones, and then every mailbox workstream the inventory
- * registers, which is No project: a project lists no mailbox.
+ * own private ones, then every mailbox workstream the inventory registers,
+ * which is No project. A project lists no mailbox, including a row that still
+ * carries `workstreams`.
  *
  * Derived from the snapshot alone: no read of its own.
  * Fails when either read it groups did: the inventory's failure first, since
@@ -289,8 +278,7 @@ export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] }
 export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
   if (!snapshot.inventory.ok) return snapshot.inventory;
   if (!snapshot.projects.ok) return snapshot.projects;
-  const projects = snapshot.projects.value.rows.map((project) => ({ project, workstreams: [] }));
-  return { ok: true, value: { projects, noProject: snapshot.inventory.value.workstreams } };
+  return { ok: true, value: { projects: snapshot.projects.value.rows, noProject: snapshot.inventory.value.workstreams } };
 }
 
 
