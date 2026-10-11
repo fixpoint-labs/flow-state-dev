@@ -719,13 +719,9 @@ export function createLabReader(clients: LabClients): LabReader {
         const seats = (await readCollection(seatsOnly.sessionId, seatsOnly.seatsRef))
           .map((r) => toSeat(r.clientData))
           .filter((seat): seat is Seat => seat !== undefined);
-        if (seats.length === 0) {
-          return {
-            ok: false,
-            failure: { message: "The Lab's inventory is empty: it registers no seats. The Lab booted without opening its inventory." },
-          };
-        }
-        return { ok: true, value: { seats, workstreams: [] } };
+        // Every Workforce Lab's roster flow declares the seats, so none there is the Lab not having
+        // opened its inventory, or these pages looking for keys it no longer writes: said below.
+        if (seats.length > 0) return { ok: true, value: { seats, workstreams: [] } };
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }

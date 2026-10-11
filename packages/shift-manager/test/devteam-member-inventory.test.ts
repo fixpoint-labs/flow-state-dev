@@ -39,6 +39,7 @@ it("the member and the outsider read the organization's workers and projects, wi
     stores: inMemoryStores(),
     harness: harnessStub({}).slot,
     workspace: { root, remotes: { allow: ["file"] } },
+    coderSeatId: "eng.coder",
     inventory: true,
     projects: [{ id: "storefront", title: "Storefront", members: [LAB_USERS.member.userId] }],
   });

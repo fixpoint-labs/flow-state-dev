@@ -24,10 +24,10 @@ function projectTools() {
 }
 
 describe("chief of staff tools presented with .as()", () => {
-  it("the project tools are createProject, setRepository and openWorkstream: none lists mailboxes on a project", () => {
+  it("the project tools are createProject, setRepository, openWorkstream and listProjects: none lists mailboxes on a project", () => {
     // A project's workstreams are the entries `openWorkstream` writes; there is
     // no tool left that writes a list of mailbox ids onto a project row.
-    expect(Object.keys(projectTools().tools).sort()).toEqual(["createProject", "openWorkstream", "setRepository"]);
+    expect(Object.keys(projectTools().tools).sort()).toEqual(["createProject", "listProjects", "openWorkstream", "setRepository"]);
   });
 
   it("hire is the Workforce hire block under the tool's own name", () => {
