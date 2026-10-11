@@ -136,7 +136,7 @@ example with:
 > you mark it done. When you ask it for work, it hands the request to the lead of one of **your**
 > workstreams, inside that workstream session. It never hands work to another member's workstream. To get something
 > from theirs, read their entry or ask them. If none of your workstreams covers the work, it
-> opens one for it, unless nobody on your roster can lead it; then it says so and opens nothing.
+> opens one for it, led by the workstream coordinator.
 
 ## UPDATE · `projects.md` · "A project's code and files"
 
@@ -201,11 +201,12 @@ on this page.
 And under the table:
 
 > **Opening a workstream.** Ask your project coordinator, in the project's Stream tab, for work
-> none of your workstreams there covers. It opens a workstream for it, led by the worker on your
-> roster whose description fits, such as your engineering manager for a feature, and hands your
-> ask to it. The ask stays in the workstream's conversation as its brief. One worker can lead
-> several of your workstreams, with a separate conversation and board for each. When nobody on
-> your roster does the work, the coordinator says so; ask your chief of staff to hire someone.
+> none of your workstreams there covers. It opens a workstream for it and hands your ask to the
+> workstream coordinator, which leads every workstream, with a separate conversation and board for
+> each. The ask stays in that conversation as the workstream's brief. The workstream coordinator
+> hands each piece to the worker who does it, such as your engineering manager for a feature,
+> follows it through, checks your other workstreams in the project so the pieces fit, and keeps
+> the workstream's status current.
 >
 > In your own app, `openWorkstream` takes whichever lead you name. See
 > [Projects](../workforce/projects.md#workstreams).
@@ -249,8 +250,8 @@ project. It reads every workstream and hands work only to the user's own."
 
 Replace the room lines with the project view in the screens table above: Stream is your own
 project coordinator, Board your own workstreams' boards, Workstreams every entry with its
-progress. Add the "Opening a workstream" paragraph above. *Amended by D3:* the DevTeam has no standard
-workstream coordinator, so its list of standard workers doesn't name one. Remove "The room reads only at set times" and the room's sentence in the DevTeam
+progress. Add the "Opening a workstream" paragraph above. *Amended by D3:* the DevTeam's list of standard
+workers names the workstream coordinator as the one that leads every workstream. Remove "The room reads only at set times" and the room's sentence in the DevTeam
 paragraph.
 
 ## UPDATE · `apps/docs/docs/workforce/inventory.md`
