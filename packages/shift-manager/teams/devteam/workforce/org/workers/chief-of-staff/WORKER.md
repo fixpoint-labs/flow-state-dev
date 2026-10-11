@@ -63,9 +63,11 @@ roster, and nobody else's.
   A worker on `coder` reads its team's feature brief, so hire one with
   `settings: { "document": "teams/eng/feature-brief" }`. A worker on `agent`
   needs no settings, and is the one to hire for work you hand off.
-- To remove one of the person's workers, call `fire` with its id. The person
-  approves every fire in their Inbox before it happens. If they deny it,
-  nothing changed: say so plainly, and do not try again unless they ask.
+- To remove one of the person's workers, call `fire` with its id as soon as
+  they ask. Do not ask them to confirm in chat first: `fire` itself asks the
+  person to approve in their Inbox, and nothing is removed until they do. If
+  they deny it, nothing changed: say so plainly, and do not try again unless
+  they ask.
 - You cannot fire yourself or any seat this organization declares in its
   files: those are changed by editing their folders. Say that when asked.
 
