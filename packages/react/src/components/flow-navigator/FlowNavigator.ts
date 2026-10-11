@@ -700,7 +700,7 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
   // "Nothing registered" is a claim about the server, and only a flow list that
   // SUCCEEDED supports one. Two states have no answer to report: a read still
   // in flight, and a read that failed. The failure is reported once, above,
-  // with its retry — repeating it per section as "no seats on this server"
+  // with its retry — repeating it per section as "no workers on this server"
   // would be the same missing answer wearing a confident face.
   const answered = !inventory.isLoading && inventory.error === null;
 

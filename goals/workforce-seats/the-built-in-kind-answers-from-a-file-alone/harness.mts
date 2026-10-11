@@ -32,11 +32,11 @@ import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
-  AGENT_KIND,
+  AGENT_FLOW,
   WORKER_ID_STATE_KEY,
   createWorkerInstallation,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
   const installation = createWorkerInstallation({ standardWorkers: workers });
   const copies = hireWorkforce(installation);
   // Each worker, and the flow it runs on.
-  const seats = inventorySeats(installation).map((seat) => ({ id: seat.id, kind: seat.kind }));
+  const seats = inventoryWorkers(installation).map((seat) => ({ id: seat.id, kind: seat.kind }));
   out.seats = seats;
 
   // ---- register and ask, over the real route ------------------------------
@@ -271,7 +271,7 @@ async function main(): Promise<void> {
       modelResolver,
     } as never);
     const afterRouter = await afterState.getRouter();
-    out.validWorkerStatusAfterRefusal = (await openSession(afterRouter as never, AGENT_KIND, MIXED_VALID_ID, "s_after_refusal")).status;
+    out.validWorkerStatusAfterRefusal = (await openSession(afterRouter as never, AGENT_FLOW, MIXED_VALID_ID, "s_after_refusal")).status;
   }
 
   out.ok = true;

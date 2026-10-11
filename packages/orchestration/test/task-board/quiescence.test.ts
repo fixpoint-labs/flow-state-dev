@@ -30,7 +30,7 @@ import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quie
 import { whenBoardClaimable } from "../../src/task-board/predicates";
 import {
   handedOffTaskPredicate,
-  type HandOffSeat,
+  type HandOffAssignee,
 } from "../../src/task-board/hand-off";
 import { createFakeSequencerState } from "../helpers";
 
@@ -246,19 +246,19 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  * drained.
  *
  * The inline control is the load-bearing half. `runsElsewhere` is `undefined`
- * for every board with no dispatcher seat, and an inline `in_progress`
+ * for every board with no dispatcher assignee, and an inline `in_progress`
  * row must still hold the drain open — get that wrong and every existing board
  * exits mid-flight.
  */
 describe("boardQuiescence - work handed to a child session", () => {
   const onIdles: OnIdle[] = ["complete", "complete-or-blocked"];
-  /** Stands in for a board whose only seat hands off. */
+  /** Stands in for a board whose only assignee hands off. */
   const allHandedOff = () => true;
 
   it.each(onIdles)(
     "onIdle %s: an inline in-progress row still holds the drain open",
     async (onIdle) => {
-      // The control. Same board, same row, no dispatcher seat — this is
+      // The control. Same board, same row, no dispatcher assignee — this is
       // the behaviour every board on the repo depends on.
       const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
       const options = { onIdle };
@@ -285,7 +285,7 @@ describe("boardQuiescence - work handed to a child session", () => {
   it.each(onIdles)(
     "onIdle %s: an inline sibling still holds a mixed board open",
     async (onIdle) => {
-      // A registry board where one seat hands off and one does not. The
+      // A registry board where one assignee hands off and one does not. The
       // exclusion has to be per-row, not per-board.
       const collection = await boardWithRows([
         { id: "bg", assignee: "background", drive: "claim" },
@@ -385,42 +385,42 @@ describe("boardQuiescence - work handed to a child session", () => {
  * How a board decides which of its rows a child session is running.
  *
  * Resolution has to mirror the child's own gate — a declared assignee, else
- * the floor — or the drain and the child disagree about which seat a row
+ * the floor — or the drain and the child disagree about which assignee a row
  * belongs to.
  */
 describe("handedOffTaskPredicate", () => {
-  const seat = (name: string): HandOffSeat => ({
+  const assignee = (name: string): HandOffAssignee => ({
     name,
     kind: "named",
     label: `assignee:${name}`,
     dispatch: { type: "task", action: "t", session: "per-task" },
   });
 
-  it("is absent for a board with no dispatcher seat", () => {
+  it("is absent for a board with no dispatcher assignee", () => {
     // Absence is what keeps every existing board on the `count()` path — the
     // classifier's answer for them is bit-for-bit unchanged.
     expect(handedOffTaskPredicate([])).toBeUndefined();
   });
 
   it("separates a handed-off assignee from an inline one", () => {
-    const predicate = handedOffTaskPredicate([seat("background")])!;
+    const predicate = handedOffTaskPredicate([assignee("background")])!;
     expect(predicate({ assignee: "background" } as never)).toBe(true);
     expect(predicate({ assignee: "inline" } as never)).toBe(false);
   });
 
-  it("never hands an undeclared assignee off — only a named seat can", () => {
-    // The floor and the uniform seat cannot hand off (the board refuses a
+  it("never hands an undeclared assignee off — only a named assignee can", () => {
+    // The floor and the uniform assignee cannot hand off (the board refuses a
     // dispatcher there), so an unrouted row is always this drain's.
-    const predicate = handedOffTaskPredicate([seat("background")])!;
+    const predicate = handedOffTaskPredicate([assignee("background")])!;
     expect(predicate({ assignee: "unknown" } as never)).toBe(false);
     expect(predicate({} as never)).toBe(false);
     expect(predicate({ assignee: "background" } as never)).toBe(true);
   });
 
-  it("does not resolve an inherited Object.prototype member as a seat", () => {
+  it("does not resolve an inherited Object.prototype member as an assignee", () => {
     // `assignee` reaches the board from a model-facing tool, so a bare index
-    // would route `"constructor"` at a declared seat that does not exist.
-    const predicate = handedOffTaskPredicate([seat("background")])!;
+    // would route `"constructor"` at a declared assignee that does not exist.
+    const predicate = handedOffTaskPredicate([assignee("background")])!;
     expect(predicate({ assignee: "constructor" } as never)).toBe(false);
   });
 });

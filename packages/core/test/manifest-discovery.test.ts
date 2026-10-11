@@ -27,9 +27,9 @@ function sourceOf(
   };
 }
 
-const seat = (id: string): ManifestEntry => ({
+const worker = (id: string): ManifestEntry => ({
   id,
-  kind: "seat",
+  kind: "worker",
   purpose: `Reviews ${id} work.`,
   contract: `Hand it a task naming ${id}.`,
 });
@@ -40,10 +40,10 @@ describe("createManifestRegistry", () => {
   it("refuses two sources for one domain, naming both registration sites", () => {
     expect(() =>
       createManifestRegistry([
-        sourceOf("seats", [], "createWorkforceCapability"),
-        sourceOf("seats", [], "myAppRoster"),
+        sourceOf("workers", [], "createWorkforceCapability"),
+        sourceOf("workers", [], "myAppRoster"),
       ]),
-    ).toThrowError(/"seats".*createWorkforceCapability.*myAppRoster/s);
+    ).toThrowError(/"workers".*createWorkforceCapability.*myAppRoster/s);
   });
 
   it("names an unlabelled site rather than printing undefined", () => {
@@ -55,9 +55,9 @@ describe("createManifestRegistry", () => {
   it("reports the domains it carries in the canonical order, not registration order", () => {
     const registry = createManifestRegistry([
       sourceOf("resources", []),
-      sourceOf("seats", []),
+      sourceOf("workers", []),
     ]);
-    expect(registry.domains()).toEqual(["seats", "resources"]);
+    expect(registry.domains()).toEqual(["workers", "resources"]);
   });
 });
 
@@ -67,22 +67,22 @@ describe("discover", () => {
     const { discover } = discoveryTools(
       createManifestRegistry([
         sourceOf("skills", [{ id: "refactor", kind: "skill", purpose: "Rewrites a module." }]),
-        sourceOf("seats", [seat("reviewer")]),
+        sourceOf("workers", [worker("reviewer")]),
       ]),
     );
 
     const result = await runForTest(discover, { domain: null, detail: "thin" }, ctx);
 
-    expect(result.domains.map((d) => d.domain)).toEqual(["seats", "skills"]);
+    expect(result.domains.map((d) => d.domain)).toEqual(["workers", "skills"]);
     expect(result.problem).toBeUndefined();
   });
 
   it("orders entries by id, so two identical scopes read identically", async () => {
     const { discover } = discoveryTools(
-      createManifestRegistry([sourceOf("seats", [seat("zoe"), seat("adam"), seat("mia")])]),
+      createManifestRegistry([sourceOf("workers", [worker("zoe"), worker("adam"), worker("mia")])]),
     );
 
-    const result = await runForTest(discover, { domain: "seats", detail: "thin" }, ctx);
+    const result = await runForTest(discover, { domain: "workers", detail: "thin" }, ctx);
 
     expect(result.domains[0]!.entries.map((e) => e.id)).toEqual(["adam", "mia", "zoe"]);
   });
@@ -91,7 +91,7 @@ describe("discover", () => {
   it("returns only the named domain", async () => {
     const { discover } = discoveryTools(
       createManifestRegistry([
-        sourceOf("seats", [seat("reviewer")]),
+        sourceOf("workers", [worker("reviewer")]),
         sourceOf("skills", [{ id: "refactor", kind: "skill", purpose: "Rewrites a module." }]),
       ]),
     );
@@ -104,7 +104,7 @@ describe("discover", () => {
   // BR-3. A scope with no resources registered yet is an ordinary state, and
   // the model should read it as "nothing here" rather than as a fault.
   it("answers a scope-less domain with an empty list, not an error", async () => {
-    const { discover } = discoveryTools(createManifestRegistry([sourceOf("seats", [seat("reviewer")])]));
+    const { discover } = discoveryTools(createManifestRegistry([sourceOf("workers", [worker("reviewer")])]));
 
     const result = await runForTest(discover, { domain: "resources", detail: "thin" }, ctx);
 
@@ -114,16 +114,16 @@ describe("discover", () => {
 
   // BR-11's mechanism, checked at this altitude: the tool holds only what the
   // registry holds, so there is no wider list for a model-supplied `domain` to
-  // filter down from (BP-031). A seat's own `discover:` narrowing rides on top.
+  // filter down from (BP-031). A worker's own `discover:` narrowing rides on top.
   it("cannot reach a domain the registry was not built with", async () => {
     const outOfScope = sourceOf("resources", [{ id: "ops", kind: "resource", purpose: "Ops notes." }]);
-    const { discover } = discoveryTools(createManifestRegistry([sourceOf("seats", [seat("reviewer")])]));
+    const { discover } = discoveryTools(createManifestRegistry([sourceOf("workers", [worker("reviewer")])]));
 
     const asked = await runForTest(discover, { domain: "resources", detail: "full" }, ctx);
     const everything = await runForTest(discover, { domain: null, detail: "full" }, ctx);
 
     expect(asked.domains[0]!.entries).toEqual([]);
-    expect(everything.domains.map((d) => d.domain)).toEqual(["seats"]);
+    expect(everything.domains.map((d) => d.domain)).toEqual(["workers"]);
     // The source exists — it is simply not in this scope's registry.
     expect(await outOfScope.entries(ctx)).toHaveLength(1);
   });
@@ -131,20 +131,20 @@ describe("discover", () => {
   // BR-4. Never a throw that ends the turn: the next call has to be able to
   // succeed, so the reply carries the names that would work.
   it("names the known domains when asked for one that does not exist", async () => {
-    const { discover } = discoveryTools(createManifestRegistry([sourceOf("seats", [seat("reviewer")])]));
+    const { discover } = discoveryTools(createManifestRegistry([sourceOf("workers", [worker("reviewer")])]));
 
     const result = await runForTest(discover, { domain: "agents", detail: "thin" }, ctx);
 
     expect(result.domains).toEqual([]);
     expect(result.problem).toContain('Unknown domain "agents"');
-    expect(result.problem).toContain("seats, skills, resources");
+    expect(result.problem).toContain("workers, skills, resources");
   });
 
   // BR-5. One misconfigured collection must not cost the agent its whole turn.
   it("reports a throwing reader on its own domain and still answers the others", async () => {
     const { discover } = discoveryTools(
       createManifestRegistry([
-        sourceOf("seats", [seat("reviewer")]),
+        sourceOf("workers", [worker("reviewer")]),
         sourceOf("resources", () => {
           throw new Error("collection store unreachable");
         }),
@@ -154,22 +154,22 @@ describe("discover", () => {
     const result = await runForTest(discover, { domain: null, detail: "thin" }, ctx);
 
     const resources = result.domains.find((d) => d.domain === "resources")!;
-    const seats = result.domains.find((d) => d.domain === "seats")!;
+    const workers = result.domains.find((d) => d.domain === "workers")!;
     expect(resources.problem).toBe("collection store unreachable");
     expect(resources.entries).toEqual([]);
-    expect(seats.entries).toHaveLength(1);
-    expect(seats.problem).toBeUndefined();
+    expect(workers.entries).toHaveLength(1);
+    expect(workers.problem).toBeUndefined();
   });
 
   it("withholds the contract hint on a thin read and includes it on a full one", async () => {
-    const { discover } = discoveryTools(createManifestRegistry([sourceOf("seats", [seat("reviewer")])]));
+    const { discover } = discoveryTools(createManifestRegistry([sourceOf("workers", [worker("reviewer")])]));
 
-    const thin = await runForTest(discover, { domain: "seats", detail: "thin" }, ctx);
-    const full = await runForTest(discover, { domain: "seats", detail: "full" }, ctx);
+    const thin = await runForTest(discover, { domain: "workers", detail: "thin" }, ctx);
+    const full = await runForTest(discover, { domain: "workers", detail: "full" }, ctx);
 
     expect(thin.domains[0]!.entries[0]).toEqual({
       id: "reviewer",
-      kind: "seat",
+      kind: "worker",
       purpose: "Reviews reviewer work.",
     });
     expect(full.domains[0]!.entries[0]!.contract).toBe("Hand it a task naming reviewer.");
@@ -199,7 +199,7 @@ describe("discover under cancellation", () => {
     // domains. A reader that observes `ctx.signal` mid-flight looks like this.
     const { discover } = discoveryTools(
       createManifestRegistry([
-        sourceOf("seats", () => {
+        sourceOf("workers", () => {
           controller.abort();
           throw abortErr;
         }),
@@ -207,7 +207,7 @@ describe("discover under cancellation", () => {
     );
 
     await expect(
-      runForTest(discover, { domain: "seats", detail: "thin" }, createMockContext({ signal: controller.signal })),
+      runForTest(discover, { domain: "workers", detail: "thin" }, createMockContext({ signal: controller.signal })),
     ).rejects.toThrow(/aborted/i);
   });
 
@@ -233,15 +233,15 @@ describe("discover under cancellation", () => {
 
   it("stops between domains once the caller is gone, instead of paying for the rest", async () => {
     const controller = new AbortController();
-    const later = vi.fn(() => [seat("qa")]);
+    const later = vi.fn(() => [worker("qa")]);
 
     const { discover } = discoveryTools(
       createManifestRegistry([
         {
-          domain: "seats",
+          domain: "workers",
           entries: () => {
             controller.abort();
-            return [seat("eng")];
+            return [worker("eng")];
           },
         },
         { domain: "resources", entries: later },
@@ -251,7 +251,7 @@ describe("discover under cancellation", () => {
     await expect(
       runForTest(discover, { domain: null, detail: "thin" }, createMockContext({ signal: controller.signal })),
     ).rejects.toThrow();
-    // `resources` is read after `seats` in canonical order; it must not run.
+    // `resources` is read after `workers` in canonical order; it must not run.
     expect(later).not.toHaveBeenCalled();
   });
 });

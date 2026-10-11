@@ -1,17 +1,17 @@
 /**
- * The app's catalog as a seat's tool source — the primary recipe FIX-1416
- * wires: a block under `workforce/blocks/`, handed to the kind as `catalog:`,
- * named by a seat's `tools:`.
+ * The app's catalog as a worker's tool source — the primary recipe FIX-1416
+ * wires: a block under `workforce/blocks/`, handed to the worker flow as `catalog:`,
+ * named by a worker's `tools:`.
  *
  * Two rules are pinned here and both were found by a POC rather than by
  * reading:
  *
  * - **One tool has one name.** The map key and the block's own `name` must
- *   agree, refused when the KIND is built — before any seat exists — because
- *   the catalog is a kind-construction argument. A seat authorizes by key and
- *   the model is advertised the block's `name`, so two spellings means a seat
+ *   agree, refused when the WORKER FLOW is built — before any worker exists — because
+ *   the catalog is a flow-construction argument. A worker authorizes by key and
+ *   the model is advertised the block's `name`, so two spellings means a worker
  *   authorizing one tool and a model calling another.
- * - **A catalog tool's declared stores are installed on the kind.** A seat
+ * - **A catalog tool's declared stores are installed on the worker flow.** A worker
  *   reaches its tools through a resolver that runs per turn, so a block
  *   arriving that way is outside `defineFlow`'s static walk over action blocks.
  *   Left alone, the tool is hired, advertised, called — and its handle is not
@@ -25,18 +25,18 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { GeneratorModel, GeneratorModelCallOptions, ModelResolver } from "@flow-state-dev/core/types";
-import { mintSeats, type HireOptions } from "../src/hire";
+import { mintWorkers, type HireOptions } from "../src/hire";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation } from "../src/workers/installation";
 import type { WorkerManifest } from "../src/manifest";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"]): FlowInstance[] {
-  return mintSeats(manifests, { workerFlows: kinds });
+function hire(manifests: WorkerManifest[], flows: HireOptions["workerFlows"]): FlowInstance[] {
+  return mintWorkers(manifests, { workerFlows: flows });
 }
 
 /** A model script that "calls" a tool by name. */
@@ -44,14 +44,14 @@ const callTool = (toolName: string) => ({
   toolCalls: [{ toolCallId: "call-1", toolName, args: {} }],
 });
 
-async function runSeat(seat: FlowInstance, toolName: string) {
+async function runWorker(worker: FlowInstance, toolName: string) {
   const runtime = await createTestContext({
-    flow: { ...seat, cardinality: "singleton" },
+    flow: { ...worker, cardinality: "singleton" },
     orgId: "test-org",
     org: { state: {} },
     sessionId: "test-session",
-    sequencerName: seat.actions.run!.block.name,
-    declaredResources: seat.actions.run!.block.declaredResources,
+    sequencerName: worker.actions.run!.block.name,
+    declaredResources: worker.actions.run!.block.declaredResources,
     generators: {
       "agent-answer": mockGenerator({
         name: "agent-answer",
@@ -60,7 +60,7 @@ async function runSeat(seat: FlowInstance, toolName: string) {
     },
   });
   return executeBlock({
-    block: seat.actions.run!.block,
+    block: worker.actions.run!.block,
     input: { message: "use your tools" },
     ctx: runtime.ctx,
   });
@@ -75,7 +75,7 @@ describe("one tool, one name — the app's catalog", () => {
     execute: () => ({ found: true }),
   });
 
-  it("refuses a catalog key that disagrees with its block's own name, when the kind is built", () => {
+  it("refuses a catalog key that disagrees with its block's own name, when the worker flow is built", () => {
     expect(() => defineAgentWorkerFlow({ catalog: { "lookup-customer": mismatched } })).toThrow(
       /lookup-customer/,
     );
@@ -107,13 +107,13 @@ describe("one tool, one name — the app's catalog", () => {
     expect(() => defineAgentWorkerFlow({ catalog: { "desk-note": agreeing } })).not.toThrow();
   });
 
-  // A kind built with no catalog at all must not acquire a refusal.
+  // A worker flow built with no catalog at all must not acquire a refusal.
   it("builds with no catalog", () => {
     expect(() => defineAgentWorkerFlow()).not.toThrow();
   });
 });
 
-describe("a catalog tool's declared stores are installed on the kind", () => {
+describe("a catalog tool's declared stores are installed on the worker flow", () => {
   const auditLog = defineResource({
     scope: "session",
     stateSchema: z.object({ lines: z.number() }),
@@ -147,28 +147,28 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
 
   it("declares the store on the flow, so the handle is there when the model calls the tool", async () => {
     const seen = { outcome: "never ran" };
-    const kind = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
-    const [seat] = hire([record({ id: "support.auditor", declared: { tools: ["write-audit"] } })], {
-      [AGENT_KIND]: kind,
+    const flow = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
+    const [worker] = hire([record({ id: "support.auditor", declared: { tools: ["write-audit"] } })], {
+      [AGENT_FLOW]: flow,
     });
 
     // The static half: the action block the flow walks now carries the
     // declaration. Before the registration this was `undefined` — the tool was
     // advertised to the model with nothing behind it.
-    expect(seat!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
+    expect(worker!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
 
     // The runtime half, which is the one that matters: the tool ran and its
     // store answered. The turn reporting success proves nothing on its own —
     // it reported success in the broken state too, with the block throwing
     // inside itself — so the outcome the block recorded is what is asserted.
-    const result = await runSeat(seat!, "write-audit");
+    const result = await runWorker(worker!, "write-audit");
     expect(result.error).toBeUndefined();
     expect(seen.outcome).toBe("handle worked");
   });
 
   // A worker with no `tools:` line can call the tools of a preset it picked,
-  // including one the kind leaves off. That tool reaches the generator through
-  // the per-turn resolver too, so its store has to be declared by the kind for
+  // including one the flow leaves off. That tool reaches the generator through
+  // the per-turn resolver too, so its store has to be declared by the flow for
   // the same reason a catalog tool's is.
   it("installs the store of a tool a worker reaches by picking an off-by-default preset", async () => {
     const seen = { outcome: "never ran" };
@@ -176,26 +176,26 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
       name: "ledger-work",
       presets: { audit: { tools: [writeAudit(seen)] }, default: [] }
     });
-    const kind = defineAgentWorkerFlow({ uses: [ledgerWork] });
-    const [seat] = hire(
+    const flow = defineAgentWorkerFlow({ uses: [ledgerWork] });
+    const [worker] = hire(
       [record({ id: "support.picker", declared: { capabilities: { "ledger-work": ["audit"] } } })],
-      { [AGENT_KIND]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
-    expect(seat!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
-    const result = await runSeat(seat!, "write-audit");
+    expect(worker!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
+    const result = await runWorker(worker!, "write-audit");
     expect(result.error).toBeUndefined();
     expect(seen.outcome).toBe("handle worked");
   });
 
-  // Kind-wide, not per seat: the catalog belongs to the kind, so its stores
-  // belong to every seat of it — the same bill `uses` already presents.
-  it("installs the store for a seat whose `tools:` never names the block", () => {
+  // Flow-wide, not per worker: the catalog belongs to the worker flow, so its stores
+  // belong to every worker of it — the same bill `uses` already presents.
+  it("installs the store for a worker whose `tools:` never names the block", () => {
     const seen = { outcome: "never ran" };
-    const kind = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
-    const [seat] = hire([record({ id: "support.ghost" })], { [AGENT_KIND]: kind });
+    const flow = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
+    const [worker] = hire([record({ id: "support.ghost" })], { [AGENT_FLOW]: flow });
 
-    expect(Object.keys((seat as unknown as { resources?: object }).resources ?? {})).toContain(
+    expect(Object.keys((worker as unknown as { resources?: object }).resources ?? {})).toContain(
       "auditLog",
     );
   });
@@ -204,16 +204,16 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
   // installs from — not only the block's declaration.
   it("merges the declaration into the flow's resources", () => {
     const seen = { outcome: "never ran" };
-    const kind = defineAgentWorkerFlow({
+    const flow = defineAgentWorkerFlow({
       catalog: { "write-audit": writeAudit(seen) },
     }) as unknown as { resources?: Record<string, unknown> };
 
-    expect(Object.keys(kind.resources ?? {})).toContain("auditLog");
+    expect(Object.keys(flow.resources ?? {})).toContain("auditLog");
   });
 
-  // A kind whose catalog declares nothing must not gain a resource map it did
+  // A worker flow whose catalog declares nothing must not gain a resource map it did
   // not have — the registration has to be the union, not a rewrite.
-  it("leaves a resource-free catalog's kind exactly as it was", () => {
+  it("leaves a resource-free catalog's worker flow exactly as it was", () => {
     const plain = handler({
       name: "desk-note",
       description: "Answers a note.",
@@ -285,9 +285,9 @@ describe("a block renamed with .as() to its catalog key", () => {
     let flows: Record<string, unknown> = {};
     const installation = createWorkerInstallation({ workerFlows: () => flows as never });
     const renamed = createWorkerHireBlocks(installation).hire.as({ name: "hire", description });
-    const kind = defineAgentWorkerFlow({ installation, catalog: { hire: renamed } });
-    flows = { [AGENT_KIND]: kind };
-    const [seat] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_KIND]: kind });
+    const flow = defineAgentWorkerFlow({ installation, catalog: { hire: renamed } });
+    flows = { [AGENT_FLOW]: flow };
+    const [worker] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_FLOW]: flow });
 
     // A step model that calls `hire` once, recording what it was offered and
     // what the call returned.
@@ -306,16 +306,16 @@ describe("a block renamed with .as() to its catalog key", () => {
     };
     const resolver = Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
     const runtime = await createTestContext({
-      flow: { ...seat!, cardinality: "singleton" },
+      flow: { ...worker!, cardinality: "singleton" },
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: seat!.actions.run!.block.name,
-      declaredResources: seat!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.run!.block.name,
+      declaredResources: worker!.actions.run!.block.declaredResources,
       modelResolver: resolver,
     });
     const result = await executeBlock({
-      block: seat!.actions.run!.block,
+      block: worker!.actions.run!.block,
       input: { message: "hire night-desk" },
       ctx: runtime.ctx,
     });

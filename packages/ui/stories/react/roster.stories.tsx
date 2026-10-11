@@ -53,7 +53,7 @@ export const WithProblems: Story = {
     problems: ['support.kay: flow "billing-agent" is not registered'],
     resourceClient: rowsSource([
       rosterRow("support.ada", "support-agent"),
-      { topic: "broken", clientData: { seatId: "broken" } },
+      { topic: "broken", clientData: { workerId: "broken" } },
     ]),
   },
 };

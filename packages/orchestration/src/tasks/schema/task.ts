@@ -236,7 +236,7 @@ export const taskSchema = z.object({
    * **Written from inside the run.** The board's claim gate writes it in the
    * run's own session, through the claim-fenced `linkRun`, before the worker's
    * first step. Only the run knows for certain which session it landed in:
-   * that depends on the seat's session policy and on the conversation that
+   * that depends on the assignee's session policy and on the conversation that
    * drained the board, so nothing outside can rebuild it. Distinct from
    * `claimedBy`, which on a handed-off row names the *claiming* conversation.
    *
@@ -249,7 +249,7 @@ export const taskSchema = z.object({
    * **Client-visible**, unlike `claimedBy`: a UI opens the run from it. The
    * ids grant nothing; opening the session still passes the server's owner
    * check. The run's flow is not here: read it off the session (`flowId`),
-   * since a seat may hand off to another flow than the board's.
+   * since an assignee may hand off to another flow than the board's.
    *
    * Server-set: absent from `TaskInit` and every patch surface. **Absent on
    * rows stored before this shipped, on inline boards, and between a claim and

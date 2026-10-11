@@ -62,8 +62,8 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { RUN_STAMP, goalTmpDir, loadFixture, repoPath, runGoal } from "../../lib/index.mts";
-import { EM_KIND } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
-import { PROJECTS_KIND } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, pendingSeatAsks, pickShift, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
@@ -658,7 +658,7 @@ async function readStore(api: LabApi, userId: string, boards: readonly string[] 
     if (session.parentSessionId != null) continue;
     const manifest = await api.get(`/sessions/${encodeURIComponent(String(session.id))}/manifest`);
     const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-      (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+      (r) => r.kind === "collection" && r.pattern === "inventory/workers/*",
     )?.ref;
     if (ref !== undefined) {
       seatsAt = { host: String(session.id), ref };
@@ -877,13 +877,13 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
           .first()
           .getAttribute("data-project-id")) ?? "";
       if (project === "") throw new Error("devteam: PROJECTS lists no shared project to open a workstream in");
-      const lead = roster.workers.find((w) => w.declared.flow === EM_KIND)?.id;
-      if (lead === undefined) throw new Error(`devteam: the tree declares no worker on the "${EM_KIND}" flow to lead a workstream`);
-      const projects = await api.call("POST", `/${encodeURIComponent(PROJECTS_KIND)}/sessions`, { userId: injected.userId });
-      if (projects.status !== 201) throw new Error(`devteam: no ${PROJECTS_KIND} session: ${projects.status} ${JSON.stringify(projects.body)}`);
+      const lead = roster.workers.find((w) => w.declared.flow === EM_FLOW)?.id;
+      if (lead === undefined) throw new Error(`devteam: the tree declares no worker on the "${EM_FLOW}" flow to lead a workstream`);
+      const projects = await api.call("POST", `/${encodeURIComponent(PROJECTS_FLOW)}/sessions`, { userId: injected.userId });
+      if (projects.status !== 201) throw new Error(`devteam: no ${PROJECTS_FLOW} session: ${projects.status} ${JSON.stringify(projects.body)}`);
       const opened = await act(
         api,
-        PROJECTS_KIND,
+        PROJECTS_FLOW,
         String(projects.body.session.id),
         "openWorkstream",
         { project: { visibility: "shared", id: project }, id: "feature", title: fixture.devteam.workstream, lead },
@@ -891,12 +891,12 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       );
       if (opened !== "completed") throw new Error(`devteam: opening ${project}'s workstream ended ${opened}`);
       const found = await api.get(
-        `/sessions?userId=${encodeURIComponent(injected.userId)}&include=dispatch-runs&flowKind=${encodeURIComponent(EM_KIND)}&state.workstreamId=${encodeURIComponent(`shared/${project}/feature`)}`,
+        `/sessions?userId=${encodeURIComponent(injected.userId)}&include=dispatch-runs&flowKind=${encodeURIComponent(EM_FLOW)}&state.workstreamId=${encodeURIComponent(`shared/${project}/feature`)}`,
       );
       const session = found.sessions?.[0]?.id;
       if (typeof session !== "string") throw new Error(`devteam: opening ${project}'s workstream made no workstream session`);
       boards.push(session);
-      const filed = await act(api, EM_KIND, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, injected.userId);
+      const filed = await act(api, EM_FLOW, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, injected.userId);
       if (filed !== "completed") throw new Error(`devteam: the filing ended ${filed}`);
       for (let waited = 0; waited < 30_000 && taskId === null; waited += 250) {
         const row = (await sessionBoardRows(api, session)).find((r) => r.status === "in_progress" && r.run != null);

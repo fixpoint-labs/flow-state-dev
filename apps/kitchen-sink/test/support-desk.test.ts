@@ -11,11 +11,11 @@
  *     of `coordinator`, and no copy per worker;
  *   - it serves the coordinator flow beside the app's own flows, and no
  *     mailbox flow;
- *   - the generated map holds no block and no kind of the app's own (the
+ *   - the generated map holds no block and no worker flow of the app's own (the
  *     `escalate` block went with the escalation feature);
- *   - the rail lists `support.help` under the coordinator kind as the person's
+ *   - the rail lists `support.help` under the coordinator flow as the person's
  *     one conversation with it, found by the coordinator's id (BR-7a). Red:
- *     the rail reading the kind's listing, which on a fresh store lists
+ *     the rail reading the flow's whole listing, which on a fresh store lists
  *     nothing.
  *
  * FIX-1611's BR-12 (the boot warns that `escalations` is unattended) left with
@@ -92,7 +92,7 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
   it("serves the coordinator flow beside the app's own flows, and no mailbox flow", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
-    // The workforce's kinds are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows.
+    // The workforce's worker flows are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
       "chat-agent",
@@ -106,10 +106,10 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
   it("lists support.help in the rail as the person's one conversation with it, a session on coordinator naming it", async () => {
     const { sessions, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
-    // Not vacuous: on a fresh store the coordinator kind's own listing holds nothing.
+    // Not vacuous: on a fresh store the coordinator flow's own listing holds nothing.
     expect(await sessions.listSessions({ flowKind: "coordinator", userId: "devuser" })).toEqual([]);
 
-    // The navigator's own query for the kind's leaf.
+    // The navigator's own query for the flow's leaf.
     const query = { flowKind: "coordinator", userId: "devuser", include: "dispatch-runs" } as const;
     const listed = await railSessions(sessions, workforce).listSessions(query);
     expect(listed.map((session) => [session.title, session.flowKind])).toEqual([["support.help", "coordinator"]]);
@@ -119,7 +119,7 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
     expect((await workforce.findWorkerSession({ worker: "support.help" }))?.id).toBe(listed[0]!.id);
   });
 
-  it("lists every other kind in the rail as the store has it", async () => {
+  it("lists every other flow in the rail as the store has it", async () => {
     const { sessions, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
     const created = await sessions.createSession({ flowKind: "chat-agent", userId: "devuser" });
@@ -129,9 +129,9 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
     expect(listed).toEqual(await sessions.listSessions(query));
   });
 
-  it("generates no block and no kind of the app's own", async () => {
+  it("generates no block and no worker flow of the app's own", async () => {
     const generated = await import("@/workforce/workforce.gen");
-    expect(Object.keys(generated.kinds)).toEqual([]);
+    expect(Object.keys(generated.workerFlows)).toEqual([]);
     expect(Object.keys(generated.blocks)).toEqual([]);
   });
 });

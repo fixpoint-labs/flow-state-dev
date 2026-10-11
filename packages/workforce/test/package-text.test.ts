@@ -43,7 +43,7 @@ describe("readPackage", () => {
   });
 
   it("names every extra key, not just the first", () => {
-    const read = readPackage("---\ndescription: Refunds\nname: refunds\nattach: [seat]\n---\nBody.\n");
+    const read = readPackage("---\ndescription: Refunds\nname: refunds\nattach: [worker]\n---\nBody.\n");
     expect(read).toEqual({ refusal: expect.stringContaining("`name:`") });
     expect((read as { refusal: string }).refusal).toContain("`attach:`");
   });

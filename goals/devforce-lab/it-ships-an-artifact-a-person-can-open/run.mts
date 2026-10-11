@@ -344,7 +344,7 @@ async function emAct(lab: Lab, sessionId: string, actionName: string, input: unk
   const runtime = await lab.state.getRuntime();
   return (await runAction({
     orgId: LAB_ORG_ID,
-    flow: lab.seats[COORDINATOR_SEAT] as FlowInstance,
+    flow: lab.workers[COORDINATOR_SEAT] as FlowInstance,
     actionName,
     input,
     userId: LAB_USER_ID,
@@ -575,7 +575,7 @@ await runGoal(async (failures) => {
     const lab = await openLab({
       stores,
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-      coderSeatId: ASSIGNED_SEAT,
+      coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
@@ -656,7 +656,7 @@ await runGoal(async (failures) => {
     const lab = await openLab({
       stores,
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-      coderSeatId: REVIEWER_SEAT,
+      coderWorkerId: REVIEWER_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
@@ -717,7 +717,7 @@ await runGoal(async (failures) => {
     const lab = await openLab({
       stores,
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-      coderSeatId: ASSIGNED_SEAT,
+      coderWorkerId: ASSIGNED_SEAT,
       logger: silentLogger,
       // No inference: what this control guards is not the judge.
       withoutJudge: true,
@@ -796,7 +796,7 @@ await runGoal(async (failures) => {
   const lab = await openLab({
     stores,
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-    coderSeatId: ASSIGNED_SEAT,
+    coderWorkerId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
     // Storefront's `feature` workstream, opened by the lab's owner with the EM as its lead.

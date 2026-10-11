@@ -10,7 +10,7 @@
  *   `[park:<question>]` parks the task on its question on the first attempt,
  *   `[slow:<ms>]` takes that long, and anything else is done.
  * - `helper` takes delegated posts and no task.
- * - `agent` is the built-in kind, scripted by its generator's block name
+ * - `agent` is the built-in worker flow, scripted by its generator's block name
  *   (`agent-answer`).
  *
  * Models are scripted: the coordinator's judgment turn by its generator's
@@ -33,7 +33,7 @@ import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
-import { ROSTER_FLOW_KIND } from "../src/workers/keys";
+import { ROSTER_FLOW } from "../src/workers/keys";
 import { hireWorkforce, type HireWorkforceOptions } from "../src/workers/register";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 
@@ -158,7 +158,7 @@ export type BoardHostOptions = {
   judgment?: MockGeneratorInstance;
   /** The agent worker's scripted model. */
   agentAnswer?: MockGeneratorInstance;
-  /** The options the judgment turn is built with: the agent kind's catalog and capabilities. */
+  /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
   stores?: StoreRegistry;
   /** Told the names of the tools each model call is handed, by the calling block's name. */
@@ -176,7 +176,7 @@ export type BoardHostOptions = {
    * at its next step (FIX-1816's asks).
    */
   judgmentModel?: GeneratorModel;
-  /** More worker flows, built on the installation, registered beside the four, by kind. */
+  /** More worker flows, built on the installation, registered beside the four, keyed by `kind`. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
   generators?: Record<string, MockGeneratorInstance>;
@@ -253,7 +253,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   // One copy per worker flow, and the roster flow, as an app registers them.
   const instances: Record<string, FlowInstance> = Object.fromEntries(
-    hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW_KIND ? "roster" : copy.id, copy])
+    hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
   const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });

@@ -14,7 +14,7 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { PROJECTS_KIND } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import {
   labRoutes,
   openShiftManager,
@@ -193,7 +193,7 @@ export async function readProjects(routes: LabRoutes): Promise<{ rows: ProjectRo
 
 /** The seat inventory, read through the person's roster session, which declares it. */
 export async function readInventory(routes: LabRoutes): Promise<Array<Record<string, any>>> {
-  return routes.collection(await rosterSession(routes), "inventory/seats/*");
+  return routes.collection(await rosterSession(routes), "inventory/workers/*");
 }
 
 /** One of the person's own workers, as their roster row stores it. */
@@ -241,9 +241,9 @@ async function pageRows(routes: LabRoutes, sessionId: string, ref: string): Prom
 /** The worker each person's project coordinator runs as, and its flow, as the Lab's projects flow names them (`projectSetup`). */
 export async function projectCoordinatorOf(world: World): Promise<{ worker: string; flow: string } | { error: string }> {
   const owner = world.routes.owner;
-  const made = await owner.call("POST", `/${PROJECTS_KIND}/sessions`, { userId: owner.user.userId });
-  if (made.status !== 201) return { error: `no ${PROJECTS_KIND} session: ${made.status} ${JSON.stringify(made.body)}` };
-  const setup = await owner.act(PROJECTS_KIND, String(made.body.session.id), "projectSetup", {});
+  const made = await owner.call("POST", `/${PROJECTS_FLOW}/sessions`, { userId: owner.user.userId });
+  if (made.status !== 201) return { error: `no ${PROJECTS_FLOW} session: ${made.status} ${JSON.stringify(made.body)}` };
+  const setup = await owner.act(PROJECTS_FLOW, String(made.body.session.id), "projectSetup", {});
   const worker = (setup.output as { projectCoordinator?: unknown } | undefined)?.projectCoordinator;
   if (setup.status !== "completed" || typeof worker !== "string") return { error: `the Lab names no project coordinator: ${setup.status} ${JSON.stringify(setup.output ?? setup.error)}` };
   const flow = (await treeWorkers(world)).find((w) => w.id === worker)?.declared.flow;
@@ -299,7 +299,7 @@ export async function rosterOwn(world: World): Promise<Array<{ id: string; text:
   await world.page.getByTestId("roster").waitFor();
   await read;
   await sleep(500);
-  return world.page.locator("[data-testid=roster-worker][data-own=true]").evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-seat-id") ?? "", text: (e as HTMLElement).innerText.replace(/\s+/g, " ").trim() })));
+  return world.page.locator("[data-testid=roster-worker][data-own=true]").evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-worker-id") ?? "", text: (e as HTMLElement).innerText.replace(/\s+/g, " ").trim() })));
 }
 
 /** PROJECTS as drawn: each group's project id and its workstream ids. */

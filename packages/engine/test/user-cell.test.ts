@@ -90,7 +90,7 @@ const read = handler({
   },
 });
 
-/** A seat hands a save to the app flow, which has no pin, as a child session. */
+/** A worker hands a save to the app flow, which has no pin, as a child session. */
 const delegate = dispatcher({
   name: "delegate-to-app",
   type: "internal",
@@ -105,7 +105,7 @@ const actions = {
   read: { inputSchema: tagInput, block: read },
 };
 
-const seatKind = defineFlow({
+const workerKind = defineFlow({
   kind: "research",
   cardinality: "collection",
   resources,
@@ -171,7 +171,7 @@ async function boot(options: { debug?: boolean } = {}) {
     return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
   };
 
-  const hire = (kind: typeof seatKind | typeof writerKind, id: string, pin: InstanceOwnerPin) =>
+  const hire = (kind: typeof workerKind | typeof writerKind, id: string, pin: InstanceOwnerPin) =>
     state.register(kind({ id }) as unknown as FlowInstance, { pin });
 
   const open = async (who: Who, flowId: string): Promise<string> => {
@@ -241,11 +241,11 @@ describe("a user's cell in one org, for every flow", () => {
     expect(await h.readAs(BOB_ACME, "app", "bob")).toEqual({ notes: [], state: null });
   });
 
-  it("keeps what Alice's Acme seat saves in her Acme cell, out of Globex and away from Bob", async () => {
+  it("keeps what Alice's Acme worker saves in her Acme cell, out of Globex and away from Bob", async () => {
     const h = await boot();
-    h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
-    h.hire(seatKind, "globex.~alice.research", { orgId: "globex", userId: "alice" });
-    h.hire(seatKind, "acme.~bob.research", { orgId: "acme", userId: "bob" });
+    h.hire(workerKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
+    h.hire(workerKind, "globex.~alice.research", { orgId: "globex", userId: "alice" });
+    h.hire(workerKind, "acme.~bob.research", { orgId: "acme", userId: "bob" });
 
     const session = await h.open(ALICE_ACME, "acme.~alice.research");
     await h.act(ALICE_ACME, "acme.~alice.research", session, "save", { tag: "a", marker: "ACME-M" });
@@ -278,7 +278,7 @@ describe("a user's cell in one org, for every flow", () => {
 
   it("shares one cell between two flows in one org (BR-4)", async () => {
     const h = await boot();
-    h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
+    h.hire(workerKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
     h.hire(writerKind, "acme.~alice.writer", { orgId: "acme", userId: "alice" });
     const session = await h.open(ALICE_ACME, "acme.~alice.research");
     await h.act(ALICE_ACME, "acme.~alice.research", session, "save", { tag: "a", marker: "SHARED-M" });
@@ -288,9 +288,9 @@ describe("a user's cell in one org, for every flow", () => {
     });
   });
 
-  it("stores Bob's use of an org-visible seat in his Acme cell", async () => {
+  it("stores Bob's use of an org-visible worker in his Acme cell", async () => {
     const h = await boot();
-    h.hire(seatKind, "acme.eng.lead", { orgId: "acme" });
+    h.hire(workerKind, "acme.eng.lead", { orgId: "acme" });
     const session = await h.open(BOB_ACME, "acme.eng.lead");
     await h.act(BOB_ACME, "acme.eng.lead", session, "save", { tag: "b", marker: "BOB-M" });
     expect(await h.cell("bob:~org:acme")).toEqual(["BOB-M"]);
@@ -301,22 +301,22 @@ describe("a user's cell in one org, for every flow", () => {
 
   it("shares a user's cell between a hired worker and the app's flows in one org (BR-5)", async () => {
     const h = await boot();
-    h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
-    h.hire(seatKind, "globex.~alice.research", { orgId: "globex", userId: "alice" });
+    h.hire(workerKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
+    h.hire(workerKind, "globex.~alice.research", { orgId: "globex", userId: "alice" });
     const app = await h.open(ALICE_ACME, "app");
     await h.act(ALICE_ACME, "app", app, "save", { tag: "app", marker: "APP-M" });
 
     // The worker reads what the app saved for her in Acme...
-    expect(await h.readAs(ALICE_ACME, "acme.~alice.research", "seat")).toEqual({
+    expect(await h.readAs(ALICE_ACME, "acme.~alice.research", "worker")).toEqual({
       notes: ["APP-M"],
       state: "APP-M",
     });
-    const seat = await h.open(ALICE_ACME, "acme.~alice.research");
-    await h.act(ALICE_ACME, "acme.~alice.research", seat, "save", { tag: "s", marker: "SEAT-M" });
+    const worker = await h.open(ALICE_ACME, "acme.~alice.research");
+    await h.act(ALICE_ACME, "acme.~alice.research", worker, "save", { tag: "s", marker: "WORKER-M" });
     // ...the app reads what the worker saved...
     expect(await h.readAs(ALICE_ACME, "app", "app-read")).toEqual({
-      notes: ["APP-M", "SEAT-M"],
-      state: "SEAT-M",
+      notes: ["APP-M", "WORKER-M"],
+      state: "WORKER-M",
     });
     // ...and her Globex worker reads neither.
     expect(await h.readAs(ALICE_GLOBEX, "globex.~alice.research", "globex")).toEqual({
@@ -327,10 +327,10 @@ describe("a user's cell in one org, for every flow", () => {
 
   it("keeps the user and the org for a child session on another flow (BR-11)", async () => {
     const h = await boot();
-    h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
-    const seat = await h.open(ALICE_ACME, "acme.~alice.research");
-    await h.act(ALICE_ACME, "acme.~alice.research", seat, "delegate", {
-      tag: "via-seat",
+    h.hire(workerKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
+    const worker = await h.open(ALICE_ACME, "acme.~alice.research");
+    await h.act(ALICE_ACME, "acme.~alice.research", worker, "delegate", {
+      tag: "via-worker",
       marker: "DELEGATED-M",
     });
     for (let i = 0; i < 100 && (await h.cell("alice:~org:acme")).length === 0; i++) {
@@ -341,20 +341,20 @@ describe("a user's cell in one org, for every flow", () => {
     // The child read the app flow's isolated bucket in the same cell.
     expect(
       Object.keys(await h.runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme:app", "scratch/"))
-    ).toEqual(["scratch/via-seat"]);
+    ).toEqual(["scratch/via-worker"]);
   });
 });
 
 describe("the fence around the cell", () => {
   it("writes nothing into any cell for a caller outside the pin", async () => {
     const h = await boot();
-    const seat = seatKind({ id: "acme.~alice.research" }) as unknown as FlowInstance;
-    h.state.register(seat, { pin: { orgId: "acme", userId: "alice" } });
+    const worker = workerKind({ id: "acme.~alice.research" }) as unknown as FlowInstance;
+    h.state.register(worker, { pin: { orgId: "acme", userId: "alice" } });
     const usersBefore = await h.runtime.stores.user.list();
 
     for (const [who, reason] of [[BOB_ACME, "owning-user"], [ALICE_GLOBEX, "owning-org"]] as const) {
       const refused = runAction({
-        flow: seat,
+        flow: worker,
         actionName: "save",
         input: { tag: "x", marker: "REFUSED-M" },
         userId: who.user,
@@ -379,7 +379,7 @@ describe("the fence around the cell", () => {
     "resolves every read-side view of %s's session to the cell the run wrote (BR-10)",
     async (_label, flowId, pin) => {
       const h = await boot({ debug: true });
-      if (pin !== undefined) h.hire(seatKind, flowId, pin);
+      if (pin !== undefined) h.hire(workerKind, flowId, pin);
       // Planted in the cross-org cell older releases wrote and in her Globex
       // cell: no view of an Acme session may return either.
       for (const scopeId of ["alice", "alice:~org:globex"]) {

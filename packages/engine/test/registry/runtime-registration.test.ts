@@ -77,7 +77,7 @@ function answerRequest(address: string): [Request, { params: { path: string[] } 
         "content-type": "application/json",
         // Streamed rather than dispatched, so the assertion can read what the
         // flow actually produced. A bare POST answers `202 accepted` without
-        // saying which instance took it, and `202` is a status a wrong seat
+        // saying which instance took it, and `202` is a status a wrong worker
         // would return just as happily.
         accept: "text/event-stream",
       },
@@ -115,16 +115,16 @@ describe("V1 · a flow registered after construction is served by the SAME route
     expect(before.status).toBe(404);
 
     // A three-segment instance id, which is the address shape a runtime hire
-    // mints (`<org>.<seatId>`). Asserted rather than assumed: nothing but the
+    // mints (`<org>.<workerId>`). Asserted rather than assumed: nothing but the
     // non-empty check validates an instance id, and this is the check that
     // says so.
-    const seat = deskClerk({ id: "acme.support.ada", config: { desk: "back-left" } });
-    flowstate.register(seat);
+    const worker = deskClerk({ id: "acme.support.ada", config: { desk: "back-left" } });
+    flowstate.register(worker);
 
     const during = await router.POST(...answerRequest("acme.support.ada"));
     expect(during.status).toBe(200);
     // Not just "something answered" — the instance registered a moment ago,
-    // running on the settings IT was minted with. A different seat, or the
+    // running on the settings IT was minted with. A different worker, or the
     // kind's own default, reads `front`, so the marker is deliberately not one.
     expect(await drain(during.body)).toContain("back-left");
 

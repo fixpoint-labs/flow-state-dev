@@ -20,7 +20,7 @@
  * Run: pnpm tsx goals/workforce-seats/the-built-in-kind-answers-from-a-file-alone/run.mts
  */
 import { readFileSync } from "node:fs";
-import { ROSTER_FLOW_KIND } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import {
   KITCHEN_SINK,
   fixturePath,
@@ -314,7 +314,7 @@ await runGoal((failures) => {
     }
     // One copy of the built-in beside the roster flow: no worker flow of the harness's own was registered.
     const registered = [...o.registered].sort();
-    const wanted = [builtInKind, ROSTER_FLOW_KIND].sort();
+    const wanted = [builtInKind, ROSTER_FLOW].sort();
     if (JSON.stringify(registered) !== JSON.stringify(wanted)) {
       failures.push(`registered ${JSON.stringify(registered)}, wanted ${JSON.stringify(wanted)}`);
     }

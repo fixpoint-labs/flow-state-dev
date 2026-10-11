@@ -226,7 +226,7 @@ await runGoal(async (failures) => {
 
     // ---- seat: Talk, a message, reload, reopen from the rail, read ---------
     await talkTo(page, SEAT);
-    await panel(page).getByLabel("Message this seat").fill(message);
+    await panel(page).getByLabel("Message this worker").fill(message);
     await panel(page).getByRole("button", { name: "Send" }).click();
     await readUntil(() => conversation(page), (ms) => ms.some((m) => m.text.includes(fixture.seat.replyMarker)));
     // Which session "Talk" opened, from the server's index by worker. Not graded.

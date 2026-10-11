@@ -39,7 +39,7 @@ export interface WorkerFlowBuilder {
  * @param build Builds the flow (`defineFlow({ ..., session: installation.session() })`).
  * @param options `standardOnly` keeps the flow for the workers the app's files define.
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
- *   the `kinds` map `fsdev gen` writes.
+ *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,

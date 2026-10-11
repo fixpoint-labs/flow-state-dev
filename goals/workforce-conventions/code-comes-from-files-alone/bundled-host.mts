@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
-import { kinds } from "./fixtures/workforce/workforce.gen.ts";
+import { workerFlows as kinds } from "./fixtures/workforce/workforce.gen.ts";
 
 export interface SeatAnswer {
   declaredFlow: unknown;

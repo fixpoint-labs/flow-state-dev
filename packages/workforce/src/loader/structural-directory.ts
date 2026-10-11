@@ -2,7 +2,7 @@
  * The walk primitives every workforce-tree reader shares.
  *
  * A workforce tree is read by more than one loader — workers from
- * `org/workers/` and `teams/<id>/workers/`, a seat's skills from three `skills/` folders — and
+ * `org/workers/` and `teams/<id>/workers/`, a worker's skills from three `skills/` folders — and
  * each of them needs the same three answers about a path before it can walk it:
  * is it a symlink (never followed), is it simply absent (silent), or is it
  * there and unreadable (reported)? Those answers live here, once, so a second
@@ -302,7 +302,7 @@ function collapsesThroughAnAncestor(root: string): boolean {
  * Open the configured workforce root, or throw.
  *
  * The root is the one level whose failure is a wiring mistake rather than a
- * missing seat, mailbox or document, so it throws where everything below it is
+ * missing worker, mailbox or document, so it throws where everything below it is
  * collected: a reader that returned an empty result for a root that is not
  * there would hand an app a silent zero-worker roster.
  *

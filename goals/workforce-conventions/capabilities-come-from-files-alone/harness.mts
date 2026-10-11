@@ -36,7 +36,7 @@ import {
   createWorkerInstallation,
   defineAgentWorkerFlow,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   splitResourceModules,
   workerFlow,
 } from "@flow-state-dev/workforce";
@@ -160,8 +160,8 @@ async function main(): Promise<void> {
   });
   const copies = hireWorkforce(installation);
   // Each seat, and the flow it runs on.
-  const seats = inventorySeats(installation);
-  out.seatIds = seats.map((s) => s.id);
+  const seats = inventoryWorkers(installation);
+  out.workerIds = seats.map((s) => s.id);
 
   // ---- register and ask, over the real route ------------------------------
   const flowState = createFlowState({

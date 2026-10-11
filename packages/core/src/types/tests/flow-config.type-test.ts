@@ -19,7 +19,7 @@ import { defineFlow } from "../../flow/defineFlow";
 import { handler } from "../../blocks/handler";
 import { sequencer } from "../../blocks/sequencer";
 
-const seatConfig = z.object({
+const workerConfig = z.object({
   harness: z.enum(["claude-code", "codex", "cursor"]),
   model: z.string(),
   personaPath: z.string().optional()
@@ -31,7 +31,7 @@ const engineerBlock = handler({
   name: "engineer-work",
   inputSchema: z.object({}),
   outputSchema: z.object({ used: z.string() }),
-  flowConfigSchema: seatConfig,
+  flowConfigSchema: workerConfig,
   execute: async (_input, ctx) => {
     // Typed, with no annotation and no flow named anywhere in this block.
     const harness: "claude-code" | "codex" | "cursor" = ctx.flow.config.harness;
@@ -72,10 +72,10 @@ void undeclaredBlock;
 // The fourth kind is covered too: a sequencer's own DSL callbacks read the bag
 // like anything else, so leaving it out would be a hole an author finds by
 // hitting it.
-const seatChain = sequencer({
-  name: "seat-chain",
+const workerChain = sequencer({
+  name: "worker-chain",
   inputSchema: z.object({}),
-  flowConfigSchema: seatConfig
+  flowConfigSchema: workerConfig
 }).tap(
   handler({
     name: "note-harness",
@@ -84,14 +84,14 @@ const seatChain = sequencer({
     execute: async () => undefined
   })
 );
-void seatChain;
+void workerChain;
 
 // ── Minting: typed from the flow's schema ─────────────────────────────────
 
 const engineer = defineFlow({
   kind: "engineer",
   cardinality: "collection",
-  configSchema: seatConfig,
+  configSchema: workerConfig,
   actions: { work: { block: engineerBlock } }
 });
 
@@ -119,7 +119,7 @@ const plain = defineFlow({ kind: "plain", actions: {} });
 plain({ config: { model: "opus" } });
 
 // @ts-expect-error and `configSchema` is the definition's, not an instance option.
-plain({ configSchema: seatConfig });
+plain({ configSchema: workerConfig });
 
 // It still reads a bag — the open record, which is `{}` at run time.
 const plainConfig: Readonly<Record<string, unknown>> = plain().config;

@@ -1,5 +1,5 @@
 /**
- * The Inventory tab's model: the ref of the organization's seat inventory,
+ * The Inventory tab's model: the ref of the organization's worker inventory,
  * when a session's flow declares it as browser-readable, and every row it
  * holds, read through the production collection read.
  *
@@ -22,30 +22,30 @@
 import type { ResourceClient, ResourceManifest } from "@flow-state-dev/client";
 import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } from "@flow-state-dev/client";
 
-/** The seat inventory's published key pattern. */
-export const SEAT_INVENTORY_PATTERN = "inventory/seats/*";
+/** The worker inventory's published key pattern. */
+export const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
 
 /** Page size for every read — the collection route's maximum. */
 const INVENTORY_PAGE_SIZE = 200;
 
 /**
- * The ref of the browser-readable seat inventory on this flow.
+ * The ref of the browser-readable worker inventory on this flow.
  *
  * The manifest lists only collections with some client affordance, so one
  * declared with no browser read at all is indistinguishable here from one not
  * declared. Either way there is no tab.
  */
-export function seatInventoryRef(manifest: ResourceManifest): string | undefined {
+export function workerInventoryRef(manifest: ResourceManifest): string | undefined {
   const entry = manifest.resources.find(
     (resource) =>
       resource.kind === "collection" &&
-      resource.pattern === SEAT_INVENTORY_PATTERN &&
+      resource.pattern === WORKER_INVENTORY_PATTERN &&
       resource.client.state?.read === true,
   );
   return entry?.ref;
 }
 
-/** The outcome of reading the seat inventory. See the module header. */
+/** The outcome of reading the worker inventory. See the module header. */
 export type InventoryRead =
   | { status: "loaded"; rows: unknown[] }
   | {
@@ -104,8 +104,8 @@ export async function readEveryPage(
   }
 }
 
-/** A seat row as the tab shows it. */
-export type SeatRow = { id: string; kind: string | null };
+/** A worker row as the tab shows it. */
+export type WorkerRow = { id: string; kind: string | null };
 
 function field(row: unknown, key: string): unknown {
   return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
@@ -115,7 +115,7 @@ function text(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** A seat row's fields, as stored. A missing kind reads as unknown, never throws. */
-export function toSeatRow(row: unknown): SeatRow {
+/** A worker row's fields, as stored. A missing kind reads as unknown, never throws. */
+export function toWorkerRow(row: unknown): WorkerRow {
   return { id: text(field(row, "id")) ?? "", kind: text(field(row, "kind")) };
 }

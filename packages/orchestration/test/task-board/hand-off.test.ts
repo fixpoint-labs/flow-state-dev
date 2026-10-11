@@ -3,7 +3,7 @@
  *
  * Two properties are pinned here, and both are ones whose failure is silent.
  *
- * The first is that a handed-off seat does not route to its worker. If it
+ * The first is that a handed-off assignee does not route to its worker. If it
  * ever does, the board keeps working — the worker runs, the task settles,
  * every existing test passes — and the hand-off simply never happens. That is
  * the failure this whole issue exists to remove, so a behavioural assertion
@@ -18,7 +18,7 @@
  * child — so it never joins `childBlocks`, and nothing about the
  * substitution is visible to a definition-time walk. `board.handedOff` (a
  * plain value, not a walk) is what a definition-time check *can* see, and it
- * is enough to prove seat-level keying is correct; only running the drain
+ * is enough to prove assignee-level keying is correct; only running the drain
  * proves the ROUTE itself dispatches instead of executing inline.
  *
  * The second property is the JSON-safety gate. Its whole reason to exist is
@@ -51,12 +51,12 @@ function ledger() {
   return defineTaskCollection({ id: "hand-off-tasks", scope: "user" });
 }
 
-/** A seat that hands off to the task entry `target`. */
-function seat(target: string) {
-  return dispatcher({ name: `seat-${target}`, type: "task", action: target, session: "per-task" }) as unknown as TaskWorker;
+/** An assignee that hands off to the task entry `target`. */
+function assignee(target: string) {
+  return dispatcher({ name: `assignee-${target}`, type: "task", action: target, session: "per-task" }) as unknown as TaskWorker;
 }
 
-describe("a handed-off seat routes to the dispatch seam, not to the worker", () => {
+describe("a handed-off assignee routes to the dispatch seam, not to the worker", () => {
   it("keeps the worker off the drain's routing table", async () => {
     const implementSpy = vi.fn(() => ({ done: true }));
     const implement = handler({
@@ -69,7 +69,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       name: "issue-work",
       boardId: "issue-work",
       collection: ledger(),
-      workers: { implement: seat("implement") },
+      workers: { implement: assignee("implement") },
       initialTasks: [{ id: "t1", goal: "implement it", assignee: "implement" }],
     });
 
@@ -110,10 +110,10 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
     expect(implementSpy).not.toHaveBeenCalled();
   });
 
-  it("detaches only the seat that holds the dispatcher, when the same block also runs inline", () => {
-    // The same block may run inline at one seat and be the entry another seat
-    // hands off to. Keying the substitution by SEAT rather than by block
-    // identity is what keeps the inline seat inline.
+  it("detaches only the assignee that holds the dispatcher, when the same block also runs inline", () => {
+    // The same block may run inline at one assignee and be the entry another assignee
+    // hands off to. Keying the substitution by ASSIGNEE rather than by block
+    // identity is what keeps the inline assignee inline.
     const shared = worker("shared");
     const board = taskBoard({
       name: "mixed-board",
@@ -121,7 +121,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       collection: ledger(),
       workers: {
         inline: shared,
-        background: seat("shared-entry"),
+        background: assignee("shared-entry"),
       },
     });
 
@@ -151,7 +151,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       name: "resourceful",
       boardId: "resourceful",
       collection: ledger(),
-      workers: { implement: seat("implement") },
+      workers: { implement: assignee("implement") },
     });
 
     const flow = defineFlow({

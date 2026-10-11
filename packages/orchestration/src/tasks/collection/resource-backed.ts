@@ -204,7 +204,7 @@ export interface ResourceBackedOptions {
    * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
    * FIX-1780 to `in_progress` and `parked`).
    *
-   * Set by a task board with dispatcher seats. The assignee is what a
+   * Set by a task board with dispatcher assignees. The assignee is what a
    * handed-off task's routing key derives from, so reassigning a task whose
    * dispatch is in flight silently strands it — see `TaskCollectionRef.setAssignee`.
    * A pending or blocked task is claimed afresh before it runs, so it can

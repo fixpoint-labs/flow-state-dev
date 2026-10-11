@@ -16,7 +16,7 @@ import { defineFlow, FlowConfigRefusalError, generator, handler, router, sequenc
 import type { FlowInstance } from "../src/types/flow";
 import { createMockContext, runForTest } from "./helpers";
 
-const seatConfig = z.object({
+const workerConfig = z.object({
   harness: z.enum(["claude-code", "codex", "cursor"]),
   model: z.string(),
   personaPath: z.string().optional()
@@ -85,7 +85,7 @@ describe("flow config bag — the value and its door", () => {
    */
   it("freezes the bag at the top level and does not deep-freeze it", () => {
     const flow = defineFlow({
-      kind: "frozen-seat",
+      kind: "frozen-worker",
       configSchema: z.object({
         model: z.string(),
         limits: z.object({ retries: z.number() })
@@ -111,10 +111,10 @@ describe("flow config bag — the value and its door", () => {
    * the runtime half, for the caller who reaches past the types.
    */
   it("refuses a bag when the definition declared no configSchema, naming the flow", () => {
-    const flow = defineFlow({ kind: "undeclared-seat", actions: {} });
+    const flow = defineFlow({ kind: "undeclared-worker", actions: {} });
 
     expect(() => flow({ config: { model: "opus" } } as never)).toThrow(
-      /Flow "undeclared-seat" instance "undeclared-seat" was created with a config bag, but the flow declares no configSchema/
+      /Flow "undeclared-worker" instance "undeclared-worker" was created with a config bag, but the flow declares no configSchema/
     );
   });
 
@@ -130,7 +130,7 @@ describe("flow config bag — the value and its door", () => {
     const engineer = defineFlow({
       kind: "engineer",
       cardinality: "collection",
-      configSchema: seatConfig,
+      configSchema: workerConfig,
       actions: {}
     });
 
@@ -156,21 +156,21 @@ describe("flow config bag — the value and its door", () => {
       name: "read-knob",
       inputSchema: z.object({}),
       outputSchema: z.object({ model: z.string() }),
-      flowConfigSchema: seatConfig,
+      flowConfigSchema: workerConfig,
       execute: async (_input, ctx) => {
         seen.push(ctx.flow.config.model);
         return { model: ctx.flow.config.model };
       }
     });
 
-    const chain = sequencer({ name: "seat-chain", inputSchema: z.object({}) })
+    const chain = sequencer({ name: "worker-chain", inputSchema: z.object({}) })
       .step(readKnob)
       .tap(
         handler({
           name: "read-knob-again",
           inputSchema: z.object({ model: z.string() }),
           outputSchema: z.void(),
-          flowConfigSchema: seatConfig,
+          flowConfigSchema: workerConfig,
           execute: async (_input, ctx) => {
             seen.push(`tap:${ctx.flow.config.harness}`);
           }
@@ -180,7 +180,7 @@ describe("flow config bag — the value and its door", () => {
     const engineer = defineFlow({
       kind: "engineer-nested",
       cardinality: "collection",
-      configSchema: seatConfig,
+      configSchema: workerConfig,
       actions: { work: { block: chain } }
     });
     const alice = engineer({ id: "eng-alice", config: { harness: "codex", model: "gpt-5.4" } });
@@ -193,12 +193,12 @@ describe("flow config bag — the value and its door", () => {
   /**
    * Behaviour 7's first half. The trap: `defineFlow` builds the blueprint's
    * mirrored properties at definition time, so parsing a required-field schema
-   * THERE would throw before the first mint could run — and the two-seat
+   * THERE would throw before the first mint could run — and the two-worker
    * example would be unrunnable with nothing saying so.
    */
   it("defines a flow whose configSchema has required fields, and mints it", () => {
     const work = handler({
-      name: "seat-work",
+      name: "worker-work",
       inputSchema: z.object({}),
       outputSchema: z.object({}),
       execute: async () => ({})
@@ -206,7 +206,7 @@ describe("flow config bag — the value and its door", () => {
     const engineer = defineFlow({
       kind: "engineer-required",
       cardinality: "collection",
-      configSchema: seatConfig,
+      configSchema: workerConfig,
       actions: { work: { block: work } }
     });
 
@@ -238,7 +238,7 @@ describe("flow config bag — the value and its door", () => {
    */
   it("applies the schema's defaults when a mint omits the bag", () => {
     const flow = defineFlow({
-      kind: "defaulted-seat",
+      kind: "defaulted-worker",
       configSchema: z.object({
         harness: z.string().default("claude-code"),
         retries: z.number().default(3)
@@ -246,7 +246,7 @@ describe("flow config bag — the value and its door", () => {
       actions: {}
     });
 
-    expect(flow({ id: "defaulted-seat" }).config).toEqual({ harness: "claude-code", retries: 3 });
+    expect(flow({ id: "defaulted-worker" }).config).toEqual({ harness: "claude-code", retries: 3 });
     // And a bare-registered blueprint reads exactly the same value, so the two
     // can never diverge.
     expect(flow.config).toEqual({ harness: "claude-code", retries: 3 });
@@ -275,7 +275,7 @@ describe("flow config bag — the value and its door", () => {
   it("refuses configSchema passed as an instance option, by name", () => {
     const flow = defineFlow({ kind: "instance-schema", actions: {} });
 
-    expect(() => flow({ configSchema: seatConfig } as never)).toThrow(
+    expect(() => flow({ configSchema: workerConfig } as never)).toThrow(
       /Flow "instance-schema" instance options set "configSchema", which is not an instance option/
     );
   });
@@ -809,7 +809,7 @@ describe("flow config bag — what a block's declaration is worth", () => {
       name: "engineer-work",
       inputSchema: z.object({}),
       outputSchema: z.object({}),
-      flowConfigSchema: seatConfig,
+      flowConfigSchema: workerConfig,
       execute: async () => ({})
     });
 
@@ -853,13 +853,13 @@ describe("flow config bag — what a block's declaration is worth", () => {
     }).not.toThrow();
 
     // It is reported at the mint of every copy that omits the field…
-    expect(() => loose({ id: "seat-a", config: {} } as never)).toThrow(
-      /Flow "loose-flow" instance "seat-a" has a config bag that block "needs-model" cannot read/
+    expect(() => loose({ id: "worker-a", config: {} } as never)).toThrow(
+      /Flow "loose-flow" instance "worker-a" has a config bag that block "needs-model" cannot read/
     );
 
     // …and copies that supply it run. Every instance that CAN run has been
-    // fully checked; you just learn one step later, and per seat.
-    expect(loose({ id: "seat-b", config: { model: "opus" } } as never).config).toEqual({
+    // fully checked; you just learn one step later, and per worker.
+    expect(loose({ id: "worker-b", config: { model: "opus" } } as never).config).toEqual({
       model: "opus"
     });
   });

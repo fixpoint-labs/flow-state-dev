@@ -1,5 +1,5 @@
 /**
- * The inventory's org-scoped seat collection — what was registered in this
+ * The inventory's org-scoped worker collection — what was registered in this
  * organization, as opposed to what the tree declares. A row means *was
  * registered*, not *is open now*.
  *
@@ -9,11 +9,11 @@
  * The two layers join on one thing, the record's `id`, and nothing else — no
  * mapping table, no second identity.
  *
- *   inventory/seats/<seatId>                which seats were registered in this org
+ *   inventory/workers/<workerId>                which workers were registered in this org
  *
  * This key is a public surface. Moving it is a breaking change for any app
  * whose rows are already persisted. Nothing here deletes a row for going
- * missing. The one removal is `fire`'s, of a hired seat's own row.
+ * missing. The one removal is `fire`'s, of a hired worker's own row.
  *
  * ## The browser read
  *
@@ -37,8 +37,8 @@
  * (BP-015), so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
  * open now*: nothing deletes one for going missing, so a reader must label it
- * that way. Firing a hired seat removes its row; a row an earlier version's
- * fire left behind has no roster row, and `listedSeatRows` is the join that
+ * that way. Firing a hired worker removes its row; a row an earlier version's
+ * fire left behind has no roster row, and `listedWorkerRows` is the join that
  * hides it.
  */
 
@@ -46,7 +46,7 @@ import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 
 /**
- * One registered seat: the thing a `WORKER.md` declared and `hireWorkforce`
+ * One registered worker: the thing a `WORKER.md` declared and `hireWorkforce`
  * turned into a flow copy.
  *
  * Closed on purpose, unlike the skills collection's passthrough schema — that
@@ -61,41 +61,41 @@ import { z } from "zod";
  * nothing. Required means the framework's read path surfaces such a row as
  * empty instead, which is visible.
  */
-export const seatInventoryRowSchema = z.object({
-  /** The seat's id — the same id the declared record carries. The join key. */
+export const workerInventoryRowSchema = z.object({
+  /** The worker's id — the same id the declared record carries. The join key. */
   id: z.string().min(1),
-  /** The flow kind this seat was hired into, e.g. the built-in `"agent"`. */
+  /** The worker flow this worker was hired into, e.g. the built-in `"agent"`. */
   kind: z.string().min(1),
   /**
-   * The seat's door: the one public action its kind declares that takes a
+   * The worker's door: the one public action its worker flow declares that takes a
    * person's message (`userMessage`, `{ message }` input). `null` when the
-   * kind has none, or declares two (a hire problem). Defaulted so a row
+   * flow has none, or declares two (a hire problem). Defaulted so a row
    * written before doors were published reads as no door (BP-030); the next
    * boot rewrites it.
    */
   door: z.string().nullable().default(null),
   /**
-   * Where the seat came from: `true` for a seat hired at runtime (its id is
-   * its address, `<org>.<seatId>`), `false` for a declared one. A team list
+   * Where the worker came from: `true` for a worker hired at runtime (its id is
+   * its address, `<org>.<workerId>`), `false` for a declared one. A team list
    * reads this rather than the id's shape, because a declared team can share
    * the organization's name. `null` on a row written before the field existed
    * (BP-023, BP-030), or by a caller that couldn't say; the next boot rewrites
-   * a seat that is still registered.
+   * a worker that is still registered.
    */
   hired: z.boolean().nullable().default(null),
   /**
    * The incarnation of the hire or repair that published this row (see
-   * `roster/incarnation.ts`). Fire deletes a hired seat's row only when it
+   * `roster/incarnation.ts`). Fire deletes a hired worker's row only when it
    * carries the incarnation fired (`null` only for a roster row from before
-   * incarnations), so a seat hired again at the same address keeps its row,
-   * and never deletes a declared seat's. `null` on a declared seat's row and
+   * incarnations), so a worker hired again at the same address keeps its row,
+   * and never deletes a declared worker's. `null` on a declared worker's row and
    * on a row written before the field (BP-023, BP-030).
    */
   incarnation: z.string().nullable().default(null),
 });
 
-/** One row of the seat inventory. @see seatInventoryRowSchema */
-export type SeatInventoryRow = z.infer<typeof seatInventoryRowSchema>;
+/** One row of the worker inventory. @see workerInventoryRowSchema */
+export type WorkerInventoryRow = z.infer<typeof workerInventoryRowSchema>;
 
 /**
  * `flowIsolation: false`, spelled out here rather than omitted.
@@ -104,7 +104,7 @@ export type SeatInventoryRow = z.infer<typeof seatInventoryRowSchema>;
  * its org state wholesale gets an isolated skills catalog too. That is right
  * for a catalog each flow may reasonably want its own copy of. It is wrong
  * here. An inventory read by only the flow that wrote it answers nothing: the
- * point of these rows is that a seat's flow and an app's own flow all see the
+ * point of these rows is that a worker's flow and an app's own flow all see the
  * same ones.
  *
  * Left undefined, `effectiveStorageTuple` (`packages/core/src/flow/defineFlow.ts`)
@@ -120,10 +120,10 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
+const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
 
 /**
- * The seat inventory — one row per registered seat, at `inventory/seats/*`.
+ * The worker inventory — one row per registered worker, at `inventory/workers/*`.
  *
  * Install it under any block's `resources` map. Org-scoped: every flow in the
  * org reads the same rows, and a flow under a different `orgId` reads none.
@@ -133,14 +133,14 @@ const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnatio
  * settings.
  *
  * @example
- *   resources: { seats: defineSeatInventoryCollection() }
+ *   resources: { workers: defineWorkerInventoryCollection() }
  */
-export function defineSeatInventoryCollection() {
+export function defineWorkerInventoryCollection() {
   return defineResourceCollection({
-    pattern: "inventory/seats/*",
+    pattern: "inventory/workers/*",
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: seatInventoryRowSchema,
-    client: { state: { read: true }, expose: SEAT_INVENTORY_CLIENT_FIELDS },
+    stateSchema: workerInventoryRowSchema,
+    client: { state: { read: true }, expose: WORKER_INVENTORY_CLIENT_FIELDS },
   });
 }

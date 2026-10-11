@@ -1,11 +1,11 @@
 /**
- * The claim gate a board puts in front of each task entry its seats hand off
+ * The claim gate a board puts in front of each task entry its assignees hand off
  * to — what a `task` dispatch actually enters in the child session.
  *
  * The flow declares a task entry as a plain block, `task: { actions: { implement:
  * { block } } }`. The board cannot wrap it itself — the flow owns the entry — so
  * `taskBoard()` builds this gate once and binds it onto the hand-off it
- * installs at each dispatcher seat (`bindTaskDispatcher`), and `defineFlow`
+ * installs at each dispatcher assignee (`bindTaskDispatcher`), and `defineFlow`
  * applies it to every entry a reachable hand-off addresses. A `task` dispatch
  * therefore resolves the *gate around the block* and never the bare block;
  * there is no path from a `task` dispatch to an entry that skips the sequence
@@ -21,7 +21,7 @@
  *    a stale snapshot — a cancelled task running to completion. The gate re-reads
  *    the row and aborts unless the claim is still current: `attempts` matches,
  *    `createdAt` matches, the row's incarnation matches, the status is still
- *    `in_progress`, and the row still routes to THIS seat. A lease that ran out
+ *    `in_progress`, and the row still routes to THIS assignee. A lease that ran out
  *    while the dispatch queued is taken back rather than refused — see "what a
  *    lapsed lease is allowed to mean here", below.
  * 2. **The task-scope mark.** `_markTaskScope` walks up to the first sequencer
@@ -57,7 +57,7 @@
  * child's first breath, so a child that waits in the host's queue longer than
  * the lease arrives at a row the substrate already counts as free. Refusing it
  * on that alone is more conservative than this gate's own evidence: with
- * `attempts`, `createdAt`, the incarnation, the status and the seat all still
+ * `attempts`, `createdAt`, the incarnation, the status and the assignee all still
  * matching, no reclaim has happened — a lapsed lease only means one *could*
  * have. Under an external dispatcher with a sustained backlog that reading
  * fails every hand-off before it starts, and each re-dispatch spends an
@@ -102,7 +102,7 @@ import {
   type TaskWorkerInput,
 } from "../tasks";
 
-/** The `task` envelope, re-exported from core: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, partition?, payload }`. */
+/** The `task` envelope, re-exported from core: `{ boardId, assignee, taskId, attempt, createdAt, incarnationId?, partition?, payload }`. */
 export { taskDispatchInputSchema };
 export type { TaskDispatchInput };
 
@@ -445,7 +445,7 @@ function buildTaskGate(options: {
               `the row is "${row.status}", so no claim is outstanding on it`
             );
           }
-          // The row must still route to the seat that handed it off. A hand-off
+          // The row must still route to the assignee that handed it off. A hand-off
           // board freezes a running task's assignee precisely because it is
           // the address the hand-off is reached by; a mismatch means that guard
           // was bypassed, and running would mix two workers' histories under one
@@ -455,10 +455,10 @@ function buildTaskGate(options: {
           // gate can decide by reading has to be decided before the row is
           // taken back, or a dispatch that is about to be refused anyway
           // extends a lease on a row somebody else is entitled to.
-          if (row.assignee !== dispatch.seat) {
+          if (row.assignee !== dispatch.assignee) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
-              `this dispatch was sent from seat "${dispatch.seat}" but the row now routes to ` +
+              `this dispatch was sent from assignee "${dispatch.assignee}" but the row now routes to ` +
                 `"${row.assignee ?? "(no assignee)"}"`
             );
           }
@@ -700,7 +700,7 @@ async function writeRunLink(
  *
  * `boardId` is half the durable address, and an entry that accepted any
  * `boardId` would let a dispatch addressed to a since-removed board be
- * re-resolved from its persisted envelope into whatever board holds this seat
+ * re-resolved from its persisted envelope into whatever board holds this assignee
  * name now. If the two share a ledger, the gate can pass every arm — same row,
  * same attempt — because none of them asks which board the dispatch named.
  */
@@ -713,7 +713,7 @@ function boardScopedSchema(boardId: string) {
       message:
         `[task-board] this dispatch is addressed to board "${input.boardId}", but this entry ` +
         `belongs to board "${boardId}". The envelope names a board that no longer holds this ` +
-        `seat — it was removed or renamed since the dispatch was addressed.`,
+        `assignee — it was removed or renamed since the dispatch was addressed.`,
     });
   });
 }

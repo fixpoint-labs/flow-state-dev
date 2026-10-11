@@ -5,7 +5,7 @@
  * A `packages/` folder may sit at three levels: the org's (`org/packages/`), a
  * team's (`teams/<team>/packages/`), and one worker's own
  * (`teams/<team>/workers/<worker>/packages/`, or `org/workers/<worker>/packages/`
- * for an org seat). Where it sits is who it is for,
+ * for an org worker). Where it sits is who it is for,
  * and the record says so; which worker HOLDS which package is decided at the
  * hire, from the record's level and the worker's `packages:` line.
  *
@@ -123,10 +123,10 @@ export async function readPackagesDirectory(root: string): Promise<ReadPackagesD
 
 /**
  * Read each worker's own `packages/` slot under one parent — `org/`
- * (`teamId` undefined, an org seat) or a team folder.
+ * (`teamId` undefined, an org worker) or a team folder.
  *
- * The owner is the seat's id as the roster mints it: `<team>.<worker>`, or the
- * bare `<worker>` for an org seat, which has no team.
+ * The owner is the worker's id as the roster mints it: `<team>.<worker>`, or the
+ * bare `<worker>` for an org worker, which has no team.
  */
 async function readWorkerPackages(
   parentDir: string,
@@ -146,7 +146,7 @@ async function readWorkerPackages(
     if (IGNORED_ENTRIES.has(workerName)) continue;
     const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
     // Only a real folder is descended into. A symlinked, unreadable or badly
-    // named worker folder is the worker reader's to report — it is the seat
+    // named worker folder is the worker reader's to report — it is the worker
     // that is missing, and naming it twice reads as two problems. Nothing
     // under it is read here either way.
     if ((await classify(workerDir)).kind !== "directory") continue;

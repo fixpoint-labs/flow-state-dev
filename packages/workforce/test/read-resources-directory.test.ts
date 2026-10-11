@@ -496,7 +496,7 @@ body
       );
     });
 
-    // V2 · BR-2, BR-3 — the silences. Most seats have no documents at all.
+    // V2 · BR-2, BR-3 — the silences. Most workers have no documents at all.
     it("is silent for a worker with no resources slot, a team with no workers folder, and a root with no org workers", async () => {
       const { documents, errors } = await readResourcesDirectory(
         tree({
@@ -574,9 +574,9 @@ body
 
     // V3 · BR-6 — the slot is decided by POSITION, not by spelling, and
     // `resources` gets no exception at the `workers/` level. `validateSegment`
-    // reserves only `_meta`, so `teams/<t>/workers/resources/` is a legal seat:
-    // the roster reader hires it and `readSeatSkills` reads its skills. A name
-    // check here would leave exactly one seat in the tree whose documents are
+    // reserves only `_meta`, so `teams/<t>/workers/resources/` is a legal worker:
+    // the roster reader hires it and `readWorkerSkills` reads its skills. A name
+    // check here would leave exactly one worker in the tree whose documents are
     // read by nothing and reported by nothing.
     //
     // Asserted under both parents, because the walk is one function called
@@ -623,11 +623,11 @@ body
     });
 
     // V3 · BR-6 — the invariant a per-reader fix would satisfy and still leave
-    // broken: the two readers must agree about which folders are seats. Written
+    // broken: the two readers must agree about which folders are workers. Written
     // as a comparison rather than as two literal lists, because what is under
     // test is the AGREEMENT — pinning one reader's expected output would go
     // green again if someone made the other reader refuse the name instead.
-    it("reads a document root for every seat the roster hires, `resources` included", async () => {
+    it("reads a document root for every worker the roster hires, `resources` included", async () => {
       const root = tree({
         "teams/engineering/workers/recon/WORKER.md": WORKER_MD,
         "teams/engineering/workers/recon/resources/runbook.md": HANDBOOK,
@@ -641,7 +641,7 @@ body
       expect(roster.errors).toEqual([]);
       expect(errors).toEqual([]);
 
-      // Every hired seat's `runbook` is addressable under that seat's ref.
+      // Every hired worker's `runbook` is addressable under that worker's ref.
       const hired = roster.workers.map((w) => w.id).sort();
       expect(hired).toEqual(["engineering.recon", "engineering.resources"]);
       expect(documents.map((d) => d.ref).sort()).toEqual(
@@ -733,7 +733,7 @@ body
       const { documents, errors } = await readResourcesDirectory(
         tree({
           "teams/engineering/workers/recon/resources/diary.md": `---
-description: The seat's own diary.
+description: The worker's own diary.
 flowIsolation: true
 ---
 
@@ -855,13 +855,13 @@ body
     });
 
     // V6 · BR-5, D3 — the readers are independent. This one answers a question
-    // about a FILE; the missing seat is the roster reader's to report, and it
+    // about a FILE; the missing worker is the roster reader's to report, and it
     // still does, separately. The moment this reader consults `WORKER.md`, one
     // reader is running another's job.
     it("loads a worker folder's documents whether or not the folder holds a WORKER.md", async () => {
       const { documents, errors } = await readResourcesDirectory(
         tree({
-          // No WORKER.md anywhere — a typo'd folder, or a seat not yet written.
+          // No WORKER.md anywhere — a typo'd folder, or a worker not yet written.
           "teams/engineering/workers/recon/resources/runbook.md": HANDBOOK,
           "org/workers/infra/resources/runbook.md": HANDBOOK,
         }),
@@ -881,7 +881,7 @@ body
       const { documents, errors } = await readResourcesDirectory(
         tree({
           ...HEALTHY_WORKER,
-          "teams/engineering/workers/README.md": "notes about this team's seats\n",
+          "teams/engineering/workers/README.md": "notes about this team's workers\n",
           "teams/engineering/workers/.DS_Store": "junk",
         }),
       );

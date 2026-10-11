@@ -62,7 +62,7 @@ async function open(): Promise<Lab> {
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-repository-ask-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
     projects: [{ id: "storefront", title: "Storefront", repository: FIRST }],
   });

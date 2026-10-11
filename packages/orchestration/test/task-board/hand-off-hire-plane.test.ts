@@ -1,18 +1,18 @@
 /**
- * A board drain cannot hand a claimed row to a hired seat its session is
+ * A board drain cannot hand a claimed row to a hired worker its session is
  * outside.
  *
- * A hired seat is a flow instance registered with a pin, `{ orgId, userId? }`.
- * A board seat that names that instance hands its rows off through the
+ * A hired worker is a flow instance registered with a pin, `{ orgId, userId? }`.
+ * A board assignee that names that instance hands its rows off through the
  * dispatch seam. The session running the drain is the principal the child
  * would run as, so a board in another organization, or a teammate's board
- * aimed at a private seat, must be refused at the seam: the seat's block never
- * runs, no session is minted on the seat, and the row is not left claimed by
+ * aimed at a private assignee, must be refused at the seam: the assignee's block never
+ * runs, no session is minted on the assignee, and the row is not left claimed by
  * a child that was never going to run it.
  *
  * Refused the way an address this process does not hold is refused, so the
- * board cannot tell a seat it may not use from a seat that does not exist.
- * The owner's drain through the same board and the same seats runs, so an
+ * board cannot tell an assignee it may not use from an assignee that does not exist.
+ * The owner's drain through the same board and the same assignees runs, so an
  * empty worker log below is the refusal and not a hand-off that never starts.
  */
 import { describe, expect, it } from "vitest";
@@ -38,13 +38,13 @@ const ALICE: Who = { userId: "alice", orgId: "acme" };
 const BOB: Who = { userId: "bob", orgId: "acme" };
 const MALLORY: Who = { userId: "mallory", orgId: "globex" };
 
-/** One org-scoped ledger, the same logical board on the board flow and on the seat. */
+/** One org-scoped ledger, the same logical board on the board flow and on the assignee. */
 const ledger = () => defineTaskCollection({ id: LEDGER_ID, scope: "org" });
 
-/** The hired seat kind. Its own board exists to bind the claim gate on `work`. */
-function seatKind(ran: string[]) {
+/** The hired worker kind. Its own board exists to bind the claim gate on `work`. */
+function assigneeKind(ran: string[]) {
   const worker = handler({
-    name: "seat-work",
+    name: "assignee-work",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ handled: z.string() }),
     execute: (input: TaskWorkerInput, ctx) => {
@@ -54,33 +54,33 @@ function seatKind(ran: string[]) {
     },
   });
   const board = taskBoard({
-    name: "seat-board",
+    name: "assignee-board",
     boardId: BOARD_ID,
     collection: ledger(),
     workers: {
-      work: dispatcher<TaskWorkerInput>({ name: "seat-hand-off", action: "work", session: "per-task" }),
+      work: dispatcher<TaskWorkerInput>({ name: "assignee-hand-off", action: "work", session: "per-task" }),
     },
   });
   return defineFlow({
-    kind: "seat",
+    kind: "assignee",
     cardinality: "collection",
     actions: { drain: { block: board.drain } },
     task: { actions: { work: { block: worker } } },
   });
 }
 
-/** The org board. Each row's assignee is a seat that hands off to one hired instance. */
+/** The org board. Each row's assignee is an assignee that hands off to one hired instance. */
 function boardFlow() {
-  const seat = (name: string, flowKind: string) =>
+  const assignee = (name: string, flowKind: string) =>
     dispatcher<TaskWorkerInput>({ name, flowKind, action: "work", session: "per-task" });
   const board = taskBoard({
     name: "org-board",
     boardId: BOARD_ID,
     collection: ledger(),
     workers: {
-      lead: seat("to-lead", LEAD),
-      research: seat("to-research", RESEARCH),
-      ghost: seat("to-ghost", GHOST),
+      lead: assignee("to-lead", LEAD),
+      research: assignee("to-research", RESEARCH),
+      ghost: assignee("to-ghost", GHOST),
     },
     initialTasks: [
       { id: "t-lead", goal: "lead work", assignee: "lead", input: {} },
@@ -93,7 +93,7 @@ function boardFlow() {
 
 async function boot() {
   const ran: string[] = [];
-  const kind = seatKind(ran);
+  const kind = assigneeKind(ran);
   const board = boardFlow();
   const state = createFlowState({
     flows: { board },
@@ -129,25 +129,25 @@ async function boot() {
     }
   };
 
-  /** Session records minted on a hired seat for `who`, by any drain. */
-  const seatSessions = async (who: Who, seatId: string) =>
-    (await runtime.stores.session.list({ userId: who.userId, parentage: "all" })).filter((s) => s.flowId === seatId);
+  /** Session records minted on a hired worker for `who`, by any drain. */
+  const assigneeSessions = async (who: Who, assigneeId: string) =>
+    (await runtime.stores.session.list({ userId: who.userId, parentage: "all" })).filter((s) => s.flowId === assigneeId);
 
-  return { state, ran, row, drain, seatSessions };
+  return { state, ran, row, drain, assigneeSessions };
 }
 
 /** A refused hand-off: nothing ran, nothing was minted, the row is not held. */
-async function expectRefused(h: Awaited<ReturnType<typeof boot>>, who: Who, taskId: string, seatId: string) {
-  expect(h.ran.filter((line) => line.startsWith(`${seatId} `))).toEqual([]);
-  expect(await h.seatSessions(who, seatId)).toEqual([]);
+async function expectRefused(h: Awaited<ReturnType<typeof boot>>, who: Who, taskId: string, assigneeId: string) {
+  expect(h.ran.filter((line) => line.startsWith(`${assigneeId} `))).toEqual([]);
+  expect(await h.assigneeSessions(who, assigneeId)).toEqual([]);
   const settled = await h.row(who, taskId);
   expect(settled?.status).toBe("errored");
   expect(settled?.claimedBy).toBeUndefined();
   return settled;
 }
 
-describe("a board drain onto a hired seat", () => {
-  it("refuses another organization's board, and the row is not held by the seat", async () => {
+describe("a board drain onto a hired worker", () => {
+  it("refuses another organization's board, and the row is not held by the assignee", async () => {
     const h = await boot();
     try {
       await h.drain(MALLORY);
@@ -171,13 +171,13 @@ describe("a board drain onto a hired seat", () => {
     }
   });
 
-  it("refuses a teammate's board aimed at a private seat, and runs the org seat for them", async () => {
+  it("refuses a teammate's board aimed at a private assignee, and runs the org assignee for them", async () => {
     const h = await boot();
     try {
       await h.drain(BOB);
       const research = await expectRefused(h, BOB, "t-research", RESEARCH);
       expect(research?.error).toContain(`no flow instance "${RESEARCH}" is registered`);
-      // Bob is inside the lead seat's pin, so his board hands off to it.
+      // Bob is inside the lead assignee's pin, so his board hands off to it.
       expect((await h.row(BOB, "t-lead"))?.status).toBe("completed");
       expect(h.ran).toEqual([`${LEAD} t-lead as bob@acme`]);
     } finally {
@@ -185,7 +185,7 @@ describe("a board drain onto a hired seat", () => {
     }
   });
 
-  it("hands the owner's rows to both seats", async () => {
+  it("hands the owner's rows to both assignees", async () => {
     const h = await boot();
     try {
       await h.drain(ALICE);

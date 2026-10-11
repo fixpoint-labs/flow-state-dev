@@ -103,7 +103,7 @@ async function readDomain(
  *   three returns the known names rather than throwing, so the next call can
  *   succeed.
  *
- * One tool taking a domain, rather than a `listSeats` / `listSkills` family:
+ * One tool taking a domain, rather than a `listWorkers` / `listSkills` family:
  * it keeps the shared shape real in the surface a model sees, and `detail`
  * turns "how much does an entry say" into a per-call choice. Going from one
  * tool to four later is additive; going from four to one would break prompts.
@@ -112,7 +112,7 @@ export function discoveryTools(registry: ManifestRegistry) {
   const discover = handler({
     name: "discover",
     description:
-      "List what is in scope for you right now — the seats you can hand work to, the skills you can load, and the resources you can read. Omit `domain` for everything in scope.",
+      "List what is in scope for you right now — the workers you can hand work to, the skills you can load, and the resources you can read. Omit `domain` for everything in scope.",
     inputSchema: z.object({
       domain: z
         .string()

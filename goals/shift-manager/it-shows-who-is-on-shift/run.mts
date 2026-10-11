@@ -215,7 +215,7 @@ type Store = {
 };
 
 /** The seat this script's own rule gives an assignee: its id, or its name after the team. Exactly one, or none. */
-function seatOf(seats: string[], assignee: string): string | undefined {
+function workerOf(seats: string[], assignee: string): string | undefined {
   const found = seats.filter((id) => id === assignee || id.slice(id.indexOf(".") + 1) === assignee);
   return found.length === 1 ? found[0] : undefined;
 }
@@ -234,12 +234,12 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     return manifests.get(kind)!;
   };
   // The inventory, through the first session whose flow publishes it, by its key patterns.
-  let seatRows: Array<{ id: string; kind: string | null }> = [];
+  let workerRows: Array<{ id: string; kind: string | null }> = [];
   for (const host of topLevel) {
     const resources = await published(host);
-    const seatsRef = resources.find((r) => r.pattern === "inventory/seats/*")?.ref;
-    if (seatsRef === undefined) continue;
-    seatRows = (await api.collection(host.id, seatsRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
+    const workersRef = resources.find((r) => r.pattern === "inventory/workers/*")?.ref;
+    if (workersRef === undefined) continue;
+    workerRows = (await api.collection(host.id, workersRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
     break;
   }
   // Every row on every conversation's board: the person's one conversation
@@ -257,12 +257,12 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     }
     break;
   }
-  const seats = seatRows.map((s) => s.id);
+  const seats = workerRows.map((s) => s.id);
   // Pending person-asks on the seats' sessions, by the seat each session names.
-  const asks = (await pendingSeatAsks(api, sessions, seatRows)).map((a) => ({ seat: a.seatId, id: a.suspensionId }));
-  const unmatched = rows.filter((r) => seatOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
+  const asks = (await pendingSeatAsks(api, sessions, workerRows)).map((a) => ({ seat: a.seatId, id: a.suspensionId }));
+  const unmatched = rows.filter((r) => workerOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
   const workers = seats.map((id): Worker => {
-    const mine = rows.filter((r) => seatOf(seats, r.assignee) === id);
+    const mine = rows.filter((r) => workerOf(seats, r.assignee) === id);
     const word = (s: string) => (s === "awaiting_review" ? "parked" : s);
     const running = mine.filter((r) => word(r.status) === "in_progress");
     const parked = mine.filter((r) => word(r.status) === "parked");
@@ -308,14 +308,14 @@ async function gradeRoster(page: Page, store: Store, team: string | null, fail: 
   await page.locator(`[data-testid=roster][data-team="${team ?? ""}"]`).waitFor({ timeout: 10_000 });
   const want = store.workers.filter((w) => team === null || w.team === team);
   const rows = page.getByTestId("roster-worker");
-  const shown = (await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-seat-id") ?? ""))) as string[];
+  const shown = (await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""))) as string[];
   if (!same(shown, want.map((w) => w.id))) fail("roster", `${where}: ${diff(want.map((w) => w.id), shown)}`);
 
   for (const worker of want) {
-    const row = page.locator(`[data-testid=roster-worker][data-seat-id="${worker.id}"]`);
+    const row = page.locator(`[data-testid=roster-worker][data-worker-id="${worker.id}"]`);
     if ((await row.count()) !== 1) continue;
     const status = await row.getAttribute("data-status");
-    const group = await page.locator(`[data-testid=roster-group]:has([data-testid=roster-worker][data-seat-id="${worker.id}"])`).getAttribute("data-status");
+    const group = await page.locator(`[data-testid=roster-group]:has([data-testid=roster-worker][data-worker-id="${worker.id}"])`).getAttribute("data-status");
     if (status !== worker.status || group !== worker.status) {
       fail("status", `${where}: ${worker.id} is drawn under "${group}" (row says "${status}"), the store says "${worker.status}"`);
     }
@@ -389,7 +389,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
       const members = store.workers.filter((w) => w.team === team);
       const squares = (await page
         .locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`)
-        .evaluateAll((els) => els.map((e) => `${e.getAttribute("data-seat-id")}=${e.getAttribute("data-status")}`))) as string[];
+        .evaluateAll((els) => els.map((e) => `${e.getAttribute("data-worker-id")}=${e.getAttribute("data-status")}`))) as string[];
       const wantSquares = members.map((w) => `${w.id}=${w.status}`);
       if (!same(squares, wantSquares)) fail("TEAMS", `${team}: ${diff(wantSquares, squares)}`);
       const meta = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=team-on-shift]`).textContent();

@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * A coordinator's or a seat's session, opened from the rail, with a composer
+ * A coordinator's or a worker's session, opened from the rail, with a composer
  * that talks to it.
  *
  * Every composer here calls an action the picked flow already declares, on the
  * picked session's own address — nothing is added for the page. A coordinator
  * is posted to through its door (`COORDINATOR_ASK`), with the post only: who
- * posted is the session's own user. A seat is sent the action its kind
- * answers with (`SEAT_ASKS`); a kind with none shows its reason and no
+ * posted is the session's own user. A worker is sent the action its kind
+ * answers with (`WORKER_ASKS`); a kind with none shows its reason and no
  * composer.
  *
  * A coordinator's panel shows its lines: the person's posts, under the
@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { COORDINATOR_ASK, delegateOfRun, isCoordinatorKind, seatAskFor } from "@/lib/workforce-shell";
+import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
 
@@ -74,11 +74,11 @@ function coordinatorLines(items: Session["items"], person: string): CoordinatorL
  * The picked session's panel.
  *
  * @param session The picked session, as `useSession` returns it.
- * @param kind The picked flow's kind: a coordinator kind or a seat kind.
+ * @param kind The picked flow's kind: a coordinator kind or a worker kind.
  * @param person The name the person's own posts are drawn under, on a coordinator.
  * @param requestStatus Reads a sent request's own status, so a send settles
  *   on its request and not on whatever the session's stream did.
- * @param conversation The session's item stream, drawn for a seat. A
+ * @param conversation The session's item stream, drawn for a worker. A
  *   coordinator draws its lines instead, so the page need not build one for it.
  */
 export function PickedSessionPanel({
@@ -97,7 +97,7 @@ export function PickedSessionPanel({
   // Each composer is keyed by the session it talks to, so a draft, a pending
   // send or a failure never carries over to the next pick.
   const composerKey = session.sessionId ?? "none";
-  if (isCoordinatorKind(kind)) {
+  if (isCoordinatorFlow(kind)) {
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
         <CoordinatorTranscript session={session} person={person} />
@@ -114,22 +114,22 @@ export function PickedSessionPanel({
     );
   }
 
-  const ask = seatAskFor(kind);
+  const ask = workerAskFor(kind);
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
       {conversation}
       <WorkingRows session={session} />
       {ask === undefined || "none" in ask ? (
         <p className="border-t px-4 py-3 text-xs text-muted-foreground" data-testid="picked-read-only">
-          {ask?.none ?? `This ${kind} seat takes no messages from this page.`}
+          {ask?.none ?? `This ${kind} worker takes no messages from this page.`}
         </p>
       ) : (
         <Composer
           key={composerKey}
           session={session}
           requestStatus={requestStatus}
-          label="Message this seat"
-          placeholder="Write to this seat…"
+          label="Message this worker"
+          placeholder="Write to this worker…"
           send={(text) => session.sendAction(ask.action, { [ask.field]: text })}
         />
       )}
@@ -164,7 +164,7 @@ function CoordinatorTranscript({ session, person }: { session: Session; person: 
 /**
  * One row per run under the session that hasn't finished, named by the
  * delegate a coordinator handed a post to, or else by the run's flow; a run
- * with no recorded flow is background work, not a seat. A run waiting on an
+ * with no recorded flow is background work, not a worker. A run waiting on an
  * approval reads as working until it ends.
  *
  * While the list is stale (`childSessionsStale`: the last re-read failed, and

@@ -217,7 +217,7 @@ with reason `terminal`.
 `setAssignee` is the one field mutator that refuses anything — it declines on a
 terminal task, and on a durable collection any hand-off board draws from it declines
 every reassignment whatever the task's status (see "Handing tasks off through a
-dispatcher seat" below).
+dispatcher assignee" below).
 `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
 a terminal task, so a post-drain failure audit can label what went wrong; those four
 answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
@@ -420,15 +420,15 @@ The recorders themselves (`createRecordSuccess` / `createRecordError`) **raise**
 failure by default; only a composition that supplies a tail able to read the report — which
 `taskBoard()`'s drain does — passes `recorderFailure: { onRecorderFailure: "defer" }`.
 
-#### Handing tasks off through a dispatcher seat
+#### Handing tasks off through a dispatcher assignee
 
-A seat under `workers` is a block. Put a `dispatcher({ action, session })`
-in that position and the seat hands its tasks off: the drain claims a row, sends a
+An assignee under `workers` is a block. Put a `dispatcher({ action, session })`
+in that position and the assignee hands its tasks off: the drain claims a row, sends a
 `task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
 entry's block runs in a **child session** of the session that drained — on a request
 of its own — and settles the row itself. Any other block in that position runs
 inline in the drain. The worker is declared once, on the flow, exactly like an
-action. A seat holding anything other than a block (an object such as
+action. An assignee holding anything other than a block (an object such as
 `{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
 ```ts
@@ -446,7 +446,7 @@ const issueLedger = defineTaskCollection({
 
 const board = taskBoard({
   name: "issue-work",
-  boardId: "issue-work",               // required once any seat hands off
+  boardId: "issue-work",               // required once any assignee hands off
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
     triage: triageBlock,               // runs inline
@@ -465,20 +465,20 @@ export default defineFlow({
 })();
 ```
 
-`session` decides which child session a seat's rows run in:
+`session` decides which child session an assignee's rows run in:
 
 | `session` | Child session | Use it when |
 |---|---|---|
 | `"per-task"` | one per row, keyed on the task id; a task filed with `followUpOf` runs in its root task's child | rows are independent |
-| `"per-worker"` | one per seat, shared by every row the seat runs | the worker should remember what it already did |
-| `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across seats |
+| `"per-worker"` | one per assignee, shared by every row the assignee runs | the worker should remember what it already did |
+| `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across assignees |
 
 The presets include the board id in the key, so two boards' `per-task` children stay
 apart even when their task ids coincide. A custom `key` is used as returned, so two
-seats (or two boards) that return the same key share one child. A child that runs
+assignees (or two boards) that return the same key share one child. A child that runs
 several rows runs them under its entry's concurrency policy. An entry a `per-worker`
-or `key` seat hands off to defaults to `queue`, so the rows run one at a time; a
-`per-task` seat's entry keeps the ordinary default (the flow's `request.concurrency`,
+or `key` assignee hands off to defaults to `queue`, so the rows run one at a time; a
+`per-task` assignee's entry keeps the ordinary default (the flow's `request.concurrency`,
 else `allow`). An explicit `concurrency` on the entry wins:
 
 ```ts
@@ -489,7 +489,7 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 a lease backend. On a deployment that hands dispatches to an external queue without
 one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A named seat and `defaultWorker` can hand off. A uniform `workers` block can't: it has
+A named assignee and `defaultWorker` can hand off. A uniform `workers` block can't: it has
 no assignee to route by. A `defaultWorker` dispatcher hands each task the registry
 doesn't name over under the task's own assignee, and refuses a task with none
 (`flow-not-found`), which fails through the board's error path.
@@ -498,7 +498,7 @@ A task dispatcher's `flowKind` may be a function, `(task, ctx) => flowId | undef
 (sync or async; `task` is `{ assignee, taskId, input }`), called once per task at
 hand-over, and only with `session: "per-task"` (any other policy throws when the
 dispatcher is built). Answering `undefined` refuses the dispatch `flow-not-found`, naming the
-assignee. Put it at `defaultWorker` to send every assignee without a seat of its own
+assignee. Put it at `defaultWorker` to send every assignee without an entry of its own
 to a flow looked up at that moment:
 
 ```ts
@@ -513,7 +513,7 @@ defaultWorker: dispatcher({
 `defineFlow` refuses a hand-off whose entry the flow forgot to declare, a task
 entry no board hands off to and no `from` serves, a task dispatcher no board holds,
 two boards handing off to one entry, and an entry with `from` that a board in the
-same flow also hands off to. `board.handedOff` lists the seats that hand off, in
+same flow also hands off to. `board.handedOff` lists the assignees that hand off, in
 declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, label `floor`).
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
@@ -565,10 +565,10 @@ The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`
 JSON-serializable; a payload that is not fails the row in the drain. When the dispatch
 arrives, the entry re-reads the row and runs the worker only if the claim is still
 current: same attempt, same row (not deleted and recreated under the same id), still
-`in_progress`, still routed to this seat. Otherwise it throws
+`in_progress`, still routed to this assignee. Otherwise it throws
 `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing, so the row is
 left exactly as it was. If the row is still `in_progress`, whether a newer attempt,
-another seat, or a row recreated under the same id holds it, that claim runs until its
+another assignee, or a row recreated under the same id holds it, that claim runs until its
 lease runs out and the next drain reclaims it; a row that was deleted, or is already
 settled or parked, has no outstanding claim, so there is nothing to reclaim. On the drain
 side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,

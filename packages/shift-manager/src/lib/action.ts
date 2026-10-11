@@ -43,18 +43,18 @@ const REQUEST_PAGE = 100;
 const REQUEST_PAGES = 20;
 
 /**
- * Run one action on a session of flow `kind` (or, with no session, on a new
+ * Run one action on a session of flow `flow` (or, with no session, on a new
  * one the Lab creates for this person) and return what it answered, with the
  * session it ran in.
  */
 export async function runAction(
   clients: LabClients,
-  kind: string,
+  flow: string,
   sessionId: string | undefined,
   action: string,
   input: unknown,
 ): Promise<{ output: unknown; sessionId: string }> {
-  const actions = clients.actions(kind);
+  const actions = clients.actions(flow);
   // A new session is named here: the Lab's answer to an action started with
   // no session names none, and its requests are read back by session.
   const session = sessionId ?? newSessionId("act");

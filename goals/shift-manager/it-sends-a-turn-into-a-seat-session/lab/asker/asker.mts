@@ -16,7 +16,7 @@ import { workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/wor
 import { z } from "zod";
 
 /** The kind the fixture's `WORKER.md` names. */
-export const ASKER_KIND = "asker";
+export const ASKER_FLOW = "asker";
 
 /** How the seat says what it heard. The check looks for this line. */
 export const heardLine = (message: string) => `Heard: ${message}`;
@@ -57,7 +57,7 @@ const gate = handler({
  */
 export function defineAskerFlow(installation: WorkerInstallation) {
   return defineFlow({
-    kind: ASKER_KIND,
+    kind: ASKER_FLOW,
     session: installation.session(),
     resources: installation.resources,
     cardinality: "collection",

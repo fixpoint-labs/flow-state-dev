@@ -516,7 +516,7 @@ describe("cross-flow resource schema validation", () => {
     registry.register(
       makeFlow({
         kind: "flow-a",
-        resources: { roster: { scope: "org", schema: z.object({ seats: z.string() }) } },
+        resources: { roster: { scope: "org", schema: z.object({ workers: z.string() }) } },
       })
     );
 
@@ -524,7 +524,7 @@ describe("cross-flow resource schema validation", () => {
       registry.register(
         makeFlow({
           kind: "flow-b",
-          resources: { roster: { scope: "org", schema: z.object({ seats: z.number() }) } },
+          resources: { roster: { scope: "org", schema: z.object({ workers: z.number() }) } },
         })
       )
     );

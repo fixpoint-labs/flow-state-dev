@@ -7,7 +7,7 @@
  * *immutable to everyone* — from code and from a model alike (BR-17).
  *
  * The seal has two producers and one meaning: a document loaded out of a
- * `references/` folder, and an ordinary mutable document a seat holds under a
+ * `references/` folder, and an ordinary mutable document a worker holds under a
  * read-only grant. Both land on the same setting, which is why the mark reads
  * the setting rather than the folder (BR-10, BR-11).
  *
@@ -91,7 +91,7 @@ describe("the mark is the seal", () => {
   });
 
   it("BR-10 and BR-11 · marks both producers of the seal, identically", () => {
-    // A `references/` document and a seat's read-only grant are minted two
+    // A `references/` document and a worker's read-only grant are minted two
     // different ways and arrive as the same setting. Asserted together,
     // because a folder-derived mark would be right about the first and
     // silent about the second — and the silent one is the more dangerous:
@@ -189,7 +189,7 @@ describe("what the mark says it means", () => {
     //
     //  - a `writable: false` COLLECTION still permits `create` and `delete`
     //    (`resource-registry.ts` consults the flag in neither), and
-    //  - the flag is on the definition, not the storage cell, so a seat's
+    //  - the flag is on the definition, not the storage cell, so a worker's
     //    read-only grant — a shallow copy with both doors shut — leaves the
     //    same shared org/user cell writable through another flow's own
     //    definition.

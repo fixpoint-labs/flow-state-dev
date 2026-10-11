@@ -3,14 +3,14 @@
  * instance with its own resolver the way that instance's doors judge its
  * caller.
  *
- * A hired seat can carry its own `authentication.resolvePrincipal` while the
- * rest of the app stays on the host's resolver. Opening a session on the seat
- * and running its actions use the seat's resolver, so the listings must too,
- * or the operator who can already reach the seat never sees its sessions or
+ * A hired worker can carry its own `authentication.resolvePrincipal` while the
+ * rest of the app stays on the host's resolver. Opening a session on the worker
+ * and running its actions use the worker's resolver, so the listings must too,
+ * or the operator who can already reach the worker never sees its sessions or
  * its in-flight runs listed.
  *
- * It stays per instance: a credential one seat's resolver accepts must not
- * list a different seat's rows, even when both resolve the same principal.
+ * It stays per instance: a credential one worker's resolver accepts must not
+ * list a different worker's rows, even when both resolve the same principal.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -27,8 +27,8 @@ const ping = handler({
 });
 
 const appFlow = defineFlow({ kind: "app", actions: { ping: { block: ping } } });
-const seatKind = defineFlow({
-  kind: "seat",
+const workerKind = defineFlow({
+  kind: "worker",
   cardinality: "collection",
   actions: { ping: { block: ping } },
 });
@@ -39,7 +39,7 @@ const VISITOR = "visitor";
 /**
  * A bearer-token resolver: each token names one organization, the user is the
  * fixed operator identity unless the token maps to `org/user`. A missing or
- * unknown token is a 401, the shape a hiring host installs on its seats.
+ * unknown token is a 401, the shape a hiring host installs on its workers.
  */
 function tokenResolver(tokens: Record<string, string>): ResolvePrincipalFn {
   return (context) => {
@@ -53,17 +53,17 @@ function tokenResolver(tokens: Record<string, string>): ResolvePrincipalFn {
   };
 }
 
-/** A seat instance resolving its callers with `resolver`, not the host's. */
-function seatWith(id: string, resolver: ResolvePrincipalFn): FlowInstance {
-  const seat = seatKind({ id }) as FlowInstance;
-  return { ...seat, authentication: { ...seat.authentication, resolvePrincipal: resolver } };
+/** A worker instance resolving its callers with `resolver`, not the host's. */
+function workerWith(id: string, resolver: ResolvePrincipalFn): FlowInstance {
+  const worker = workerKind({ id }) as FlowInstance;
+  return { ...worker, authentication: { ...worker.authentication, resolvePrincipal: resolver } };
 }
 
 const ACME_PIN = { orgId: "acme", userId: OPERATOR };
 
 /**
  * An app whose only flow of its own is open. `hostResolver` is the host-level
- * fallback; omitted, it is the framework default, so only the seats
+ * fallback; omitted, it is the framework default, so only the workers
  * authenticate.
  */
 async function boot(hostResolver?: ResolvePrincipalFn) {
@@ -154,80 +154,80 @@ async function boot(hostResolver?: ResolvePrincipalFn) {
 type Harness = Awaited<ReturnType<typeof boot>>;
 
 /**
- * Two seats pinned to the same org and user, so a pin check alone could not
+ * Two workers pinned to the same org and user, so a pin check alone could not
  * tell them apart; only their resolvers differ. Each has one session and one
  * in-flight request, opened through its own door. The open app has one of
  * each too, from a caller with no credential.
  */
-async function seedTwoSeats(h: Harness) {
+async function seedTwoWorkers(h: Harness) {
   h.state.register(
-    seatWith("acme.support", tokenResolver({ "tok-acme": "acme", "tok-bravo": "bravo" })),
+    workerWith("acme.support", tokenResolver({ "tok-acme": "acme", "tok-bravo": "bravo" })),
     { pin: ACME_PIN }
   );
-  h.state.register(seatWith("acme.billing", tokenResolver({ "tok-billing": "acme" })), {
+  h.state.register(workerWith("acme.billing", tokenResolver({ "tok-billing": "acme" })), {
     pin: ACME_PIN,
   });
 
   // The doors already admit these callers; the listings are what this is about.
   expect(await h.open("acme.support", "s-support", "tok-acme")).toBe(201);
   expect(await h.open("acme.billing", "s-billing", "tok-billing")).toBe(201);
-  await h.running("r-support", { flowId: "acme.support", flowKind: "seat", userId: OPERATOR, orgId: "acme" });
-  await h.running("r-billing", { flowId: "acme.billing", flowKind: "seat", userId: OPERATOR, orgId: "acme" });
+  await h.running("r-support", { flowId: "acme.support", flowKind: "worker", userId: OPERATOR, orgId: "acme" });
+  await h.running("r-billing", { flowId: "acme.billing", flowKind: "worker", userId: OPERATOR, orgId: "acme" });
 }
 
-describe("in a mixed app, the listings show a seat's rows to the caller its own resolver accepts", () => {
+describe("in a mixed app, the listings show a worker's rows to the caller its own resolver accepts", () => {
   async function bootMixed() {
     const h = await boot();
-    await seedTwoSeats(h);
+    await seedTwoWorkers(h);
     expect(await h.open("app", "s-app", undefined, VISITOR)).toBe(201);
     await h.running("r-app", { flowId: "app", flowKind: "app", userId: VISITOR, orgId: "__fsd_default_org__" });
     return h;
   }
 
-  it("lists the seat's session and in-flight request for the credential that opens it", async () => {
+  it("lists the worker's session and in-flight request for the credential that opens it", async () => {
     const h = await bootMixed();
 
     expect(await h.sessions("tok-acme")).toEqual({ status: 200, ids: ["s-app", "s-support"] });
     expect(await h.active("tok-acme")).toEqual({ status: 200, ids: ["r-app", "r-support"] });
   });
 
-  it("keeps each seat to its own resolver: a credential only one accepts lists only that one", async () => {
+  it("keeps each worker to its own resolver: a credential only one accepts lists only that one", async () => {
     const h = await bootMixed();
 
     expect(await h.sessions("tok-billing")).toEqual({ status: 200, ids: ["s-app", "s-billing"] });
     expect(await h.active("tok-billing")).toEqual({ status: 200, ids: ["r-app", "r-billing"] });
   });
 
-  it("withholds the seat's rows from another organization's credential its resolver accepts", async () => {
+  it("withholds the worker's rows from another organization's credential its resolver accepts", async () => {
     const h = await bootMixed();
 
     expect(await h.sessions("tok-bravo")).toEqual({ status: 200, ids: ["s-app"] });
     expect(await h.active("tok-bravo")).toEqual({ status: 200, ids: ["r-app"] });
   });
 
-  it("withholds every seat's rows from a caller with no credential, who still sees the open flow's", async () => {
+  it("withholds every worker's rows from a caller with no credential, who still sees the open flow's", async () => {
     const h = await bootMixed();
 
     expect(await h.sessions()).toEqual({ status: 200, ids: ["s-app"] });
     expect(await h.active()).toEqual({ status: 200, ids: ["r-app"] });
   });
 
-  it("withholds a row the pin refuses, even from a caller the seat's resolver names as its owner", async () => {
+  it("withholds a row the pin refuses, even from a caller the worker's resolver names as its owner", async () => {
     const h = await boot();
     h.state.register(
-      seatWith("acme.support", tokenResolver({ "tok-acme": "acme", "tok-intruder": "acme/intruder" })),
+      workerWith("acme.support", tokenResolver({ "tok-acme": "acme", "tok-intruder": "acme/intruder" })),
       { pin: ACME_PIN }
     );
     // The door refuses this caller, so no route could have written the row.
     // It is planted to show the listing applies the pin too.
     expect(await h.open("acme.support", "s-probe", "tok-intruder", "intruder")).toBe(404);
-    await h.running("r-intruder", { flowId: "acme.support", flowKind: "seat", userId: "intruder", orgId: "acme" });
+    await h.running("r-intruder", { flowId: "acme.support", flowKind: "worker", userId: "intruder", orgId: "acme" });
     const now = Date.now();
     await h.stores.session.set(
       "s-intruder",
       {
         id: "s-intruder",
-        flowKind: "seat",
+        flowKind: "worker",
         flowId: "acme.support",
         userId: "intruder",
         orgId: "acme",
@@ -245,33 +245,33 @@ describe("in a mixed app, the listings show a seat's rows to the caller its own 
   });
 });
 
-describe("with a host resolver, the listings show a seat's rows to the caller its own resolver accepts", () => {
+describe("with a host resolver, the listings show a worker's rows to the caller its own resolver accepts", () => {
   /** A host that names every caller the same visitor, as the kitchen-sink app does. */
   const visitorHost: ResolvePrincipalFn = () => ({ userId: VISITOR, orgId: "acme" });
 
   async function bootHosted() {
     const h = await boot(visitorHost);
-    await seedTwoSeats(h);
+    await seedTwoWorkers(h);
     expect(await h.open("app", "s-app")).toBe(201);
     await h.running("r-app", { flowId: "app", flowKind: "app", userId: VISITOR, orgId: "acme" });
     return h;
   }
 
-  it("lists the seat's rows alongside the host principal's for the seat's credential", async () => {
+  it("lists the worker's rows alongside the host principal's for the worker's credential", async () => {
     const h = await bootHosted();
 
     expect(await h.sessions("tok-acme")).toEqual({ status: 200, ids: ["s-app", "s-support"] });
     expect(await h.active("tok-acme")).toEqual({ status: 200, ids: ["r-app", "r-support"] });
   });
 
-  it("keeps each seat to its own resolver", async () => {
+  it("keeps each worker to its own resolver", async () => {
     const h = await bootHosted();
 
     expect(await h.sessions("tok-billing")).toEqual({ status: 200, ids: ["s-app", "s-billing"] });
     expect(await h.active("tok-billing")).toEqual({ status: 200, ids: ["r-app", "r-billing"] });
   });
 
-  it("shows a caller with no seat credential only the host principal's rows", async () => {
+  it("shows a caller with no worker credential only the host principal's rows", async () => {
     const h = await bootHosted();
 
     expect(await h.sessions()).toEqual({ status: 200, ids: ["s-app"] });
@@ -285,22 +285,22 @@ describe("the listings stay inside the caller's tenant", () => {
   const TENANT_B = "tenant-b";
 
   /**
-   * One seat and one open flow, each with a session and an in-flight request
+   * One worker and one open flow, each with a session and an in-flight request
    * in both tenants, owned by the same user and organization. Only the tenant
    * tells the two apart, so an owner check alone cannot.
    */
   async function bootTwoTenants(hostResolver?: ResolvePrincipalFn) {
     const h = await boot(hostResolver);
-    h.state.register(seatWith("acme.support", tokenResolver({ "tok-acme": "acme" })), {
+    h.state.register(workerWith("acme.support", tokenResolver({ "tok-acme": "acme" })), {
       pin: ACME_PIN,
     });
     const appOrg = hostResolver === undefined ? "__fsd_default_org__" : "acme";
     for (const tenant of [TENANT_A, TENANT_B]) {
-      expect(await h.open("acme.support", `s-seat-${tenant}`, "tok-acme", OPERATOR, tenant)).toBe(201);
+      expect(await h.open("acme.support", `s-worker-${tenant}`, "tok-acme", OPERATOR, tenant)).toBe(201);
       expect(await h.open("app", `s-app-${tenant}`, undefined, VISITOR, tenant)).toBe(201);
-      await h.running(`r-seat-${tenant}`, {
+      await h.running(`r-worker-${tenant}`, {
         flowId: "acme.support",
-        flowKind: "seat",
+        flowKind: "worker",
         userId: OPERATOR,
         orgId: "acme",
         tenantId: tenant,
@@ -316,12 +316,12 @@ describe("the listings stay inside the caller's tenant", () => {
     return h;
   }
 
-  it("lists a seat's in-flight requests from the caller's tenant only", async () => {
+  it("lists a worker's in-flight requests from the caller's tenant only", async () => {
     const h = await bootTwoTenants();
 
     expect(await h.active("tok-acme", TENANT_A)).toEqual({
       status: 200,
-      ids: ["r-app-tenant-a", "r-seat-tenant-a"],
+      ids: ["r-app-tenant-a", "r-worker-tenant-a"],
     });
   });
 
@@ -337,7 +337,7 @@ describe("the listings stay inside the caller's tenant", () => {
     expect(await h.active(undefined, TENANT_A)).toEqual({ status: 200, ids: ["r-app-tenant-a"] });
     expect(await h.active("tok-acme", TENANT_A)).toEqual({
       status: 200,
-      ids: ["r-app-tenant-a", "r-seat-tenant-a"],
+      ids: ["r-app-tenant-a", "r-worker-tenant-a"],
     });
   });
 
@@ -345,7 +345,7 @@ describe("the listings stay inside the caller's tenant", () => {
     const mixed = await bootTwoTenants();
     expect(await mixed.sessions("tok-acme", TENANT_A)).toEqual({
       status: 200,
-      ids: ["s-app-tenant-a", "s-seat-tenant-a"],
+      ids: ["s-app-tenant-a", "s-worker-tenant-a"],
     });
     expect(await mixed.sessions(undefined, TENANT_A)).toEqual({ status: 200, ids: ["s-app-tenant-a"] });
 
@@ -355,7 +355,7 @@ describe("the listings stay inside the caller's tenant", () => {
     const hosted = await bootTwoTenants(() => ({ userId: VISITOR, orgId: "acme" }));
     expect(await hosted.sessions("tok-acme", TENANT_A)).toEqual({
       status: 200,
-      ids: ["s-app-tenant-a", "s-seat-tenant-a"],
+      ids: ["s-app-tenant-a", "s-worker-tenant-a"],
     });
     expect(await hosted.sessions(undefined, TENANT_A)).toEqual({ status: 200, ids: ["s-app-tenant-a"] });
   });

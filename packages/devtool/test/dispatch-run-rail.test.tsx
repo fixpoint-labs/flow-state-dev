@@ -27,7 +27,7 @@ const SESSIONS = [
     id: "dsx_1",
     title: "dsx_1",
     parentSessionId: "sess_talk",
-    // A per-worker key: one seat's session, re-entered by every row it runs.
+    // A per-worker key: one assignee's session, re-entered by every row it runs.
     topic: "worker|6:issues|9:implement",
     coordinate: "task:implement",
   },
@@ -147,7 +147,7 @@ describe("the rail lists a flow's dispatch runs", () => {
   it("labels the row and links to the session that started it", async () => {
     await openTheFlow();
 
-    // A seat's session is re-entered by every row that seat runs, so a reader
+    // An assignee's session is re-entered by every row that assignee runs, so a reader
     // needs to know they are looking at an existing session, not new work.
     expect(
       document.querySelector('[data-dispatch-run-origin="re-used"]')

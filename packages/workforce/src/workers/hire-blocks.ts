@@ -14,7 +14,7 @@
 import { handler, type JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { AGENT_KIND } from "../agent-worker-flow";
+import { AGENT_FLOW } from "../agent-worker-flow";
 import type { WorkerManifest } from "../manifest";
 import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
@@ -87,7 +87,7 @@ function rowFromStandard(manifest: WorkerManifest): WorkerRow {
   delete settings.description;
   const description = manifest.declared.description;
   return workerRowSchema.parse({
-    flow: standardWorkerFlow(manifest, AGENT_KIND),
+    flow: standardWorkerFlow(manifest, AGENT_FLOW),
     description: typeof description === "string" ? description : null,
     instructions: textOrNull(manifest.body),
     teamInstructions: textOrNull(manifest.teamInstructions),
@@ -156,7 +156,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     execute: async (input, ctx) => {
       refuseStandard(input.id, "hire over");
       const row = workerRowSchema.parse({
-        flow: input.flow ?? AGENT_KIND,
+        flow: input.flow ?? AGENT_FLOW,
         description: input.description ?? null,
         instructions: textOrNull(input.instructions),
         skills: input.skills ?? [],

@@ -1,7 +1,7 @@
 /**
  * The detector for one defect class: a workforce-tree entry the published
  * convention tells an author to write, which every reader then passes over in
- * silence — no record, no error, no seat, no document.
+ * silence — no record, no error, no worker, no document.
  *
  * **The class policy.** A declared-but-unsupported entry is either made to work
  * or refused loudly, naming the path. Silence is not an option. The policy is
@@ -35,7 +35,7 @@
  * **What this does not cover, deliberately.** Only what a published page or
  * README declares. Frontmatter keys are a different seam and already have their
  * own loud refusals — the readers' `refusedDeclaration` doors, and the hire's
- * refusal of a setting the kind does not declare.
+ * refusal of a setting the worker flow does not declare.
  *
  * A shape declared only in an internal tree note is **not** here, and cannot be
  * without giving up the guard: nothing in the repo states that lock, so such a
@@ -54,7 +54,7 @@ import {
   readReferencesDirectory,
   readResourcesDirectory,
 } from "../src/loader/read-resources-directory";
-import { readSeatSkills } from "../src/loader/read-seat-skills";
+import { readWorkerSkills } from "../src/loader/read-worker-skills";
 import { readWorkforce } from "../src/loader/read-workforce";
 import { DOCUMENT_SLOTS } from "../src/loader/resource-convention";
 
@@ -73,8 +73,8 @@ interface Readout {
   teams: string[];
   /** Resource-module refs the codegen walk found. */
   resourceModules: string[];
-  /** `<seat>:<name>` for every per-seat block registration the codegen walk found. */
-  seatBlocks: string[];
+  /** `<worker>:<name>` for every per-worker block registration the codegen walk found. */
+  workerBlocks: string[];
   /** Addresses of the packages that loaded, at any level. */
   packages: string[];
   /** `<package address>:<name>` for every package block the codegen walk found. */
@@ -82,15 +82,15 @@ interface Readout {
   /** `<slot>:<name>` for every file in a locked code folder. */
   code: string[];
   /**
-   * Skill names the `alpha.lead` seat resolved.
+   * Skill names the `alpha.lead` worker resolved.
    *
-   * Read through a SECOND `readSeatSkills` call rather than off the manifest
+   * Read through a SECOND `readWorkerSkills` call rather than off the manifest
    * `readWorkforce` already joined on, deliberately: a skill row stays
    * observable even when the `WORKER.md` beside it is the thing that failed,
    * which is exactly the case where a skills-level silence would otherwise be
    * hidden behind a worker-level one.
    */
-  teamSeatSkills: string[];
+  teamWorkerSkills: string[];
   /** Document refs that loaded, paired with the worker each one is addressed to. */
   workerAddressedRefs: Array<{ ref: string; worker: string; folder: string }>;
   /** Every root-relative path any reader reported as a failure. */
@@ -304,7 +304,7 @@ function pathsInFence(lines: readonly string[]): string[] {
   const found: string[] = [];
   const stack: Array<{ indent: number; name: string }> = [];
   for (const raw of lines) {
-    // Trailing annotations: `request-triage.ts     ← a worker kind`, `foo  # note`.
+    // Trailing annotations: `request-triage.ts     ← a worker flow`, `foo  # note`.
     const line = raw.replace(/\s+←.*$/, "").replace(/\s+#.*$/, "").trimEnd();
     if (line.trim() === "") continue;
     const indent = line.length - line.trimStart().length;
@@ -458,7 +458,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     publishedIn: {
       file: "apps/docs/docs/workforce/workers-on-disk.md",
       quote:
-        "`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported.",
+        "`org/workers/<name>/` is a worker slot like a team's, so a folder there with no `WORKER.md` is reported.",
     },
     write: (root) => writeFile(root, "org/workers/cos/WORKER.md", doc("The chief of staff.")),
     accountedFor: (out) => out.workers.includes("cos") || out.reported.includes("org/workers/cos"),
@@ -514,8 +514,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.reported.includes("teams/alpha/workers/lead/references/runbook.md"),
   },
   {
-    // The level with no seat below it: documents here load and are minted, and
-    // no seat can be hired at this address, so nothing reaches them. Tabled
+    // The level with no worker below it: documents here load and are minted, and
+    // no worker can be hired at this address, so nothing reaches them. Tabled
     // anyway — the pages publish the shape, and a shape that reaches nobody is
     // exactly the kind this suite must not let go unnoticed.
     shape: "org/workers/<worker>/references/<name>.md",
@@ -561,7 +561,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     write: (root) =>
       writeFile(root, "teams/alpha/skills/regression/SKILL.md", skillDoc("regression")),
     accountedFor: (out) =>
-      out.teamSeatSkills.includes("regression") ||
+      out.teamWorkerSkills.includes("regression") ||
       out.reported.includes("teams/alpha/skills/regression"),
   },
   {
@@ -573,7 +573,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/skills/sweep/SKILL.md", skillDoc("sweep")),
     accountedFor: (out) =>
-      out.teamSeatSkills.includes("sweep") ||
+      out.teamWorkerSkills.includes("sweep") ||
       out.reported.includes("teams/alpha/workers/lead/skills/sweep"),
   },
   {
@@ -597,7 +597,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     write: (root) =>
       writeFile(root, "org/skills/house-style/SKILL.md", skillDoc("house-style")),
     accountedFor: (out) =>
-      out.teamSeatSkills.includes("house-style") ||
+      out.teamWorkerSkills.includes("house-style") ||
       out.reported.includes("org/skills/house-style"),
   },
   {
@@ -606,9 +606,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       file: "apps/docs/docs/workforce/documents-on-disk.md",
       quote: ORG_WORKER_DOC_REF_ROW,
     },
-    // Beside its WORKER.md, as in the docs tree: the folder is the `build` seat.
+    // Beside its WORKER.md, as in the docs tree: the folder is the `build` worker.
     write: async (root) => {
-      await writeFile(root, "org/workers/build/WORKER.md", doc("The build seat."));
+      await writeFile(root, "org/workers/build/WORKER.md", doc("The build worker."));
       await writeFile(root, "org/workers/build/resources/playbook.md", doc("A playbook."));
     },
     accountedFor: (out) =>
@@ -681,7 +681,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "flows/workers/<kind>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "request-triage.ts       ← a worker kind",
+      quote: "request-triage.ts       ← a worker flow",
     },
     write: (root) =>
       writeFile(root, "flows/workers/request-triage.ts", "export default {};\n"),
@@ -707,12 +707,12 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     },
     write: (root) =>
       writeFile(root, "teams/alpha/blocks/build-status.ts", "export default {};\n"),
-    // A team's block is registered for every seat on the team, so the seat
+    // A team's block is registered for every worker on the team, so the worker
     // fixture beside it is what accounts for this one. A team with no workers
-    // registers it for nobody, which is why the WORKER.md row's seat is the
+    // registers it for nobody, which is why the WORKER.md row's worker is the
     // one looked for.
     accountedFor: (out) =>
-      out.seatBlocks.includes("alpha.lead:build-status") ||
+      out.workerBlocks.includes("alpha.lead:build-status") ||
       out.reported.includes("teams/alpha/blocks/build-status.ts"),
   },
   {
@@ -725,7 +725,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/blocks/page-oncall.ts", "export default {};\n"),
     accountedFor: (out) =>
-      out.seatBlocks.includes("alpha.lead:page-oncall") ||
+      out.workerBlocks.includes("alpha.lead:page-oncall") ||
       out.reported.includes("teams/alpha/workers/lead/blocks/page-oncall.ts"),
   },
   // A package: a `PACKAGE.md` and its `blocks/`, at each of the three levels a
@@ -879,8 +879,8 @@ async function readEverything(root: string): Promise<Readout> {
 
   const workforce = await readWorkforce(root);
   for (const error of workforce.errors) reported.push(error.path);
-  for (const seat of workforce.skillErrors) {
-    for (const error of seat.errors) reported.push(error.path);
+  for (const worker of workforce.skillErrors) {
+    for (const error of worker.errors) reported.push(error.path);
   }
   for (const error of workforce.teamErrors) reported.push(error.path);
 
@@ -890,13 +890,13 @@ async function readEverything(root: string): Promise<Readout> {
   const references = await readReferencesDirectory(root);
   for (const error of references.errors) reported.push(error.path);
 
-  // The seat the fixture's team shapes hang off. Read directly rather than
+  // The worker the fixture's team shapes hang off. Read directly rather than
   // through `readWorkforce`'s join so a shape stays observable even when the
   // `WORKER.md` beside it is the thing that failed.
-  const seat = await readSeatSkills(root, { team: "alpha", worker: "lead" });
-  for (const error of seat.errors) reported.push(error.path);
+  const worker = await readWorkerSkills(root, { team: "alpha", worker: "lead" });
+  for (const error of worker.errors) reported.push(error.path);
 
-  // Read directly for the reason the seat's skills are: a package row stays
+  // Read directly for the reason the worker's skills are: a package row stays
   // observable when the worker beside it failed, and the org's and a team's
   // libraries are packages no worker has to name to be read.
   const packages = await readPackagesDirectory(root);
@@ -905,13 +905,13 @@ async function readEverything(root: string): Promise<Readout> {
   let codeWalkThrew = false;
   let code: string[] = [];
   let resourceModules: string[] = [];
-  let seatBlocks: string[] = [];
+  let workerBlocks: string[] = [];
   let packageBlocks: string[] = [];
   try {
     const discovered = await discoverWorkforceCode(root);
     code = discovered.files.map((file) => `${file.slot}:${file.name}`);
     resourceModules = discovered.resourceModules.map((module) => module.ref);
-    seatBlocks = discovered.seatBlocks.map((entry) => `${entry.seat}:${entry.name}`);
+    workerBlocks = discovered.workerBlocks.map((entry) => `${entry.worker}:${entry.name}`);
     packageBlocks = discovered.packageBlocks.map((entry) => `${entry.package}:${entry.name}`);
   } catch (err) {
     // The codegen walk refuses loudly, by throwing once with every problem
@@ -944,11 +944,11 @@ async function readEverything(root: string): Promise<Readout> {
     references: references.documents.map((reference) => reference.ref),
     teams: workforce.teams.map((team) => team.id),
     resourceModules,
-    seatBlocks,
+    workerBlocks,
     packages: packages.packages.map((found) => found.path),
     packageBlocks,
     code,
-    teamSeatSkills: seat.skills.map((skill) => skill.name),
+    teamWorkerSkills: worker.skills.map((skill) => skill.name),
     workerAddressedRefs: resources.documents.flatMap((document) => {
       const addressed = workerFromRef(document.ref);
       return addressed === undefined ? [] : [{ ref: document.ref, ...addressed }];
@@ -1129,9 +1129,9 @@ describe("the published workforce-tree surface", () => {
 
     const out = await readEverything(root);
 
-    // The published example names a seat that exists: the docs tree gives
+    // The published example names a worker that exists: the docs tree gives
     // `org/workers/build/` its WORKER.md, so its runbook's ref resolves to a
-    // loaded seat, not merely to a reported folder.
+    // loaded worker, not merely to a reported folder.
     expect(out.workers).toContain("build");
 
     // The class policy, applied to an address instead of a path: a ref that

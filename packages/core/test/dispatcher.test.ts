@@ -79,18 +79,18 @@ describe("dispatcher — the definition", () => {
     ).toThrow(/non-empty action/);
   });
 
-  it("is a task seat when its type is task, carrying the session policy on its address", () => {
-    const seat = dispatcher({
+  it("is a task assignee when its type is task, carrying the session policy on its address", () => {
+    const assignee = dispatcher({
       name: "hand-off-implement",
       type: "task",
       action: "implement",
       session: "per-task"
     });
-    expect(seat.kind).toBe("handler");
-    expect(seat.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
+    expect(assignee.kind).toBe("handler");
+    expect(assignee.dispatch).toEqual({ type: "task", action: "implement", session: "per-task" });
   });
 
-  it("is a task seat from the session policy when type is omitted", () => {
+  it("is a task assignee from the session policy when type is omitted", () => {
     const perTask = dispatcher({
       name: "hand-off-implement",
       action: "implement",
@@ -128,15 +128,15 @@ describe("dispatcher — the definition", () => {
     expect(explicit.dispatch).toEqual({ type: "internal", action: "analyze" });
   });
 
-  it("lets a task seat name another flow", () => {
-    const seat = dispatcher({
+  it("lets a task assignee name another flow", () => {
+    const assignee = dispatcher({
       name: "hand-off-billing",
       type: "task",
       flowKind: "billing",
       action: "charge",
       session: "per-task"
     });
-    expect(seat.dispatch).toEqual({
+    expect(assignee.dispatch).toEqual({
       type: "task",
       action: "charge",
       session: "per-task",
@@ -144,7 +144,7 @@ describe("dispatcher — the definition", () => {
     });
   });
 
-  it("refuses an empty flowKind on a task seat", () => {
+  it("refuses an empty flowKind on a task assignee", () => {
     expect(() =>
       dispatcher({
         name: "blank-flow",
@@ -156,7 +156,7 @@ describe("dispatcher — the definition", () => {
     ).toThrow(/empty flowKind/);
   });
 
-  it("refuses a task seat with no session policy, by name", () => {
+  it("refuses a task assignee with no session policy, by name", () => {
     expect(() =>
       dispatcher({ name: "no-policy", type: "task", action: "implement", session: undefined as never })
     ).toThrow(/task session policy/);
@@ -271,7 +271,7 @@ describe("dispatcher — the body", () => {
     const { calls, ctx } = seamRecording();
     const envelope = {
       boardId: "issue-work",
-      seat: "implement",
+      assignee: "implement",
       taskId: "t1",
       attempt: 1,
       createdAt: 1_700_000_000_000,
@@ -307,27 +307,27 @@ describe("dispatcher — the body", () => {
     const { calls, ctx } = seamRecording();
     const envelope = {
       boardId: "issue-work",
-      seat: "charge",
+      assignee: "charge",
       taskId: "t1",
       attempt: 1,
       createdAt: 1,
       payload: {}
     };
-    const seat = dispatcher({
+    const assignee = dispatcher({
       name: "hand-off-billing",
       type: "task",
       flowKind: "billing",
       action: "charge",
       session: "per-task"
     });
-    await runForTest(seat, envelope, ctx);
+    await runForTest(assignee, envelope, ctx);
     expect(calls[0]?.flowKind).toBe("billing");
     expect(calls[0]?.action).toBe("charge");
   });
 
   it("looks a task's flow up per task, sync or async, and sends to the id it returns", async () => {
     const { calls, ctx } = seamRecording();
-    const envelope = { boardId: "work", seat: "alice", taskId: "t1", attempt: 1, createdAt: 1, payload: { goal: "g" } };
+    const envelope = { boardId: "work", assignee: "alice", taskId: "t1", attempt: 1, createdAt: 1, payload: { goal: "g" } };
     const asked: unknown[] = [];
     const sync = dispatcher({
       name: "per-task-sync",
@@ -354,10 +354,10 @@ describe("dispatcher — the body", () => {
 
   it("refuses flow-not-found naming the assignee when a per-task target answers nothing, before the seam", async () => {
     const { calls, ctx } = seamRecording();
-    const seat = dispatcher({ name: "per-task-none", action: "work", session: "per-task", flowKind: () => undefined });
+    const assignee = dispatcher({ name: "per-task-none", action: "work", session: "per-task", flowKind: () => undefined });
     const error = await runForTest(
-      seat,
-      { boardId: "work", seat: "ghost", taskId: "t9", attempt: 1, createdAt: 1, payload: {} },
+      assignee,
+      { boardId: "work", assignee: "ghost", taskId: "t9", attempt: 1, createdAt: 1, payload: {} },
       ctx
     ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DispatchRefusedError);

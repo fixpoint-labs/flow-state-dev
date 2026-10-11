@@ -77,7 +77,7 @@ import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   hireWorkforce,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -130,11 +130,11 @@ const agentTurn = {
   uses: [
     defineCapability({
       name: "inventory",
-      resources: { seatInventory: defineSeatInventoryCollection() },
+      resources: { workerInventory: defineWorkerInventoryCollection() },
     }),
     createWorkforceCapability({
       roster: { workers: roster.workers },
-      inventory: { seats: "seatInventory" },
+      inventory: { workers: "workerInventory" },
     }),
   ],
 };

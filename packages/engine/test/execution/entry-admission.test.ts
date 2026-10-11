@@ -53,7 +53,7 @@ const internalBlock = handler({
 });
 
 /**
- * A board's hand-off at a dispatcher seat, as `taskBoard()` installs it: a
+ * A board's hand-off at a dispatcher assignee, as `taskBoard()` installs it: a
  * block carrying a `task` address and the board's binding. The gate is the
  * identity here so the entry's block stays observable as the one declared —
  * this file is about which MAP resolves, not what the gate wraps.

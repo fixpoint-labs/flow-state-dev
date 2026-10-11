@@ -6,7 +6,7 @@
  * narrows.
  *
  * Every worker runs on one copy of the flow it names, so the rail's worker
- * section is the `agent` kind, its one copy, and that copy's conversations:
+ * section is the `agent` worker flow, its one copy, and that copy's conversations:
  * each one a session that names its worker when it is created. The
  * coordinator flow is a singleton: its row opens straight into the person's
  * conversation with each coordinator the tree declares.
@@ -28,8 +28,8 @@ import type { Browser, Locator, Page, Request } from "@playwright/test";
 import { test, expect, openKitchenSink } from "./fixtures";
 
 /** A standard worker on `agent`, declared in the app's workforce tree. */
-const SEAT = "support.devices";
-/** The flow every worker in this app runs on, registered as one copy at its kind. */
+const WORKER = "support.devices";
+/** The flow every worker in this app runs on, registered as one copy under its name. */
 const WORKER_FLOW = "agent";
 /** The coordinator the app's workforce tree declares. */
 const COORDINATOR = "support.help";
@@ -58,9 +58,9 @@ function requestsMatching(page: Page, pattern: RegExp): { take: () => string[] }
  * Give the worker one conversation: a session of its flow's one copy, created
  * naming it, so the copy has something to open into.
  */
-async function seedSeatSession(page: Page, title?: string): Promise<string> {
+async function seedWorkerSession(page: Page, title?: string): Promise<string> {
   const response = await page.request.post(`/api/flows/${WORKER_FLOW}/sessions`, {
-    data: { userId: "devuser", state: { workerId: SEAT }, ...(title === undefined ? {} : { title }) },
+    data: { userId: "devuser", state: { workerId: WORKER }, ...(title === undefined ? {} : { title }) },
   });
   expect(response.ok(), await response.text()).toBe(true);
   const json = (await response.json()) as { session?: { id: string }; id?: string };
@@ -74,16 +74,16 @@ async function openShell(page: Page): Promise<void> {
 
 const rail = (page: Page) => page.getByTestId("rail");
 const row = (page: Page, name: string) => rail(page).getByRole("button", { name, exact: true });
-/** A kind's own row. The worker flow's kind and its one copy share the name `agent`. */
-const kindRow = (page: Page, kind: string) => rail(page).locator(`button[data-kind="${kind}"]`);
-/** A copy's row under its kind. */
+/** A flow's own row. The worker flow and its one copy share the name `agent`. */
+const flowRow = (page: Page, flow: string) => rail(page).locator(`button[data-kind="${flow}"]`);
+/** A copy's row under its flow. */
 const copyRow = (page: Page, id: string) => rail(page).locator(`button[data-instance-id="${id}"]`);
 
 test("the rail opens the coordinator into the person's conversation with it and the worker flow into its one copy, reading only leaves", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
-  const seatSessionId = await seedSeatSession(page);
+  const workerSessionId = await seedWorkerSession(page);
   const requests = sessionListRequests(page);
   await openShell(page);
   await expect(rail(page).getByRole("list", { name: "Coordinators" })).toBeVisible();
@@ -98,7 +98,7 @@ test("the rail opens the coordinator into the person's conversation with it and 
 
   // The coordinator flow is a singleton: its row is the leaf, so opening it
   // lands straight on the person's conversation with each coordinator the
-  // tree declares, found by the coordinator's id. The kind is never listed
+  // tree declares, found by the coordinator's id. The flow is never listed
   // whole: every list it reads names the coordinator's worker.
   await row(page, "coordinator").click();
   await expect(row(page, COORDINATOR)).toBeVisible();
@@ -108,26 +108,26 @@ test("the rail opens the coordinator into the person's conversation with it and 
     expect(new URL(url).searchParams.get("state.workerId"), url).toBe(COORDINATOR);
   }
 
-  // The worker flow is a collection with one copy: opening its kind lists the
+  // The worker flow is a collection with one copy: opening its row lists the
   // copy and reads nothing. No copy is drawn per worker.
-  await kindRow(page, WORKER_FLOW).click();
+  await flowRow(page, WORKER_FLOW).click();
   await expect(copyRow(page, WORKER_FLOW)).toBeVisible();
-  await expect(copyRow(page, SEAT)).toHaveCount(0);
+  await expect(copyRow(page, WORKER)).toHaveCount(0);
   await page.waitForTimeout(300);
   expect(requests.take()).toEqual([]);
 
   // Opening the copy is one read, for that copy, and shows the conversation
   // created naming the worker.
   await copyRow(page, WORKER_FLOW).click();
-  await expect(rail(page).locator(`[data-session-id="${seatSessionId}"]`)).toBeVisible();
-  const seatReads = requests.take();
-  expect(seatReads).toHaveLength(1);
-  expect(seatReads[0]).toContain(`flowId=${encodeURIComponent(WORKER_FLOW)}`);
+  await expect(rail(page).locator(`[data-session-id="${workerSessionId}"]`)).toBeVisible();
+  const workerReads = requests.take();
+  expect(workerReads).toHaveLength(1);
+  expect(workerReads[0]).toContain(`flowId=${encodeURIComponent(WORKER_FLOW)}`);
 });
 
 /**
  * The header's model is the assistant's own preference, and only the assistant
- * answers with it. A coordinator or a seat answers through its model intents,
+ * answers with it. A coordinator or a worker answers through its model intents,
  * which an `FSDEV_*` override can point anywhere, and its replies carry the
  * model that ran. So on those views the header names no model: one it named
  * could contradict every reply beneath it.
@@ -135,11 +135,11 @@ test("the rail opens the coordinator into the person's conversation with it and 
  * Red state produced before this was trusted: pass the assistant's model to the
  * header whatever is picked, and the coordinator assertion fails (the label is still there).
  */
-test("the header names the assistant's model on the assistant only, never on a coordinator or a seat", async ({
+test("the header names the assistant's model on the assistant only, never on a coordinator or a worker", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
-  const seatSessionId = await seedSeatSession(page);
+  const workerSessionId = await seedWorkerSession(page);
   const headerModel = page.getByTestId("header-model");
   await openShell(page);
   await expect(headerModel).toBeVisible();
@@ -153,17 +153,17 @@ test("the header names the assistant's model on the assistant only, never on a c
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
 
-  await expand(kindRow(page, WORKER_FLOW));
+  await expand(flowRow(page, WORKER_FLOW));
   await expand(copyRow(page, WORKER_FLOW));
-  await rail(page).locator(`[data-session-id="${seatSessionId}"]`).click();
+  await rail(page).locator(`[data-session-id="${workerSessionId}"]`).click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
 });
 
 /** The assistant's kind: its row is the leaf that carries "New session". */
-const SHELL_KIND = "chat-agent";
-/** A seat name that runs past any rail. */
-const LONG_SEAT = "support.escalations-overnight-weekend-queue";
+const SHELL_FLOW = "chat-agent";
+/** A worker name that runs past any rail. */
+const LONG_WORKER = "support.escalations-overnight-weekend-queue";
 /** A conversation title that runs past any rail. */
 const LONG_TITLE = "Refund escalation for order 4417 and both of its linked chargebacks";
 
@@ -173,7 +173,7 @@ const LONG_TITLE = "Refund escalation for order 4417 and both of its linked char
  * with a name this long. Its session read goes to the real server, which has
  * none for it.
  */
-async function withLongSeat(page: Page): Promise<void> {
+async function withLongWorker(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === "/api/flows",
     async (route) => {
@@ -181,7 +181,7 @@ async function withLongSeat(page: Page): Promise<void> {
       const response = await route.fetch();
       const body = (await response.json()) as { flows: Record<string, unknown>[] };
       body.flows.push({
-        id: LONG_SEAT,
+        id: LONG_WORKER,
         kind: "agent",
         cardinality: "collection",
         requireUser: true,
@@ -329,7 +329,7 @@ const measureRows = (nav: Locator) =>
       };
       const labelOf = (b: Element) => (b.textContent ?? "").replace(/[▾▸]/g, "").trim();
       // Sessions stand at the level a collection's copies would when their
-      // leaf is a singleton's kind row, and one deeper under a copy.
+      // leaf is a singleton's flow row, and one deeper under a copy.
       const sessionLevel = (leaf: Element) =>
         leaf.parentElement?.querySelector(":scope > div > button[data-kind]") ? 2 : 3;
 
@@ -403,7 +403,7 @@ const measureRows = (nav: Locator) =>
         }).length,
       };
     },
-    [LONG_SEAT, LONG_TITLE],
+    [LONG_WORKER, LONG_TITLE],
   );
 
 const spread = (xs: number[]) => (xs.length === 0 ? 0 : Math.max(...xs) - Math.min(...xs));
@@ -498,17 +498,17 @@ async function checkRail(
 
   // G7, with each long row pointed at so its actions are measured shown.
   const railWidth = await nav.evaluate((el) => el.getBoundingClientRect().width);
-  await nav.locator(`[data-instance-id="${LONG_SEAT}"]`).hover();
-  const fitSeat = (await measureRows(nav)).fit;
+  await nav.locator(`[data-instance-id="${LONG_WORKER}"]`).hover();
+  const fitWorker = (await measureRows(nav)).fit;
   const titled = nav.locator("button[data-session-id]").filter({ hasText: LONG_TITLE });
   await titled.first().hover();
   const fitTitle = (await measureRows(nav)).fit;
   const fit = [
-    ...fitSeat.filter((f) => f.label.includes(LONG_SEAT)),
+    ...fitWorker.filter((f) => f.label.includes(LONG_WORKER)),
     ...fitTitle.filter((f) => f.label.includes(LONG_TITLE)),
   ];
   soft(
-    fitSeat.some((f) => f.label.includes(LONG_SEAT)) &&
+    fitWorker.some((f) => f.label.includes(LONG_WORKER)) &&
       fitTitle.some((f) => f.label.includes(LONG_TITLE)) &&
       fit.every((f) => f.ellipsized && !f.overflows) && !m.railOverflows && ink("hitW") <= 0.5 && ink("hitH") <= 0.5,
     `G7 at ${railWidth}px the long labels ellipsize, actions keep their box, nothing overflows`,
@@ -594,12 +594,12 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   // title too long for the rail, a copy with none, and the singleton
   // coordinator flow. The app draws no detail under a copy: a worker's flow and
   // what it handles are on the roster panel, which the VG test below reads.
-  await seedSeatSession(page);
-  await seedSeatSession(page, LONG_TITLE);
+  await seedWorkerSession(page);
+  await seedWorkerSession(page, LONG_TITLE);
 
   // Kitchen-sink's own rail, at its 256px.
   const openShellRail = async (p: Page) => {
-    await withLongSeat(p);
+    await withLongWorker(p);
     await p.goto("/");
     await expect(p.locator('[data-testid="message-input"]:visible')).toBeEnabled();
     return rail(p).locator("nav[data-fsd-flow-navigator]");
@@ -610,7 +610,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   // Every level indents inside ONE scroll container: nested scrollbars in 256px are the failure.
   expect((await measureRows(shellNav)).scrollers).toBe(1);
   await checkRail(page, shellNav, "/", {
-    hoverRow: `[data-kind="${SHELL_KIND}"]`,
+    hoverRow: `[data-kind="${SHELL_FLOW}"]`,
     quietRow: '[data-kind="coordinator"]',
     container: rail(page),
     file: "rail-kitchen-sink.png",
@@ -619,7 +619,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
 
   // The developer tool's rail, narrowed to the same 256px.
   const openToolRail = async (p: Page) => {
-    await withLongSeat(p);
+    await withLongWorker(p);
     await p.goto("/devtool");
     const nav = p.getByTestId("devtool-panel").locator("nav[data-fsd-flow-navigator]");
     await expect(nav.locator(`[data-kind="agent"]`)).toBeVisible();

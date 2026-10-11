@@ -62,7 +62,7 @@ const seatState = z.object({
   /** The worker's skill names, in the order they reached the block. */
   skills: z.array(z.string()).nullable().default(null),
   desk: z.string().nullable().default(null),
-  /** Whether the turn's worker carried the contract's `seatSkills` key at all. */
+  /** Whether the turn's worker carried the contract's `workerSkills` key at all. */
   hasSeatSkills: z.boolean().nullable().default(null),
   runs: z.number().default(0)
 });
@@ -116,11 +116,11 @@ const recordSkills = handler({
   outputSchema: z.void(),
   sessionStateSchema: seatState,
   execute: async (_input, ctx) => {
-    const config = workerConfigOf(ctx) as { seatSkills?: Array<{ name: string }>; desk?: string };
+    const config = workerConfigOf(ctx) as { workerSkills?: Array<{ name: string }>; desk?: string };
     await ctx.session.patchState({
-      skills: (config.seatSkills ?? []).map((skill) => skill.name),
+      skills: (config.workerSkills ?? []).map((skill) => skill.name),
       desk: config.desk ?? null,
-      hasSeatSkills: Object.hasOwn(config, "seatSkills")
+      hasSeatSkills: Object.hasOwn(config, "workerSkills")
     });
   }
 });
@@ -128,7 +128,7 @@ const recordSkills = handler({
 /**
  * The control pair's nested read: its own setting, and whether the contract's
  * key arrived, but no requirement on any setting. A block that required
- * `seatSkills` would refuse the control on its own, whether or not its schema
+ * `workerSkills` would refuse the control on its own, whether or not its schema
  * could take the bag, and certify whichever cause the reader already believed.
  */
 const recordDesk = handler({
@@ -138,11 +138,11 @@ const recordDesk = handler({
   sessionStateSchema: seatState,
   execute: async (_input, ctx) => {
     const config = workerConfigOf(ctx) as { desk?: string };
-    await ctx.session.patchState({ desk: config.desk ?? null, hasSeatSkills: Object.hasOwn(config, "seatSkills") });
+    await ctx.session.patchState({ desk: config.desk ?? null, hasSeatSkills: Object.hasOwn(config, "workerSkills") });
   }
 });
 
-/** The delivery claim's action set — reads the turn's `seatSkills`. */
+/** The delivery claim's action set — reads the turn's `workerSkills`. */
 const actions = {
   run: {
     inputSchema,
@@ -194,7 +194,7 @@ export const twinInstallation = createWorkerInstallation({
 
 /**
  * The control: a schema that **cannot take the bag a worker is handed**,
- * because it omits `seatSkills`.
+ * because it omits `workerSkills`.
  *
  * Deliberately not "the same flow with `workerConfigSchema()` removed". That
  * version refuses too, but removing the helper also removes every contract key,
@@ -209,12 +209,12 @@ export const noContractFlow = defineFlow({
   configSchema: z.object({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
-    // Declared so `seatSkills` stays the SINGLE missing key.
-    seatTools: z.array(z.any()).default([]),
-    seatPackages: z.array(z.any()).optional(),
+    // Declared so `workerSkills` stays the SINGLE missing key.
+    workerTools: z.array(z.any()).default([]),
+    workerPackages: z.array(z.any()).optional(),
     // Imposed on every worker: its own id.
-    seatId: z.string().optional(),
-    // `seatSkills` omitted — the single reason the bag is refused.
+    workerId: z.string().optional(),
+    // `workerSkills` omitted — the single reason the bag is refused.
     desk: z.string().default("front")
   }),
   resources: { ...controlInstallation.resources },
@@ -229,7 +229,7 @@ export const noContractFlow = defineFlow({
  * It registers, and its worker runs.
  *
  * Runs `controlActions` like its twin, so the pair differs in exactly one
- * thing: whether its `configSchema` declares `seatSkills`.
+ * thing: whether its `configSchema` declares `workerSkills`.
  */
 export const handRolledFlow = defineFlow({
   kind: HAND_ROLLED_KIND,
@@ -237,10 +237,10 @@ export const handRolledFlow = defineFlow({
   configSchema: z.object({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
-    seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
-    seatTools: z.array(z.any()).default([]),
-    seatPackages: z.array(z.any()).optional(),
-    seatId: z.string().optional(),
+    workerSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
+    workerTools: z.array(z.any()).default([]),
+    workerPackages: z.array(z.any()).optional(),
+    workerId: z.string().optional(),
     desk: z.string().default("front")
   }),
   resources: { ...twinInstallation.resources },

@@ -86,7 +86,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, devteamCosModel, personPage, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { LAB_CROWD, LAB_USERS, PROJECTS_KIND } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory", "no-tool", "drop-solo"] as const;
@@ -378,8 +378,8 @@ async function flowOf(worker: string): Promise<string> {
 
 /** The Lab's project setup: the two standard workers behind a project, as the Lab names them. */
 async function readSetup(owner: LabApi): Promise<Setup> {
-  const session = await owner.createSession(PROJECTS_KIND);
-  const answered = await owner.act(PROJECTS_KIND, session, "projectSetup", {});
+  const session = await owner.createSession(PROJECTS_FLOW);
+  const answered = await owner.act(PROJECTS_FLOW, session, "projectSetup", {});
   const { projectCoordinator, workstreamCoordinator } = (answered.output ?? {}) as { projectCoordinator?: unknown; workstreamCoordinator?: unknown };
   if (answered.status !== "completed" || typeof projectCoordinator !== "string" || typeof workstreamCoordinator !== "string") {
     throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.output ?? answered.error)}`);
@@ -773,8 +773,8 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
   const read = await entriesOf(outsider, at(held));
   const want = await entriesOf(owner, at(held));
   if (!same(read.map((e) => e.key), want.map((e) => e.key))) fail(outLeg, `the outsider, in the organization, reads ${held.row.id}'s entries as ${diff(want.map((e) => e.key), read.map((e) => e.key))}`);
-  const session = await outsider.createSession(PROJECTS_KIND);
-  const open = await outsider.act(PROJECTS_KIND, session, "openWorkstream", {
+  const session = await outsider.createSession(PROJECTS_FLOW);
+  const open = await outsider.act(PROJECTS_FLOW, session, "openWorkstream", {
     project: { visibility: "shared", id: held.row.id },
     id: fixture.race.id,
     title: fixture.race.title,
@@ -807,8 +807,8 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
   const input = { project, id: fixture.race.id, title: fixture.race.title, lead: setup.workstreamCoordinator };
 
   // The opens. The barrier: every session exists before any open is sent, and all are sent in one go.
-  const windows = await Promise.all(racers.map((r) => Promise.all(Array.from({ length: fixture.race.opens }, () => r.createSession(PROJECTS_KIND)))));
-  const opened = await Promise.all(racers.map((r, i) => Promise.all(windows[i]!.map((w) => r.act(PROJECTS_KIND, w, "openWorkstream", input)))));
+  const windows = await Promise.all(racers.map((r) => Promise.all(Array.from({ length: fixture.race.opens }, () => r.createSession(PROJECTS_FLOW)))));
+  const opened = await Promise.all(racers.map((r, i) => Promise.all(windows[i]!.map((w) => r.act(PROJECTS_FLOW, w, "openWorkstream", input)))));
   const answered = new Map<string, string>();
   for (const [i, r] of racers.entries()) {
     const who = r.user.userId;
@@ -826,9 +826,9 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
   // The updates: each field changed `copies` times, every racer's at once, each from a session of its own.
   const changes = fixture.race.changes.map((c) => (c.title === undefined ? c : { ...c, title: `${c.title} ${RUN_STAMP}` }));
   const sends = changes.flatMap((c) => Array.from({ length: fixture.race.copies }, () => c));
-  const updateWindows = await Promise.all(racers.map((r) => Promise.all(sends.map(() => r.createSession(PROJECTS_KIND)))));
+  const updateWindows = await Promise.all(racers.map((r) => Promise.all(sends.map(() => r.createSession(PROJECTS_FLOW)))));
   const updated = await Promise.all(
-    racers.map((r, i) => Promise.all(sends.map((c, j) => r.act(PROJECTS_KIND, updateWindows[i]![j]!, "updateWorkstream", { project, id: fixture.race.id, ...c })))),
+    racers.map((r, i) => Promise.all(sends.map((c, j) => r.act(PROJECTS_FLOW, updateWindows[i]![j]!, "updateWorkstream", { project, id: fixture.race.id, ...c })))),
   );
   for (const [i, r] of racers.entries()) {
     const refused = updated[i]!.filter((u) => u.status !== "completed");
@@ -1025,7 +1025,7 @@ await runGoal(async (failures) => {
     if (MODEL_FREE) {
       const setup = await readSetup(apis.owner);
       // The owner's private project, made the way an app makes one: through the projects flow, as them.
-      const made = await apis.owner.act(PROJECTS_KIND, await apis.owner.createSession(PROJECTS_KIND), "createProject", {
+      const made = await apis.owner.act(PROJECTS_FLOW, await apis.owner.createSession(PROJECTS_FLOW), "createProject", {
         id: `own-${RUN_STAMP.replace(/_/g, "-")}`,
         title: `${fixture.privateProject.title} ${RUN_STAMP}`,
         brief: fixture.privateProject.brief,

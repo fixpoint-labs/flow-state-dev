@@ -2,8 +2,8 @@
  * The Inventory tab — the organization's registered workers, read from one
  * session.
  *
- * Shown on any session whose flow declares the seat inventory as
- * browser-readable (a seat carrying the hire tools declares it). A flow that
+ * Shown on any session whose flow declares the worker inventory as
+ * browser-readable (a worker carrying the hire tools declares it). A flow that
  * does not declare it shows no tab, never an empty table.
  *
  * Every request — the manifest and every page of the collection — goes
@@ -25,17 +25,17 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Boxes } from "lucide-react";
 import { useDevTool } from "../../context/devtool-context";
-import { readEveryPage, seatInventoryRef, toSeatRow, type InventoryRead } from "../../lib/inventory";
+import { readEveryPage, workerInventoryRef, toWorkerRow, type InventoryRead } from "../../lib/inventory";
 import { TabsContent, TabsTrigger } from "../ui/tabs";
 
 /** The tab's value in the workspace `Tabs`. */
 const INVENTORY_TAB = "inventory";
 
-/** The seat inventory's ref, once the manifest says the tab belongs. `null` while loading, or when it does not. */
+/** The worker inventory's ref, once the manifest says the tab belongs. `null` while loading, or when it does not. */
 const InventoryContext = createContext<string | null>(null);
 
 /**
- * Read the session's resource manifest once and share the seat inventory's
+ * Read the session's resource manifest once and share the worker inventory's
  * ref. Renders its children immediately; the tab trigger and content appear
  * once the manifest says they belong.
  *
@@ -54,7 +54,7 @@ export function InventoryProvider({ sessionId, children }: { sessionId: string |
     resourceClient
       .getResourceManifest(sessionId)
       .then((manifest) => {
-        if (!cancelled) setRef(seatInventoryRef(manifest) ?? null);
+        if (!cancelled) setRef(workerInventoryRef(manifest) ?? null);
       })
       .catch(() => {
         if (!cancelled) setRef(null);
@@ -67,7 +67,7 @@ export function InventoryProvider({ sessionId, children }: { sessionId: string |
   return <InventoryContext.Provider value={ref}>{children}</InventoryContext.Provider>;
 }
 
-/** The tab's trigger, rendered only on a session that declares a readable seat inventory. */
+/** The tab's trigger, rendered only on a session that declares a readable worker inventory. */
 export function InventoryTabTrigger() {
   return useContext(InventoryContext) === null ? null : <TabsTrigger value={INVENTORY_TAB}>Inventory</TabsTrigger>;
 }
@@ -83,7 +83,7 @@ export function InventoryTabContent({ sessionId }: { sessionId: string | null })
   );
 }
 
-/** The seat section, for a session whose inventory ref is already known. */
+/** The worker section, for a session whose inventory ref is already known. */
 function InventoryView({ sessionId, inventoryRef }: { sessionId: string; inventoryRef: string }) {
   const { resourceClient } = useDevTool();
   const [read, setRead] = useState<InventoryRead | null>(null);
@@ -116,7 +116,7 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
         </p>
       )}
 
-      <Section name="seats" title="Registered seats" read={read} noun="seats">
+      <Section name="workers" title="Registered workers" read={read} noun="workers">
         {(rows) => (
           <table className="w-full text-xs">
             <thead>
@@ -126,10 +126,10 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
               </tr>
             </thead>
             <tbody>
-              {rows.map(toSeatRow).map((seat) => (
-                <tr key={seat.id} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{seat.id}</td>
-                  <td className="py-1.5 pr-3 text-slate-300">{seat.kind ?? "unknown"}</td>
+              {rows.map(toWorkerRow).map((worker) => (
+                <tr key={worker.id} className="border-b border-slate-800/50 align-top">
+                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{worker.id}</td>
+                  <td className="py-1.5 pr-3 text-slate-300">{worker.kind ?? "unknown"}</td>
                 </tr>
               ))}
             </tbody>
@@ -141,7 +141,7 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
 }
 
 /**
- * The seat section. Failed, empty and a table render three different ways,
+ * The worker section. Failed, empty and a table render three different ways,
  * and none of them as another.
  */
 function Section({

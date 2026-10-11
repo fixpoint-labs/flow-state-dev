@@ -59,7 +59,7 @@ const TEAM_WORKER_PLACE = `teams/*/${WORKERS_LEVEL}/*/${RESOURCES_SLOT}`;
  * in the order the walk visits them.
  *
  * Patterns rather than the concrete folders walked: the concrete list is one
- * line per seat in the tree, and what an author wants to read back is where the
+ * line per worker in the tree, and what an author wants to read back is where the
  * convention looks. Frozen, and never joined onto a path by a door — the walk
  * finds its folders by walking, not by expanding these. Each entry is the
  * {@link ResourcePlace.pattern} of the places the walk yields there, which is
@@ -158,9 +158,9 @@ export async function* walkResourcePlaces(
       atWorkerRoot: false,
       mintRef: (name) => mintResourceRef(undefined, undefined, name),
     };
-    // Org workers are rare shared seats, and their files load for the reason
+    // Org workers are rare shared workers, and their files load for the reason
     // a team worker's do. Their ref drops `org/`, exactly as an org file's
-    // does, and names the seat the roster reader mints from the same folder:
+    // does, and names the worker the roster reader mints from the same folder:
     // the bare folder name.
     yield* walkWorkers(orgDir, "org", undefined, options);
   }
@@ -201,7 +201,7 @@ export async function* walkResourcePlaces(
  * *file* in it occupies no slot and is passed over in silence. Inside a worker's
  * slot the rule is the door's again.
  *
- * What it does NOT do is open `WORKER.md`. Whether a folder describes a seat is
+ * What it does NOT do is open `WORKER.md`. Whether a folder describes a worker is
  * the roster reader's question, answered and reported separately; the doors are
  * answering a question about a file.
  */
@@ -225,16 +225,16 @@ export async function* walkWorkers(
     // No name is special at this level — including `resources`. A folder here
     // is judged by the slot it occupies, not by what it looks like, which is
     // the rule the other readers already apply: `readWorkforceDirectory` hires
-    // `teams/<t>/workers/resources/` off its `WORKER.md`, and `readSeatSkills`
-    // reads that seat's own `skills/`. Skipping the name here would leave
-    // exactly one seat in the tree whose files are read by nothing and reported
+    // `teams/<t>/workers/resources/` off its `WORKER.md`, and `readWorkerSkills`
+    // reads that worker's own `skills/`. Skipping the name here would leave
+    // exactly one worker in the tree whose files are read by nothing and reported
     // by nothing — the silent drop this convention exists to remove,
     // reintroduced one level down.
     //
     // It would also buy nothing. The author who writes a document one level too
     // high, at `workers/resources/stray.md`, is not rescued by a skip: that file
     // sits beside a `resources/` slot rather than in one, so the walk passes it
-    // over either way. What the skip cost was a real seat's files.
+    // over either way. What the skip cost was a real worker's files.
     const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
     const entryPath = `${workersPath}/${workerName}`;
     const entry = await classify(workerDir);

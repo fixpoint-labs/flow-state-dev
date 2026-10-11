@@ -96,7 +96,7 @@ export interface FlowRegistry {
    * the caller's question is "is this address free now" and both answers are
    * yes.
    *
-   * **The kind keeps its seat in the cross-flow schema view**, even when this
+   * **The kind keeps its worker in the cross-flow schema view**, even when this
    * removes its last instance — see {@link InMemoryFlowRegistry.unregister}.
    */
   unregister(id: string): boolean;

@@ -160,11 +160,11 @@ export {
   type PanelRowSource,
   type PanelItemSource,
   type RosterProps,
-  type RosterSeat,
-  type RosterSeatRow,
+  type RosterWorker,
+  type RosterWorkerRow,
   type RosterSlots,
-  SeatDetail,
-  type SeatDetailProps
+  WorkerDetail,
+  type WorkerDetailProps
 } from "./components/panels";
 
 export {

@@ -104,7 +104,7 @@ export const TASK_ID_STATE_KEY = "taskId";
  * of its own. Its own kind, so a listing of a worker flow's sessions never
  * shows a roster session.
  */
-export const ROSTER_FLOW_KIND = "workforce-roster";
+export const ROSTER_FLOW = "workforce-roster";
 
 /**
  * The session-state field that names the flow a task session's filer runs

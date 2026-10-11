@@ -3,8 +3,8 @@
  *
  * A refresh makes each read once and hands back one snapshot. Counts, badges
  * and screens all draw from that snapshot, so the sidebar's Inbox count and
- * the Inbox list can never disagree, and a Lab with dozens of seats costs one
- * listing and one ask read per seat session, not one per badge.
+ * the Inbox list can never disagree, and a Lab with dozens of workers costs one
+ * listing and one ask read per worker session, not one per badge.
  *
  * What a refresh reads, in order:
  *
@@ -22,18 +22,18 @@
  *    A Lab that still lists the person no session (it serves no roster) names
  *    no organization, and gets the refusal too: Shift Manager never draws a
  *    Lab under an unknown one (ER-4).
- * 3. **The inventory**: the organization's seat collection, found by its
+ * 3. **The inventory**: the organization's worker collection, found by its
  *    published key pattern in the manifest of a listed session whose flow
  *    declares it (the roster flow does). Nothing about the tree is written in
- *    Shift Manager; this is where every seat and team name comes from.
+ *    Shift Manager; this is where every worker and team name comes from.
  * 4. **Every conversation's board**: the tasks a
  *    conversation filed sit in one collection at the person's own scope,
  *    each under its conversation's partition, so one read through any
  *    session whose flow declares it answers every board of theirs, grouped
  *    here by the conversation that holds it (`<sessionId>.tasks`).
- * 5. **Pending asks**: for each listed session a seat owns, the suspension
+ * 5. **Pending asks**: for each listed session a worker owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
- *    pending. Not the transcript. A seat is one the inventory registers, or
+ *    pending. Not the transcript. A worker is one the inventory registers, or
  *    one of the person's own workers: those are on their roster, never in the
  *    inventory, so the roster is read first, through Workforce's `roster()`,
  *    which answers for the caller only.
@@ -50,8 +50,8 @@
  * failure and the rest of the snapshot is whole (BR-11). Nothing retries by
  * itself, and nothing is filled in from a guess.
  *
- * Manifests are static per flow kind, so they are cached across refreshes by
- * kind, never re-read per screen.
+ * Manifests are static per flow, so they are cached across refreshes by
+ * flow, never re-read per screen.
  *
  * The one answer path, {@link LabReader.resume}, is here too, so Inbox and
  * Chief of Staff resolve an ask the same way: through the flow the ask's
@@ -61,7 +61,7 @@ import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type S
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { ROSTER_FLOW_KIND, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { workforceClientFor, type LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -78,22 +78,22 @@ export function workerOf(session: SessionSummary): string | null {
 /** One section's outcome: its value, or why it has none. */
 export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure };
 
-/** A seat, as the seat inventory registers it: one worker. */
-export type Seat = {
+/** A worker, as the worker inventory registers it: one worker. */
+export type Worker = {
   /**
-   * The worker's id: `<team>.<name>`, or a bare name for an org seat. Boards
-   * name the seat by it, and its sessions carry it as their `workerId`.
+   * The worker's id: `<team>.<name>`, or a bare name for an org worker. Boards
+   * name the worker by it, and its sessions carry it as their `workerId`.
    */
   id: string;
   /** The worker flow the worker runs on, which is also that flow's copy id; `null` on a row that has none. */
   kind: string | null;
   /**
-   * The action that takes a person's message into this seat's sessions, as
-   * the hire published it; `null` when its kind takes none, or on a row
+   * The action that takes a person's message into this worker's sessions, as
+   * the hire published it; `null` when its worker flow takes none, or on a row
    * written before doors were published.
    */
   door: string | null;
-  /** The team it sits under, or {@link STAFF_TEAM} for an org seat (see {@link toSeat}). */
+  /** The team it sits under, or {@link STAFF_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
   name: string;
 };
@@ -176,12 +176,12 @@ export type ConversationBoards = { refs: string[]; rows: BoardRow[] };
 
 /** A pending approval or question, and the session that holds it. */
 export type Ask = {
-  /** The seat session the ask waits in. */
+  /** The worker session the ask waits in. */
   sessionId: string;
-  /** The seat that asked, when the session names its owner. */
-  seatId: string | null;
+  /** The worker that asked, when the session names its owner. */
+  workerId: string | null;
   /**
-   * The flow instance that owns the session, which is what the answer goes
+   * The worker's flow copy that owns the session, which is what the answer goes
    * through. `null` on a session written before instance ownership: its ask
    * is shown, and its answer is unavailable.
    */
@@ -220,7 +220,7 @@ export const DISPATCHED_RUN_UNANSWERABLE =
 
 /**
  * Why a Lab that lists the person no session, even after one was asked for on
- * the reader kinds, is refused: nothing it serves says which organization they are in.
+ * the reader flows, is refused: nothing it serves says which organization they are in.
  */
 function noOrganization(userId: string, why = "it holds no session of theirs and serves no roster flow to open one on"): string {
   return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
@@ -236,10 +236,10 @@ export const UNOWNED_SESSION_UNANSWERABLE =
  */
 export type DeclaredResource = { ref: string; sessionId: string };
 
-/** The organization's seats, as the inventory registers them. */
+/** The organization's workers, as the inventory registers them. */
 export type Inventory = {
-  /** Every seat the inventory registers. */
-  seats: Seat[];
+  /** Every worker the inventory registers. */
+  workers: Worker[];
 };
 
 /** Everything one refresh read. */
@@ -270,16 +270,16 @@ export type LabSnapshot =
       resources: Section<DeclaredResource[]>;
     };
 
-/** The organization's seat inventory, by its published key pattern. */
-const SEAT_INVENTORY_PATTERN = "inventory/seats/*";
+/** The organization's worker inventory, by its published key pattern. */
+const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
 
 /**
- * The flow a person's own session for reading the seat inventory, their
+ * The flow a person's own session for reading the worker inventory, their
  * projects and the workstream entries is opened on, when they hold none:
- * workforce's roster flow, which declares the seats, the projects at both
+ * workforce's roster flow, which declares the workers, the projects at both
  * scopes and the entries.
  */
-export const PROJECT_READER_KIND = ROSTER_FLOW_KIND;
+export const PROJECT_READER_FLOW = ROSTER_FLOW;
 
 /**
  * The projects, by their published key pattern: one pattern, at the
@@ -293,15 +293,15 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 1000;
 /** Suspension items per session-state page. */
 const ASK_PAGE_SIZE = 200;
-/** How many seat sessions are read at once. */
+/** How many worker sessions are read at once. */
 const ASK_READ_BATCH = 6;
 
 /**
- * What the Lab answers a session open on a flow kind it doesn't serve, for the
+ * What the Lab answers a session open on a flow it doesn't serve, for the
  * roster flow: the engine's unknown-flow message. Matched exactly, so any
  * other 404 (the roster session's own reads) is a failure, not "no roster".
  */
-const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW_KIND}"`;
+const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
 /** The suspension reasons that are a person's ask: the only ones Inbox lists. */
 export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
@@ -356,20 +356,20 @@ function time(value: unknown): number | null {
 }
 
 /**
- * The group an org seat sits in: a seat whose address has no team, such as a
+ * The group an org worker sits in: a worker whose address has no team, such as a
  * chief of staff or Ops. Capitalised, so no team id (lowercase by Workforce's
  * segment rule) can be it.
  */
 export const STAFF_TEAM = "Staff";
 
 /**
- * A seat inventory row, grouped by its worker id:
+ * A worker inventory row, grouped by its worker id:
  *
  * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
  *   is everything before the first one;
- * - an id with no dot is an org seat, and sits in {@link STAFF_TEAM}.
+ * - an id with no dot is an org worker, and sits in {@link STAFF_TEAM}.
  */
-export function toSeat(row: unknown): Seat | undefined {
+export function toWorker(row: unknown): Worker | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
   const dot = id.indexOf(".");
@@ -483,7 +483,7 @@ async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input:
   return out;
 }
 
-/** Reads one Lab. Holds only the per-kind manifest cache between refreshes. */
+/** Reads one Lab. Holds only the per-flow manifest cache between refreshes. */
 export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
@@ -497,15 +497,15 @@ export type LabReader = {
 };
 
 /**
- * The id of `userId`'s own reading session on `kind`: one per person per kind,
+ * The id of `userId`'s own reading session on `flow`: one per person per flow,
  * so two first visits at once (two tabs) open the same session rather than two.
  */
-export function readerSessionId(userId: string, kind: string): string {
-  return `${kind}-own-${userId}`;
+export function readerSessionId(userId: string, flow: string): string {
+  return `${flow}-own-${userId}`;
 }
 
 /**
- * Reading-session opens in flight, per client and kind, so reads that overlap
+ * Reading-session opens in flight, per client and flow, so reads that overlap
  * on one page (StrictMode replaying the boot) share one open rather than racing it.
  */
 const openingReaders = new WeakMap<LabClients, Map<string, Promise<void>>>();
@@ -531,7 +531,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
   };
 
-  /** The manifest of `sessionId`'s flow kind, read once per kind. */
+  /** The manifest of `sessionId`'s flow, read once per flow. */
   const manifestFor = (flowKind: string, sessionId: string): Promise<ResourceManifest> => {
     let found = manifests.get(flowKind);
     if (found === undefined) {
@@ -566,14 +566,14 @@ export function createLabReader(clients: LabClients): LabReader {
   const readConversationBoards = async (
     sessions: SessionSummary[],
   ): Promise<Array<readonly [string, Section<ConversationBoards>]>> => {
-    const byKind = new Map<string, string>();
+    const byFlow = new Map<string, string>();
     for (const session of sessions) {
-      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+      if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
     }
     let carrier: string | undefined;
     try {
-      for (const [kind, sessionId] of byKind) {
-        const manifest = await manifestFor(kind, sessionId);
+      for (const [flow, sessionId] of byFlow) {
+        const manifest = await manifestFor(flow, sessionId);
         const declared = manifest.resources.some(
           (r) => r.kind === "collection" && r.ref === CONVERSATION_BOARD_COLLECTION && r.client.state?.read === true,
         );
@@ -601,32 +601,32 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * Find the seat inventory through the first listed session whose flow
+   * Find the worker inventory through the first listed session whose flow
    * declares it, and read it there.
    */
   const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
-    const byKind = new Map<string, string>();
+    const byFlow = new Map<string, string>();
     for (const session of sessions) {
-      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+      if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
     }
-    for (const [kind, sessionId] of byKind) {
+    for (const [flow, sessionId] of byFlow) {
       let manifest: ResourceManifest;
       try {
-        manifest = await manifestFor(kind, sessionId);
+        manifest = await manifestFor(flow, sessionId);
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
-      const seatsRef = manifest.resources.find(
-        (r) => r.kind === "collection" && r.pattern === SEAT_INVENTORY_PATTERN && r.client.state?.read === true,
+      const workersRef = manifest.resources.find(
+        (r) => r.kind === "collection" && r.pattern === WORKER_INVENTORY_PATTERN && r.client.state?.read === true,
       )?.ref;
-      if (seatsRef === undefined) continue;
+      if (workersRef === undefined) continue;
       try {
-        const seats = (await readCollection(sessionId, seatsRef))
-          .map((r) => toSeat(r.clientData))
-          .filter((seat): seat is Seat => seat !== undefined);
-        // Every Workforce Lab's roster flow declares the seats, so none there is the Lab not having
+        const workers = (await readCollection(sessionId, workersRef))
+          .map((r) => toWorker(r.clientData))
+          .filter((worker): worker is Worker => worker !== undefined);
+        // Every Workforce Lab's roster flow declares the workers, so none there is the Lab not having
         // opened its inventory, or these pages looking for keys it no longer writes: said below.
-        if (seats.length > 0) return { ok: true, value: { seats } };
+        if (workers.length > 0) return { ok: true, value: { workers } };
         break;
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
@@ -636,7 +636,7 @@ export function createLabReader(clients: LabClients): LabReader {
       ok: false,
       failure: {
         message:
-          `No inventory to read: none of this person's sessions is on a flow that declares the organization's seat inventory (${SEAT_INVENTORY_PATTERN}) with a seat in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
+          `No inventory to read: none of this person's sessions is on a flow that declares the organization's worker inventory (${WORKER_INVENTORY_PATTERN}) with a worker in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
       },
     };
   };
@@ -664,8 +664,8 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     try {
       const found: Partial<Record<"org" | "user", { sessionId: string; ref: string }>> = {};
-      for (const [kind, sessionId] of carriers) {
-        const manifest = await manifestFor(kind, sessionId);
+      for (const [flow, sessionId] of carriers) {
+        const manifest = await manifestFor(flow, sessionId);
         for (const scope of ["org", "user"] as const) {
           const ref = found[scope] === undefined ? projectsRef(manifest, scope) : undefined;
           if (ref !== undefined) found[scope] = { sessionId, ref };
@@ -689,7 +689,7 @@ export function createLabReader(clients: LabClients): LabReader {
               .map((row) => toProject(row.clientData, visibility))
               .filter((p): p is Project => p !== undefined);
       // Invariant: each scope's `projects/*` is one collection, so the first
-      // kind that declares it reads every row the person may, and the rest are
+      // flow that declares it reads every row the person may, and the rest are
       // not asked.
       const [shared, own] = await Promise.all([rowsAt(found.org, "shared"), rowsAt(found.user, "private")]);
       return { ok: true, value: { rows: [...shared, ...own] } };
@@ -700,8 +700,8 @@ export function createLabReader(clients: LabClients): LabReader {
 
   /**
    * This person's sessions, with one of their own on the roster flow, which
-   * declares the seat inventory, the projects and the workstream entries. A
-   * person may hold only a seat's session, or none at all on a first visit,
+   * declares the worker inventory, the projects and the workstream entries. A
+   * person may hold only a worker's session, or none at all on a first visit,
    * and nothing of theirs can read them. It is opened once, under
    * {@link readerSessionId} so overlapping first reads can't open two, and
    * listed from then on. One that can't be opened leaves the sessions as they
@@ -709,16 +709,16 @@ export function createLabReader(clients: LabClients): LabReader {
    * roster flow, a 404), so nothing declares what it would have read.
    */
   const withReaderSessions = async (sessions: SessionSummary[]): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
-    const kind = PROJECT_READER_KIND;
-    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === kind)) return { sessions, failure: null };
+    const flow = PROJECT_READER_FLOW;
+    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === flow)) return { sessions, failure: null };
     let failure: Failure | null = null;
     try {
       let opening = openingReaders.get(clients);
       if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
-      let open = opening.get(kind);
+      let open = opening.get(flow);
       if (open === undefined) {
-        open = openReaderSession(kind).finally(() => opening!.delete(kind));
-        opening.set(kind, open);
+        open = openReaderSession(flow).finally(() => opening!.delete(flow));
+        opening.set(flow, open);
       }
       await open;
     } catch (error) {
@@ -735,25 +735,25 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * Open the person's reading session on `kind` under its one id. A 409 is
+   * Open the person's reading session on `flow` under its one id. A 409 is
    * usually another page that opened it first, and the listing then holds it.
    * Session ids are not scoped by organization, so a 409 the listing doesn't
    * explain is that id held in another of the person's organizations: open one
    * under a fresh id.
    */
-  const openReaderSession = async (kind: string): Promise<void> => {
+  const openReaderSession = async (flow: string): Promise<void> => {
     try {
-      await clients.sessions.createSession({ flowKind: kind, userId: clients.userId, sessionId: readerSessionId(clients.userId, kind) });
+      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId, sessionId: readerSessionId(clients.userId, flow) });
     } catch (error) {
       if (describeFailure(error).httpStatus !== 409) throw error;
       const listed = await clients.sessions.listSessions({ userId: clients.userId });
-      if (listed.some((s) => s.parentSessionId == null && s.flowKind === kind)) return;
-      await clients.sessions.createSession({ flowKind: kind, userId: clients.userId });
+      if (listed.some((s) => s.parentSessionId == null && s.flowKind === flow)) return;
+      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId });
     }
   };
 
   /** The pending person-asks in one session. */
-  const readAsks = async (session: SessionSummary, seatId: string | null): Promise<Ask[]> => {
+  const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
     const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
     if (pending.length === 0) return [];
     // Which transport each suspended request arrived on: that decides whether
@@ -766,7 +766,7 @@ export function createLabReader(clients: LabClients): LabReader {
     );
     return pending.map((view) => ({
       sessionId: session.id,
-      seatId,
+      workerId,
       flowId: session.flowId ?? null,
       parentSessionId: session.parentSessionId ?? null,
       kind: suspensionShape(view.item) === "approval" ? ("approval" as const) : ("question" as const),
@@ -823,7 +823,7 @@ export function createLabReader(clients: LabClients): LabReader {
       return firstFailure(describeFailure(error));
     }
     // Before the organization is read, on purpose, even though a Lab with no
-    // reader kind answers it 404 on every refused read: a reading session is
+    // reader flow answers it 404 on every refused read: a reading session is
     // the only session a first-visit person can have for the org to be read off.
     const readers = await withReaderSessions(sessions);
     sessions = readers.sessions;
@@ -844,29 +844,29 @@ export function createLabReader(clients: LabClients): LabReader {
       readConversationBoards(sessions),
       (async (): Promise<Section<Ask[]>> => {
         if (!inventory.ok) {
-          return { ok: false, failure: { message: `Asks are read from seat sessions, and the seat inventory did not load. ${inventory.failure.message}` } };
+          return { ok: false, failure: { message: `Asks are read from worker sessions, and the worker inventory did not load. ${inventory.failure.message}` } };
         }
         if (!ownWorkers.ok) {
           return { ok: false, failure: { message: `Asks are read from your own workers' sessions too, and your roster did not load. ${ownWorkers.failure.message}` } };
         }
-        // A seat's sessions are on its worker flow, and name the worker in
-        // their state. One on a seat's flow that names none is still read: its
+        // A worker's sessions are on its worker flow, and name the worker in
+        // their state. One on a worker's flow that names none is still read: its
         // asks are shown, unattributed. A session naming one of the person's
         // own workers, on the flow their roster says it runs on, is that
         // worker's: the listing holds only the person's sessions, so it is
         // their own worker's and nobody else's. Another flow's session that
         // merely names it in its state is not.
-        const seatIds = new Set(inventory.value.seats.map((s) => s.id));
-        const seatKinds = new Set(inventory.value.seats.map((s) => s.kind).filter((k): k is string => k !== null));
-        const seatSessions = sessions.flatMap((s): Array<{ session: SessionSummary; seatId: string | null }> => {
+        const workerIds = new Set(inventory.value.workers.map((s) => s.id));
+        const workerFlowNames = new Set(inventory.value.workers.map((s) => s.kind).filter((k): k is string => k !== null));
+        const workerSessions = sessions.flatMap((s): Array<{ session: SessionSummary; workerId: string | null }> => {
           const workerId = workerOf(s);
-          if (workerId !== null && ownWorkers.value.get(workerId) === s.flowKind) return [{ session: s, seatId: workerId }];
-          if (!seatKinds.has(s.flowKind)) return [];
-          if (workerId === null) return [{ session: s, seatId: null }];
-          return seatIds.has(workerId) ? [{ session: s, seatId: workerId }] : [];
+          if (workerId !== null && ownWorkers.value.get(workerId) === s.flowKind) return [{ session: s, workerId: workerId }];
+          if (!workerFlowNames.has(s.flowKind)) return [];
+          if (workerId === null) return [{ session: s, workerId: null }];
+          return workerIds.has(workerId) ? [{ session: s, workerId: workerId }] : [];
         });
         try {
-          const found = await inBatches(seatSessions, ASK_READ_BATCH, ({ session, seatId }) => readAsks(session, seatId));
+          const found = await inBatches(workerSessions, ASK_READ_BATCH, ({ session, workerId }) => readAsks(session, workerId));
           return { ok: true, value: found.flat().sort((a, b) => a.since - b.since) };
         } catch (error) {
           return { ok: false, failure: describeFailure(error) };

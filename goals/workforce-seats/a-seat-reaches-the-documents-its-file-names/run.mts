@@ -23,7 +23,7 @@ import { createWorkerInstallation, hireWorkforce, resourcesFromDocs } from "@flo
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { join } from "node:path";
 import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { DESK_KIND, buildDesk } from "./fixtures/flows";
+import { DESK_FLOW, buildDesk } from "./fixtures/flows";
 
 type SeatFixture = { id: string; reaches: string[]; writes: string[] };
 type Fixture = {
@@ -60,7 +60,7 @@ async function boot(root: string) {
     workerFlows: () => flows as never,
     documents: resourcesFromDocs(declared.documents),
   });
-  flows = { [DESK_KIND]: buildDesk(installation, { withoutRule: CONTROL === "no-visibility-rule" }) };
+  flows = { [DESK_FLOW]: buildDesk(installation, { withoutRule: CONTROL === "no-visibility-rule" }) };
   return { declared, installation, copies: () => hireWorkforce(installation) };
 }
 
@@ -79,9 +79,9 @@ await runGoal(async (failures) => {
     failures.push(`the tree produced documents ${JSON.stringify(declared.documents.map((d) => d.ref))}, wanted ${JSON.stringify(fixture.documents)}`);
   }
   const copies = register();
-  const desks = copies.filter((copy) => copy.kind === DESK_KIND);
-  if (desks.length !== 1 || desks[0]!.id !== DESK_KIND) {
-    failures.push(`${desks.length} copies of "${DESK_KIND}" registered (${desks.map((c) => c.id).join(", ")}), wanted one, at its kind`);
+  const desks = copies.filter((copy) => copy.kind === DESK_FLOW);
+  if (desks.length !== 1 || desks[0]!.id !== DESK_FLOW) {
+    failures.push(`${desks.length} copies of "${DESK_FLOW}" registered (${desks.map((c) => c.id).join(", ")}), wanted one, at its kind`);
   }
   if (copies.some((copy) => workers.some((w) => w.id === copy.id))) failures.push("a copy was registered at a worker's id");
   const desk = desks[0] as FlowInstance;
@@ -97,7 +97,7 @@ await runGoal(async (failures) => {
     /** Open a session on the one desk copy, naming `worker`. */
     const open = async (worker: string): Promise<string> => {
       const sessionId = `s_${worker.replace(/\W/g, "_")}`;
-      const path = [DESK_KIND, "sessions"];
+      const path = [DESK_FLOW, "sessions"];
       const res = await router.POST(
         new Request(`http://goal/api/flows/${path.join("/")}`, {
           method: "POST",
@@ -203,7 +203,7 @@ await runGoal(async (failures) => {
     if (new Set(sets).size !== sets.length) failures.push(`two workers on the one copy reached the same documents: ${JSON.stringify(seen)}`);
 
     evidence.push(
-      `one "${DESK_KIND}" copy ran ${workers.length} workers: ` +
+      `one "${DESK_FLOW}" copy ran ${workers.length} workers: ` +
         workers.map((w) => `${w.id} lists ${JSON.stringify(seen[w.id])} and writes ${JSON.stringify(w.writes)}`).join("; ") +
         `; another worker's document read, wrote and was looked up as one that doesn't exist`,
     );

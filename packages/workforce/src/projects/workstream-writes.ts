@@ -274,7 +274,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       );
     }
   }
-  const leadFlowKinds = new Set(options.leadFlows.map((flow) => flow.kind));
+  const leadFlowNames = new Set(options.leadFlows.map((flow) => flow.kind));
   const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES };
 
   /**
@@ -302,7 +302,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       if (lead.problem !== undefined) {
         throw new ProjectRefusedError("no-such-worker", `Worker "${input.lead}" can't lead a workstream: ${lead.problem}.`);
       }
-      if (!leadFlowKinds.has(lead.flow)) {
+      if (!leadFlowNames.has(lead.flow)) {
         throw new ProjectRefusedError(
           "cannot-lead",
           `Worker "${input.lead}" runs on flow "${lead.flow}", which can't lead a workstream.`
@@ -363,10 +363,10 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   });
 
   /** One dispatcher per lead flow: creates the lead's session, linked at create, and runs nothing. */
-  const openSessionOn = (kind: string) =>
+  const openSessionOn = (flow: string) =>
     dispatcher({
-      name: `workstream-open-session-${kind}`,
-      flowKind: kind,
+      name: `workstream-open-session-${flow}`,
+      flowKind: flow,
       action: WORKSTREAM_OPENED_ENTRY,
       inputSchema: openStepSchema,
       session: {
@@ -375,7 +375,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       },
       payload: () => ({})
     });
-  const dispatchers = new Map([...leadFlowKinds].map((kind) => [kind, openSessionOn(kind)] as const));
+  const dispatchers = new Map([...leadFlowNames].map((flow) => [flow, openSessionOn(flow)] as const));
   const createSession = router({
     name: "workstream-open-session",
     inputSchema: openStepSchema,

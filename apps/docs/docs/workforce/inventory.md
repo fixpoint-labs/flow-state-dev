@@ -13,7 +13,7 @@ The inventory keeps that record as data: one org-scoped resource collection that
 
 | Collection | One row per | Key |
 |------------|-------------|-----|
-| Workers | registered worker | `inventory/seats/<id>` |
+| Workers | registered worker | `inventory/workers/<id>` |
 
 **A row means registered, not working.** It records that a worker was registered in this organization. It says nothing about whether that worker is running now. Nothing deletes a row for going missing, so a worker a later roster no longer names keeps its row. Label rows that way wherever you show them.
 
@@ -40,7 +40,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import {
   createWorkerInstallation,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
 } from "@flow-state-dev/workforce";
@@ -57,11 +57,11 @@ const inventoryWriter = defineFlow({
 flowRegistry.registerMany([...flows, inventoryWriter]);
 // server starts here
 
-const { seats, problems } = await openInventory(
-  { seats: inventorySeats(installation) },
+const { workers, problems } = await openInventory(
+  { workers: inventoryWorkers(installation) },
   {
     run,
-    seatWriter: { flowKind: "inventory-writer" },
+    workerWriter: { flowKind: "inventory-writer" },
     userId: "u_boot",
     orgId: "org_acme",
   }
@@ -70,7 +70,7 @@ const { seats, problems } = await openInventory(
 
 `openInventory` takes the organization as `orgId`. An app with no authentication passes `DEFAULT_ORG_ID` from `@flow-state-dev/core`.
 
-The write runs in a session named `inventory-binder` on the writer's flow, created on the first boot and reused after. Pass `seatWriter: { flowKind, sessionId }` to use another.
+The write runs in a session named `inventory-binder` on the writer's flow, created on the first boot and reused after. Pass `workerWriter: { flowKind, sessionId }` to use another.
 
 ### The `run` callback
 
@@ -79,7 +79,7 @@ The write runs in a session named `inventory-binder` on the writer's flow, creat
 ```ts
 const run = async (request) => {
   const result = await runAction({
-    flow: byKind[request.flowKind],
+    flow: byFlow[request.flowKind],
     actionName: request.action,
     input: request.input,
     userId: request.userId,
@@ -102,7 +102,7 @@ It has to forward `source` as well. The write is a boot-only action: its request
 
 ### Where the rows are written
 
-A resource collection can only be written from inside a flow, and a worker has no session of its own for its row to be written in. So the rows need a flow to run in, and `seatWriter` names it. Any flow that spreads `inventoryWriterActions()` into its `internal.actions` will do.
+A resource collection can only be written from inside a flow, and a worker has no session of its own for its row to be written in. So the rows need a flow to run in, and `workerWriter` names it. Any flow that spreads `inventoryWriterActions()` into its `internal.actions` will do.
 
 Keep the writer in `internal.actions`, never `actions`. Its whole input is the row data, so a public caller could write rows for workers that don't exist. In `internal.actions`, only the `runAction({ source: "internal", ... })` call `openInventory` makes can reach it.
 
@@ -112,11 +112,11 @@ Both of these are wiring mistakes an app should fix at startup. `openInventory` 
 
 **No `orgId`:** the inventory is org-scoped, so a write with no org lands where no flow can read it back.
 
-**Workers with no `seatWriter`:** there is no flow to write their rows from. A roster with no workers needs none.
+**Workers with no `workerWriter`:** there is no flow to write their rows from. A roster with no workers needs none.
 
 ### What lands in `problems`
 
-`openInventory` returns `{ seats, problems }`. `seats` is how many rows were written. It collects failures in `problems` rather than throwing: a write that fails shows up once, naming every worker whose row could not be written. Whether that is fatal is yours to decide.
+`openInventory` returns `{ workers, problems }`. `workers` is how many rows were written. It collects failures in `problems` rather than throwing: a write that fails shows up once, naming every worker whose row could not be written. Whether that is fatal is yours to decide.
 
 ### Running it twice
 
@@ -128,18 +128,18 @@ Declare the same collection on any block. It returns the same rows, because a co
 
 ```ts
 import { handler } from "@flow-state-dev/core";
-import { defineSeatInventoryCollection } from "@flow-state-dev/workforce";
+import { defineWorkerInventoryCollection } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
-const seats = defineSeatInventoryCollection();
+const workers = defineWorkerInventoryCollection();
 
 const registeredWorkers = handler({
   name: "registered-workers",
   inputSchema: z.object({}),
   outputSchema: z.object({ ids: z.array(z.string()) }),
-  resources: { seats },
+  resources: { workers },
   execute: async (_input, ctx) => {
-    const rows = await ctx.resources.seats.list();
+    const rows = await ctx.resources.workers.list();
     return { ids: rows.map((row) => row.state.id) };
   },
 });
@@ -157,11 +157,11 @@ const registeredWorkers = handler({
 
 `door` names an action on the worker's flow: the one that takes a person's message for this worker. It is the flow's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A worker you build by hand with no such action gets `door: null`, and an app should say that worker takes no message rather than guess.
 
-`openInventory` reads the door from each worker's `actions`, so pass it `inventorySeats(installation)`, which gives each standard worker with its flow's actions. A worker you build by hand needs `actions` too; pass `{}` for one that takes no message.
+`openInventory` reads the door from each worker's `actions`, so pass it `inventoryWorkers(installation)`, which gives each standard worker with its flow's actions. A worker you build by hand needs `actions` too; pass `{}` for one that takes no message.
 
 ### From a browser
 
-The collection can be read from a browser, with the same collection read your app's client code uses for any other resource. You read through a session, by the name that session's flow gave the collection in its `resources` map. That name is up to the flow, so look it up in the session's resource manifest by its pattern, `inventory/seats/*`:
+The collection can be read from a browser, with the same collection read your app's client code uses for any other resource. You read through a session, by the name that session's flow gave the collection in its `resources` map. That name is up to the flow, so look it up in the session's resource manifest by its pattern, `inventory/workers/*`:
 
 ```ts
 import { createResourceClient } from "@flow-state-dev/client";
@@ -170,7 +170,7 @@ const resources = createResourceClient({ baseUrl: "https://app.example.com" });
 
 const manifest = await resources.getResourceManifest(rosterSessionId);
 const workersRef = manifest.resources.find(
-  (entry) => entry.pattern === "inventory/seats/*",
+  (entry) => entry.pattern === "inventory/workers/*",
 )?.ref;
 
 const workers: unknown[] = [];

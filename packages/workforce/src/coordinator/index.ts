@@ -10,7 +10,7 @@
  *   `delegatedPostHistory`, a generator `history` that hands a turn's model
  *   the conversation's recent lines a post came with, as a user-role message.
  *   The built-in `agent` flow has all three.
- * - The pinned names: the flow's kind, its `coordinator-route` record and
+ * - The pinned names: the flow's name, its `coordinator-route` record and
  *   its configuration keys. Its delegates, and their four actions, are any
  *   worker's (`../delegates`).
  */
@@ -23,7 +23,7 @@ export {
 } from "./coordinator-config";
 export {
   COORDINATOR_JUDGMENT,
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
   MAX_ROUNDS
 } from "./coordinator-keys";

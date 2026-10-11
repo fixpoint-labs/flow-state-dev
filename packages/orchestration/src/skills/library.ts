@@ -398,10 +398,10 @@ export function createSkillsLibrary(
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
-      // The loader is a CONTROL, not a catalog grant (FIX-1393): a seat gets it
+      // The loader is a CONTROL, not a catalog grant (FIX-1393): a worker gets it
       // by setting `skills.activateTool` in its own config, which is the
       // declaration. It is built here and never exported, so a `tools:` fence
-      // could not name it back in — fencing it would leave the seat advertising
+      // could not name it back in — fencing it would leave the worker advertising
       // a tool in its prompt that it cannot call. The catalog registered above
       // stays in `tools`, where the fence can see it.
       // The loader's own description names where the skill names come from,

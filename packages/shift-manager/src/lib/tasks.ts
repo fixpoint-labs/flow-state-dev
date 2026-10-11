@@ -2,10 +2,10 @@
  * The numbers and words Tasks and Inbox draw in design v2's form: a row's
  * TIME, which rows the Queued toggle hides, Tasks' summary line and the empty
  * Inbox's sentence. Every count comes from the same snapshot reads the other
- * screens use (`openRows`, `seatStates`), so Tasks, Inbox and Roster agree.
+ * screens use (`openRows`, `workerStates`), so Tasks, Inbox and Roster agree.
  */
 import { columnFor, readStatus } from "./columns";
-import { openRows, seatStates, shiftCounts, type LoadedSnapshot } from "./derive";
+import { openRows, workerStates, shiftCounts, type LoadedSnapshot } from "./derive";
 import type { BoardRow } from "./reads";
 
 /** Whether the Queued toggle hides the row: every row in the QUEUED column, blocked ones included. */
@@ -35,7 +35,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function tasksSummary(snapshot: LoadedSnapshot): string {
   const inFlight = openRows(snapshot).filter((row) => !isQueued(row));
   const asks = snapshot.asks.ok ? snapshot.asks.value.length : 0;
-  const counts = shiftCounts(seatStates(snapshot));
+  const counts = shiftCounts(workerStates(snapshot));
   return [
     `${inFlight.length} in flight`,
     `${asks} ${asks === 1 ? "needs" : "need"} you`,
@@ -60,6 +60,6 @@ export function runningSessions(rows: readonly BoardRow[]): number {
 /** What Inbox says when nothing waits on the person (v2:1354): the sessions still running, and who is on call. */
 export function emptyInboxSentence(snapshot: LoadedSnapshot): string {
   const running = runningSessions(openRows(snapshot));
-  const onCall = shiftCounts(seatStates(snapshot))["on call"];
+  const onCall = shiftCounts(workerStates(snapshot))["on call"];
   return `Nothing needs you. ${plural(running, "session is", "sessions are")} still running and ${plural(onCall, "worker is", "workers are")} on call.`;
 }

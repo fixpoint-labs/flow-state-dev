@@ -65,7 +65,7 @@ interface Observation {
   selections: Record<string, Record<string, string[]> | null>;
   discoveredRefs: string[];
   installedCapabilities: string[];
-  seatIds: string[];
+  workerIds: string[];
   registered: string[];
   attempts: Array<Record<string, string>>;
 }
@@ -228,7 +228,7 @@ await runGoal((failures) => {
           `"${fixture.capability}" — nothing from the folder reached the worker kind`,
       );
     }
-    const seats = [...o.seatIds].sort();
+    const seats = [...o.workerIds].sort();
     if (JSON.stringify(seats) !== JSON.stringify(expected)) {
       failures.push(`hired ${JSON.stringify(seats)}, wanted ${JSON.stringify(expected)}`);
     }

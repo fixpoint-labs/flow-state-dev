@@ -11,8 +11,8 @@
  * A board that hands off refuses FOUR things at construction, and a flow that
  * leaves any of them implicit throws before `seed` can run: an explicit stable
  * `boardId`, a durable `defineTaskCollection()` backing, a ledger the child
- * session can reach, and a NAMED seat — because a hand-off is addressed by the
- * seat name the row is routed by, so an unnamed one has no address to dispatch
+ * session can reach, and a NAMED assignee — because a hand-off is addressed by the
+ * assignee name the row is routed by, so an unnamed one has no address to dispatch
  * to.
  *
  * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
@@ -1034,7 +1034,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     // collection, not a singleton. Declared here so the registry admits
     // `defineConductor({ id: boardId })` and indexes it under that id.
     cardinality: "collection",
-    // The task entry the board's seat hands off to: the manager, reached by
+    // The task entry the board's assignee hands off to: the manager, reached by
     // the `task` dispatch the drain sends for each claimed row. `defineFlow`
     // puts it behind the board's claim gate; the flow, not the board, owns
     // what a task dispatch can reach.

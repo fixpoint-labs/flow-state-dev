@@ -83,7 +83,7 @@ async function open(memoryCapture?: boolean): Promise<Lab> {
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-memory-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
     ...(memoryCapture === undefined ? {} : { memoryCapture }),
   });

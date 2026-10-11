@@ -99,7 +99,7 @@ export { createModerator } from "./blocks/default-moderator";
 export { createInitTranscript } from "./blocks/init-transcript";
 export { createRecordArgument } from "./blocks/record-argument";
 
-/** A single debater seat. */
+/** A single debater worker. */
 export interface DebaterConfig {
   /**
    * Stable name used for attribution and as the audit task's

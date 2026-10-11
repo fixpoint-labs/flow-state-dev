@@ -28,7 +28,7 @@
  *         lands in a request of its own.
  *
  * A post that claims an author is refused at the door: the coordinator takes
- * the post alone, so there is no author to claim. BR-11 and BR-12 (a seat in
+ * the post alone, so there is no author to claim. BR-11 and BR-12 (a worker in
  * two mailboxes, a refused wake) left with the mailbox's wake; the
  * coordinator's own suite in `packages/workforce` holds a delegate's session
  * per conversation and a delivery that fails.
@@ -48,7 +48,7 @@ const COORDINATOR = "support.help";
 const SPECIALISTS = ["support.devices", "support.accounts", "support.fsd", "support.general"];
 /** The specialist each post names with `[route:<worker>]`, which the scripted evaluation honours. */
 const ROUTED = "support.accounts";
-const OTHERS = SPECIALISTS.filter((seat) => seat !== ROUTED);
+const OTHERS = SPECIALISTS.filter((worker) => worker !== ROUTED);
 
 afterEach(async () => {
   const hmr = globalThis as { __fsdFlowstate?: FlowState };
@@ -100,13 +100,13 @@ type Conversation = { sessionId: string; parentSessionId?: string; messages: Mes
  * Every session of a worker, dispatch runs included, with its kept messages:
  * the sessions on `agent`'s one copy created naming the worker.
  */
-async function conversationsOf(router: Router, seat: string): Promise<Conversation[]> {
+async function conversationsOf(router: Router, worker: string): Promise<Conversation[]> {
   const listed = await call(
     router,
     "GET",
     ["sessions"],
     undefined,
-    `?flowId=agent&state.workerId=${encodeURIComponent(seat)}&userId=${USER}&include=dispatch-runs&limit=100`,
+    `?flowId=agent&state.workerId=${encodeURIComponent(worker)}&userId=${USER}&include=dispatch-runs&limit=100`,
   );
   expect(listed.status, listed.text).toBe(200);
   const rows = (JSON.parse(listed.text) as { sessions: Array<{ id: string; parentSessionId?: string | null }> }).sessions;
@@ -126,8 +126,8 @@ async function conversationsOf(router: Router, seat: string): Promise<Conversati
 }
 
 /** The sessions of a worker that hold `token`. */
-async function holding(router: Router, seat: string, token: string): Promise<Conversation[]> {
-  return (await conversationsOf(router, seat)).filter((c) => c.messages.some((m) => m.text.includes(token)));
+async function holding(router: Router, worker: string, token: string): Promise<Conversation[]> {
+  return (await conversationsOf(router, worker)).filter((c) => c.messages.some((m) => m.text.includes(token)));
 }
 
 async function until(predicate: () => Promise<boolean>, label: string, tries = 400): Promise<void> {
@@ -170,7 +170,7 @@ describe("V3 · a post runs the specialist best fit picked once, on the app's ow
       { role: "assistant", text: expect.stringContaining("[reply:wake]") },
     ]);
     // Only the routed specialist heard it.
-    for (const seat of OTHERS) expect(await holding(router, seat, mark), seat).toEqual([]);
+    for (const worker of OTHERS) expect(await holding(router, worker, mark), worker).toEqual([]);
     // BR-14: the post's own request streamed no specialist's answer.
     expect(posted.text).not.toContain("[reply:wake]");
     // The run the page lists under the conversation names its delegate by the
@@ -227,11 +227,11 @@ describe("V3 · a post runs the specialist best fit picked once, on the app's ow
     await new Promise((resolve) => setTimeout(resolve, 1_500));
 
     // The answer is "[reply:wake] …": nobody was handed it as a turn.
-    for (const seat of SPECIALISTS) {
-      const heardAnswer = (await conversationsOf(router, seat))
+    for (const worker of SPECIALISTS) {
+      const heardAnswer = (await conversationsOf(router, worker))
         .flatMap((c) => c.messages)
         .filter((m) => m.role === "user" && m.text.includes("[reply:wake]"));
-      expect(heardAnswer, seat).toEqual([]);
+      expect(heardAnswer, worker).toEqual([]);
     }
   });
 
@@ -248,6 +248,6 @@ describe("V3 · a post runs the specialist best fit picked once, on the app's ow
     expect(res.text).toContain("request.failed");
     expect(res.text).toContain("Unrecognized key(s) in object: 'author'");
     await new Promise((resolve) => setTimeout(resolve, 500));
-    for (const seat of SPECIALISTS) expect(await holding(router, seat, mark), seat).toEqual([]);
+    for (const worker of SPECIALISTS) expect(await holding(router, worker, mark), worker).toEqual([]);
   });
 });

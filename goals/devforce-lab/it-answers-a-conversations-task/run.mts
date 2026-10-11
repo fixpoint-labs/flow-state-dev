@@ -424,7 +424,7 @@ await runGoal(async (failures) => {
       harness: stub.slot,
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
-      coderSeatId: CODER,
+      coderWorkerId: CODER,
       logger: silentLogger,
       inventory: true,
       projects: [
@@ -600,7 +600,7 @@ await runGoal(async (failures) => {
         harness: stub.slot,
         runTimeoutMs: 30_000,
         workspace: { root: mkdtempSync(join(tmpdir(), "conversation-task-live-")), remotes: { allow: ["file"] } },
-        coderSeatId: CODER,
+        coderWorkerId: CODER,
         logger: silentLogger,
         inventory: true,
         // The standard install's projects: storefront is the only one with a repository.

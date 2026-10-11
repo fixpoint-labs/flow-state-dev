@@ -76,17 +76,17 @@ void ctx.flow.id;
 
 // A block that declares a `flowConfigSchema` reads the shape it declared, with
 // no annotation and no flow named anywhere.
-declare const seatCtx: BlockContext<
+declare const workerCtx: BlockContext<
   Record<string, unknown>, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>,
   Record<string, AnyResourceRef>, Record<string, unknown>, unknown, undefined,
   {}, Record<string, unknown>, Record<string, unknown>,
   { harness: string; model: string }
 >;
-const harness: string = seatCtx.flow.config.harness;
+const harness: string = workerCtx.flow.config.harness;
 void harness;
 
 // @ts-expect-error a knob the block did not declare is not on its view.
-void seatCtx.flow.config.temperature;
+void workerCtx.flow.config.temperature;
 
 // A block that declared nothing reads the open record: the value is `unknown`,
 // which is the honest type for a bag it never described.

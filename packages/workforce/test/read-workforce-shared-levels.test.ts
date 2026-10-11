@@ -5,7 +5,7 @@
  * worker on that team. Read per worker, boot cost grows as workers × shared
  * levels: a hundred workers over fifty org skills took seconds to load. What is
  * pinned here is both halves of the fix — the shared levels are read once, and
- * no worker's result moves: each still equals what `readSeatSkills` returns for
+ * no worker's result moves: each still equals what `readWorkerSkills` returns for
  * that worker alone, failures at a shared level included.
  */
 import fs from "node:fs/promises";
@@ -20,7 +20,7 @@ vi.mock("@flow-state-dev/orchestration", async (importOriginal) => {
   return { ...actual, readSkillsDirectory };
 });
 
-import { readSeatSkills } from "../src/loader/read-seat-skills";
+import { readWorkerSkills } from "../src/loader/read-worker-skills";
 import { readWorkforce } from "../src/loader/read-workforce";
 
 let root: string;
@@ -98,7 +98,7 @@ describe("readWorkforce — shared skill levels", () => {
       ["sec", "auditor", "sec.auditor"],
       [undefined, "chief", "chief"],
     ] as const) {
-      const alone = await readSeatSkills(root, { team, worker });
+      const alone = await readWorkerSkills(root, { team, worker });
       const joined = workers.find((w) => w.id === id);
       expect(joined, id).toBeDefined();
       expect(joined!.skills, id).toEqual(alone.skills);

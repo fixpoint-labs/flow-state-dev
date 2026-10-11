@@ -187,7 +187,7 @@ export async function walkSurfaces(
   if (!(await visible(page, "roster"))) reach("Roster does not open");
   else {
     await page.getByTestId("roster-worker").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-    const all = await attr(page, "roster-worker", "data-seat-id");
+    const all = await attr(page, "roster-worker", "data-worker-id");
     if (!same(all, store.seats)) teams(`Roster (all) lists ${diff(store.seats, all)}`);
   }
 
@@ -195,18 +195,18 @@ export async function walkSurfaces(
   const teamRows = await attr(page, "team", "data-team");
   const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))];
   if (!same(teamRows, wantTeams)) teams(`TEAMS rows: ${diff(wantTeams, teamRows)}`);
-  const squares = await attr(page, "worker", "data-seat-id");
+  const squares = await attr(page, "worker", "data-worker-id");
   if (!same(squares, store.seats)) teams(`TEAMS squares: ${diff(store.seats, squares)}`);
   for (const team of teamRows) {
     const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
-    const under = (await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) => els.map((e) => e.getAttribute("data-seat-id") ?? ""))) as string[];
+    const under = (await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""))) as string[];
     if (!same(under, want)) teams(`team ${team}'s squares: ${diff(want, under)}`);
     await page.locator(`[data-testid=team][data-team="${team}"]`).click();
     if ((await page.locator(`[data-testid=team][data-team="${team}"]`).getAttribute("aria-current")) !== "page") reach(`team ${team}'s row is not current once opened`);
     const title = (await page.getByTestId("roster-title").textContent().catch(() => "")) ?? "";
     if (!title.includes(team)) reach(`Roster opened from team ${team} is titled "${title}"`);
     await sleep(300);
-    const filtered = await attr(page, "roster-worker", "data-seat-id");
+    const filtered = await attr(page, "roster-worker", "data-worker-id");
     if (!same(filtered, want)) teams(`Roster for team ${team} lists ${diff(want, filtered)}`);
   }
 

@@ -2,11 +2,11 @@
  * DevTeam boots over a store an earlier version left under the old org id.
  *
  * The lab's org id was `org_devforce_lab`; it is `devforce-lab` now, because a
- * hired seat's address starts with the org and an address segment is
+ * hired worker's address starts with the org and an address segment is
  * lowercase and hyphenated. A default store from before the change still holds
  * the mailbox's session, the ask's session and the org's rows under the old
  * id, and a boot that reuses them fails on the org binding. The store is a
- * lab's dev store, and the old id never had a hired seat (no address could be
+ * lab's dev store, and the old id never had a hired worker (no address could be
  * built for one), so boot sets the old file aside, says so, and starts fresh.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { LAB_ORG_ID, LAB_USER_ID } from "../teams/devteam/host.mts";
-import { seatSessionId } from "../teams/devteam/ask.mts";
+import { workerSessionId } from "../teams/devteam/ask.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
@@ -54,7 +54,7 @@ describe("DevTeam over a store written under the old org id", () => {
       } as never,
       "absent",
     );
-    await old.resourceState.set("org", OLD_ORG, "inventory/seats/eng.em", { id: "eng.em", kind: "em", hired: false } as never, "any" as never);
+    await old.resourceState.set("org", OLD_ORG, "inventory/workers/eng.em", { id: "eng.em", kind: "em", hired: false } as never, "any" as never);
     old.close();
 
     const error = console.error;
@@ -94,7 +94,7 @@ describe("DevTeam over a store written under the old org id", () => {
     const stale = (await reread.session.list()).filter((s) => (s as { orgId?: string }).orgId === OLD_ORG);
     const rows = await reread.resourceState.getByPrefix("org", OLD_ORG, "");
     // The boot raises the EM's ask again, in the EM's own session, under the new org.
-    const ask = await reread.session.get(seatSessionId("eng.em"));
+    const ask = await reread.session.get(workerSessionId("eng.em"));
     reread.close();
     expect(stale).toEqual([]);
     expect(Object.keys(rows)).toEqual([]);

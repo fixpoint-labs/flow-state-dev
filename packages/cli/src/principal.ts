@@ -100,7 +100,7 @@ export function validatePrincipalFlags(flags: PrincipalFlags): void {
  * Refusals are `CliError`s with the invalid-arguments exit code, carrying the
  * resolver's own message. Nothing falls back to the development organization.
  *
- * An instance pinned to an owner (a hired seat) refuses any identity outside
+ * An instance pinned to an owner (a hired worker) refuses any identity outside
  * its pin here, by the engine's own rule — the one the transport host applies
  * before it writes — so the terminal refuses before any session, request or
  * seed is written too.

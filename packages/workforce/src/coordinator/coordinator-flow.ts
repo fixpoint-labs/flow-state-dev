@@ -152,7 +152,7 @@ import {
 } from "./coordinator-state";
 import {
   COORDINATOR_JUDGMENT,
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
   DELEGATE_ANSWER_ACTION,
   DELEGATE_MISSED_ACTION,
@@ -396,7 +396,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const sessionBoard = defineSessionBoard({
     installation,
-    flowKind: COORDINATOR_KIND,
+    flowKind: COORDINATOR_FLOW,
     postFlows,
     // A project's coordinator starts with its user's open workstreams there.
     seed: (ctx) => workstreamDelegateSeed(ctx as never)
@@ -410,7 +410,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * that names none.
    */
   const coordinatorOf = async (ctx: BlockContext) => {
-    const worker = await installation.resolveWorker(ctx, COORDINATOR_KIND);
+    const worker = await installation.resolveWorker(ctx, COORDINATOR_FLOW);
     const config = worker.config as unknown as CoordinatorConfig;
     const records = (ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] == null
       ? await workstreamDelegateSeed(ctx as never)
@@ -489,12 +489,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * created here.
    */
   const targetDispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of postFlows) {
+  for (const flow of postFlows) {
     targetDispatchers.set(
-      kind,
+      flow,
       dispatcher({
-        name: `coordinator-deliver-target-${kind}`,
-        flowKind: kind,
+        name: `coordinator-deliver-target-${flow}`,
+        flowKind: flow,
         action: DELEGATED_POST_ENTRY,
         inputSchema: deliveryDispatchSchema,
         session: { id: (delivery: DeliveryDispatch) => delivery.targetSessionId! },
@@ -505,12 +505,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /** One dispatcher per flow a delegate can take a post on. */
   const dispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of postFlows) {
+  for (const flow of postFlows) {
     dispatchers.set(
-      kind,
+      flow,
       dispatcher({
-        name: `coordinator-deliver-${kind}`,
-        flowKind: kind,
+        name: `coordinator-deliver-${flow}`,
+        flowKind: flow,
         action: DELEGATED_POST_ENTRY,
         inputSchema: deliveryDispatchSchema,
         // The delegate's own session for this conversation: derived from the
@@ -833,7 +833,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {
-      kind: COORDINATOR_KIND,
+      kind: COORDINATOR_FLOW,
       answerName: COORDINATOR_JUDGMENT,
       extraTools: [...sessionBoard.delegates.tools, handOffTool],
       board: sessionBoard,
@@ -1622,7 +1622,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .tapIf(hasRouteOns, sendOn);
 
   const flow = defineFlow({
-    kind: COORDINATOR_KIND,
+    kind: COORDINATOR_FLOW,
     configSchema: coordinatorConfigSchema(turn.settings),
     // The agent turn's binding: the documents a worker may be granted, the
     // per-turn visibility rule, and the request `onStarted` that loads this

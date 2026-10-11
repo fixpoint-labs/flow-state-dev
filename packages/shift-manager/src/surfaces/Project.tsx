@@ -23,9 +23,9 @@
  * prefix, when it opens and each time the Lab is read again; never a read of
  * the whole Lab of its own. The title comes from the snapshot every level shares.
  *
- * Above the tabs, the team strip from the seat inventory, as design v2 draws
+ * Above the tabs, the team strip from the worker inventory, as design v2 draws
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
- * seats are on shift and on call.
+ * workers are on shift and on call.
  */
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
@@ -33,7 +33,7 @@ import { Conversation } from "../components/Conversation";
 import { TasksPanel } from "../components/TasksPanel";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
 import { ActionRefused } from "../lib/action";
-import { projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import {
   openWorkstreamWithCoordinator,
@@ -46,7 +46,7 @@ import {
   type ProjectSetup,
   type WorkstreamEntry,
 } from "../lib/projects";
-import { describeFailure, type Failure, type Seat } from "../lib/reads";
+import { describeFailure, type Failure, type Worker } from "../lib/reads";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
 import { useWorkforce } from "../lib/workforce";
@@ -71,8 +71,8 @@ function at(route: ProjectRoute, tab: ProjectTab, entry?: { owner: string; id: s
 export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: ProjectRoute; gaps: Gaps }) {
   const { refresh } = useLab();
   const { projectId, tab } = route;
-  const teams = snapshot.inventory.ok ? teamsOf(snapshot.inventory.value.seats) : [];
-  const states = seatStates(snapshot);
+  const teams = snapshot.inventory.ok ? teamsOf(snapshot.inventory.value.workers) : [];
+  const states = workerStates(snapshot);
   const view = projectsOf(snapshot);
   const address: ProjectAddress = { visibility: route.visibility ?? "shared", id: projectId };
 
@@ -214,7 +214,7 @@ function ProjectBody({
   const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
   const { setup, retry: retrySetup } = useProjectSetup();
   const roster = useRoster(snapshot.readAt);
-  const { seats } = withRoster(snapshot, roster);
+  const { workers } = withRoster(snapshot, roster);
   const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const readFailure =
     reader === null ? (
@@ -237,7 +237,7 @@ function ProjectBody({
 
   switch (route.tab) {
     case "stream":
-      return <CoordinatorStream snapshot={snapshot} address={address} setup={setup} retrySetup={retrySetup} seats={seats} gaps={gaps} />;
+      return <CoordinatorStream snapshot={snapshot} address={address} setup={setup} retrySetup={retrySetup} workers={workers} gaps={gaps} />;
     case "brief":
       return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -256,7 +256,7 @@ function ProjectBody({
     case "board":
       if (readFailure !== null) return readFailure;
       if (entries === undefined) return reading;
-      return <OwnBoards entries={entries} roster={roster} seats={seats} readAt={snapshot.readAt} />;
+      return <OwnBoards entries={entries} roster={roster} workers={workers} readAt={snapshot.readAt} />;
     case "workstreams": {
       if (readFailure !== null) return readFailure;
       if (entries === undefined || read === undefined || !("value" in read) || read.value === null) return reading;
@@ -271,7 +271,7 @@ function ProjectBody({
             entry={entry}
             readerSessionId={reader!}
             roster={roster}
-            seats={seats}
+            workers={workers}
             gaps={gaps}
           />
         );
@@ -297,33 +297,33 @@ function CoordinatorStream({
   address,
   setup,
   retrySetup,
-  seats,
+  workers,
   gaps,
 }: {
   snapshot: LoadedSnapshot;
   address: ProjectAddress;
   setup: Read<ProjectSetup | null>;
   retrySetup: () => void;
-  seats: readonly Seat[];
+  workers: readonly Worker[];
   gaps: Gaps;
 }) {
   const workforce = useWorkforce();
-  const worker = setup !== undefined && "value" in setup ? (setup.value?.projectCoordinator ?? null) : undefined;
+  const coordinatorId = setup !== undefined && "value" in setup ? (setup.value?.projectCoordinator ?? null) : undefined;
   const [session, setSession] = useState<Read<string>>(undefined);
   const [tries, setTries] = useState(0);
   useEffect(() => {
-    if (worker == null) return;
+    if (coordinatorId == null) return;
     let closed = false;
     setSession(undefined);
     workforce
-      .ensureWorkerSession({ worker, projectId: address })
+      .ensureWorkerSession({ worker: coordinatorId, projectId: address })
       .then((found) => !closed && setSession({ value: found.id }))
       .catch((error: unknown) => !closed && setSession({ failure: describeFailure(error) }));
     return () => {
       closed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workforce, worker, address.visibility, address.id, tries]);
+  }, [workforce, coordinatorId, address.visibility, address.id, tries]);
 
   if (setup !== undefined && "failure" in setup) {
     return (
@@ -332,7 +332,7 @@ function CoordinatorStream({
       </div>
     );
   }
-  if (worker === null) {
+  if (coordinatorId === null) {
     return (
       <EmptyState title="This Lab has no project coordinator" testId="project-stream-no-coordinator">
         The Lab names no worker to talk to a project through. Its workstreams are on the Workstreams tab.
@@ -346,15 +346,15 @@ function CoordinatorStream({
       </div>
     );
   }
-  const seat = seats.find((s) => s.id === worker);
-  if (worker === undefined || session === undefined || seat === undefined) {
+  const worker = workers.find((s) => s.id === coordinatorId);
+  if (coordinatorId === undefined || session === undefined || worker === undefined) {
     return <p className="p-4 text-sm text-muted-foreground" data-testid="project-stream-opening">Opening your project coordinator…</p>;
   }
   return (
     <Conversation
       key={session.value}
       testId="project-stream"
-      seat={seat}
+      worker={worker}
       session={session.value}
       sessions={snapshot.sessions}
       gaps={gaps}
@@ -433,7 +433,7 @@ function EntryView({
   entry,
   readerSessionId,
   roster,
-  seats,
+  workers,
   gaps,
 }: {
   snapshot: LoadedSnapshot;
@@ -442,7 +442,7 @@ function EntryView({
   entry: WorkstreamEntry | undefined;
   readerSessionId: string;
   roster: ReturnType<typeof useRoster>;
-  seats: readonly Seat[];
+  workers: readonly Worker[];
   gaps: Gaps;
 }) {
   const { clients } = useLab();
@@ -467,7 +467,7 @@ function EntryView({
     );
   }
   if (entry.owner === clients.userId) {
-    const seat = leadSeat(entry, roster, seats);
+    const worker = leadWorker(entry, roster, workers);
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="project-entry-own" data-workstream-id={entry.id}>
         <div className="mx-auto w-full max-w-3xl px-4 pt-3">{back}</div>
@@ -475,7 +475,7 @@ function EntryView({
           <EmptyState title="This workstream's session isn't open yet" testId="project-entry-no-session">
             Its open hasn't finished. Open it again from the project to finish it.
           </EmptyState>
-        ) : seat === undefined ? (
+        ) : worker === undefined ? (
           <EmptyState title="Its lead isn't on your roster" testId="project-entry-no-lead">
             "{entry.lead}" leads this workstream, and your roster doesn't list it, so there is no one to talk to here.
           </EmptyState>
@@ -483,7 +483,7 @@ function EntryView({
           <Conversation
             key={entry.sessionId}
             testId="project-entry"
-            seat={seat}
+            worker={worker}
             session={entry.sessionId}
             sessions={snapshot.sessions}
             gaps={gaps}
@@ -555,11 +555,11 @@ function EntryDetails({
   );
 }
 
-/** The seat a workstream's lead talks through: its worker on the person's roster, on the flow the roster names. */
-function leadSeat(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, seats: readonly Seat[]): Seat | undefined {
+/** The worker a workstream's lead talks through: its worker on the person's roster, on the flow the roster names. */
+function leadWorker(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, workers: readonly Worker[]): Worker | undefined {
   const onRoster = roster !== undefined && "entries" in roster ? roster.entries.find((r: RosterEntry) => r.id === entry.lead) : undefined;
   if (onRoster === undefined) return undefined;
-  return seats.find((seat) => seat.id === entry.lead && seat.kind === onRoster.flow);
+  return workers.find((worker) => worker.id === entry.lead && worker.kind === onRoster.flow);
 }
 
 /**
@@ -569,12 +569,12 @@ function leadSeat(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, 
 function OwnBoards({
   entries,
   roster,
-  seats,
+  workers,
   readAt,
 }: {
   entries: readonly WorkstreamEntry[];
   roster: ReturnType<typeof useRoster>;
-  seats: readonly Seat[];
+  workers: readonly Worker[];
   readAt: number;
 }) {
   const { clients } = useLab();
@@ -589,14 +589,14 @@ function OwnBoards({
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4" data-testid="project-board">
       {own.map((entry) => {
-        const seat = leadSeat(entry, roster, seats);
+        const worker = leadWorker(entry, roster, workers);
         return (
           <section key={entry.id} data-testid="project-lane" data-workstream-id={entry.id} data-session-id={entry.sessionId}>
             <h3 className="pb-1 text-xs font-medium">{entry.title}</h3>
-            {seat === undefined ? (
+            {worker === undefined ? (
               <p className="text-xs text-muted-foreground">Its lead "{entry.lead}" isn't on your roster.</p>
             ) : (
-              <TasksPanel seat={seat} sessionId={entry.sessionId} readAt={readAt} />
+              <TasksPanel worker={worker} sessionId={entry.sessionId} readAt={readAt} />
             )}
           </section>
         );

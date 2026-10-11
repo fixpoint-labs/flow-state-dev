@@ -891,7 +891,7 @@ export function resolveOwnerFlow(
  *
  * Two axes, one answer. A record is unattributed when its legacy history names
  * no single flow instance, OR — since FIX-1442 — when it names no organization.
- * Both are the same situation from an operator's seat: data that predates a
+ * Both are the same situation from an operator's worker: data that predates a
  * requirement, which the runtime preserves and refuses to serve rather than
  * guess about, and which one offline migration pass fixes. Giving them one
  * refusal is what makes "run the recipe until nothing 409s" a complete

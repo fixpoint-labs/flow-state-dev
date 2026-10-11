@@ -3,13 +3,13 @@
  * their own skills.
  *
  * Two readers existed and neither called the other: `readWorkforceDirectory`
- * knows which seats there are, `readSeatSkills` knows what one seat can see.
- * Between them sat the gap this closes — a seat's computed skill union had
+ * knows which workers there are, `readWorkerSkills` knows what one worker can see.
+ * Between them sat the gap this closes — a worker's computed skill union had
  * nowhere to ride into the mint, so a roster loaded from disk hired workers
  * that held no skills at all.
  *
  * This is a JOIN, not a third walker. It calls both readers unchanged and
- * attaches each seat's set to its record; adding another directory walk is the
+ * attaches each worker's set to its record; adding another directory walk is the
  * outcome that would put a third answer to "what is in this tree" in the repo.
  *
  * Node-only (by way of both readers), which is why it ships behind the
@@ -17,9 +17,9 @@
  */
 
 import {
-  createSeatSkillsReader,
-  type SeatSkillError,
-} from "./read-seat-skills";
+  createWorkerSkillsReader,
+  type WorkerSkillError,
+} from "./read-worker-skills";
 import {
   readPackagesDirectory,
   type PackageError,
@@ -33,7 +33,7 @@ import {
   type ReadWorkforceDirectoryResult,
 } from "./read-workforce-directory";
 import type { TeamManifest, WorkerManifest } from "../manifest";
-import { parseDeclaredSeatId } from "../seat-references";
+import { parseDeclaredWorkerId } from "../worker-references";
 
 /** What {@link readWorkforce} hands back. */
 export interface ReadWorkforceResult {
@@ -45,29 +45,29 @@ export interface ReadWorkforceResult {
   workers: WorkerManifest[];
   /**
    * Worker-slot and structural failures, exactly as `readWorkforceDirectory`
-   * reports them. A path here is a seat, or a set of seats, that should exist
+   * reports them. A path here is a worker, or a set of workers, that should exist
    * and does not.
    */
   errors: ReadWorkforceDirectoryResult["errors"];
   /**
-   * Per-seat skill failures — one entry per seat whose read produced any,
-   * carrying that seat's id and `readSeatSkills`' own error list.
+   * Per-worker skill failures — one entry per worker whose read produced any,
+   * carrying that worker's id and `readWorkerSkills`' own error list.
    *
-   * Reported per seat rather than flattened into `errors` because the two are
+   * Reported per worker rather than flattened into `errors` because the two are
    * different severities and callers treat them differently: a worker slot that
-   * failed is a seat the app does not have, while a skill that failed is a seat
-   * running short. Narrow on each entry's `kind` (see `SeatSkillError`).
+   * failed is a worker the app does not have, while a skill that failed is a worker
+   * running short. Narrow on each entry's `kind` (see `WorkerSkillError`).
    *
    * A failure at a SHARED level — the org's `skills/` folder being unlistable,
-   * say — reaches every seat that reads it, so it appears once under each. That
-   * is the honest shape: it really did cost each of those seats a skill.
+   * say — reaches every worker that reads it, so it appears once under each. That
+   * is the honest shape: it really did cost each of those workers a skill.
    */
-  skillErrors: Array<{ worker: string; errors: SeatSkillError[] }>;
+  skillErrors: Array<{ worker: string; errors: WorkerSkillError[] }>;
   /**
    * One record per team that declared a `TEAM.md`, in walk order.
    *
    * Surfaced rather than only attached to worker records, because the file
-   * carries one thing the seats do not: the team's own `description`. Validated
+   * carries one thing the workers do not: the team's own `description`. Validated
    * and then discarded would be the worse of the two available mistakes —
    * either read a value or do not ask for it.
    *
@@ -79,8 +79,8 @@ export interface ReadWorkforceResult {
    *
    * Their own channel rather than flattened into `errors`, for the reason
    * `skillErrors` has one: the severities differ and callers treat them
-   * differently. A worker slot that failed is a seat the app does not have; a
-   * `TEAM.md` that failed is a whole team's seats running without instructions
+   * differently. A worker slot that failed is a worker the app does not have; a
+   * `TEAM.md` that failed is a whole team's workers running without instructions
    * their author wrote. Narrow on each entry's `kind` (see
    * `TeamManifestErrorKind`).
    */
@@ -112,21 +112,21 @@ export interface ReadWorkforceResult {
  *   mailboxes.
  *
  * @example
- * import { packageBlocks, seatBlocks } from "./workforce/workforce.gen";
+ * import { packageBlocks, workerBlocks } from "./workforce/workforce.gen";
  * const { workers, errors, skillErrors, teamErrors, packageErrors } = await readWorkforce("./workforce");
  * if (packageErrors.length > 0) throw new Error("a package was refused"); // always fatal
  * if (errors.length > 0 || skillErrors.length > 0 || teamErrors.length > 0) {
  *   throw new Error("short roster");
  * }
- * const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: workers, seatBlocks, packageBlocks }));
+ * const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: workers, workerBlocks, packageBlocks }));
  */
 export async function readWorkforce(root: string): Promise<ReadWorkforceResult> {
   const { workers, errors } = await readWorkforceDirectory(root);
 
   // ONCE, for the whole call, into a map. A team's instructions are one value
-  // per TEAM — unlike a seat's skills, which are assembled inside the loop below
-  // because they are per SEAT. Reading the file per seat would buy a file read
-  // per seat for a value identical every time, and a test that only checked the
+  // per TEAM — unlike a worker's skills, which are assembled inside the loop below
+  // because they are per WORKER. Reading the file per worker would buy a file read
+  // per worker for a value identical every time, and a test that only checked the
   // records came out right would pass anyway.
   const { teams, errors: teamErrors } = await readTeamsDirectory(root);
   const instructionsByTeam = new Map<string, string>(
@@ -139,20 +139,20 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
   // level, and each worker's reach is a filter over the one read.
   const { packages, errors: packageErrors } = await readPackagesDirectory(root);
 
-  // A seat's skills are per SEAT, but the levels they come from are mostly
-  // shared: every seat sees the org's, every seat on a team sees the team's.
+  // A worker's skills are per WORKER, but the levels they come from are mostly
+  // shared: every worker sees the org's, every worker on a team sees the team's.
   // One reader for the whole call reads each level once and assembles each
-  // seat's union from it, so the cost follows the tree, not workers × levels.
-  const readSeatSkills = createSeatSkillsReader(root);
+  // worker's union from it, so the cost follows the tree, not workers × levels.
+  const readWorkerSkills = createWorkerSkillsReader(root);
 
   const joined: WorkerManifest[] = [];
   const skillErrors: ReadWorkforceResult["skillErrors"] = [];
 
   for (const worker of workers) {
-    // The reader minted this id, so it always parses. An org seat has no team:
+    // The reader minted this id, so it always parses. An org worker has no team:
     // no team skills, no `TEAM.md` instructions, no team library.
-    const { team, name } = parseDeclaredSeatId(worker.id)!;
-    const seat = await readSeatSkills({ team, worker: name });
+    const { team, name } = parseDeclaredWorkerId(worker.id)!;
+    const read = await readWorkerSkills({ team, worker: name });
     const teamInstructions = team === undefined ? undefined : instructionsByTeam.get(team);
     // The org's library, the worker's team's, then its own folder — in walk
     // order, which is that order. Another team's library and a sibling's own
@@ -165,7 +165,7 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
     );
     joined.push({
       ...worker,
-      skills: seat.skills,
+      skills: read.skills,
       // Spread rather than assigned, so a team with no instructions leaves the
       // key ABSENT on the record instead of present-and-undefined. The
       // difference is not cosmetic: the factory imposes the setting from
@@ -175,8 +175,8 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
       // Absent rather than empty, for the reason `teamInstructions` is.
       ...(reach.length === 0 ? {} : { packages: reach }),
     });
-    if (seat.errors.length > 0) {
-      skillErrors.push({ worker: worker.id, errors: seat.errors });
+    if (read.errors.length > 0) {
+      skillErrors.push({ worker: worker.id, errors: read.errors });
     }
   }
 

@@ -1,5 +1,5 @@
 /**
- * The ask-lab — a small Lab Shift Manager's tests open, whose seats ask a person
+ * The ask-lab — a small Lab Shift Manager's tests open, whose workers ask a person
  * before they act.
  *
  * Neither goal tree raises an ask on `main` today, so this is the tree the
@@ -28,11 +28,11 @@ import {
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineCoordinatorFlow,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   resourcesFromDocs,
   defineProjectBlocks,
@@ -44,7 +44,7 @@ import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workfor
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ASKER_KIND, defineAskerFlow } from "./asker.mts";
+import { ASKER_FLOW, defineAskerFlow } from "./asker.mts";
 
 /** The tree this Lab reads. */
 export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -97,7 +97,7 @@ export const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
 const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
 
 /** The flow the inventory is written from: the Lab's own, carrying the writer. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /** How to open the ask-lab. */
 export type AskLabOptions = {
@@ -111,14 +111,14 @@ export type AskLabOptions = {
   /** Open the inventory at boot. Default true. */
   inventory?: boolean;
   /**
-   * Register each seat with its actions, so its inventory row names its door.
-   * Default true. `false` registers id and kind only: every seat reads as a
-   * kind with no door.
+   * Register each worker with its actions, so its inventory row names its door.
+   * Default true. `false` registers id and worker flow only: every worker reads as a
+   * worker flow with no door.
    */
   doors?: boolean;
   /**
    * Declare the inventory's collections: the writer's flow, and the asker
-   * kind for a browser to read. Default true. `false` is a Lab whose flows
+   * worker flow for a browser to read. Default true. `false` is a Lab whose flows
    * never declare an inventory, so no session it serves lists one. The
    * inventory is not opened either.
    */
@@ -131,13 +131,13 @@ export type AskLabOptions = {
   /**
    * With `bearer`, the organization the person is bound to instead of
    * {@link ASK_LAB_ORG_ID}. `"ops"` names the organization like the Lab's
-   * declared team, so a declared seat's id reads as an address in it.
+   * declared team, so a declared worker's id reads as an address in it.
    */
   orgId?: string;
-  /** Add a seat named `chief-of-staff` to the ops team, on the asker kind. Default false. */
+  /** Add a worker named `chief-of-staff` to the ops team, on the asker worker flow. Default false. */
   chiefOfStaff?: boolean;
-  /** Let the asker kind's `message` door start projects (`startProjectLine`). Default false. */
-  seatsStartProjects?: boolean;
+  /** Let the asker worker flow's `message` door start projects (`startProjectLine`). Default false. */
+  workersStartProjects?: boolean;
   /**
    * Projects to create once the inventory is open, each as `owner` (default
    * the Lab's person) through the project writes' own `createProject`.
@@ -145,8 +145,8 @@ export type AskLabOptions = {
   projects?: Array<CreateProjectInput & { owner?: string }>;
 };
 
-/** The flow kind the ask-lab creates projects through. */
-const PROJECTS_KIND = "projects";
+/** The flow the ask-lab creates projects through. */
+const PROJECTS_FLOW = "projects";
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
@@ -157,21 +157,21 @@ export async function openAskLab(options: AskLabOptions = {}) {
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
   const asker = defineAskerFlow(installation, resourcesFromDocs(tree.documents), {
-    projects: options.seatsStartProjects,
+    projects: options.workersStartProjects,
     inventory: declared,
   });
   workerFlows = {
-    [ASKER_KIND]: asker,
-    [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [asker], routeModel: ROUTE_MODEL }),
+    [ASKER_FLOW]: asker,
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [asker], routeModel: ROUTE_MODEL }),
   };
   const copies = hireWorkforce(installation);
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    // The seat write takes caller-supplied rows, so it is internal only.
+    // The worker write takes caller-supplied rows, so it is internal only.
     ...(declared
       ? {
-          [INVENTORY_WRITER_KIND]: defineFlow({
-            kind: INVENTORY_WRITER_KIND,
+          [INVENTORY_WRITER_FLOW]: defineFlow({
+            kind: INVENTORY_WRITER_FLOW,
             internal: { actions: { ...inventoryWriterActions() } },
           } as never)(),
         }
@@ -179,7 +179,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
     ...(options.projects === undefined
       ? {}
       : {
-          [PROJECTS_KIND]: defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)(),
+          [PROJECTS_FLOW]: defineFlow({ kind: PROJECTS_FLOW, actions: defineProjectBlocks().actions } as never)(),
         }),
   };
   const primary = inMemoryStores();
@@ -209,7 +209,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   };
   if (options.conversations === false) return { flowState, tree, flows };
   for (const workerId of ASK_LAB_COORDINATORS) {
-    const { status, body } = await call("POST", [COORDINATOR_KIND, "sessions"], {
+    const { status, body } = await call("POST", [COORDINATOR_FLOW, "sessions"], {
       userId: ASK_LAB_USER_ID,
       sessionId: workerId,
       state: { workerId },
@@ -238,17 +238,17 @@ export async function openAskLab(options: AskLabOptions = {}) {
     };
     const binding = await openInventory(
       {
-        seats: options.doors === false
-          ? inventorySeats(installation).map((seat) => ({ ...seat, actions: {} }))
-          : inventorySeats(installation),
+        workers: options.doors === false
+          ? inventoryWorkers(installation).map((worker) => ({ ...worker, actions: {} }))
+          : inventoryWorkers(installation),
       },
-      { run, seatWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: ASK_LAB_USER_ID, orgId },
+      { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 
     for (const { owner = ASK_LAB_USER_ID, ...input } of options.projects ?? []) {
       const result = (await runAction({
-        flow: flows[PROJECTS_KIND],
+        flow: flows[PROJECTS_FLOW],
         actionName: "createProject",
         input,
         userId: owner,

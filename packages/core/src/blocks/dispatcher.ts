@@ -329,7 +329,7 @@ export function dispatcher(
       outputSchema: dispatchHandleSchema,
       execute: async (envelope, ctx): Promise<DispatchHandle> => {
         const key = taskSessionKeyFor(name, session, envelope, ctx);
-        const task = { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload };
+        const task = { assignee: envelope.assignee, taskId: envelope.taskId, input: envelope.payload };
         const taskAddress = address as Extract<DispatchAddress, { type: "task" }>;
         const target = await resolveTaskFlowKind(name, taskAddress, task, ctx);
         const initialState = await resolveTaskState(name, taskAddress, task, ctx);

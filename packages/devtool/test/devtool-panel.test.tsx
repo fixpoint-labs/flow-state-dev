@@ -161,10 +161,10 @@ describe("DevToolPanel — the Inventory tab is wired into the workspace", () =>
       flowKind: "demo",
       resources: [
         {
-          ref: "orgSeats",
+          ref: "orgWorkers",
           kind: "collection",
           scope: "org",
-          pattern: "inventory/seats/*",
+          pattern: "inventory/workers/*",
           hasClientData: true,
           client: { state: { read: true } },
         },

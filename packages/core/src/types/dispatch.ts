@@ -192,14 +192,14 @@ export type DispatchAddress =
  * Every field is **server-derived at hand-off** — the board supplies them from
  * the ticket it minted off the row it claimed. `attempt`, `createdAt` and
  * `incarnationId` say *which* claim this dispatch believes it is running;
- * `seat` names the assignee the board routed the row to. The entry's
+ * `assignee` names the assignee the board routed the row to. The entry's
  * gate decides whether all of that is still true: verified, never trusted.
  */
 export const taskDispatchInputSchema = z.object({
   /** Which board's ledger this dispatch settles against. */
   boardId: z.string().min(1),
   /** The assignee the board routed the row to. */
-  seat: z.string().min(1),
+  assignee: z.string().min(1),
   /** The claimed row. */
   taskId: z.string().min(1),
   /** The attempt this dispatch believes it is running. */
@@ -280,7 +280,7 @@ export function taskSessionKeyFor(
     return `task|${framed(envelope.boardId)}|${framed(sessionTask)}`;
   }
   if (policy === "per-worker") {
-    return `worker|${framed(envelope.boardId)}|${framed(envelope.seat)}`;
+    return `worker|${framed(envelope.boardId)}|${framed(envelope.assignee)}`;
   }
   const key = policy.key(envelope.payload, ctx);
   if (typeof key !== "string" || key.length === 0) {

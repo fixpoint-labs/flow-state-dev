@@ -22,7 +22,7 @@ import { registerServeCommand } from "../src/commands/serve";
 import { registerDevCommand } from "../src/commands/dev";
 import { CliError } from "../src/resolve-block";
 import { EXIT_INVALID_ARGS } from "../src/exit-codes";
-import { APP_ORG, APP_USER, SEAT_ID, makeApp, resetSharedStores, sharedStores } from "./fixtures-principal/app";
+import { APP_ORG, APP_USER, WORKER_ID, makeApp, resetSharedStores, sharedStores } from "./fixtures-principal/app";
 
 const appDir = resolve(import.meta.dirname, "fixtures-principal");
 const discoveryDir = resolve(import.meta.dirname, "fixtures");
@@ -309,23 +309,23 @@ describe("V6 · an existing session is checked before any write", () => {
   });
 });
 
-describe("a pinned seat refuses an identity outside its pin before any write", () => {
+describe("a pinned worker refuses an identity outside its pin before any write", () => {
   it.each([
     ["--user names another user in the owning org", { user: "alice" }],
     ["--org names another org", { org: "acme", user: APP_USER }],
   ])("fsdev run: %s — no session, request or seed is written", async (_label, flags) => {
-    const outcome = await run(SEAT_ID, { session: "pin-run", seedSession: '{"seeded":true}', ...flags });
+    const outcome = await run(WORKER_ID, { session: "pin-run", seedSession: '{"seeded":true}', ...flags });
     expect(await session(sharedStores(), "pin-run")).toBeUndefined();
     expect(await sharedStores().request.list({ sessionId: "pin-run" })).toEqual([]);
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
     expect(outcome.error.exitCode).toBe(EXIT_INVALID_ARGS);
-    expect(outcome.error.message).toContain(`Flow "${SEAT_ID}" refused this terminal`);
+    expect(outcome.error.message).toContain(`Flow "${WORKER_ID}" refused this terminal`);
     expect(outcome.error.message).toContain("Nothing was written");
   });
 
-  it("fsdev run as the seat's owner runs (the pin admits its own identity)", async () => {
-    const outcome = await run(SEAT_ID, { session: "pin-owner" });
+  it("fsdev run as the worker's owner runs (the pin admits its own identity)", async () => {
+    const outcome = await run(WORKER_ID, { session: "pin-owner" });
     expect(outcome.ok).toBe(true);
     expect(await session(sharedStores(), "pin-owner")).toMatchObject({ userId: APP_USER, orgId: APP_ORG });
   });
@@ -339,14 +339,14 @@ describe("a pinned seat refuses an identity outside its pin before any write", (
       },
     });
     const stores = createInMemoryStores();
-    await executeChatCommand(SEAT_ID, "respond", {
+    await executeChatCommand(WORKER_ID, "respond", {
       cwd: appDir,
       stores,
       user: "alice",
       input: Readable.from(["hi\n/exit\n"]) as Readable & { isTTY?: boolean },
       output: output as unknown as NodeJS.WritableStream,
     });
-    expect(out).toContain(`Flow "${SEAT_ID}" refused this terminal`);
+    expect(out).toContain(`Flow "${WORKER_ID}" refused this terminal`);
     expect(await stores.session.list()).toEqual([]);
     expect(await stores.request.list({})).toEqual([]);
   });
