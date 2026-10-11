@@ -44,12 +44,10 @@ import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { build, type Plugin } from "esbuild";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, loadFixture, runGoal } from "../../lib/index.mts";
+import { answerSeats } from "./bundled-host.mts";
 
 interface Fixture {
   host: {
@@ -63,16 +61,20 @@ interface Fixture {
 const fixture = loadFixture<Fixture>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
-/** The legs each control must redden, and only those. */
+/**
+ * The named assertions each control must fail. A control may fail other
+ * assertions of the same leg (a kind that never bundled also answers nothing),
+ * but no assertion of any other leg.
+ */
 const EXPECTED: Record<string, string[]> = {
   // Read by this runner: both fixture workers are hired on the first worker's settings.
-  "shared-settings": ["d"],
+  "shared-settings": ["d:answers", "d:differ"],
   // Read by this runner: the bundle's host finds its kinds by scanning a folder at run time
   // instead of through the generated module's static imports.
-  "runtime-scan": ["e"],
+  "runtime-scan": ["e:bundled", "e:answers"],
   // Read by this runner: after `fsdev gen` writes the planted block onto kitchen-sink's generated
   // module, its import and entry are stripped before `next build` runs.
-  "stripped-import": ["a"],
+  "stripped-import": ["a:chunks"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -85,11 +87,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** A name only the kind's own module carries: its answer block's. Present in the bundle means the kind was bundled. */
 const KIND_MARK = "desk-clerk-answer";
 
-/**
- * The `runtime-scan` control: the generated module swapped, at bundle time, for
- * one that finds kinds the way a run-time scan would — by listing
- * `flows/workers/` beside the running code and importing what is there.
- */
+/** Swap the generated module for a run-time scan of `flows/workers/` beside the bundle. */
 const runtimeScan: Plugin = {
   name: "runtime-scan",
   setup(b) {
@@ -224,7 +222,7 @@ await runGoal(async (failures) => {
     );
     execFileSync("pnpm", ["fsdev", "gen"], { cwd: KITCHEN_SINK, stdio: "pipe" });
     if (!readFileSync(APP_GEN, "utf8").includes(`./blocks/${token}`)) {
-      fail("a", `fsdev gen did not put the planted block on kitchen-sink's workforce.gen.ts`);
+      fail("a:gen", `fsdev gen did not put the planted block on kitchen-sink's workforce.gen.ts`);
     }
     if (CONTROL === "stripped-import") {
       const gen = readFileSync(APP_GEN, "utf8")
@@ -239,17 +237,17 @@ await runGoal(async (failures) => {
     const control = HAND_WIRED.map((flow) => [flow, chunksNaming(flow)] as const);
     const blind = control.filter(([, count]) => count === 0).map(([flow]) => flow);
     if (blind.length > 0) {
-      fail("a", `the build-output probe is blind: the hand-wired ${blind.join(", ")} appear in 0 compiled chunks, so a 0 for the block would not mean it was left out`);
+      fail("a:probe", `the build-output probe is blind: the hand-wired ${blind.join(", ")} appear in 0 compiled chunks, so a 0 for the block would not mean it was left out`);
     } else {
       const count = chunksNaming(token);
       if (count === 0) {
-        fail("a", `the planted block's name "${token}" appears in 0 compiled chunks under .next: the generated module's imports never reached the app's bundle`);
+        fail("a:chunks", `the planted block's name "${token}" appears in 0 compiled chunks under .next: the generated module's imports never reached the app's bundle`);
       }
       evidence.push(`kitchen-sink's own build, compiled chunks naming each: ${[...control, ["planted block", count] as const].map(([name, n]) => `${name}=${n}`).join(", ")}`);
     }
   } catch (err) {
     const e = err as { stderr?: Buffer; message?: string };
-    fail("a", `the app's build did not complete: ${String(e.stderr ?? e.message ?? err).slice(-400)}`);
+    fail("a:build", `the app's build did not complete: ${String(e.stderr ?? e.message ?? err).slice(-400)}`);
   } finally {
     restoreApp();
   }
@@ -266,12 +264,12 @@ await runGoal(async (failures) => {
     });
   } catch (err) {
     const e = err as { stdout?: Buffer; stderr?: Buffer };
-    fail("d", `fsdev gen --check says the fixture's workforce.gen.ts is not what its tree generates: ${String(e.stderr ?? e.stdout ?? "")}`);
+    fail("d:check", `fsdev gen --check says the fixture's workforce.gen.ts is not what its tree generates: ${String(e.stderr ?? e.stdout ?? "")}`);
   }
   // This runner reaches the kind through the generated module alone.
   const self = readFileSync(fileURLToPath(import.meta.url), "utf8");
   if (importsModule(fileURLToPath(import.meta.url), self, TREE_KIND_MODULE)) {
-    fail("d", `this runner imports the fixture's kind module directly, bypassing the generated module`);
+    fail("d:self-import", `this runner imports the fixture's kind module directly, bypassing the generated module`);
   }
 
   const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
@@ -279,92 +277,60 @@ await runGoal(async (failures) => {
   };
   const roster = await readWorkforce(TREE);
   if (roster.errors.length > 0) {
-    fail("d", `the fixture tree did not load: ${roster.errors.map((e) => e.path).join(", ")}`);
+    fail("d:tree", `the fixture tree did not load: ${roster.errors.map((e) => e.path).join(", ")}`);
   }
-  let workers: WorkerManifest[] = roster.workers;
+  let workers = roster.workers;
   if (CONTROL === "shared-settings") {
     // One configuration for every seat: the first seat's declared keys, each
     // seat keeping only its own id.
     const first = workers[0]!.declared;
     workers = workers.map((worker) => ({ ...worker, declared: { ...first } }));
   }
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: generated.kinds as never });
-  const copies = hireWorkforce(installation);
-  const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    stores: { default: { primary: inMemoryStores() } },
-  } as never);
-  try {
-    const runtime = await state.getRuntime();
-    const router = await state.getRouter();
-    const seen: Record<string, string> = {};
-    const copy = copies.find((c) => c.kind === fixture.host.kind);
-    if (copy === undefined) fail("d", `no copy of the tree's custom flow "${fixture.host.kind}" was registered (registered: ${copies.map((c) => c.id).join(", ")})`);
-    for (const seatId of fixture.host.seats) {
-      if (copy === undefined) break;
-      const declaredFlow = installation.standardWorker(seatId)?.declared.flow;
-      if (declaredFlow !== fixture.host.kind) {
-        fail("d", `${seatId} runs on "${String(declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
-      }
-      // A session on the one copy, created naming the worker.
-      const sessionPath = [copy.id, "sessions"];
-      const created = await router.POST(
-        new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ userId: fixture.host.userId, sessionId: `s_${seatId}`, state: { workerId: seatId } }),
-        }),
-        { params: { path: sessionPath } },
-      );
-      if (created.status !== 201) {
-        fail("d", `${seatId}: its session was not created (${created.status}): ${await created.text()}`);
-        continue;
-      }
-      const ran = (await runAction({
-        flow: copy,
-        actionName: "answer",
-        input: { note: fixture.host.note },
-        userId: fixture.host.userId,
-        // A fixture host with one organization: the development default.
-        orgId: DEFAULT_ORG_ID,
-        sessionId: `s_${seatId}`,
-        stores: runtime.stores,
-        runtimeConfig: { ...runtime.runtimeConfig },
-      } as never)) as { output?: { said?: string }; error?: unknown };
-      const said = ran.output?.said ?? "";
-      seen[seatId] = said;
-      const desk = declaredDesk(seatId);
-      if (said === "") {
-        fail("d", `${seatId}: answered nothing${ran.error === undefined ? "" : `: ${String(ran.error)}`}`);
-      } else if (!said.includes(`[${desk} desk]`)) {
-        fail("d", `${seatId}: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
-      }
+  const hired = await answerSeats({
+    kinds: generated.kinds,
+    workers,
+    userId: fixture.host.userId,
+    note: fixture.host.note,
+    kind: fixture.host.kind,
+    seats: fixture.host.seats,
+  });
+  const seen: Record<string, string> = {};
+  if (!hired.found) fail("d:registered", `no copy of the tree's custom flow "${fixture.host.kind}" was registered (registered: ${hired.registered.join(", ")})`);
+  for (const seatId of fixture.host.seats) {
+    const row = hired.answers[seatId];
+    if (row === undefined) continue;
+    if (row.declaredFlow !== fixture.host.kind) {
+      fail("d:flow", `${seatId} runs on "${String(row.declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
     }
-    // Two seats, one kind. Equal answers would pass every check above while
-    // meaning the configuration came from somewhere other than their files.
-    const answers = fixture.host.seats.map((seatId) => seen[seatId] ?? "");
-    if (answers.length > 1 && new Set(answers).size === 1) {
-      fail(
-        "d",
-        `both seats answered ${JSON.stringify(answers[0])} — they sit on one kind, so an identical answer means ` +
-          `they are running one shared configuration rather than their own files`
-      );
+    if (row.status !== 201) {
+      fail("d:session", `${seatId}: its session was not created (${row.status}): ${String(row.error ?? "")}`);
+      continue;
     }
-    evidence.push(
-      `on the fixture host, hired from its generated module: ` +
-        fixture.host.seats.map((seatId) => `${seatId} said ${JSON.stringify(seen[seatId] ?? "")}`).join(", ")
-    );
-  } finally {
-    await state.dispose();
+    const said = row.said;
+    seen[seatId] = said;
+    const desk = declaredDesk(seatId);
+    if (said === "") {
+      fail("d:answers", `${seatId}: answered nothing${row.error === undefined ? "" : `: ${String(row.error)}`}`);
+    } else if (!said.includes(`[${desk} desk]`)) {
+      fail("d:answers", `${seatId}: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
+    }
   }
-
+  // Two seats, one kind. Equal answers would pass every check above while
+  // meaning the configuration came from somewhere other than their files.
+  const answers = fixture.host.seats.map((seatId) => seen[seatId] ?? "");
+  if (answers.length > 1 && new Set(answers).size === 1) {
+    fail(
+      "d:differ",
+      `both seats answered ${JSON.stringify(answers[0])} — they sit on one kind, so an identical answer means ` +
+        `they are running one shared configuration rather than their own files`
+    );
+  }
+  evidence.push(
+    `on the fixture host, hired from its generated module: ` +
+      fixture.host.seats.map((seatId) => `${seatId} said ${JSON.stringify(seen[seatId] ?? "")}`).join(", ")
+  );
 
   // ---- (e) the kind, through a production bundle ----------------------------
-  // `bundled-host.mts` reaches the kind only through the generated module. It
-  // is bundled and minified into one file, written to an empty folder outside
-  // the repository, and run there with plain node: nothing beside it holds the
-  // fixture's source, so the workers answer only if the generated module's
-  // static imports were carried into the bundle.
   const out = mkdtempSync(join(tmpdir(), "goal-code-from-files-"));
   try {
     const bundle = join(out, "host.mjs");
@@ -380,9 +346,9 @@ await runGoal(async (failures) => {
       // Some dependencies are CommonJS and call require; an ESM bundle has none.
       banner: { js: `import { createRequire as __goalRequire } from "node:module"; const require = __goalRequire(import.meta.url);` },
     });
-    if (built.errors.length > 0) fail("e", `the bundle did not build: ${built.errors.map((e) => e.text).join("; ")}`);
+    if (built.errors.length > 0) fail("e:build", `the bundle did not build: ${built.errors.map((e) => e.text).join("; ")}`);
     const text = readFileSync(bundle, "utf8");
-    if (!text.includes(KIND_MARK)) fail("e", `the bundle carries no "${KIND_MARK}", so the kind's module was not bundled`);
+    if (!text.includes(KIND_MARK)) fail("e:bundled", `the bundle carries no "${KIND_MARK}", so the kind's module was not bundled`);
     const input = join(out, "workers.json");
     writeFileSync(input, JSON.stringify({ ...fixture.host, workers: roster.workers }));
     let printed = "";
@@ -393,19 +359,28 @@ await runGoal(async (failures) => {
       const lines = String(e.stderr ?? "").split("\n");
       // The bundle is minified, so the stack's first lines are code; the error's own line names the cause.
       const cause = lines.find((l) => /^\w*Error\b/.test(l)) ?? lines[0] ?? "";
-      fail("e", `the bundled host exited non-zero: ${cause.slice(0, 300)}`);
+      fail("e:exit", `the bundled host exited non-zero: ${cause.slice(0, 300)}`);
     }
     const line = printed.trim().split("\n").pop() ?? "";
-    const result = (line.startsWith("{") ? JSON.parse(line) : { kinds: [], answers: {} }) as {
-      kinds: string[];
-      answers: Record<string, string>;
-    };
+    let result: { kinds: string[]; answers: Record<string, string> } = { kinds: [], answers: {} };
+    if (printed !== "") {
+      try {
+        result = JSON.parse(line) as typeof result;
+      } catch {
+        fail("e:output", `the bundled host's last line is not JSON: ${JSON.stringify(line.slice(0, 200))}`);
+      }
+    }
     for (const seatId of fixture.host.seats) {
       const said = result.answers[seatId] ?? "";
       const desk = declaredDesk(seatId);
       if (!said.includes(`[${desk} desk]`)) {
-        fail("e", `${seatId}, run from the bundle: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
+        fail("e:answers", `${seatId}, run from the bundle: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
       }
+    }
+    // The same anti-game as (d): one kind, two workers, so equal answers mean one shared configuration.
+    const bundled = fixture.host.seats.map((seatId) => result.answers[seatId] ?? "");
+    if (bundled.length > 1 && bundled[0] !== "" && new Set(bundled).size === 1) {
+      fail("e:differ", `both workers answered ${JSON.stringify(bundled[0])} from the bundle, so they ran one shared configuration rather than their own files`);
     }
     evidence.push(
       `from a ${Math.round(text.length / 1024)} KB minified bundle run outside the repository (kinds: ${result.kinds.join(", ") || "none"}): ` +
@@ -415,15 +390,16 @@ await runGoal(async (failures) => {
     rmSync(out, { recursive: true, force: true });
   }
 
-  // A control must redden each leg it names, and only those.
+  // A control must fail each assertion it names, and nothing outside that leg.
   if (CONTROL !== "") {
     const want = EXPECTED[CONTROL]!;
-    const legs = new Set(failures.map((f) => /^\[([^\]]+)\]/.exec(f)?.[1] ?? ""));
-    for (const leg of want) {
-      if (!legs.has(leg)) failures.push(`[control] GOAL_CONTROL=${CONTROL} left the ${leg} leg green, so that leg cannot fail`);
+    const wantLegs = new Set(want.map((id) => id.split(":")[0]));
+    const failed = new Set(failures.map((f) => /^\[([^\]]+)\]/.exec(f)?.[1] ?? ""));
+    for (const id of want) {
+      if (!failed.has(id)) failures.push(`[control] GOAL_CONTROL=${CONTROL} left ${id} green, so that assertion cannot fail`);
     }
-    for (const leg of legs) {
-      if (!want.includes(leg) && leg !== "control") failures.push(`[control] GOAL_CONTROL=${CONTROL} also reddened the ${leg} leg`);
+    for (const id of failed) {
+      if (id !== "control" && !wantLegs.has(id.split(":")[0]!)) failures.push(`[control] GOAL_CONTROL=${CONTROL} also failed ${id}`);
     }
   }
   return { failures, evidence: evidence.join("; ") };
