@@ -816,12 +816,12 @@ task's result, it can file the task and wait for it instead. That is an **ask**.
 has durable execution and runs the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). A conversation's
 board in Workforce can wake one. For a board of your own, pass `{ resumesAsks: true }` to
-`createTaskToolsCapability` only when whatever runs it calls `resumeOwedAsks` each time it
-touches the board outside a turn. Where the server can't hold an ask, the option isn't in
+`createTaskToolsCapability` only when whatever runs it calls `resumeOwedAsks`, which resumes
+turns whose asked task has ended, each time it touches the board outside a turn. Where the server can't hold an ask, the option isn't in
 `addTask`'s schema at all, and `addTask` files without waiting.
 
 With the option set, the task is filed as usual, on the same board a plain `addTask` writes to.
-Then the worker's turn parks until the task ends, and the tool returns the task's output as its
+Then the turn that filed it parks until the task ends, and the tool returns the task's output as its
 result, `{ ok: true, taskId, answer }`. Nothing holds the request open in between. The turn is
 saved when it parks and loaded again when the answer arrives, and steps it already ran aren't
 run again. A server restart while the turn waits loses nothing: the turn resumes after the
@@ -865,7 +865,7 @@ A worker that can't go on without an answer calls `parkOnQuestion({ question })`
 await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
-It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task (including one parked for a person's turn or waiting on its own sub-tasks) and an answer that arrives after the task has moved on to a newer question, writing nothing.
+It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked for a person's turn or waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. Either way, nothing is written.
 
 ## Collection backing
 

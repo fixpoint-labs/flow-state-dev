@@ -745,15 +745,16 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
 `session_has_unfinished_task`, and `task_awaiting_answer` — a coordinator
-rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+rule like "when a tool returns `ok: false`, re-plan" covers all of them. The last
+five come from [questions](#when-a-task-stops-on-a-question) and
+[follow-ups](#following-up-on-a-finished-task), below.
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
-string, but `unknown_assignee`, `illegal_status_transition`, and
-`terminal_task_write_declined` are followed by `: ` and a sentence of guidance for
-the model, so `error === "illegal_status_transition"` never matches. Use
+string. Every other code is followed by `: ` and a sentence of guidance for the
+model, so `error === "illegal_status_transition"` never matches. Use
 `error.startsWith("illegal_status_transition")`. There is no separate structured
-`code` field today.
+`code` field.
 
 Only the *tool* boundary translates a refusal into a result. Driving a collection
 directly throws, and the error is an exported class you can catch:
@@ -831,8 +832,9 @@ Two functions sit under the option, for a layer that builds its own board surfac
 
 #### When a task stops on a question
 
-A worker that can't go on without an answer parks its task on a question, and whoever
-filed the task answers it. `createParkOnQuestion({ resolve })` builds the worker's side:
+A worker that can't go on without an answer parks its task on a question until someone
+answers it. Anyone who can call `answerTask` on the board can answer.
+`createParkOnQuestion({ resolve })` builds the worker's side:
 `parkOnQuestion({ question })` parks the task the current turn is working on, and
 `offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
 task that wasn't filed with `waitForResponse`.
