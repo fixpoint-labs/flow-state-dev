@@ -61,10 +61,15 @@ children's specs, and Jake's calls during the build.
     read, post and join, on `ROOM_KIND`) and `lib/reads.ts`'s `createSession(` (the person's room
     session, on `ROOM_KIND`), both into the person's own sessions, never a worker's. Held as
     [PR-2](BUSINESS-RULES.md). *Contested by FIX-1786: [Open](#open), T2.*
-12. **Projects are org-wide channels and usually cross-team** (Jake). A project belongs to the
-    organization and names no team; one whose workstreams all sit in one team is allowed but is
-    never the default ([FIX-1718 BR-2a](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1718/BUSINESS-RULES.md)).
-    *Contested by FIX-1786: [Open](#open), T1 and ask 1.*
+12. **Projects are usually cross-team, and private or shared** (Jake). A project names no team;
+    one whose workstreams all sit in one team is allowed but is never the default
+    ([FIX-1718 BR-2a](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1718/BUSINESS-RULES.md)).
+    *Amended by FIX-1786
+    [Q2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#q2),
+    Jake, 2026-10-06:* a project is private or shared, chosen at create, one project type; a
+    shared one is read by the whole org. FIX-1762's stack merged first, then FIX-1763's *projects
+    stay org-level* fence was lifted by name; its locks (one optional remote, a mapped worktree,
+    side files outside the checkout) carry into FIX-1793 unchanged. It settled what was tension T1.
 13. **A workstream's board is the one its channel declares.** Only `boards:` on a channel attaches
     one; a board declared in a kind's code is not a workstream's board. The five-column Board is
     Shift Manager's mapping of shipped task statuses, which FIX-1651 may replace; IN REVIEW holds
@@ -76,40 +81,62 @@ children's specs, and Jake's calls during the build.
     The `chief-of-staff` seat and its persona keep their name everywhere else, FIX-1650's
     included. *Contested by FIX-1786: [Open](#open), T4.*
 
+### Settled by FIX-1815, recorded at its wrap on 2026-10-11
+
+Each binds a sibling that hands work between workers or shows a waiting turn. Sources: FIX-1815's
+retained [spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1815)
+and its children's, FIX-1816, FIX-1817 and FIX-1820. FIX-1870 (Orchestration Primitives, Backlog)
+proposes `dispatchTask` in place of 16 to 18's surface; until it is decided, these stand.
+
+16. **One word per thing** (FIX-1786
+    [D10](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1786/DECISIONS.md#d10)).
+    A *hand-off* is Layer 1: work leaves the request and one answer comes back; *ask* and *assign*
+    are its two kinds. *Delegation* is Layer 2: a hand-off to a worker on the roster. *Mailbox* is
+    reserved for a future untrusted external inbox. Shift Manager's Inbox *ask* (10) is a person's
+    pending approval, not a worker's ask.
+17. **Ask is `addTask(task, { waitForResponse: true })`**: no new tool, no request-level wait. The
+    turn parks and resumes; nothing holds a request open. A turn working a task cannot ask, so depth
+    is 1, and an asked task cannot park on a question. `timeoutMs` defaults to five minutes, from 30 seconds to an hour; outside that
+    it is refused, never clamped.
+18. **A waiting turn never hangs.** An expired ask resumes with `wait_timed_out` and cancels its
+    task; an expired approval resumes with the tool not run (FIX-1846). A person's stop ends the
+    turn `aborted` and cancels the asked task; a cancel that fails is owed and paid on the next
+    board touch (FIX-1844).
+19. **Assigned work keeps its session.** An answered question re-enters the task's own session,
+    and a question waits without limit. A finished task never changes: a reply is a turn in its
+    session, more work a follow-up row (`followUpOf`) in that session, same worker; nothing
+    reopens (FIX-1817
+    [D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1817/DECISIONS.md)).
+    Offered to FIX-1765 as the joint answer its ER-14 asked for; it binds FIX-1765 once accepted.
+20. **No new answer-once fence.** Tasks ride the board row's claim ticket, posts FIX-1791's
+    delivery-ledger token. FIX-1818 was canceled into that rule.
+21. **Skill sub-agents are gone** (FIX-1814). A skill's private team is FIX-1819's question, in
+    Backlog here, unparented.
+22. **A closure's control passes only on an exact red set**: it fails at the signal its plan
+    names, and only that group; anything else is a finding (FIX-1820 QR-12). It binds FIX-1797
+    and every later closure here.
+
 ## Open
 
 ### What FIX-1786 would change. These are tensions, not decisions
 
-FIX-1786 (filed Oct 6, epic spec being written) carries the owner's PRD. Until its objective gate
-ratifies a supersession, **every item above stands** and siblings build to it.
+FIX-1786 (approved Oct 6) carries the owner's PRD. T1 was answered on Oct 6 (item 12); T2 to T5
+stay open as written. Until the owner answers each, **every item above stands** and siblings
+build to it.
 
 | | In force today | FIX-1786 proposes | Binds |
 |---|---|---|---|
-| **T1** | Projects are the org's (12); FIX-1763 fences *projects stay org-level* | Private or shared projects, a per-user project coordinator | FIX-1650, FIX-1763 (ask 1) |
 | **T2** | Project-room seams (11, PR-2) | Rooms removed | FIX-1649's seam list, FIX-1650 |
 | **T3** | Workstream = channel plus flow; its board is the channel's (7, 13) | One owner; a project entry plus the lead's session board. *Still open in FIX-1786* | FIX-1650, FIX-1651 |
 | **T4** | Org-visible hires; a `chief-of-staff` seat (15) | Private worker resources; *seat* retired; CoS a standard coordinator | FIX-1650, FIX-1775 |
 | **T5** | FIX-1320 INST-5, hires as collection kinds (another project) | Flow instances and owner pins deprecated | FIX-1320 |
-
-### Ask 1 · Finish FIX-1763's repo floor on org projects first, or stop it for FIX-1786? Owner, at FIX-1786's gate
-
-**Plain terms.** Coding tasks (FIX-1763) are mid-build on org-owned projects, with FIX-1762's four
-PRs open. FIX-1786 makes projects private or shared but does not name FIX-1763 as superseded.
-**Trade-off.** Merging first ships coding tasks sooner, and FIX-1786's projects child carries the
-repository record over, with migrations out of its scope. Stopping avoids building twice, but
-coding tasks wait behind an 11-child refactor. **Recommendation: merge the stack first.** FIX-1786
-then lifts the fence by name and FIX-1763 gets an evolution note. FIX-1786 already lists what
-carries over: one optional remote, the mapped worktree, and side files outside the checkout.
-**What would change my mind:** the repository record is keyed so that a private project cannot
-hold it without moving data. **Cost of being wrong:** a stored shape with no migration path, or
-coding tasks delayed by the length of the refactor.
 
 ### Ask 2 · Does FIX-1786 belong here or in Workforce: Layer 2 Abstraction? Owner
 
 **Plain terms.** Item 2 says this project is not Layer 2 vocabulary. FIX-1786, filed here, retires
 *seat*, *kind*, *mailbox* and *room*, while Layer 2 Abstraction's PD-6 still calls *seat* and *kind*
 settled. **Trade-off.** If it stays, item 2 and *what this project is not* are rewritten. If it
-moves, the vocabulary's owner sees the change and this project keeps T1 to T4.
+moves, the vocabulary's owner sees the change and this project keeps T2 to T4.
 **Recommendation: move it, or at least relate it there**, so two projects do not answer *what is a
 seat* differently. **What would change my mind:** you mean Shift Manager to drive the Workforce
 model now. Layer 2 Abstraction is eight of nine done. Then item 2 changes, and that is an outcome
