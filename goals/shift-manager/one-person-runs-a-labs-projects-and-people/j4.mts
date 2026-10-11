@@ -5,12 +5,12 @@
  * and a scratch copy of `goals/pentest-lab/lab/` (S5) adds the chief of staff,
  * its `hire` and `fire` tools from `createWorkerHireBlocks` with the fire
  * asking first, the `projects` collection and the project tools it names. The
- * task also states what the Lab's other checks need of it (every start fresh,
- * `probe`, `probe-desk` and `coordinator` run only declared workers), facts the writer can't
- * read from the docs or the copy; what to do about them is still the docs' to
- * say. The writer is an isolated Claude
- * Code agent (the Agent SDK) whose only tools read and write inside its own
- * workspace: the docs and the copy, nothing else of the repository. It logs
+ * task also states what the Lab's other checks need of it (every start fresh;
+ * `probe`, `probe-desk` and `coordinator` run only declared workers), facts
+ * the writer can't read from the docs or the copy; what to do about them is
+ * still the docs' to say. The writer is an isolated Claude Code agent (the
+ * Agent SDK) whose only tools read and write inside its own workspace: the
+ * docs and the copy, nothing else of the repository. It logs
  * each step it took with the page that told it how, or *doc silent*. Jev
  * judges each doc-silent line against the docs as the writer saw them
  * (`j4-judge.mts`): a line fails J4, reason *doc silent* (QR-14), unless Jev
