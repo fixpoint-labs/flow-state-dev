@@ -51,7 +51,7 @@ interface Specialist {
 interface Fixture {
   port: number;
   coordinator: { kind: string; id: string; description: string };
-  workerFlowName: string;
+  workerKind: string;
   specialists: Specialist[];
   seat: string;
   answer: { marker: string; replyMarker: string };
@@ -210,14 +210,14 @@ async function gradeRoster(page: Page, origin: string, failLeg: Fail, evidence: 
   }
 
   const workerFlowNames = await sectionKinds(page, "Workers");
-  if (JSON.stringify(workerFlowNames) !== JSON.stringify([fixture.workerFlowName])) {
-    fail("roster", `the rail's Workers section lists the kinds ${JSON.stringify(workerFlowNames)} (want ["${fixture.workerFlowName}"])`);
+  if (JSON.stringify(workerFlowNames) !== JSON.stringify([fixture.workerKind])) {
+    fail("roster", `the rail's Workers section lists the kinds ${JSON.stringify(workerFlowNames)} (want ["${fixture.workerKind}"])`);
   }
 
   const rows = await readUntil(() => rosterRows(page), (rs) => rs.length > 0, 10_000);
   const want = [
     { id: COORDINATOR, flow: fixture.coordinator.kind, description: fixture.coordinator.description },
-    ...fixture.specialists.map((s) => ({ id: s.id, flow: fixture.workerFlowName, description: s.description })),
+    ...fixture.specialists.map((s) => ({ id: s.id, flow: fixture.workerKind, description: s.description })),
   ];
   const ids = rows.map((r) => r.id);
   if (JSON.stringify([...ids].sort()) !== JSON.stringify(want.map((w) => w.id).sort())) {

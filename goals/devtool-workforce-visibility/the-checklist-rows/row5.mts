@@ -38,7 +38,7 @@ import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-
 
 /** The published key pattern, by the tab's section name: the inventory's one collection, its workers. */
 const PATTERNS = {
-  seats: "inventory/workers/*",
+  workers: "inventory/workers/*",
 } as const;
 type Section = keyof typeof PATTERNS;
 const SECTIONS = Object.keys(PATTERNS) as Section[];

@@ -719,12 +719,12 @@ await runGoal(async (failures) => {
       if (landed.error !== undefined) {
         note(`the same read carrying a verified bearer did not land — ${landed.error}`);
       } else if (
-        landed.facts?.seat !== fixture.coordinatorSeat ||
+        landed.facts?.worker !== fixture.coordinatorSeat ||
         landed.facts?.documentRef !== expected?.document
       ) {
         note(
           `the bearer read landed without ${fixture.coordinatorSeat}'s own facts: ` +
-            JSON.stringify({ seat: landed.facts?.seat, documentRef: landed.facts?.documentRef }),
+            JSON.stringify({ seat: landed.facts?.worker, documentRef: landed.facts?.documentRef }),
         );
       }
       evidence.push(
