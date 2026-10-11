@@ -152,7 +152,7 @@ const coordinator = defineCoordinatorFlow({
 export const flows = hireWorkforce(installation);
 ```
 
-`emFlow` is a worker flow of your own that takes a delegated post, as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so it goes in `delegateFlows`. `coderFlow` is a flow of yours that takes tasks, not posts. Build its `work` entry with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks) so `eng.coder` can take the tasks the chief of staff files. A post handed to it is skipped, and the [routing record](./coordinators.md#what-it-records) says why. `routeModel` is required even when the chief of staff routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
+`emFlow` is a worker flow of your own that takes a delegated post, as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so it goes in `delegateFlows`. `coderFlow` is a flow of yours that takes tasks, not posts. Build its `work` entry with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks) so `eng.coder` can take the tasks the chief of staff files. A post handed to it is skipped, and the [routing record](./coordinators.md#what-it-records) says why. `routeModel` is one value for the coordinator flow, shared by every coordinator on it. It is required even when the chief of staff routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
 
 The capabilities each add one part:
 

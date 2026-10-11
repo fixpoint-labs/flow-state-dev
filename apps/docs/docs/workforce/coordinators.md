@@ -85,7 +85,7 @@ flowRegistry.registerMany(hireWorkforce(installation));
 | --- | --- |
 | `installation` | The installation the coordinator and its delegates belong to. Required. |
 | `delegateFlows` | The flows a post can be delivered to. Each must declare the delegated-post entry: the built-in `agent` does, and a flow of your own does once you [add it](#making-your-own-flow-a-delegate). A flow without it throws here. Required. |
-| `routeModel` | The model behind `best-fit`'s evaluator call: a model id your resolver knows, or an evaluation model. Required, even when no coordinator routes by best fit. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; the other evaluation models don't. |
+| `routeModel` | The model behind `best-fit`'s evaluator call: a model id your resolver knows, or an evaluation model. One value for the flow, shared by every coordinator on it. Required, even when none of them routes by best fit; then it is never called, so any model id your resolver knows will do. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; the other evaluation models don't. |
 | `agent` | What the coordinator's own turn is built with: the options you'd give `defineAgentWorkerFlow`, such as `catalog` and `uses`. A coordinator's `tools:` line is read against this catalog. Left out, the built-in's defaults. |
 | `roundDeadlineMs` | How long a round waits for its answers. Five minutes by default. A value that isn't a positive whole number of milliseconds throws. |
 
