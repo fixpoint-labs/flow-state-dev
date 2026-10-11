@@ -33,17 +33,21 @@ each to its run. A refusal writes nothing and names its reason.
 | BR-16a | Anyone writes an entry: the owner from the app, or the lead from its session | The entry carries `writtenBy`, stamped from the session through FIX-1789's helper: the user, and the lead when it wrote. For display and audit only; who may write is BR-11 ([FIX-1789 D1](../FIX-1789/DECISIONS.md#d1)) | CI |
 | BR-17 | The owner marks a workstream done | It stays listed, as done. Nothing deletes an entry | CI |
 
-## Opening a workstream in Shift Manager
+## Who opens a workstream
 
-*Added after merge ([D2](DECISIONS.md#d2), the product owner, 2026-10-07).* These are Shift
-Manager's rules, not the framework's: `openWorkstream` still takes a lead, and another app picks
-its own.
+*Amended after merge ([D3](DECISIONS.md#d3), the product owner, 2026-10-11).* BR-35 to BR-37
+were [D2](DECISIONS.md#d2)'s, struck with it. `openWorkstream` itself is unchanged: it takes a
+lead, and an app may call it directly.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-35 | Alice opens a workstream from a project in Shift Manager | Its lead is a new coordinator of its own, a worker that takes the project coordinator's posts and files the workstream's tasks for its delegates: Shift Manager forks the standard workstream coordinator onto her roster, then opens the workstream with it as the lead, as BR-7 and BR-9 have it. One entry, its workstream session on that coordinator, and one delegate record on her project coordinator. Her next workstream gets another. It is an ordinary worker of hers: Bob's roster never lists it, and naming it as Bob's lead is refused like a missing worker (BR-10) | CI · V8a |
-| BR-36 | The same open is sent twice, at once or after a failure, or the open is refused | One coordinator. Its id comes from the workstream's address, so a second open finds it on her roster, forked from the standard workstream coordinator, and uses it. Any other worker of hers at that id refuses the open, naming the id, and nothing is written. A refused open, such as `not-a-member`, fires the coordinator that open forked, so her roster is as it was | CI · V8a |
-| BR-37 | Alice marks the workstream done, or moves it back out of done | Its coordinator stays on her roster, as any worker does, and the back-out restores its delegate record (BR-21a). She can fire it like any worker; it is then a fired lead, whose session takes no new turn (FIX-1788 BR-7) and whose record is skipped (FIX-1791 BR-9) | CI · V8a |
+| ~~BR-35~~ | ~~Alice opens a workstream from a project in Shift Manager~~ | Struck by [D3](DECISIONS.md#d3): Shift Manager forks no coordinator. See BR-38 | — |
+| ~~BR-36~~ | ~~The same open is sent twice, or the open is refused~~ | Struck by D3: nothing is forked, so nothing is reused or fired. A repeated open is BR-14's | — |
+| ~~BR-37~~ | ~~Alice marks the workstream done, or moves it back out of done~~ | Struck by D3: the lead was already on her roster and stays there. BR-21a still restores the record | — |
+| BR-38 | Alice asks her project coordinator for work that no workstream of hers in the project holds | It opens one with `openWorkstream`: a title and objectives from her ask, and as lead the worker on her roster whose description fits the work, among those that can lead (BR-42), such as the EM for a feature. Her roster is read when the ask arrives, so a worker the chief of staff hired for her counts as one a file declares does. Then, in the same turn and on the same entry read (V5's budget), it hands the ask to that workstream (BR-25). The open's delegate record is already in its session state when it does, so the hand-off is accepted, so the ask lands in the workstream session and is its brief. One entry, the lead's workstream session, one delegate record (BR-7, BR-9, BR-21a as written). Nothing is added to her roster. Shift Manager has no form that opens a workstream | CI · V8b |
+| BR-39 | The work belongs to a workstream she already owns there, or nobody on her roster fits it | The first: it hands the ask to that workstream and opens nothing. The second: it says nobody on her roster does that work and opens nothing; hiring is the chief of staff's | CI · V8b |
+| BR-40 | One worker leads two of her workstreams | Two workstream sessions of that worker and two delegate records; a post to one lands only in its session. Shift Manager's Tasks view, grouped by stream, shows two groups, each named for its workstream, and each row's STREAM names its workstream. A worker's conversation outside any workstream still reads as that worker (FIX-1877) | CI · V8b |
+| BR-42 | A workstream is opened naming a lead that declares no delegates, such as the coder | Refused, naming the rule: a lead runs its workstream through its delegates. With S3's lead-flow check, the DevTeam's only possible lead is the EM; the coder, the reviewer and coordinator-flow workers are refused. The project coordinator offers only workers that pass both checks (BR-38) | CI · V8b |
 
 ## Progress
 
@@ -65,7 +69,7 @@ its own.
 | BR-24 | Alice asks about the project | The coordinator reads every entry, Bob's included, and answers from them | VG leg c |
 | BR-25 | Alice asks for work | It goes only to a lead of a workstream she owns here, delivered into that workstream session, once: FIX-1791's ledger resolves the session from the delegate record ([#2821](https://github.com/fixpoint-labs/flow-state-dev/pull/2821) BR-20a) | VG leg c |
 | BR-26 | The coordinator picks Bob's workstream | Refused like a missing delegate, and recorded | CI · VG under its control |
-| BR-27 | Alice owns no workstream in the project | It answers from the entries and says it has nobody to hand work to. Nothing is opened for her | CI |
+| BR-27 | Alice owns no workstream in the project and asks how it is going | It answers from the entries. *Amended by [D3](DECISIONS.md#d3):* an ask for work opens a workstream (BR-38), unless nobody on her roster can lead it, when it says so and opens nothing (BR-39) | CI |
 | BR-28 | A coordinator turn finishes in Shift Manager | The Lab is read again, so a project or workstream it made shows. No tool name is special-cased | CI |
 
 ## Rooms removed, and what stays
@@ -87,11 +91,9 @@ its own.
 ## Failure taxonomy
 
 Every refusal is fatal to its write and names its reason: `private-has-members`,
-`not-a-member`, `no-such-project`, a missing worker, FIX-1791's delegate cap, `not-the-owner`, the engine's
-owner-rule error, and, in Shift Manager, a worker of the owner's already at a workstream
-coordinator's id (BR-36). A lost compare-and-swap is retried, as the row writes are
-today. Nothing is ignored silently, and nothing stored is deleted except the coordinator a
-refused open forked in Shift Manager, which that open wrote (BR-36).
+`not-a-member`, `no-such-project`, a missing worker, FIX-1791's delegate cap, `not-the-owner`, and the engine's
+owner-rule error. A lost compare-and-swap is retried, as the row writes are today.
+Nothing is ignored silently, and nothing stored is deleted.
 
 ## Acceptance criteria this issue owns
 
