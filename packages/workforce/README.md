@@ -1319,9 +1319,13 @@ lives in (`repository`, or `null`). A **shared** project is a row of the organiz
 `projects` collection, which everyone in the org lists and reads. A **private** project is the same
 row in its creator's own user scope, which nobody else lists or reads, with its creator as its only
 member. A project's address is `{ visibility, id }`, and every read and write after the create takes
-one; another user's private project is refused as `no-such-project`. Declare the shared collection
-once in `workforce/org/resources/projects.ts` with `defineProjectsCollection()`. The guide is the
-docs site's Workforce → Projects page.
+one; another user's private project is refused as `no-such-project`. The roster flow `hireWorkforce`
+registers, `defineCoordinatorFlow`, and every block `defineProjectBlocks()` and
+`defineWorkstreamBlocks()` return declare both collections, so an app using them declares neither.
+A flow of your own that reads or writes project rows without those blocks puts
+`defineProjectsCollection()` and `definePrivateProjectsCollection()` in its `resources`, under
+`PROJECTS_RESOURCE` and `PRIVATE_PROJECTS_RESOURCE`. The guide is the docs site's Workforce →
+Projects page.
 
 ```ts
 import { defineProjectBlocks, defineWorkstreamBlocks } from "@flow-state-dev/workforce";

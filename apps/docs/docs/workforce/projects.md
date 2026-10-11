@@ -43,15 +43,41 @@ Each workstream is its own entry, not part of the row, so two owners can update 
 
 ## Declaring the collections
 
-Declare the shared projects once, at the organization level, in `workforce/org/resources/projects.ts`:
+Usually you don't. Shared projects live in the org's `projects` collection, `defineProjectsCollection()`, and private ones in each user's `privateProjects`, `definePrivateProjectsCollection()`. Three things declare both for you:
+
+- `hireWorkforce` registers a [roster flow](./durable-hire.md), `workforce-roster`, beside your worker flows. It declares both, and it's the flow a client lists a person's projects and reads a project's workstreams through.
+- Every block `defineProjectBlocks()` and `defineWorkstreamBlocks()` return declares both on itself. Any flow that holds those blocks has the collections, whether you spread them as `actions` or put them in a worker kind's tool `catalog`.
+- `defineCoordinatorFlow` declares both on the coordinator flow.
+
+So an app built on `hireWorkforce` and these blocks declares nothing for projects.
+
+Declare them yourself only on a flow of your own that reads or writes project rows without the blocks. Put both in its `resources`, under the keys the workforce's own flows use:
 
 ```ts
-import { defineProjectsCollection } from "@flow-state-dev/workforce";
+import { defineFlow } from "@flow-state-dev/core";
+import {
+  definePrivateProjectsCollection,
+  defineProjectsCollection,
+  PRIVATE_PROJECTS_RESOURCE,
+  PROJECTS_RESOURCE,
+} from "@flow-state-dev/workforce";
+import { projectReport } from "./project-report"; // your own block
 
-export default defineProjectsCollection();
+export const reportsFlow = defineFlow({
+  kind: "project-reports",
+  resources: {
+    [PROJECTS_RESOURCE]: defineProjectsCollection(),
+    [PRIVATE_PROJECTS_RESOURCE]: definePrivateProjectsCollection(),
+  },
+  actions: { projectReport },
+});
 ```
 
-`defineProjectsCollection()` is the org's `projects` collection. `definePrivateProjectsCollection()` is the same row at each user's own scope. The project and workstream blocks below declare both, so most apps never declare the private one themselves. You can call either function anywhere you need it: every call returns the same declaration, so they never conflict. Both are shared across flows and readable from the browser, where a user reads the org's shared projects and their own private ones.
+Every call returns the same declaration, so declaring the collections on several flows never conflicts. If you write rows yourself, use `create()`, never `upsert()`: `create()` refuses an id that's already taken. Prefer the `createProject` block, which also checks ids and members.
+
+The call goes where you build the flow, in your host or a module it imports.
+
+Both collections are shared across flows and readable from the browser, where a user reads the org's shared projects and their own private ones.
 
 ## Creating a project
 
