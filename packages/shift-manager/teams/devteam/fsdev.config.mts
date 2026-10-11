@@ -1,7 +1,7 @@
 /**
- * The DevTeam team profile: a software team (an EM seat that files features, a
- * coder seat that runs them, a reviewer) and its chief of staff, as a server
- * Shift Manager and `fsdev dev` load.
+ * The DevTeam team profile: a software team (an EM that files features, a
+ * coder that runs them, a reviewer) and its chief of staff, as a server Shift
+ * Manager and `fsdev dev` load.
  *
  *     pnpm --filter @flow-state-dev/shift-manager start
  *
@@ -11,9 +11,11 @@
  * same tree the same way.
  * What a long-lived server asks of it that a check doesn't:
  *
- * - **The mailbox and the inventory.** The feature mailbox is opened with its
- *   post reaching the EM members, and the organization's seat and mailbox
- *   collections are registered, which Shift Manager's TEAMS and PROJECTS read.
+ * - **The inventory, the projects and their workstreams.** The organization's
+ *   worker collection is registered, which Shift Manager's TEAMS reads; the
+ *   default projects are created as the Lab's owner; and Storefront's two
+ *   workstreams, `feature` and `release`, are opened as the Lab's second user,
+ *   each led by the EM.
  * - **One ask waiting.** The EM seat's approval for {@link ASK_FEATURE} is
  *   raised in its own session (which also turns durable execution on), so
  *   Inbox has something to answer. Approve files the row and starts the coder
@@ -28,11 +30,11 @@
  * real coding agent.
  *
  * - **Each project's own code.** The coder runs on a workspace host whose
- *   source is the project holding the board's workstream: Storefront names a
- *   repository (a bare one beside the store, reached over `file://`, which the
- *   host allows), so its runs are branches of it with the project's files in
- *   `project/` beside the checkout; Sandbox names none, so a run there works on
- *   the project's files alone. No folder is named for any of it.
+ *   source is the project of the workstream a task was filed from: Storefront
+ *   names a repository (a bare one beside the store, reached over `file://`,
+ *   which the host allows), so its runs are branches of it with the project's
+ *   files in `project/` beside the checkout; Sandbox names none, so a run there
+ *   works on the project's files alone. No folder is named for any of it.
  *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Seats the chief of
@@ -40,9 +42,9 @@
  *   made stays made, and an ask still waiting is still in Inbox. Delete the
  *   file for a fresh start.
  *
- * Which seat is the EM and which seat a row is handed to are read off the
- * tree, by the kind each `WORKER.md` names. No seat, mailbox or board is named
- * in this file.
+ * Which worker is the EM and which worker its doors file for are read off the
+ * tree: the EM by the kind its `WORKER.md` names, the coder as its first
+ * delegate on the coder kind.
  */
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -50,10 +52,8 @@ import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { ASSIGNEE } from "./board.mts";
 import { selectHarness } from "./harness.mts";
-import { boardMailboxOf, LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
-import { createNotifyLog } from "./notify.mts";
+import { LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_KIND } from "./workforce/flows/workers/coder.mts";
 import { EM_KIND } from "./workforce/flows/workers/em.mts";
@@ -81,13 +81,10 @@ const storefrontRemote = createBareRemote("devteam-storefront", { at: join(dirna
  * The Lab's three default projects, created at start as the Lab's owner with
  * the second user as a member, unless the store already holds them.
  *
- * A project belongs to the organization, not a team: `storefront` holds one
- * workstream from each of the two teams, and names its repository. The other
- * two hold none yet; `sandbox` has no repository, so coding work moved onto it
- * runs on its files. Each team keeps one more workstream that no default
- * project lists, so a project created later (by the chief of staff, say) has
- * one from each team to take. Those are the only mailbox ids written here:
- * which workstreams a project holds is the app's data, not the tree's.
+ * A project belongs to the organization, not a team: `storefront` names its
+ * repository, and its workstreams are opened below. The other two hold none
+ * yet; `sandbox` has no repository, so coding work moved onto it runs on its
+ * files.
  */
 const DEFAULT_PROJECTS = [
   {
@@ -95,7 +92,6 @@ const DEFAULT_PROJECTS = [
     title: "Storefront",
     brief: "Get the storefront feature built and released: engineering builds it, operations ships it.",
     members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)],
-    workstreams: ["eng.feature", "ops.release"],
     repository: storefrontRemote.url,
   },
   {
@@ -112,15 +108,27 @@ const DEFAULT_PROJECTS = [
   },
 ];
 
-// The app's addresses, read off the tree: the coder seat whose name is the
-// board's assignee, and the EM seats among the members of the mailbox that
-// holds the board.
+// Read off the tree: the EM, and the coder its doors file for, its first
+// delegate on the coder kind.
 const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
-const coderSeatId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
-if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
-const members = (boardMailboxOf(roster).declared.members as string[] | undefined) ?? [];
-const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
+const em = roster.workers.find((w) => w.declared.flow === EM_KIND);
+if (em === undefined) throw new Error("the DevTeam tree declares no EM");
+const coderSeatId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => kindOf(id) === CODER_KIND);
+if (coderSeatId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder kind`);
+
+/**
+ * Storefront's two workstreams, `feature` and `release`, each led by the EM.
+ * Opened as the Lab's second user, not its owner: a workstream belongs to the
+ * person who opens it, and the owner opens her own from the app.
+ */
+const DEFAULT_WORKSTREAMS = [
+  { id: "feature", title: "Feature", objectives: ["Build the storefront feature"] },
+  { id: "release", title: "Release", objectives: ["Ship what engineering finished"] },
+].map((workstream) => ({
+  as: "member" as const,
+  input: { project: { visibility: "shared" as const, id: "storefront" }, lead: em.id, ...workstream },
+}));
 
 // A store from before the lab's org id changed is set aside, loudly, not reused.
 await setAsideLegacyOrgStore(STORE);
@@ -136,11 +144,11 @@ const lab = await openLab({
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },
   coderSeatId,
-  mailboxes: { addresses, log: createNotifyLog() },
   inventory: true,
   ask: ASK_FEATURE,
   devtool: true,
   projects: DEFAULT_PROJECTS,
+  workstreams: DEFAULT_WORKSTREAMS,
   // The shift coordinator records each conversation into its memory only when asked.
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
 });

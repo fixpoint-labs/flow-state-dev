@@ -16,7 +16,6 @@ import type { FlowInstance, GeneratorModel, ModelResolver, SuspensionRecord } fr
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
 
 /** The chief of staff, and the flow it runs on, whose one copy every worker on it shares. */
 const COS = "chief-of-staff";
@@ -64,9 +63,8 @@ async function open(): Promise<Lab> {
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-repository-ask-")), remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
-    projects: [{ id: "storefront", title: "Storefront", workstreams: ["eng.feature"], repository: FIRST }],
+    projects: [{ id: "storefront", title: "Storefront", repository: FIRST }],
   });
   return opened;
 }

@@ -24,7 +24,6 @@ import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { CAPTURE_OFF, CAPTURE_ON } from "../teams/devteam/memory.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
 
 const COS = "chief-of-staff";
 const FACT = "the release train leaves on thursdays";
@@ -85,7 +84,6 @@ async function open(memoryCapture?: boolean): Promise<Lab> {
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-memory-")), remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
     ...(memoryCapture === undefined ? {} : { memoryCapture }),
   });

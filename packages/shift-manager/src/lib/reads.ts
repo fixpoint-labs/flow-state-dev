@@ -118,9 +118,9 @@ export type ProjectVisibility = "shared" | "private";
 
 /**
  * A project: a row of the organization's `projects` collection (shared), or of
- * the person's own (private). It names no team; the mailbox workstreams it
- * lists are mailbox ids from any team. Its address is its visibility and its
- * id: a private project and a shared one can share an id.
+ * the person's own (private). It names no team, and lists no mailbox: its
+ * workstreams are its entries, read on its screen. Its address is its
+ * visibility and its id: a private project and a shared one can share an id.
  */
 export type Project = {
   /** The row id; with the visibility, the project's address. */
@@ -134,8 +134,6 @@ export type Project = {
   ownerUserId: string;
   /** On a shared project, who may open workstreams in it. */
   members: string[];
-  /** The mailbox ids the project holds, as the row lists them. */
-  workstreams: string[];
   /**
    * The git remote the project's code lives in, or `null` when it has none
    * (its coding work runs on its files). A row written before the field
@@ -439,7 +437,6 @@ export function toProject(row: unknown, visibility: ProjectVisibility = "shared"
     status: text(field(row, "status")) ?? "active",
     ownerUserId,
     members: strings(field(row, "members")),
-    workstreams: strings(field(row, "workstreams")),
     repository: text(field(row, "repository")),
   };
 }

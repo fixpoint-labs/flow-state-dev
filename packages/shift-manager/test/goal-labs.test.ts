@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -162,7 +162,13 @@ const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 
 describe("devteam: an approved task's run", () => {
   let opened: Opened;
+  // The EM's task is judged by Jev before it closes, and the scripted run makes
+  // no real change, so with the gateway reachable Jev rightly fails it. This
+  // checks the stream and the settle, not the judge: with no gateway key the
+  // judge can't run, and the task closes on its own check (`judged: false`).
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
   beforeAll(async () => {
+    delete process.env.AI_GATEWAY_API_KEY;
     // Settling is what this checks, so the scripted run does not wait out the
     // pacing a person watching needs. The it-shows-and-stops goal keeps it.
     process.env[STEP_MS_ENV] = "0";
@@ -172,7 +178,10 @@ describe("devteam: an approved task's run", () => {
       delete process.env[STEP_MS_ENV];
     }
   }, 120_000);
-  afterAll(async () => opened?.lab.handle.close());
+  afterAll(async () => {
+    if (gatewayKey !== undefined) process.env.AI_GATEWAY_API_KEY = gatewayKey;
+    await opened?.lab.handle.close();
+  });
 
   it("streams its steps, stamped with the task, and settles the row the Tasks list and the task screen both read", async () => {
     const { snapshot, clients } = opened;
@@ -211,10 +220,10 @@ describe("devteam: an approved task's run", () => {
     });
 
     follower.close();
-    expect(taskItems(streamed, running.boardRef, running.id).items.length).toBeGreaterThan(0);
+    expect(taskItems(streamed, collectionOfBoard(running.boardRef), running.id).items.length).toBeGreaterThan(0);
     expect(settled.status).toBe("completed");
     expect(settled.run).not.toBeNull();
     const { items } = await readSessionItems(clients, settled.run!.sessionId);
-    expect(taskItems(items, settled.boardRef, settled.id).items.length).toBeGreaterThan(0);
+    expect(taskItems(items, collectionOfBoard(settled.boardRef), settled.id).items.length).toBeGreaterThan(0);
   }, 90_000);
 });

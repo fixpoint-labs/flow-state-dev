@@ -4,12 +4,13 @@
  * EM as its one delegate and `routing: everyone`, so a post to either reaches
  * the EM with no model call of the coordinator's own, and the EM answers it in
  * that conversation under its own name. The EM is the only worker either one
- * hands to: a post carrying a feature line is filed on the EM's board, which
- * is how the test knows the post reached `eng.em` rather than any worker.
+ * hands to: its turn files the coder's task on the board of the session the
+ * post reached, which is how the test knows the post reached `eng.em` rather
+ * than any worker.
  *
- * No model is scripted to answer: `everyone` neither evaluates nor runs a
- * judgment turn, and the EM files from the line itself. A resolver that throws
- * when asked for any model proves both.
+ * Only the EM's turn has a model, scripted to file the feature the post names:
+ * `everyone` neither evaluates nor runs a judgment turn of the coordinator's
+ * own. A resolver that throws for any other block proves it.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,11 +18,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
+import type { GeneratorModel } from "@flow-state-dev/core/types";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
+import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
 
 let opened: Lab | undefined;
 afterEach(async () => {
@@ -29,13 +30,38 @@ afterEach(async () => {
   opened = undefined;
 });
 
-/** Every model the Lab asked for, by block: a post routed to everyone asks for none. */
+/** Every block the Lab asked a model for: a post routed to everyone asks for the EM's alone. */
 let asked: string[] = [];
 
-/** A resolver that answers no model at all, recording who asked. */
+/** The EM's turn for this test: one model, whose steps run on across its calls. */
+let em: GeneratorModel | undefined;
+
+/** The EM's turn: it files the feature the post's own line names, for the coder, then says so. */
+function emTurn(): GeneratorModel {
+  let step = 0;
+  return {
+    modelId: "test/em",
+    async generate() {
+      throw new Error("the owned tool loop calls generateStep");
+    },
+    async generateStep(call: { messages?: Array<{ role: string; content: unknown }> }) {
+      step += 1;
+      if (step > 1) return { text: "Filed.", finishReason: "stop" };
+      const said = JSON.stringify(call.messages ?? []);
+      const [, issue, goal] = /(report-[a-f0-9]{6}): ([^"\\]+)/.exec(said) ?? [];
+      return {
+        toolCalls: [{ toolCallId: "em-1", toolName: "addTask", args: { goal, assignee: "eng.coder", input: { issue, phase: PHASE } } }],
+        finishReason: "tool-calls",
+      };
+    },
+  } as unknown as GeneratorModel;
+}
+
+/** A resolver that answers the EM's turn alone, recording who asked. */
 const noModel = Object.assign(
   (id: string, block?: string) => {
     asked.push(block ?? id);
+    if (block === EM_TURN) return (em ??= emTurn());
     throw new Error(`no model in this test: ${block ?? id} asked for one`);
   },
   {
@@ -50,6 +76,7 @@ const noModel = Object.assign(
 async function open(): Promise<Lab> {
   const harness = selectHarness();
   asked = [];
+  em = undefined;
   opened = await openLab({
     modelResolver: noModel,
     stores: inMemoryStores(),
@@ -57,7 +84,6 @@ async function open(): Promise<Lab> {
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coordinator-workers-")), remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
   });
   return opened;
@@ -112,24 +138,29 @@ describe("DevTeam's triage and oncall coordinators", () => {
       const listed = await act(lab, id, "listDelegates", {});
       expect(listed.error).toBeUndefined();
       expect(listed.output.delegates).toEqual([
-        { worker: "eng.em", description: "Files each feature on the team's board; never does the work itself.", takes: "posts" },
+        {
+          worker: "eng.em",
+          description: "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.",
+          takes: "posts",
+        },
       ]);
     });
 
-    it(`a post to ${workerId} reaches eng.em with no model call, and the EM files the feature it carries`, async () => {
+    it(`a post to ${workerId} reaches eng.em with no model call of its own, and the EM files the feature it carries`, async () => {
       const lab = await open();
       const id = await conversation(lab, workerId);
       const issue = `report-${globalThis.crypto.randomUUID().slice(0, 6)}`;
       expect((await act(lab, id, "run", { message: `${issue}: the cart badge is off by one` })).error).toBeUndefined();
       const items = await settledItems(lab, id);
-      expect(asked).toEqual([]);
+      expect([...new Set(asked)]).toEqual([EM_TURN]);
       const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
       expect(record.data).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
-      // The EM's board holds the row only the EM files, and its answer lands here under its name.
-      const taskId = harnessTaskId(issue, PHASE);
-      expect((await lab.row(taskId))?.goal).toBe("the cart badge is off by one");
+      // The board of the EM session the post reached holds the coder's task only the EM files, and
+      // its answer lands here under its name.
+      const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.issue === issue);
+      expect(filed).toEqual([expect.objectContaining({ goal: "the cart badge is off by one", assignee: "eng.coder" })]);
       const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
-      expect(answers).toEqual([`Filed ${taskId} on the board.`]);
+      expect(answers).toEqual(["Filed."]);
     });
   }
 });

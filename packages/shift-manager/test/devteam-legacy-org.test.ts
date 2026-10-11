@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { LAB_ORG_ID, LAB_USER_ID } from "../teams/devteam/host.mts";
+import { seatSessionId } from "../teams/devteam/ask.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
@@ -92,10 +93,11 @@ describe("DevTeam over a store written under the old org id", () => {
     const reread = createSQLiteStores({ filename: store });
     const stale = (await reread.session.list()).filter((s) => (s as { orgId?: string }).orgId === OLD_ORG);
     const rows = await reread.resourceState.getByPrefix("org", OLD_ORG, "");
-    const mailbox = await reread.session.get("eng.feature");
+    // The boot raises the EM's ask again, in the EM's own session, under the new org.
+    const ask = await reread.session.get(seatSessionId("eng.em"));
     reread.close();
     expect(stale).toEqual([]);
     expect(Object.keys(rows)).toEqual([]);
-    expect((mailbox as { orgId?: string } | undefined)?.orgId).toBe(LAB_ORG_ID);
+    expect((ask as { orgId?: string } | undefined)?.orgId).toBe(LAB_ORG_ID);
   });
 });

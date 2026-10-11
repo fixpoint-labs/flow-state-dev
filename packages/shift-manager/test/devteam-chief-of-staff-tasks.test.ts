@@ -26,15 +26,12 @@ import { handler, harnessRunHandleSchema, harnessRunInputSchema, type GeneratorT
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { askMarkerPath } from "@flow-state-dev/harness-manager";
-import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "../teams/devteam/harness-stub.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
-import { PHASE } from "../teams/devteam/phase.mts";
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
@@ -98,7 +95,6 @@ async function open(model: ModelResolver): Promise<Lab> {
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-tasks-")), remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
   });
   return opened;
@@ -295,11 +291,9 @@ async function openCoderLab(model: ModelResolver, stub: HarnessStub, options: { 
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-tasks-")), remotes: { allow: ["file"] } },
     coderSeatId: CODER,
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
     projects: [
-      // It holds the feature mailbox's workstream, so a feature row works there too.
-      { id: "storefront", title: "Storefront", repository: remote.url, workstreams: ["eng.feature"] },
+      { id: "storefront", title: "Storefront", repository: remote.url },
       { id: "sandbox", title: "Sandbox" },
     ],
     ...(options.withoutJudge === true ? { withoutJudge: true } : {}),
@@ -548,10 +542,10 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(stub.runs[1]!.prompt).toContain(reply);
   });
 
-  it("holds a conversation's feature task to feature work's rules: it never closes as an answer", async () => {
-    // `addTask` mints the task's id, which is never the id an issue and a phase derive, so the
-    // implement manager refuses it on that check, before it runs: feature work from a conversation
-    // does not reach a run today. What matters here is that it never completes as an answer task.
+  it("holds a conversation's feature task to feature work's rules: it runs, and never closes as an answer", async () => {
+    // A task naming an issue and a phase is feature work wherever it was filed: the implement
+    // manager runs it under the id its board minted, and it is done only on a commit. This run
+    // answers and commits nothing, so the task fails rather than closing as an answer task.
     const stub = readsMarker();
     const { lab } = await openCoderLab(
       scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, issue: "greeting", phase: "implement" })]),
@@ -559,10 +553,28 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     );
     const { task } = await fileAndSettle(lab);
     expect(task.status).toBe("errored");
-    expect(stub.runs).toHaveLength(0);
+    expect(stub.runs.length).toBeGreaterThan(0);
+    // Every attempt was the implement phase's: its prompt names the row and asks for a commit.
+    for (const run of stub.runs) expect(run.prompt).toMatch(/\nRow task_\w+, phase implement, attempt \d/);
   });
 
-  it("runs a feature row and a conversation's task at once, each in its own checkout, and judges only the conversation's", async () => {
+  it("completes a conversation's feature task once its run commits", async () => {
+    const stub = readsMarker({
+      duringRun: async (run) => {
+        writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
+        commitAll(run.cwd, "add the greeting");
+      },
+    });
+    const { lab } = await openCoderLab(
+      scriptedCoder([fileForCoder("ship the greeting", { project: STOREFRONT, issue: "greeting", phase: "implement" })]),
+      stub,
+    );
+    const { task } = await fileAndSettle(lab);
+    expect(task.status).toBe("completed");
+    expect(stub.runs).toHaveLength(1);
+  });
+
+  it("runs the EM's feature row and a conversation's task at once, each in its own checkout, and judges each", async () => {
     const judged: unknown[] = [];
     let release: () => void = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
@@ -582,11 +594,12 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     await until(async () => stub.runs.length, (n) => n >= 1, "the conversation's run");
 
-    expect((await lab.file("eng.em", { issue: "greeting", goal: "Add a greeting.", maxAttempts: 1 })).error).toBeUndefined();
-    const featureId = harnessTaskId("greeting", PHASE);
+    expect(
+      (await lab.file("eng.em", { issue: "greeting", goal: "Add a greeting.", maxAttempts: 1, project: STOREFRONT })).error,
+    ).toBeUndefined();
     const feature = await until(
       async () => {
-        const row = await lab.row(featureId);
+        const row = await lab.featureRow("greeting");
         if (row === undefined || row.status === "pending") await lab.drain("eng.em");
         return row;
       },
@@ -604,11 +617,11 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await quiet(lab);
     expect(stub.runs).toHaveLength(2);
     expect(stub.runs[0]!.cwd).not.toBe(stub.runs[1]!.cwd);
-    // A feature row keeps today's check: the judge reads the conversation's task alone.
-    expect(feature?.output).toMatchObject({ judged: false });
-    expect(judged).toHaveLength(1);
-    expect(JSON.stringify(judged[0])).toContain("look at the repo");
-    expect(JSON.stringify(judged[0])).not.toContain("Add a greeting.");
+    // The EM's row is a session's task like any other: the judge reads it against its own goal.
+    expect(feature?.output).toMatchObject({ judged: true });
+    expect(judged).toHaveLength(2);
+    expect(judged.map((input) => JSON.stringify(input)).join("\n")).toContain("look at the repo");
+    expect(judged.map((input) => JSON.stringify(input)).join("\n")).toContain("Add a greeting.");
   });
 
   it("refuses to open with a harness that isn't detached, naming the entry", async () => {

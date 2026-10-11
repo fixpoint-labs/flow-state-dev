@@ -48,7 +48,6 @@ import { readSessionItems } from "../src/lib/run";
 import { workforceClientFor } from "../src/lib/workforce";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
-import { createNotifyLog } from "../teams/devteam/notify.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const APOLLO: ProjectAddress = { visibility: "shared", id: "apollo" };
@@ -127,7 +126,6 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
     coderSeatId: "eng.coder",
-    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
     projects: [{ id: APOLLO.id, title: "Apollo", members: [BOB.userId] }],
   });

@@ -288,7 +288,6 @@ describe("grouping is the snapshot's (V4)", () => {
     status: "active",
     ownerUserId: "alice",
     members: ["alice"],
-    workstreams: [],
     visibility: "shared",
     repository: null,
     ...over,
@@ -309,17 +308,15 @@ describe("grouping is the snapshot's (V4)", () => {
     expect(toProject({ ...row, repository: null })?.repository).toBeNull();
   });
 
-  it("projectsOf groups a cross-team project, keeps a gone id as gone, and makes no read", () => {
+  it("projectsOf lists no mailbox under a project, even off a row that still carries `workstreams`, and makes no read", () => {
     const spy = vi.spyOn(globalThis, "fetch");
-    const view = projectsOf(snapshot([project({ id: "s", workstreams: ["eng.a", "ops.b", "ops.gone"] })]));
+    // A row an earlier version wrote, still naming mailboxes: nothing reads the field.
+    const stale = toProject({ id: "s", title: "S", ownerUserId: ASK_LAB_USER_ID, workstreams: ["eng.a", "ops.b"] })!;
+    const view = projectsOf(snapshot([stale]));
     expect(spy).not.toHaveBeenCalled();
     if (!view.ok) throw new Error("expected a view");
-    expect(view.value.projects[0]!.workstreams.map((w) => [w.id, w.workstream?.id ?? null])).toEqual([
-      ["eng.a", "eng.a"],
-      ["ops.b", "ops.b"],
-      ["ops.gone", null],
-    ]);
-    expect(view.value.noProject.map((w) => w.id)).toEqual(["ops.c"]);
+    expect(view.value.projects.map((g) => [g.project.id, g.workstreams])).toEqual([["s", []]]);
+    expect(view.value.noProject.map((w) => w.id)).toEqual(["eng.a", "ops.b", "ops.c"]);
   });
 
 });

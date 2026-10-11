@@ -263,23 +263,24 @@ export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Se
 }
 
 /**
- * One workstream a project lists: its id as the row holds it, and the
- * workstream the inventory registers under that id. `undefined` when the
- * mailbox has left the tree: the id stays on the row, and is shown as gone.
+ * One mailbox workstream in a list: its id, and the workstream the inventory
+ * registers under that id, `undefined` when none is.
  */
 export type ListedWorkstream = { id: string; workstream: Workstream | undefined };
 
-/** A project with the workstreams its row lists, in the row's order. */
+/**
+ * A project, with the mailbox workstreams it lists: none, since a project
+ * lists no mailbox. Its workstreams are its entries, read on its screen.
+ */
 export type ProjectGroup = { project: Project; workstreams: ListedWorkstream[] };
 
-/** PROJECTS: every project, then the workstreams no project lists. */
+/** PROJECTS: every project, then the mailbox workstreams, which no project lists. */
 export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] };
 
 /**
  * PROJECTS (BR-22, D3): every project the person reads, shared ones and their
- * own private ones, with the mailbox workstreams its row lists, a project
- * that lists none included, and then every mailbox workstream no row lists,
- * which is No project.
+ * own private ones, and then every mailbox workstream the inventory
+ * registers, which is No project: a project lists no mailbox.
  *
  * Derived from the snapshot alone: no read of its own.
  * Fails when either read it groups did: the inventory's failure first, since
@@ -288,19 +289,8 @@ export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] }
 export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
   if (!snapshot.inventory.ok) return snapshot.inventory;
   if (!snapshot.projects.ok) return snapshot.projects;
-  const registered = new Map(snapshot.inventory.value.workstreams.map((w) => [w.id, w]));
-  const listed = new Set<string>();
-  const projects = snapshot.projects.value.rows.map((project) => ({
-    project,
-    workstreams: project.workstreams.map((id) => {
-      listed.add(id);
-      return { id, workstream: registered.get(id) };
-    }),
-  }));
-  return {
-    ok: true,
-    value: { projects, noProject: snapshot.inventory.value.workstreams.filter((w) => !listed.has(w.id)) },
-  };
+  const projects = snapshot.projects.value.rows.map((project) => ({ project, workstreams: [] }));
+  return { ok: true, value: { projects, noProject: snapshot.inventory.value.workstreams } };
 }
 
 
