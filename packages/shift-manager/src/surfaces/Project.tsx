@@ -279,7 +279,7 @@ function ProjectBody({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
           <Progress read={read.value} />
           <EntryList entries={entries} route={route} />
-          <OpenHint route={route} />
+          <OpenHint route={route} setup={setup} />
         </div>
       );
     }
@@ -604,8 +604,20 @@ function OwnBoards({
   );
 }
 
-/** Where a workstream comes from: the person asks their project coordinator, in Stream. */
-function OpenHint({ route }: { route: ProjectRoute }) {
+/**
+ * Where a workstream comes from: the person asks their project coordinator, in
+ * Stream. A Lab that names no project coordinator says it opens none; while
+ * its setup is read, or when the read failed (Stream shows that), nothing.
+ */
+function OpenHint({ route, setup }: { route: ProjectRoute; setup: Read<ProjectSetup | null> }) {
+  if (setup === undefined || "failure" in setup) return null;
+  if (setup.value?.projectCoordinator == null) {
+    return (
+      <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-none">
+        This Lab has no project coordinator, so workstreams can't be opened here.
+      </p>
+    );
+  }
   return (
     <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-hint">
       To open a workstream, ask your project coordinator for the work in{" "}

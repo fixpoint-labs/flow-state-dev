@@ -55,11 +55,11 @@ import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
 import { deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
-import { changeWorkstreamRecordHere, WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
+import { changeWorkstreamRecordHere, linkedProjectOf, WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
 import { DONE_STATUS } from "./project-progress";
 import { projectEntries } from "./project-read";
 import { retryOnConflict } from "./cas-retry";
-import { projectAddressSchema } from "./collections";
+import { projectAddressSchema, type ProjectAddress } from "./collections";
 import { isMember } from "./membership-gate";
 import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
@@ -110,8 +110,12 @@ export interface WorkstreamBlocksOptions {
 /** What opening a workstream takes. Closed: nothing in it names the owner. */
 export const openWorkstreamInputSchema = z
   .object({
-    /** The project's address: where it lives, and its id. */
-    project: projectAddressSchema,
+    /**
+     * The project's address: where it lives, and its id. Left out in a
+     * conversation linked to a project (a project coordinator's), it is that
+     * project, the only one such a conversation may open in.
+     */
+    project: projectAddressSchema.optional(),
     /** The workstream's id: one path segment, unique in the project for its owner. */
     id: z.string().min(1),
     title: z.string().min(1),
@@ -314,6 +318,26 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
    * Check the open, and make the entry or find it: everything that can refuse
    * runs before anything is written.
    */
+  /**
+   * The project an open is in: the one it names, or, left out, the one its
+   * conversation is linked to. A conversation linked to a project opens only
+   * in that project, so a coordinator's open never lands in another.
+   */
+  const openingProjectOf = (ctx: { readonly session: { readonly state: unknown } }, named: ProjectAddress | undefined): ProjectAddress => {
+    const linked = linkedProjectOf(ctx.session.state);
+    if (named === undefined) {
+      if (linked === undefined) throw new ProjectRefusedError("no-such-project", "name the project to open the workstream in.");
+      return linked;
+    }
+    if (linked !== undefined && (linked.visibility !== named.visibility || linked.id !== named.id)) {
+      throw new ProjectRefusedError(
+        "other-project",
+        `this conversation is project "${linked.id}"'s; it opens workstreams only there, not in "${named.id}".`
+      );
+    }
+    return named;
+  };
+
   const checkOpen = handler({
     name: "workstream-open-check",
     inputSchema: openWorkstreamInputSchema,
@@ -323,11 +347,12 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     execute: async (input: OpenWorkstreamInput, ctx): Promise<OpenStep> => {
       const owner = ownerOf(ctx, "openWorkstream");
       assertWorkstreamId(input.id);
-      const project = await projectAt(ctx, input.project);
+      const at = openingProjectOf(ctx, input.project);
+      const project = await projectAt(ctx, at);
       if (!isMember(project.state, owner)) {
         throw new ProjectRefusedError(
           "not-a-member",
-          `only project "${input.project.id}"'s members may open workstreams in it.`
+          `only project "${at.id}"'s members may open workstreams in it.`
         );
       }
       const lead = await installation.rosterWorker(ctx, input.lead);
@@ -338,24 +363,24 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       const cannotLead = leadProblem(lead);
       if (cannotLead !== undefined) throw new ProjectRefusedError("cannot-lead", `Worker "${input.lead}" ${cannotLead}.`);
 
-      const address: WorkstreamAddress = { project: input.project, id: input.id };
-      const entries = workstreamsAt(ctx, input.project.visibility);
-      const key = workstreamEntryKey(input.project.id, owner, input.id);
+      const address: WorkstreamAddress = { project: at, id: input.id };
+      const entries = workstreamsAt(ctx, at.visibility);
+      const key = workstreamEntryKey(at.id, owner, input.id);
       // Each open workstream is a record on the owner's coordinator, which
       // holds so many: refused before anything is written (BR-21b).
       if (installation.projectCoordinator() !== undefined && (await entries.getOptional(key)) === undefined) {
-        const open = (await projectEntries(ctx, input.project)).filter(
+        const open = (await projectEntries(ctx, at)).filter(
           (held) => held.owner === owner && held.status !== DONE_STATUS
         );
         if (open.length >= MAX_DELEGATES) {
           throw new ProjectRefusedError(
             "too-many-workstreams",
-            `you have ${open.length} open workstreams in project "${input.project.id}", and your project ` +
+            `you have ${open.length} open workstreams in project "${at.id}", and your project ` +
               `coordinator holds at most ${MAX_DELEGATES} delegates, one for each. Mark one done first.`
           );
         }
       }
-      const at = nowIso();
+      const now = nowIso();
       const fresh: Omit<WorkstreamEntry, "writtenBy"> = {
         title: input.title,
         lead: input.lead,
@@ -363,8 +388,8 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
         status: "on-track",
         due: input.due ?? null,
         objectives: (input.objectives ?? []).map((text) => ({ text, met: false, metAt: null, metBy: null })),
-        openedAt: at,
-        updatedAt: at
+        openedAt: now,
+        updatedAt: now
       };
       let opened = false;
       let entry: ResourceRef<WorkstreamEntry> | undefined = await entries.getOptional(key);

@@ -1319,8 +1319,8 @@ lives in (`repository`, or `null`). A **shared** project is a row of the organiz
 `projects` collection, which everyone in the org lists and reads. A **private** project is the same
 row in its creator's own user scope, which nobody else lists or reads, with its creator as its only
 member. A project's address is `{ visibility, id }`, and every read and write after the create takes
-one; another user's private project is refused as `no-such-project`. The roster flow `hireWorkforce`
-returns, the coordinator flow, the project blocks and `openWorkstream` declare both collections; a
+one (`openWorkstream` can leave it out in a conversation that belongs to a project); another user's
+private project is refused as `no-such-project`. The roster flow `hireWorkforce` returns, the coordinator flow, the project blocks and `openWorkstream` declare both collections; a
 flow of your own that works on project rows without them puts `defineProjectsCollection()` and
 `definePrivateProjectsCollection()` in its `resources` under `PROJECTS_RESOURCE` and
 `PRIVATE_PROJECTS_RESOURCE`. The guide is the docs site's Workforce → Projects page, under
@@ -1341,9 +1341,13 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   naming other members (`private-has-members`) are each refused, and nothing is written. The same
   owner re-sending an id gets the row back (`created: false`). A project's workstreams are the
   entries `openWorkstream` writes, not a list on its row.
-- **`openWorkstream { project, id, title, lead, due?, objectives? }`** opens a workstream the caller
-  owns: an entry at `workstreams/<projectId>/<~owner>/<id>`, and the lead's workstream session,
-  owned by the caller, whose id the entry records. The lead is a worker on the caller's roster, on
+- **`openWorkstream { project?, id, title, lead, due?, objectives? }`** opens a workstream the caller
+  owns. Left out, `project` is the project the calling conversation belongs to (a project
+  coordinator's conversation belongs to its project; a person's own coordinator belongs to none);
+  in a conversation that belongs to no project it is refused `no-such-project`. A conversation that
+  belongs to a project opens only there: naming another is refused `other-project`, and nothing is
+  written. The open makes an entry at `workstreams/<projectId>/<~owner>/<id>`, and the lead's
+  workstream session, owned by the caller, whose id the entry records. The lead is a worker on the caller's roster, on
   one of `leadFlows`, that lists delegates (`delegates:`), since a lead runs its workstream through
   them. Returns `{ workstream, opened }`; opening it again hands the entry back
   (`opened: false`). Refused: `not-a-member` on a shared project, `no-such-worker`, `cannot-lead`
@@ -1419,8 +1423,10 @@ session.
 To let the coordinator open workstreams, add `listLeads: workstreams.listLeadsTool` and
 `openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" })` to its catalog and name
 both in its `tools:`. Asked for work none of the person's workstreams covers, it lists the leads,
-opens a workstream with the one whose description fits, and hands the ask to it. Inside the owner's
-own coordinator turn, the new workstream can take the hand-off as soon as `openWorkstream` returns.
+opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
+coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
+built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
+take the hand-off as soon as `openWorkstream` returns.
 
 ## Workers as data
 

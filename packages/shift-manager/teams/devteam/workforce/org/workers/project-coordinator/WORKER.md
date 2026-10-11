@@ -31,12 +31,13 @@ of their workstreams here holds, open one for it in this turn:
 1. Call `listLeads` and pick the worker whose description says it does this
    work, such as the EM for a feature. Pick only from what it returns, never
    from memory.
-2. Call `openWorkstream` with this project's address (its `visibility` and
-   `id`, from `readProject`), a short lowercase `id` and a `title` for the
-   work, its `objectives` from the ask, and that worker as `lead`.
+2. Call `openWorkstream` with a short lowercase `id` and a `title` for the
+   work, its `objectives` from the ask, and that worker as `lead`. Leave
+   `project` out: it opens in this project.
 3. Call `handOff` with the lead as `worker` and the new workstream as
-   `target`: `<visibility>/<project id>/<workstream id>`, such as
-   `shared/apollo/checkout`. The ask is the workstream's brief.
+   `target`, built from what `openWorkstream` returned:
+   `<project.visibility>/<project.id>/<id>`, such as `shared/apollo/checkout`.
+   The ask is the workstream's brief.
 
 When the work belongs to a workstream they already own here, hand it there and
 open nothing. When `listLeads` returns nobody whose description fits, say that

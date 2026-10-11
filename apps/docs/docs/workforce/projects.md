@@ -25,7 +25,7 @@ A **private** project lives with you. Nobody else can list, open or read it, its
 
 Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
 
-A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exception is `openWorkstream` from a project coordinator, covered in [Opening one](#opening-one). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
@@ -192,7 +192,9 @@ A lead flow must declare the internal entry `workstreamOpenedEntry()` returns, u
 
 ### Opening one
 
-Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives:
+Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives.
+
+`project` is optional. Leave it out and the workstream opens in the project the calling conversation belongs to: a project coordinator's conversation belongs to its project; a person's own coordinator belongs to none. A conversation that belongs to a project opens workstreams only there, so naming a different project from it is refused.
 
 ```ts
 const apollo = { visibility: "shared", id: "apollo" } as const;
@@ -237,7 +239,8 @@ A workstream id is unique within a project for each owner, so Alice's `checkout`
 
 | `reason` | When |
 |----------|------|
-| `no-such-project` | The address names no project you can read |
+| `no-such-project` | The address names no project you can read, or you left `project` out in a conversation that belongs to no project |
+| `other-project` | The conversation belongs to one project and you named another |
 | `not-a-member` | On a shared project, you aren't one of its members |
 | `invalid-workstream-id` | The id is empty or holds a `/` |
 | `no-such-worker` | The lead isn't a worker on your roster. Another user's worker is refused the same way |
@@ -389,7 +392,7 @@ A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses 
 Your coordinator can open a workstream for you when you ask for work none of your workstreams in the project covers. Add these tools from `defineWorkstreamBlocks` to its catalog:
 
 - `listLeadsTool`, a tool named `listLeads`. It takes no input and returns `{ leads: [{ id, description }] }`: every worker on your roster, your own and the standard ones, that can lead a workstream, as the roster stands when the tool runs. `description` is `null` for a worker without one.
-- `openWorkstream`, the same block as the action, named for the catalog with `.as()`.
+- `openWorkstream`, the same block as the action, named for the catalog with `.as()`. Called without `project`, it opens the workstream in the coordinator's own project. Naming another project is refused with `other-project`, so tell the coordinator to leave `project` out, as the file below does.
 
 ```ts
 const coordinator = defineCoordinatorFlow({
@@ -418,11 +421,12 @@ tools: [readProject, listLeads, openWorkstream]
 
 When the person asks for work none of their workstreams here holds, call
 `listLeads` and pick the worker whose description fits. Open a workstream
-with `openWorkstream`, that worker as `lead`, then hand the ask to it.
-When nobody fits, say so and open nothing.
+with `openWorkstream`, that worker as `lead` and no `project`, then hand the
+ask to it, targeting `<project.visibility>/<project.id>/<id>` from the
+workstream it returns. When nobody fits, say so and open nothing.
 ```
 
-When `openWorkstream` runs in your own coordinator's turn, the new workstream is already one of the coordinator's delegates when the open returns, so the coordinator can hand your ask to it in the same turn. One worker can lead several of your workstreams, each with its own session and board.
+When `openWorkstream` runs in your own coordinator's turn, the new workstream is already one of the coordinator's delegates when the open returns, so the coordinator can hand your ask to it in the same turn. The delegate's target is `<project.visibility>/<project.id>/<id>`, read from the `workstream` the open returns, for example `shared/apollo/checkout`. One worker can lead several of your workstreams, each with its own session and board.
 
 ## A project's code and files
 

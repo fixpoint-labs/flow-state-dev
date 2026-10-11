@@ -463,18 +463,23 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
   it("opens one led by a worker her hire put on her roster, and hands the ask in, in the same turn (BR-38)", async () => {
     const judgment = scripted([
       { toolName: "listLeads", args: {} },
-      { toolName: "openWorkstream", args: { project: apollo, id: "checkout", title: "Guest checkout", lead: "alice-lead", objectives: ["Ship it"] } },
+      // No project: the open lands in the project this conversation is linked to.
+      { toolName: "openWorkstream", args: { id: "checkout", title: "Guest checkout", lead: "alice-lead", objectives: ["Ship it"] } },
       { toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/checkout" } }
     ]);
-    const h = await boot({ judgment });
+    const h = await boot({ judgment, counted: true });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
     await hireOn(h, "alice", "alice-solo", "lead", []);
     await hireOn(h, "alice", "alice-quiet", "quiet", ["alice-quiet.helper"]);
     const roster = (await h.client("alice").roster()).map((worker) => worker.id).sort();
     const id = await h.coordinator("alice");
+    h.counting!.reads.length = 0;
     const posted = await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Please add guest checkout." });
     expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
     await h.settled();
+    // The whole open turn lists the project's entries at most once (V5's budget).
+    const lists = h.counting!.reads.filter((read) => read.includes("prefix") && read.includes("workstreams/"));
+    expect(lists.length, lists.join("\n")).toBeLessThanOrEqual(1);
 
     // It offered only the worker that can lead: on a lead flow, listing delegates.
     expect(await leadsOffered(h, id)).toEqual([["alice-lead"]]);
@@ -518,6 +523,27 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     ]);
     const search = sessions.find((session: { state: Record<string, unknown> }) => session.state.workstreamId === "shared/apollo/search");
     expect(h.heard).toEqual([{ worker: "alice-lead", message: expect.stringContaining("Make search fuzzy."), sessionId: search.id }]);
+  });
+
+  it("opens only in its own project: naming another she is on is refused, and nothing is written there", async () => {
+    const judgment = scripted([
+      { toolName: "openWorkstream", args: { project: notes, id: "journal", title: "Journal", lead: "alice-lead" } }
+    ]);
+    const h = await boot({ judgment });
+    await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+    const id = await h.coordinator("alice");
+    await h.act("alice", COORDINATOR_KIND, id, "run", { message: "Start a journal." });
+    await h.settled();
+    const outputs = (await h.runtime.stores.request.list({ sessionId: id, withItems: true }))
+      .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+      .filter((item) => item.blockName === "openWorkstream");
+    expect(JSON.stringify(outputs)).toContain("other-project");
+    const lab = await h.lab("alice");
+    for (const project of [apollo, notes]) {
+      const listed = (await h.ok("alice", "lab", lab, "readProject", { project })) as { workstreams: unknown[] };
+      expect(listed.workstreams).toEqual([]);
+    }
+    expect(await h.delegates("alice", id)).toEqual([]);
   });
 
   it("offers nobody when no worker on her roster can lead (BR-39)", async () => {
