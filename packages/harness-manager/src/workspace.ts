@@ -487,6 +487,22 @@ export function harnessTaskId(issue: string, phase: string): string {
 }
 
 /**
+ * The board segment of a run's identity: what {@link RunLocation.epic} and the
+ * run topic are led by.
+ *
+ * A board with no partition is its ledger id, as is, so a fixed board's runs
+ * keep the checkout, branch and run record they always had. A board kept per
+ * partition (one conversation's rows among many on one ledger) adds a digest
+ * of the partition, so two conversations that file the same task id never
+ * share a checkout, a branch or a run record. A digest rather than the value:
+ * a partition is a server-minted string of any shape, and {@link encodeSegment}
+ * fits it to a path and a ref the way it fits a user id.
+ */
+export function runBoardSegment(ledgerId: string, partition: string | undefined): string {
+  return partition === undefined ? ledgerId : joinIdentity(ledgerId, encodeSegment(partition));
+}
+
+/**
  * This issue-phase's branch, for this principal.
  *
  * Carries the principal for the same reason the path does, and it is the half

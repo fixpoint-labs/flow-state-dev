@@ -40,13 +40,18 @@ import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput 
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   clearNotice,
+  getOrCreateTaskCollection,
+  hasFrozenLedgerAssignee,
+  resolveResourceCollection,
+  type DefinedTaskCollection,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
+import { mailboxBoardLedger } from "../mailbox/mailbox-board";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
 import { hasPieces, parkOnPieces } from "./split";
@@ -131,17 +136,30 @@ const CONVERSATION_GONE: ReadonlySet<DispatchRefusal> = new Set(["session-not-fo
 export interface WorkerTaskClaim {
   readonly collectionId: string;
   readonly partition?: string;
+  /** The row's identity nonce as of the claim, when the row carries one. */
+  readonly incarnationId?: string;
 }
 
 /** What a `block` entry's block is handed: the task as the board packed it, and the claim it runs under. */
 export type WorkerTaskBlockInput = TaskWorkerInput & { readonly claim: WorkerTaskClaim };
 
+/** A mailbox task list as its declaration: the id it is registered under, and the ledger itself. */
+export interface MailboxListDeclaration {
+  readonly id: string;
+  readonly collection: DefinedTaskCollection;
+}
+
 /** What a flow's `work` entry is built from: a `turn` or a `block`, exactly one. */
 export type WorkerTaskEntryOptions = {
   /** Names the entry's blocks. */
   readonly name: string;
-  /** Mailbox task lists the entry also takes tasks from, by minted id. */
-  readonly mailboxLists?: readonly string[];
+  /**
+   * Mailbox task lists the entry also takes tasks from: by minted id, or as
+   * the declaration itself (`{ id, collection }`) when the flow already holds
+   * the list under its own declaration, so the entry doesn't install a second
+   * one under the same key.
+   */
+  readonly mailboxLists?: readonly (string | MailboxListDeclaration)[];
 } & (
   | {
       /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
@@ -194,8 +212,34 @@ function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
   }
   return {
     collectionId: ticket.collectionId,
-    ...(ticket.partition === undefined ? {} : { partition: ticket.partition })
+    ...(ticket.partition === undefined ? {} : { partition: ticket.partition }),
+    ...(ticket.incarnationId === undefined ? {} : { incarnationId: ticket.incarnationId })
   };
+}
+
+/**
+ * The board of the conversation a task session was opened for, and how to
+ * run that board in the conversation: its run entry, on the flow that filed
+ * the task. All three come from the session's readonly fields the hand-over
+ * wrote at its birth, never from a request. `undefined` outside a
+ * conversation's task session (a mailbox list's task, or any other session).
+ *
+ * For a host's message door over a worker's runs
+ * (`harnessMessageDoor` in `@flow-state-dev/harness-manager`): the row the
+ * session works is on this board, and its next attempt starts when the
+ * conversation runs its board.
+ *
+ * @param ctx The running block's context, in the task session. Its flow must
+ *   declare the conversation ledger (`workerTaskEntry` installs it).
+ */
+export async function filingConversationBoard(
+  ctx: BlockContext
+): Promise<{ tasks: TaskCollectionRef; runEntry: string; filingFlow: string } | undefined> {
+  const partition = filingPartitionOf(ctx);
+  const filingFlow = filingFlowOf(ctx);
+  if (partition === undefined || filingFlow === undefined) return undefined;
+  const tasks = await conversationLedgerAt(ctx, partition);
+  return tasks === undefined ? undefined : { tasks, runEntry: RUN_BOARD_ENTRY, filingFlow };
 }
 
 /**
@@ -210,18 +254,31 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   if (options.turn === undefined && options.block === undefined) {
     throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, the block that does the task's work.`);
   }
-  const lists = new Set(options.mailboxLists ?? []);
-  const resources = {
-    ...conversationLedgerResources,
-    ...Object.fromEntries([...lists].map((id) => [id, mailboxBoardLedger(id)]))
-  };
+  // Each list's declaration, by id: the one the caller gave, or the mailbox board's own.
+  const lists = new Map<string, DefinedTaskCollection>(
+    (options.mailboxLists ?? []).map((list) =>
+      typeof list === "string" ? [list, mailboxBoardLedger(list)] : [list.id, list.collection]
+    )
+  );
+  const resources = { ...conversationLedgerResources, ...Object.fromEntries(lists) };
 
   // Marked, so the delegate check knows this entry takes a conversation's tasks.
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: async (ledgerId, ctx, partition) => {
       if (ledgerId === CONVERSATION_LEDGER_ID) return conversationLedgers(ledgerId, ctx, partition);
-      return lists.has(ledgerId) && partition === undefined ? resolveMailboxBoard(ctx, ledgerId) : undefined;
+      const declared = lists.get(ledgerId);
+      if (declared === undefined || partition !== undefined) return undefined;
+      const collection = resolveResourceCollection(ctx, ledgerId);
+      return collection === undefined
+        ? undefined
+        : getOrCreateTaskCollection({
+            ctx,
+            backing: "resource",
+            collectionId: ledgerId,
+            collection,
+            immutableAssignee: hasFrozenLedgerAssignee(declared)
+          });
     },
     uses: [defineCapability({ name: `${name}-ledgers`, resources })],
     // The turn keeps the worker's skill state on the session, the same shape

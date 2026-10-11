@@ -21,9 +21,10 @@
  * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
- * 1. **The board and the coder's door** (`board.mts`): the EM's board hands a
- *    row across flows, and the coder takes it through a door on the same
- *    ledger, with no board of its own. The ledger is the mailbox's.
+ * 1. **The board and the coder's entry** (`board.mts`, `coder.mts`): the EM's
+ *    board hands a row across flows, and the coder takes it through its one
+ *    `work` entry on the same ledger, with no board of its own, beside the
+ *    tasks a conversation files for it. The ledger is the mailbox's.
  * 2. **The assignee → worker address.** The board routes its own `coder`
  *    assignee to the worker the caller supplies, which is what lets a
  *    control point it at the wrong worker and watch the negative claim go
@@ -80,6 +81,8 @@ import {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  listProjectsInputSchema,
+  listProjectsOutputSchema,
   defineWorkstreamBlocks,
   projectCoordinatorTools,
   projectWorkspace,
@@ -112,7 +115,8 @@ import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { ASSIGNEE, type FeatureLedger } from "./board.mts";
 import { DOCUMENT_KEY, INSPECT_ENTRY, SEAT_FACTS_COMPONENT, seatOf } from "./seat-config.mts";
-import { defineImplementPhase, noteStartingFiles } from "./phase.mts";
+import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
+import { defineCoderJudge } from "./judge.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -306,15 +310,48 @@ function projectSetup(installation: WorkerInstallation) {
 const AGENT_LEADS = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
 
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
-const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams", "setRepository", "openWorkstream"];
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams", "setRepository", "openWorkstream", "listProjects"];
+
+/** The person's projects, with what a coder's task that names no project does next. */
+const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
+
+/**
+ * What a coder's task that names no project does next, worked out from the
+ * projects with a repository rather than left to the model to count: file it
+ * for the one there is, or ask, naming them. A real model told the rule in
+ * prose picked one of two, or offered instead of filing, about one turn in
+ * three.
+ */
+const forCoding = handler({
+  name: "list-projects-for-coding",
+  inputSchema: listProjectsOutputSchema,
+  outputSchema: listedForCodingSchema,
+  execute: (listed) => {
+    const coded = listed.projects.filter((project) => project.repository != null);
+    const named = (project: (typeof coded)[number]) => `${project.title} (${JSON.stringify({ visibility: project.visibility, id: project.id })})`;
+    const [only] = coded;
+    const next =
+      coded.length === 1 && only !== undefined
+        ? `One project has a repository: ${named(only)}. File a coder's task that names no project for it now, with addTask, without asking.`
+        : coded.length === 0
+          ? "No project has a repository. Ask which project the person means."
+          : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the person means, naming each.`;
+    return { ...listed, forCoding: next };
+  },
+});
 
 /**
  * The project writes as the chief of staff's tools, `createProject`,
- * `setWorkstreams`, `setRepository` and `openWorkstream`: the same blocks the
- * Lab's own projects flow runs, under the names its `tools:` line spells. A
- * catalog key must be the tool's own name, so `setWorkstreams` and
- * `openWorkstream` are the blocks under `.as()`; the others are sequencers
- * named for the tool, since each waits for an approval first.
+ * `setWorkstreams`, `setRepository` and `openWorkstream`, and its one project
+ * read, `listProjects`: the same blocks the Lab's own projects flow runs,
+ * under the names its `tools:` line spells. A catalog key must be the tool's
+ * own name, so `setWorkstreams` and `openWorkstream` are the blocks under
+ * `.as()`; the others are sequencers named for the tool, since each waits
+ * for an approval first, or, for `listProjects`, adds `forCoding`.
+ *
+ * `listProjects` is how the chief of staff knows which project a coder's task
+ * works in: the projects the person is a member of, read when asked, never
+ * guessed.
  *
  * `openWorkstream` names its lead: the person's own worker. Shift Manager's
  * open forks a coordinator of the workstream's own instead; giving this tool
@@ -333,6 +370,18 @@ const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setWorkstreams"
  */
 export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: WorkstreamBlocks) {
   return {
+    listProjects: sequencer({
+      name: "listProjects",
+      description:
+        "List the projects the person you are talking to is a member of: each one's address " +
+        "(`visibility` and `id`), its title, and its `repository` (null when it has none), and " +
+        "`forCoding`, what to do with a coder's task that names no project. Answer which projects " +
+        "they have, and pick the project a task works in, from this, never from memory.",
+      inputSchema: listProjectsInputSchema,
+      outputSchema: listedForCodingSchema,
+    })
+      .step(blocks.listProjects)
+      .step(forCoding),
     openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
       description:
@@ -619,6 +668,13 @@ export interface OpenLabOptions {
    */
   dropTask?: boolean;
   /**
+   * Leave the chief of staff's `listProjects` out: not in the catalog, and not
+   * in its `tools:`, so it can't read which projects the person has. The red
+   * state of "the chief of staff names the project a coder's task works in
+   * without asking".
+   */
+  withoutProjectList?: boolean;
+  /**
    * Leave the project tools out: not in the catalog the agent turn is built
    * with (the `agent` kind's, and the chief of staff's on the coordinator
    * flow), and not in any seat's `tools:`, as before the chief of staff had
@@ -627,6 +683,18 @@ export interface OpenLabOptions {
    * creates projects".
    */
   withoutProjectTools?: boolean;
+  /**
+   * Build the coder's managers with no judge: a conversation's task settles
+   * on its phase's check alone. The red state of "an answer Jev judged as
+   * missing the goal doesn't close as completed".
+   */
+  withoutJudge?: boolean;
+  /**
+   * Give the coder its `work` entry as it was before it took a conversation's
+   * tasks: rows from the feature board only. The red state of "a
+   * conversation's task for the coder runs, and the conversation hears it".
+   */
+  featureDoorOnly?: boolean;
 }
 
 /** A workspace host for the lab to build: where its places live, and which remotes it may reach. */
@@ -816,6 +884,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     "sourceRepo" in options.workspace
       ? undefined
       : labWorkspaceHost(options.workspace, ledger.id, options.saveNothing === true);
+  // A conversation's answer task works in its conversation's project, or the
+  // one it names, and never in the board's: a source with no board.
+  const answerHost = answerWorkspaceHost(options.workspace, options.saveNothing === true);
   if (options.saveNothing === true && workspaceHost === undefined) {
     throw new Error("openLab: `saveNothing` needs a `{ root, remotes }` workspace; a fixed repository keeps no files");
   }
@@ -838,6 +909,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
       declared.tools = (declared.tools as string[]).filter((name) => !PROJECT_TOOL_NAMES.includes(name));
+    }
+    if (options.withoutProjectList === true && Array.isArray(declared.tools)) {
+      declared.tools = (declared.tools as string[]).filter((name) => name !== "listProjects");
     }
     const redirected = { ...worker, declared };
     return options.mutateSkills === undefined
@@ -865,7 +939,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     installation,
     leadFlows: [AGENT_LEADS],
   });
-  const projectTools = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
+  const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
+  const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
     (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_KIND;
   // A worker of either kind reads its brief by the document it names; one that
@@ -892,9 +967,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
   });
-  // The coordinator a coder seat's message door re-runs the board on, read off
-  // the tree like the board. Two would be a guess, so the lab refuses; none
-  // leaves the coder with no door, since nothing re-runs its board.
+  // The coordinator a coder worker's message door re-runs the feature board on,
+  // read off the tree like the board. Two would be a guess, so the lab refuses;
+  // none leaves the coder's feature runs taking no message, since nothing
+  // re-runs their board.
   const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_KIND);
   if (emRecords.length > 1) {
     throw new Error(`the tree declares ${emRecords.length} EM seats; this lab runs one`);
@@ -905,9 +981,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (emRecords.length === 0 && options.ask !== undefined) {
     throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found 0`);
   }
+  const coderSeatOf = seatOf(installation, CODER_KIND);
   const coderKind = defineCoderWorkerFlow({
     installation,
     ledger,
+    answerWorkspace: answerHost,
+    answerPhase: defineAnswerPhase({ seatOf: coderSeatOf }),
+    ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
+    ...(options.featureDoorOnly === true ? { featureDoorOnly: true } : {}),
     ...(emRecords[0] === undefined ? {} : { coordinatorFlow: EM_KIND }),
     // What a files run starts on, kept so its done-condition asks for a change.
     harness: (feeds) =>
@@ -926,7 +1007,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // Known limit: this is a snapshot, so a charter edited while the lab is
     // open does not reach later prompts. A real host should read it per run.
     phase: defineImplementPhase({
-      seatOf: seatOf(installation, CODER_KIND),
+      seatOf: coderSeatOf,
       requireAcceptance: options.requireAcceptance === true,
       mailbox: {
         id: mailbox.id,
@@ -1559,6 +1640,23 @@ function labWorkspaceHost(options: LabWorkspaceHost, boardId: string, saveNothin
     root: options.root,
     remotes: { allow: [...options.remotes.allow] },
     source: projectWorkspace({ board: { id: boardId } }),
+  });
+  if (!saveNothing) return host;
+  return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
+}
+
+/**
+ * The coder's workspace host for a conversation's answer task:
+ * `localWorkspaceHost` beside the lab's own, with `projectWorkspace()` and no
+ * board as its source, so a task works in its conversation's project or the
+ * one it names and is refused with neither. A lab on one fixed repository
+ * reaches no remote here: only a project with no repository can answer there.
+ */
+function answerWorkspaceHost(workspace: WorkspaceConfig | LabWorkspaceHost, saveNothing: boolean): WorkspaceHost {
+  const host = localWorkspaceHost({
+    root: join(workspace.root, "answers"),
+    remotes: { allow: "remotes" in workspace ? [...workspace.remotes.allow] : [] },
+    source: projectWorkspace(),
   });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
