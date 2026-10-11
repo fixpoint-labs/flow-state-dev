@@ -75,6 +75,7 @@ export type {
   TaskTransitionOptions,
   AwaitReviewOptions,
   UnparkOptions,
+  FailOptions,
   TaskWriteOutcome,
   TaskWriteDeclineReason,
 } from "./collection/types";

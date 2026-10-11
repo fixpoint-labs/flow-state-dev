@@ -46,12 +46,21 @@ export {
   describeTenant,
   withDeadline,
   harnessTaskInputSchema,
+  harnessClaimSchema,
+  harnessManagerInputSchema,
+  harnessJudgeInputSchema,
+  harnessJudgeVerdictSchema,
+  MAX_ANSWER_CHARS,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
   HarnessRunParked,
   HarnessRunRefused,
   RUNS,
   type ManagerOptions,
+  type HarnessLedgers,
+  type HarnessJudge,
+  type HarnessJudgeInput,
+  type HarnessJudgeVerdict,
   type HarnessSlot,
   type HarnessFeeds,
   type PhaseSpec,
@@ -91,6 +100,12 @@ export {
   type PlaceState,
   type CollectionHoldingContext,
 } from "./run-record";
+/**
+ * The board segment of a run's identity: the ledger id, plus its partition on
+ * a board read from the claim. `runTopic(runBoardSegment(ledgerId, partition),
+ * issue, phase)` is that run's record key.
+ */
+export { runBoardSegment } from "./workspace";
 
 // ── The question inbox ──────────────────────────────────────────────────────
 //
