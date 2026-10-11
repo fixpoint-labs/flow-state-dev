@@ -119,7 +119,7 @@ async function workerSections(
   if (documentRef === undefined) {
     throw new Error(
       `the worker handed row ${run.issue} declares no \`document:\`, so it has no brief to ` +
-        `work from. Every worker of this kind names one file-declared document.`,
+        `work from. Every worker on this flow names one file-declared document.`,
     );
   }
   const ref = ctx.resources[documentRef];
@@ -319,7 +319,7 @@ export interface ImplementPhaseOptions {
  *
  * @param options `workerOf` to load the run's worker, `requireAcceptance` to add
  *   the brief's condition to the done-condition. See {@link ImplementPhaseOptions}.
- * @returns The phase spec to hand the coder kind.
+ * @returns The phase spec to hand the coder worker flow.
  */
 export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec {
   return {

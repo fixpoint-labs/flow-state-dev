@@ -43,8 +43,8 @@
  *   file for a fresh start.
  *
  * Which worker is the EM and which worker its doors file for are read off the
- * tree: the EM by the kind its `WORKER.md` names, the coder as its first
- * delegate on the coder kind.
+ * tree: the EM by the worker flow its `WORKER.md` names, the coder as its first
+ * delegate on the coder worker flow.
  */
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -109,13 +109,13 @@ const DEFAULT_PROJECTS = [
 ];
 
 // Read off the tree: the EM, and the coder its doors file for, its first
-// delegate on the coder kind.
+// delegate on the coder worker flow.
 const roster = await readDeclaredRoster(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");
 const coderWorkerId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);
-if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder kind`);
+if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder worker flow`);
 
 /**
  * Storefront's two workstreams, `feature` and `release`, each led by the EM.

@@ -58,7 +58,7 @@ import { workerDoor } from "./worker-door";
 
 const ORG = "org_fix1467";
 const USER = "user_fix1467";
-const KIND = "desk";
+const FLOW = "desk";
 
 const ORG_HANDBOOK = "handbook";
 const ENG_HANDBOOK = "teams/engineering/handbook";
@@ -128,7 +128,7 @@ const work = handler({
 
 function flowWith(resources: DeclaredResources) {
   return defineFlow({
-    kind: KIND,
+    kind: FLOW,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
@@ -138,7 +138,7 @@ function flowWith(resources: DeclaredResources) {
 
 /** A worker record as the loader produces one. */
 function worker(id: string, declared: Record<string, unknown> = {}): WorkerManifest {
-  return { id, declared: { flow: KIND, description: id, ...declared }, body: "" };
+  return { id, declared: { flow: FLOW, description: id, ...declared }, body: "" };
 }
 
 type Handle = { readContent(): Promise<string | null>; writeContent(body: string): Promise<void> };
@@ -171,10 +171,10 @@ const handleFor = (ctx: { resources: { get(k: string): unknown } }, key: string)
 };
 
 /**
- * The whole path in one call: disk → loader → both install halves → kind →
+ * The whole path in one call: disk → loader → both install halves → worker flow →
  * hire → a live worker.
  *
- * **No install filter.** That is the point of V3: the app hands the kind every
+ * **No install filter.** That is the point of V3: the app hands the worker flow every
  * document and every reference it loaded, and the cross-team wall has to come
  * from somewhere else.
  */
@@ -182,7 +182,7 @@ async function workerOn(root: string, workerRecord: WorkerManifest = worker(ENG_
   const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
   const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
   const hired = mintWorkers([workerRecord], {
-    workerFlows: { [KIND]: flowWith({ ...documents, ...references }) as never },
+    workerFlows: { [FLOW]: flowWith({ ...documents, ...references }) as never },
     documents,
     references,
   });
@@ -372,7 +372,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const before = mintWorkers([worker(ENG_WORKER)], {
-      workerFlows: { [KIND]: flowWith(documents) as never },
+      workerFlows: { [FLOW]: flowWith(documents) as never },
       documents,
     });
     const era1 = await ctxFor(before[0]!, stores);
@@ -630,15 +630,15 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const hired = mintWorkers([worker(ENG_WORKER)], {
-      workerFlows: { [KIND]: flowWith(documents) as never },
+      workerFlows: { [FLOW]: flowWith(documents) as never },
       documents,
     });
     const { ctx } = await ctxFor(hired[0]!);
 
     // The whole map, cross-team included, exactly as before this convention
     // existed. Asserted as reach rather than as "no map was passed", because
-    // reach is the thing an app would lose and a minted instance's `resources`
-    // is the kind's merged map either way.
+    // reach is the thing an app would lose and a minted worker's `resources`
+    // is the worker flow's merged map either way.
     for (const [ref, body] of [
       [ENG_SCRATCH, "seed"],
       ["teams/sales/pipeline", "pipeline seed"],
@@ -690,7 +690,7 @@ describe("BR-15 · a ref claimed by both slots is refused at both doors", () => 
     });
     expect(() =>
       mintWorkers([worker(ENG_WORKER)], {
-        workerFlows: { [KIND]: flowWith({ [ORG_HANDBOOK]: shared }) as never },
+        workerFlows: { [FLOW]: flowWith({ [ORG_HANDBOOK]: shared }) as never },
         documents: { [ORG_HANDBOOK]: shared },
         references: { [ORG_HANDBOOK]: shared },
       }),
@@ -744,7 +744,7 @@ describe("the wall places a reference by its minted ref, not by its accessor key
       companyHandbook: references[ENG_HANDBOOK]!,
     };
     const hired = mintWorkers([worker(workerId)], {
-      workerFlows: { [KIND]: flowWith({ ...documents, ...aliased }) as never },
+      workerFlows: { [FLOW]: flowWith({ ...documents, ...aliased }) as never },
       documents,
       references: aliased,
     });
@@ -925,7 +925,7 @@ describe("the wall cannot be turned off by omission", () => {
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
     return mintWorkers([workerRecord], {
-      workerFlows: { [KIND]: flowWith({ ...documents, ...references }) as never },
+      workerFlows: { [FLOW]: flowWith({ ...documents, ...references }) as never },
       documents,
       // `references` deliberately NOT passed. This is the whole case.
     });
@@ -950,7 +950,7 @@ describe("the wall cannot be turned off by omission", () => {
     );
     expect(() =>
       mintWorkers([worker(ENG_WORKER)], {
-        workerFlows: { [KIND]: flowWith({ ...documents, ...all }) as never },
+        workerFlows: { [FLOW]: flowWith({ ...documents, ...all }) as never },
         documents,
         references: partial,
       }),
@@ -965,7 +965,7 @@ describe("the wall cannot be turned off by omission", () => {
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const hired = mintWorkers([worker(ENG_WORKER)], {
-      workerFlows: { [KIND]: flowWith(documents) as never },
+      workerFlows: { [FLOW]: flowWith(documents) as never },
       documents,
     });
     const { ctx } = await ctxFor(hired[0]!);

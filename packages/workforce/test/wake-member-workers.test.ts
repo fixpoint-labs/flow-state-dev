@@ -3,7 +3,7 @@
  * declares the internal `onMailboxPost` entry, on a real in-process host.
  *
  * What is graded is what each worker heard, never the router's output: the
- * listening kind below records every post it runs on (which worker, which
+ * listening worker flow below records every post it runs on (which worker, which
  * conversation, which post), and the fallback records every member it ran for.
  * A dispatch handle proves nothing here; a run does.
  *
@@ -11,9 +11,9 @@
  *
  *   BR-1, BR-8, BR-9  a post with no author runs each declaring member once,
  *                     in one conversation per worker per mailbox, reused by
- *                     the next post. The built-in `agent` kind and an app's
- *                     own kind (BR-6) alike.
- *   BR-2              a member whose kind declares no entry runs nothing and
+ *                     the next post. The built-in `agent` worker flow and an app's
+ *                     own worker flow (BR-6) alike.
+ *   BR-2              a member whose worker flow declares no entry runs nothing and
  *                     gets the fallback.
  *   BR-3, BR-13       a post on the worker post action runs no worker, and a
  *                     member that would have woken gets nothing, not even the
@@ -62,14 +62,14 @@ const USER_ID = "u_wake";
 type Heard = { worker: string; conversation: string; body: string };
 
 /**
- * The kinds a test hires into, each recording into its own lists.
+ * The worker flows a test hires into, each recording into its own lists.
  *
- * - `listener` is an app's own kind that declares `onMailboxPost`.
+ * - `listener` is an app's own worker flow that declares `onMailboxPost`.
  * - `note` declares only a public action.
  * - `picky` declares the entry, but its input asks for a field no post has.
  * - `agent` is the built-in, answering from a scripted model.
  */
-function kinds() {
+function workerFlows() {
   const heard: Heard[] = [];
   const answer = handler({
     name: "test-answer",
@@ -120,7 +120,7 @@ function kinds() {
   };
 }
 
-/** A worker record of one kind (`agent` when `flow` is omitted). */
+/** A worker record on one worker flow (`agent` when `flow` is omitted). */
 function worker(id: string, flow?: string): WorkerManifest {
   return { id, declared: flow === undefined ? {} : { flow }, body: "" };
 }
@@ -302,7 +302,7 @@ describe("wakeMemberWorkers · workers on one shared copy (FIX-1788)", () => {
 
 describe("wakeMemberWorkers · who a post wakes", () => {
   it("runs each declaring member once per post, one conversation per worker, and nobody else (BR-1, BR-2, BR-6, BR-8, BR-9, BR-12)", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note"), worker("desk.idle", "listener")],
       { workerFlows: map }
@@ -317,16 +317,16 @@ describe("wakeMemberWorkers · who a post wakes", () => {
       await settle(runtime, "desk.front", 2);
 
       const seen = byWorker(heard);
-      // The app's own kind: each member heard both posts once, in one conversation.
+      // The app's own worker flow: each member heard both posts once, in one conversation.
       for (const worker of ["desk.ivy", "desk.oz"]) {
         expect(seen[worker]?.map((h) => h.body).sort(), worker).toEqual(["first", "second"]);
         expect(new Set(seen[worker]!.map((h) => h.conversation)).size, worker).toBe(1);
       }
       expect(seen["desk.ivy"]![0]!.conversation).not.toBe(seen["desk.oz"]![0]!.conversation);
-      // A hired worker in no mailbox, and a kind with no entry, heard nothing.
+      // A hired worker in no mailbox, and a worker flow with no entry, heard nothing.
       expect(Object.keys(seen).sort()).toEqual(["desk.ivy", "desk.oz"]);
 
-      // The built-in agent kind: one conversation of the mailbox, both posts as turns.
+      // The built-in agent worker flow: one conversation of the mailbox, both posts as turns.
       const turns = await agentTurns(runtime, "desk.amy", "desk.front");
       expect(turns).toHaveLength(1);
       expect(turns[0]!.sort()).toEqual(["u_wake in desk.front: first", "u_wake in desk.front: second"]);
@@ -348,7 +348,7 @@ describe("wakeMemberWorkers · who a post wakes", () => {
   });
 
   it("wakes hearing members when a public post claims a hire address as author", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { workerFlows: map }
@@ -373,7 +373,7 @@ describe("wakeMemberWorkers · who a post wakes", () => {
   });
 
   it("wakes hearing members when a dispatched post claims a hire address as author", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { workerFlows: map }
@@ -397,7 +397,7 @@ describe("wakeMemberWorkers · who a post wakes", () => {
   });
 
   it("wakes nobody when the post arrives on the worker post action; the fallback stays with members that could not wake", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { workerFlows: map }
@@ -432,7 +432,7 @@ describe("wakeMemberWorkers · who a post wakes", () => {
   });
 
   it("gives a member with no worker the fallback, and everyone the fallback when no workers are passed (BR-4, BR-15)", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers([worker("desk.ivy", "listener")], { workerFlows: map });
     const fallback = recordingFallback();
     const { mailbox, state } = host([], wakeMemberWorkers([], { fallback: fallback.block }), workers);
@@ -454,7 +454,7 @@ describe("wakeMemberWorkers · who a post wakes", () => {
 describe("wakeMemberWorkers · where a woken worker runs", () => {
 
   it("keeps one conversation per mailbox for a worker in two mailboxes (BR-10)", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers([worker("desk.ivy", "listener")], { workerFlows: map });
     const { mailbox, state } = host(workers, wakeMemberWorkers(workers));
     try {
@@ -477,7 +477,7 @@ describe("wakeMemberWorkers · where a woken worker runs", () => {
   });
 
   it("fails one member's delivery when its entry refuses the post, and still runs the others (BR-7)", async () => {
-    const { heard, map } = kinds();
+    const { heard, map } = workerFlows();
     const workers = mintWorkers([worker("desk.pip", "picky"), worker("desk.ivy", "listener")], { workerFlows: map });
     const { mailbox, state } = host(workers, wakeMemberWorkers(workers));
     try {

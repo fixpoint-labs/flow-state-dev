@@ -83,14 +83,14 @@ const RESOURCE_MODULE_TYPES = {
 /**
  * The local identifier one discovered file is imported under.
  *
- * Prefixed by slot because a worker kind and a block may legitimately share a
+ * Prefixed by slot because a worker flow and a block may legitimately share a
  * basename, and hyphens become underscores because a basename is a path segment
  * and an identifier is not.
  *
  * Underscores rather than camel humps, because the mapping has to be
  * **injective** and capitalising is not: a basename is `[a-z0-9]+` joined by
  * single hyphens, so upper-casing the first character of each part is a no-op
- * on a digit and `a0` and `a-0` both came out as `a0`. Two distinct kinds then
+ * on a digit and `a0` and `a-0` both came out as `a0`. Two distinct flows then
  * shared one binding, and the module was emitted — reported as written — with a
  * duplicate import that no bundler could compile. `_` cannot appear in a
  * validated segment, so swapping it for `-` is reversible by construction and
@@ -139,7 +139,7 @@ function moduleLocalName(module: DiscoveredResourceModule): string {
  */
 const WORKER_ROOT_NOTE =
   `// A worker's own \`resources/\` folder holds resources, not capabilities:\n` +
-  `// every worker of a kind shares that kind's capabilities, so one installed\n` +
+  `// every worker on a flow shares that flow's capabilities, so one installed\n` +
   `// from a single worker's folder would change every other worker. Move a\n` +
   `// capability up to the team's or the organisation's \`resources/\` folder.`;
 
@@ -147,7 +147,7 @@ const WORKER_ROOT_NOTE =
  * The `resourceModules` map, keyed by ref.
  *
  * A module in a worker's own folder carries its own narrower `satisfies`, so
- * the compiler refuses a capability written at that root. The kind-wide entries
+ * the compiler refuses a capability written at that root. The flow-wide entries
  * carry none: the map's own type covers them, and a second annotation per line
  * would be noise in a committed file.
  */

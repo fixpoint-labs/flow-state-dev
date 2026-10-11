@@ -489,12 +489,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * created here.
    */
   const targetDispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of postFlows) {
+  for (const flow of postFlows) {
     targetDispatchers.set(
-      kind,
+      flow,
       dispatcher({
-        name: `coordinator-deliver-target-${kind}`,
-        flowKind: kind,
+        name: `coordinator-deliver-target-${flow}`,
+        flowKind: flow,
         action: DELEGATED_POST_ENTRY,
         inputSchema: deliveryDispatchSchema,
         session: { id: (delivery: DeliveryDispatch) => delivery.targetSessionId! },
@@ -505,12 +505,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /** One dispatcher per flow a delegate can take a post on. */
   const dispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of postFlows) {
+  for (const flow of postFlows) {
     dispatchers.set(
-      kind,
+      flow,
       dispatcher({
-        name: `coordinator-deliver-${kind}`,
-        flowKind: kind,
+        name: `coordinator-deliver-${flow}`,
+        flowKind: flow,
         action: DELEGATED_POST_ENTRY,
         inputSchema: deliveryDispatchSchema,
         // The delegate's own session for this conversation: derived from the

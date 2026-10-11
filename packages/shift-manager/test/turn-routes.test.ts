@@ -7,9 +7,9 @@ import { describe, expect, it } from "vitest";
 import { addressedWorker, doorOf, mentionOf, messageableRows, type Roster } from "../src/lib/derive";
 import type { BoardRow, Worker } from "../src/lib/reads";
 
-const worker = (id: string, door: string | null = "message", kind = "coder"): Worker => ({
+const worker = (id: string, door: string | null = "message", flow = "coder"): Worker => ({
   id,
-  kind,
+  kind: flow,
   door,
   team: id.split(".")[0]!,
   name: id.split(".")[1]!,

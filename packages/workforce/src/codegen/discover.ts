@@ -78,8 +78,8 @@ export interface CodeSlot {
  * The three locked folders, in the order their maps are rendered.
  *
  * Owner-locked paths, not derived — a best-practice tree rather than a
- * top-level `kinds/`, and one convention covering kinds and blocks together
- * rather than a kinds-only one the blocks half would later have to match.
+ * top-level `kinds/`, and one convention covering flows and blocks together
+ * rather than a flows-only one the blocks half would later have to match.
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
   Object.freeze({ id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" }),
@@ -274,9 +274,9 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
         continue;
       }
 
-      // One basename means one thing. Scoped so a worker kind and a block may
+      // One basename means one thing. Scoped so a worker flow and a block may
       // share a name — they feed different maps on different calls — while the
-      // two FLOW folders share a scope, because one name meaning two kinds is
+      // two FLOW folders share a scope, because one name meaning two flows is
       // exactly the ambiguity this convention removes.
       const scope = slot.id === "block" ? `block:${name}` : `kind:${name}`;
       const already = claimed.get(scope);

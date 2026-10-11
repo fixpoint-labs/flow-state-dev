@@ -1,19 +1,19 @@
 /**
- * What both of this lab's kinds accept in their settings bag, and the one block
+ * What both of this lab's worker flows accept in their settings bag, and the one block
  * that reads a worker's own view of itself.
  *
- * Shared between `em` and `coder` on purpose. What separates the two kinds is
+ * Shared between `em` and `coder` on purpose. What separates the two worker flows is
  * the only thing this lab's claims are about — one declares a task entry with a
  * harness slot in it, the other declares no harness at all — and duplicating a
  * zod schema twice would put that difference next to noise. **This is not a
- * kind barrel**: nothing here defines a flow, and each kind still lives in its
+ * worker-flow barrel**: nothing here defines a flow, and each worker flow still lives in its
  * own file under `workforce/flows/workers/`, which is W3's authoring path.
  *
  * `workerConfigSchema()` is composed rather than hand-declared, so a key added
  * to the admission contract arrives here for free instead of refusing at boot.
- * `document:` is optional in the schema, because each kind runs as one copy
+ * `document:` is optional in the schema, because each worker flow runs as one copy
  * shared by every worker on it, and that copy carries no worker's settings.
- * The lab refuses a worker of either kind that names none when it opens
+ * The lab refuses a worker on either flow that names none when it opens
  * (`openLab`), so a worker with nothing to read never boots.
  *
  * A worker's own settings are read per turn, from the worker the session
@@ -45,7 +45,7 @@ export const ASK_ENTRY = "askToFile";
 export const WORKER_FACTS_COMPONENT = "devforce-worker-facts";
 
 /**
- * What a worker of either kind configures.
+ * What a worker on either flow configures.
  *
  * `.min(1)`: the ref is what a worker reads its brief by, and a worker with
  * nothing to read passes every isolation check trivially. Optional only so
@@ -76,13 +76,13 @@ export interface Worker {
 export type WorkerOf = (ctx: BlockContext) => Promise<Worker>;
 
 /**
- * The worker a turn on `kind` runs as, loaded through the installation: the
+ * The worker a turn on `flow` runs as, loaded through the installation: the
  * one the session names, checked, with its settings as its own file declared
  * them.
  */
-export function workerOf(installation: WorkerInstallation, kind: string): WorkerOf {
+export function workerOf(installation: WorkerInstallation, flow: string): WorkerOf {
   return async (ctx) => {
-    const worker = await installation.resolveWorker(ctx as never, kind);
+    const worker = await installation.resolveWorker(ctx as never, flow);
     return { id: worker.id, config: worker.config as unknown as WorkerConfig };
   };
 }

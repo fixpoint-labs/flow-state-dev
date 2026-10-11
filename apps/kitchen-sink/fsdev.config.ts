@@ -83,7 +83,7 @@ for (const failedPath of workforce.errors) {
   console.error(`[workforce] could not read ${failedPath}`);
 }
 
-// The workforce's copies are addressed by their flow's kind (`agent`,
+// The workforce's copies are addressed by their flow's name (`agent`,
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a
 // worker is a session on its flow's copy, created naming the worker: a
 // person's conversation with `support.help` is a session on `coordinator`.

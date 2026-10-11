@@ -49,9 +49,9 @@ export const GAPS = {
     notStarted: "This task hasn't started, so there's no session to write into.",
     /** BR-15. */
     finished: "A finished task takes no message.",
-    /** The run's kind declares no door. Drawn after the worker's name. */
+    /** The run's worker flow declares no door. Drawn after the worker's name. */
     noDoor: "takes no message.",
-    /** BR-22: Inbox's reply, to a kind with no door. Drawn after the worker's name. */
+    /** BR-22: Inbox's reply, to a worker flow with no door. Drawn after the worker's name. */
     replyNoDoor: "takes no message. Answer its ask with Approve or Reject.",
     /** BR-19: `@worker` with no task in this workstream. Drawn after the worker's name. */
     noTask: "has no task in this workstream to message.",

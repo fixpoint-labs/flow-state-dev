@@ -2,8 +2,8 @@
  * V5 — a worker's door (FIX-1690, BR-1, BR-2).
  *
  * An app sends a person's line into a worker's session through the door the
- * worker's inventory row names, without knowing the worker's kind. So the hire
- * reads it off the kind once: the one public action with `userMessage` and a
+ * worker's inventory row names, without knowing the worker's flow. So the hire
+ * reads it off the worker flow once: the one public action with `userMessage` and a
  * `{ message }` input.
  *
  * A worker flow with none, or with two, is refused when it is registered
@@ -23,7 +23,7 @@ const echo = handler({ name: "door-echo", inputSchema: message, outputSchema: me
 const note = z.object({ note: z.string() });
 const work = handler({ name: "door-work", inputSchema: note, outputSchema: note, execute: (i) => i });
 
-/** A kind with no door: its one action takes `{ note }` and writes no user item. */
+/** A worker flow with no door: its one action takes `{ note }` and writes no user item. */
 const quietFlow = defineFlow({
   kind: "quiet",
   cardinality: "collection",
@@ -35,7 +35,7 @@ const quietFlow = defineFlow({
   },
 });
 
-/** A kind with two doors. */
+/** A worker flow with two doors. */
 const twoDoorFlow = defineFlow({
   kind: "two-door",
   cardinality: "collection",
@@ -48,7 +48,7 @@ const twoDoorFlow = defineFlow({
   },
 });
 
-/** A kind with one door, under a name other than the built-in's. */
+/** A worker flow with one door, under a name other than the built-in's. */
 const deskFlow = defineFlow({
   kind: "desk",
   cardinality: "collection",
@@ -59,7 +59,7 @@ const deskFlow = defineFlow({
   },
 });
 
-const kinds = { desk: deskFlow };
+const flows = { desk: deskFlow };
 
 function record(id: string, flow?: string): WorkerManifest {
   return { id, declared: { description: id, ...(flow === undefined ? {} : { flow }) }, body: "" };
@@ -77,24 +77,24 @@ function refusalOf(run: () => unknown): string {
 }
 
 describe("a worker's door (BR-1, BR-2)", () => {
-  it("is the built-in agent kind's `run`", () => {
-    const [worker] = mintWorkers([record("eng.lead")], { workerFlows: kinds });
+  it("is the built-in agent worker flow's `run`", () => {
+    const [worker] = mintWorkers([record("eng.lead")], { workerFlows: flows });
     expect(worker!.kind).toBe("agent");
     expect(workerDoorOf(worker!)).toEqual({ door: "run" });
   });
 
-  it("is the one public action a kind declares for a person's message", () => {
-    const [worker] = mintWorkers([record("eng.desk", "desk")], { workerFlows: kinds });
+  it("is the one public action a worker flow declares for a person's message", () => {
+    const [worker] = mintWorkers([record("eng.desk", "desk")], { workerFlows: flows });
     expect(workerDoorOf(worker!)).toEqual({ door: "ask" });
   });
 
-  it("refuses a kind with no door when it is registered, and hires nothing", () => {
+  it("refuses a worker flow with no door when it is registered, and hires nothing", () => {
     const message = refusalOf(() => mintWorkers([record("eng.quiet", "quiet")], { workerFlows: { quiet: quietFlow } }));
     expect(message).toContain('worker flow "quiet" has no door');
     expect(message).toContain("nothing was hired");
   });
 
-  it("refuses a kind with two doors when it is registered, naming both, and prints no warning", () => {
+  it("refuses a worker flow with two doors when it is registered, naming both, and prints no warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const message = refusalOf(() =>
       mintWorkers([record("eng.chatty", "two-door")], { workerFlows: { "two-door": twoDoorFlow } }),
@@ -105,7 +105,7 @@ describe("a worker's door (BR-1, BR-2)", () => {
 
   it("is written on the worker's inventory row at boot", async () => {
     const workers = mintWorkers([record("eng.lead"), record("eng.desk", "desk")], {
-      workerFlows: kinds,
+      workerFlows: flows,
     });
     const sent: unknown[] = [];
     await openInventory(

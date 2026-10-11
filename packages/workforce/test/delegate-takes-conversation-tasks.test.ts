@@ -29,22 +29,22 @@ const doorInput = z.object({ message: z.string() });
  * A worker flow whose `work` entry takes tasks from `door`: another board's
  * ledger only (`"other-board"`), or a conversation's (`"conversation"`).
  */
-function boardedFlow(installation: WorkerInstallation, kind: string, door: "other-board" | "conversation") {
-  const turn = handler({ name: `${kind}-turn`, inputSchema: doorInput, execute: async () => "done" });
+function boardedFlow(installation: WorkerInstallation, flow: string, door: "other-board" | "conversation") {
+  const turn = handler({ name: `${flow}-turn`, inputSchema: doorInput, execute: async () => "done" });
   const work =
     door === "conversation"
-      ? workerTaskEntry({ name: `${kind}-task`, turn })
+      ? workerTaskEntry({ name: `${flow}-task`, turn })
       : {
           block: turn,
           // Resolves only its own board's ledger, as a feature board's door does.
           from: taskLedgers({
-            name: `${kind}-door`,
+            name: `${flow}-door`,
             resolve: async () => undefined,
-            uses: [defineCapability({ name: `${kind}-ledger`, resources: {} })]
+            uses: [defineCapability({ name: `${flow}-ledger`, resources: {} })]
           })
         };
   return defineFlow({
-    kind,
+    kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },

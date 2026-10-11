@@ -7,13 +7,13 @@
  * `description` and hands over everything else — a worker's instructions
  * included, as one setting, `instructions`.
  *
- * **A bag goes to every record, and every record meets the kind's schema.**
- * There is no probe of what a kind happens to declare and no thin record that
+ * **A bag goes to every record, and every record meets its worker flow's schema.**
+ * There is no probe of what a worker flow happens to declare and no thin record that
  * mints without being admitted, because the one silent branch a probe has —
- * *this kind did not declare the key, so say nothing* — is exactly the failure
- * this step exists to remove. A kind whose schema cannot take that bag refuses,
+ * *this flow did not declare the key, so say nothing* — is exactly the failure
+ * this step exists to remove. A worker flow whose schema cannot take that bag refuses,
  * loudly, for the whole roster, at boot — and composing `workerConfigSchema()`
- * is how a kind makes sure it can.
+ * is how a worker flow makes sure it can.
  *
  * **Before any record, the flows themselves.** The app's worker
  * flows, the built-in `agent` among them, are checked against the worker
@@ -78,8 +78,8 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-fl
  * The keys the factory itself reads. Everything else is the worker's settings.
  *
  * `resources`, `references` and `packages` join them rather than travelling to
- * the kind as settings: each is an instruction to THIS step about what to mint
- * the worker with, not a value any kind declares. A kind that happened to declare a
+ * the worker flow as settings: each is an instruction to THIS step about what to mint
+ * the worker with, not a value any worker flow declares. A flow that happened to declare a
  * setting of either name no longer receives an authored one — both keys are
  * public and pinned here, and a worker file cannot mean two things at once.
  */
@@ -186,25 +186,25 @@ function availableFlows(flowNames: readonly string[]): string {
   return flowNames.length > 0 ? flowNames.map((k) => `"${k}"`).join(", ") : "(none)";
 }
 
-function missingFlowReason(kind: string, available: string): string {
-  return `names flow "${kind}", which is not in the worker flows passed to hireWorkforce. Worker flows passed: ${available}`;
+function missingFlowReason(flow: string, available: string): string {
+  return `names flow "${flow}", which is not in the worker flows passed to hireWorkforce. Worker flows passed: ${available}`;
 }
 
 /**
- * Why a hired worker can't run on `kind`: the app keeps it for
+ * Why a hired worker can't run on `flow`: the app keeps it for
  * the workers its files define. `defaulted` when the worker named no flow and
  * `agent` is the default it fell to.
  */
-export function standardOnlyReason(kind: string, defaulted: boolean): string {
+export function standardOnlyReason(flow: string, defaulted: boolean): string {
   return (
-    `${defaulted ? `names no flow, so it runs on "${kind}"` : `names flow "${kind}"`}, which this ` +
+    `${defaulted ? `names no flow, so it runs on "${flow}"` : `names flow "${flow}"`}, which this ` +
     `app keeps for declared workers, the ones its WORKER.md files define. A hired worker can't run ` +
     `on it`
   );
 }
 
 /**
- * What {@link hireWorkforce} throws when every refusal came from a kind's own
+ * What {@link hireWorkforce} throws when every refusal came from a worker flow's own
  * minter (its `configSchema`), and none from the framework. The message is
  * the ordinary refusal; the type lets a runtime hire say the caller can
  * correct the settings and try again, which no framework refusal allows.
@@ -245,21 +245,21 @@ export function hireRefusalReasons(error: unknown, workerId: string): string[] {
  * of that. One builder for both is what keeps them saying the same thing.
  *
  * @param manifestId The record's id (a hired worker's address).
- * @param kind The flow it names.
+ * @param flow The flow it names.
  * @param workerFlows The app's worker flows, as passed to `hireWorkforce`.
  */
 export function missingWorkerFlowRefusal(
   manifestId: string,
-  kind: string,
+  flow: string,
   workerFlows: HireOptions["workerFlows"]
 ): string {
   const available = availableFlows(Object.keys(resolveWorkerFlows(workerFlows)));
-  return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingFlowReason(kind, available)}`]);
+  return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingFlowReason(flow, available)}`]);
 }
 
 export interface HireOptions {
   /**
-   * The app's worker flows, by kind — `defineFlow(...)` results,
+   * The app's worker flows, by name — `defineFlow(...)` results,
    * passed directly, or `{ flow, standardOnly: true }` for a flow kept for the
    * workers the app's WORKER.md files define. A record's `flow` names one, and
    * it is called once per worker to mint that worker's copy.
@@ -276,7 +276,7 @@ export interface HireOptions {
    *
    * Standard-only is checked after the `agent` default: a hired worker (a
    * runtime hire or a stored roster row, org-visible or private: any record
-   * carrying an owner pin) that names no flow is refused when `agent` is kept
+   * carrying an owner) that names no flow is refused when `agent` is kept
    * for declared workers.
    */
   workerFlows?: Record<string, WorkerFlowEntry>;
@@ -292,10 +292,10 @@ export interface HireOptions {
    * first match wins; the first two arrive here already collapsed by the
    * generated map, and this step is where the last hop happens.
    *
-   * Per worker and never installed on the kind: a kind's capabilities and
+   * Per worker and never installed on the worker flow: a flow's capabilities and
    * resources are shared by every worker of it, so one worker's folder installed
    * there would change every sibling. That is why a block here may USE a store
-   * the kind has and may not DECLARE one — see
+   * the flow has and may not DECLARE one — see
    * {@link colocatedResourceMessage}.
    *
    * Optional. Omitted, every worker hires exactly as it did before this existed.
@@ -310,7 +310,7 @@ export interface HireOptions {
    * A package's blocks reach only the workers that HOLD the package: the ones
    * with it in their own `packages/` folder, and the ones whose `packages:`
    * line takes it from their team's or the org's library. They are never put
-   * in a kind's catalog, so no other worker can name them. A worker holding a
+   * in a worker flow's catalog, so no other worker can name them. A worker holding a
    * package with no `tools:` line can call every block in it; a worker that
    * writes a `tools:` line can call the ones it lists.
    *
@@ -344,7 +344,7 @@ export interface HireOptions {
    * `resourcesFromDocs(documents)` returns, handed over unchanged.
    *
    * **Handed over, never worked out.** A worker's `resources:` grant narrows the
-   * DOCUMENTS in the map its kind declares at flow level and leaves the rest of
+   * DOCUMENTS in the map its worker flow declares at flow level and leaves the rest of
    * that map — the app's boards, its stores — standing. Telling a document from
    * a board is what this answers, and the app is the only party that knows:
    * inferring it from an entry's shape would make the boundary of a permission
@@ -366,7 +366,7 @@ export interface HireOptions {
    * `referencesFromDocs(references)` returns, handed over unchanged.
    *
    * **Handed over for the reason `documents` is, and used for more.** It says
-   * which entries on a kind's map are references, which is what the derived
+   * which entries on a worker flow's map are references, which is what the derived
    * tree wall narrows: a worker reaches the references at or above its place in
    * the tree, and no others. That wall applies whether or not the worker declares
    * `references:` — the key narrows within it, and can never widen past it.
@@ -399,13 +399,13 @@ type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
  * **Do not collapse this to a single member.** It reads redundant and is not:
  * a flow's settings schema sits in an invariant position (`config` is a
  * deferred conditional on it), so neither half accepts the other's flows, and
- * both kinds are hired here. Each collapse fails a different way, and both were
+ * both sorts are hired here. Each collapse fails a different way, and both were
  * hit while writing this:
  *
  * - bare `FlowType` pins `TConfigSchema` to its own default, `undefined`, so it
- *   means "a flow that declares no settings". A configured kind is rejected —
+ *   means "a flow that declares no settings". A configured flow is rejected —
  *   *Type 'ZodObject<…>' is not assignable to type 'undefined'*.
- * - `FlowOf<ZodTypeAny>` alone flips that failure onto the settings-less kind a
+ * - `FlowOf<ZodTypeAny>` alone flips that failure onto the settings-less flow a
  *   thin worker is hired into — *Type 'undefined' is not assignable to type
  *   'ZodTypeAny'*.
  */
@@ -478,10 +478,10 @@ function workerBlockProblems(registry: Record<string, BlockDefinition<any, any>>
  * — the worker → team → org precedence, with the first two already collapsed
  * onto the registry. What resolved there becomes a live block on
  * {@link WORKER_TOOLS_KEY}; what did not stays a NAME on `tools`, which is what
- * the kind checks its catalog against.
+ * the worker flow checks its catalog against.
  *
  * A `tools:` that is not an array of strings is left exactly as the author
- * wrote it: the kind's own schema is what refuses a malformed setting, and
+ * wrote it: the flow's own schema is what refuses a malformed setting, and
  * guessing here would refuse it twice, differently.
  */
 function resolveDeclaredTools(
@@ -525,7 +525,7 @@ export function mintWorkers(
   // The built-in sits UNDERNEATH the caller's, so a caller who registers their
   // own `agent` wins — for every worker, not just the ones that name it. This is
   // precedence, not extension: configuring the built-in's tools or skills means
-  // replacing the kind (`defineAgentWorkerFlow({ ... })` registered here), never a
+  // replacing the worker flow (`defineAgentWorkerFlow({ ... })` registered here), never a
   // second option on this function. A roster hired with `workerFlows: {}`
   // therefore carries an empty tool catalog, because nothing ever merges into
   // ours.
@@ -563,7 +563,7 @@ export function mintWorkers(
   // contribute several reasons — two unresolved grants, two malformed entries —
   // and counting sentences is how `refused 2 of 1 worker` gets printed.
   const refusedWorkers = new Set<string>();
-  // The workers whose one refusal came from their kind's own minter.
+  // The workers whose one refusal came from their worker flow's own minter.
   const flowRefusedWorkers = new Set<string>();
   const seen = new Set<string>();
   const workerBlocks = options.workerBlocks ?? {};
@@ -611,7 +611,7 @@ export function mintWorkers(
     }
 
     // The third contract key, refused for the sharper version of the same
-    // reason. Every hireable kind now DECLARES `teamInstructions` by composing
+    // reason. Every hireable worker flow now DECLARES `teamInstructions` by composing
     // the contract, so an authored one would not be caught by the closed
     // schema the way an undeclared key is — it would be accepted, and the worker
     // would run on team instructions its team never wrote. A team's
@@ -622,7 +622,7 @@ export function mintWorkers(
     }
 
     // The fourth contract key, refused for the reason the other two imposed
-    // keys are: a kind composing the contract declares it, so an authored one
+    // keys are: a worker flow composing the contract declares it, so an authored one
     // would be accepted and the worker would run carrying tools no folder of its
     // backs — silently, and only for that worker.
     if (Object.hasOwn(settings, WORKER_TOOLS_KEY)) {
@@ -638,7 +638,7 @@ export function mintWorkers(
     }
 
     // The sixth, and the sharpest case: an authored `workerId` would be accepted
-    // by every composed kind, and the worker would sign what it files or posts
+    // by every composed worker flow, and the worker would sign what it files or posts
     // as whichever worker the record named.
     if (Object.hasOwn(settings, WORKER_ID_KEY)) {
       refuse(REFUSED_WORKER_ID_KEY_MESSAGE);
@@ -676,7 +676,7 @@ export function mintWorkers(
       // the default" would paper over a mistake in the one step whose whole story
       // is loud failure. C2 is explicit that adding an implicit default must not
       // weaken an existing refusal, and this is the one place it could.
-      refuse("declares an empty `flow:`, which names no flow kind. Remove the key to hire the built-in `agent` kind, or name a kind you passed");
+      refuse("declares an empty `flow:`, which names no worker flow. Remove the key to hire on the built-in `agent` worker flow, or name a worker flow you passed");
       continue;
     }
 
@@ -687,30 +687,30 @@ export function mintWorkers(
       // manifest. Silently defaulting here is the weakened refusal C2
       // forbids, worded for what was actually declared instead of a blank.
       refuse(
-        `declares \`flow:\` as ${JSON.stringify(declaredFlow.value)}, which names no flow kind. ` +
-          "Remove the key to hire the built-in `agent` kind, or name a kind you passed"
+        `declares \`flow:\` as ${JSON.stringify(declaredFlow.value)}, which names no worker flow. ` +
+          "Remove the key to hire on the built-in `agent` worker flow, or name a worker flow you passed"
       );
       continue;
     }
 
     // Absent (no `flow` key at all) has already resolved to the built-in.
-    const kind = declaredFlow.kind;
+    const flow = declaredFlow.kind;
 
     // `hasOwn` rather than a bare lookup: a record's `flow` is author-supplied,
     // and `flows["constructor"]` would otherwise resolve off the prototype and
     // hand us something that is not a flow factory at all.
-    const entry = Object.hasOwn(flows, kind) ? flows[kind] : undefined;
+    const entry = Object.hasOwn(flows, flow) ? flows[flow] : undefined;
     if (entry === undefined) {
-      refuse(missingFlowReason(kind, available));
+      refuse(missingFlowReason(flow, available));
       continue;
     }
 
     const factory = entry.flow;
 
     // The worker's own skills, imposed on EVERY record — loaded or hand-built,
-    // non-empty or empty, whatever kind this is.
+    // non-empty or empty, whatever worker flow this is.
     //
-    // No probe of what the kind declares. The probe's other arm was silence:
+    // No probe of what the worker flow declares. The probe's other arm was silence:
     // a worker whose folders declared skills minted, ran, and held none, with
     // nothing said anywhere. Handing the bag over unconditionally turns that
     // into one loud refusal at boot, which an author can act on.
@@ -736,7 +736,7 @@ export function mintWorkers(
     // real answer for a worker's skills: the folders were read and held nothing.
     // A team layer has no such answer. A team that wrote no instructions and a
     // team with no file at all both mean *this worker is told nothing extra*, and
-    // handing `""` over would make them a value every kind's schema can see —
+    // handing `""` over would make them a value every worker flow's schema can see —
     // a different bag for every team in every tree that has no file, and the
     // trap the body rule above already names.
     //
@@ -766,8 +766,8 @@ export function mintWorkers(
     // blocks join the worker's registry for resolving a written `tools:` line —
     // a package's blocks are the worker's own for that purpose — after every
     // name among them has been shown to be one tool. This step cannot see a
-    // kind's catalog, so a named package block that is also a catalog key is
-    // refused by the kind at its mint (the built-in one does), not here.
+    // worker flow's catalog, so a named package block that is also a catalog key is
+    // refused by the flow at its mint (the built-in one does), not here.
     // The worker id it was hired as, not a hired worker's org-qualified address:
     // the same id the reference wall places the worker by.
     const { held, problems: heldProblems } = resolveHeldPackages(
@@ -787,7 +787,7 @@ export function mintWorkers(
     const { catalogNames, workerTools } = resolveDeclaredTools(settings["tools"], withPackages);
     // Only a record that WROTE a `tools:` line carries the key onward, and it
     // keeps carrying it after the split even when every name moved onto
-    // `workerTools` and the list emptied. The built-in kind reads an unset
+    // `workerTools` and the list emptied. The built-in worker flow reads an unset
     // `tools` (omitted, or a hand-built key with no value) as "wrote no line"
     // (grant what the file picked) and a set one as "wrote a line" (grant
     // exactly that line), so an omitted `tools:` must never be filled in here
@@ -796,8 +796,8 @@ export function mintWorkers(
     settings[WORKER_TOOLS_KEY] = workerTools;
 
     // Only for a worker that holds one, like the team's instructions: a worker
-    // holding nothing hands its kind exactly the bag it did before packages
-    // existed. The kind decides what a held package does; this step decides
+    // holding nothing hands its worker flow exactly the bag it did before packages
+    // existed. The flow decides what a held package does; this step decides
     // only which ones are held.
     if (held.length > 0) {
       settings[WORKER_PACKAGES_KEY] = held.map(({ manifest: pkg, blocks }) => ({
@@ -811,10 +811,10 @@ export function mintWorkers(
     // The worker's document allowlist, resolved against what the app declared.
     //
     // **Only for a record that DECLARES the key**, and the map is passed only
-    // then. A flow instance's `resources` option REPLACES the definition's
+    // then. A minted worker's `resources` option REPLACES the definition's
     // flow-level map, so a worker that restricted nothing must be minted with no
     // map at all: passing an empty one locks every existing worker out of every
-    // document, and reconstructing "everything" diverges the moment the kind's
+    // document, and reconstructing "everything" diverges the moment the worker flow's
     // map changes. Absent is not empty here, at either end.
     let workerResources: DeclaredResources | undefined;
     let workerGrants: readonly WorkerResourceGrant[] = [];
@@ -823,7 +823,7 @@ export function mintWorkers(
     // gives a map to a worker that granted nothing. `verifyWorkerNarrowing` asks
     // about the grant, so it has to read this and not the map — keyed on the
     // map, a worker that declared no `resources:` would have every document on
-    // its kind reported as having escaped a narrowing nobody asked for.
+    // its worker flow reported as having escaped a narrowing nobody asked for.
     const narrowedDocuments = Object.hasOwn(manifest.declared, WORKER_RESOURCES_KEY);
     if (narrowedDocuments) {
       const parsed = parseWorkerResources(manifest.declared[WORKER_RESOURCES_KEY]);
@@ -836,12 +836,12 @@ export function mintWorkers(
         grants: parsed.grants ?? [],
         catalog: options.documents,
         workerFlowResources,
-        // The kind's own flow-level keys, which is the subset a worker's map
-        // replaces. Falling back to every key would read the kind's BLOCK
+        // The worker flow's own flow-level keys, which is the subset a worker's map
+        // replaces. Falling back to every key would read the flow's BLOCK
         // resources as flow-level ones and copy them onto the worker's map,
         // where they would override the blocks that declared them.
         flowLevelKeys: factory.flowLevelResourceKeys ?? new Set<string>(),
-        kind
+        kind: flow
       });
       if (resolved.problems.length > 0) {
         for (const problem of resolved.problems) refuse(problem);
@@ -858,7 +858,7 @@ export function mintWorkers(
     // narrowing a worker asks for, so it runs only when the worker asks; the wall
     // is a boundary, so it runs for every worker whether or not its file says
     // anything. What keeps that from touching an app with no references is the
-    // wall itself: a kind holding none hands `base` straight back, including
+    // wall itself: a flow holding none hands `base` straight back, including
     // handing back `undefined` so the worker is minted with no map at all.
     //
     // Placed by the worker id, not the address: a runtime hire answers on an
@@ -880,13 +880,13 @@ export function mintWorkers(
     }
     workerResources = wall.resources;
 
-    // True only while the kind's own minter runs, so the catch below can tell
-    // the kind's refusal (its `configSchema`) from a throw after it.
+    // True only while the worker flow's own minter runs, so the catch below can tell
+    // the flow's refusal (its `configSchema`) from a throw after it.
     let minting = true;
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
-      // SKIPPED, not admission passed: a thin worker minted without its kind's
+      // SKIPPED, not admission passed: a thin worker minted without its worker flow's
       // schema ever seeing it. Every record meets the schema now, including the
       // thinnest one there is.
       const worker = minter(factory)({
@@ -899,7 +899,7 @@ export function mintWorkers(
       // The narrowing is checked on the worker that was BUILT, not on the map it
       // was built from. `defineFlow` merges the blocks' own declarations on top
       // of the instance's map, so a document a block also declares comes back
-      // after the worker's map has removed it — and nothing readable off the kind
+      // after the worker's map has removed it — and nothing readable off the worker flow
       // distinguishes that document from one no block mentions. Only the
       // instance knows. Skipped when the worker narrowed nothing, which denies
       // nothing.
@@ -908,7 +908,7 @@ export function mintWorkers(
           minted: worker.resources as DeclaredResources | undefined,
           grants: workerGrants,
           catalog: options.documents,
-          kind
+          kind: flow
         });
         if (escaped.length > 0) {
           for (const problem of escaped) refuse(problem);
@@ -919,13 +919,13 @@ export function mintWorkers(
       // The same check for the wall, and it exists for the same substrate
       // reason: a reference a block ALSO declares comes back after the worker's
       // map removed it, and only the built instance shows that. Read off the
-      // minted flow rather than predicted from the kind.
+      // minted flow rather than predicted from the worker flow.
       const crossed = verifyWorkerReferenceWall({
         minted: worker.resources as DeclaredResources | undefined,
         allowed: wall.reachable,
         catalog: options.references,
         workerId: placedAs,
-        kind
+        kind: flow
       });
       if (crossed.length > 0) {
         for (const problem of crossed) refuse(problem);
@@ -960,9 +960,9 @@ export function mintWorkers(
 
   if (problems.length > 0) {
     const message = hireRefusalMessage(refusedWorkers.size, ordered.length, problems);
-    // Typed only when every refusal is a kind's own: one framework refusal in
+    // Typed only when every refusal is a worker flow's own: one framework refusal in
     // the roster and the whole error stays the framework's.
-    // A kind-refused worker contributes exactly one problem (the catch is its
+    // A flow-refused worker contributes exactly one problem (the catch is its
     // last step), so the counts match only when nothing else was refused.
     throw problems.length === flowRefusedWorkers.size
       ? new WorkerFlowRefusedHireError(message)
@@ -989,7 +989,7 @@ export function mintWorkers(
  * tool result (the worker-hire capability) reads them here rather than
  * re-deriving the text, so the mint and the tool stay one story.
  *
- * Read off the hired instances' merged `resources` rather than off the kinds:
+ * Read off the hired instances' merged `resources` rather than off the worker flows:
  * a board reaches a flow either as a flow-level declaration or by bubbling up
  * from a capability, and only the minted instance has both.
  */

@@ -117,7 +117,7 @@ export const DOCUMENT_EXTENSION = ".md";
  * dot-joined**: the atlas fixes this key as a path, so a dotted ref would put
  * the same logical document at a different org storage row from anything else
  * following the atlas. The worker id's reason for dot-joining does not carry
- * across — a worker id becomes a flow instance id and a slashed one fails to
+ * across — a worker id becomes its flow copy's id and a slashed one fails to
  * route, while a resource ref is a storage-key namespace and never routes.
  *
  * A `workers/` first segment cannot be confused with a `teams/` one or with a

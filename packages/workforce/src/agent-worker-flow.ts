@@ -1,9 +1,9 @@
 /**
- * The `agent` worker flow — the built-in worker kind, and the worker a team
- * gets without writing one. `agent` is one KIND of worker; this file is the
- * flow that kind resolves to, which is why the name carries both.
+ * The `agent` worker flow — the built-in one, and the worker a team
+ * gets without writing one. `agent` names the worker; this file is the
+ * flow it runs on, which is why the name carries both.
  *
- * A worker file that names no `flow:` is hired into this kind, and its body
+ * A worker file that names no `flow:` is hired into this worker flow, and its body
  * arrives as `instructions`. That is the whole out-of-the-box promise: it
  * talks, and it can reach whatever skills the app handed over.
  *
@@ -20,7 +20,7 @@
  *
  * The rule that puts a knob on the app rather than on a worker: one that
  * cannot be honoured per worker must not be declared per worker. A knob that
- * is neither app-level nor a worker setting belongs to a replacement kind,
+ * is neither app-level nor a worker setting belongs to a replacement worker flow,
  * registered under `agent` by the caller, which wins for every worker.
  *
  * **What a worker can call is decided by its own file, in one of two ways.** A
@@ -29,7 +29,7 @@
  * app's catalog carries or what a capability attached through `uses` would
  * otherwise contribute (FIX-1393). A worker that writes NO `tools:` line gets
  * the tools of every capability preset its own file picked under
- * `capabilities:` — picking is the choice (FIX-1459). Presets the kind switches
+ * `capabilities:` — picking is the choice (FIX-1459). Presets the flow switches
  * on by default grant nothing a worker did not pick. The hire keeps an omitted
  * line omitted, never `[]`, so the two cases survive to the tools slot below;
  * either way the generator declares `tools:` and core's fence stays up. See
@@ -50,8 +50,8 @@
  *
  * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
  * (FIX-1393): core drops a capability's catalog-granted tools when the block
- * declares `tools:`, and this kind declares it on every worker. Catalog tools a
- * capability contributes are therefore copied onto this kind's catalog at
+ * declares `tools:`, and this flow declares it on every worker. Catalog tools a
+ * capability contributes are therefore copied onto this flow's catalog at
  * construction, so a worker can name them in `tools:` the same way it names an
  * app-passed tool. An empty list still means none. A worker with no `tools:`
  * line gets a preset's tools by picking the preset, which the tools slot adds
@@ -118,7 +118,7 @@ import { turnConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
 import type { WorkerInstallation } from "./workers/installation";
 
 /**
- * The kind name the hire step resolves a record to when it names none, and the
+ * The worker flow name the hire step resolves a record to when it names none, and the
  * key an app registers its own flow under to replace this one.
  */
 export const AGENT_FLOW = "agent";
@@ -190,7 +190,7 @@ function packageInstructionsOf(packages: WorkerConfig["workerPackages"]): string
 
 /**
  * The names a worker's `tools:` line resolved to a held package's block that the
- * kind's catalog also carries — one message each, naming the package and the
+ * worker flow's catalog also carries — one message each, naming the package and the
  * catalog. Only names the line actually granted count: a package block the
  * line left out is never offered, so a catalog key of the same name clashes
  * with nothing.
@@ -208,7 +208,7 @@ function packageCatalogCollisions(
       if (typeof name !== "string" || !granted.has(name) || !Object.hasOwn(catalog, name)) continue;
       problems.push(
         `Its \`tools:\` line names "${name}", which is both a block of package "${held.path}" and ` +
-          `a key in the kind's tool catalog. One name is one tool, and neither shadows the other — ` +
+          `a key in the worker flow's tool catalog. One name is one tool, and neither shadows the other — ` +
           `rename the block, or drop "${name}" from the catalog.`
       );
     }
@@ -225,7 +225,7 @@ function packageCatalogCollisions(
  * before every step of every generator turn.
  *
  * Defensive `?? []` because the bag is erased at this point and a replacement
- * kind registered under `agent` could hand over a config without the key.
+ * worker flow registered under `agent` could hand over a config without the key.
  */
 function workerSkillsOf(ctx: BlockContext): InitialSkill[] {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).workerSkills ?? [];
@@ -250,7 +250,7 @@ export interface AgentWorkerFlowOptions {
    * a file on disk can only carry its name, so only the app holds the map.
    */
   catalog?: ToolCatalog;
-  /** Skills seeded into the library every worker of this kind reads. */
+  /** Skills seeded into the library every worker on this flow reads. */
   skills?: InitialSkill[];
   /** Default model for workers that name none. Defaults to {@link DEFAULT_MODEL}. */
   model?: string;
@@ -259,15 +259,15 @@ export interface AgentWorkerFlowOptions {
    * `createSkillActivator`'s option of the same name.
    *
    * An app-level option rather than a worker setting because the matcher is
-   * built once for the kind: a per-worker value could not be honoured, and a
-   * setting that is silently ignored is the failure this kind's tool handling
+   * built once for the flow: a per-worker value could not be honoured, and a
+   * setting that is silently ignored is the failure this flow's tool handling
    * exists to prevent.
    */
   classifierModel?: string;
   /** Confidence the matcher's third tier must reach. Mirrors `createSkillActivator`. */
   confidenceThreshold?: number;
   /**
-   * Capabilities every worker of this kind carries, composed onto the answer
+   * Capabilities every worker on this flow carries, composed onto the answer
    * generator beside the skills library — which stays first and is never
    * displaced.
    *
@@ -293,7 +293,7 @@ export interface AgentWorkerFlowOptions {
    *
    * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
    * catalog-granted tools when the consuming block declares `tools:`, and this
-   * kind declares it on every worker — so a preset that ships a tool reaches a
+   * flow declares it on every worker — so a preset that ships a tool reaches a
    * worker only when that worker's own file picks the preset and writes no
    * `tools:` line, or names the tool in its line. A preset switched on here by
    * default grants no worker anything it did not pick. A capability's
@@ -314,7 +314,7 @@ export interface AgentWorkerFlowOptions {
    *
    * A memory tier that declares its own `flowIsolation`
    * (`system({ semantic: { flowIsolation: false } })`) wins over this flag in
-   * both directions, so one kind can isolate some tiers and share others.
+   * both directions, so one worker flow can isolate some tiers and share others.
    */
   isolateUserState?: boolean;
   /**
@@ -347,7 +347,7 @@ export interface AgentWorkerFlowOptions {
    * (`afterAnswer: mem.captureFromItems`); without it a worker carrying
    * memory reads what something else stored and records nothing of its own.
    *
-   * Omitted, the kind's sequence is exactly what it is today.
+   * Omitted, the flow's sequence is exactly what it is today.
    */
   afterAnswer?: BlockDefinition<any, any>;
   /**
@@ -363,19 +363,19 @@ export interface AgentWorkerFlowOptions {
 }
 
 /**
- * What one worker of this kind configures, in its file.
+ * What one worker on this flow configures, in its file.
  *
  * **Composed from the admission contract rather than written beside it.** The
  * four settings a worker's bag may carry — a worker's own instructions, its
  * team's, the skills its folders resolved, and the blocks those folders
  * registered that its `tools:` named — come from
- * `workerConfigSchema()`, and this kind's own settings are extended on at the
- * top level. That is the move every hireable kind makes, so the one kind that
+ * `workerConfigSchema()`, and this flow's own settings are extended on at the
+ * top level. That is the move every hireable worker flow makes, so the one flow that
  * ships with the framework teaches the rule rather than standing outside it.
  *
  * `workerSkills` is re-declared below rather than inherited untouched: the SHAPE
  * stays the contract's (`workerSkillSchema`), and the refinement on top of it is
- * this kind's, because only this kind holds the app's own skill names to
+ * this flow's, because only this flow holds the app's own skill names to
  * collide a worker's against.
  */
 function settingsSchema(
@@ -425,12 +425,12 @@ function settingsSchema(
 
     /**
      * The worker's own skills — the contract's key, re-declared here to add ONE
-     * refinement this kind alone can make.
+     * refinement this flow alone can make.
      *
      * The shape and the story are `workerConfigSchema()`'s: imposed by the hire
      * step, never authored, present even when empty. What is added below is the
      * collision check against `defineAgentWorkerFlow({ skills })`, which needs
-     * the app's own skill names and so cannot live on a contract every kind
+     * the app's own skill names and so cannot live on a contract every worker flow
      * shares.
      */
     [WORKER_SKILLS_KEY]: z
@@ -483,8 +483,8 @@ function settingsSchema(
          * classifies the message against the skill catalog. Slash matching
          * (tier 1) always runs, every turn, regardless of this switch. Keyword
          * matching (`createSkillActivator`'s tier 2) is not part of this
-         * kind's contract at all — zero-LLM matching earns a second always-on
-         * path only once we know we need one — so this kind's activator
+         * flow's contract at all — zero-LLM matching earns a second always-on
+         * path only once we know we need one — so this flow's activator
          * pipeline never carries it, on either branch of this switch.
          *
          * **Default off**, which inverts `createSkillActivator`'s own default:
@@ -498,7 +498,7 @@ function settingsSchema(
       .default({}),
 
     /**
-     * The capabilities this worker picks up from what its kind carries, and the
+     * The capabilities this worker picks up from what its worker flow carries, and the
      * presets it wants from each.
      *
      * ```yaml
@@ -589,34 +589,34 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
 }
 
 /**
- * The one-name rule over the app's catalog, at the kind's construction door.
+ * The one-name rule over the app's catalog, at the worker flow's construction door.
  *
- * Checked here and not at the scan because the catalog is a **kind-construction
+ * Checked here and not at the scan because the catalog is a **flow-construction
  * argument**: it covers a hand-built map exactly as it covers a generated one,
  * and it leaves a block used only as a flow action alone. Thrown rather than
- * collected — a kind is built once, at module scope, so there is no roster to
+ * collected — a worker flow is built once, at module scope, so there is no roster to
  * report against and nothing else this call could usefully go on to do.
  *
  * Every mismatch is named in one message, for the reason `hireWorkforce`
  * collects: an author fixing a catalog should see the whole list in one run.
  */
 /**
- * Catalog tools a kind's `uses` already grants — capability tools fill the
- * kind catalog so a worker can name them in `tools:`.
+ * Catalog tools a worker flow's `uses` already grants — capability tools fill the
+ * flow's catalog so a worker can name them in `tools:`.
  *
  * Not the only route a preset's tool reaches a worker: a worker with no `tools:`
  * line gets the tools of the presets it picked through the tools slot. This
- * fill is how a worker that WRITES a line names a tool from a preset the kind has
+ * fill is how a worker that WRITES a line names a tool from a preset the flow has
  * on by default.
  *
  * Core drops a capability's catalog tools when the consuming block declares
- * `tools:` (FIX-1393). This kind always declares that slot, so a grant that
+ * `tools:` (FIX-1393). This flow always declares that slot, so a grant that
  * stayed only on the capability would be a name no worker could call. Filling
- * the catalog is what makes "kind installs via `uses`, worker names the tool"
+ * the catalog is what makes "the flow installs via `uses`, worker names the tool"
  * one path rather than two.
  *
  * Static arrays only. A preset whose `tools` is a function cannot be named
- * at kind construction, and is left for the capability merge to contribute
+ * at flow construction, and is left for the capability merge to contribute
  * when the fence is down.
  */
 function catalogToolsFromUses(uses: UsesSlot | undefined): ToolCatalog {
@@ -646,7 +646,7 @@ function catalogToolsFromUses(uses: UsesSlot | undefined): ToolCatalog {
 }
 
 /**
- * The kind's catalog: capability grants first, the app's map on top only when
+ * The worker flow's catalog: capability grants first, the app's map on top only when
  * the two agree. A collision of different instances is a construction error
  * rather than a silent overlay — the worker's `tools:` would otherwise name
  * one tool and call the other.
@@ -698,12 +698,12 @@ function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
  * inside the walk that installs them, as BLOCK-level declarations on the very
  * block that calls the tools, which keeps each one's own prefetch mode intact.
  *
- * Kind-wide by construction, and deliberately: the catalog is the kind's, so
+ * Flow-wide by construction, and deliberately: the catalog is the flow's, so
  * its stores belong to every worker of it — including workers whose `tools:` never
  * name the tool. That is the same bill `uses` already presents, and it is why
  * this is safe where collecting a WORKER's declarations would not be.
  *
- * The tools of every preset a worker may pick count too, on or off for the kind:
+ * The tools of every preset a worker may pick count too, on or off for the flow:
  * a worker with no `tools:` line reaches them through the same per-turn resolver.
  * Only presets that list their tools as an array can be read here; a preset
  * whose tools are a function is known only per turn.
@@ -753,9 +753,9 @@ function catalogDeclaredResources(
 }
 
 /**
- * Build a worker kind.
+ * Build a worker flow.
  *
- * Called with no arguments this returns the built-in — the kind a worker file
+ * Called with no arguments this returns the built-in — the worker flow a worker file
  * that names no `flow:` is hired into. Called with arguments it returns a
  * configured one; register it as `workerFlows: { agent: defineAgentWorkerFlow({ ... }) }`
  * and it wins for every worker on the roster.
@@ -779,7 +779,7 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
  * its own workers, with its delegate tools.
  */
 export interface AgentTurnShare {
-  /** The kind of the flow the turn runs on: the turn loads its worker on this flow. */
+  /** The worker flow the turn runs on: the turn loads its worker on this flow. */
   readonly kind: string;
   /** The answer generator's block name, which a scripted model resolves it by. */
   readonly answerName: string;
@@ -792,7 +792,7 @@ export interface AgentTurnShare {
   /**
    * The session board the turn files through (FIX-1802 S1), when the sharing
    * flow builds its own: the coordinator does, to name the flows its posts
-   * reach. Omitted, a turn on an installation builds one for its kind. Its
+   * reach. Omitted, a turn on an installation builds one for its flow. Its
    * task tools are composed once, here, so a turn carries one instance of
    * each, whatever skill is loaded.
    */
@@ -818,8 +818,8 @@ const AGENT_TURN: AgentTurnShare = { kind: AGENT_FLOW, answerName: "agent-answer
  * same turn for its judgment, with {@link AgentTurnShare.extraTools}, so a
  * fix to the agent's turn reaches both.
  *
- * @param given The agent kind's options: the app's catalog, capabilities, skills and models.
- * @param share The sharing flow's kind, answer name and extra tools.
+ * @param given The agent worker flow's options: the app's catalog, capabilities, skills and models.
+ * @param share The sharing flow's name, answer name and extra tools.
  */
 export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: AgentTurnShare = AGENT_TURN) {
   // A copy that runs every worker has no `workerId` of its own: its mailbox
@@ -831,7 +831,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const catalog = mergeFlowCatalog(options.uses, options.catalog);
   // Before anything is built from it. A catalog key that disagrees with its
   // block's own name would hand the model a tool no worker's `tools:` can
-  // authorize, and the kind is the door that holds the map.
+  // authorize, and the flow is the door that holds the map.
   assertOneNamePerCatalogEntry(catalog);
   // Read once, here: it is what a worker's `capabilities:` is validated against
   // at the mint AND what the per-worker entry below resolves through, and two
@@ -895,7 +895,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     // set has to arrive on its config and be read from there.
     initialSkills: workerCatalog,
     // Every worker gets its own drawer. The storage layer keys an isolated
-    // resource on the flow instance id, and a worker is minted with the worker's
+    // resource on the id of the worker's flow copy, which is minted with the worker's
     // id — so two workers' catalogs are two different buckets, with no second
     // collection key, prefix or scope. (A collection seeded before this was
     // switched on re-seeds from the new key; the old rows are orphaned, not
@@ -931,7 +931,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // implement them are fixed at CONSTRUCTION: `dynamicActivation` is a
   // preset resolved when `skills.with()` is bound, and
   // `enableLlmClassifier` is read by `createSkillActivator` when it builds
-  // its pipeline. A kind is built once and hired many times, so neither can
+  // its pipeline. A worker flow is built once and hired many times, so neither can
   // see the worker, and building one of each and choosing at run time is the
   // only shape that honours a per-worker switch at all.
   //
@@ -957,17 +957,17 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   } as never);
 
   /**
-   * What THIS worker's own file added on top of the kind's capabilities — the
-   * presets it named that the kind does not already carry.
+   * What THIS worker's own file added on top of the flow's capabilities — the
+   * presets it named that the flow does not already carry.
    *
    * A dynamic entry because it is the only `uses` slot that can see a worker: a
-   * kind is built once and hired many times, so a static entry is resolved
+   * worker flow is built once and hired many times, so a static entry is resolved
    * before any worker exists. It carries the DELTA only; every capability stays
    * on its own static entry, which is what keeps a preset from being resolved
    * on both paths (the framework merges the two independently and dedupes
    * across neither).
    *
-   * Appended only when the kind installs something selectable, so a kind that
+   * Appended only when the flow installs something selectable, so a flow that
    * passes no `uses` builds exactly the block it built before this key existed
    * rather than one carrying an inert dynamic resolver.
    */
@@ -1009,7 +1009,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       history: share.history ?? delegatedPostHistory,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
-      // entirely when the catalog declares nothing, so a kind built without one
+      // entirely when the catalog declares nothing, so a flow built without one
       // is byte-for-byte the block it was before this existed.
       ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
@@ -1042,7 +1042,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // before the prompt is sent — a different and much larger feature.
       //
       // The shared default worker system prompt is still unshipped and still
-      // owned elsewhere; per contract C1 this kind consumes it and defines no
+      // owned elsewhere; per contract C1 this flow consumes it and defines no
       // second one. When it lands it goes at the FRONT of this array — the
       // framework, then the team, then the worker — and nothing else moves. Do
       // not grow this into a compose helper, a registry or a type: an org-wide
@@ -1108,13 +1108,13 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // one instance can't honour a per-worker switch on tier 3 alone. Two full
   // activators are built instead — both carry tier 1 (slash) only, both with
   // tier 2 (keyword) turned off via `enableKeywordMatch: false`, since
-  // keyword matching is not part of this kind's contract; only the second
+  // keyword matching is not part of this flow's contract; only the second
   // also carries tier 3 (the model classifier). The worker's switch picks
   // between them below with two mutually exclusive `.tapIf` steps, so tier 1
   // runs on every turn regardless of the switch, tier 2 never runs on either
   // branch, and only tier 3 is conditional.
   //
-  // Built once per kind, not per worker — same as before.
+  // Built once per worker flow, not per worker — same as before.
   const matcherWithoutClassifier = createSkillActivator({
     enableLlmClassifier: false,
     enableKeywordMatch: false,
@@ -1269,7 +1269,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
    * still visible.
    *
    * A worker that DID write a line has one clash of its own: a name on the line
-   * that is both a held package's block and a key in this kind's catalog. The
+   * that is both a held package's block and a key in this flow's catalog. The
    * hire resolved it to the package block because the hire cannot see the
    * catalog; here both are visible, so it is refused rather than letting the
    * package silently shadow the catalog's tool.
@@ -1412,7 +1412,7 @@ function defineAgentFlowAround(
    * A task as this worker takes it: one turn of `run`, the task as the
    * message, the answer as the result. A turn that throws fails the attempt
    * through the board's ordinary error path. Tasks come from any
-   * conversation's board that hands one to a worker of this kind, and from
+   * conversation's board that hands one to a worker on this flow, and from
    * the mailbox task lists the app names; the conversation that filed a task
    * hears how it ended.
    */
@@ -1426,7 +1426,7 @@ function defineAgentFlowAround(
     kind: AGENT_FLOW,
     // Required by contract C2. A plain singleton's workers mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
-    // this kind reaches the registry rather than stopping at the mint.
+    // this flow reaches the registry rather than stopping at the mint.
     cardinality: "collection",
     // Each worker gets its own user-scoped cell when the app asks for one;
     // shared across the roster otherwise, which is the framework's default.

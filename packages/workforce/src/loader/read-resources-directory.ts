@@ -134,7 +134,7 @@ export interface ReadResourcesDirectoryResult {
  * — and return one neutral record per document.
  *
  * A worker's folder is an ADDRESS, not a visibility boundary. Its documents are
- * minted under a worker-qualified ref and installed on the worker kind's flow
+ * minted under a worker-qualified ref and installed on the worker's flow
  * like any other; what makes one private to the worker that owns it is
  * `flowIsolation: true` in that document's own frontmatter, which this reader
  * carries verbatim and never inspects.

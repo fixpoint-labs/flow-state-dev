@@ -76,7 +76,7 @@ export interface AskFeature {
 export interface RaiseAskOptions {
   /** The flow state the workers are registered in. Must have durable execution on. */
   state: FlowState;
-  /** The EM kind's registered copy. */
+  /** The EM worker flow's registered copy. */
   emFlow: FlowInstance;
   /** The EM worker, whose own session the ask is raised in. */
   emWorker: string;

@@ -30,13 +30,13 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
-  return mintWorkers(manifests, { workerFlows: kinds });
+function hire(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): FlowInstance[] {
+  return mintWorkers(manifests, { workerFlows: flows });
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
+function refusalOf(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): string {
   try {
-    mintWorkers(manifests, { workerFlows: kinds });
+    mintWorkers(manifests, { workerFlows: flows });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -144,30 +144,30 @@ describe("a worker's skills at the mint", () => {
   });
 
   // A hand-built record has not been read for, which is not the same as having
-  // been read for and found empty — so nothing is imposed and the kind's own
+  // been read for and found empty — so nothing is imposed and the worker flow's own
   // default applies.
   it("hires a hand-built record with no skills field at all", () => {
     const [worker] = hire([record({ id: "qa.tester", body: "You test." })]);
     expect(worker!.config).toMatchObject({ workerSkills: [] });
   });
 
-  // An empty set must not be imposed either, or every custom kind written
+  // An empty set must not be imposed either, or every custom worker flow written
   // before `workerSkills` existed would stop hiring off a roster with no skills.
   it("imposes nothing for a loaded record whose set is empty", () => {
     const [worker] = hire([record({ id: "qa.tester", body: "You test.", skills: [] })]);
     expect(worker!.config).toMatchObject({ workerSkills: [] });
   });
 
-  // The arm this issue removes. A custom kind whose schema cannot take the bag
+  // The arm this issue removes. A custom worker flow whose schema cannot take the bag
   // used to hire on a roster with skills and be handed NOTHING — silently, so
   // an author who dropped a folder in `org/skills/` had no way to find out
-  // their worker was running short. The bag goes to every kind now, so the same
-  // roster refuses, for the whole roster, naming the kind's missing door.
+  // their worker was running short. The bag goes to every worker flow now, so the same
+  // roster refuses, for the whole roster, naming the worker flow's missing door.
   //
   // The cost is stated rather than hidden: a shared `org/skills/` folder does
-  // break every custom kind on that roster at once. That is the upgrade, paid
-  // once per kind, and it is the trade the silence was not worth.
-  it("refuses a custom kind that never composed the contract, on a roster that has skills", () => {
+  // break every custom worker flow on that roster at once. That is the upgrade, paid
+  // once per worker flow, and it is the trade the silence was not worth.
+  it("refuses a custom worker flow that never composed the contract, on a roster that has skills", () => {
     const triage = defineFlow({
       kind: "request-triage",
       cardinality: "collection",
@@ -202,15 +202,15 @@ describe("a worker's skills at the mint", () => {
     // Named: which flow, and the contract it has to compose.
     expect(message).toContain('worker flow "request-triage"');
     expect(message).toContain("workerConfigSchema()");
-    // Nothing was hired — not even the worker whose own kind was fine. A refusal
+    // Nothing was hired — not even the worker whose own worker flow was fine. A refusal
     // that hired half a roster would leave an app half-configured at boot.
     expect(message).toContain("nothing was hired");
   });
 
   // The other half of the same rule, and the one that keeps the refusal above
-  // from reading as "custom kinds cannot be hired": compose the contract and
+  // from reading as "custom worker flows cannot be hired": compose the contract and
   // the identical roster hires, with each worker handed its own folder's skills.
-  it("hires that same custom kind once it composes the contract", () => {
+  it("hires that same custom worker flow once it composes the contract", () => {
     const triage = defineFlow({
       kind: "request-triage",
       cardinality: "collection",
@@ -244,7 +244,7 @@ describe("a worker's skills at the mint", () => {
     const router = workers.find((s) => s.id === "ops.router")!;
     const tester = workers.find((s) => s.id === "qa.tester")!;
 
-    // The custom kind gets the folder's skills, and keeps its own setting.
+    // The custom worker flow gets the folder's skills, and keeps its own setting.
     expect(router.config).toMatchObject({
       workerSkills: [{ name: "house-style" }],
       desk: "front",
@@ -320,9 +320,9 @@ describe("two workers on one roster", () => {
   });
 
   it("carries the app's own skills onto every worker alongside its own", async () => {
-    const kind = defineAgentWorkerFlow({ skills: [houseStyle] });
+    const flow = defineAgentWorkerFlow({ skills: [houseStyle] });
     const [worker] = hire([record({ id: "qa.tester", body: "You test.", skills: [writeRegression] })], {
-      [AGENT_FLOW]: kind,
+      [AGENT_FLOW]: flow,
     });
 
     const { runtime } = await runTurn(worker!, "hello");
@@ -526,10 +526,10 @@ describe("the tools fence, against a worker's own skill", () => {
   // worker rather than to the app.
   it("does not let a worker with `tools: []` call an app tool directly", async () => {
     const { tool: secret, calls } = countedSecret();
-    const kind = defineAgentWorkerFlow({ catalog: { secret } });
+    const flow = defineAgentWorkerFlow({ catalog: { secret } });
     const [worker] = hire(
       [record({ id: "qa.tester", body: "You test.", skills: [held] })],
-      { [AGENT_FLOW]: kind },
+      { [AGENT_FLOW]: flow },
     );
 
     const { result } = await runTurn(

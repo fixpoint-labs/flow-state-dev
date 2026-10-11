@@ -76,7 +76,7 @@ async function ask(clients: ReturnType<typeof createLabClients>, workerId: strin
   await clients.actions(ASKER_FLOW).sendAction("ask", { what }, { sessionId });
 }
 
-/** The person hires a worker of their own on the asker kind, through the roster flow's `hire`. */
+/** The person hires a worker of their own on the asker worker flow, through the roster flow's `hire`. */
 async function hire(clients: ReturnType<typeof createLabClients>, id: string) {
   const roster = await clients.sessions.createSession({ flowKind: ROSTER_FLOW, userId: clients.userId });
   await clients.actions(ROSTER_FLOW).sendAction("hire", { id, flow: ASKER_FLOW }, { sessionId: roster.id });
@@ -127,7 +127,7 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
-    // The Lab opens nothing at boot and serves no reader kind to open one on,
+    // The Lab opens nothing at boot and serves no reader flow to open one on,
     // so the person holds no session and nothing the Lab serves says which
     // organization they are in.
     const { baseUrl } = await lab({ conversations: false });
@@ -161,8 +161,8 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   // Two reads of a first visit can overlap: StrictMode replays the boot, or the person opens
-  // two tabs. Either way the person ends up with one reading session on each kind, never two.
-  it("opens one reading session per kind for overlapping first-visit reads, on one page and across two", async () => {
+  // two tabs. Either way the person ends up with one reading session on each flow, never two.
+  it("opens one reading session per flow for overlapping first-visit reads, on one page and across two", async () => {
     const { baseUrl } = await lab({ conversations: false });
     const page = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     const [a, b] = await Promise.all([createLabReader(page).read(), createLabReader(page).read()]);
@@ -256,10 +256,10 @@ describe("the refusal (V2, BR-3)", () => {
 });
 
 describe("one read per resource (V3, BR-11)", () => {
-  it("lists once, reads each manifest kind once, and the person's conversation boards once per refresh", async () => {
+  it("lists once, reads each flow's manifest once, and the person's conversation boards once per refresh", async () => {
     const { baseUrl } = await lab();
     const reader = createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID }));
-    // The first read opens the person's roster session, so its kind's manifest is first read on the second.
+    // The first read opens the person's roster session, so its flow's manifest is first read on the second.
     await reader.read();
     await reader.read();
     const seen = countRequests();
@@ -270,7 +270,7 @@ describe("one read per resource (V3, BR-11)", () => {
     const opens = seen.filter((line) => line === "POST /api/flows/mailbox/sessions");
     expect(opens).toHaveLength(1);
     expect(seen.filter((line) => line === "GET /api/flows/sessions")).toHaveLength(1 + opens.length);
-    // Manifests are cached by flow kind across refreshes.
+    // Manifests are cached by flow across refreshes.
     expect(seen.filter((line) => line.endsWith("/manifest"))).toEqual([]);
     // Both of the person's coordinator conversations keep a board, in one
     // ledger: it is read once, through one of them. Nothing filed on either.

@@ -14,7 +14,7 @@
  *   reports a cancelled run unless the host turns that off (`reportCancel`).
  * - `quiet` takes nothing: its workers can't be delegates.
  * - `tasker` takes tasks and no posts; `allround` takes both. Their doors
- *   answer `<kind> heard it`, and neither runs a task here.
+ *   answer `<flow> heard it`, and neither runs a task here.
  *
  * Models are scripted: the best-fit evaluator by block name
  * (`coordinator-route`), answering from the post's first `[route:<worker>]`
@@ -137,17 +137,17 @@ function quietFlow(installation: WorkerInstallation) {
 }
 
 /** A flow that takes tasks: `tasker` and nothing else, `allround` posts too. */
-function taskingFlow(installation: WorkerInstallation, kind: "tasker" | "allround") {
-  const door = handler({ name: `${kind}-run`, inputSchema: doorInput, execute: () => `${kind} heard it` });
+function taskingFlow(installation: WorkerInstallation, flow: "tasker" | "allround") {
+  const door = handler({ name: `${flow}-run`, inputSchema: doorInput, execute: () => `${flow} heard it` });
   return defineFlow({
-    kind,
+    kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    ...(kind === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
+    ...(flow === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
     // Takes a conversation's tasks, as the delegate check requires (FIX-1842).
-    task: { actions: { work: workerTaskEntry({ name: `${kind}-task`, turn: door }) } }
+    task: { actions: { work: workerTaskEntry({ name: `${flow}-task`, turn: door }) } }
   });
 }
 
@@ -181,7 +181,7 @@ export type HostOptions = {
   standard?: WorkerManifest[];
   /** The judgment turn's scripted model. Omitted, a judgment turn has no script and fails. */
   judgment?: MockGeneratorInstance;
-  /** The options the judgment turn is built with: the agent kind's catalog and capabilities. */
+  /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
   /** How long a round waits for its answers. */
   roundDeadlineMs?: number;

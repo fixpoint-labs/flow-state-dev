@@ -144,7 +144,7 @@ Body.
       }),
     );
 
-    // `flow` selects which flow kind a worker runs, so a file that can make it
+    // `flow` selects which worker flow a worker runs, so a file that can make it
     // resolve without ever declaring it is a routing decision derived from
     // caller-controllable content (BP-031). No own key, no inherited one.
     const declared = workers[0]!.declared;
@@ -216,7 +216,7 @@ Body.
       expect(errors[0]!.error.message).toMatch(/has no WORKER\.md/);
     });
 
-    it("reports a folder holding only a worker.ts, naming the document and the kinds route", async () => {
+    it("reports a folder holding only a worker.ts, naming the document and the worker flow route", async () => {
       // A worker folder is a folder with a `WORKER.md` in it. A folder holding
       // only code occupies a worker slot and produces no manifest, so it is
       // named — the framework cannot run it, and pretending it loaded is the
@@ -265,7 +265,7 @@ Body.
       expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.error.message).toMatch(/non-empty `description`/);
-      // An author who wrote a document is not told how to define a flow kind.
+      // An author who wrote a document is not told how to define a worker flow.
       // That route belongs to the slot holding no document at all.
       expect(errors[0]!.error.message).not.toContain("hireWorkforce");
     });

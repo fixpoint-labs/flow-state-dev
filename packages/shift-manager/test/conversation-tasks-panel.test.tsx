@@ -24,8 +24,8 @@ vi.mock("../src/lib/lab-data", () => {
   return { useLab: () => lab };
 });
 vi.mock("../src/lib/conversation-tasks", () => ({
-  readConversationTasks: async (_c: unknown, kind: string, sessionId: string) => {
-    calls.push(`list ${kind} ${sessionId}`);
+  readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
+    calls.push(`list ${flow} ${sessionId}`);
     if (refusal !== null) throw new Error(refusal);
     return [...rows];
   },

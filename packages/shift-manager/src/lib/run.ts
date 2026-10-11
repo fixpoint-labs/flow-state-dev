@@ -253,7 +253,7 @@ export async function readRecordedWork(clients: LabClients, run: Pick<OpenRun, "
         : {
             truncated: files.truncated,
             rows: files.items.map((item) => {
-              const kind = field(item.clientData, "lastFlow");
+              const kind = field(item.clientData, "lastKind");
               return { path: rest(item.topic), kind: kind === "created" || kind === "edited" ? kind : null };
             }),
           },

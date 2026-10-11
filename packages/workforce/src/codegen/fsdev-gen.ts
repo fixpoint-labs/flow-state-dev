@@ -59,7 +59,7 @@ async function generate(root: string): Promise<WorkforceGeneratedModule> {
       ...packageBlocks.map((entry) => entry.path),
     ],
     summary:
-      `${counts.worker} worker kind(s), ${counts.mailbox} mailbox kind(s), ` +
+      `${counts.worker} worker flow(s), ${counts.mailbox} mailbox kind(s), ` +
       `${counts.block} block(s), ${resourceModules.length} resource module(s), ` +
       `${workerBlockPaths.length} worker block(s), ${packageBlocks.length} package block(s)`,
   };

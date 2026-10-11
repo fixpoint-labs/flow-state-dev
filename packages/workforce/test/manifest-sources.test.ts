@@ -75,7 +75,7 @@ describe("the workers source", () => {
         id: "engineering.lead",
         kind: "worker",
         purpose: "Breaks requests into tasks and assigns them.",
-        contract: 'Hired into the "agent" worker kind. Hand it work by its id.'
+        contract: 'Hired into the "agent" worker flow. Hand it work by its id.'
       }
     ]);
   });

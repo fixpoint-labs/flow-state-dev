@@ -46,7 +46,7 @@ export const resourceAtTeamLevel: ResourceModuleExport = handbook;
 export const resourceAtWorkerRoot: WorkerResourceModuleExport = handbook;
 
 /**
- * The refusal (BR-21). Every worker of a kind shares that kind's capabilities, so
+ * The refusal (BR-21). Every worker on a worker flow shares that flow's capabilities, so
  * one installed from a single worker's folder would quietly change every other
  * worker — and the name the compiler prints beside the file is the only place
  * that refusal can be said in words.
@@ -75,7 +75,7 @@ export const exportsAString: ResourceModuleExport = "not a declaration";
  */
 const halves = splitResourceModules({ "teams/engineering/research": research });
 
-/** The capabilities go to a block's `uses` slot, which is how they reach a worker kind. */
+/** The capabilities go to a block's `uses` slot, which is how they reach a worker flow. */
 export const usesSlot: UsesSlot = halves.capabilities;
 
 /** The resources merge into the flow's own map, beside what the documents filled. */

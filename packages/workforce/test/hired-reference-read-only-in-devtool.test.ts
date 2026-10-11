@@ -4,12 +4,12 @@
  * The DevTool's Resources panel marks a resource read-only from the debug
  * snapshot's `writable: false`. The engine's own checks prove that mark for a
  * resource declared in flow config. This one proves the hire path feeds it: a
- * reference on disk, read by the real loader, installed on a kind and hired
+ * reference on disk, read by the real loader, installed on a worker flow and hired
  * with `hireWorkforce`, served through the real router, and read back from the
  * same debug route the panel reads. A `resources/` document on the same hire
  * is the control — it must not carry the mark.
  *
- * A worker only holds a document its kind declares, so the kind lives here and
+ * A worker only holds a document its worker flow declares, so the flow lives here and
  * declares both. Model-free: the worker's action is a plain handler, run only so
  * the session the snapshot is keyed by exists.
  */
@@ -31,7 +31,7 @@ import { mintWorkers } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 
-const KIND = "desk";
+const FLOW = "desk";
 const WORKER = "engineering.ada";
 const SESSION = "sess_devtool_seal";
 
@@ -69,7 +69,7 @@ const work = handler({
 
 function flowWith(resources: DeclaredResources) {
   return defineFlow({
-    kind: KIND,
+    kind: FLOW,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
@@ -118,8 +118,8 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   const references = referencesFromDocs(roster.references);
 
   const [worker] = mintWorkers(
-    [{ id: WORKER, declared: { flow: KIND, description: WORKER }, body: "" }],
-    { workerFlows: { [KIND]: flowWith({ ...documents, ...references }) as never }, documents, references },
+    [{ id: WORKER, declared: { flow: FLOW, description: WORKER }, body: "" }],
+    { workerFlows: { [FLOW]: flowWith({ ...documents, ...references }) as never }, documents, references },
   );
 
   const stores = createInMemoryStores();

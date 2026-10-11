@@ -54,8 +54,8 @@
  * failure and the rest of the snapshot is whole (BR-11). Nothing retries by
  * itself, and nothing is filled in from a guess.
  *
- * Manifests are static per flow kind, so they are cached across refreshes by
- * kind, never re-read per screen.
+ * Manifests are static per flow, so they are cached across refreshes by
+ * flow, never re-read per screen.
  *
  * The one answer path, {@link LabReader.resume}, is here too, so Inbox and a
  * workstream's Stream resolve an ask the same way: through the flow the ask's
@@ -94,7 +94,7 @@ export type Worker = {
   kind: string | null;
   /**
    * The action that takes a person's message into this worker's sessions, as
-   * the hire published it; `null` when its kind takes none, or on a row
+   * the hire published it; `null` when its worker flow takes none, or on a row
    * written before doors were published.
    */
   door: string | null;
@@ -196,7 +196,7 @@ export type Ask = {
   /** The worker that asked, when the session names its owner. */
   workerId: string | null;
   /**
-   * The flow instance that owns the session, which is what the answer goes
+   * The worker's flow copy that owns the session, which is what the answer goes
    * through. `null` on a session written before instance ownership: its ask
    * is shown, and its answer is unavailable.
    */
@@ -235,7 +235,7 @@ export const DISPATCHED_RUN_UNANSWERABLE =
 
 /**
  * Why a Lab that lists the person no session, even after one was asked for on
- * the reader kinds, is refused: nothing it serves says which organization they are in.
+ * the reader flows, is refused: nothing it serves says which organization they are in.
  */
 function noOrganization(userId: string, why = "it holds no session of theirs and serves no mailbox kind or roster flow to open one on"): string {
   return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
@@ -325,7 +325,7 @@ const ASK_PAGE_SIZE = 200;
 const ASK_READ_BATCH = 6;
 
 /**
- * What the Lab answers a session open on a flow kind it doesn't serve, for the
+ * What the Lab answers a session open on a flow it doesn't serve, for the
  * roster flow: the engine's unknown-flow message. Matched exactly, so any
  * other 404 (the roster session's own reads) is a failure, not "no roster".
  */
@@ -543,7 +543,7 @@ async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input:
   return out;
 }
 
-/** Reads one Lab. Holds only the per-kind manifest cache between refreshes. */
+/** Reads one Lab. Holds only the per-flow manifest cache between refreshes. */
 export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
@@ -557,15 +557,15 @@ export type LabReader = {
 };
 
 /**
- * The id of `userId`'s own reading session on `kind`: one per person per kind,
+ * The id of `userId`'s own reading session on `flow`: one per person per flow,
  * so two first visits at once (two tabs) open the same session rather than two.
  */
-export function readerSessionId(userId: string, kind: string): string {
-  return `${kind}-own-${userId}`;
+export function readerSessionId(userId: string, flow: string): string {
+  return `${flow}-own-${userId}`;
 }
 
 /**
- * Reading-session opens in flight, per client and kind, so reads that overlap
+ * Reading-session opens in flight, per client and flow, so reads that overlap
  * on one page (StrictMode replaying the boot) share one open rather than racing it.
  */
 const openingReaders = new WeakMap<LabClients, Map<string, Promise<void>>>();
@@ -591,7 +591,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
   };
 
-  /** The manifest of `sessionId`'s flow kind, read once per kind. */
+  /** The manifest of `sessionId`'s flow, read once per flow. */
   const manifestFor = (flowKind: string, sessionId: string): Promise<ResourceManifest> => {
     let found = manifests.get(flowKind);
     if (found === undefined) {
@@ -635,8 +635,8 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     let carrier: string | undefined;
     try {
-      for (const [kind, sessionId] of byFlow) {
-        const manifest = await manifestFor(kind, sessionId);
+      for (const [flow, sessionId] of byFlow) {
+        const manifest = await manifestFor(flow, sessionId);
         const declared = manifest.resources.some(
           (r) => r.kind === "collection" && r.ref === CONVERSATION_BOARD_COLLECTION && r.client.state?.read === true,
         );
@@ -674,10 +674,10 @@ export function createLabReader(clients: LabClients): LabReader {
       if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
     }
     let workersOnly: { sessionId: string; workersRef: string } | undefined;
-    for (const [kind, sessionId] of byFlow) {
+    for (const [flow, sessionId] of byFlow) {
       let manifest: ResourceManifest;
       try {
-        manifest = await manifestFor(kind, sessionId);
+        manifest = await manifestFor(flow, sessionId);
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
@@ -758,8 +758,8 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     try {
       const found: Partial<Record<"org" | "user", { sessionId: string; ref: string }>> = {};
-      for (const [kind, sessionId] of carriers) {
-        const manifest = await manifestFor(kind, sessionId);
+      for (const [flow, sessionId] of carriers) {
+        const manifest = await manifestFor(flow, sessionId);
         for (const scope of ["org", "user"] as const) {
           const ref = found[scope] === undefined ? projectsRef(manifest, scope) : undefined;
           if (ref !== undefined) found[scope] = { sessionId, ref };
@@ -783,7 +783,7 @@ export function createLabReader(clients: LabClients): LabReader {
               .map((row) => toProject(row.clientData, visibility))
               .filter((p): p is Project => p !== undefined);
       // Invariant: each scope's `projects/*` is one collection, so the first
-      // kind that declares it reads every row the person may, and the rest are
+      // flow that declares it reads every row the person may, and the rest are
       // not asked.
       const [shared, own] = await Promise.all([rowsAt(found.org, "shared"), rowsAt(found.user, "private")]);
       return { ok: true, value: { rows: [...shared, ...own] } };
@@ -793,7 +793,7 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * This person's sessions, with one of their own on each reader kind: the
+   * This person's sessions, with one of their own on each reader flow: the
    * mailbox kind, which declares the organization's inventory, and the roster
    * flow, which declares the projects and the workstream entries. A person may
    * hold only a worker's session, or none at all on a first visit, and nothing
@@ -801,30 +801,30 @@ export function createLabReader(clients: LabClients): LabReader {
    * {@link readerSessionId} so overlapping first reads can't open two, and
    * listed from then on. One that can't be opened leaves the sessions as they
    * were, with why: `null` when there is nothing to open (the Lab serves no
-   * such kind, a 404), so nothing declares what it would have read.
+   * such flow, a 404), so nothing declares what it would have read.
    */
   const withReaderSessions = async (
     sessions: SessionSummary[],
   ): Promise<{ sessions: SessionSummary[]; inventory: Failure | null; projects: Failure | null }> => {
     const missing = [INVENTORY_READER_FLOW, PROJECT_READER_FLOW].filter(
-      (kind) => !sessions.some((s) => s.parentSessionId == null && s.flowKind === kind),
+      (flow) => !sessions.some((s) => s.parentSessionId == null && s.flowKind === flow),
     );
     if (missing.length === 0) return { sessions, inventory: null, projects: null };
     const failures = new Map<string, Failure | null>();
     await Promise.all(
-      missing.map(async (kind) => {
+      missing.map(async (flow) => {
         try {
           let opening = openingReaders.get(clients);
           if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
-          let open = opening.get(kind);
+          let open = opening.get(flow);
           if (open === undefined) {
-            open = openReaderSession(kind).finally(() => opening!.delete(kind));
-            opening.set(kind, open);
+            open = openReaderSession(flow).finally(() => opening!.delete(flow));
+            opening.set(flow, open);
           }
           await open;
         } catch (error) {
           const failure = describeFailure(error);
-          failures.set(kind, failure.httpStatus === 404 ? null : failure);
+          failures.set(flow, failure.httpStatus === 404 ? null : failure);
         }
       }),
     );
@@ -842,20 +842,20 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * Open the person's reading session on `kind` under its one id. A 409 is
+   * Open the person's reading session on `flow` under its one id. A 409 is
    * usually another page that opened it first, and the listing then holds it.
    * Session ids are not scoped by organization, so a 409 the listing doesn't
    * explain is that id held in another of the person's organizations: open one
    * under a fresh id.
    */
-  const openReaderSession = async (kind: string): Promise<void> => {
+  const openReaderSession = async (flow: string): Promise<void> => {
     try {
-      await clients.sessions.createSession({ flowKind: kind, userId: clients.userId, sessionId: readerSessionId(clients.userId, kind) });
+      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId, sessionId: readerSessionId(clients.userId, flow) });
     } catch (error) {
       if (describeFailure(error).httpStatus !== 409) throw error;
       const listed = await clients.sessions.listSessions({ userId: clients.userId });
-      if (listed.some((s) => s.parentSessionId == null && s.flowKind === kind)) return;
-      await clients.sessions.createSession({ flowKind: kind, userId: clients.userId });
+      if (listed.some((s) => s.parentSessionId == null && s.flowKind === flow)) return;
+      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId });
     }
   };
 
@@ -942,7 +942,7 @@ export function createLabReader(clients: LabClients): LabReader {
       return firstFailure(describeFailure(error));
     }
     // Before the organization is read, on purpose, even though a Lab with no
-    // reader kind answers it 404 on every refused read: a reading session is
+    // reader flow answers it 404 on every refused read: a reading session is
     // the only session a first-visit person can have for the org to be read off.
     const readers = await withReaderSessions(sessions);
     sessions = readers.sessions;

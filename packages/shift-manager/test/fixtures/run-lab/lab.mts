@@ -199,7 +199,7 @@ const scriptedRun = handler({
       const now = Date.now();
       await plan.upsert(`${run}/1`, { title: "Read the task", status: "completed", previousStatus: "in_progress", lastOutcome: "applied", lastTouchedAt: now });
       await plan.upsert(`${run}/2`, { title: "Write the audit note", status: "in_progress", previousStatus: "pending", lastOutcome: "applied", lastTouchedAt: now });
-      await files.upsert(`${run}/notes/audit.md`, { lastFlow: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
+      await files.upsert(`${run}/notes/audit.md`, { lastKind: "created", outcome: "applied", lastTouchedAt: now, appliedCount: 1 });
       ctx.emit.message("Wrote notes/audit.md");
     }
 
@@ -271,9 +271,9 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   } as never);
   // Each worker's flow takes tasks through Workforce's task entry; the one on
   // a flow of its own also declares the collections a recording harness writes.
-  const workerFlowName = (kind: string, records: boolean) =>
+  const workerFlowName = (flow: string, records: boolean) =>
     defineFlow({
-      kind,
+      kind: flow,
       cardinality: "collection",
       configSchema: workerConfigSchema(),
       session: installation.session(),
@@ -282,14 +282,14 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
         ...(records ? { [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection } : {}),
       },
       actions: { ...hearingDoor },
-      task: { actions: { work: workerTaskEntry({ name: `run-lab-${kind}-task`, turn: scriptedRun }) } },
+      task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
   const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL });
 
   workerFlows = {
     [leadFlow]: leadWorkerFlow,
     [COORDINATOR_FLOW]: coordinator,
-    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerFlowName(kind, kind === ownWorker?.flow)])),
+    ...Object.fromEntries(flowsOfWorkers.map((flow) => [flow, workerFlowName(flow, flow === ownWorker?.flow)])),
   };
   const copies = hireWorkforce(installation);
   // The worker write takes caller-supplied rows, so it is internal only.

@@ -32,7 +32,7 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 });
 
 const ORG = "acme";
-const worker = (id: string, kind = "worker") => toWorker({ id, kind })!;
+const worker = (id: string, flow = "worker") => toWorker({ id, kind: flow })!;
 const row = (mailbox: string, id: string, status: string, assignee: string): BoardRow =>
   toBoardRow(`${mailbox}.work`, mailbox, id, { id, title: `${id} title`, status, assignee });
 const ask = (workerId: string, suspensionId: string, message: string): Ask =>

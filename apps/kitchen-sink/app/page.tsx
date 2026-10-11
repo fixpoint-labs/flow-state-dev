@@ -89,7 +89,7 @@ const SHOW_WORKERS_IN_RAIL = true;
 const panelFetch: ClientFetch = (input, init) => fetch(input, init);
 
 /**
- * The rail's sections. How deep each kind goes is read off the flow's declared
+ * The rail's sections. How deep each flow goes is read off the flow's declared
  * cardinality, never written here: the coordinator flow opens straight into
  * the person's conversations with its workers, and so does `agent`, whose one
  * copy holds every worker's.
@@ -263,7 +263,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   );
 
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
-  // What the rail lists: under the coordinator kind, the person's conversation
+  // What the rail lists: under the coordinator flow, the person's conversation
   // with each coordinator the tree declares. Stable, so the navigator's reads
   // stay fenced on it.
   const railSessionSource = useMemo(() => railSessions(sessionClient, workforce), [sessionClient, workforce]);

@@ -2,14 +2,14 @@
 title: Code on disk
 sidebar_position: 5
 sidebar_label: Code on disk
-description: "Put your flow kinds, blocks and capabilities in the workforce tree, run one command, and let a generated file of static imports register them."
+description: "Put your flows, blocks and capabilities in the workforce tree, run one command, and let a generated file of static imports register them."
 ---
 
 # Code on disk
 
 A `WORKER.md` says which flow a worker runs on. The flow itself is TypeScript, and something has to hand it to the installation.
 
-You can write that map yourself. You can also put each file where the convention looks for it and let `fsdev gen` write the map, which means adding a kind is adding a file.
+You can write that map yourself. You can also put each file where the convention looks for it and let `fsdev gen` write the map, which means adding a worker flow is adding a file.
 
 ## When it runs
 
@@ -23,7 +23,7 @@ Nothing regenerates while `next dev` is running, and nothing scans the tree whil
 workforce/
   flows/
     workers/
-      request-triage.ts       ← a worker kind
+      request-triage.ts       ← a worker flow
     mailboxes/
       standup.ts              ← a mailbox kind
   blocks/
@@ -33,7 +33,7 @@ workforce/
       blocks/
         build-status.ts       ← a block this team's workers may name
       resources/
-        research.ts           ← a capability this team's kind carries
+        research.ts           ← a capability this team's workers carry
       workers/
         triage/
           WORKER.md           ← flow: request-triage
@@ -117,10 +117,10 @@ Each export feeds a parameter that already exists:
 | --- | --- |
 | `kinds` | `createWorkerInstallation`'s `workerFlows` |
 | `mailboxKinds` | `mailboxInstances` |
-| `blocks` | a task board's `workers`, or a worker kind's [tool catalog](./built-in-worker.md#tools) |
+| `blocks` | a task board's `workers`, or a worker flow's [tool catalog](./built-in-worker.md#tools) |
 | `workerBlocks` | `createWorkerInstallation` again |
 | `packageBlocks` | `createWorkerInstallation`, for the [packages](./packages-on-disk.md) a worker holds |
-| `resourceModules` | `splitResourceModules`, whose halves go to the kind's `uses` and the flow's resource map |
+| `resourceModules` | `splitResourceModules`, whose halves go to the worker flow's `uses` and the flow's resource map |
 
 ```ts
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
@@ -130,7 +130,7 @@ const installation = createWorkerInstallation({ standardWorkers: workers, worker
 const flows = hireWorkforce(installation);
 ```
 
-The startup line names no kinds. Adding one means adding a file.
+The startup line names no worker flows. Adding one means adding a file.
 
 ## Keeping it current
 
@@ -150,8 +150,8 @@ Run `fsdev gen` when you add, rename or delete a file in one of those folders. P
 
 The generator reads the tree. It never opens the files it finds, so what it can refuse is what a walker can see:
 
-- A basename that breaks [the tree's name rule](./workers-on-disk.md#names-in-the-tree), including one Windows reserves for a device. The basename is the name the file registers under — a kind, a block, or a document [ref](./documents-on-disk.md#a-documents-ref).
-- A directory inside one of the code folders. Refused by name rather than skipped, so a folder you meant as a kind cannot be passed over in silence.
+- A basename that breaks [the tree's name rule](./workers-on-disk.md#names-in-the-tree), including one Windows reserves for a device. The basename is the name the file registers under — a flow, a block, or a document [ref](./documents-on-disk.md#a-documents-ref).
+- A directory inside one of the code folders. Refused by name rather than skipped, so a folder you meant as a flow cannot be passed over in silence.
 - One basename in both `flows/workers/` and `flows/mailboxes/`.
 - A `.md` and a `.ts` of one name in one `resources/` folder, which would claim one [ref](./documents-on-disk.md#a-documents-ref) twice.
 - A `blocks/` folder at a level no worker reads — beside `org/`, or beside an org-level worker. The refusal names the three places one may sit.
@@ -160,7 +160,7 @@ The generator reads the tree. It never opens the files it finds, so what it can 
 
 Files that are not TypeScript are skipped: a README, a JSON sample, a note beside the code.
 
-**TypeScript files are not.** Every `.ts` and `.tsx` file in one of the code folders is a declaration, so these folders are for declarations only. A `fixture.ts` sitting beside a kind registers a kind called `fixture`. A file whose name carries a second dot — `request-triage.test.ts`, `helpers.fixture.ts` — is refused outright, because the basename becomes the kind name and a dot is not legal in one. Keep tests and fixtures beside the code they exercise, outside every folder on this page: the two `flows/` folders, every `blocks/` folder, and every `resources/` folder.
+**TypeScript files are not.** Every `.ts` and `.tsx` file in one of the code folders is a declaration, so these folders are for declarations only. A `fixture.ts` sitting beside a flow registers a flow called `fixture`. A file whose name carries a second dot — `request-triage.test.ts`, `helpers.fixture.ts` — is refused outright, because the basename becomes the flow's name and a dot is not legal in one. Keep tests and fixtures beside the code they exercise, outside every folder on this page: the two `flows/` folders, every `blocks/` folder, and every `resources/` folder.
 
 Not everything is caught by the walk, and what it misses is caught later rather than not at all. A file that exports the wrong shape fails your own `tsc`, naming the generated module and the assignment, because the maps are typed. A flow whose declared `kind` disagrees with its basename is refused by `hireWorkforce`, naming both.
 
@@ -181,7 +181,7 @@ An org worker (`workforce/org/workers/<worker>/`) has no `blocks/` folder of its
 
 A name is resolved nearest first: the worker's own folder, then its team's, then the catalog. The first match wins, so a worker can keep a private `summarize` without renaming the team's. A package's block is never hidden that way: one that shares a name with a block in the worker's own or team folder, or with a catalog tool the worker lists, is refused at the hire.
 
-The org-level half is one line in your app, on the option the built-in kind already takes:
+The org-level half is one line in your app, on the option the built-in worker flow already takes:
 
 ```ts
 import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
@@ -208,8 +208,8 @@ tools: [triage, page-oncall]
 
 Two rules are checked before any worker runs:
 
-- **One tool has one name.** The file's basename, the map key and the block's own `name` must agree. A worker authorises by the key and the model is handed the block's `name`, so a disagreement is a worker authorising one tool and a model calling another. Refused when the kind is built for the catalog, and by `hireWorkforce` for a worker's own folder.
-- **A block in a worker's own folder may read a store, not declare one.** Resources belong to the kind, and every worker of a kind shares them, so a store declared from inside one worker's folder would arrive for all of its siblings. Declare the store on the kind — through `defineAgentWorkerFlow`'s `uses` — and the block reads it as usual. The refusal names the block and both fixes.
+- **One tool has one name.** The file's basename, the map key and the block's own `name` must agree. A worker authorises by the key and the model is handed the block's `name`, so a disagreement is a worker authorising one tool and a model calling another. Refused when the worker flow is built for the catalog, and by `hireWorkforce` for a worker's own folder.
+- **A block in a worker's own folder may read a store, not declare one.** Resources belong to the worker flow, and every worker on it shares them, so a store declared from inside one worker's folder would arrive for all of its siblings. Declare the store on the worker flow — through `defineAgentWorkerFlow`'s `uses` — and the block reads it as usual. The refusal names the block and both fixes.
 
 ## A hand-written map
 
@@ -220,4 +220,4 @@ Passing `workerFlows` yourself works, and an app that never runs `fsdev gen` nee
 - [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [Capabilities on disk](./capabilities-on-disk.md) — what a `.ts` file in a `resources/` folder gives a worker, and how a worker's file picks among its presets.
 - [Documents on disk](./documents-on-disk.md) — the `.md` half of a `resources/` folder.
-- [The built-in worker](./built-in-worker.md) — the `agent` kind, its catalog, and its tools.
+- [The built-in worker](./built-in-worker.md) — the `agent` worker flow, its catalog, and its tools.

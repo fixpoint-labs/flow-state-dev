@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
   <title id="title">Worker file, worker and session: where each lives</title>
-  <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a flow kind with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.</desc>
+  <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a worker flow with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>

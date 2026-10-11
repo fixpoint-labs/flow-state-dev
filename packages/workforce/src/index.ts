@@ -14,12 +14,12 @@
  * TypeScript beside the Markdown, and that half lands the same way:
  * `./codegen` finds the modules, `fsdev gen` renders them onto a
  * `resourceModules` map, and `splitResourceModules` here separates the
- * capabilities a worker kind `uses` from the resources that merge into the
+ * capabilities a worker flow `uses` from the resources that merge into the
  * same one map the documents fill.
  *
- * A worker is a flow kind plus its instructions; there is no Agent class here,
- * only the flow a kind resolves to. A record that names no kind is hired into
- * the built-in `agent` kind, whose flow `defineAgentWorkerFlow` builds — called
+ * A worker is a flow plus its instructions; there is no Agent class here,
+ * only the flow it runs on. A record that names no flow is hired into
+ * the built-in `agent` worker flow, which `defineAgentWorkerFlow` builds — called
  * with no arguments it *is* the built-in, and called with arguments it is how
  * an app replaces it. Beside the
  * worker factory sit two helpers: `definePersona`, which declares the persona

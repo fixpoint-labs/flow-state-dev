@@ -190,7 +190,7 @@ export async function readTeamsDirectory(
       description: loaded.declared["description"] as string,
       declared: loaded.declared,
       // ABSENT, not `""`, when the body is whitespace. An empty layer would be
-      // a value every kind's schema could see — a different bag for every team
+      // a value every worker flow's schema could see — a different bag for every team
       // that wrote no instructions — and the worker factory already learned this
       // one level up, where an empty body handed over as a setting turned every
       // thin worker into a failed hire.

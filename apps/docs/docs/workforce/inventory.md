@@ -174,7 +174,7 @@ const workerMailboxes = handler({
 
 `hired` is `false` and `incarnation` is `null` on every row: the inventory lists only the workers your files declare.
 
-`door` names an action on the worker's flow: the one that takes a person's message for this worker. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A worker you build by hand with no such action gets `door: null`, and an app should say that worker takes no message rather than guess.
+`door` names an action on the worker's flow: the one that takes a person's message for this worker. It is the worker flow's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A worker you build by hand with no such action gets `door: null`, and an app should say that worker takes no message rather than guess.
 
 `openInventory` reads the door from each worker's `actions`, so pass it `inventoryWorkers(installation)`, which gives each standard worker with its flow's actions. A worker you build by hand needs `actions` too; pass `{}` for one that takes no message.
 

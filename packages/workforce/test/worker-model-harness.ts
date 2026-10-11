@@ -103,15 +103,15 @@ export type Host = ReturnType<typeof bootHost>;
 
 const doorInput = z.object({ message: z.string() }).strict();
 
-function workerFlow(kind: string, installation: WorkerInstallation) {
+function workerFlow(flow: string, installation: WorkerInstallation) {
   const door = handler({
-    name: `${kind}-run`,
+    name: `${flow}-run`,
     inputSchema: doorInput,
     // The documents stay on the flow: a block that declared one would hand it
     // back to every worker, past any grant.
     resources: { ...installation.resources, teamNotes },
     execute: async (input, ctx): Promise<TurnAnswer> => {
-      const worker = await installation.resolveWorker(ctx, kind);
+      const worker = await installation.resolveWorker(ctx, flow);
       if (input.message.startsWith("share:")) {
         await writeShared(ctx as never, "teamNotes", input.message.slice("share:".length), { text: input.message });
       }
@@ -130,15 +130,15 @@ function workerFlow(kind: string, installation: WorkerInstallation) {
   });
   // A task's turn: runs as the session's worker, like the door.
   const work = handler({
-    name: `${kind}-work`,
+    name: `${flow}-work`,
     resources: { ...installation.resources },
     execute: async (_input, ctx) => {
-      const worker = await installation.resolveWorker(ctx, kind);
+      const worker = await installation.resolveWorker(ctx, flow);
       return { worker: worker.id };
     }
   });
   return defineFlow({
-    kind,
+    kind: flow,
     configSchema: workerConfigSchema().extend({ tone: z.string().default("plain") }),
     session: installation.session(),
     resources: { ...installation.resources, handbook, ledger, teamNotes },

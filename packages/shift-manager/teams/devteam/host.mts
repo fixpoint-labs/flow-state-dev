@@ -4,7 +4,7 @@
  * and the same wiring, and differ by one block.
  *
  * What `openLab` does, in order, and nothing else: read the tree, build the
- * installation and the kinds on it, register one copy of each worker flow,
+ * installation and the worker flows on it, register one copy of each worker flow,
  * write the organization's inventory when asked, create the projects and open
  * the workstreams it was given, and hand back the handles. Every convention
  * file it reads is found by walking from one root; no file is named in this
@@ -24,7 +24,7 @@
  *    doors file each feature for the worker the caller supplies, which is what
  *    lets a control point it at the wrong delegate and watch the negative
  *    claim go red.
- * 2. **The harness slot**, handed to the `coder` kind. The one expression that
+ * 2. **The harness slot**, handed to the `coder` worker flow. The one expression that
  *    differs between this lab's two checks.
  * 3. **The host `resolvePrincipal`.** FSD does not provide login. After
  *    FIX-1442 an unconfigured host runs under the development organization,
@@ -32,7 +32,7 @@
  *    unauthenticated HTTP read is turned away for real (FIX-1515 / BR-17).
  *
  * **Not `workforce.gen.ts`.** `fsdev gen` renders that file for an app
- * directory, and `goals/` is not one. The kinds are hand-assembled here, which
+ * directory, and `goals/` is not one. The worker flows are hand-assembled here, which
  * FIX-1357's own contract says composes with a generated map rather than being
  * deprecated by it. `goals/pentest-lab/lab/host.mts` does the same, for the same
  * reason.
@@ -124,7 +124,7 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** The flow kind the lab creates projects through at open. */
+/** The flow the lab creates projects through at open. */
 export const PROJECTS_FLOW = "projects";
 
 /** The session the lab's own project writes run in, as the owner. */
@@ -282,7 +282,7 @@ function projectSetup(installation: WorkerInstallation) {
  * workstream's session. Read before the flows are built, which need the
  * writes' tools in their catalogs.
  */
-const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((kind) => ({ kind, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
+const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "openWorkstream", "listProjects"];
@@ -486,7 +486,7 @@ function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchem
 export interface OpenLabOptions {
   /** The store adapter this lab runs over — `inMemoryStores()` is enough. */
   stores: unknown;
-  /** The harness the `coder` kind runs. The one thing the two checks differ by. */
+  /** The harness the `coder` worker flow runs. The one thing the two checks differ by. */
   harness: HarnessStub["slot"];
   /**
    * Where each coding run works.
@@ -622,7 +622,7 @@ export interface OpenLabOptions {
   withoutProjectList?: boolean;
   /**
    * Leave the project tools out: not in the catalog the agent turn is built
-   * with (the `agent` kind's, and the chief of staff's on the coordinator
+   * with (the `agent` worker flow's, and the chief of staff's on the coordinator
    * flow), and not in any worker's `tools:`, as before the chief of staff had
    * them. Applied to the record before the mint, so the worker boots and
    * genuinely cannot create a project. The red state of "the chief of staff
@@ -744,7 +744,7 @@ export interface Lab {
     as?: keyof typeof LAB_USERS,
   ): Promise<{ output?: unknown; error?: string }>;
   /**
-   * The workspace host the coder kind runs on, when the lab built one
+   * The workspace host the coder worker flow runs on, when the lab built one
    * (`workspace: { root, remotes }`).
    */
   workspaceHost?: WorkspaceHost;
@@ -770,7 +770,7 @@ export interface Lab {
 }
 
 /**
- * Read the tree, build the installation and the kinds, and register them.
+ * Read the tree, build the installation and the worker flows, and register them.
  *
  * @param options The stores, the harness slot, the workspace and the address.
  * @returns The live lab. Call `dispose()` when done.
@@ -823,11 +823,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The worker model: the tree's workers are its standard workers, and each
   // runs on one copy of the flow it names. The flows are read when first
-  // needed, so the kinds below can be built on the installation.
-  let kinds: NonNullable<HireOptions["workerFlows"]> = {};
+  // needed, so the worker flows below can be built on the installation.
+  let builtFlows: NonNullable<HireOptions["workerFlows"]> = {};
   const installation = createWorkerInstallation({
     standardWorkers: workers,
-    workerFlows: () => kinds,
+    workerFlows: () => builtFlows,
     documents: resources as never,
     // Each person's coordinator for a project, when the tree declares it.
     ...(workers.some((worker) => worker.id === PROJECT_COORDINATOR) ? { projectCoordinator: PROJECT_COORDINATOR } : {}),
@@ -840,12 +840,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
     (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_FLOW;
-  // A worker of either kind reads its brief by the document it names; one that
+  // A worker on either flow reads its brief by the document it names; one that
   // names none would pass every isolation check trivially, so it never boots.
   for (const worker of workers) {
-    const kind = worker.declared.flow;
-    if ((kind === EM_FLOW || kind === CODER_FLOW) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
-      throw new Error(`worker "${worker.id}" runs on "${kind}" and names no \`${DOCUMENT_KEY}:\`; every worker of this kind reads one`);
+    const flow = worker.declared.flow;
+    if ((flow === EM_FLOW || flow === CODER_FLOW) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
+      throw new Error(`worker "${worker.id}" runs on "${flow}" and names no \`${DOCUMENT_KEY}:\`; every worker on this flow reads one`);
     }
   }
 
@@ -865,7 +865,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (emRecords.length > 1) {
     throw new Error(`the tree declares ${emRecords.length} EM workers; this lab runs one`);
   }
-  // With no EM worker the coder kind has no door, and a worker flow with none is
+  // With no EM worker the coder worker flow has no door, and a worker flow with none is
   // refused when it is registered. An open asked to raise the ask names that
   // step instead, since it is the one that has nothing to ask from.
   if (emRecords.length === 0 && options.ask !== undefined) {
@@ -897,7 +897,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resources,
   });
 
-  // The built-in `agent` kind, which the chief of staff (`org/workers/
+  // The built-in `agent` worker flow, which the chief of staff (`org/workers/
   // chief-of-staff/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
   // its `tools:`, and in this tree only the chief of staff does. Hire and fire
@@ -915,7 +915,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
-    // The kind carries them, and only the chief of staff's line names them; a
+    // The worker flow carries them, and only the chief of staff's line names them; a
     // project coordinator's line names `readProject`, and a workstream's
     // lead's `updateWorkstream`.
     catalog: {
@@ -937,7 +937,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ],
   };
   const agentFlow = defineAgentWorkerFlow({ installation, ...agentTurn });
-  kinds = {
+  builtFlows = {
     [EM_FLOW]: emFlow as never,
     [CODER_FLOW]: coderFlow as never,
     [AGENT_FLOW]: agentFlow as never,
@@ -961,7 +961,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // a worker would be refused on its first turn, or a worker flow doesn't
   // declare the installation's session, naming each (BR-2).
   const copies = hireWorkforce(installation);
-  const copyOf = (kind: string): FlowInstance => copies.find((copy) => copy.id === kind)!;
+  const copyOf = (flow: string): FlowInstance => copies.find((copy) => copy.id === flow)!;
   const copiesByWorker: Record<string, FlowInstance> = Object.fromEntries(
     installation.standardWorkers().map((worker) => [worker.id, copyOf(flowOf(worker.id))]),
   );
@@ -1002,7 +1002,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (writeLatency !== undefined) console.error(`[devforce-lab] holding checked store writes up to ${writeLatency}ms`);
 
   // One record for the Lab's own flows and the worker flows' copies. A copy's
-  // id is its kind, so a worker flow named like one of the Lab's flows
+  // id is its flow's name, so a worker flow named like one of the Lab's flows
   // (`projects`, `inventory-writer`) would take that flow's key;
   // `mergeWorkerFlows` refuses it, by name.
   const flows: Record<string, unknown> = mergeWorkerFlows(
@@ -1293,7 +1293,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         parentage: { parentOf: sessionFor(workerId) },
       });
       // **The worker, not the flow.** Two workers on this tree run on the SAME
-      // kind — the coder and the reviewer — so a dispatch record read by flow
+      // worker flow — the coder and the reviewer — so a dispatch record read by flow
       // alone cannot tell them apart, and BR-8's whole claim is which of the
       // two the row reached. The child session names it.
       return (children as Array<{ id: string; flowKind: string; flowId?: string; state?: Record<string, unknown> }>).map(

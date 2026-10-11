@@ -35,7 +35,7 @@
  * **What this does not cover, deliberately.** Only what a published page or
  * README declares. Frontmatter keys are a different seam and already have their
  * own loud refusals — the readers' `refusedDeclaration` doors, and the hire's
- * refusal of a setting the kind does not declare.
+ * refusal of a setting the worker flow does not declare.
  *
  * A shape declared only in an internal tree note is **not** here, and cannot be
  * without giving up the guard: nothing in the repo states that lock, so such a
@@ -310,7 +310,7 @@ function pathsInFence(lines: readonly string[]): string[] {
   const found: string[] = [];
   const stack: Array<{ indent: number; name: string }> = [];
   for (const raw of lines) {
-    // Trailing annotations: `request-triage.ts     ← a worker kind`, `foo  # note`.
+    // Trailing annotations: `request-triage.ts     ← a worker flow`, `foo  # note`.
     const line = raw.replace(/\s+←.*$/, "").replace(/\s+#.*$/, "").trimEnd();
     if (line.trim() === "") continue;
     const indent = line.length - line.trimStart().length;
@@ -709,7 +709,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "flows/workers/<kind>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "request-triage.ts       ← a worker kind",
+      quote: "request-triage.ts       ← a worker flow",
     },
     write: (root) =>
       writeFile(root, "flows/workers/request-triage.ts", "export default {};\n"),

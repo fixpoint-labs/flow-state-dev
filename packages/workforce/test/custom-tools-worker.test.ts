@@ -277,9 +277,9 @@ describe("what a worker's own map is refused for", () => {
     expect(message).toContain("workforce/blocks/");
   });
 
-  // Refused for DECLARING, not for using: a block that reads a store the kind
+  // Refused for DECLARING, not for using: a block that reads a store the worker flow
   // already installed is exactly the supported case.
-  it("accepts a registered block that USES a store the kind installed", async () => {
+  it("accepts a registered block that USES a store the worker flow installed", async () => {
     const shared = defineResource({
       scope: "session",
       stateSchema: z.object({ entries: z.number() }),
@@ -304,14 +304,14 @@ describe("what a worker's own map is refused for", () => {
       },
     }) as BlockDefinition;
 
-    // The store arrives the supported way — declared on the KIND, through a
+    // The store arrives the supported way — declared on the WORKER FLOW, through a
     // capability the app passed — and the colocated block merely reads it.
-    const kind = defineAgentWorkerFlow({
+    const flow = defineAgentWorkerFlow({
       uses: [defineCapability({ name: "shared-ledger", resources: { shared } })],
     });
     const [worker] = mintWorkers(
       [record({ id: "support.reader", declared: { tools: ["read-shared"] }, body: "Reader." })],
-      { workerFlows: { [AGENT_FLOW]: kind }, workerBlocks: { "support.reader": { "read-shared": reads } } },
+      { workerFlows: { [AGENT_FLOW]: flow }, workerBlocks: { "support.reader": { "read-shared": reads } } },
     );
 
     const result = await runWorker(worker!, "read-shared");
@@ -388,7 +388,7 @@ describe("what a worker's own map is refused for", () => {
 });
 
 describe("a colocated tool stays off the catalog list", () => {
-  // `tools:` on the bag carries only the names the kind checks against its
+  // `tools:` on the bag carries only the names the worker flow checks against its
   // catalog. A name that resolved to the worker's own folder leaves that list
   // and rides on `workerTools` instead.
   it("leaves only the catalog half in the bag's `tools`", () => {

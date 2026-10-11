@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeWorkerFlows } from "../src";
 
-const flow = (id: string, kind = id) => ({ id, kind }) as never;
+const flow = (id: string, flowName = id) => ({ id, kind: flowName }) as never;
 
 describe("mergeWorkerFlows", () => {
   it("adds each worker under its id beside the app's flows", () => {

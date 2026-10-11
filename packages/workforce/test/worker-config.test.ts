@@ -1,10 +1,10 @@
 /**
- * `workerConfigSchema()` — the admission contract every hireable kind composes.
+ * `workerConfigSchema()` — the admission contract every hireable worker flow composes.
  *
  * Two things are under test and they are different. The SCHEMA's own behaviour
  * (what parses, what defaults, what refuses) is checked directly. What that
- * buys a kind — that extending it leaves the framework's closing intact, and
- * that a kind's own required setting still refuses — is checked through
+ * buys a worker flow — that extending it leaves the framework's closing intact, and
+ * that a worker flow's own required setting still refuses — is checked through
  * `defineFlow`, because the closing is the framework's and asserting it on a
  * bare zod object would prove nothing about a real flow.
  */
@@ -30,9 +30,9 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: Record<string, never>): string {
+function refusalOf(manifests: WorkerManifest[], flows: Record<string, never>): string {
   try {
-    mintWorkers(manifests, { workerFlows: kinds });
+    mintWorkers(manifests, { workerFlows: flows });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -77,8 +77,8 @@ describe("workerConfigSchema — the bag itself", () => {
     ).toThrow();
   });
 
-  // A fresh object per call. A kind that overrides one of the contract's keys
-  // — the built-in `agent` does — must not be editing a value other kinds hold.
+  // A fresh object per call. A worker flow that overrides one of the contract's keys
+  // — the built-in `agent` does — must not be editing a value other worker flows hold.
   it("returns a new schema each call rather than a shared one", () => {
     expect(workerConfigSchema()).not.toBe(workerConfigSchema());
   });
@@ -89,8 +89,8 @@ describe("workerConfigSchema — the bag itself", () => {
   });
 });
 
-describe("workerConfigSchema — what composing it buys a kind", () => {
-  /** A kind that extends the contract with one setting of its own. */
+describe("workerConfigSchema — what composing it buys a worker flow", () => {
+  /** A worker flow that extends the contract with one setting of its own. */
   const triage = defineFlow({
     kind: "contract-triage",
     cardinality: "collection",
@@ -98,7 +98,7 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
     actions: { ...workerDoor, run: { inputSchema, block: work } }
   });
 
-  /** The same, but its own setting is REQUIRED — a kind's call to make. */
+  /** The same, but its own setting is REQUIRED — a worker flow's call to make. */
   const strictTriage = defineFlow({
     kind: "contract-triage-strict",
     cardinality: "collection",
@@ -106,20 +106,20 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
     actions: { ...workerDoor, run: { inputSchema, block: work } }
   });
 
-  const kinds = { "contract-triage": triage, "contract-triage-strict": strictTriage } as never;
+  const flows = { "contract-triage": triage, "contract-triage-strict": strictTriage } as never;
 
   it("hires a worker and hands it both its own setting and the contract's", () => {
     const [worker] = mintWorkers(
       [record({ id: "support.desk", declared: { flow: "contract-triage", desk: "mezzanine" } })],
-      { workerFlows: kinds }
+      { workerFlows: flows }
     );
     expect(worker!.config).toMatchObject({ desk: "mezzanine", [WORKER_SKILLS_KEY]: [] });
   });
 
   // BR-13 — extending the contract does NOT open the schema. The framework
   // still closes the set, and an undeclared key refuses by name. This is the
-  // whole reason a kind's own settings live at the top level.
-  it("still refuses a top-level key the kind never declared", () => {
+  // whole reason a worker flow's own settings live at the top level.
+  it("still refuses a top-level key the worker flow never declared", () => {
     const message = refusalOf(
       [
         record({
@@ -127,19 +127,19 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
           declared: { flow: "contract-triage", temperature: "0.2" }
         })
       ],
-      kinds
+      flows
     );
     expect(message).toContain('worker "support.desk"');
     expect(message).toContain("temperature");
   });
 
-  // BR-12 — omitting a key is not a way around the kind's schema. The rule the
+  // BR-12 — omitting a key is not a way around the worker flow's schema. The rule the
   // bag already applies, not a second one: a bag always goes, so an empty one
   // is parsed and a required setting refuses here rather than at run time.
-  it("refuses when the kind requires a setting and no worker file wrote one", () => {
+  it("refuses when the worker flow requires a setting and no worker file wrote one", () => {
     const message = refusalOf(
       [record({ id: "support.desk", declared: { flow: "contract-triage-strict" } })],
-      kinds
+      flows
     );
     expect(message).toContain('worker "support.desk"');
     expect(message).toContain("desk");

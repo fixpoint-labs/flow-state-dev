@@ -12,7 +12,7 @@
  *
  * | | `resources:` | `references:` |
  * |---|---|---|
- * | absent | reaches everything on the kind | reaches everything **at or above its place in the tree** |
+ * | absent | reaches everything on the worker flow | reaches everything **at or above its place in the tree** |
  * | present | narrows | narrows, within the wall |
  * | entry shape | a ref, or `<ref>: rw` | a ref. There is no mode — nothing writes a reference |
  * | the wall | the app's install filter | derived here, from the path |
@@ -126,7 +126,7 @@ export function placeOfReference(ref: string): TreePlace | undefined {
 }
 
 /**
- * Where the reference behind one of a kind's accessor keys actually sits.
+ * Where the reference behind one of a worker flow's accessor keys actually sits.
  *
  * **The accessor key is not the place.** An app may expose one definition under
  * a second key — `{ ...references, handbook: references["teams/eng/handbook"] }`
@@ -292,7 +292,7 @@ const unreachableWorkerReferenceMessage = (ref: string, workerId: string): strin
   `tree to widen who reads it, or drop the entry.`;
 
 /**
- * The wording for a kind holding references the hire step was not given.
+ * The wording for a worker flow holding references the hire step was not given.
  *
  * The one refusal that is about the APP's wiring rather than a worker's file, so
  * it names the option rather than the worker. Fatal, and deliberately not a
@@ -309,13 +309,13 @@ const referencesNotDeclaredMessage = (refs: readonly string[]): string =>
 /**
  * The wording for a worker whose id names no place in the tree.
  *
- * Fatal once the kind holds references, and silent before that: reachability is
+ * Fatal once the worker flow holds references, and silent before that: reachability is
  * derived from where a worker sits, so a worker that sits nowhere has no derivable
  * answer. Guessing one would mean picking between "reaches the org's
  * references" and "reaches none", and both are wrong in a way nothing reports.
  */
 const workerHasNoPlaceMessage = (workerId: string): string =>
-  `has the id "${workerId}", which names no place in the tree, and this kind holds references. ` +
+  `has the id "${workerId}", which names no place in the tree, and this worker flow holds references. ` +
   `A worker id is "<teamId>.<name>", or "<name>" for an org worker — the loader mints it from ` +
   `the worker's folder, and a reference is reachable because of where it sits relative to that ` +
   `folder. Give the worker an id of one of those shapes.`;
@@ -325,15 +325,15 @@ const workerHasNoPlaceMessage = (workerId: string): string =>
  * anyway.
  *
  * The twin of `worker-resources`'s survived-narrowing refusal, and it exists for
- * the same substrate reason: a flow instance's `resources` option replaces the
+ * the same substrate reason: a minted worker's `resources` option replaces the
  * definition's flow-level map, and `defineFlow` then merges the blocks' own
  * declarations back on top. So a reference a block also declares comes back
  * after the wall removed it. Fatal — the alternative is a wall that reads as
  * enforced and is not.
  */
-const referenceCrossedWallMessage = (ref: string, workerId: string, kind: string): string =>
+const referenceCrossedWallMessage = (ref: string, workerId: string, flow: string): string =>
   `cannot reach "${ref}" from its place in the tree, but the flow it is minted with reaches ` +
-  `it anyway: a block on the "${kind}" kind declares it, and a block declaration merges back ` +
+  `it anyway: a block on the "${flow}" worker flow declares it, and a block declaration merges back ` +
   `in after a worker's map replaces the flow-level one. Remove that declaration from the block ` +
   `and keep the reference at flow level, or move the file where "${workerId}" can see it.`;
 
@@ -405,14 +405,14 @@ export interface ApplyReferenceWallInput {
   hasDeclared: boolean;
   /** The app's references, keyed by ref — the map `referencesFromDocs` returns. */
   catalog: DeclaredResources | undefined;
-  /** The kind's MERGED resource map — its own flow-level entries plus what its blocks declare. */
+  /** The worker flow's MERGED resource map — its own flow-level entries plus what its blocks declare. */
   workerFlowResources: DeclaredResources;
-  /** The accessor keys the kind declared at FLOW level, which is the subset a worker's map replaces. */
+  /** The accessor keys the worker flow declared at FLOW level, which is the subset a worker's map replaces. */
   flowLevelKeys: ReadonlySet<string>;
   /**
    * The map this worker would otherwise be minted with — `resolveWorkerResources`'
    * output when the worker also declares `resources:`, or `undefined` when it
-   * declares none and would be minted with the kind's own map.
+   * declares none and would be minted with the worker flow's own map.
    */
   base: DeclaredResources | undefined;
 }
@@ -421,7 +421,7 @@ export interface ApplyReferenceWallInput {
 export interface AppliedReferenceWall {
   /**
    * The map to mint this worker with, or `undefined` to mint it with no map at
-   * all — which is what a kind holding no references gets, so an app with no
+   * all — which is what a worker flow holding no references gets, so an app with no
    * `references/` folder is minted exactly as it is today.
    */
   resources?: DeclaredResources;
@@ -436,28 +436,28 @@ export interface AppliedReferenceWall {
  * to the ones it named.
  *
  * **Built by subtraction, exactly as `resolveWorkerResources` is**, and for the
- * same substrate reason: a flow instance's `resources` option REPLACES the
+ * same substrate reason: a minted worker's `resources` option REPLACES the
  * definition's flow-level map, so a map assembled from the reachable
- * references alone would delete every other resource the kind declared. The map
+ * references alone would delete every other resource the worker flow declared. The map
  * starts as everything the worker would otherwise hold and loses the references
  * the wall denies.
  *
- * **A kind holding no references is left alone entirely** — `base` comes back
+ * **A worker flow holding no references is left alone entirely** — `base` comes back
  * untouched, including `undefined`. That is what keeps every existing app byte
  * for byte as it is: no `references/` folder, no map where there was none, no
  * change to what a worker reaches.
  *
- * @param input The worker, its declaration, the catalog and the kind's map.
+ * @param input The worker, its declaration, the catalog and the worker flow's map.
  * @returns The worker's map, the reachable set, and every problem.
  */
 export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedReferenceWall {
   // No `kind` here, deliberately: none of this function's three refusals names
   // it. The wall is about where a worker SITS, and `hireWorkforce` already
-  // prefixes every refusal with the worker's id. The kind is named only by
-  // `verifyWorkerReferenceWall`, whose refusal is about a block on that kind.
+  // prefixes every refusal with the worker's id. The worker flow is named only by
+  // `verifyWorkerReferenceWall`, whose refusal is about a block on that flow.
   const { workerId, declared, hasDeclared, catalog, workerFlowResources, flowLevelKeys, base } = input;
 
-  // Which of the kind's accessors hold one of the app's references. By name OR
+  // Which of the worker flow's accessors hold one of the app's references. By name OR
   // by definition identity, the way `worker-resources` recognises a document: an
   // app may expose one definition under a second key, and matching names alone
   // would leave that alias outside the wall.
@@ -467,7 +467,7 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   //
   // Reachability is derived from the catalog, and the catalog is the app's to
   // hand over. An app that spreads `referencesFromDocs(...)` into its flow but
-  // forgets to pass the same map here gets a kind full of references that
+  // forgets to pass the same map here gets a worker flow full of references that
   // nothing recognises: D1 still holds, because the seal rides on the
   // definition, but D2 evaporates and every worker reaches every team's
   // handbook. Nothing would warn, and the folder would still be called
@@ -535,7 +535,7 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
   if (problems.length > 0) return { reachable, problems };
 
   // The subtraction. `base` when the worker already has a map (it declared
-  // `resources:`), otherwise the kind's own flow-level entries — which is what
+  // `resources:`), otherwise the worker flow's own flow-level entries — which is what
   // it would have been minted with.
   const resources: DeclaredResources = emptyMap();
   if (base !== undefined) {
@@ -555,7 +555,7 @@ export function applyReferenceWall(input: ApplyReferenceWallInput): AppliedRefer
 }
 
 /**
- * Every accessor on a kind's map that holds one of the app's references.
+ * Every accessor on a worker flow's map that holds one of the app's references.
  *
  * By name OR by definition identity, for the reason `worker-resources`'
  * `documentKeys` is: an app may expose one definition under a second key, and a
@@ -589,7 +589,7 @@ export interface VerifyWorkerReferenceWallInput {
   catalog: DeclaredResources | undefined;
   /** The worker's id, for the refusal. */
   workerId: string;
-  /** The kind's name, for the refusal. */
+  /** The worker flow's name, for the refusal. */
   kind: string;
 }
 
@@ -597,10 +597,10 @@ export interface VerifyWorkerReferenceWallInput {
  * Check the worker that was actually minted, and refuse if a reference the wall
  * denied is reachable anyway.
  *
- * **This exists because no inspection of the kind's map can predict the
+ * **This exists because no inspection of the worker flow's map can predict the
  * answer** — the same reason `verifyWorkerNarrowing` exists, and the reason it
  * reads the built instance rather than reasoning about the build. A reference
- * declared both at flow level and by one of the kind's blocks is shadowed at
+ * declared both at flow level and by one of the flow's blocks is shadowed at
  * definition time, invisible on the merged map, and comes back the moment the
  * wall removes the flow-level entry that was hiding it.
  *
@@ -608,7 +608,7 @@ export interface VerifyWorkerReferenceWallInput {
  * @returns Every reference that crossed the wall. Empty is the pass.
  */
 export function verifyWorkerReferenceWall(input: VerifyWorkerReferenceWallInput): string[] {
-  const { minted, allowed, catalog, workerId, kind } = input;
+  const { minted, allowed, catalog, workerId, kind: flow } = input;
   if (minted === undefined || catalog === undefined) return [];
 
   const definitions = new Set<unknown>(Object.values(catalog));
@@ -634,7 +634,7 @@ export function verifyWorkerReferenceWall(input: VerifyWorkerReferenceWallInput)
     // in the tree, or it is inside but the worker narrowed it away and it came
     // back. Both mean the minted flow reaches a reference the worker must not.
     if (!withinWall || !allowed.has(key)) {
-      problems.push(referenceCrossedWallMessage(key, workerId, kind));
+      problems.push(referenceCrossedWallMessage(key, workerId, flow));
     }
   }
 

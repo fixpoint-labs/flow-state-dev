@@ -68,7 +68,7 @@ export interface WorkerManifest {
    * worker, which has no team.
    *
    * Never merged with {@link WorkerManifest.body}. Two layers that cannot be
-   * told apart at the seam are one layer, and a kind that wants only the worker's
+   * told apart at the seam are one layer, and a worker flow that wants only the worker's
    * own charter must be able to have it.
    */
   teamInstructions?: string;
@@ -189,7 +189,7 @@ export const REFUSED_PERSONA_KEY = "persona";
  * `workerSkills` — imposed by the worker factory on every record, and where a
  * worker's resolved skill set arrives in its flow's settings bag.
  *
- * Spelled `workerSkills` rather than `skills` because the built-in kind's bag
+ * Spelled `workerSkills` rather than `skills` because the built-in worker flow's bag
  * already carries an author-written `skills` object (the always-on list and the
  * activate-tool switch). One key that is sometimes authored and sometimes
  * imposed is the `instructions`-versus-body collision again, and that one is
@@ -208,7 +208,7 @@ export const WORKER_SKILLS_KEY = "workerSkills";
  *
  * Filled from the team's own {@link TEAM_MD}: the loader reads that file once
  * per team, joins its body onto every worker record under it, and the factory
- * imposes this key for the records that carry one. A kind reading it for a
+ * imposes this key for the records that carry one. A worker flow reading it for a
  * worker whose team wrote none gets `undefined` — the key is ABSENT, never an
  * empty string, so "this team said nothing" is not a value every team without
  * a file hands its workers.
@@ -224,7 +224,7 @@ export const WORKER_SKILLS_KEY = "workerSkills";
  * with it instead of leaving a door open with nothing said.
  *
  * The contract declared this key before anything filled it, and that was the
- * point: a kind composes the contract once and did not have to change again
+ * point: a worker flow composes the contract once and did not have to change again
  * when the team-level file arrived to fill it.
  */
 export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
@@ -439,7 +439,7 @@ export const duplicateSkillNameMessage = (
  * strings. A tool name in a `WORKER.md` resolves worker folder → team folder →
  * the app's catalog, first match wins; the first two resolve to a block the
  * hire step already holds, and they ride here, already resolved. The names that
- * fell through to the app's catalog stay in `tools:`, which is what the kind
+ * fell through to the app's catalog stay in `tools:`, which is what the worker flow
  * checks its catalog against.
  *
  * Spelled `workerTools` rather than `workerBlocks` because the two are different
@@ -458,7 +458,7 @@ export const WORKER_TOOLS_KEY = "workerTools";
  * The one wording for {@link WORKER_TOOLS_KEY}, shared by every door that refuses
  * an authored one. Names no subject — the caller supplies what it can name.
  *
- * Refused for the reason `workerSkills` is: a kind composing the contract
+ * Refused for the reason `workerSkills` is: a worker flow composing the contract
  * declares this key and would take an authored one happily, so a worker could run
  * carrying tools no folder of its backs — and only that worker, silently.
  */
@@ -471,7 +471,7 @@ export const REFUSED_WORKER_TOOLS_KEY_MESSAGE =
  * `packages` — the `WORKER.md` key a worker takes packages from its team's or
  * the org's library with, by name: `packages: [escalation]`.
  *
- * Read by the hire step and never handed to a kind as a setting, like
+ * Read by the hire step and never handed to a worker flow as a setting, like
  * `resources:`. A package in the worker's own folder needs no line here.
  */
 export const PACKAGES_KEY = "packages";
@@ -483,13 +483,13 @@ export const PACKAGES_KEY = "packages";
  *
  * **Imposed only on a worker that holds at least one package**, the way
  * `teamInstructions` is imposed only on a worker whose team wrote some. A worker
- * holding none carries no such key, so every kind that hires today keeps
- * hiring; a hand-rolled kind that has not declared it is refused, by name, the
+ * holding none carries no such key, so every worker flow that hires today keeps
+ * hiring; a hand-rolled flow that has not declared it is refused, by name, the
  * first time a worker of it holds a package, rather than dropping the package.
  *
  * Its own key rather than {@link WORKER_TOOLS_KEY}, whose meaning is what the
- * worker's `tools:` line named. What a kind does with a held package is the
- * kind's: the built-in `agent` kind puts the instructions in the prompt after
+ * worker's `tools:` line named. What a worker flow does with a held package is the
+ * flow's: the built-in `agent` worker flow puts the instructions in the prompt after
  * the team's and the worker's own, and offers the blocks when the worker wrote no
  * `tools:` line.
  */
@@ -515,7 +515,7 @@ export const REFUSED_WORKER_PACKAGES_KEY_MESSAGE =
  * (`ctx.flow.config.workerId`).
  *
  * **Imposed on every record, never authored.** Refused by name at every door
- * for the sharpest version of `workerSkills`'s reason: every composed kind
+ * for the sharpest version of `workerSkills`'s reason: every composed worker flow
  * declares it, so an authored one would be accepted and the worker could sign as
  * any other worker on the roster.
  */
@@ -532,13 +532,13 @@ export const REFUSED_WORKER_ID_KEY_MESSAGE =
 /**
  * The one wording for a package block that declares its own resources — the
  * package form of {@link colocatedResourceMessage}, refused for its reason: a
- * package is held per worker and a store is the kind's.
+ * package is held per worker and a store is the worker flow's.
  */
 export const packageResourceMessage = (packagePath: string, key: string, accessors: string[]): string =>
   `holds package "${packagePath}", whose block "${key}" declares ` +
   `${accessors.map((a) => `"${a}"`).join(", ")}. A package is held by one worker at a time and a ` +
-  `store is the kind's, so there is nowhere to install it that would not also install it for ` +
-  `every other worker of this kind. Declare the store on the kind ` +
+  `store is the worker flow's, so there is nowhere to install it that would not also install it for ` +
+  `every other worker on this flow. Declare the store on the worker flow ` +
   `(\`defineAgentWorkerFlow({ uses })\`) and let the block use it.`;
 
 /**
@@ -550,7 +550,7 @@ export const packageResourceMessage = (packagePath: string, key: string, accesso
  * the map's key and the generator advertises the block's own `name`, so a
  * disagreement is a worker authorizing one tool and a model calling another. The
  * caller names the map, because the two maps are refused at different doors —
- * the app's catalog when the kind is built, a worker's own when it is hired.
+ * the app's catalog when the worker flow is built, a worker's own when it is hired.
  */
 export const oneNameMessage = (key: string, blockName: string, whichMap: string): string =>
   `${whichMap} registers "${key}", and the block under that key calls itself "${blockName}". ` +
@@ -562,17 +562,17 @@ export const oneNameMessage = (key: string, blockName: string, whichMap: string)
  * The one wording for a block that arrives on a worker's own map and declares its
  * own resources.
  *
- * A worker's folder is ONE worker's and a store is the kind's, so there is nowhere
- * to install it that does not also install it for every sibling worker of that
- * kind. Refused by name at the door, with both fixes, because the alternative
+ * A worker's folder is ONE worker's and a store is the worker flow's, so there is nowhere
+ * to install it that does not also install it for every sibling worker on that
+ * flow. Refused by name at the door, with both fixes, because the alternative
  * is the defect this epic exists to kill: the tool is hired, advertised to the
  * model, called, and its handle is simply not there.
  */
 export const colocatedResourceMessage = (key: string, accessors: string[]): string =>
   `registers block "${key}" in its own folder, and that block declares ` +
   `${accessors.map((a) => `"${a}"`).join(", ")}. A worker's own folder is one worker's and a store ` +
-  `is the kind's, so there is nowhere to install it that would not also install it for every ` +
-  `other worker of this kind. Either declare the store on the kind ` +
+  `is the worker flow's, so there is nowhere to install it that would not also install it for every ` +
+  `other worker on this flow. Either declare the store on the worker flow ` +
   `(\`defineAgentWorkerFlow({ uses })\`), or move the block to \`workforce/blocks/\` and name ` +
   `it in this worker's \`tools:\`.`;
 

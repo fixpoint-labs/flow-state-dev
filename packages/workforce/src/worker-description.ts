@@ -2,9 +2,9 @@
  * A hired worker's `description`, kept beside the worker rather than in its
  * settings.
  *
- * The hire reads `description` and hands the kind everything else, so a worker's
+ * The hire reads `description` and hands the worker flow everything else, so a worker's
  * settings never carry it, and adding it there would be a new key every
- * hand-written kind schema refuses at boot. A routed mailbox still needs it:
+ * hand-written worker flow schema refuses at boot. A routed mailbox still needs it:
  * the route describes each member to its evaluator by its `WORKER.md`
  * `description:`. So the hire records it here, against the worker it minted,
  * and the route reads it back. Every mint path (the files, the runtime `hire`

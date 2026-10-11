@@ -22,7 +22,7 @@
  * through the project writes' own `createProject`, the way a chief of staff's
  * tool does, so the turn writes the organization's `projects` collection.
  *
- * Built with `inventory`, the kind also declares the organization's inventory
+ * Built with `inventory`, the worker flow also declares the organization's inventory
  * collections for a browser to read, so a person who holds only a worker's
  * session still finds the inventory.
  *
@@ -40,7 +40,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
-/** The kind a `WORKER.md` names in its `flow:` line. */
+/** The worker flow a `WORKER.md` names in its `flow:` line. */
 export const ASKER_FLOW = "asker";
 
 const askSchema = z.object({ what: z.string().min(1) });
@@ -73,7 +73,7 @@ export function holdSlowLines(): () => void {
   return release;
 }
 
-/** The line that starts project `<id>`, on a kind built with `projects`. */
+/** The line that starts project `<id>`, on a worker flow built with `projects`. */
 export const startProjectLine = (id: string) => `start project ${id}`;
 const START_PROJECT = /^start project (\S+)$/;
 
@@ -142,7 +142,7 @@ const onPost = sequencer({ name: "asker-on-post", inputSchema: messageSchema }).
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
 /**
- * Build the kind `hireWorkforce` registers one copy of, which every `asker`
+ * Build the worker flow `hireWorkforce` registers one copy of, which every `asker`
  * worker runs on: each session names its worker.
  *
  * @param installation The installation whose workers run on it.

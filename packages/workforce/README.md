@@ -71,7 +71,7 @@ const installation = createWorkerInstallation({
 
 The record's frontmatter becomes that worker's configuration, parsed by the flow's `configSchema`,
 and its body arrives as `instructions`, so the flow — not this package — decides what a worker may
-declare. A turn reads it from `installation.resolveWorker(ctx, kind).config`. One roster can mix
+declare. A turn reads it from `installation.resolveWorker(ctx, flowKind).config`. One roster can mix
 both. [Workers as data](#workers-as-data) has the whole contract.
 
 ## Personas
@@ -158,7 +158,7 @@ the convention derives them, the last two because the body is already the instru
 
 A hired worker then receives **two** instruction settings, never merged: `instructions` (its own
 body) and `teamInstructions` (its team's). Both are absent rather than empty when there are none.
-The [built-in worker kind](../../docs/architecture/workforce-default-worker-kind.md) composes them
+The [built-in worker flow](../../docs/architecture/workforce-default-worker-kind.md) composes them
 into its prompt in a fixed order — the team's first, the worker's own last.
 
 The reader builds nothing: no flow, no agent, no registry entry. It throws only when `root` itself
@@ -296,7 +296,7 @@ const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: roster.w
 
 Each list arrives in tree order.
 
-Each record's `skills` reaches the built-in `agent` kind as its `workerSkills` setting, imposed by
+Each record's `skills` reaches the built-in `agent` worker flow as its `workerSkills` setting, imposed by
 the hire step the way a body is imposed as `instructions`. A `WORKER.md` declaring `workerSkills:`
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
@@ -390,7 +390,7 @@ own worker when it is hired or edited.
 
 A worker flow declares the installation's session (`session: installation.session()`), so every
 session names its worker in a readonly `workerId`, checked when the session is created, and loads
-that worker on every turn with `installation.resolveWorker(ctx, kind)`. `hireWorkforce` refuses a
+that worker on every turn with `installation.resolveWorker(ctx, flowKind)`. `hireWorkforce` refuses a
 worker flow that doesn't declare it.
 
 A worker takes a person's message through its flow's **door**: the one public action the flow
@@ -470,8 +470,8 @@ Every problem with a list refuses the worker, naming it: a `resources:` that is 
 list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document
 matches, a ref naming a document the app declared but did not install on this worker's flow, a mode
 that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
-`writable: false`, a ref colliding with a name the kind's own blocks already declare, and a ref the
-kind does declare at flow level while what it holds there is not the document the app passed.
+`writable: false`, a ref colliding with a name the worker flow's own blocks already declare, and a ref the
+flow does declare at flow level while what it holds there is not the document the app passed.
 
 One more is checked on the worker's configuration rather than on the list: if a document the worker
 did **not** name is reachable anyway — because one of the flow's blocks declares that same
@@ -483,12 +483,12 @@ the block reach it from there, or grant it to the worker deliberately.
 file.
 
 `references:` is the sibling key, over the documents in `references/` folders. It narrows within a
-wall the tree already imposes rather than selecting from everything the kind installed, and its
+wall the tree already imposes rather than selecting from everything the worker flow installed, and its
 entries take no mode — see [What a worker reaches](#what-a-worker-reaches).
 
-### What a hireable kind must admit
+### What a hireable worker flow must admit
 
-A worker kind is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
+A worker flow is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
 `workerConfigSchema()`, which declares the settings a worker's bag may carry:
 
 | Setting | What it holds |
@@ -496,20 +496,20 @@ A worker kind is an ordinary flow. What makes it *hireable* is that its `configS
 | `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
 | `teamInstructions?` | The instructions its team wrote — read from that team's [`TEAM.md`](#the-optional-team-file). Imposed when its team wrote any, absent when the team wrote none or has no file. Never merged with `instructions`. |
 | `workerSkills` | The skills its folders resolved for it, in level order. Imposed on every worker, present and empty when there are none. |
-| `workerTools` | The blocks this worker's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every worker, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
+| `workerTools` | The blocks this worker's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every worker, present and empty when there are none. Live blocks, not names — names that resolved to the worker flow's catalog stay on the flow's own `tools` setting. |
 | `workerPackages?` | The [packages](#packages-from-files) this worker holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the worker holds at least one, absent otherwise. |
-| `workerId` | The worker's own id — the one a mailbox's `members:` lists and checks an author against. Imposed on every worker. A block reads it from the worker the turn loaded (`installation.resolveWorker(ctx, kind).config.workerId`), never from `ctx.flow.config`, which the shared copy holds once for every worker. |
+| `workerId` | The worker's own id — the one a mailbox's `members:` lists and checks an author against. Imposed on every worker. A block reads it from the worker the turn loaded (`installation.resolveWorker(ctx, flowKind).config.workerId`), never from `ctx.flow.config`, which the shared copy holds once for every worker. |
 
 So hiring imposes `instructions` when the body is not empty, `workerSkills`, `workerTools` and `workerId`
 always, `teamInstructions` when the worker's team wrote a `TEAM.md`, and `workerPackages` when the worker
-holds a package. A kind that reads
+holds a package. A worker flow that reads
 `teamInstructions` for a worker whose team wrote none gets `undefined` — absent, never an empty
 string, which is what keeps "this team said nothing" and "this team said nothing *yet*" from being
 the same value in the bag.
 
-**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that worker may call, because the hire step reads it. (On the built-in `agent` kind, a worker with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that worker (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog; an org worker has neither folder, so only the last two apply), and the ones that resolved to the worker's own folders or packages arrive on `workerTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+**One key is reserved across worker flows: `tools`.** It is not part of the contract — your flow declares it or leaves it out — but if you declare it, it means the names of tools that worker may call, because the hire step reads it. (On the built-in `agent` worker flow, a worker with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that worker (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your flow's catalog; an org worker has neither folder, so only the last two apply), and the ones that resolved to the worker's own folders or packages arrive on `workerTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
 
-Add your kind's own settings on top, at the same level:
+Add your flow's own settings on top, at the same level:
 
 ```ts
 import { workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
@@ -528,20 +528,20 @@ const triage = workerFlow((installation) =>
 ```
 
 `desk` sits at the top level beside the contract's keys, where the schema closes it: a worker file that writes
-a key your kind never declared is still refused by name. If your kind genuinely holds open-ended
+a key your flow never declared is still refused by name. If your flow genuinely holds open-ended
 data, give it one declared key whose own schema is a record, rather than a nested bag of keys you
 did name.
 
-Reading any of it is optional. A kind that composes the contract and never looks at `workerSkills`
+Reading any of it is optional. A worker flow that composes the contract and never looks at `workerSkills`
 is not an error. What is not optional is that your schema can take the bag: `hireWorkforce` checks
 every flow in `workerFlows`, and the built-in `agent`, before it registers anything, and a flow
 whose schema refuses a key of the contract, or the value a worker supplies for one, refuses the
 whole call with a message naming the flow and the fix.
 
-What is checked is what your schema accepts, not which function built it — so a kind that declares
+What is checked is what your schema accepts, not which function built it — so a worker flow that declares
 these keys by hand hires just the same, as long as each key takes the value a hire supplies
 (`workerId` is a string). Composing is what keeps it current: when a key is added to the contract, a
-composed kind picks it up, and a hand-rolled one refuses at boot naming the new key until you add
+composed flow picks it up, and a hand-rolled one refuses at boot naming the new key until you add
 it.
 
 The same check also requires one door, that the flow declares the installation's session, and
@@ -564,7 +564,7 @@ arrives as its instructions, and it reads the skills its own folders hold plus a
 through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the conversation it is
 in, up to the session's history window (the last 50 by default), and nothing from any other
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
-refuses, because it names no kind — only an absent key means the built-in.
+refuses, because it names no flow — only an absent key means the built-in.
 
 A worker on `agent` is talked to through the flow's `run` action, which takes `{ message }`, in a
 session that names the worker. A message that names a worker is refused: the session already does.
@@ -579,11 +579,11 @@ over for every worker that runs on `agent` — the records that leave `flow:` ou
 `agent` — and leaves a worker on any other flow alone. A flow of your own registered under `agent`
 must declare `kind: "agent"`.
 
-A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
-lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
+A worker record declares data: a description, the worker flow it runs, and that flow's settings. Behavior
+lives in the flow the record names, so a worker that has to do something none of your worker flows do is a
 flow you define in your app and pass in `workerFlows`, named by that worker's `flow:`.
 
-A record's **`body` reaches its flow as one setting, `instructions`**. Every hireable kind declares
+A record's **`body` reaches its flow as one setting, `instructions`**. Every hireable worker flow declares
 that setting by composing `workerConfigSchema()`, so a body always has somewhere to arrive and no
 worker flow has to check for one; the instructions are available at `config.instructions`, and what
 the flow does with them is the flow's business. A flow that wants instructions to be mandatory makes
@@ -599,7 +599,7 @@ A `WORKER.md` has no `persona` setting: declaring it lands the worker in
 `readWorkforceDirectory`'s `errors`, or is refused by `hireWorkforce` for a hand-built record.
 Spell it `instructions`.
 
-### Composing capabilities into the built-in kind
+### Composing capabilities into the built-in worker flow
 
 `defineAgentWorkerFlow` takes three more app-level options beyond its catalog, skills and model
 choices. All three are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
@@ -612,11 +612,11 @@ worker.
 | `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the person's other flows. Every worker on `agent` shares the one copy, so a person's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
-whatever it selected under `capabilities:`. The kind maps those names against the catalog and hands
+whatever it selected under `capabilities:`. The worker flow maps those names against the catalog and hands
 the model that list and nothing else; `tools: []` means no tool. A worker with no `tools:` line can
 call the tools of every capability preset its own file selects under `capabilities:`, including a
 preset whose tools are a function built per turn, and every block of every package it holds. A
-preset the kind switches on by default gives its tools only to the workers that select it. A worker with no `tools:` line whose selected presets list
+preset the flow switches on by default gives its tools only to the workers that select it. A worker with no `tools:` line whose selected presets list
 different tools under one name is refused at the hire; the refusal names the worker, the tool, and
 both presets, and suggests selecting one of them or writing a `tools:` line. A worker that writes a
 line is hired whatever its presets' tools are named, and gets exactly its list.
@@ -685,7 +685,7 @@ tools only to a worker that selects it. For on-demand search, leave `recall` on 
 select it (`capabilities: { memory: [recall] }`) with no `tools:` line. A worker that writes a
 `tools:` line gets it through the catalog (`catalog: { "memory/recall": mem.tool.recall() }`) and
 lists `memory/recall` in its `tools:`. The key has to match the tool's own name; a catalog key that
-doesn't is refused when the kind is built.
+doesn't is refused when the worker flow is built.
 
 Every worker on `agent` shares the one copy. Long-term memory (episodic, semantic and digest) is
 kept in the person's user scope, so one person's workers on `agent` share it, and it never reaches
@@ -697,7 +697,7 @@ Every problem with a standard worker is a startup misconfiguration: `hireWorkfor
 and throws one error naming every bad worker, and registers nothing, so a bad record cannot leave a
 short roster.
 
-## Kinds and blocks from files
+## Worker flows and blocks from files
 
 The `workerFlows` map above names each flow a second time, after the flow already declared it. There is a
 file convention for that half too: put a flow under `workforce/flows/workers/` or
@@ -743,7 +743,7 @@ team's workers, a team worker's own for that worker. An org worker (`org/workers
 folder, and `fsdev gen` refuses one there: it gets tools from the catalog and the packages it holds. A folder does not grant use — a worker still names the
 block in its `tools:`, and a name resolves nearest first (its own folder, its team's, the catalog).
 Two rules are checked before any worker runs: the file's basename, the map key and the block's own
-`name` must agree, and a block in a worker's own folder may read a store the kind installed but may
+`name` must agree, and a block in a worker's own folder may read a store the worker flow installed but may
 not declare one of its own.
 
 Discovery is a **build step**, not something this package does while your app runs. A walk at startup
@@ -785,8 +785,8 @@ generation, rather than one of them quietly winning.
 What a module exports is checked by your own `tsc` against the generated map's types, because the
 walk never opens a module. `ResourceModuleExport` is what a module in the organisation's or a team's
 folder may be; `WorkerResourceModuleExport` is the narrower type the generated map holds a module in
-one **worker's own** `resources/` folder to — a resource, never a capability, because every worker of a
-kind shares that kind's capabilities and one installed from a single worker's folder would change
+one **worker's own** `resources/` folder to — a resource, never a capability, because every worker on a
+worker flow shares that flow's capabilities and one installed from a single worker's folder would change
 every other worker. The generated file carries that sentence beside the entries it applies to.
 
 ### Installing what was found
@@ -804,7 +804,7 @@ const agent = defineAgentWorkerFlow({ uses: capabilities, /* ... */ });
 const flowResources = { ...resourcesFromDocs(documents), ...resources };
 ```
 
-A capability goes to the worker kind's `uses`, which is the same option you pass one by hand, and the
+A capability goes to the worker flow's `uses`, which is the same option you pass one by hand, and the
 resources it declares for itself reach the flow from there. A plain resource module merges into the
 one resource map, under its own ref, beside the documents. Nothing is installed on your behalf —
 returning both and letting you spread them keeps the wiring in your own source, the same way
@@ -812,7 +812,7 @@ returning both and letting you spread them keeps the wiring in your own source, 
 
 ### What one worker picks up
 
-A capability installed on a kind reaches every worker of that kind. A worker's own file names which of
+A capability installed on a worker flow reaches every worker on that flow. A worker's own file names which of
 its presets *that* worker wants:
 
 ```md
@@ -825,13 +825,13 @@ capabilities:
 
 A worker that names nothing carries each installed capability's own defaults, which is what every worker
 gets without the key. Naming presets **adds** to that — there is no spelling that takes one away.
-Which capabilities a workforce may reach is the app's call, made where it builds the kind; a worker
+Which capabilities a workforce may reach is the app's call, made where it builds the worker flow; a worker
 file picks among them.
 
 The whole selection is checked when the roster is hired, so a typo is a refusal at boot rather than a
 failed answer in front of a user. A worker is refused, by name, when it names:
 
-- a capability its kind does not carry
+- a capability its worker flow does not carry
 - a preset the capability does not declare
 - a preset the app turned off where it installed the capability
 - a preset on a capability declared with a `config` block
@@ -840,7 +840,7 @@ failed answer in front of a user. A worker is refused, by name, when it names:
 
 The last three are the app's to set where it installs the capability.
 
-Only the built-in `agent` kind reads this key. A kind of your own reads whatever its own settings
+Only the built-in `agent` worker flow reads this key. A worker flow of your own reads whatever its own settings
 schema declares.
 
 ### Packages from files
@@ -861,7 +861,7 @@ A worker holds every package in its own `packages/` folder. A library package re
 when its `WORKER.md` names it, `packages: [escalation]`, looked up in the team's library first,
 then the org's. A library package no worker names reaches nobody.
 
-On the built-in `agent` kind, a held package's body is in the prompt on every turn, after the team's
+On the built-in `agent` worker flow, a held package's body is in the prompt on every turn, after the team's
 instructions and the worker's own. A worker with no `tools:` line can call every block of every
 package it holds. A written `tools:` line is the whole list, and a package block can be named on
 it; `tools: []` gets the text and no tools.
@@ -1028,7 +1028,7 @@ Each record is plain data:
 
 **Merge the map yourself.** A flow copy created with `supportFlow({ resources })` *replaces* the
 definition's map rather than merging with it, so passing `resourcesFromDocs(documents)` there on its
-own drops whatever resources the flow kind declared. Spread it into your own map, as above.
+own drops whatever resources the flow definition declared. Spread it into your own map, as above.
 
 ### What a worker reaches
 
@@ -1057,13 +1057,13 @@ const engineering = resourcesFromDocs(
 ```
 
 This holds for a worker's folder too: putting a `resources/` document under `workers/recon/`
-addresses it to that worker, it does not keep it from the others. Every worker hired into one kind
-shares that kind's flow definition, so by default all of them read the same row.
+addresses it to that worker, it does not keep it from the others. Every worker hired onto one worker flow
+shares that flow's definition, so by default all of them read the same row.
 
-**Filtering decides what a kind installs; a worker's own file decides what that worker reaches.** A
-`resources:` list in a `WORKER.md` narrows one worker within a kind and can take a document
+**Filtering decides what a worker flow installs; a worker's own file decides what that worker reaches.** A
+`resources:` list in a `WORKER.md` narrows one worker within its flow and can take a document
 read-only — see [The documents a worker may touch](#the-documents-a-worker-may-touch). A ref for a
-document this kind was not installed with is refused at the hire, so the filter above holds.
+document this worker flow was not installed with is refused at the hire, so the filter above holds.
 
 **To make a `resources/` document that worker's alone, say so in the document.** A file whose
 frontmatter carries `flowIsolation: true` gets one row per worker: the worker that writes it reads it
@@ -2363,7 +2363,7 @@ the root exports, and reaches no Node built-in.
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block), and with `taskLists` a `work` task entry. |
+| `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow — `agent` is one kind of worker, and this is the flow it resolves to. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block), and with `taskLists` a `work` task entry. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the worker and mailbox sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare and the mailboxes. |
@@ -2409,16 +2409,16 @@ the root exports, and reaches no Node built-in.
 | `workerFlowProblems(name, flow)` | Every way `flow`, registered as `name`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no door or two, a resource with `writtenBy` that `sharedResource()` didn't build. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |
 | `writeShared(ctx, accessor, key, data)` / `WrittenBy` | Write one entry of a shared resource, creating or replacing it, stamped with the session's user and, when the turn loaded the session's worker with `resolveWorker`, that worker's id. A `writtenBy` in `data` is ignored, and so are a `workerId` setting and a `workerId` in the session's state: a turn that loaded no worker records the user alone. Flow code that writes the resource directly can set its own value, so `writtenBy` is as trustworthy as the registered flow's code; it is for display and audit, never for deciding who may write. |
-| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?` and `workerId`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `workerConfigSchema()` | The admission contract every hireable worker flow composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?` and `workerId`. A worker flow whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `workerPackageSchema` | One held package as it rides into the bag — `{ name, path, instructions?, tools }`, closed. The shape `workerPackages` is an array of. |
 | `workerSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `workerSkills` is an array of; reach for it when declaring your own variant of that key. |
-| `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
+| `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable worker flow receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
 | `readReferencesDirectory(root)` | Read every `references/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document, each carrying its `filePath`. Same result shape and same error kinds as `readResourcesDirectory`. Ships from the `./loader` subpath (Node only). |
 | `referencesFromDocs(references)` | Turn reference records into the flow resource map, keyed by ref. Each entry is served from its file and is read-only. Throws naming the ref for a record with no `filePath`. |
 | `clearShadowedReferences(input)` / `describeShadowedReferences(result)` | Clear the stored rows left behind when a document moves from `resources/` to `references/`, for one org, and render the result as one log line. Takes `{ references, orgId, content, installedOn, dryRun? }`; returns `{ cleared, checked, dryRun, scopeId }`. |
-| `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker kind installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
+| `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker flow installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
 | `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, references, mailboxes, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `package`, `document`, `reference` or `mailbox`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills?, teamInstructions?, packages? }`. |
 | `PackageManifest` | One package record: `{ name, path, level, team?, worker?, description, instructions? }`, where `level` is `org`, `team` or `worker` and `path` is the key its blocks sit under on `packageBlocks`. |
@@ -2426,7 +2426,7 @@ the root exports, and reaches no Node built-in.
 | `mintResourceRef(teamId, workerName, name)` | The one rule that names a resource, whichever door read it — the ref a document or a module called `name` in that folder gets. Throws naming the segment that breaks the rules. Ships from the `./loader` subpath (Node only). |
 | `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
-| `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` kind; validated at the hire. |
+| `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineMailboxFlow(options?)` | Build a mailbox kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. `options.checkAssignee(assignee, listId, ctx)` runs before `fileTask` files a row naming an assignee: return `undefined` to file it, or the sentence to refuse with (`unknown-assignee`). Pass `createWorkerLookup(...).filingCheck(aliases)`. |
 | `wakeMemberWorkers(flows, { installation?, fallback? })` | The notify block for `defineMailboxFlow({ notify })`. Wakes each member that names a standard worker on a flow declaring `onMailboxPost`, once per post, in that worker's own conversation per mailbox, and never on a worker's line. |
 | `routeByPurpose(workers, { model })` | The route a mailbox kind takes as `defineMailboxFlow({ route })`. For a mailbox that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `mailbox-route`), else the declared fallback. A worker's line (`workerAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the mailbox's last 20 lines in view, and its reply is posted into the mailbox as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
@@ -2449,7 +2449,7 @@ the root exports, and reaches no Node built-in.
 | `mailboxBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `mailboxBoards` and `defineAgentWorkerFlow`'s `taskLists` take. |
 | `mailboxTaskLists(boardIds, { allowSessionState? })` | A `TaskBinding` for a task entry's `from`: the entry takes tasks from any of these mailbox boards, resolved in the running organization. A board id outside the list is refused `UnknownTaskLedgerError`. |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`; see [Handing a row to the worker it names](#handing-a-row-to-the-worker-it-names). |
-| `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker kind takes tasks through. |
+| `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
 | `workerTaskEntry({ name, turn \| block, mailboxLists? })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. `mailboxLists` names the mailbox task lists it also takes tasks from, by minted id, or as `{ id, collection }` when the flow already declares that list under its own declaration. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there, for a message door over the session's run. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |
 | `MailboxBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
 | `mailboxBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
@@ -2473,7 +2473,7 @@ the root exports, and reaches no Node built-in.
 | `InventoryRoster` / `InventoryWorker` / `InventoryWorkerWriter` | What `openInventory` takes: the roster (`{ workers, mailboxes }`), one worker (`{ id, kind, actions, config? }`: a hired worker as is, its `door` action read from `actions`, `{}` for a worker with none; its row's `hired` read from `config.workerId`, `null` without `config`), and which flow writes the worker rows (`{ flowKind }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the worker request and must reach `runAction`), and what one boot of `openInventory` returns (`{ workers, mailboxes, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `workerWriter`, `userId`, `orgId`. |
-| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the kind has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the worker's row. A worker flow with none or two is refused when hired, so a hired worker always has one. |
+| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: the one public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the flow has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the worker's row. A worker flow with none or two is refused when hired, so a hired worker always has one. |
 
 ## Error Semantics
 
@@ -2495,7 +2495,7 @@ the root exports, and reaches no Node built-in.
 | One skill name at more than one of a worker's levels | Collected in `readWorkerSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readWorkerSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker flow misses the contract | `hireWorkforce`, before anything is registered — a flow passed under a key that is not its own kind, a configuration it refuses by key or by value, or takes but rewrites (composing `workerConfigSchema()` is the fix), no door or two, no installation session, or a resource with `writtenBy` that `sharedResource()` didn't build. Collected: one error names every problem with every flow, and nothing is hired |
-| Worker cannot run | For a standard worker, `hireWorkforce`; for a user's own worker, the `hire`, `fork` or `edit` that saves it, and its turn — an empty or whitespace-only `flow`, an unknown flow, a user's own worker naming a flow marked `standardOnly` (or naming none, when `agent` is marked), a duplicate standard id (`createWorkerInstallation`), a setting or body the flow never declared, a `tools:` name nothing registers for that worker, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one worker from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's flow, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a worker did not name that the worker's flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this worker cannot reach from its place in the tree — including every ref when no `references` map was passed), a worker id that names no place in the tree while its kind holds references, a reference the worker did not name that the worker's flow reaches anyway, `instructions` given both in the frontmatter and as a body, a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the worker can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `workerSkills:`, `workerTools:`, `workerPackages:`, `workerId:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot run | For a standard worker, `hireWorkforce`; for a user's own worker, the `hire`, `fork` or `edit` that saves it, and its turn — an empty or whitespace-only `flow`, an unknown flow, a user's own worker naming a flow marked `standardOnly` (or naming none, when `agent` is marked), a duplicate standard id (`createWorkerInstallation`), a setting or body the flow never declared, a `tools:` name nothing registers for that worker, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one worker from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's flow, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the worker flow's own blocks declare, a ref the flow declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a worker did not name that the worker's flow reaches anyway because one of the flow's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this worker cannot reach from its place in the tree — including every ref when no `references` map was passed), a worker id that names no place in the tree while its worker flow holds references, a reference the worker did not name that the worker's flow reaches anyway, `instructions` given both in the frontmatter and as a body, a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the worker can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `workerSkills:`, `workerTools:`, `workerPackages:`, `workerId:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A roster write refused | The `hire`, `fork`, `edit` or `fire` block: a standard worker's id (suggesting a fork), an id already on the caller's roster, a worker that isn't the caller's, a flow that isn't a worker flow or is kept for standard workers, or a configuration its flow refuses. Nothing is written. |
 | A turn on a session whose worker can't run | `resolveWorker` throws `WorkerTurnRefusedError`, naming the worker: fired, moved to another flow, a name that no longer resolves, or a flow now kept for standard workers. Nothing is written; the session stays readable. |
 | Package folder fails to load | Collected in `readPackagesDirectory`'s and `readWorkforce`'s `packageErrors` as `kind: "package-load-failed"` (a symlinked or badly named folder, or a missing, unreadable or malformed `PACKAGE.md`), `"refused-entry"` (a file in `packages/`, or a documents, skills or packages folder or a symlink inside a package), or `"unreadable-slot"`, keyed by the path. The package is left out whole |

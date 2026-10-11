@@ -1,17 +1,17 @@
 /**
  * The app's catalog as a worker's tool source — the primary recipe FIX-1416
- * wires: a block under `workforce/blocks/`, handed to the kind as `catalog:`,
+ * wires: a block under `workforce/blocks/`, handed to the worker flow as `catalog:`,
  * named by a worker's `tools:`.
  *
  * Two rules are pinned here and both were found by a POC rather than by
  * reading:
  *
  * - **One tool has one name.** The map key and the block's own `name` must
- *   agree, refused when the KIND is built — before any worker exists — because
- *   the catalog is a kind-construction argument. A worker authorizes by key and
+ *   agree, refused when the WORKER FLOW is built — before any worker exists — because
+ *   the catalog is a flow-construction argument. A worker authorizes by key and
  *   the model is advertised the block's `name`, so two spellings means a worker
  *   authorizing one tool and a model calling another.
- * - **A catalog tool's declared stores are installed on the kind.** A worker
+ * - **A catalog tool's declared stores are installed on the worker flow.** A worker
  *   reaches its tools through a resolver that runs per turn, so a block
  *   arriving that way is outside `defineFlow`'s static walk over action blocks.
  *   Left alone, the tool is hired, advertised, called — and its handle is not
@@ -35,8 +35,8 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"]): FlowInstance[] {
-  return mintWorkers(manifests, { workerFlows: kinds });
+function hire(manifests: WorkerManifest[], flows: HireOptions["workerFlows"]): FlowInstance[] {
+  return mintWorkers(manifests, { workerFlows: flows });
 }
 
 /** A model script that "calls" a tool by name. */
@@ -75,7 +75,7 @@ describe("one tool, one name — the app's catalog", () => {
     execute: () => ({ found: true }),
   });
 
-  it("refuses a catalog key that disagrees with its block's own name, when the kind is built", () => {
+  it("refuses a catalog key that disagrees with its block's own name, when the worker flow is built", () => {
     expect(() => defineAgentWorkerFlow({ catalog: { "lookup-customer": mismatched } })).toThrow(
       /lookup-customer/,
     );
@@ -107,13 +107,13 @@ describe("one tool, one name — the app's catalog", () => {
     expect(() => defineAgentWorkerFlow({ catalog: { "desk-note": agreeing } })).not.toThrow();
   });
 
-  // A kind built with no catalog at all must not acquire a refusal.
+  // A worker flow built with no catalog at all must not acquire a refusal.
   it("builds with no catalog", () => {
     expect(() => defineAgentWorkerFlow()).not.toThrow();
   });
 });
 
-describe("a catalog tool's declared stores are installed on the kind", () => {
+describe("a catalog tool's declared stores are installed on the worker flow", () => {
   const auditLog = defineResource({
     scope: "session",
     stateSchema: z.object({ lines: z.number() }),
@@ -147,9 +147,9 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
 
   it("declares the store on the flow, so the handle is there when the model calls the tool", async () => {
     const seen = { outcome: "never ran" };
-    const kind = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
+    const flow = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
     const [worker] = hire([record({ id: "support.auditor", declared: { tools: ["write-audit"] } })], {
-      [AGENT_FLOW]: kind,
+      [AGENT_FLOW]: flow,
     });
 
     // The static half: the action block the flow walks now carries the
@@ -167,8 +167,8 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
   });
 
   // A worker with no `tools:` line can call the tools of a preset it picked,
-  // including one the kind leaves off. That tool reaches the generator through
-  // the per-turn resolver too, so its store has to be declared by the kind for
+  // including one the flow leaves off. That tool reaches the generator through
+  // the per-turn resolver too, so its store has to be declared by the flow for
   // the same reason a catalog tool's is.
   it("installs the store of a tool a worker reaches by picking an off-by-default preset", async () => {
     const seen = { outcome: "never ran" };
@@ -176,10 +176,10 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
       name: "ledger-work",
       presets: { audit: { tools: [writeAudit(seen)] }, default: [] }
     });
-    const kind = defineAgentWorkerFlow({ uses: [ledgerWork] });
+    const flow = defineAgentWorkerFlow({ uses: [ledgerWork] });
     const [worker] = hire(
       [record({ id: "support.picker", declared: { capabilities: { "ledger-work": ["audit"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(worker!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
@@ -188,12 +188,12 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
     expect(seen.outcome).toBe("handle worked");
   });
 
-  // Kind-wide, not per worker: the catalog belongs to the kind, so its stores
+  // Flow-wide, not per worker: the catalog belongs to the worker flow, so its stores
   // belong to every worker of it — the same bill `uses` already presents.
   it("installs the store for a worker whose `tools:` never names the block", () => {
     const seen = { outcome: "never ran" };
-    const kind = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
-    const [worker] = hire([record({ id: "support.ghost" })], { [AGENT_FLOW]: kind });
+    const flow = defineAgentWorkerFlow({ catalog: { "write-audit": writeAudit(seen) } });
+    const [worker] = hire([record({ id: "support.ghost" })], { [AGENT_FLOW]: flow });
 
     expect(Object.keys((worker as unknown as { resources?: object }).resources ?? {})).toContain(
       "auditLog",
@@ -204,16 +204,16 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
   // installs from — not only the block's declaration.
   it("merges the declaration into the flow's resources", () => {
     const seen = { outcome: "never ran" };
-    const kind = defineAgentWorkerFlow({
+    const flow = defineAgentWorkerFlow({
       catalog: { "write-audit": writeAudit(seen) },
     }) as unknown as { resources?: Record<string, unknown> };
 
-    expect(Object.keys(kind.resources ?? {})).toContain("auditLog");
+    expect(Object.keys(flow.resources ?? {})).toContain("auditLog");
   });
 
-  // A kind whose catalog declares nothing must not gain a resource map it did
+  // A worker flow whose catalog declares nothing must not gain a resource map it did
   // not have — the registration has to be the union, not a rewrite.
-  it("leaves a resource-free catalog's kind exactly as it was", () => {
+  it("leaves a resource-free catalog's worker flow exactly as it was", () => {
     const plain = handler({
       name: "desk-note",
       description: "Answers a note.",
@@ -285,9 +285,9 @@ describe("a block renamed with .as() to its catalog key", () => {
     let flows: Record<string, unknown> = {};
     const installation = createWorkerInstallation({ workerFlows: () => flows as never });
     const renamed = createWorkerHireBlocks(installation).hire.as({ name: "hire", description });
-    const kind = defineAgentWorkerFlow({ installation, catalog: { hire: renamed } });
-    flows = { [AGENT_FLOW]: kind };
-    const [worker] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_FLOW]: kind });
+    const flow = defineAgentWorkerFlow({ installation, catalog: { hire: renamed } });
+    flows = { [AGENT_FLOW]: flow };
+    const [worker] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_FLOW]: flow });
 
     // A step model that calls `hire` once, recording what it was offered and
     // what the call returned.

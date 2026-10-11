@@ -11,7 +11,7 @@
  * - **V5, the second path.** A worker that declares NO `resources:` must reach
  *   and write every document, exactly as before. That is the case nobody
  *   writes a test for, and the one a flipped default silently takes.
- * - **V7, the subtraction.** A flow instance's `resources` option REPLACES the
+ * - **V7, the subtraction.** The `resources` option on a worker's flow copy REPLACES the
  *   definition's flow-level map, so a map built from the grants alone deletes
  *   the app's own boards and stores with nothing said. The pair runs both
  *   ways: the second construction is the red state, and it is what makes the
@@ -84,7 +84,7 @@ const auditLog = defineResource({
   writable: true
 });
 
-/** A resource the KIND's own block declares — its machinery, under an accessor key. */
+/** A resource the WORKER FLOW's own block declares — its machinery, under an accessor key. */
 const workerInbox = defineResource({
   ref: "worker-inbox",
   scope: "org",
@@ -104,7 +104,7 @@ const work = handler({
 const DESK_FLOW = "desk";
 
 /**
- * The realistic kind: every document AND the app's own store in one flow-level
+ * The realistic worker flow: every document AND the app's own store in one flow-level
  * map, plus a block that declares its own `inbox`. A fixture whose flow-level
  * map held only documents is what let the spec's first four premises pass
  * while the approach was wrong.
@@ -120,15 +120,15 @@ const deskFlow = defineFlow({
 const COLLIDING_FLOW = "colliding-desk";
 
 /**
- * The kind BR-8 is about: a block that names its own resource with a string
- * that is also a document's ref, on a kind that does not declare that document
+ * The worker flow BR-8 is about: a block that names its own resource with a string
+ * that is also a document's ref, on a worker flow that does not declare that document
  * at flow level. Nothing is wrong with it until a worker grants that ref.
  */
 const collidingFlow = defineFlow({
   kind: COLLIDING_FLOW,
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  // Payroll IS installed here, so the control below grants something this kind
+  // Payroll IS installed here, so the control below grants something this worker flow
   // holds; the handbook is not, and the block has taken its name.
   resources: { [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
   actions: {
@@ -303,7 +303,7 @@ describe("V3 · a granted worker reaches what it named and nothing else (BR-3)",
     expect((ctx.resources as unknown as Record<string, unknown>)[PAYROLL]).toBeUndefined();
   });
 
-  it("two workers of ONE kind carry different maps — the kind is built once", async () => {
+  it("two workers on ONE worker flow carry different maps — the flow is built once", async () => {
     const workers = hire([
       worker("eng.lead", { [WORKER_RESOURCES_KEY]: [HANDBOOK] }),
       worker("finance.cfo", { [WORKER_RESOURCES_KEY]: [PAYROLL] })
@@ -369,7 +369,7 @@ describe("V5 · the second path — a worker that declares nothing is untouched 
       expect(ctx.resources.get(ref)).toBeDefined();
       await expect(handleFor(ctx, ref).setState({ touched: true })).resolves.toBeUndefined();
     }
-    // The app's own store too, and the kind's block resource.
+    // The app's own store too, and the worker flow's block resource.
     expect(ctx.resources.get("audit-log")).toBeDefined();
     expect(ctx.resources.get("inbox")).toBeDefined();
   });
@@ -378,8 +378,8 @@ describe("V5 · the second path — a worker that declares nothing is untouched 
     const [unrestricted] = hire([worker("eng.unrestricted")]);
     const [restricted] = hire([worker("eng.lead", { [WORKER_RESOURCES_KEY]: [HANDBOOK] })]);
 
-    // Passing a map REPLACES the kind's, so the untouched worker must carry the
-    // kind's own flow-level key set, byte for byte.
+    // Passing a map REPLACES the worker flow's, so the untouched worker must carry the
+    // worker flow's own flow-level key set, byte for byte.
     expect([...unrestricted!.flowLevelResourceKeys].sort()).toEqual(
       [...deskFlow.flowLevelResourceKeys].sort()
     );
@@ -398,7 +398,7 @@ describe("V5 · the second path — a worker that declares nothing is untouched 
   });
 });
 
-describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR-8)", () => {
+describe("V6 · the worker flow's own machinery is never what a grant governs (BR-7, BR-8)", () => {
   it("a block's resource is reachable and writable on the narrowest worker there is (BR-7)", async () => {
     const workers = hire([worker("eng.intern", { [WORKER_RESOURCES_KEY]: [] })]);
     const ctx = await contextFor(byId(workers, "eng.intern"), "sess_v6_control");
@@ -411,12 +411,12 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
     ).resolves.toBeUndefined();
   });
 
-  it("a grant that COLLIDES with a block's accessor refuses, naming the worker and the kind (BR-8)", () => {
+  it("a grant that COLLIDES with a block's accessor refuses, naming the worker and the worker flow (BR-8)", () => {
     // Constructed rather than trusted absent, and constructed where the hazard
-    // actually lives: the kind's BLOCK names the accessor and the kind itself
+    // actually lives: the worker flow's BLOCK names the accessor and the flow itself
     // does NOT declare that document at flow level. Honouring the grant would
     // install the document at flow level over the block's own resource — a worker
-    // file repointing its kind's wiring.
+    // file repointing its worker flow's wiring.
     expect(() =>
       mintWorkers(
         [
@@ -431,9 +431,9 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
     ).toThrow(new RegExp(`eng\\.lead[\\s\\S]*${COLLIDING_FLOW}`));
   });
 
-  it("the same kind hires a worker whose grant does NOT collide, and keeps the block's resource", async () => {
+  it("the same worker flow hires a worker whose grant does NOT collide, and keeps the block's resource", async () => {
     // The control. Without it the refusal above is equally consistent with this
-    // kind being unhireable for some reason that has nothing to do with the ref.
+    // worker flow being unhireable for some reason that has nothing to do with the ref.
     const workers = mintWorkers(
       [
         {
@@ -450,7 +450,7 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
     // The block's own declaration, under the accessor it chose, untouched.
     expect(ctx.resources.get(HANDBOOK)).toBeDefined();
     await expect(
-      handleFor(ctx, HANDBOOK).setState({ notes: ["the kind's own, not the document"] })
+      handleFor(ctx, HANDBOOK).setState({ notes: ["the worker flow's own, not the document"] })
     ).resolves.toBeUndefined();
   });
 });
@@ -500,16 +500,16 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
     await expect(handleFor(ctx, SEALED).setState({ tampered: true })).rejects.toThrow(/read-only/i);
   });
 
-  it("a document the app declared but did NOT install on this kind refuses, not widens", () => {
+  it("a document the app declared but did NOT install on this worker flow refuses, not widens", () => {
     // The app's documented way to give a team only its own documents is to
     // filter before installing. A grant that reached past that filter would let
-    // a worker file widen itself past its own kind — the one direction a grant
+    // a worker file widen itself past its own worker flow — the one direction a grant
     // may never move.
     const filteredFlow = defineFlow({
       kind: "filtered-desk",
       cardinality: "collection",
       configSchema: workerConfigSchema(),
-      // Only the handbook. Payroll is in the catalog and not on this kind.
+      // Only the handbook. Payroll is in the catalog and not on this worker flow.
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, "audit-log": auditLog } as DeclaredResources,
       actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
@@ -519,9 +519,9 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
         { workerFlows: { "filtered-desk": filteredFlow as never }, documents: CATALOG }
       );
 
-    expect(() => hireFiltered([PAYROLL])).toThrow(/did not install on the `filtered-desk` kind/);
-    // The control: the document the kind DOES hold still grants, so the refusal
-    // above is about the filter and not about this kind being unhireable.
+    expect(() => hireFiltered([PAYROLL])).toThrow(/did not install on the `filtered-desk` worker flow/);
+    // The control: the document the worker flow DOES hold still grants, so the refusal
+    // above is about the filter and not about this worker flow being unhireable.
     expect(hireFiltered([HANDBOOK])).toHaveLength(1);
   });
 
@@ -534,8 +534,8 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
   });
 });
 
-describe("the grant is the factory's to read, never a setting the kind receives", () => {
-  it("`resources:` does not reach the kind's config bag", () => {
+describe("the grant is the factory's to read, never a setting the worker flow receives", () => {
+  it("`resources:` does not reach the worker flow's config bag", () => {
     const [lead] = hire([worker("eng.lead", { [WORKER_RESOURCES_KEY]: [HANDBOOK] })]);
 
     expect(Object.hasOwn(lead!.config as object, WORKER_RESOURCES_KEY)).toBe(false);
@@ -544,8 +544,8 @@ describe("the grant is the factory's to read, never a setting the kind receives"
 
 describe("V9 · the narrowing is checked on the worker that was BUILT", () => {
   /**
-   * The kind whose block ALSO declares a document the kind declares at flow
-   * level, with the same reference. Nothing distinguishes it from a kind no
+   * The worker flow whose block ALSO declares a document the flow itself declares at flow
+   * level, with the same reference. Nothing distinguishes it from a worker flow no
    * block mentions until a worker narrows: the block's declaration merges back
    * the moment a worker's map replaces the flow-level one.
    */
@@ -578,7 +578,7 @@ describe("V9 · the narrowing is checked on the worker that was BUILT", () => {
   it("a document a block re-declares does not come back for a worker that was denied it", () => {
     // Denying everything is the sharpest form: the worker's own file says NO
     // documents, and without this check it reads and writes the handbook
-    // anyway. The refusal must name the ref and the kind, so an operator knows
+    // anyway. The refusal must name the ref and the worker flow, so an operator knows
     // which block to look at.
     expect(() => hireRestoring([])).toThrow(/eng\.lead[\s\S]*teams\/engineering\/handbook/);
     expect(() => hireRestoring([])).toThrow(/reaches that document anyway/);
@@ -586,12 +586,12 @@ describe("V9 · the narrowing is checked on the worker that was BUILT", () => {
 
   it("granting the document the block re-declares hires, so the refusal is about the denial", () => {
     // The control. Without it the refusal above is equally consistent with this
-    // kind being unhireable for a reason that has nothing to do with narrowing.
+    // worker flow being unhireable for a reason that has nothing to do with narrowing.
     expect(hireRestoring([{ [HANDBOOK]: WORKER_RESOURCE_MODE_WRITE }, PAYROLL, SEALED])).toHaveLength(1);
   });
 
   it("a `ro` grant refuses the hire rather than leave the block a writable pen", () => {
-    // The other half of the same kind, and the reason the check above only
+    // The other half of the same worker flow, and the reason the check above only
     // looks at denials: a granted document is installed at flow level as the
     // read-only copy, which is a different definition from the writable one the
     // block declares. `defineFlow` refuses a flow-level entry that would swap a
@@ -630,10 +630,10 @@ describe("V9 · the narrowing is checked on the worker that was BUILT", () => {
   });
 });
 
-describe("a document's ref must hold that document on the kind", () => {
-  it("a kind declaring something else under a document's ref refuses rather than narrowing it", () => {
+describe("a document's ref must hold that document on the worker flow", () => {
+  it("a worker flow declaring something else under a document's ref refuses rather than narrowing it", () => {
     // Without this the subtraction reads the store as a document and deletes
-    // it, and a `ro` grant on that ref would make the kind's own store
+    // it, and a `ro` grant on that ref would make the worker flow's own store
     // read-only — the one thing a worker's list promises never to touch.
     const impostorFlow = defineFlow({
       kind: "impostor-desk",
@@ -654,8 +654,8 @@ describe("a document's ref must hold that document on the kind", () => {
     expect(() => hireImpostor([HANDBOOK])).toThrow(/not the document/);
   });
 
-  it("the same kind with the document actually installed there hires", async () => {
-    // The control: only the impostor entry refuses, not this kind's shape.
+  it("the same worker flow with the document actually installed there hires", async () => {
+    // The control: only the impostor entry refuses, not this worker flow's shape.
     const honestFlow = defineFlow({
       kind: "honest-desk",
       cardinality: "collection",

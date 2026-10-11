@@ -65,7 +65,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
     );
   }
 
-  const kind = worker.kind;
+  const flow = worker.kind;
   const listed = new Set(read.list.delegates.map((d) => d.worker));
   const candidates = roster.filter((entry) => entry.id !== worker.id && !listed.has(entry.id));
   const change = async (run: () => Promise<DelegateList>) => {
@@ -98,7 +98,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
                 type="button"
                 className="shrink-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 disabled={busy}
-                onClick={() => void change(() => removeDelegate(clients, kind, sessionId, delegate.worker))}
+                onClick={() => void change(() => removeDelegate(clients, flow, sessionId, delegate.worker))}
                 data-testid="cos-delegate-remove"
               >
                 remove
@@ -112,7 +112,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           className="mt-1 flex gap-1 px-1"
           onSubmit={(event) => {
             event.preventDefault();
-            if (picked !== "") void change(() => addDelegate(clients, kind, sessionId, picked));
+            if (picked !== "") void change(() => addDelegate(clients, flow, sessionId, picked));
           }}
         >
           <select

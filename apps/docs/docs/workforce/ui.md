@@ -21,7 +21,7 @@ import { FlowNavigator, Roster, BoardColumns, BoardList } from "@flow-state-dev/
 />
 ```
 
-`mailbox` is the kind the framework ships for mailboxes. For workers, list the kinds your workers run: `agent` is the built-in one, and a worker whose `WORKER.md` names a `flow:` runs on that kind instead. If your app declares a mailbox kind of its own, add its name to the Mailboxes list.
+`mailbox` is the kind the framework ships for mailboxes. For workers, list the worker flows your workers run: `agent` is the built-in one, and a worker whose `WORKER.md` names a `flow:` runs on that flow instead. If your app declares a mailbox kind of its own, add its name to the Mailboxes list.
 
 A section is a label and a set of kind names. The navigator reads the rest of the shape from your flows. Conversation and item rendering come from the [component registry](../ui/overview), as they do in any other app.
 
@@ -29,7 +29,7 @@ A section is a label and a set of kind names. The navigator reads the rest of th
 
 The navigator starts at the kind. How many levels sit under it depends on how that flow was declared.
 
-A flow with `cardinality: "collection"` has many addressable copies, so it gets **three levels**: kind, then instances, then sessions. The built-in `agent` kind works this way. Open it and you see the workers hired on it; open a worker and you see that worker's sessions.
+A flow with `cardinality: "collection"` has many addressable copies, so it gets **three levels**: kind, then instances, then sessions. The built-in `agent` worker flow works this way. Open it and you see the workers hired on it; open a worker and you see that worker's sessions.
 
 A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it gets **two levels**: kind, then sessions. A mailbox kind works this way, because a mailbox is a session on that kind. A hundred mailboxes are a hundred sessions on one instance, so opening the kind lists the mailboxes directly.
 

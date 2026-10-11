@@ -161,7 +161,7 @@ describe("reading the file", () => {
 
   // BR-4. Whitespace is not instructions — the rule hire already applies to a
   // worker's body, one level up. Asserted as ABSENT rather than as `""`,
-  // because an empty string is a value a kind's schema would see.
+  // because an empty string is a value a worker flow's schema would see.
   it("loads the description and NO instructions for a whitespace-only body", async () => {
     await writeTeamMd("pentest", "---\ndescription: Red-team ops.\n---\n\n   \n\t\n");
 

@@ -3,7 +3,7 @@
  * the prompt seam where the layer the loader read reaches a model.
  *
  * **The doors.** `teamInstructions` is the third key the framework imposes, and
- * the sharper of the refused ones: every hireable kind DECLARES it by composing
+ * the sharper of the refused ones: every hireable worker flow DECLARES it by composing
  * the admission contract, so an authored one is not caught by the closed schema
  * the way an undeclared key is. It would be accepted, and the worker would run on
  * team instructions its team never wrote — silently, and only for that worker. So
@@ -238,7 +238,7 @@ describe("the prompt seam", () => {
       userId: USER_ID,
       input: { message: "hello" },
       stores,
-      // The skills collection every worker of this kind carries lives at org
+      // The skills collection every worker on this flow carries lives at org
       // scope, so a run without an org has nowhere to resolve it from.
       seed: { org: { state: {} } },
       generators: { "agent-answer": answer },
@@ -292,7 +292,7 @@ describe("the prompt seam", () => {
    * A worker whose team wrote nothing gets **byte for byte** what it got before
    * this layer existed. Compared against a prompt captured from the same worker
    * on the same path, so the assertion is about this change rather than about
-   * whatever else the kind happens to put in a system message.
+   * whatever else the worker flow happens to put in a system message.
    */
   it("gives a worker whose team has no file exactly the prompt it had before", async () => {
     const withoutLayer = await systemPromptOf(record({ body: "Sweep the named hosts." }));
@@ -314,7 +314,7 @@ describe("the prompt seam", () => {
   });
 });
 
-describe("a kind that ignores the layer", () => {
+describe("a worker flow that ignores the layer", () => {
   /**
    * BR-20 — composing the contract and reading `teamInstructions` nowhere is
    * not an error. The door is what is mandatory; reading what comes through it
@@ -324,7 +324,7 @@ describe("a kind that ignores the layer", () => {
    * layer and hires cleanly. *Nobody read for it* and *it has none* are the
    * same value in the bag and stay tellable apart only on the record.
    */
-  it("mints a kind that reads the key nowhere, and a record that never met the loader", () => {
+  it("mints a worker flow that reads the key nowhere, and a record that never met the loader", () => {
     const noteSchema = z.object({ note: z.string() });
     const quiet = defineFlow({
       kind: "quiet-desk",

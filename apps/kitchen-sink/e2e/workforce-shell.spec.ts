@@ -6,7 +6,7 @@
  * narrows.
  *
  * Every worker runs on one copy of the flow it names, so the rail's worker
- * section is the `agent` kind, its one copy, and that copy's conversations:
+ * section is the `agent` worker flow, its one copy, and that copy's conversations:
  * each one a session that names its worker when it is created. The
  * coordinator flow is a singleton: its row opens straight into the person's
  * conversation with each coordinator the tree declares.
@@ -29,7 +29,7 @@ import { test, expect, openKitchenSink } from "./fixtures";
 
 /** A standard worker on `agent`, declared in the app's workforce tree. */
 const WORKER = "support.devices";
-/** The flow every worker in this app runs on, registered as one copy at its kind. */
+/** The flow every worker in this app runs on, registered as one copy under its name. */
 const WORKER_FLOW = "agent";
 /** The coordinator the app's workforce tree declares. */
 const COORDINATOR = "support.help";
@@ -74,9 +74,9 @@ async function openShell(page: Page): Promise<void> {
 
 const rail = (page: Page) => page.getByTestId("rail");
 const row = (page: Page, name: string) => rail(page).getByRole("button", { name, exact: true });
-/** A kind's own row. The worker flow's kind and its one copy share the name `agent`. */
-const kindRow = (page: Page, kind: string) => rail(page).locator(`button[data-kind="${kind}"]`);
-/** A copy's row under its kind. */
+/** A flow's own row. The worker flow and its one copy share the name `agent`. */
+const flowRow = (page: Page, flow: string) => rail(page).locator(`button[data-kind="${flow}"]`);
+/** A copy's row under its flow. */
 const copyRow = (page: Page, id: string) => rail(page).locator(`button[data-instance-id="${id}"]`);
 
 test("the rail opens the coordinator into the person's conversation with it and the worker flow into its one copy, reading only leaves", async ({
@@ -98,7 +98,7 @@ test("the rail opens the coordinator into the person's conversation with it and 
 
   // The coordinator flow is a singleton: its row is the leaf, so opening it
   // lands straight on the person's conversation with each coordinator the
-  // tree declares, found by the coordinator's id. The kind is never listed
+  // tree declares, found by the coordinator's id. The flow is never listed
   // whole: every list it reads names the coordinator's worker.
   await row(page, "coordinator").click();
   await expect(row(page, COORDINATOR)).toBeVisible();
@@ -108,9 +108,9 @@ test("the rail opens the coordinator into the person's conversation with it and 
     expect(new URL(url).searchParams.get("state.workerId"), url).toBe(COORDINATOR);
   }
 
-  // The worker flow is a collection with one copy: opening its kind lists the
+  // The worker flow is a collection with one copy: opening its row lists the
   // copy and reads nothing. No copy is drawn per worker.
-  await kindRow(page, WORKER_FLOW).click();
+  await flowRow(page, WORKER_FLOW).click();
   await expect(copyRow(page, WORKER_FLOW)).toBeVisible();
   await expect(copyRow(page, WORKER)).toHaveCount(0);
   await page.waitForTimeout(300);
@@ -153,7 +153,7 @@ test("the header names the assistant's model on the assistant only, never on a c
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
 
-  await expand(kindRow(page, WORKER_FLOW));
+  await expand(flowRow(page, WORKER_FLOW));
   await expand(copyRow(page, WORKER_FLOW));
   await rail(page).locator(`[data-session-id="${workerSessionId}"]`).click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
@@ -329,7 +329,7 @@ const measureRows = (nav: Locator) =>
       };
       const labelOf = (b: Element) => (b.textContent ?? "").replace(/[▾▸]/g, "").trim();
       // Sessions stand at the level a collection's copies would when their
-      // leaf is a singleton's kind row, and one deeper under a copy.
+      // leaf is a singleton's flow row, and one deeper under a copy.
       const sessionLevel = (leaf: Element) =>
         leaf.parentElement?.querySelector(":scope > div > button[data-kind]") ? 2 : 3;
 

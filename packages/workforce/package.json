@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/workforce",
   "version": "0.3.0",
-  "description": "The worker factory for flow-state-dev: worker records become configured flow instances.",
+  "description": "The worker factory for flow-state-dev: worker records become configured workers.",
   "keywords": [
     "ai",
     "agents",

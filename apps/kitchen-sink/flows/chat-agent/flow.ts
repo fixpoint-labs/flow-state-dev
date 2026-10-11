@@ -10,7 +10,7 @@
  * also owns the `saveArtifact` action), and the single-file root actions
  * (`approval-gate`, `task-queue-demo`, `settings`).
  *
- * The rail's panels read through this flow's session: the hired roster, the
+ * The rail's panels read through this flow's session: the roster, the
  * boot report and `support.help`'s board.
  *
  * Pipeline (see run/run.ts):

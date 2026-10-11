@@ -1,5 +1,5 @@
 /**
- * The built-in `agent` flow kind, and the one admission change that lets a
+ * The built-in `agent` worker flow, and the one admission change that lets a
  * worker file reach it.
  *
  * Half of these pin what did NOT change: adding an implicit default must not
@@ -25,13 +25,13 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
-  return mintWorkers(manifests, { workerFlows: kinds });
+function hire(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): FlowInstance[] {
+  return mintWorkers(manifests, { workerFlows: flows });
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
+function refusalOf(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): string {
   try {
-    mintWorkers(manifests, { workerFlows: kinds });
+    mintWorkers(manifests, { workerFlows: flows });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -46,7 +46,7 @@ const board = handler({
   execute: () => ({ rows: 0 })
 });
 
-describe("the built-in agent kind", () => {
+describe("the built-in agent worker flow", () => {
   it("hires a record that names no `flow:`, handing its body over as instructions", () => {
     const [worker] = hire([
       record({ id: "engineering.lead", declared: { description: "Holds the board." }, body: "You are the lead." })
@@ -64,7 +64,7 @@ describe("the built-in agent kind", () => {
     expect(Object.hasOwn(worker!.config, "instructions")).toBe(false);
   });
 
-  // A roster of records that name no kind needs no `kinds` at all.
+  // A roster of records that name no worker flow needs no `workerFlows` at all.
   it("hires with no options passed", () => {
     const [worker] = mintWorkers([record({ id: "engineering.lead", body: "You are the lead." })]);
     expect(worker!.kind).toBe(AGENT_FLOW);
@@ -85,7 +85,7 @@ describe("the built-in agent kind", () => {
       model: "intent/chat",
       skills: { enableLlmClassifier: false }
     });
-    // No `tools:` line is not `tools: []`: the key stays absent, so the kind can
+    // No `tools:` line is not `tools: []`: the key stays absent, so the flow can
     // tell a worker that wrote nothing from one that wrote an empty list.
     expect(worker!.config).not.toHaveProperty("tools");
   });
@@ -97,7 +97,7 @@ describe("the built-in agent kind", () => {
     expect(Object.keys(flow.resources ?? {})).toContain("skills");
   });
 
-  it("still refuses a kind nobody registered, and now lists `agent` among those available", () => {
+  it("still refuses a worker flow nobody registered, and now lists `agent` among those available", () => {
     const message = refusalOf([record({ id: "engineering.scribe", declared: { flow: "note-taker" } })]);
 
     expect(message).toContain('worker "engineering.scribe"');
@@ -106,7 +106,7 @@ describe("the built-in agent kind", () => {
   });
 });
 
-describe("the built-in agent kind's tools", () => {
+describe("the built-in agent worker flow's tools", () => {
   it("refuses a tool the app's catalog does not carry, naming the tool and the fix", () => {
     const message = refusalOf([
       record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "You are the lead." })
@@ -141,7 +141,7 @@ describe("the built-in agent kind's tools", () => {
 // switch describe block below for why `createTestContext`/`executeBlock` are
 // needed directly) and check the CATALOG TOOL ITSELF: the model "calling" a
 // tool the worker's `tools:` omitted must not reach that tool's own `execute`.
-describe("the built-in agent kind's tools — the runtime fence, not just the mint refusal", () => {
+describe("the built-in agent worker flow's tools — the runtime fence, not just the mint refusal", () => {
   async function contextFor(
     worker: FlowInstance,
     generators: Record<string, ReturnType<typeof mockGenerator>>
@@ -180,10 +180,10 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
       }
     });
 
-    const kind = defineAgentWorkerFlow({ catalog: { board, secret } });
+    const flow = defineAgentWorkerFlow({ catalog: { board, secret } });
     const [worker] = hire(
       [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const runtime = await contextFor(worker!, {
@@ -216,9 +216,9 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
       }
     });
 
-    const kind = defineAgentWorkerFlow({ catalog: { board, secret } });
+    const flow = defineAgentWorkerFlow({ catalog: { board, secret } });
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_FLOW]: kind
+      [AGENT_FLOW]: flow
     });
 
     const runtime = await contextFor(worker!, {
@@ -240,7 +240,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
 });
 
 // The Architect's ruling on FIX-1363's PR review: the runtime fence above must
-// stand WITHOUT refusing a stock-kind skill that declares `allowed-tools`
+// stand WITHOUT refusing a stock-flow skill that declares `allowed-tools`
 // naming a real app catalog tool. Before this ruling, `defineAgentWorkerFlow` handed
 // the skills library no catalog at all (see the runtime-fence describe block
 // above), so validating a bound skill's `allowed-tools` had nothing to
@@ -248,7 +248,7 @@ describe("the built-in agent kind's tools — the runtime fence, not just the mi
 // `registerCatalogTools: false` (FIX-1363's follow-up), so validation runs
 // against the real catalog but registration still only happens through a
 // worker's own `tools:` — the fence tests above are untouched by this.
-describe("the built-in agent kind's tools — a skill's `allowed-tools` validates but does not register", () => {
+describe("the built-in agent worker flow's tools — a skill's `allowed-tools` validates but does not register", () => {
   const usesBoard: InitialSkill[] = [
     {
       name: "uses-board",
@@ -256,7 +256,7 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
     }
   ];
 
-  it("builds a kind whose catalog carries a skill's declared `allowed-tools` tool", () => {
+  it("builds a worker flow whose catalog carries a skill's declared `allowed-tools` tool", () => {
     expect(() => defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard })).not.toThrow();
   });
 
@@ -301,10 +301,10 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
   it("lets a worker naming `tools: [\"board\"]` actually reach the catalog tool's `execute`", async () => {
     const { tool: board, calls } = countedBoard();
-    const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
+    const flow = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
     const [worker] = hire(
       [record({ id: "engineering.lead", declared: { tools: ["board"] }, body: "Lead." })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const runtime = await contextFor(worker!, {
@@ -326,9 +326,9 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
   it("still keeps a worker that omits `tools:` from reaching the tool, even though the skill declares `allowed-tools: [board]`", async () => {
     const { tool: board, calls } = countedBoard();
-    const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
+    const flow = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_FLOW]: kind
+      [AGENT_FLOW]: flow
     });
 
     const runtime = await contextFor(worker!, {
@@ -363,9 +363,9 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
 
   it("does not tell a worker a tool is available when the worker's `tools:` cannot reach it", async () => {
     const { tool: board, calls } = countedBoard();
-    const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
+    const flow = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
     const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_FLOW]: kind
+      [AGENT_FLOW]: flow
     });
 
     const answer = mockGenerator({
@@ -400,11 +400,11 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
   });
 });
 
-describe("replacing the built-in agent kind", () => {
+describe("replacing the built-in agent worker flow", () => {
   const replacement = defineFlow({
     kind: AGENT_FLOW,
     cardinality: "collection",
-    // A caller's own `agent` is a hireable kind like any other, so it composes
+    // A caller's own `agent` is a hireable worker flow like any other, so it composes
     // the contract too — replacing the built-in does not exempt it.
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     actions: {
@@ -453,7 +453,7 @@ describe("replacing the built-in agent kind", () => {
 
 // Criterion 7 — the invent-kill holds. Cheap and durable: the kill targets are
 // symbols, so a grep on the new module is the whole check.
-describe("the agent kind grows no agent registry", () => {
+describe("the agent worker flow grows no agent registry", () => {
   it("imports none of `defineAgent`, `materializeAgent` or `AgentRegistry`", () => {
     const source = readFileSync(fileURLToPath(new URL("../src/agent-worker-flow.ts", import.meta.url)), "utf8");
     const importLines = source.split("\n").filter((line) => line.trimStart().startsWith("import"));
@@ -472,7 +472,7 @@ describe("the agent kind grows no agent registry", () => {
 // This exercises the real `run` sequencer end to end (matcher + generator),
 // so it needs `@flow-state-dev/engine`'s `createTestContext` + `executeBlock`
 // directly rather than the package's usual `testBlock` helper: the "skills"
-// resource this kind installs is org-scoped, and `testBlock`'s public options
+// resource this flow installs is org-scoped, and `testBlock`'s public options
 // have no way to give a test an org identity (only the lower-level
 // `createTestContext` accepts `orgId`). The worker is also patched to
 // `cardinality: "singleton"` for the harness call only — `testBlock`/
@@ -480,12 +480,12 @@ describe("the agent kind grows no agent registry", () => {
 // `collection`-cardinality instance then refuses to own (a harness gap, not
 // something this test is about); `worker` itself, and the config/resources
 // actually under test, are untouched.
-describe("the built-in agent kind's skills switch — gates only the model classifier (tier 3)", () => {
+describe("the built-in agent worker flow's skills switch — gates only the model classifier (tier 3)", () => {
   // The skill both cases below match against, supplied the way an app
   // supplies one — `defineAgentWorkerFlow({ skills })`, the stock path — rather than
   // written into the collection by hand. Seeding it by hand would aim these
   // checks at a neighbour of what they claim: the claim is that the tiers run
-  // for a worker of this kind, and a worker of this kind gets its catalog from
+  // for a worker on this flow, and a worker on this flow gets its catalog from
   // `initialSkills`.
   const knownSkill = [
     {
@@ -510,8 +510,8 @@ describe("the built-in agent kind's skills switch — gates only the model class
   }
 
   it("runs slash activation on every turn even with the classifier switch OFF (default)", async () => {
-    const kind = defineAgentWorkerFlow({ skills: knownSkill });
-    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_FLOW]: kind });
+    const flow = defineAgentWorkerFlow({ skills: knownSkill });
+    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_FLOW]: flow });
 
     const runtime = await contextFor(worker!, {
       "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })
@@ -533,10 +533,10 @@ describe("the built-in agent kind's skills switch — gates only the model class
   });
 
   it("additionally reaches the model classifier (tier 3) when the switch is ON", async () => {
-    const kind = defineAgentWorkerFlow({ skills: knownSkill });
+    const flow = defineAgentWorkerFlow({ skills: knownSkill });
     const [worker] = hire(
       [record({ id: "engineering.lead", declared: { skills: { enableLlmClassifier: true } }, body: "Hello." })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const classifier = mockGenerator({
@@ -556,7 +556,7 @@ describe("the built-in agent kind's skills switch — gates only the model class
     });
 
     // The slash tier doesn't match this message, and keyword matching is not
-    // part of this kind's activator pipeline at all — so this falls straight
+    // part of this flow's activator pipeline at all — so this falls straight
     // through to tier 3, which is ON here.
     const result = await executeBlock({
       block: worker!.actions.run.block,
@@ -570,21 +570,21 @@ describe("the built-in agent kind's skills switch — gates only the model class
     expect(activeSkills.map((s) => s.name)).toContain("known");
   });
 
-  // Stock activation for the built-in `agent` kind is locked to slash +
+  // Stock activation for the built-in `agent` worker flow is locked to slash +
   // an optional classifier tier — keyword/trigger-phrase matching is out of
   // `defineAgentWorkerFlow` entirely, not merely out of the default branch. This
   // pins that a message that would match a skill's `keywords` frontmatter,
   // but carries no `/skill-name` prefix, does NOT activate it — on either
   // setting of the classifier switch.
-  it("does not activate a skill by keyword match — keyword matching is not part of this kind's contract", async () => {
+  it("does not activate a skill by keyword match — keyword matching is not part of this flow's contract", async () => {
     const keywordOnlySkill = [
       {
         name: "known",
         skillMd: "---\ndescription: A known skill.\nkeywords:\n  - known\n---\n\nDo the known thing."
       }
     ];
-    const kind = defineAgentWorkerFlow({ skills: keywordOnlySkill });
-    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_FLOW]: kind });
+    const flow = defineAgentWorkerFlow({ skills: keywordOnlySkill });
+    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], { [AGENT_FLOW]: flow });
 
     const runtime = await contextFor(worker!, {
       "agent-answer": mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] })

@@ -28,9 +28,9 @@ const work = handler({ name: "contract-work", inputSchema: note, outputSchema: n
 /** One door: a public action declaring `userMessage` that takes `{ message }`. */
 const door = { inputSchema: message, block: reply, userMessage: (i: { message: string }) => i.message };
 
-function flowWith(kind: string, over: Record<string, unknown> = {}) {
+function flowWith(flow: string, over: Record<string, unknown> = {}) {
   return defineFlow({
-    kind,
+    kind: flow,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: { run: door },
@@ -237,7 +237,7 @@ describe("the door (BR-3, BR-4)", () => {
 
 describe("attribution (BR-5)", () => {
   /** A flow declaring one org resource under `notes`. */
-  const sharing = (kind: string, notes: unknown) => flowWith(kind, { resources: { notes } });
+  const sharing = (flow: string, notes: unknown) => flowWith(flow, { resources: { notes } });
   const handRolled = (stateSchema: z.ZodTypeAny) =>
     defineResourceCollection({ pattern: "team-notes/*", scope: "org", stateSchema });
 
@@ -309,7 +309,7 @@ describe("attribution (BR-5)", () => {
 });
 
 describe("the name it is registered under (BR-8)", () => {
-  it("refuses a flow registered under a name that isn't its kind, naming both", () => {
+  it("refuses a flow registered under a name that isn't its `kind`, naming both", () => {
     const problems = workerFlowProblems("coordinator", flowWith("triage"));
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('"coordinator"');

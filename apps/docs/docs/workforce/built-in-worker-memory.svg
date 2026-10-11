@@ -71,5 +71,5 @@
   <text x="44" y="378" class="h">Not a copy</text>
   <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per person.</text>
   <text x="44" y="422" class="p">Memory is about a person, not a conversation. A new conversation starts with no turns but the same memory.</text>
-  <text x="44" y="444" class="muted">isolateUserState is set once for the whole kind. A memory tier can set its own flowIsolation to differ from it.</text>
+  <text x="44" y="444" class="muted">isolateUserState is set once for the whole flow. A memory tier can set its own flowIsolation to differ from it.</text>
 </svg>

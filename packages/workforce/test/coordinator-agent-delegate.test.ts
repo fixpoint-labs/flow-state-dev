@@ -5,7 +5,7 @@
  * token, landing under the delegate's name. On a post whose answer can go
  * back out (`rounds:` above 0), a turn that fails is reported back at once.
  *
- * The agent copy is registered under its kind, the shape FIX-1788's switch
+ * The agent copy is registered under its `kind`, the shape FIX-1788's switch
  * gives every worker flow; the agent's turn is scripted by its generator's
  * block name (`agent-answer`).
  */

@@ -32,7 +32,7 @@
  * ## Where the declared half is read
  *
  * From BOOT state, handed in once — the file tree — plus, when the app names
- * the hired-roster key, from that collection at call time. A runtime hire has
+ * the roster key, from that collection at call time. A runtime hire has
  * no file; its roster row is the declared half so Discover can see it
  * (FIX-1526). `readDeclaredRoster` is a synchronous filesystem tree walk, and
  * this runs behind a tool a model may call on every step — so the file tree is
@@ -42,7 +42,7 @@
  *
  * Neither reader is modified. The inventory's storage keys and row schemas are
  * a public surface with persisted data behind them; these sources read them and
- * write nothing. The hired roster is the same: this module reads it.
+ * write nothing. The roster is the same: this module reads it.
  */
 
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
@@ -156,7 +156,7 @@ async function listRows<T>(
 /**
  * The workers domain: registered workers that are still declared.
  *
- * `kind` on the entry is the manifest kind (`"worker"`), not the flow kind the
+ * `kind` on the entry is the manifest kind (`"worker"`), not the worker flow the
  * worker was hired into — that one is a fact about how it runs and belongs on the
  * contract line, where a planner reads it only when it asks for detail.
  */
@@ -179,14 +179,14 @@ function workersSource(
         if (typeof id !== "string" || id === "") continue;
         const worker = declared.get(id);
         if (worker === undefined) continue;
-        const kind = row.state.kind;
+        const flow = row.state.kind;
         entries.push({
           id,
           kind: "worker",
           purpose: purposeOf(worker.declared, id, "worker", worker.body),
           contract:
-            `Hired into the "${typeof kind === "string" && kind !== "" ? kind : "agent"}" ` +
-            `worker kind. Hand it work by its id.`,
+            `Hired into the "${typeof flow === "string" && flow !== "" ? flow : "agent"}" ` +
+            `worker flow. Hand it work by its id.`,
         });
       }
       return entries;
@@ -245,7 +245,7 @@ function mailboxesSource(roster: DeclaredWorkforce, key: string): BlockManifestS
  * named.
  *
  * Exported beside `createWorkforceCapability` for an app that assembles its own
- * registry (a flow that is not a worker kind, say). The capability is the
+ * registry (a flow that is not a worker flow, say). The capability is the
  * ordinary door and calls this.
  *
  * @param options The boot-resolved roster and the inventory registry keys.

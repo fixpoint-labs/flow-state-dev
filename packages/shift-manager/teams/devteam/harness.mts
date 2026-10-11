@@ -1,5 +1,5 @@
 /**
- * Which harness this tree puts in the `coder` kind's slot when it is served
+ * Which harness this tree puts in the `coder` worker flow's slot when it is served
  * as the DevTeam team profile.
  *
  *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start

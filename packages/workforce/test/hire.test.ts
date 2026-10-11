@@ -26,12 +26,12 @@ const work = handler({
 });
 
 /**
- * The opinionated kind: it composes the contract and makes `instructions`
- * REQUIRED, which is the kind's own call to make — the contract's own
+ * The opinionated worker flow: it composes the contract and makes `instructions`
+ * REQUIRED, which is the worker flow's own call to make — the contract's own
  * `instructions` is optional.
  *
  * Deliberately the fixture an empty bag cannot satisfy, so the one case the
- * refusal wording is admittedly partial in is exercised by a real kind rather
+ * refusal wording is admittedly partial in is exercised by a real worker flow rather
  * than described.
  */
 const customAgentFlow = defineFlow({
@@ -46,7 +46,7 @@ const customAgentFlow = defineFlow({
 });
 
 /**
- * The thin kind: it composes the contract and adds one setting of its own, and
+ * The thin worker flow: it composes the contract and adds one setting of its own, and
  * `instructions` is not among the ones it requires.
  */
 const intakeFlow = defineFlow({
@@ -57,9 +57,9 @@ const intakeFlow = defineFlow({
 });
 
 /**
- * The kind whose schema cannot accept the imposed bag — **kept that way on purpose.**
+ * The worker flow whose schema cannot accept the imposed bag — **kept that way on purpose.**
  *
- * It declares no settings at all, which is the thinnest a kind can be and the
+ * It declares no settings at all, which is the thinnest a worker flow can be and the
  * furthest thing from an opt-in. It is refused when it is registered, before
  * any worker is hired, and its author is told what to compose. This is the
  * upgrade cost the design accepts, and the fixture that pins it. Kept off the
@@ -72,7 +72,7 @@ const doorFlow = defineFlow({
 });
 
 /**
- * A kind whose own settings schema still spells the setting the old way. This
+ * A worker flow whose own settings schema still spells the setting the old way. This
  * is the shape the factory's guard exists for, and the only one that would take
  * the refused key in silence: a flow's config gate is closed, so an unknown key
  * is refused by the flow itself — but a key the flow DOES declare is accepted,
@@ -88,7 +88,7 @@ const staleDeskFlow = defineFlow({
   actions: { run: { inputSchema, block: work }, ...workerDoor }
 });
 
-const kinds: HireOptions["workerFlows"] = {
+const flows: HireOptions["workerFlows"] = {
   "custom-agent": customAgentFlow,
   intake: intakeFlow,
   "stale-desk": staleDeskFlow
@@ -117,13 +117,13 @@ const intake = record({
 });
 
 function hireOne(manifest: WorkerManifest): FlowInstance {
-  const [worker] = mintWorkers([manifest], { workerFlows: kinds });
+  const [worker] = mintWorkers([manifest], { workerFlows: flows });
   return worker!;
 }
 
 function refusalOf(
   manifests: WorkerManifest[],
-  withFlows: HireOptions["workerFlows"] = kinds
+  withFlows: HireOptions["workerFlows"] = flows
 ): string {
   let workers: FlowInstance[] | undefined;
   try {
@@ -138,14 +138,14 @@ function refusalOf(
 describe("hireWorkforce", () => {
   // 1
   it("mints one copy per record, carrying its own id, in id order", () => {
-    const workers = mintWorkers([lead, intake], { workerFlows: kinds });
+    const workers = mintWorkers([lead, intake], { workerFlows: flows });
     expect(workers.map((s) => s.id)).toEqual(["engineering.intake", "engineering.lead"]);
     expect(workers.map((s) => s.kind)).toEqual(["intake", "custom-agent"]);
   });
 
   // 2
   it("gives each copy its own settings, frozen, with no trace of its sibling's", () => {
-    const workers = mintWorkers([lead, intake], { workerFlows: kinds });
+    const workers = mintWorkers([lead, intake], { workerFlows: flows });
     const [thin, opinionated] = workers as [FlowInstance, FlowInstance];
 
     expect(opinionated.config).toMatchObject({
@@ -218,22 +218,22 @@ describe("hireWorkforce", () => {
     expect(worker.config).toMatchObject({ instructions: padded });
   });
 
-  // 4 (continued) — the thinnest record there is still meets the kind's schema.
+  // 4 (continued) — the thinnest record there is still meets the worker flow's schema.
   //
   // The positive half: nothing about a record declaring no settings and
   // carrying no body lets it skip admission. It hires, and the bag it was
   // admitted with holds the worker's skills, present and empty.
-  it("hires the thinnest possible record into a composed kind, bag and all", () => {
+  it("hires the thinnest possible record into a composed worker flow, bag and all", () => {
     const worker = hireOne(record({ id: "engineering.intake", declared: { flow: "intake" } }));
     expect(worker.config).toMatchObject({ workerSkills: [], desk: "front" });
   });
 
   // ...and the refusal half, which is the one that fails on the old code. A
-  // kind declaring no settings at all used to hire this record by being handed
+  // worker flow declaring no settings at all used to hire this record by being handed
   // no bag — admission skipped rather than passed. There is no such record now.
-  it("refuses the thinnest possible record on a kind that never composed the contract", () => {
+  it("refuses the thinnest possible record on a worker flow that never composed the contract", () => {
     const message = refusalOf([record({ id: "engineering.door", declared: { flow: "door" } })], {
-      ...kinds,
+      ...flows,
       door: doorFlow
     });
     expect(message).toContain('worker flow "door"');
@@ -242,29 +242,29 @@ describe("hireWorkforce", () => {
 
   // 5 — **this rule changed with the contract, and the change is the point.**
   //
-  // A body handed to a kind that did not declare `instructions` used to refuse.
-  // No hireable kind is in that position any more: `instructions` is one of the
-  // three settings the contract declares, so every composed kind has a door for
+  // A body handed to a worker flow that did not declare `instructions` used to refuse.
+  // No hireable worker flow is in that position any more: `instructions` is one of the
+  // three settings the contract declares, so every composed worker flow has a door for
   // a worker's body and a bodied record hires into any of them. "Thin" is a
   // property of a WORKER — a record with no body carries no `instructions` key,
-  // which case 4 above pins — and no longer a property a kind enforces.
+  // which case 4 above pins — and no longer a property a worker flow enforces.
   //
   // What survives is the refusal that now carries that weight: a body, or
-  // anything else, handed to a kind whose schema will not take the imposed bag.
-  it("hires a bodied record into any composed kind, and refuses one whose kind has no door", () => {
+  // anything else, handed to a worker flow whose schema will not take the imposed bag.
+  it("hires a bodied record into any composed worker flow, and refuses one whose flow has no door", () => {
     const greeter = hireOne(record({ ...intake, body: "You greet people." }));
     expect(greeter.config).toMatchObject({ instructions: "You greet people." });
 
     const message = refusalOf(
       [record({ id: "engineering.door", declared: { flow: "door" }, body: "You greet people." })],
-      { ...kinds, door: doorFlow }
+      { ...flows, door: doorFlow }
     );
     expect(message).toContain('worker flow "door"');
     expect(message).toContain("workerConfigSchema()");
   });
 
   // 6
-  it("refuses a record naming a kind the app did not pass, listing the kinds it did", () => {
+  it("refuses a record naming a worker flow the app did not pass, listing the worker flows it did", () => {
     const message = refusalOf([record({ id: "engineering.scribe", declared: { flow: "note-taker" } })]);
     expect(message).toContain('worker "engineering.scribe"');
     expect(message).toContain('"note-taker"');
@@ -273,21 +273,21 @@ describe("hireWorkforce", () => {
   });
 
   // 6 (the inherited-key case) — a `flow` naming an Object.prototype member is
-  // an unknown kind, not a factory found on the prototype.
+  // an unknown worker flow, not a factory found on the prototype.
   it("refuses a record whose `flow` names an inherited property", () => {
     const message = refusalOf([record({ id: "engineering.sneak", declared: { flow: "constructor" } })]);
     expect(message).toContain('worker "engineering.sneak"');
     expect(message).toContain('"constructor"');
   });
 
-  // 6 (the mis-keyed map) — a flow filed under another kind's name would mint
+  // 6 (the mis-keyed map) — a flow filed under another worker flow's name would mint
   // and register fine, and then run the wrong worker's graph. Refused when the
   // flows are registered, before any worker.
-  it("refuses a flow passed under a key that is not its own kind", () => {
+  it("refuses a flow passed under a key that is not its own `kind`", () => {
     let workers: FlowInstance[] | undefined;
     let message = "";
     try {
-      workers = mintWorkers([lead], { workerFlows: { ...kinds, "custom-agent": intakeFlow } });
+      workers = mintWorkers([lead], { workerFlows: { ...flows, "custom-agent": intakeFlow } });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
@@ -297,11 +297,11 @@ describe("hireWorkforce", () => {
   });
 
   // 7 — a record with no `flow:` no longer refuses; it hires the built-in
-  // `agent` kind (see `agent-worker-flow.test.ts`). What still refuses is a `flow:`
+  // `agent` worker flow (see `agent-worker-flow.test.ts`). What still refuses is a `flow:`
   // that is present and names nothing.
   it("refuses a record whose `flow` is whitespace-only, naming the worker", () => {
     const message = refusalOf([
-      record({ id: "engineering.ghost", declared: { description: "no kind", flow: "   " } })
+      record({ id: "engineering.ghost", declared: { description: "no flow", flow: "   " } })
     ]);
     expect(message).toContain('worker "engineering.ghost"');
     expect(message).toContain("flow");
@@ -314,7 +314,7 @@ describe("hireWorkforce", () => {
   // only an ABSENT key resolves to the built-in.
   it("refuses a record whose `flow` is present but valueless (null), naming the worker", () => {
     const message = refusalOf([
-      record({ id: "engineering.ghost", declared: { description: "no kind", flow: null } })
+      record({ id: "engineering.ghost", declared: { description: "no flow", flow: null } })
     ]);
     expect(message).toContain('worker "engineering.ghost"');
     expect(message).toContain("flow");
@@ -364,7 +364,7 @@ describe("hireWorkforce", () => {
     let workers: FlowInstance[] | undefined;
     expect(() => {
       workers = mintWorkers([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
-        workerFlows: kinds
+        workerFlows: flows
       });
     }).toThrow();
     expect(workers).toBeUndefined();
@@ -379,7 +379,7 @@ describe("hireWorkforce", () => {
 
   // 12
   it("returns an empty roster for empty input", () => {
-    expect(mintWorkers([], { workerFlows: kinds })).toEqual([]);
+    expect(mintWorkers([], { workerFlows: flows })).toEqual([]);
   });
 
   // 13
@@ -411,7 +411,7 @@ describe("hireWorkforce", () => {
 
   // 14 (the silent-accept half, and the reason the guard exists at all).
   //
-  // A flow's config gate is closed, so for most kinds a stray `persona` is
+  // A flow's config gate is closed, so for most worker flows a stray `persona` is
   // refused by the flow itself — badly, as `"persona" is not a declared
   // setting`, which reads as a typo rather than as a key the framework refuses. The
   // guard's real work is the case below: an app whose own `configSchema` has
@@ -447,11 +447,11 @@ describe("hireWorkforce", () => {
   });
 
   // The third contract key, and the sharper case of the two refused ones: every
-  // composed kind DECLARES `teamInstructions`, so the closed schema would take
+  // composed worker flow DECLARES `teamInstructions`, so the closed schema would take
   // an authored one happily and the worker would run on team instructions its
   // team never wrote. The control below is what makes that concrete.
   it("refuses a worker that declares `teamInstructions:` itself, by name", () => {
-    // Control: the same kind, same record shape, a key it does declare — hires.
+    // Control: the same worker flow, same record shape, a key it does declare — hires.
     const control = hireOne(record({ ...lead, declared: { ...lead.declared, model: "openai/gpt-5.4" } }));
     expect(control.config).toMatchObject({ model: "openai/gpt-5.4" });
 
@@ -466,12 +466,12 @@ describe("hireWorkforce", () => {
     expect(message).toContain("body of its TEAM.md");
   });
 
-  // The hint must never accuse a kind that is demonstrably fine. This kind
+  // The hint must never accuse a worker flow that is demonstrably fine. This flow
   // ACCEPTS the whole imposed bag, but declares `workerSkills` optional with no
   // default — so its probed default bag carries no such key, and a version of
   // the hint that inferred from probed defaults told its author they had never
   // composed the contract when all they had was a typo in their own setting.
-  it("stays silent when the refusal is about the kind's own setting, not the contract", () => {
+  it("stays silent when the refusal is about the worker flow's own setting, not the contract", () => {
     const optionalNoDefault = defineFlow({
       kind: "optional-no-default",
       cardinality: "collection",
@@ -479,7 +479,7 @@ describe("hireWorkforce", () => {
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
         workerSkills: z.array(z.object({ name: z.string(), skillMd: z.string() })).optional(),
-        // Hand-declared alongside the other three: this kind's point is that it
+        // Hand-declared alongside the other three: this flow's point is that it
         // accepts the whole imposed bag while probing to a bag without
         // `workerSkills`, so it has to keep accepting every key the factory
         // imposes as the contract grows.
@@ -491,10 +491,10 @@ describe("hireWorkforce", () => {
       }),
       actions: { run: { inputSchema, block: work }, ...workerDoor }
     });
-    const withFlow = { ...kinds, "optional-no-default": optionalNoDefault as never };
+    const withFlow = { ...flows, "optional-no-default": optionalNoDefault as never };
 
     // It really does accept the bag — without this the test below would pass
-    // for a kind that is genuinely missing the door.
+    // for a worker flow that is genuinely missing the door.
     const [ok] = mintWorkers(
       [record({ id: "engineering.ok", declared: { flow: "optional-no-default" }, body: "Work." })],
       { workerFlows: withFlow }
@@ -522,7 +522,7 @@ describe("hireWorkforce", () => {
     expect(message).not.toContain("workerConfigSchema()");
   });
 
-  // A kind with no contract is the app's problem, not one worker's:
+  // A worker flow with no contract is the app's problem, not one worker's:
   // it refuses before any record is read, so the roster's own problems wait
   // for the next run.
   it("refuses a flow missing the contract before reading any record", () => {
@@ -531,7 +531,7 @@ describe("hireWorkforce", () => {
         record({ id: "engineering.door", declared: { flow: "door" } }),
         record({ id: "engineering.scribe", declared: { flow: "note-taker" } })
       ],
-      { ...kinds, door: doorFlow }
+      { ...flows, door: doorFlow }
     );
     expect(message).toContain('refused 1 worker flow ("door")');
     expect(message).toContain("workerConfigSchema()");
@@ -542,12 +542,12 @@ describe("hireWorkforce", () => {
   // case it is most needed for is the NEWEST key — the one nobody has heard of
   // yet. Written against whichever key the contract declares last, read off the
   // schema rather than spelled here, so the next key inherits it.
-  it("names the newest contract key when a hand-rolled kind is missing it", () => {
+  it("names the newest contract key when a hand-rolled worker flow is missing it", () => {
     const declaredKeys = Object.keys(workerConfigSchema().shape);
     const newest = declaredKeys[declaredKeys.length - 1]!;
 
     // Declares every contract key EXCEPT the newest — so the only thing wrong
-    // with this kind is the one thing the refusal has to be able to say.
+    // with this flow is the one thing the refusal has to be able to say.
     const shape: Record<string, z.ZodTypeAny> = { retries: z.number().default(3) };
     for (const key of declaredKeys) {
       if (key !== newest) shape[key] = z.any().optional();
@@ -559,7 +559,7 @@ describe("hireWorkforce", () => {
       actions: { run: { inputSchema, block: work }, ...workerDoor }
     });
 
-    const message = refusalOf([], { ...kinds, "missing-newest": missingNewest as never });
+    const message = refusalOf([], { ...flows, "missing-newest": missingNewest as never });
     expect(message).toContain('worker flow "missing-newest"');
     expect(message).toContain(`doesn't accept \`${newest}\``);
     expect(message).toContain("workerConfigSchema()");
@@ -582,9 +582,9 @@ describe("hireWorkforce", () => {
  * present and refused.
  */
 describe("hireWorkforce reads `flow:` (one row per value)", () => {
-  const BLANK = "declares an empty `flow:`, which names no flow kind";
+  const BLANK = "declares an empty `flow:`, which names no worker flow";
 
-  it("hires the built-in `agent` kind for a record with no `flow` key", () => {
+  it("hires the built-in `agent` worker flow for a record with no `flow` key", () => {
     const worker = hireOne(record({ id: "engineering.plain", body: LEAD_BODY }));
     expect(worker.kind).toBe("agent");
   });
@@ -603,17 +603,17 @@ describe("hireWorkforce reads `flow:` (one row per value)", () => {
     ["an own key holding undefined", undefined, "undefined"],
     ["a number", 42, "42"],
     ["an object", {}, "{}"]
-  ])("refuses %s as a `flow:` that names no kind, quoting the value", (_label, value, quoted) => {
+  ])("refuses %s as a `flow:` that names no worker flow, quoting the value", (_label, value, quoted) => {
     const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: value } })]);
     expect(message).toContain('worker "engineering.ghost"');
-    expect(message).toContain(`declares \`flow:\` as ${quoted}, which names no flow kind`);
+    expect(message).toContain(`declares \`flow:\` as ${quoted}, which names no worker flow`);
   });
 
-  it("hires the kind a `flow:` names when that kind was passed", () => {
+  it("hires the worker flow a `flow:` names when that flow was passed", () => {
     expect(hireOne(intake).kind).toBe("intake");
   });
 
-  it("does not trim a named kind: a padded name is a kind that was not passed", () => {
+  it("does not trim a named worker flow: a padded name is a flow that was not passed", () => {
     const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: " intake " } })]);
     expect(message).toContain('names flow " intake ", which is not in the worker flows passed to hireWorkforce');
   });

@@ -1,5 +1,5 @@
 /**
- * The agent kind on a routed delivery: what its turn sees, and where its
+ * The agent worker flow on a routed delivery: what its turn sees, and where its
  * answer lands.
  *
  * Run on the real kinds, in one in-process host: the built-in mailbox kind

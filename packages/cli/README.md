@@ -275,7 +275,7 @@ Runs the code generator one of your app's dependencies supplies, and writes the 
 `fsdev gen` has no convention of its own: the generator decides which folders it reads, what it
 refuses, and what the file contains. For a Workforce app the generator comes from
 `@flow-state-dev/workforce` and writes `workforce/workforce.gen.ts`; what it walks and refuses is in
-the [Workforce README](../workforce/README.md#kinds-and-blocks-from-files).
+the [Workforce README](../workforce/README.md#worker-flows-and-blocks-from-files).
 
 ```bash
 # Write the module from the tree

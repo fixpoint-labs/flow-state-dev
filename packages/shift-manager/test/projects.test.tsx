@@ -113,14 +113,14 @@ describe("PROJECTS (BR-22, D3)", () => {
 });
 
 describe("a Lab that declares no projects is empty, not failed (D3)", () => {
-  /** Pass every request on, except a POST that opens a session on `kind`, which answers `status`. */
-  function refuseSessionsOn(kind: string, status: number) {
+  /** Pass every request on, except a POST that opens a session on `flow`, which answers `status`. */
+  function refuseSessionsOn(flow: string, status: number) {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      if (method === "POST" && url.includes(`/api/flows/${kind}/sessions`)) {
-        return Promise.resolve(new Response(JSON.stringify({ error: `no ${kind} here` }), { status }));
+      if (method === "POST" && url.includes(`/api/flows/${flow}/sessions`)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `no ${flow} here` }), { status }));
       }
       return real(input, init);
     });

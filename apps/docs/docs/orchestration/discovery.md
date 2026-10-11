@@ -50,7 +50,7 @@ import { resourcesManifestSource } from "@flow-state-dev/core";
 import { skillsManifestSource } from "@flow-state-dev/orchestration";
 import { createWorkforceCapability } from "@flow-state-dev/workforce";
 
-const kind = defineAgentWorkerFlow({
+const flow = defineAgentWorkerFlow({
   uses: [
     skills,
     createWorkforceCapability({
@@ -71,7 +71,7 @@ const kind = defineAgentWorkerFlow({
 });
 ```
 
-Every worker of that kind now has `discover`. A domain you leave out is simply not there, and asking for it comes back empty.
+Every worker on that flow now has `discover`. A domain you leave out is simply not there, and asking for it comes back empty.
 
 Outside a workforce, build the door yourself and hand it to a generator:
 

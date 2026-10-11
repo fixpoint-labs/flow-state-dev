@@ -108,19 +108,19 @@ const unmatchedWorkerResourceMessage = (ref: string): string =>
 
 /**
  * The wording for a ref that IS a declared document but is not one this worker's
- * kind was installed with.
+ * worker flow was installed with.
  *
- * An app may install a filtered slice of its documents on a kind — the
+ * An app may install a filtered slice of its documents on a worker flow — the
  * documented way to give a team's workers only its team's documents. A grant is
- * an allowlist over what the kind already holds, so a ref outside that slice
- * would WIDEN the worker past its own kind, on the say-so of a worker file. That is
+ * an allowlist over what the flow already holds, so a ref outside that slice
+ * would WIDEN the worker past its own worker flow, on the say-so of a worker file. That is
  * the one direction a grant may never move (BP-031), so it refuses here rather
- * than resolving to a document the app chose not to give this kind.
+ * than resolving to a document the app chose not to give this flow.
  */
-const workerResourceNotOnFlowMessage = (ref: string, kind: string): string =>
-  `grants "${ref}", which this app declared but did not install on the \`${kind}\` kind. ` +
-  `A grant narrows what a worker's kind already holds; it cannot add a document the kind was not ` +
-  `given. Install it on the kind, or drop the grant.`;
+const workerResourceNotOnFlowMessage = (ref: string, flow: string): string =>
+  `grants "${ref}", which this app declared but did not install on the \`${flow}\` worker flow. ` +
+  `A grant narrows what a worker's flow already holds; it cannot add a document the flow was not ` +
+  `given. Install it on the worker flow, or drop the grant.`;
 
 /**
  * The wording for a ref named more than once.
@@ -134,18 +134,18 @@ const duplicateWorkerResourceMessage = (ref: string, modes: readonly string[]): 
   `Two grants for one document have no precedence rule — keep one.`;
 
 /**
- * The wording for a grant whose ref is already an accessor the kind's own
+ * The wording for a grant whose ref is already an accessor the worker flow's own
  * blocks declare.
  *
  * The grant is passed as the worker's flow-level map, and a flow-level entry
  * under a block's accessor that holds a different definition is refused by
  * `defineFlow`. Refused here first, by name, so the author reads that a worker
- * file cannot repoint its kind's wiring rather than a bare resource conflict.
+ * file cannot repoint its worker flow's wiring rather than a bare resource conflict.
  */
-const workerResourceCollidesWithFlowMessage = (ref: string, kind: string): string =>
-  `grants "${ref}", and the \`${kind}\` kind's own blocks already declare a resource under that ` +
-  `name. The worker's grant is installed at flow level, where it would REPLACE the kind's — a worker ` +
-  `file cannot repoint its kind's wiring. Rename the document, or the kind's accessor.`;
+const workerResourceCollidesWithFlowMessage = (ref: string, flow: string): string =>
+  `grants "${ref}", and the \`${flow}\` worker flow's own blocks already declare a resource under that ` +
+  `name. The worker's grant is installed at flow level, where it would REPLACE the flow's — a worker ` +
+  `file cannot repoint its worker flow's wiring. Rename the document, or the flow's accessor.`;
 
 /**
  * The wording for an `rw` grant on a document that declared itself unwritable.
@@ -172,32 +172,32 @@ const workerResourcesWithoutCatalogMessage = (): string =>
 
 /**
  * The wording for a document a worker did not name that its minted flow reaches
- * anyway — the one failure no inspection of the kind's map can predict.
+ * anyway — the one failure no inspection of the worker flow's map can predict.
  *
- * The kind's blocks re-declare it, and a block declaration merges back in
+ * The worker flow's blocks re-declare it, and a block declaration merges back in
  * AFTER the worker's map has replaced the flow-level one, so the narrowing is
  * undone by the build rather than by anything the worker's file said. Fatal:
  * the alternative is a worker that reads as narrowed and is not.
  */
-const workerResourceSurvivedNarrowingMessage = (ref: string, kind: string): string =>
+const workerResourceSurvivedNarrowingMessage = (ref: string, flow: string): string =>
   `was not granted \`${ref}\`, but the flow it is minted with reaches that document anyway: ` +
-  `a block on the "${kind}" kind declares it, and a block declaration merges back in after a ` +
+  `a block on the "${flow}" worker flow declares it, and a block declaration merges back in after a ` +
   `worker's map replaces the flow-level one. Remove that declaration from the block and keep the ` +
   `document at flow level, or grant \`${ref}\` to this worker deliberately.`;
 
 /**
- * The wording for a kind holding something OTHER than the app's document under
+ * The wording for a worker flow holding something OTHER than the app's document under
  * that document's own ref.
  *
  * Refused rather than guessed at, because the two readings need opposite
  * treatment and nothing distinguishes them: if it is the document, narrowing it
  * is the whole feature; if it is an unrelated store the app happened to name
- * the same thing, narrowing it quietly breaks the kind's own machinery — and a
+ * the same thing, narrowing it quietly breaks the flow's own machinery — and a
  * `ro` grant would make that store read-only, which this feature promises never
  * to do. The app renames one of the two and the ambiguity is gone.
  */
-const catalogRefHoldsSomethingElseMessage = (ref: string, kind: string): string =>
-  `cannot be resolved: the "${kind}" kind declares \`${ref}\` at flow level, but what it declares ` +
+const catalogRefHoldsSomethingElseMessage = (ref: string, flow: string): string =>
+  `cannot be resolved: the "${flow}" worker flow declares \`${ref}\` at flow level, but what it declares ` +
   `there is not the document the app passed under that ref. A worker's grants narrow documents and ` +
   `nothing else, and these two cannot be told apart. Rename one of them.`;
 
@@ -304,11 +304,11 @@ export interface ResolveWorkerResourcesInput {
    * empty catalog: see {@link workerResourcesWithoutCatalogMessage}.
    */
   catalog: DeclaredResources | undefined;
-  /** The kind's MERGED resource map — its own flow-level entries plus what its blocks declare. */
+  /** The worker flow's MERGED resource map — its own flow-level entries plus what its blocks declare. */
   workerFlowResources: DeclaredResources;
-  /** The accessor keys the kind declared at FLOW level, which is the subset a worker's map replaces. */
+  /** The accessor keys the worker flow declared at FLOW level, which is the subset a worker's map replaces. */
   flowLevelKeys: ReadonlySet<string>;
-  /** The kind's name, for the collision refusal. */
+  /** The worker flow's name, for the collision refusal. */
   kind: string;
 }
 
@@ -323,11 +323,11 @@ export interface ResolvedWorkerResources {
 /**
  * Turn a worker's grants into the flow-level resource map it is minted with.
  *
- * **Built by subtraction, never assembled from the grants alone.** A flow
- * instance's `resources` option REPLACES the definition's flow-level map, so a
+ * **Built by subtraction, never assembled from the grants alone.** A minted
+ * worker's `resources` option REPLACES the definition's flow-level map, so a
  * map holding only the granted documents also deletes every non-document
  * resource the app declared beside them — its boards, its stores — with no
- * refusal and no warning. So the map starts as the kind's flow-level entries
+ * refusal and no warning. So the map starts as the worker flow's flow-level entries
  * that are NOT documents, and the granted documents are added to it.
  *
  * Which entries are documents is answered by the catalog the app handed over,
@@ -340,47 +340,47 @@ export interface ResolvedWorkerResources {
  * Two doors on one document, and closing one would leave a mode that holds
  * against the implementer and not against the model.
  *
- * @param input The grants, the catalog, and the kind's own map. See {@link ResolveWorkerResourcesInput}.
+ * @param input The grants, the catalog, and the worker flow's own map. See {@link ResolveWorkerResourcesInput}.
  * @returns The worker's flow-level map, or every problem with the grants.
  */
 export function resolveWorkerResources(input: ResolveWorkerResourcesInput): ResolvedWorkerResources {
-  const { grants, catalog, workerFlowResources, flowLevelKeys, kind } = input;
+  const { grants, catalog, workerFlowResources, flowLevelKeys, kind: flow } = input;
 
   if (catalog === undefined) {
     return { problems: [workerResourcesWithoutCatalogMessage()] };
   }
 
-  // What the KIND's blocks declare and the kind does not already shadow:
-  // everything on the merged map that the kind did not declare at flow level.
+  // What the worker FLOW's blocks declare and the flow does not already shadow:
+  // everything on the merged map that the flow did not declare at flow level.
   // A grant colliding with one of these would win the merge and replace it.
   //
-  // **This is narrower than "every accessor the kind's blocks declare", and the
-  // difference is not reachable.** A block declaration the kind ALSO declares
+  // **This is narrower than "every accessor the flow's blocks declare", and the
+  // difference is not reachable.** A block declaration the flow ALSO declares
   // at flow level is already shadowed by that flow-level entry before any worker
   // file exists, so it does not appear on the merged map and cannot be read off
   // a built flow at all. It is also not a hazard: the grant installs the same
-  // document the kind already had there, so the worker's map changes nothing
+  // document the flow already had there, so the worker's map changes nothing
   // about it. Every case where honouring a grant would newly take a name away
-  // from the kind's own wiring is in this set.
+  // from the flow's own wiring is in this set.
   const blockAccessors = new Set(
     Object.keys(workerFlowResources).filter((key) => !flowLevelKeys.has(key)),
   );
 
   const problems: string[] = [];
 
-  // **Before anything is narrowed: the kind's map must agree with the catalog
+  // **Before anything is narrowed: the worker flow's map must agree with the catalog
   // on what a document's ref holds.** The subtraction below removes a
   // flow-level key that names a document, and a grant installs one; both read
-  // the ref as meaning the document. A kind that declares something else there
+  // the ref as meaning the document. A flow that declares something else there
   // makes both wrong at once, and in the direction this feature promises never
   // to move — a worker's list is supposed to leave the app's stores and boards
-  // alone. Refused for the whole kind rather than per grant, because the
+  // alone. Refused for the whole flow rather than per grant, because the
   // ambiguity is in the app's wiring and not in anything the worker wrote.
   for (const key of flowLevelKeys) {
     if (!Object.hasOwn(catalog, key)) continue;
     if (!Object.hasOwn(workerFlowResources, key)) continue;
     if (workerFlowResources[key] === catalog[key]) continue;
-    problems.push(catalogRefHoldsSomethingElseMessage(key, kind));
+    problems.push(catalogRefHoldsSomethingElseMessage(key, flow));
   }
 
   for (const { ref, mode } of grants) {
@@ -389,13 +389,13 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
       continue;
     }
     if (blockAccessors.has(ref)) {
-      problems.push(workerResourceCollidesWithFlowMessage(ref, kind));
+      problems.push(workerResourceCollidesWithFlowMessage(ref, flow));
       continue;
     }
     // Checked AFTER the collision so a block accessor — which is never a
     // flow-level key — keeps the refusal that names what actually went wrong.
     if (!flowLevelKeys.has(ref)) {
-      problems.push(workerResourceNotOnFlowMessage(ref, kind));
+      problems.push(workerResourceNotOnFlowMessage(ref, flow));
       continue;
     }
     if (mode === WORKER_RESOURCE_MODE_WRITE && isUnwritable(workerFlowResources[ref])) {
@@ -407,15 +407,15 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
 
   const resources: DeclaredResources = emptyMap();
   const documents = documentKeys(catalog, workerFlowResources);
-  // The subtraction: the kind's flow-level entries that are not documents.
+  // The subtraction: the worker flow's flow-level entries that are not documents.
   for (const key of flowLevelKeys) {
     if (documents.has(key)) continue;
     if (!Object.hasOwn(workerFlowResources, key)) continue;
     resources[key] = workerFlowResources[key]!;
   }
-  // The grants, from the definition the KIND was installed with — which the
+  // The grants, from the definition the worker FLOW was installed with — which the
   // check above has already established is there. Not the catalog's copy: the
-  // catalog says which entries are documents, and the kind says which of them
+  // catalog says which entries are documents, and the flow says which of them
   // this worker's flow actually holds.
   for (const { ref, mode } of grants) {
     const declared = workerFlowResources[ref]!;
@@ -426,7 +426,7 @@ export function resolveWorkerResources(input: ResolveWorkerResourcesInput): Reso
 }
 
 /**
- * Every accessor on a kind's map that holds one of the app's documents.
+ * Every accessor on a worker flow's map that holds one of the app's documents.
  *
  * **By name OR by the definition itself**, because a map is an object and an
  * app may expose one definition under a second key —
@@ -462,7 +462,7 @@ export interface VerifyWorkerNarrowingInput {
   grants: readonly WorkerResourceGrant[];
   /** The app's declared documents, keyed by ref. */
   catalog: DeclaredResources;
-  /** The kind's name, for the refusal. */
+  /** The worker flow's name, for the refusal. */
   kind: string;
 }
 
@@ -470,11 +470,11 @@ export interface VerifyWorkerNarrowingInput {
  * Check the worker that was actually minted, and refuse if a document it was
  * denied is reachable anyway.
  *
- * **This exists because no inspection of the kind's map can predict the
- * answer.** A flow instance's `resources` option replaces the definition's
+ * **This exists because no inspection of the worker flow's map can predict the
+ * answer.** A minted worker's `resources` option replaces the definition's
  * flow-level map, and `defineFlow` then merges the blocks' own declarations
  * back on top of the result. So a document declared BOTH at flow level and by
- * one of the kind's blocks is shadowed at definition time — invisible on the
+ * one of the flow's blocks is shadowed at definition time — invisible on the
  * merged map, indistinguishable from a document no block mentions — and comes
  * back the moment a worker's map removes the flow-level entry that was hiding
  * it. The worker reads as narrowed, and reaches the document anyway.
@@ -486,7 +486,7 @@ export interface VerifyWorkerNarrowingInput {
  * @returns Every document that survived a narrowing it should not have. Empty is the pass.
  */
 export function verifyWorkerNarrowing(input: VerifyWorkerNarrowingInput): string[] {
-  const { minted, grants, catalog, kind } = input;
+  const { minted, grants, catalog, kind: flow } = input;
   if (minted === undefined) return [];
 
   const granted = new Set(grants.map(({ ref }) => ref));
@@ -507,7 +507,7 @@ export function verifyWorkerNarrowing(input: VerifyWorkerNarrowingInput): string
     // from the block's, so `defineFlow` refuses the mint before the pen could
     // come back with it — pinned by V9's read-only case rather than guarded by
     // a branch here that nothing could make fire.
-    if (!granted.has(key)) problems.push(workerResourceSurvivedNarrowingMessage(key, kind));
+    if (!granted.has(key)) problems.push(workerResourceSurvivedNarrowingMessage(key, flow));
   }
 
   return problems;

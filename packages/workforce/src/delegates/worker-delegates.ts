@@ -48,7 +48,7 @@ export interface TaskDelegates {
 export interface WorkerDelegatesOptions {
   /** The worker installation the session's worker, and its delegates, belong to. */
   readonly installation: WorkerInstallation;
-  /** The kind of the flow the session runs on: its worker is loaded on it. */
+  /** The worker flow the session runs on: its worker is loaded on it. */
   readonly flowKind: string;
   /**
    * The worker flows a delegated post can reach. Omitted, every worker flow
@@ -108,7 +108,7 @@ export function delegateDefaultsOf(config: Readonly<Record<string, unknown>>): D
 /**
  * Build a worker's delegates for the flow it runs on.
  *
- * @param options The installation, the flow's kind, and the flows a post reaches.
+ * @param options The installation, the flow's name, and the flows a post reaches.
  */
 export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const { installation, flowKind } = options;

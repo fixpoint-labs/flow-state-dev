@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 628" role="img" aria-labelledby="title desc">
   <title id="title">Workforce: what each term is made of</title>
-  <desc id="desc">Each Workforce term beside what it is made of. A worker from WORKER.md is a flow instance. A roster row is a row of an org resource collection. A mailbox from MAILBOX.md is a session on the one mailbox flow. A mailbox board is an orchestration task collection. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator’s user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, plus its lead’s workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person’s open workstreams.</desc>
+  <desc id="desc">Each Workforce term beside what it is made of. A worker from WORKER.md runs on a worker flow. A roster row is a row of an org resource collection. A mailbox from MAILBOX.md is a session on the one mailbox flow. A mailbox board is an orchestration task collection. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator’s user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, plus its lead’s workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person’s open workstreams.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -51,8 +51,8 @@
   <text x="42" y="126" class="h">Worker</text>
   <text x="42" y="144" class="code">WORKER.md</text>
   <rect x="344" y="104" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="125" class="tag-sess">FLOW INSTANCE</text>
-  <text x="508" y="125" class="p">A flow instance of a kind, the built-in agent kind</text>
+  <text x="358" y="125" class="tag-sess">FLOW</text>
+  <text x="508" y="125" class="p">Runs on a worker flow, the built-in agent flow</text>
   <text x="508" y="143" class="p">unless the file names another. Its id is team.name.</text>
   <path d="M296 130 L342 130" class="edge"/>
   <rect x="28" y="166" width="268" height="52" rx="10" class="card-org"/>

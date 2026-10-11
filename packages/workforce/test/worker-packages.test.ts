@@ -177,7 +177,7 @@ describe("a package in a worker's own folder", () => {
     expect(got.system).not.toContain(HOUSE_TEXT);
   });
 
-  it("reaches nobody else: a sibling of the same kind gets neither text nor tools (BR-14, BR-26)", async () => {
+  it("reaches nobody else: a sibling on the same worker flow gets neither text nor tools (BR-14, BR-26)", async () => {
     const worker = hire([
       record({ id: "support.clerk", packages: clerkReach }),
       record({ id: "support.greeter", packages: siblingReach })
@@ -484,7 +484,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     expect(String((got.error as Error | undefined)?.message)).toContain('two tools named "issue-refund"');
   });
 
-  it("refuses a `tools:` line naming a held package's block that the kind's catalog also carries, naming both", () => {
+  it("refuses a `tools:` line naming a held package's block that the worker flow's catalog also carries, naming both", () => {
     const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
     const message = refusal(
       [record({ id: "support.clerk", declared: { tools: ["issue-refund"] }, packages: clerkReach })],
@@ -553,7 +553,7 @@ describe("the settings key a package arrives on (BR-32)", () => {
     execute: () => ({ ok: true })
   });
 
-  it("hands a custom kind composing the contract the package's text and blocks", () => {
+  it("hands a custom worker flow composing the contract the package's text and blocks", () => {
     const custom = defineFlow({
       kind: "desk",
       cardinality: "collection",
@@ -578,7 +578,7 @@ describe("the settings key a package arrives on (BR-32)", () => {
     expect(worker("support.greeter").config).not.toHaveProperty(WORKER_PACKAGES_KEY);
   });
 
-  it("refuses a hand-rolled kind without the key when it is registered, before any worker holds a package", () => {
+  it("refuses a hand-rolled worker flow without the key when it is registered, before any worker holds a package", () => {
     const handRolled = defineFlow({
       kind: "old-desk",
       cardinality: "collection",

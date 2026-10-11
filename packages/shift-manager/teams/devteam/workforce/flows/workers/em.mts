@@ -1,10 +1,10 @@
 /**
- * The `em` worker kind — one file under `workforce/flows/workers/`, basename =
- * the kind id every coordinating `WORKER.md` names in its `flow:` line.
+ * The `em` worker flow — one file under `workforce/flows/workers/`, basename =
+ * the flow name every coordinating `WORKER.md` names in its `flow:` line.
  *
- * **This kind declares no harness slot, and that is the point.** "The EM
+ * **This worker flow declares no harness slot, and that is the point.** "The EM
  * does no harness work" is a locked DevForce opinion, and it is graded on the
- * kind rather than on behaviour: there is no `task:` entry here and no option
+ * worker flow rather than on behaviour: there is no `task:` entry here and no option
  * through which one could be installed, so the worker cannot run a coding
  * harness — not merely "it happened not to". Search this file for the word
  * harness and the only hits are in this paragraph.
@@ -30,7 +30,7 @@
  *   judgement. They file through the same board, one row per feature, under
  *   the feature's canonical id so a second filing finds the first.
  *
- * Every EM worker runs on this kind's one copy. A session names its worker
+ * Every EM worker runs on this worker flow's one copy. A session names its worker
  * (`installation.session()`), and a block reads that worker's own settings
  * through the installation, never `ctx.flow.config`.
  *
@@ -66,7 +66,7 @@ import {
   workerSettingsSchema,
 } from "../../../worker-config.mts";
 
-/** The kind id the coordinating `WORKER.md` names. **Pinned** — the basename must match. */
+/** The flow name the coordinating `WORKER.md` names. **Pinned** — the basename must match. */
 export const EM_FLOW = "em";
 
 /** The action that turns one feature into one row on the session's board. */
@@ -140,7 +140,7 @@ interface EmSettings {
 }
 
 export interface EmWorkerFlowOptions {
-  /** The installation whose workers run on this kind, and whose delegates take its tasks. */
+  /** The installation whose workers run on this worker flow, and whose delegates take its tasks. */
   installation: WorkerInstallation;
   /**
    * The worker the lab's doors file a feature for: a delegate of the EM that
@@ -164,7 +164,7 @@ export interface EmWorkerFlowOptions {
 }
 
 /**
- * Build the coordinating kind.
+ * Build the coordinating worker flow.
  *
  * @param options The installation, the coder worker, the documents and the tool catalog.
  * @returns The flow factory `hireWorkforce` registers one copy of, which every EM worker runs on.
@@ -341,7 +341,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
 
   return defineFlow({
     kind: EM_FLOW,
-    // Registered once, at its kind; every EM worker's session runs on it.
+    // Registered once, under its flow name; every EM worker's session runs on it.
     cardinality: "collection",
     // A worker's `model:` and the tools its `tools:` line names from the catalog.
     configSchema: workerSettingsSchema().extend({

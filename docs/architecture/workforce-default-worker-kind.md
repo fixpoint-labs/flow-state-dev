@@ -1,4 +1,4 @@
-# The Default Workforce Worker Kind — Locked Contract
+# The Default Workforce Worker Flow — Locked Contract
 
 A team describes a worker in a file — a name, a description, some instructions — and gets a
 working agent. Four separate pieces of work build toward that promise at the same time, in
@@ -6,7 +6,7 @@ four separate checkouts: the agent itself, its skills, its memory, and the teach
 
 This document is what they all read, so they do not each invent a different answer. It fixes
 what the pieces owe each other. **It is a contract, not a design** — it does not build the
-worker kind, wire its skills, compose in its memory, or write the guides. Those are
+worker flow, wire its skills, compose in its memory, or write the guides. Those are
 FIX-1363, FIX-1362, FIX-1364 and FIX-1366, and each cites this file rather than re-deriving it.
 
 **Status: the contract has shipped.** Both facts it was written against have been closed. It is
@@ -16,11 +16,11 @@ area is still bound by — not as a description of pending work.
 The two facts it was written against, and where each landed:
 
 - **A worker file carrying only instructions was refused.** `hireWorkforce` required a `flow:`
-  key. It no longer does: an absent key resolves to the built-in `agent` kind, and only a
+  key. It no longer does: an absent key resolves to the built-in `agent` worker flow, and only a
   *present* `flow:` that names nothing still refuses (C2).
 - **A worker's skills were not that worker's.** The skills library keyed its collection at
   `"skills"`, org scope, with no per-worker isolation, so two workers in one org shared a bucket.
-  The kind now declares `flowIsolation`, and each worker is seeded from its own resolved union (C3).
+  The worker flow now declares `flowIsolation`, and each worker is seeded from its own resolved union (C3).
 
 One property of that second fix is worth carrying forward, because it reaches callers: the
 collection is **user-scoped** (FIX-1789; it was org-scoped before). A worker's skills drawer is its
@@ -38,14 +38,14 @@ Related, and deliberately not restated here:
 - [`docs/contributing/architecture-reference.md`](../contributing/architecture-reference.md)
   — carries the two rows a reader needs without opening this file.
 
-The diagram is the shipped shape: an absent `flow:` hires the built-in worker kind, and a worker's
+The diagram is the shipped shape: an absent `flow:` hires the built-in worker flow, and a worker's
 skills are stored under that worker's own instance id.
 
 ```mermaid
 flowchart TD
   W["WORKER.md<br/>instructions, no flow:"] --> H[hireWorkforce<br/>the one admission gate]
-  K["kinds map<br/>built-in merged underneath"] --> H
-  H -->|absent flow:| A[built-in worker kind]
+  K["worker flows map<br/>built-in merged underneath"] --> H
+  H -->|absent flow:| A[built-in worker flow]
   H -->|unregistered name| X[refuse, by name]
   A --> P["prompt: [default, teamInstructions, instructions, package instructions]"]
   A --> S["skills: org ∪ team (team workers) ∪ worker<br/>stored per worker"]
@@ -57,46 +57,46 @@ flowchart TD
 
 ## C1 — Composition, not a type
 
-The worker kind is a flow like any other, and its settings bag (`configSchema`) is
+The built-in worker flow is a flow like any other, and its settings bag (`configSchema`) is
 `workerConfigSchema().extend({ model, tools, skills })` — two sets, named here rather than counted,
-because a custom-kind author hand-rolling the wrong half gets a kind that refuses the whole roster
+because a custom-worker-flow author hand-rolling the wrong half gets a flow that refuses the whole roster
 at boot:
 
 | | Keys | Whose |
 |---|---|---|
-| **The admission contract** | `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?`, `workerId` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
-| **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
-| **The hire step's** | `flow`, `description`, `resources` | Never a kind's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
+| **The admission contract** | `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?`, `workerId` | The framework's. Every hireable worker flow admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **This flow's own** | `model`, `tools`, `skills` (the switches) | The default worker flow's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
+| **The hire step's** | `flow`, `description`, `resources` | Never a worker flow's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
 
 **`resources` is taken outright, and is not a setting at all (FIX-1381).** Where `tools` is a key a
-kind declares and the hire step reads, `resources` is a key the hire step *consumes*: it names the
+worker flow declares and the hire step reads, `resources` is a key the hire step *consumes*: it names the
 documents that worker may touch, it is removed from the bag before admission, and it never reaches a
-kind's `configSchema`. So a kind may not declare a `resources` setting of its own — one that did
-would simply stop receiving an authored value. The narrowed map it produces replaces the kind's
+worker flow's `configSchema`. So a worker flow may not declare a `resources` setting of its own — one that did
+would simply stop receiving an authored value. The narrowed map it produces replaces the worker flow's
 flow-level resource map for that worker; `packages/workforce/src/worker-resources.ts` is canonical for
 the grant shapes and the refusals.
 
-**`tools` is reserved across hireable kinds, for one meaning: the names of tools this worker may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that worker (for a team worker, its own `blocks/` folder and then its team's; for every worker, the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). An org worker has no `blocks/` folder at either level. A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the worker's own folders or its packages are moved onto `workerTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the worker's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the worker picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+**`tools` is reserved across hireable worker flows, for one meaning: the names of tools this worker may call.** It is not a contract key — a worker flow declares it itself, or does not declare it at all — but a flow that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that worker (for a team worker, its own `blocks/` folder and then its team's; for every worker, the blocks of the packages it holds; a name none of those register goes on to the worker flow's catalog). An org worker has no `blocks/` folder at either level. A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` worker flow's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the worker's own folders or its packages are moved onto `workerTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the worker flow only when a line was written, and stays present even when every name was the worker's own and the list emptied. An omitted line is never filled in as `[]`, so a worker flow can tell a written list from an omitted one; the built-in `agent` worker flow reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the worker picked and the blocks of the packages it holds, and a written one exactly its names. A worker flow is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 
-The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (the reading is now `contractKeysRefused`, `packages/workforce/src/worker-flow-contract.ts`).
+The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` worker flow re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each worker flow to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed flow-probing after a probe produced a false accusation (the reading is now `contractKeysRefused`, `packages/workforce/src/worker-flow-contract.ts`).
 
-It declares **no memory switch** — per C5 memory is composed into a kind at definition time, not
+It declares **no memory switch** — per C5 memory is composed into a worker flow at definition time, not
 turned on here. `instructions` is the worker file's body arriving as one setting — the hire step
 imposes that key (`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and refuses `persona`
 by name (`REFUSED_PERSONA_KEY`, same file).
 
-There is no nested bag for a kind's own settings; open-ended data gets one declared key whose schema
+There is no nested bag for a worker flow's own settings; open-ended data gets one declared key whose schema
 is a record.
 
-The contract is what makes a kind hireable, and the hire step hands its bag to **every** kind
-rather than probing which ones declared a matching key. A kind whose schema cannot take that bag
+The contract is what makes a worker flow hireable, and the hire step hands its bag to **every** worker flow
+rather than probing which ones declared a matching key. A flow whose schema cannot take that bag
 refuses at the mint, for the whole roster, at boot.
 
 **Admission is structural, not nominal, and that is D1 rather than an oversight.** Nothing checks
-that a kind called `workerConfigSchema()`; what is checked is whether its closed schema accepts
-what hire imposes, which is the single enforcement point D1 settled on. A kind hand-declaring the
-same keys is therefore admitted identically — verified, not assumed. The cost is that such a kind
-does not track the contract: when a key is added, a composed kind receives it and a hand-rolled one
+that a worker flow called `workerConfigSchema()`; what is checked is whether its closed schema accepts
+what hire imposes, which is the single enforcement point D1 settled on. A worker flow hand-declaring the
+same keys is therefore admitted identically — verified, not assumed. The cost is that such a flow
+does not track the contract: when a key is added, a composed flow receives it and a hand-rolled one
 refuses at boot naming the unrecognised key. That failure is loud and collected with the rest of
 the roster's problems, never silent, which is why the trade is acceptable and a second nominal gate
 is not worth the second authority it would create. That replaces a branch whose other arm was silence: a worker
@@ -128,7 +128,7 @@ of leaving one door open with nothing said.
 `TEAM.md` by the loader (`packages/workforce/src/loader/read-teams-directory.ts`), joined onto
 each of that team's worker records, and imposed by the hire step **only when the record carries
 one**. A team that wrote none, and a team with no file at all, both leave the key ABSENT rather
-than empty: an empty layer would be a value every kind's schema could see, and a different bag
+than empty: an empty layer would be a value every worker flow's schema could see, and a different bag
 for every team in every tree that has no file.
 
 `workerPackages` carries the packages a worker holds (FIX-1459): each one's `name`, `path`,
@@ -139,7 +139,7 @@ team's library or, failing that, the org's (`packages/workforce/src/worker-packa
 arrives on the worker record from the loader (`packages/workforce/src/loader/read-packages-directory.ts`),
 the blocks on the generated `packageBlocks` map that `fsdev gen` writes, and the hire step is the
 one place they meet. Like `teamInstructions`, the key is imposed **only when a worker holds one**, so a
-kind that hand-declared the older contract still hires every worker that holds nothing, and is refused
+worker flow that hand-declared the older contract still hires every worker that holds nothing, and is refused
 at boot, naming the key, only when one of its workers does. Every problem a package can cause (a name
 no library offers, a block name another tool already uses, a block that declares a store) is a
 start-time refusal naming the worker and the package, except a clash with a tool a preset builds per
@@ -169,7 +169,7 @@ catalog carries, what a bound skill's `allowed-tools` declares (see C5), or what
 attached through `uses` would otherwise contribute. A worker that writes **no** `tools:` line may
 call the tools of the capability presets its own file picked under `capabilities:` and the blocks
 of the packages it holds (FIX-1459);
-presets this kind switches on by default grant nothing the worker did not pick.
+presets this flow switches on by default grant nothing the worker did not pick.
 
 **Capability tools are fenced by mechanism (FIX-1393).** The core resolver drops a capability's
 catalog-granted tools when the consuming block declares `tools:`, so an app's `uses` can no longer
@@ -180,8 +180,8 @@ gone; `docs/architecture/capabilities.md` → *The tools fence* is canonical for
 `tools` (a grant from the app's catalog, fenced) and `controlTools` (a framework control, never
 fenced). A control is built inside its capability and never exported — so no `tools:` list could
 name it back in, and fencing it would leave the worker advertising a tool in its prompt it cannot
-call. Two ship in this kind. The first is held only because the worker's own configuration asked
-for it; the second is held by every worker in the kind, and a worker's configuration narrows it rather
+call. Two ship in this worker flow. The first is held only because the worker's own configuration asked
+for it; the second is held by every worker on the flow, and a worker's configuration narrows it rather
 than requesting it:
 
 - **The skill loader.** A worker that sets `skills.activateTool: true` is bound with
@@ -191,7 +191,7 @@ than requesting it:
   control, and it ships **on**. This is the one control a worker does not ask for: composing the
   capability is itself the declaration that a worker may ask what is around it, so a second per-worker
   switch would have nothing to add, and defaulting it off would leave an upgraded app's workers
-  unable to see the domains their kind already installed. A worker file's `discover:` key only
+  unable to see the domains their worker flow already installed. A worker file's `discover:` key only
   **narrows** it — the key lists the domains that worker sees, an empty list sees nothing, and
   omitting the key sees every domain the scope carries. It can never widen past what the app
   installed: naming a domain the scope does not carry does not reach it, and neither does asking
@@ -211,7 +211,7 @@ depends on them for safety. Do not add a per-consumer fence: core is the one str
 enforcement point, and a second would be another door to forget.
 
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
-Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
+Until it does, the worker flow ships against `instructions` alone with an explicit seam for `default`
 to drop into, and **defines no second default-prompt configuration anywhere in this epic.**
 
 ### C1a — Settings are a default layer, not the only layer
@@ -235,17 +235,17 @@ configuration a hire supplies by key and by value, have exactly one door, and de
 resource with `writtenBy` through `sharedResource()`, which owns the field (judged by provenance, a
 mark only the helper's output carries, not by sampling what the schema accepts). One problem refuses the whole call, once per flow, so the
 refusal does not depend on a worker naming the flow. Then each record resolves: the `agent` default
-first, then standard-only (an entry `{ flow, standardOnly: true }` refuses a record carrying an
-owner pin, which every runtime hire and stored row does and no `WORKER.md` does). The complete rule
+first, then standard-only (an entry `{ flow, standardOnly: true }` refuses a record that has an
+owner, which every runtime hire and stored row has and no `WORKER.md` has). The complete rule
 for a record:
 
 | Worker file says | Result |
 |---|---|
-| no `flow:` | the built-in worker kind |
-| `flow: agent` | the built-in worker kind — same kind, named explicitly |
-| `flow: <registered>` | that kind, exactly as today |
+| no `flow:` | the built-in worker flow |
+| `flow: agent` | the built-in worker flow — same flow, named explicitly |
+| `flow: <registered>` | that worker flow, exactly as today |
 | `flow: <not registered>` | **refused by name**, listing the worker flows that were passed |
-| a hired record (one carrying an owner pin: a runtime hire or a reloaded roster row) naming a flow kept for declared workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for declared workers |
+| a hired record (one with an owner: a runtime hire or a reloaded roster row) naming a flow kept for declared workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for declared workers |
 | roster passes `workerFlows: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
 
 The existing refusal for a flow filed under someone else's kind name still applies to the
@@ -255,7 +255,7 @@ refusal** — that is the loud-fail obligation the epic assigned here.
 
 ### A replacement must also declare `cardinality: "collection"`
 
-A roster is N workers of one kind, and `defineFlow` defaults to `singleton`
+A roster is N workers on one worker flow, and `defineFlow` defaults to `singleton`
 (`normalizeCardinality`, `packages/core/src/flow/defineFlow.ts:200` — `undefined` returns
 `"singleton"`). A singleton's id is its kind. So a replacement written the plain way —
 `defineFlow({ kind: "agent", configSchema, actions })` — hires without complaint and is then
@@ -287,24 +287,24 @@ The worker's *view* already works: `org ∪ teams/<thatTeam> ∪ workers/<thatWo
 (`packages/workforce/src/loader/read-worker-skills.ts:187-189`), with a name reaching one worker
 from two levels refused rather than shadowed (`duplicateSkillNameMessage`, same file).
 
-The kind declares its skills collection **isolated per flow instance**. A worker *is* a flow
-instance, minted with the worker's id (`hire.ts` mints each worker with `{ id: manifest.id }`), and the
-storage layer already keys isolated resources as `${identityId}:${flowId}` on the **instance**
-id, not the kind (`resolveResourceScopeId`, `packages/engine/src/stores/scope-keys.ts:324`).
+The worker flow declares its skills collection **isolated per worker**. Each worker's flow copy is
+minted with the worker's id (`hire.ts` mints each worker with `{ id: manifest.id }`), and the
+storage layer already keys isolated resources as `${identityId}:${flowId}` on that **copy's**
+id, not the flow's `kind` (`resolveResourceScopeId`, `packages/engine/src/stores/scope-keys.ts:324`).
 
 **No new primitive was needed** — one option field had to be threaded through.
 `DefineSkillsCollectionOptions` accepted `prefix`, `maxInstances` and `scope` but did not
 forward `flowIsolation`, while the `defineResourceCollection` it wraps accepts it
 (`packages/core/src/types/resource-collection.ts:58`). **FIX-1362 forwards it**, and the
-built-in kind switches it on.
+built-in worker flow switches it on.
 
 ### The contents — population
 
 Isolation alone gives every worker its own *empty* drawer and then fills all of them from the
 same jar.
 
-`createSkillsLibrary` captured one static `initialSkills` array when the kind was defined —
-once per kind, not once per worker. The runtime seeder writes exactly what it is handed into
+`createSkillsLibrary` captured one static `initialSkills` array when the worker flow was defined —
+once per flow, not once per worker. The runtime seeder writes exactly what it is handed into
 whichever collection ref it is handed (`ensureSeeded`,
 `packages/orchestration/src/skills/seeding.ts`; called that way from `run-skill-tool.ts`,
 `load-tool.ts`, `context-fn.ts`, `binding-reader.ts` and `seed-step.ts`). N isolated workers
@@ -354,7 +354,7 @@ had is the worker's own edit.
 
 Drift §3a says *"Real per-worker isolation needs a real resource identity — a distinct collection
 key, prefix, or scope"* (`docs/internal/design/kitchen-sink-agent-drift.md:161`). **It does
-not.** The identity already exists as `flowIsolation`, keyed on the worker's instance id.
+not.** The identity already exists as `flowIsolation`, keyed on the id of the worker's flow copy.
 
 Stated against the note by name because epic theme 8 sends every later issue to the note
 *instead of* re-reading the app, and FIX-1362 is the issue that would otherwise read §3a and
@@ -366,18 +366,18 @@ maintained, so it is **not edited** — the correction lives here.
 `session`, `user`, `org`, plus per-instance isolation where a resource wants it. **Identity and
 durable per-member memory are not on the worker object.**
 
-**Corrected by FIX-1364 — "member" here has always meant *worker*** (one flow instance on the
+**Corrected by FIX-1364 — "member" here has always meant *worker*** (one worker on the
 roster), not a person identity outliving workers and not a separate member graph. Read that way,
 the gap this contract named is a **default, not a missing primitive**: user-scoped resources are
 shared per end user unless something isolates them (BP-027), and
-`defineFlow({ isolateUserState: true })` isolates them on the instance id — which a worker has.
+`defineFlow({ isolateUserState: true })` isolates them on the flow copy's id — which a worker has.
 A characterization test with a control case (POC on the FIX-1364 spec branch, and the shipped
 tests in `packages/workforce/test/agent-worker-memory.test.ts`) showed a fact written through
-one worker is invisible to its neighbour with the flag on, and visible with it off. The kind
+one worker is invisible to its neighbour with the flag on, and visible with it off. The worker flow
 forwards the flag through `defineAgentWorkerFlow({ isolateUserState })`. **Nothing invents a new
 isolation primitive, and no memory field goes on the worker object.**
 
-The residual limit the contract once filed here, that the flag is on the kind and memory's
+The residual limit the contract once filed here, that the flag is on the worker flow and memory's
 tiers could not differ from it, is closed (FIX-1396). Each durable tier now declares its own
 `flowIsolation` through the existing resource seam (`system({ semantic: { flowIsolation: false } })`),
 which wins over the flow default in both directions; the digest is isolated when either of its
@@ -392,12 +392,12 @@ Three things, and they are separate:
 
 1. **Skills** — the library plus per-generator binding (entry point pinned below).
 2. **Memory is a build-time composition seam, not a setting.** An instructions-only worker does
-   **not** remember out of the box. (Memory here means the memory system's stores. The kind's
+   **not** remember out of the box. (Memory here means the memory system's stores. The worker's
    answer does read the earlier turns of its own conversation through the generator's `history`
    slot, bounded by the session's history window, which is 50 turns by default: FIX-1612. That
-   adds no resource and no import, so the checks below are unaffected.) The default kind and the hire package's required graph stay
+   adds no resource and no import, so the checks below are unaffected.) The default worker flow and the hire package's required graph stay
    free of memory resources and static memory imports. **"Attached" means an app composed memory
-   into its own kind at definition time** — spreading the capability's resource maps plus `uses`,
+   into its own worker flow at definition time** — spreading the capability's resource maps plus `uses`,
    or an equivalent helper that is still ordinary flow composition (the seam FIX-1364 designs).
    It does **not** mean flipping a config flag on the stock built-in.
 3. **Light-vs-heavy still holds once memory is composed in** — read-side by default. The
@@ -407,7 +407,7 @@ Three things, and they are separate:
 
 That asymmetry governs *which* memory a roster gets once memory is composed in. **It never
 authorized putting memory in the default required graph, and still does not.** Declaring memory's
-resources on the default kind and gating them off is the same violation wearing a switch — a fence
+resources on the default worker flow and gating them off is the same violation wearing a switch — a fence
 that permits the forbidden thing as long as it is switched off is not a fence. Splitting 2 from 3
 is what makes this checkable rather than decorative: a default mint with no memory in it is a
 claim a test can falsify.
@@ -415,7 +415,7 @@ claim a test can falsify.
 **Owners:** FIX-1363 may ship the default composition as talking plus skills with no memory wired
 — it is not blocked on the memory work either way. FIX-1364 owns the composition-seam design, the
 gap honesty, and the teaching surface for *how* an app composes memory in. FIX-1366 teaches that
-honestly — not "remembers with zero configuration", and not "one setting on the stock kind".
+honestly — not "remembers with zero configuration", and not "one setting on the stock worker flow".
 
 ### The skills entry point is pinned: `createSkillsLibrary` + per-generator binding
 
@@ -433,10 +433,10 @@ correcting that is FIX-1366's, not a reason to pick it.
 
 "Whole catalog" here means the load tool's reach over the *skill* catalog (`allowed` omitted), not
 licence for the skills library to re-widen a worker's tool reach past its own `tools:` (C1) — the
-default kind hands the library the app's tool catalog with registration turned off
+default worker flow hands the library the app's tool catalog with registration turned off
 (`createSkillsLibrary({ catalog, registerCatalogTools: false })`), so a bound skill's
 `allowed-tools` are still validated against it but never registered by the library itself. A
-stock-kind skill may declare `allowed-tools` naming a tool in the app catalog; registration stays
+skill on the stock worker flow may declare `allowed-tools` naming a tool in the app catalog; registration stays
 solely the generator's own `tools:` mapping (C1).
 
 ## C6 — What must not be invented
@@ -445,12 +445,12 @@ solely the generator's own `tools:` mapping (C1).
 - `defineAgent` / `materializeAgent` are **not** the teach path. Nothing here extends, imports
   or mirrors them — equally, nothing here waits on their deletion (FIX-1344 / PR #1713 owns
   that kill).
-- Workers are flow instances of a kind. There is no `worker.ts` worker door.
+- Workers run on worker flows. There is no `worker.ts` worker door.
 - No Mailbox or MessageBoard types follow from this contract.
 
 ### And one thing that must not be *copied*
 
-The tree still teaches the placeholder kind `worker-agent`. **The built-in kind id is
+The tree still teaches the placeholder flow `worker-agent`. **The built-in worker flow's `kind` is
 `agent`.** Until the migration lands, an implementer reading an existing example must not carry
 `worker-agent` out of it.
 
@@ -481,7 +481,7 @@ The contract's falsifiable half, written as assertions a caller can watch happen
 
 1. A worker file carrying only a description and a body hires, with no `workerFlows` entry supplied.
 2. That worker answers a turn using its body as its instructions.
-3. A worker file naming an unregistered kind refuses by name, listing the kinds that were
+3. A worker file naming an unregistered worker flow refuses by name, listing the worker flows that were
    passed, and nothing in the roster hires.
 4. A roster passing its own `agent` — declared `cardinality: "collection"` — gets its own flow,
    not ours, for **every** worker on the roster, and those workers register.
@@ -493,7 +493,7 @@ The contract's falsifiable half, written as assertions a caller can watch happen
 6. Editing an org-level skill's **content** after a worker has been seeded does not change what
    that worker holds until that worker is deliberately refreshed — except on the FIX-918 migration
    paths, which replace the copy by design (see C3). A worker's deleted copy stays deleted.
-7. Nothing in the shipped kind imports `defineAgent`, `materializeAgent` or `AgentRegistry`.
+7. Nothing in the shipped worker flow imports `defineAgent`, `materializeAgent` or `AgentRegistry`.
 
 Each criterion belongs to the issue whose own build makes it true: **1–3 to FIX-1365**, the epic's
 thin proof; **4 to FIX-1363**, which builds the built-in and the merge-underneath; **5 and 6 to
@@ -504,13 +504,13 @@ rather than deferring to a single downstream check. Every assignment is also rec
 Linear issue, which is where an owner picks it up.
 
 **None of these requires memory.** Per C5 the default mint has none, so proving that an app can
-compose memory into its own kind is FIX-1364's and is not stated here.
+compose memory into its own worker flow is FIX-1364's and is not stated here.
 
 ## Edge cases
 
 | Case | Expected |
 |---|---|
-| Worker file names a kind that isn't registered | Refuse by name, list the kinds passed. Never fall back to the default — that is the typo risk the epic traded for this rule |
+| Worker file names a worker flow that isn't registered | Refuse by name, list the worker flows passed. Never fall back to the default — that is the typo risk the epic traded for this rule |
 | App registers a flow under `agent` whose own kind is something else | Refuse, via the existing mismatched-kind check (`hire.ts`, the `factory.kind !== kind` check). The built-in's presence must not create an exemption |
 | App registers `agent` without `cardinality: "collection"` | Workers mint, then registration refuses each by name — see C2, which carries the rule and the error |
 | App registers `agent` *and* a worker says `flow: agent` | The app's flow. One resolution path, whether the name was implicit or written |
@@ -519,7 +519,7 @@ compose memory into its own kind is FIX-1364's and is not stated here.
 | Empty/whitespace-only body, no `flow:` | Hires the default with no instructions setting. A weak worker, not a failed hire — matching today's treatment of a blank body |
 | Same skill name reaches one worker from two levels | Already refused with both paths named. Unchanged |
 | Same skill name on two different teams | Fine, and now fine at the storage level too — different workers, different keys |
-| A worker's drawer is isolated but seeded from the kind's shared array | Not an edge case — it is today's default behaviour, and it fails criterion 5. C3's instance-specific seeding path is what removes it |
+| A worker's drawer is isolated but seeded from the worker flow's shared array | Not an edge case — it is today's default behaviour, and it fails criterion 5. C3's instance-specific seeding path is what removes it |
 
 **Taxonomy:** every admission problem is a startup misconfiguration, therefore fatal and
 collected — one run names every bad worker, and nothing hires partially. Existing behaviour;

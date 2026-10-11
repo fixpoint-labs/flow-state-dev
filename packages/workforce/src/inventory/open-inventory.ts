@@ -10,7 +10,7 @@
  *
  * **Two writers, split by where the live answer lives.**
  *
- * A **worker** has no session. What it is — its id and the kind it was hired into
+ * A **worker** has no session. What it is — its id and the worker flow it was hired into
  * — is the roster the process was hired from, which the binder already holds,
  * so the worker rows go out in ONE run carrying all of them.
  *
@@ -50,7 +50,7 @@ import { workerDoorOf } from "../worker-door";
 export interface InventoryWorker {
   /** The worker's id (`"<teamId>.<name>"`, or a bare `"<name>"` for an org worker) — the id its row is keyed by. */
   id: string;
-  /** The flow kind it was hired into. */
+  /** The worker flow it was hired into. */
   kind: string;
   /**
    * The worker's public actions, which its door is read from (see

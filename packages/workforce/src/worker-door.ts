@@ -1,10 +1,10 @@
 /**
- * A worker's door: the one public action its kind declares for a person's
+ * A worker's door: the one public action its worker flow declares for a person's
  * message (FIX-1690).
  *
  * An app that wants to send a person's line into a worker's session has to know
- * which action takes it, and it must not know the worker's kind to find out. So
- * the hire answers once, from the kind's own declaration, and the answer rides
+ * which action takes it, and it must not know the worker's flow to find out. So
+ * the hire answers once, from the worker flow's own declaration, and the answer rides
  * on the worker's inventory row as `door`.
  *
  * The door is the public action (`flow.actions`, never `internal` or `task`)
@@ -13,11 +13,11 @@
  * - declares `userMessage`, so the engine writes the person's line into the
  *   session as a user item before the block runs; and
  * - takes `{ message: string }`, so the app builds the input without knowing
- *   the kind.
+ *   the worker flow.
  *
- * The built-in agent kind's `run` is one. A kind with none has no door
+ * The built-in agent worker flow's `run` is one. A flow with none has no door
  * (`null`), and an app says that worker takes no message rather than guessing. A
- * kind with two is a hire problem naming both, and also gets `null`: picking
+ * flow with two is a hire problem naming both, and also gets `null`: picking
  * one would be a guess about which the author meant.
  */
 import type { FlowInstance } from "@flow-state-dev/core";
@@ -26,7 +26,7 @@ import type { FlowInstance } from "@flow-state-dev/core";
 export type WorkerDoor = {
   /** The action that takes a person's message, or `null` when there is none (or two). */
   door: string | null;
-  /** Set when the kind declares two or more such actions. */
+  /** Set when the worker flow declares two or more such actions. */
   problem?: string;
 };
 
@@ -50,7 +50,7 @@ function isDoor(action: ActionLike): boolean {
  * The door of a hired worker, read off its flow's public actions.
  *
  * @param worker A worker `hireWorkforce` returned (or any flow instance).
- * @returns The door's action name, `null` when the kind has none, and a
+ * @returns The door's action name, `null` when the worker flow has none, and a
  *   problem naming both when it has two.
  */
 export function workerDoorOf(worker: Pick<FlowInstance, "id" | "kind"> & { actions: Readonly<Record<string, unknown>> }): WorkerDoor {
@@ -62,7 +62,7 @@ export function workerDoorOf(worker: Pick<FlowInstance, "id" | "kind"> & { actio
   return {
     door: null,
     problem:
-      `worker "${worker.id}" (kind "${worker.kind}") declares ${doors.length} actions that take a ` +
+      `worker "${worker.id}" (flow "${worker.kind}") declares ${doors.length} actions that take a ` +
       `person's message (${doors.map((d) => `"${d}"`).join(", ")}), so it is published with no ` +
       `door and takes no message. Keep one: a door is the one public action with \`userMessage\` ` +
       `and a \`{ message }\` input.`,

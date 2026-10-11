@@ -54,22 +54,22 @@ export function flowTakes(installation: WorkerInstallation, postFlows: ReadonlyS
 }
 
 /**
- * The kinds of the installation's worker flows that take a delegated post,
+ * The names of the installation's worker flows that take a delegated post,
  * read now: each one that declares {@link DELEGATED_POST_ENTRY}.
  */
 export function postTakingFlows(installation: WorkerInstallation): ReadonlySet<string> {
-  const kinds = new Set<string>();
-  for (const [kind, entry] of Object.entries(installation.workerFlows())) {
-    if (takesDelegatedPost(entry.flow)) kinds.add(kind);
+  const flows = new Set<string>();
+  for (const [flow, entry] of Object.entries(installation.workerFlows())) {
+    if (takesDelegatedPost(entry.flow)) flows.add(flow);
   }
-  return kinds;
+  return flows;
 }
 
 /**
  * The check, bound to an installation and the flows a delivery can reach.
  *
  * @param installation The worker installation the session's worker runs on.
- * @param postFlows The kinds of the worker flows that take a delegated post:
+ * @param postFlows The names of the worker flows that take a delegated post:
  *   the ones a coordinator can dispatch to. Omitted, every worker flow on the
  *   installation that declares the delegated-post entry, read per check.
  */

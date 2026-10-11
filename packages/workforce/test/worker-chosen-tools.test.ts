@@ -41,7 +41,7 @@ const ping = tool("ping");
 const dial = tool("dial");
 const scan = tool("scan");
 
-/** A capability whose one tool-bearing preset is ON by default for the kind. */
+/** A capability whose one tool-bearing preset is ON by default for the worker flow. */
 const radar = defineCapability({
   name: "radar",
   presets: {
@@ -86,10 +86,10 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 /** Hire a roster and address the workers by id — never by position. */
 function hire(
   manifests: WorkerManifest[],
-  kinds: HireOptions["workerFlows"],
+  flows: HireOptions["workerFlows"],
   workerBlocks?: HireOptions["workerBlocks"]
 ): (id: string) => FlowInstance {
-  const workers = mintWorkers(manifests, { workerFlows: kinds, ...(workerBlocks ? { workerBlocks } : {}) });
+  const workers = mintWorkers(manifests, { workerFlows: flows, ...(workerBlocks ? { workerBlocks } : {}) });
   return (id) => {
     const worker = workers.find((candidate) => candidate.id === id);
     if (!worker) throw new Error(`no worker "${id}" in [${workers.map((s) => s.id).join(", ")}]`);
@@ -158,7 +158,7 @@ describe("a worker with no `tools:` line can call what its file picked", () => {
 describe("a written `tools:` line is the whole grant", () => {
   // The case the flag exists for. The hire moves a name that resolved to the
   // worker's own folder out of `tools` and onto its own blocks, so a worker
-  // listing ONLY its own blocks reaches the kind with an empty catalog list.
+  // listing ONLY its own blocks reaches the worker flow with an empty catalog list.
   // That list must still read as written, or the worker gains its presets'
   // tools because of where its one tool happened to live.
   it("gives a worker listing only its own block exactly that block, whatever it picked (BR-3)", async () => {
@@ -240,10 +240,10 @@ describe("only what the worker's own file picked grants", () => {
     expect(resolved - before).toBe(1);
   });
 
-  // The kind switching a preset on is the app's default, not the worker's
+  // The worker flow switching a preset on is the app's default, not the worker's
   // choice. A worker that picks nothing from it gains nothing — and neither
   // does one that picks a DIFFERENT preset of the same capability.
-  it("offers nothing from a preset the kind switches on that the worker did not pick (BR-29)", async () => {
+  it("offers nothing from a preset the worker flow switches on that the worker did not pick (BR-29)", async () => {
     const worker = hire(
       [
         record({ id: "eng.plain" }),
@@ -257,9 +257,9 @@ describe("only what the worker's own file picked grants", () => {
   });
 
   // Picking a preset that is already on is still picking it. The per-turn
-  // resolver skips such a preset (its context is carried once, by the kind),
+  // resolver skips such a preset (its context is carried once, by the worker flow),
   // so the grant has to read the selection as written.
-  it("offers a picked preset's tools even when the kind already switches it on (BR-31)", async () => {
+  it("offers a picked preset's tools even when the worker flow already switches it on (BR-31)", async () => {
     const worker = hire(
       [record({ id: "eng.watch", declared: { capabilities: { radar: ["sweep"] } } })],
       { [AGENT_FLOW]: defineAgentWorkerFlow({ uses: [radar] }) }
@@ -268,7 +268,7 @@ describe("only what the worker's own file picked grants", () => {
     expect(await offered(worker("eng.watch"))).toEqual(["scan"]);
   });
 
-  // The off state: a kind carrying a tool-bearing capability, a worker that
+  // The off state: a worker flow carrying a tool-bearing capability, a worker that
   // picks nothing and lists nothing. Exactly what it was offered before.
   it("offers a worker that picks nothing and lists nothing no tool at all (BR-7)", async () => {
     const worker = hire([record({ id: "eng.plain", body: "Plain." })], {

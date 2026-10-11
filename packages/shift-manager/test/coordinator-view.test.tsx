@@ -38,18 +38,18 @@ vi.mock("../src/lib/workforce", () => {
   return { useWorkforce: () => workforce };
 });
 vi.mock("../src/lib/delegates", () => ({
-  readDelegates: async (_c: unknown, kind: string, sessionId: string) => {
-    calls.push(`list ${kind} ${sessionId}`);
+  readDelegates: async (_c: unknown, flow: string, sessionId: string) => {
+    calls.push(`list ${flow} ${sessionId}`);
     return { delegates: [...listed], max: 25 };
   },
-  addDelegate: async (_c: unknown, kind: string, sessionId: string, worker: string) => {
-    calls.push(`add ${kind} ${sessionId} ${worker}`);
+  addDelegate: async (_c: unknown, flow: string, sessionId: string, worker: string) => {
+    calls.push(`add ${flow} ${sessionId} ${worker}`);
     if (refuseAdd !== null) throw new Error(refuseAdd);
     listed = [...listed, { worker }];
     return { delegates: [...listed], max: 25 };
   },
-  removeDelegate: async (_c: unknown, kind: string, sessionId: string, worker: string) => {
-    calls.push(`remove ${kind} ${sessionId} ${worker}`);
+  removeDelegate: async (_c: unknown, flow: string, sessionId: string, worker: string) => {
+    calls.push(`remove ${flow} ${sessionId} ${worker}`);
     listed = listed.filter((d) => d.worker !== worker);
     return { delegates: [...listed], max: 25 };
   },

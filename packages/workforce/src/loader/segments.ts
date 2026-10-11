@@ -18,7 +18,7 @@ import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 /**
  * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
  * joined by single hyphens. These are the skill-name rules, adopted rather than
- * shared: the minted identity becomes a flow instance id and a board key, while
+ * shared: the minted identity becomes a worker's id and a board key, while
  * each segment is separately a path segment on disk, and lowercase-hyphen is the
  * one shape safe in all of them.
  *
@@ -46,11 +46,11 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
  * document's ref is a storage-key namespace and never routes.
  *
  * `Kind` and `Block` are the other two file-named levels: a flow file's
- * basename under `workforce/flows/`, which becomes a kind name on the map an
+ * basename under `workforce/flows/`, which becomes a flow name on the map an
  * app registers, and a block file's basename under `workforce/blocks/`, which
  * becomes the name a task board assigns by. They obey the same rule as every
- * other segment for the same reason the rest do — a kind name is half of a
- * minted flow instance id, and both are a path on disk at the same time.
+ * other segment for the same reason the rest do — a flow name is half of a
+ * minted copy's id, and both are a path on disk at the same time.
  *
  * `Package` is a folder under a `packages/` slot. Its name is what a worker's
  * `packages:` line takes it by and half of the address its blocks are
@@ -88,7 +88,7 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
         : label === "Mailbox"
           ? `it becomes part of the mailbox's identity, which is joined with a "."`
           : label === "Kind"
-            ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
+            ? `it becomes the flow's name, which a worker file's \`flow:\` names and a minted copy's id is built from`
             : label === "Block"
               ? `it becomes the name the block registers under, which a task board assigns by`
               : label === "Package"

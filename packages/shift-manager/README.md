@@ -176,7 +176,7 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
-**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the worker named `chief-of-staff`. Declare it as an org worker, under `org/workers/` beside `teams/`, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
+**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the worker named `chief-of-staff`. Declare it as an org worker, under `org/workers/` beside `teams/`, on the built-in `agent` worker flow, with instructions that say what it should do for the person running the Lab:
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
@@ -229,11 +229,11 @@ A Lab with no chief of staff needs nothing in its config. Every screen works, an
 
 A post appears in the transcript only once the mailbox has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
 
-**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the mailbox. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. A worker whose kind takes no message gets a reply box that says so.
+**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the mailbox. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its worker flow takes messages. A worker whose worker flow takes no message gets a reply box that says so.
 
 A running coding run stops where it is and carries on in the same session with your message. Each message box names the worker it sends to. In Shift Coordinator and Inbox, as soon as the worker's session holds your line, the line leaves the box and shows in the conversation, and the composer says it's waiting on the reply. It says *delivered* once the worker's turn on it ends. If the send fails after the line left the box, the line is put back. A conversation that's scrolled to its end keeps the latest turn in view as lines arrive. If the worker stops on an ask of its own, as a chief of staff does before it fires a worker, the line is still delivered: the composer says so and points you at Inbox, where the ask now waits, and offers no Retry. If it stops to wait on something other than you, the composer says it's waiting, again with no Retry. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but Shift Manager can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
 
-To make your own worker kind take messages, give it one public action that declares `userMessage` and takes `{ message }`. Shift Manager sends lines there, using the `door` on the worker's inventory row.
+To make your own worker flow take messages, give it one public action that declares `userMessage` and takes `{ message }`. Shift Manager sends lines there, using the `door` on the worker's inventory row.
 
 Each section loads on its own. If one read fails, that section says what the Lab answered and offers Retry, and the rest of the screen still draws.
 

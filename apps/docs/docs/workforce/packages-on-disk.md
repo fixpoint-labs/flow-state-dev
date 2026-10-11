@@ -29,7 +29,7 @@ Over $500, page on-call with the invoice id before calling issue-refund.
 
 The body is instructions. On the built-in worker, they're in the prompt on every turn, after its team's instructions and its own; a kind of your own decides for itself. `description` is a label for people and never reaches the model. It is the only key the frontmatter takes.
 
-Each file in `blocks/` is one of the package's tools, written like a block in any other [`blocks/` folder](./code-on-disk.md#blocks-a-worker-can-call): it default-exports a block, and the file's basename, the block's own `name` and the name a worker lists must all be the same. A package block may read a store the kind installed but may not declare one.
+Each file in `blocks/` is one of the package's tools, written like a block in any other [`blocks/` folder](./code-on-disk.md#blocks-a-worker-can-call): it default-exports a block, and the file's basename, the block's own `name` and the name a worker lists must all be the same. A package block may read a store the worker flow installed but may not declare one.
 
 A package with no `blocks/` folder is fine. It is instructions and nothing else. If that's all you need, a [skill](../skills/overview.md) the worker lists under `skills: active:` does the same job, and can also stay out of the prompt until it's relevant. Reach for a package when a tool goes with the words.
 
@@ -64,7 +64,7 @@ What a worker can call from the packages it holds depends on its `tools:` line, 
 - **A `tools:` line.** The line is the whole list. Name a package's block there to keep it: `tools: [search, issue-refund]`.
 - **`tools: []`.** No tools. The worker still gets the package's instructions.
 
-If a worker's `tools:` line names something that is both a block in a package it holds and a tool in the kind's [catalog](./built-in-worker.md#tools), the worker is refused at startup, and the message names both.
+If a worker's `tools:` line names something that is both a block in a package it holds and a tool in the worker flow's [catalog](./built-in-worker.md#tools), the worker is refused at startup, and the message names both.
 
 A package's tools reach only the workers that hold it. They are not in your app's tool catalog, and a worker that doesn't hold the package can't name them.
 
@@ -123,7 +123,7 @@ hireWorkforce: 1 standard worker problem(s); nothing was registered:
 
 A preset that builds its tools per turn isn't checked at startup. If one of those tools shares a name with a package block, that turn fails with an error saying there are two tools with that name.
 
-## In a kind of your own
+## In a worker flow of your own
 
 A worker that holds at least one package receives it on the `workerPackages` setting, one entry per package in the order it holds them:
 
@@ -136,7 +136,7 @@ workerPackages?: Array<{
 }>;
 ```
 
-A worker that holds none doesn't get the key. Compose [`workerConfigSchema()`](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) into your kind's `configSchema` and it accepts the setting. What your kind does with it is up to you. A worker file that writes `workerPackages:` itself is refused by name.
+A worker that holds none doesn't get the key. Compose [`workerConfigSchema()`](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) into your worker flow's `configSchema` and it accepts the setting. What your flow does with it is up to you. A worker file that writes `workerPackages:` itself is refused by name.
 
 ## What this does not do
 

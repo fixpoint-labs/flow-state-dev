@@ -112,7 +112,7 @@ If your app should start with some projects already there, create them from its 
 
 ### Giving the writes to a worker
 
-A worker on the built-in `agent` kind can create projects and open workstreams for the person talking to it. Put the blocks in the kind's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
+A worker on the built-in `agent` worker flow can create projects and open workstreams for the person talking to it. Put the blocks in the flow's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
 
 ```ts
 import { defineAgentWorkerFlow, defineProjectBlocks } from "@flow-state-dev/workforce";

@@ -1,5 +1,5 @@
 /**
- * The names the shell and its flow agree on — which kinds the rail groups,
+ * The names the shell and its flow agree on — which flows the rail groups,
  * which coordinators it lists, and what a worker's composer sends.
  *
  * A leaf module on purpose (BP-019): the page is a client bundle and the flow
@@ -10,10 +10,10 @@
  * roster through Workforce's client (`@flow-state-dev/workforce/browser`),
  * which answers with each worker's flow and description.
  *
- * The kind names and coordinator ids are written down rather than derived,
+ * The flow names and coordinator ids are written down rather than derived,
  * because the only place that knows them at run time is the server-side tree
  * under `workforce/`, which a browser cannot read. `test/workforce-shell.test.ts`
- * holds them to that tree and fails when a kind or a coordinator changes there
+ * holds them to that tree and fails when a flow or a coordinator changes there
  * and not here.
  */
 
@@ -21,20 +21,20 @@
 export const SHELL_FLOW = "chat-agent";
 
 /**
- * The coordinator flow's kind: a worker whose `flow:` names it hands each post
+ * The coordinator flow's name: a worker whose `flow:` names it hands each post
  * to its delegates. Its panel shows the conversation's lines, each under who
  * wrote it, rather than a conversation with one worker.
  */
 export const COORDINATOR_FLOWS = ["coordinator"] as const;
 
-/** Whether a picked flow kind is a coordinator's, whose panel shows lines under their writers' names. */
-export function isCoordinatorFlow(kind: string): boolean {
-  return (COORDINATOR_FLOWS as readonly string[]).includes(kind);
+/** Whether a picked flow is a coordinator's, whose panel shows lines under their writers' names. */
+export function isCoordinatorFlow(flow: string): boolean {
+  return (COORDINATOR_FLOWS as readonly string[]).includes(flow);
 }
 
 /**
  * The coordinators the tree declares, by worker id: what the rail lists under
- * the coordinator kind. Each is the person's own conversation with that
+ * the coordinator flow. Each is the person's own conversation with that
  * coordinator, found or started by its id (`lib/rail-sessions.ts`).
  */
 export const SHELL_COORDINATORS = ["support.help"] as const;
@@ -50,8 +50,8 @@ export const COORDINATOR_ASK = { action: "run", field: "message" } as const;
 export const WORKER_FLOWS = ["agent"] as const;
 
 /**
- * What a worker's composer sends: the one action its kind answers a person with,
- * and that action's one input field. A kind with nothing to answer with says
+ * What a worker's composer sends: the one action its worker flow answers a person with,
+ * and that action's one input field. A worker flow with nothing to answer with says
  * so instead, and its workers get no composer, only this reason.
  */
 export type WorkerAsk =
@@ -59,8 +59,8 @@ export type WorkerAsk =
   | { readonly none: string };
 
 /**
- * Each worker kind's answer, written down rather than picked from the served
- * schemas: a kind that grew a second one-string action would be picked from
+ * Each worker flow's answer, written down rather than picked from the served
+ * schemas: a worker flow that grew a second one-string action would be picked from
  * silently, where a missing or wrong entry here fails
  * `test/workforce-shell.test.ts` instead.
  */
@@ -86,9 +86,9 @@ export function delegateOfRun(run: { readonly topic?: string }): string | undefi
   }
 }
 
-/** A worker kind's answer, or `undefined` for a kind the shell does not know. */
-export function workerAskFor(kind: string): WorkerAsk | undefined {
-  return (WORKER_ASKS as Record<string, WorkerAsk | undefined>)[kind];
+/** A worker flow's answer, or `undefined` for a flow the shell does not know. */
+export function workerAskFor(flow: string): WorkerAsk | undefined {
+  return (WORKER_ASKS as Record<string, WorkerAsk | undefined>)[flow];
 }
 
 /**

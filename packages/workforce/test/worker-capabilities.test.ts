@@ -72,7 +72,7 @@ const houseStyle = defineCapability({
  * Whether the tool reached the model is read off that counter: a tool the
  * generator never registered resolves to a synthesized result inside the
  * mock's tool loop and never reaches this `execute`, which is the same signal
- * the kind's own fence tests grade on.
+ * the worker flow's own fence tests grade on.
  */
 function fieldwork() {
   let calls = 0;
@@ -135,13 +135,13 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
  * By id and never by position: `hireWorkforce` returns the roster sorted, so a
  * positional read silently hands one worker's assertions the other worker's
  * settings — which is the one mix-up every check in this file is blind to,
- * since both workers are the same kind.
+ * since both workers are on the same worker flow.
  */
 function hire(
   manifests: WorkerManifest[],
-  kinds: HireOptions["workerFlows"] = {}
+  flows: HireOptions["workerFlows"] = {}
 ): (id: string) => FlowInstance {
-  const workers = mintWorkers(manifests, { workerFlows: kinds });
+  const workers = mintWorkers(manifests, { workerFlows: flows });
   return (id) => {
     const worker = workers.find((candidate) => candidate.id === id);
     if (!worker) throw new Error(`no worker "${id}" in [${workers.map((s) => s.id).join(", ")}]`);
@@ -149,9 +149,9 @@ function hire(
   };
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
+function refusalOf(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): string {
   try {
-    mintWorkers(manifests, { workerFlows: kinds });
+    mintWorkers(manifests, { workerFlows: flows });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -202,18 +202,18 @@ function occurrences(prompt: string, marker: string): number {
   return prompt.split(marker).length - 1;
 }
 
-describe("a worker picks presets from what its kind carries", () => {
+describe("a worker picks presets from what its worker flow carries", () => {
   // BR-11 and BR-15 together, and they only mean anything together: one shared
-  // kind is always right for somebody, so a worker carrying its own selection is
+  // worker flow is always right for somebody, so a worker carrying its own selection is
   // evidence only beside a sibling that does not carry it.
-  it("gives two workers of one kind the presets their own files named, and not each other's", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [research] });
+  it("gives two workers on one worker flow the presets their own files named, and not each other's", async () => {
+    const flow = defineAgentWorkerFlow({ uses: [research] });
     const worker = hire(
       [
         record({ id: "engineering.reader", declared: { capabilities: { research: ["briefing"] } } }),
         record({ id: "engineering.scout", declared: { capabilities: { research: ["ledger"] } } })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const read = await turn(worker("engineering.reader"));
@@ -230,8 +230,8 @@ describe("a worker picks presets from what its kind carries", () => {
   // BR-12. The worker that names nothing is the control for every other check in
   // this file: it must behave as it did before the key existed.
   it("gives a worker that names nothing the capability's own defaults, and nothing else", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
-    const worker = hire([record({ id: "engineering.ghost" })], { [AGENT_FLOW]: kind });
+    const flow = defineAgentWorkerFlow({ uses: [houseStyle] });
+    const worker = hire([record({ id: "engineering.ghost" })], { [AGENT_FLOW]: flow });
 
     const said = await turn(worker("engineering.ghost"));
 
@@ -247,10 +247,10 @@ describe("a worker picks presets from what its kind carries", () => {
   // hands this worker TONE twice. `toBe(1)` is what fails when that happens;
   // `toContain` would pass.
   it("carries a preset that is already on by default exactly once when a worker names it", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
+    const flow = defineAgentWorkerFlow({ uses: [houseStyle] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { "house-style": ["tone"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -265,10 +265,10 @@ describe("a worker picks presets from what its kind carries", () => {
   // A catalogue that reads the top-level array alone sees the bare ref, thinks
   // `briefing` is off, and adds it again on the worker's path.
   it("carries a preset a composing capability already turned on exactly once", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [desk, research] });
+    const flow = defineAgentWorkerFlow({ uses: [desk, research] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -280,7 +280,7 @@ describe("a worker picks presets from what its kind carries", () => {
   // The additive half of the same capability: naming the default preset AND
   // the one that is off gets one copy of each, not two of the default.
   it("adds an off-by-default preset on top of the defaults, each carried once", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
+    const flow = defineAgentWorkerFlow({ uses: [houseStyle] });
     const worker = hire(
       [
         record({
@@ -288,7 +288,7 @@ describe("a worker picks presets from what its kind carries", () => {
           declared: { capabilities: { "house-style": ["tone", "extra"] } }
         })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -301,7 +301,7 @@ describe("a worker picks presets from what its kind carries", () => {
   // V7 · BR-16, BR-17 — a preset's CONTEXT travels the per-worker path; its
   // catalog TOOLS do not get past the worker's `tools:`. Core's fence (FIX-1393)
   // drops a capability's catalog tools whenever the consuming block declares
-  // `tools:`, and this kind declares it on every worker.
+  // `tools:`, and this worker flow declares it on every worker.
   //
   // Both halves are asserted on purpose. The marker proves the selection
   // actually landed, so a zero call count reads as "the fence held" rather
@@ -313,7 +313,7 @@ describe("a worker picks presets from what its kind carries", () => {
   // never reaches it, so the counter moves only if the tool really got there.
   it("carries a selected preset's context but not its tool past the worker's fence", async () => {
     const { capability, calls } = fieldwork();
-    const kind = defineAgentWorkerFlow({ uses: [capability] });
+    const flow = defineAgentWorkerFlow({ uses: [capability] });
     const worker = hire(
       [
         record({
@@ -322,7 +322,7 @@ describe("a worker picks presets from what its kind carries", () => {
         }),
         record({ id: "engineering.ghost" })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const surveyed = await turn(worker("engineering.surveyor"), callsTool("lookup"));
@@ -345,7 +345,7 @@ describe("a worker picks presets from what its kind carries", () => {
   // different on the preset, opposite result.
   it("lets a selected preset's CONTROL tool through the same empty tools list", async () => {
     const { capability, calls } = dispatch();
-    const kind = defineAgentWorkerFlow({ uses: [capability] });
+    const flow = defineAgentWorkerFlow({ uses: [capability] });
     const worker = hire(
       [
         record({
@@ -354,7 +354,7 @@ describe("a worker picks presets from what its kind carries", () => {
         }),
         record({ id: "engineering.ghost" })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const operated = await turn(worker("engineering.operator"), callsTool("ping"));
@@ -362,7 +362,7 @@ describe("a worker picks presets from what its kind carries", () => {
     expect(occurrences(operated.prompt, RADIO)).toBe(1);
     expect(calls()).toBe(1);
 
-    // Still a selection, not a gift to the kind: the sibling named nothing.
+    // Still a selection, not a gift to the worker flow: the sibling named nothing.
     const said = await turn(worker("engineering.ghost"), callsTool("ping"));
     expect(said.error).toBeUndefined();
     expect(said.prompt).not.toContain(RADIO);
@@ -372,10 +372,10 @@ describe("a worker picks presets from what its kind carries", () => {
   // An empty list is the same as saying nothing — it is how an author leaves a
   // line in place while wanting the defaults.
   it("treats a named capability with no presets as naming nothing", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [houseStyle] });
+    const flow = defineAgentWorkerFlow({ uses: [houseStyle] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { "house-style": [] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -401,13 +401,13 @@ describe("a worker picks presets from what its kind carries", () => {
       uses: [shared],
       presets: { briefing: { context: [BRIEFING] }, default: [] }
     });
-    const kind = defineAgentWorkerFlow({ uses: [composing] });
+    const flow = defineAgentWorkerFlow({ uses: [composing] });
     const worker = hire(
       [
         record({ id: "engineering.ghost" }),
         record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     // The control: a worker that named nothing gets the nested surface once, from
@@ -442,10 +442,10 @@ describe("a worker picks presets from what its kind carries", () => {
       uses: [tuned],
       presets: { briefing: { context: [BRIEFING] }, default: [] }
     });
-    const kind = defineAgentWorkerFlow({ uses: [composing] });
+    const flow = defineAgentWorkerFlow({ uses: [composing] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -458,10 +458,10 @@ describe("a worker picks presets from what its kind carries", () => {
   // the worker's ref is cloned from the app's, so a preset the app left on stays
   // on for the worker that named a different one.
   it("keeps what the app turned on when a worker adds a preset beside it", async () => {
-    const kind = defineAgentWorkerFlow({ uses: [research.presets({ ledger: true })] });
+    const flow = defineAgentWorkerFlow({ uses: [research.presets({ ledger: true })] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     const said = await turn(worker("engineering.lead"));
@@ -474,11 +474,11 @@ describe("a worker picks presets from what its kind carries", () => {
 
 describe("a worker's capability selection is refused at the hire, never mid-turn", () => {
   // BR-13.
-  it("refuses a capability the kind does not carry, naming it and listing what the kind has", () => {
-    const kind = defineAgentWorkerFlow({ uses: [research] });
+  it("refuses a capability the worker flow does not carry, naming it and listing what the flow has", () => {
+    const flow = defineAgentWorkerFlow({ uses: [research] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { memory: ["recall"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain("engineering.lead");
@@ -486,7 +486,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
     expect(message).toContain('"research"');
   });
 
-  it("lists nothing when the kind installs no capabilities at all", () => {
+  it("lists nothing when the worker flow installs no capabilities at all", () => {
     const message = refusalOf([
       record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })
     ]);
@@ -498,10 +498,10 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
   // BR-14 — and the reason it is at the mint: `capabilities` is one setting,
   // so the whole rule fits in the closed schema the hire step already parses.
   it("refuses a preset the capability does not declare, listing the ones it does", () => {
-    const kind = defineAgentWorkerFlow({ uses: [research] });
+    const flow = defineAgentWorkerFlow({ uses: [research] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["breifing"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain('"breifing"');
@@ -510,7 +510,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
   });
 
   it("names every bad selection on a worker, not just the first", () => {
-    const kind = defineAgentWorkerFlow({ uses: [research] });
+    const flow = defineAgentWorkerFlow({ uses: [research] });
     const message = refusalOf(
       [
         record({
@@ -518,7 +518,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
           declared: { capabilities: { research: ["breifing"], memory: ["recall"] } }
         })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain('"breifing"');
@@ -526,13 +526,13 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
   });
 
   // Selecting is not widening. The app's `false` is a statement about the
-  // whole kind — the recipe that keeps a tool-bearing preset away from the
+  // whole worker flow — the recipe that keeps a tool-bearing preset away from the
   // model is written exactly this way — and a worker file does not reverse it.
   it("refuses a preset the app turned off where it installed the capability", () => {
-    const kind = defineAgentWorkerFlow({ uses: [research.presets({ briefing: false })] });
+    const flow = defineAgentWorkerFlow({ uses: [research.presets({ briefing: false })] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain('"briefing"');
@@ -551,7 +551,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
         resolve: () => ({})
       }
     });
-    const kind = defineAgentWorkerFlow({ uses: [configured] });
+    const flow = defineAgentWorkerFlow({ uses: [configured] });
     const message = refusalOf(
       [
         record({
@@ -559,7 +559,7 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
           declared: { capabilities: { "briefing-service": ["summary"] } }
         })
       ],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain('"summary"');
@@ -579,10 +579,10 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
         default: []
       }
     });
-    const kind = defineAgentWorkerFlow({ uses: [stateful] });
+    const flow = defineAgentWorkerFlow({ uses: [stateful] });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { casework: ["history"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain('"history"');
@@ -603,10 +603,10 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
         // no `default` key — every preset is on
       }
     });
-    const kind = defineAgentWorkerFlow({ uses: [stateful] });
+    const flow = defineAgentWorkerFlow({ uses: [stateful] });
     const worker = hire(
       [record({ id: "engineering.lead", declared: { capabilities: { casework: ["history"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(worker("engineering.lead").kind).toBe(AGENT_FLOW);
@@ -617,12 +617,12 @@ describe("a worker's capability selection is refused at the hire, never mid-turn
   // first ref too, or a file would be allowed a preset the block never
   // resolves.
   it("reads a repeated capability off the first entry, as the framework does", () => {
-    const kind = defineAgentWorkerFlow({
+    const flow = defineAgentWorkerFlow({
       uses: [research.presets({ briefing: false }), research]
     });
     const message = refusalOf(
       [record({ id: "engineering.lead", declared: { capabilities: { research: ["briefing"] } } })],
-      { [AGENT_FLOW]: kind }
+      { [AGENT_FLOW]: flow }
     );
 
     expect(message).toContain("turned off");

@@ -16,7 +16,7 @@ worker that came out of a folder.
 This runs the join. One tree of Markdown, pointed at once: a row filed by one
 declared worker wakes a **different** declared worker, in a session of its own on
 its flow's one copy, into a supervised coding run whose prompt was built out of that worker's own files. A
-third worker, declared on the same kind, is never reached.
+third worker, declared on the same worker flow, is never reached.
 
 Seven checks drive it. The first two differ by **one expression** — the harness
 slot; the third adds the two ends of the path neither of them reaches:
@@ -42,8 +42,8 @@ describes, and growing this into it is out of scope on purpose.
 ```
 workforce/
   flows/
-    workers/em.mts                                 kind `em`    — basename is the kind id
-    workers/coder.mts                              kind `coder`
+    workers/em.mts                                 flow `em`    — basename is the flow name
+    workers/coder.mts                              flow `coder`
   org/
     resources/engineering-handbook.md              the coordinator's document
     resources/projects.ts                          the projects collection
@@ -64,7 +64,7 @@ Nine Markdown files, and **none of them is named anywhere in this directory's
 code** except the root of the tree. Everything else is walked.
 
 Nothing in either `WORKER.md` names Claude Code, Codex or Cursor. The harness is
-one expression inside the `coder` kind, exactly as it is one expression in
+one expression inside the `coder` worker flow, exactly as it is one expression in
 `labs/conductor/src/flow.ts`.
 
 ## What this directory owns, and why each piece is here
@@ -81,10 +81,10 @@ no opinion at that spot — not because a convention is missing.
 
 | File | Why it is the lab's |
 |---|---|
-| `workforce/flows/workers/em.mts` | The coordinator kind. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM worker does no harness work" is a fact about the kind, not about one run. |
-| `workforce/flows/workers/coder.mts` | The working kind. One task entry, taking the feature board's rows and any conversation's tasks, with two `harnessManager`s behind it (feature work, which needs a commit, and a person's ask, which needs an answer), one message door over both, and the harness itself passed in as a slot. |
+| `workforce/flows/workers/em.mts` | The coordinator worker flow. It keeps a board on each of its sessions and files rows there, with the task tools its `delegates:` give it, and declares **no task entry at all** — so "the EM worker does no harness work" is a fact about the worker flow, not about one run. |
+| `workforce/flows/workers/coder.mts` | The working worker flow. One task entry, taking the feature board's rows and any conversation's tasks, with two `harnessManager`s behind it (feature work, which needs a commit, and a person's ask, which needs an answer), one message door over both, and the harness itself passed in as a slot. |
 | `judge.mts` | What the coder's judge asks Jev about a conversation's task, and the confidence floor it reads the verdict against: the same model and floor the chief of staff's best fit runs on. |
-| `host.mts` | Read the tree, build the installation and the kinds, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
+| `host.mts` | Read the tree, build the installation and the worker flows, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, filed through the doors or the task tools, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 

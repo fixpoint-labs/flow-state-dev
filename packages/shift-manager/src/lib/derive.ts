@@ -184,9 +184,9 @@ export function workstreamsOf(ask: Ask, workstreams: readonly Workstream[]): Wor
 
 /**
  * The door of the flow that owns a session: the worker inventory rows of the
- * workers on that flow name it, since a worker flow is registered at its kind.
+ * workers on that flow name it, since a worker flow is registered under its name.
  * Every worker on one flow shares its door. `null` when no worker row is on the
- * flow, or its kind takes no message.
+ * flow, or its worker flow takes no message.
  */
 export function doorOf(workers: readonly Worker[], flowId: string): string | null {
   return workers.find((worker) => worker.kind === flowId)?.door ?? null;

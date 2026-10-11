@@ -150,8 +150,8 @@ describe("the `discover:` worker-file key", () => {
   });
 
   function hire(manifests: WorkerManifest[]) {
-    const kind = defineAgentWorkerFlow({ uses: [capabilityWithThreeDomains()] });
-    return mintWorkers(manifests, { workerFlows: { agent: kind as never } });
+    const flow = defineAgentWorkerFlow({ uses: [capabilityWithThreeDomains()] });
+    return mintWorkers(manifests, { workerFlows: { agent: flow as never } });
   }
 
   it("carries a worker's list onto its settings", () => {
@@ -235,7 +235,7 @@ describe("the `discover:` worker-file key", () => {
       record({ id: "engineering.scribe" })
     ]).sort((a, b) => a.id.localeCompare(b.id));
 
-    // Two workers of ONE kind, addressed apart. A shared kind is always right
+    // Two workers on ONE worker flow, addressed apart. A shared flow is always right
     // for somebody, so a worker carrying its own narrowing is evidence only
     // beside a sibling that does not carry it.
     expect(lead!.id).toBe("engineering.lead");
@@ -260,7 +260,7 @@ describe("the `discover:` worker-file key", () => {
  *
  * `controlTools` is resolved once before every step of a tool loop, so the
  * cache is what keeps that from rebuilding a door per step. Keyed on the raw
- * join, two kinds that narrow to the same domains in different orders are two
+ * join, two worker flows that narrow to the same domains in different orders are two
  * entries and two identical `discoveryTools` instances held for the life of the
  * capability — the cache still works, it just stops being one door per
  * narrowing.

@@ -13,7 +13,7 @@
  * calls, never the stored items: a turn can be stored and still not reach the
  * model, which is exactly the failure this file exists for.
  *
- * Red state produced before these were trusted: the kind's answer without its
+ * Red state produced before these were trusted: the worker flow's answer without its
  * `history` slot. The first and third checks fail (turn 2 sends the system
  * prompt and the new message only), and so do the positive halves of the
  * second. The second's negative halves pass on that red state because nothing

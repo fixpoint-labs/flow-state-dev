@@ -63,7 +63,7 @@ async function treeNames(): Promise<Set<string>> {
  * until someone writes down why it isn't a tree name.
  */
 const SHIFT_MANAGER_WORDS: Record<string, string> = {
-  worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-worker-collab also names a kind `worker`",
+  worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-worker-collab also names a worker flow `worker`",
   "chief-of-staff":
     "the worker id the Chief of Staff screen finds its worker by; DevTeam declares an org worker under it so it has one",
 };
@@ -97,7 +97,7 @@ function literalColours(file: string, text: string): string[] {
 }
 
 describe("V8", () => {
-  it("names no worker, team, mailbox, board or kind from either goal tree (BR-5)", async () => {
+  it("names no worker, team, mailbox, board or worker flow from either goal tree (BR-5)", async () => {
     const names = await treeNames();
     expect(names.size).toBeGreaterThan(10);
     const hits = sources.flatMap((file) => namedIn(readFileSync(file, "utf8"), names).map((n) => `${relative(pkg, file)}: "${n}"`));

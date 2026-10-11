@@ -8,7 +8,7 @@
  * delegate modules share one spelling of each.
  */
 
-/** The coordinator flow's kind. **Pinned**: a worker's `flow:` names it. */
+/** The coordinator flow's name. **Pinned**: a worker's `flow:` names it. */
 export const COORDINATOR_FLOW = "coordinator";
 
 /**

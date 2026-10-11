@@ -182,7 +182,7 @@ describe("what the walk finds", () => {
   });
 
   it("generates empty maps for a folder holding nothing it recognises", async () => {
-    const root = tree({ "flows/workers/README.md": "notes about the kinds that will live here" });
+    const root = tree({ "flows/workers/README.md": "notes about the worker flows that will live here" });
 
     const { files } = await discoverWorkforceCode(root);
 
@@ -262,7 +262,7 @@ describe("what the walk refuses", () => {
 
     const problems = await refusalsOf(root);
 
-    // The basename becomes a kind name and part of a flow instance id, so it
+    // The basename becomes a worker flow's name and part of a worker's id, so it
     // obeys the rule every other segment in this tree obeys.
     expect(problems).toEqual([
       expect.stringContaining('"flows/workers/Researcher.ts"'),
@@ -327,7 +327,7 @@ describe("what the walk refuses", () => {
     ]);
   });
 
-  it("lets a block and a worker kind share a basename", async () => {
+  it("lets a block and a worker flow share a basename", async () => {
     const root = tree({
       "flows/workers/triage.ts": "export default {};",
       "blocks/triage.ts": "export default {};",
@@ -463,7 +463,7 @@ describe("the rendered module", () => {
   });
 
   it("gives two basenames that differ only in a hyphen two different identifiers", async () => {
-    // `a0` and `a-0` are distinct kinds, and both are legal segments, so the
+    // `a0` and `a-0` are distinct worker flows, and both are legal segments, so the
     // walk accepts them. Capitalising the first character of each hyphen part
     // is a no-op on a digit, so they used to render one binding imported twice
     // and a map pointing both keys at it — a module `fsdev gen` reported
@@ -485,7 +485,7 @@ describe("the rendered module", () => {
 
     const rendered = await renderTree(root);
 
-    // An app with no custom kinds should not acquire an import because of a
+    // An app with no custom worker flows should not acquire an import because of a
     // folder it does not have — and there is no member for a type to catch.
     expect(rendered).toContain("export const kinds = {};");
     expect(rendered).toContain("export const mailboxKinds = {};");

@@ -82,7 +82,7 @@ export interface WorkerInstallationOptions {
    */
   standardWorkers?: readonly WorkerManifest[];
   /**
-   * The worker flows, by kind, as `hireWorkforce` takes them. A function is
+   * The worker flows, by name, as `hireWorkforce` takes them. A function is
    * read when first needed, so a worker flow defined with this installation's
    * `session` and `resources` can be handed back to it.
    */
@@ -266,7 +266,7 @@ export interface WorkerInstallation extends WorkerGrants {
    * it, so the worker it loaded is gone on the resumed run.
    *
    * @param ctx The block's context. The block must declare {@link resources}.
-   * @param flowKind The running flow's kind.
+   * @param flowKind The running flow's name.
    * @throws WorkerTurnRefusedError when the turn can't run as the worker.
    */
   resolveWorker(ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker>;
@@ -387,7 +387,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const workerFlowsOption = (): HireOptions["workerFlows"] => {
     const read = typeof options.workerFlows === "function" ? options.workerFlows() : options.workerFlows;
     const given =
-      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([kind, entry]) => [kind, buildOf(entry)]));
+      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([flow, entry]) => [flow, buildOf(entry)]));
     if (given !== undefined && Object.hasOwn(given, AGENT_FLOW)) return given;
     boundAgent ??= defineAgentWorkerFlow({ installation });
     return { [AGENT_FLOW]: boundAgent as never, ...given };

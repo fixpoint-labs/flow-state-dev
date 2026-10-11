@@ -41,7 +41,7 @@ import { workerDoor } from "./worker-door";
 const ORG_ID = "test-org";
 const TEAM = "pentest";
 
-/** The two workers. Both are hired into ONE kind, from one flow definition. */
+/** The two workers. Both are hired into ONE worker flow, from one flow definition. */
 const ALICE = `${TEAM}.alice`;
 const BOB = `${TEAM}.bob`;
 
@@ -80,7 +80,7 @@ Notes go here.
   writeFileSync(
     join(slot, "shared.md"),
     `---
-description: Notes the whole kind works from.
+description: Notes the whole worker flow works from.
 ---
 
 Everyone reads this.
@@ -95,7 +95,7 @@ const REF = {
   shared: `teams/${TEAM}/workers/recon/shared`,
 } as const;
 
-/** Two workers of one kind, hired the way an app hires them, over one store set. */
+/** Two workers on one worker flow, hired the way an app hires them, over one store set. */
 async function hireTwoWorkersOver(root: string) {
   const { documents, errors } = await readResourcesDirectory(root);
   expect(errors).toEqual([]);
@@ -107,17 +107,17 @@ async function hireTwoWorkersOver(root: string) {
     kind: "recon",
     cardinality: "collection",
     actions: { ...workerDoor, run: { inputSchema: z.string(), block: noop } },
-    // Admission, not decoration: a hireable kind declares where a worker's
+    // Admission, not decoration: a hireable worker flow declares where a worker's
     // instructions and resolved skills arrive, or `hireWorkforce` refuses the
-    // whole roster. This kind adds no settings of its own, so it composes the
+    // whole roster. This flow adds no settings of its own, so it composes the
     // bag bare. It changes nothing the fence measures — the documents and the
     // per-worker instance ids are minted the same either way.
     configSchema: workerConfigSchema(),
     resources,
   });
 
-  // `flow: "recon"` is what puts both workers in the kind that declares the
-  // documents. Without it they are hired into the built-in `agent` kind, which
+  // `flow: "recon"` is what puts both workers in the worker flow that declares the
+  // documents. Without it they are hired into the built-in `agent` worker flow, which
   // carries its own resources and none of these — a worker with nothing to read,
   // which is not what this file is measuring.
   const manifests: WorkerManifest[] = [
@@ -126,13 +126,13 @@ async function hireTwoWorkersOver(root: string) {
   ];
 
   // The production factory, not a hand-built pair of instances: what makes the
-  // fence work is that `hireWorkforce` mints one flow INSTANCE ID per worker, and
+  // fence work is that `hireWorkforce` mints each worker its OWN ID, and
   // a hand-built pair would be assuming exactly the thing under test.
   const workers = mintWorkers(manifests, { workerFlows: { recon: reconFlow } });
   expect(workers.map((s) => s.id)).toEqual([ALICE, BOB]);
 
   // Both workers really carry the documents. Without this, a roster hired into
-  // the wrong kind — which is one missing `flow:` key away — would give every
+  // the wrong worker flow — which is one missing `flow:` key away — would give every
   // worker an empty registry, and "bob cannot read alice's row" would be green
   // because nobody can read anything.
   for (const worker of workers) {
@@ -198,7 +198,7 @@ describe("a worker document's fence", () => {
   });
 
   // Where the rows actually land, which is what "per worker" means underneath:
-  // the isolated one is namespaced by the worker's flow instance id, the shared
+  // the isolated one is namespaced by the worker's own id, the shared
   // one sits at the bare org identity.
   it("keys the isolated document by the worker's own instance id and the shared one at the bare org", async () => {
     const { contextFor, stores } = await hireTwoWorkersOver(treeWithDocuments(true));

@@ -7,7 +7,7 @@ description: "The main terms in flow-state.dev, the package each comes from, and
 
 flow-state.dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers and mailboxes out of flows and sessions, and Shift Manager is an app that reads what Workforce writes.
 
-Most terms higher up are a lower term with a name and a rule added. A worker is a flow instance. A mailbox is a session. A project is one row of a resource collection. The Built from column tells you where each term's data lives.
+Most terms higher up are a lower term with a name and a rule added. A worker is a configuration on a flow. A mailbox is a session. A project is one row of a resource collection. The Built from column tells you where each term's data lives.
 
 Most terms link to their full page.
 
@@ -95,7 +95,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 ## Workforce: workers, mailboxes, projects
 
-![Each Workforce term beside what it is made of. A worker, from WORKER.md, is a flow instance of a kind, the built-in agent kind unless it names another, with the address team.name. A hired roster row is a row of an org resource collection. A mailbox, from MAILBOX.md, is a session on the one mailbox flow; its members are worker ids and its transcript is the post items. A mailbox board is a task collection the mailbox holds but doesn't drain. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator's user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, together with its lead's workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person's open workstreams.](./glossary/workforce.svg)
+![Each Workforce term beside what it is made of. A worker, from WORKER.md, runs on a worker flow, the built-in agent flow unless it names another, with the address team.name. A roster row is a row of an org resource collection. A mailbox, from MAILBOX.md, is a session on the one mailbox flow; its members are worker ids and its transcript is the post items. A mailbox board is a task collection the mailbox holds but doesn't drain. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator's user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, together with its lead's workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person's open workstreams.](./glossary/workforce.svg)
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
@@ -103,7 +103,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Address** | workforce | A worker's id: `team.name` for a team worker, the bare name for an org worker. A user's own worker is addressed by the id it was hired or forked under, on that user's roster. | None |
 | **Team** | workforce | A folder of workers under `teams/<name>/`, with an optional `TEAM.md` whose body every worker on the team reads. A team is not a flow and has no address. | Workers |
 | **Org worker** | workforce | A worker under `org/workers/<name>/`. It belongs to no team. | Worker |
-| **Built-in worker** | workforce | The `agent` kind every worker runs on unless its file names another `flow:`. See [The built-in worker](./workforce/built-in-worker.md). | Flow (collection), generator, skills |
+| **Built-in worker** | workforce | The `agent` worker flow every worker runs on unless its file names another `flow:`. See [The built-in worker](./workforce/built-in-worker.md). | Flow (collection), generator, skills |
 | **Hire** | workforce | A user adds a worker of their own, as a row in their data. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Roster row |
 | **Roster** | workforce | A user's workers: their own, and the standard ones your files declare. See [Hiring and forking](./workforce/durable-hire.md). | User-scoped resource collection, standard workers from files |
 | **Fire** | workforce | Removes one of a user's own workers from their roster. A worker declared in a file leaves when its folder is deleted. | Roster row |

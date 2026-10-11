@@ -10,7 +10,7 @@
  * The map is returned rather than installed. A flow instance's `resources`
  * option *replaces* the definition's map instead of merging with it, so
  * installing on the app's behalf would silently delete whatever resources the
- * flow kind declared. The app spreads the map into its own, visibly, at its own
+ * flow declared. The app spreads the map into its own, visibly, at its own
  * call site.
  */
 

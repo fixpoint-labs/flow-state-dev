@@ -130,7 +130,7 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
-    // A Lab that holds no session of theirs and serves no reader kind to open one on.
+    // A Lab that holds no session of theirs and serves no reader flow to open one on.
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
       /\/api\/flows\/(mailbox|workforce-roster)\/sessions$/.test(String(input instanceof Request ? input.url : input))
@@ -373,7 +373,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     expect(await userLines(clients, "s_ops_asker")).toContain("did it land");
   });
 
-  it("is disabled for a worker whose kind has no door, and Approve still answers (BR-22)", async () => {
+  it("is disabled for a worker whose worker flow has no door, and Approve still answers (BR-22)", async () => {
     await openOnAsk({ doors: false });
     expect((screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.getByTestId("inbox-reply-blocked").textContent).toBe(`ops.asker ${GAPS.turn.replyNoDoor}`);

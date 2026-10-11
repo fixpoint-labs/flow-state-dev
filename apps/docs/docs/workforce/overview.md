@@ -110,7 +110,7 @@ The **chief of staff** is an org-level worker a person asks about the organizati
 
 A task on a mailbox's board can name any of your standard workers that takes tasks, by the name `discover` lists: `engineering.lead`. When the board hands the task over, Workforce's worker lookup finds the worker of that name and the task runs in a session of its flow that names it, one run per task.
 
-A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry.
+A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A worker flow you write takes tasks when it declares a `work` task entry.
 
 The name reaches the workers your files declare. A mailbox's board is the organization's, and whoever drains it opens the task's session, so it never hands a task to a user's own worker, which only its owner can open a session with. With the mailbox's filing check on, a task for a name nobody holds is refused when it is filed, naming it. A task whose worker was fired before it ran fails with the worker's name. No other worker picks it up.
 
@@ -125,9 +125,9 @@ The name reaches the workers your files declare. A mailbox's board is the organi
 ## Related pages
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
-- [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
+- [The built-in worker](./built-in-worker) — the `agent` worker flow a record with no `flow:` runs on: its settings, tools, skills, and memory.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
-- [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
+- [Code on disk](./code-on-disk) — your own flows, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
 - [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.

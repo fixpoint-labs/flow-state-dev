@@ -88,7 +88,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           ) : null}
         </p>
         <p className="truncate text-xs text-muted-foreground">
-          {worker.kind ?? "unknown kind"}
+          {worker.kind ?? "unknown flow"}
           {" · "}
           <span title={gaps.harness} data-testid="roster-worker-harness">
             —

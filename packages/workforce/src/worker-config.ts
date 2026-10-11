@@ -1,5 +1,5 @@
 /**
- * The admission contract: the six settings every hireable worker kind
+ * The admission contract: the six settings every hireable worker flow
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
@@ -14,24 +14,24 @@
  * a team layer, so a worker whose team wrote none carries no such key at all
  * rather than an empty string.
  *
- * A worker kind is an ordinary flow. What makes it *hireable* is that its
+ * A worker flow is an ordinary flow. What makes it *hireable* is that its
  * `configSchema` accepts what the factory imposes, and composing this contract
- * — `workerConfigSchema().extend({ ... })` — is how a kind does that. A kind
+ * — `workerConfigSchema().extend({ ... })` — is how a worker flow does that. A flow
  * whose schema cannot take the bag refuses at the mint, by name, rather than
  * hiring and quietly running short of what its author's files declared.
  *
  * **Admission is what the schema accepts, not which function built it.** There
  * is no marker to check and deliberately so: the closed schema every mint
  * already passes is the single enforcement point, and a second "did you call
- * us" gate would be a second authority over one rule. A kind that hand-declares
+ * us" gate would be a second authority over one rule. A worker flow that hand-declares
  * these keys therefore hires exactly as a composed one does, which is a
  * feature. What it gives up is staying current: when a key is added here, a
- * composed kind gets it for free, and a hand-rolled one refuses — loudly, at
+ * composed flow gets it for free, and a hand-rolled one refuses — loudly, at
  * boot, naming the key — until its author adds it too.
  *
- * **Six keys, and that is the whole bag.** A kind's own settings sit at the
+ * **Six keys, and that is the whole bag.** A worker flow's own settings sit at the
  * TOP LEVEL beside them, where the framework closes the set and an undeclared
- * key refuses by name. There is no nested bag for a kind's own settings: known
+ * key refuses by name. There is no nested bag for a flow's own settings: known
  * keys belong in the closed set, and genuinely open-ended data gets one
  * declared key whose own schema is a record, which is what `closeConfigSchema`
  * already tells an author to do.
@@ -63,9 +63,9 @@ import {
  * seeder, which parses them again where a parse failure can be reported per
  * skill.
  *
- * Declared here rather than privately inside the built-in `agent` kind, which
- * is where it used to sit: every hireable kind now receives this shape, so a
- * copy per kind would be the two-spellings bug again.
+ * Declared here rather than privately inside the built-in `agent` worker flow, which
+ * is where it used to sit: every hireable worker flow now receives this shape, so a
+ * copy per flow would be the two-spellings bug again.
  */
 export const workerSkillSchema = z
   .object({
@@ -78,9 +78,9 @@ export const workerSkillSchema = z
   .strict();
 
 /**
- * The settings every hireable worker kind admits.
+ * The settings every hireable worker flow admits.
  *
- * Compose it into a kind's own schema and add that kind's settings at the top
+ * Compose it into a worker flow's own schema and add that flow's settings at the top
  * level:
  *
  * ```ts
@@ -92,11 +92,11 @@ export const workerSkillSchema = z
  * ```
  *
  * A fresh schema per call, not a shared constant: `.extend()` returns a new
- * object schema either way, but a kind that overrides one of these keys (the
- * built-in `agent` kind refines `workerSkills` against the app's own skill names)
- * must not be editing a value other kinds hold.
+ * object schema either way, but a worker flow that overrides one of these keys (the
+ * built-in `agent` worker flow refines `workerSkills` against the app's own skill names)
+ * must not be editing a value other worker flows hold.
  *
- * **Reading any of it is optional.** A kind that composes the contract and
+ * **Reading any of it is optional.** A worker flow that composes the contract and
  * never looks at `workerSkills` mints and runs exactly as before; ignoring the
  * bag is not an error. The door is what is mandatory.
  */
@@ -135,7 +135,7 @@ export function workerConfigSchema() {
      * declares `workerSkills:` is refused by name at both doors; see
      * `manifest.ts`.
      *
-     * Spelled `workerSkills` rather than `skills` because the built-in kind's bag
+     * Spelled `workerSkills` rather than `skills` because the built-in worker flow's bag
      * already carries an author-written `skills` switch object, and one key
      * that is sometimes authored and sometimes imposed is the collision this
      * package refuses rather than resolves.
@@ -156,7 +156,7 @@ export function workerConfigSchema() {
      * NOT the worker's registry: a folder REGISTERS a name, and the file's
      * `tools:` is what grants its use, so what rides here is the intersection
      * — the subset of the registry the worker actually declared. Names that fell
-     * through to the app's catalog stay in the kind's own `tools` setting.
+     * through to the app's catalog stay in the worker flow's own `tools` setting.
      */
     [WORKER_TOOLS_KEY]: z.array(workerToolSchema).default([]),
 
@@ -169,9 +169,9 @@ export function workerConfigSchema() {
      * the way {@link TEAM_INSTRUCTIONS_KEY} is. Never authored: a worker file
      * that declares `workerPackages:` is refused by name.
      *
-     * What to do with it is the kind's. The built-in `agent` kind renders each
+     * What to do with it is the worker flow's. The built-in `agent` worker flow renders each
      * package's instructions after the team's and the worker's own, and offers
-     * its blocks as tools when the worker wrote no `tools:` line. A kind that
+     * its blocks as tools when the worker wrote no `tools:` line. A worker flow that
      * composes the contract and never reads it hires and runs; its workers'
      * packages then simply do nothing.
      */
@@ -185,7 +185,7 @@ export function workerConfigSchema() {
      * sign what it files or posts; the flow's own id is not on the block
      * context. A worker file that declares `workerId:` is refused by name.
      *
-     * Optional in the schema only so a kind can still be run outside a hire
+     * Optional in the schema only so a worker flow can still be run outside a hire
      * (a test, a single-flow app); every hired worker carries it.
      */
     [WORKER_ID_KEY]: z.string().min(1).optional(),
@@ -245,11 +245,11 @@ export const workerPackageSchema = z
   .strict();
 
 /**
- * What a hireable kind receives, as a type — the parsed shape of
+ * What a hireable worker flow receives, as a type — the parsed shape of
  * {@link workerConfigSchema}.
  *
- * A kind that extends the contract gets its own inferred config; this is the
- * part every kind shares, and what a helper written against any worker's
+ * A worker flow that extends the contract gets its own inferred config; this is the
+ * part every worker flow shares, and what a helper written against any worker's
  * settings should take.
  */
 export type WorkerConfig = z.infer<ReturnType<typeof workerConfigSchema>>;

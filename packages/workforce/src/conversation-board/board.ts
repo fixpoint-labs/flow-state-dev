@@ -111,7 +111,7 @@ export interface ConversationBoardOptions {
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
   /**
-   * The kind of the flow the board's sessions run on: where each task it
+   * The worker flow the board's sessions run on: where each task it
    * hands over sends its notice back, as the task session's `filingFlow`.
    */
   flowKind: string;

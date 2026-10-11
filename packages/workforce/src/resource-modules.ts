@@ -25,7 +25,7 @@ type DeclaredResourceEntry = DeclaredResources[string];
 
 /**
  * A module in the organisation's or a team's `resources/` folder: a capability
- * the kind installs, or a resource that merges into the one resource map.
+ * the worker flow installs, or a resource that merges into the one resource map.
  *
  * A module exporting neither fails here, in the app's own typecheck, naming its
  * file — which is where a check on an export's shape belongs, since nothing in
@@ -37,11 +37,11 @@ export type ResourceModuleExport = DefinedCapability | DeclaredResourceEntry;
  * A module in a single worker's OWN `resources/` folder: a resource, and never
  * a capability.
  *
- * Every worker of a kind shares that kind's capabilities, so a capability
- * installed from one worker's folder would quietly change every other worker of
- * that kind. Giving one worker behaviour nobody else has needs a per-worker
+ * Every worker on a flow shares that flow's capabilities, so a capability
+ * installed from one worker's folder would quietly change every other worker on
+ * that flow. Giving one worker behaviour nobody else has needs a per-worker
  * install, which the convention rules out on purpose — so the honest answer is
- * to refuse the file rather than to install it kind-wide or skip it in silence.
+ * to refuse the file rather than to install it flow-wide or skip it in silence.
  *
  * Named rather than inlined so the generated map says at its own call site
  * which entries are held to it. The name is not what the compiler prints — TS

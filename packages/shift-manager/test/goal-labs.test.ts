@@ -63,7 +63,7 @@ describe.each([
   }, 120_000);
   afterAll(async () => opened?.lab.handle.close());
 
-  it("TEAMS is exactly the workers the Lab registered, per team, each with its kind", () => {
+  it("TEAMS is exactly the workers the Lab registered, per team, each with its worker flow", () => {
     const { snapshot, roster } = opened;
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     const read = Object.fromEntries(

@@ -112,13 +112,13 @@ export type AskLabOptions = {
   inventory?: boolean;
   /**
    * Register each worker with its actions, so its inventory row names its door.
-   * Default true. `false` registers id and kind only: every worker reads as a
-   * kind with no door.
+   * Default true. `false` registers id and worker flow only: every worker reads as a
+   * worker flow with no door.
    */
   doors?: boolean;
   /**
    * Declare the inventory's collections: the writer's flow, and the asker
-   * kind for a browser to read. Default true. `false` is a Lab whose flows
+   * worker flow for a browser to read. Default true. `false` is a Lab whose flows
    * never declare an inventory, so no session it serves lists one. The
    * inventory is not opened either.
    */
@@ -134,9 +134,9 @@ export type AskLabOptions = {
    * declared team, so a declared worker's id reads as an address in it.
    */
   orgId?: string;
-  /** Add a worker named `chief-of-staff` to the ops team, on the asker kind. Default false. */
+  /** Add a worker named `chief-of-staff` to the ops team, on the asker worker flow. Default false. */
   chiefOfStaff?: boolean;
-  /** Let the asker kind's `message` door start projects (`startProjectLine`). Default false. */
+  /** Let the asker worker flow's `message` door start projects (`startProjectLine`). Default false. */
   workersStartProjects?: boolean;
   /**
    * Projects to create once the inventory is open, each as `owner` (default
@@ -145,7 +145,7 @@ export type AskLabOptions = {
   projects?: Array<CreateProjectInput & { owner?: string }>;
 };
 
-/** The flow kind the ask-lab creates projects through. */
+/** The flow the ask-lab creates projects through. */
 const PROJECTS_FLOW = "projects";
 
 /** Build, open and hand back the Lab. */

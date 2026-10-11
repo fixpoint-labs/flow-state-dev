@@ -13,7 +13,7 @@
  *
  * Under the detail, a reply box sends a line into the session the ask sits in,
  * through the door of the worker that owns that session (BR-21). A worker whose
- * kind has no door gets the box disabled, saying so; Approve and Reject are
+ * worker flow has no door gets the box disabled, saying so; Approve and Reject are
  * untouched (BR-22).
  */
 import { useEffect, useState } from "react";

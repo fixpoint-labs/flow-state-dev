@@ -5,7 +5,7 @@
  * Inbox's reply) calls {@link sendTurn}, and nothing else in Shift Manager writes a
  * session item (ER-15). The line goes to the **door** the session's own flow
  * declares: the worker inventory row for the flow the session records as its
- * owner names it. Shift Manager knows no kind and no action name of its own.
+ * owner names it. Shift Manager knows no flow name and no action name of its own.
  *
  * **Delivered means the session holds it (BR-4).** The door's request is
  * followed until it ends or stops. A line counts as delivered only when that

@@ -1,7 +1,7 @@
 /**
  * The install half of the code door — the generated `resourceModules` map
  * becomes the two things an app already passes: the capabilities its worker
- * kind `uses`, and the resources its flow declares.
+ * flow `uses`, and the resources its flow declares.
  *
  * Sibling of `resources-from-docs.ts`, and pure and isomorphic for the same
  * reasons: no `node:fs`, no store, no registry. The two halves of one
@@ -11,7 +11,7 @@
  * document's.
  *
  * It splits rather than installs. A capability has to reach a flow through the
- * worker kind's `uses`, because that is where a capability's own resources,
+ * worker flow's `uses`, because that is where a capability's own resources,
  * context and tools are resolved, while a plain resource reaches it through the
  * flow's resource map — two destinations, one folder. Returning both and
  * letting the app write the two lines keeps the wiring visible in the app's
@@ -46,7 +46,7 @@ const CAPABILITY_BRAND = "Capability";
 /** What a `resourceModules` map splits into — the two slots an app already has. */
 export interface ResourceModuleHalves {
   /**
-   * The capabilities, in the map's own order, for the worker kind's `uses`.
+   * The capabilities, in the map's own order, for the worker flow's `uses`.
    *
    * A list rather than a map: `uses` takes refs, and a capability is addressed
    * by its own `name` from there on. Duplicates and name collisions are core's
@@ -65,13 +65,13 @@ export interface ResourceModuleHalves {
 }
 
 /**
- * Split a generated `resourceModules` map into the capabilities a worker kind
+ * Split a generated `resourceModules` map into the capabilities a worker flow
  * installs and the resources a flow declares.
  *
  * ```ts
  * const { capabilities, resources } = splitResourceModules(resourceModules);
  *
- * const kind = defineAgentWorkerFlow({ uses: capabilities, ... });
+ * const workerFlow = defineAgentWorkerFlow({ uses: capabilities, ... });
  * const flowResources = { ...resourcesFromDocs(documents), ...resources };
  * ```
  *

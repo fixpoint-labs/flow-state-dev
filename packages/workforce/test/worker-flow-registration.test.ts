@@ -5,7 +5,7 @@
  * `hireWorkforce` checks every worker flow once, before any worker is hired,
  * and then resolves each worker: `agent` when it names no flow, and a flow the
  * app keeps for declared workers refuses a hired worker. A hired
- * worker is a record with an owner pin, as a runtime hire and a stored roster
+ * worker is a record that names the worker's owner, as a runtime hire and a stored roster
  * row always are and a `WORKER.md` never is.
  */
 import { describe, expect, it } from "vitest";
@@ -24,9 +24,9 @@ const door = { inputSchema: message, block: reply, userMessage: (i: { message: s
 const note = z.object({ note: z.string() });
 const work = handler({ name: "registration-work", inputSchema: note, outputSchema: note, execute: (i) => i });
 
-function workerFlow(kind: string, over: Record<string, unknown> = {}) {
+function workerFlow(flow: string, over: Record<string, unknown> = {}) {
   return defineFlow({
-    kind,
+    kind: flow,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: { run: door },

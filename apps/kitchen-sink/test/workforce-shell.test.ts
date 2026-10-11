@@ -1,19 +1,19 @@
 /**
  * The names the shell writes down, held to the tree they describe.
  *
- * The rail's kind lists and the coordinators it lists are literals in
+ * The rail's flow lists and the coordinators it lists are literals in
  * `lib/workforce-shell.ts`, because a browser cannot read `workforce/`. That
  * makes them a second copy, and a copy drifts: add a worker flow or a
  * coordinator's `WORKER.md`, and the rail silently shows the old one. These
  * cases fail on that drift.
  *
  * Red states produced before these were trusted:
- *   - add a kind to the tree and not to `WORKER_FLOWS` or `COORDINATOR_FLOWS`:
+ *   - add a worker flow to the tree and not to `WORKER_FLOWS` or `COORDINATOR_FLOWS`:
  *     the worker-flow case fails.
  *   - drop `agent`'s entry from `WORKER_ASKS`: the answering-action case fails,
- *     naming the kind with no entry.
+ *     naming the worker flow with no entry.
  *   - misname `agent`'s field `message`: the answering-action case fails,
- *     naming the field the kind actually takes.
+ *     naming the field the worker flow actually takes.
  *   - drop `support.help` from `SHELL_COORDINATORS`: the coordinator case
  *     fails.
  */
@@ -52,13 +52,13 @@ describe("the shell's names match the workforce tree", () => {
 });
 
 /**
- * The actions of a kind a person could answer through: the public ones whose
+ * The actions of a flow a person could answer through: the public ones whose
  * input is exactly one required string field. Keyed by action, valued by that
  * field's name.
  */
-async function oneStringActions(kind: string): Promise<Record<string, string>> {
+async function oneStringActions(flow: string): Promise<Record<string, string>> {
   const { installation } = await buildKitchenSinkWorkforce();
-  const factory = installation.workerFlows()[kind]!.flow as unknown as {
+  const factory = installation.workerFlows()[flow]!.flow as unknown as {
     actions: Record<string, { inputSchema?: ZodTypeAny; block: { inputSchema?: ZodTypeAny } }>;
   };
   const found: Record<string, string> = {};
@@ -71,21 +71,21 @@ async function oneStringActions(kind: string): Promise<Record<string, string>> {
   return found;
 }
 
-describe("each worker kind's composer sends to an action the kind declares", () => {
-  it("names every worker kind, and no other", () => {
+describe("each worker flow's composer sends to an action the flow declares", () => {
+  it("names every worker flow, and no other", () => {
     expect(Object.keys(WORKER_ASKS).sort()).toEqual([...WORKER_FLOWS].sort());
   });
 
-  it.each([...WORKER_FLOWS])("%s: the named action takes exactly the named one string field, or it has none", async (kind) => {
-    const ask = workerAskFor(kind);
-    if (ask === undefined) throw new Error(`WORKER_ASKS has no entry for "${kind}"`);
-    const actions = await oneStringActions(kind);
+  it.each([...WORKER_FLOWS])("%s: the named action takes exactly the named one string field, or it has none", async (flow) => {
+    const ask = workerAskFor(flow);
+    if (ask === undefined) throw new Error(`WORKER_ASKS has no entry for "${flow}"`);
+    const actions = await oneStringActions(flow);
     if ("none" in ask) {
       // "None" is only honest where there is truly nothing to answer through.
-      expect(actions, `"${kind}" is written down as taking no messages`).toEqual({});
+      expect(actions, `"${flow}" is written down as taking no messages`).toEqual({});
       expect(ask.none.length).toBeGreaterThan(0);
     } else {
-      expect(actions[ask.action], `"${kind}"'s one-string actions: ${JSON.stringify(actions)}`).toBe(ask.field);
+      expect(actions[ask.action], `"${flow}"'s one-string actions: ${JSON.stringify(actions)}`).toBe(ask.field);
     }
   });
 });
