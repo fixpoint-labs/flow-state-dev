@@ -235,6 +235,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
           const row = (await readWorkers(world.routes.owner)).find((w) => w.id === worker);
           const own = (await rosterOwn(world)).some((w) => w.id === worker);
           if (row === undefined || !own) failures.push(`J4: asked for a worker, "${worker}" is roster row ${row !== undefined}, listed in Roster as the person's ${own}: ${quote(hire)}`);
+          else if (row.flow !== hireable.flow) failures.push(`J4: asked for a worker on "${hireable.flow}", "${worker}" was hired on "${row.flow}": ${quote(hire)}`);
           else {
             notes.push(`J4: the person's roster holds "${worker}" on "${row.flow}", and Roster lists it as theirs`);
             // The fire asks first: a fire of that worker suspends on the person's approval, read from the store. Left unanswered.
@@ -245,7 +246,9 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
               const named = (asks[0]?.data as { worker?: string } | undefined)?.worker;
               if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${worker}", the turn ended ${fire.status} with ${asks.length} human_approval ask(s), not suspended on one: ${quote(fire)}`);
               else if (named !== worker || !/fire/i.test(asks[0]!.message ?? "")) failures.push(`J4: the fire's ask says "${asks[0]!.message}" naming ${JSON.stringify(asks[0]!.data)}, not a fire of "${worker}"`);
-              else notes.push(`J4: asked to fire "${worker}", the turn suspended on one human_approval "${asks[0]!.message}" ${JSON.stringify(asks[0]!.data)}; left unanswered`);
+              // Nothing is removed before the person answers: a fire that writes first and asks after still raises the same ask.
+              else if (!(await readWorkers(world.routes.owner)).some((w) => w.id === worker)) failures.push(`J4: asked to fire "${worker}", the turn suspended on its ask, but the person's roster no longer holds it: the fire ran before anyone approved`);
+              else notes.push(`J4: asked to fire "${worker}", the turn suspended on one human_approval "${asks[0]!.message}" ${JSON.stringify(asks[0]!.data)}; left unanswered, and the worker is still on the roster`);
             }
           }
         }
