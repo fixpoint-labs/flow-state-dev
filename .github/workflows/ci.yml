@@ -294,6 +294,11 @@ jobs:
       - name: No retired Workforce term
         run: node scripts/check-retired-terms.mjs
 
+      # The plants must still be refused on the real tree, or the check above
+      # could pass because it stopped seeing a term.
+      - name: The retired-term guard refuses its plants
+        run: node scripts/check-retired-terms.mjs --control
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest
