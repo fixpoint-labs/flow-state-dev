@@ -288,14 +288,6 @@ export async function visible(page: Page, testId: string, timeout = 10_000): Pro
   }
 }
 
-/** The seat ids TEAMS draws, on a fresh load of the page. */
-export async function teamsSeats(world: World): Promise<string[]> {
-  await world.open("/cos");
-  await world.page.getByTestId("teams").waitFor();
-  await world.page.locator("[data-testid=teams] [data-testid=worker]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
-  return world.page.locator("[data-testid=teams] [data-testid=worker]").evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""));
-}
-
 /**
  * The person's own workers Roster draws (each marked theirs), on a fresh load
  * of the page, once Roster has read their roster: by worker id, with the row's
