@@ -153,7 +153,7 @@ const registeredWorkers = handler({
 { id: "engineering.lead", kind: "agent", door: "run", hired: false, incarnation: null }
 ```
 
-`kind` is the flow the worker runs on. `hired` is `false` and `incarnation` is `null` on every row: the inventory lists only the workers your files declare.
+`kind` is the flow the worker runs on. Every row `openInventory` writes has `hired: false` and `incarnation: null`, because the inventory lists only the workers your files declare.
 
 `door` names an action on the worker's flow: the one that takes a person's message for this worker. It is the flow's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A worker you build by hand with no such action gets `door: null`, and an app should say that worker takes no message rather than guess.
 

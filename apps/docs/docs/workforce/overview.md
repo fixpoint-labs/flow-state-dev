@@ -21,7 +21,7 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 ![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, and hireWorkforce gives back one copy of each flow a worker runs on, which your app registers. Every worker on a flow shares that copy. Sessions name their worker when they are created, and live in your store with the state and resources a worker writes. A worker a user hires or forks while the app runs is a row in their own data. A task's assignee can name a standard worker that takes tasks: the board runs the list, and Workforce finds the worker.](./workforce-overview.svg)
 
-Workforce reads your files and runs them. Each `WORKER.md` is a standard worker every user has, run by one shared copy of the flow it names. A user can add workers of their own, which nobody else can reach. Sessions, resources and boards work as they do on any flow, and live where they always do.
+Workforce reads your files and runs them. Each `WORKER.md` is a standard worker every user has, run by one shared copy of the flow it names. A user can add workers of their own, which nobody else can reach.
 
 - **A user's own workers are data.** A worker a user hires or forks while the app runs is a row in their own data: every process sees it on the next turn, nothing restarts, and no other user can reach it. See [Hiring and forking](./durable-hire).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
@@ -111,7 +111,7 @@ A [coordinator](./coordinators.md) files tasks for its delegates on its conversa
 
 A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
 
-A task for a worker that isn't one of the filer's delegates taking tasks is refused when it is filed, naming it. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
+Filing a task for a worker that isn't one of the filer's delegates, or that takes no tasks, is refused, and the refusal names the worker. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
 
 [Handing out tasks](./coordinators.md#handing-out-tasks) has the details: filing, retries, questions and follow-ups.
 

@@ -155,7 +155,7 @@ export const flows = hireWorkforce(installation);
 
 The capabilities each add one part:
 
-- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on both flows `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the worker inventory on both flows. Passing its key as `inventory` lets `discover` answer who works here.
+- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on both flows `discover`, which answers who works here. The small `inventory` capability declares the worker inventory on both flows, and passing its key as `inventory` points `discover` at it.
 - **Hiring.** The catalog holds `hire` and `fire`. Asking first is yours to add, as `askFire` does: the blocks themselves write at once.
 
 `hire` asks the model for an id, a flow and `settings`, but doesn't say which flows it can hire onto or which settings each one requires. The chief of staff learns both from its `WORKER.md` body, so name the flows it hires onto there, and each required setting and its value, as the example file does for `agent` and `coder`. Without them, the model may ask the person which flow to use instead of calling `hire`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.

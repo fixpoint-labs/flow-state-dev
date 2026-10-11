@@ -43,7 +43,7 @@ Entries also carry an optional `contract`, a hint at how to work with the thing,
 
 ## Setting it up
 
-Three domains exist: `seats`, `skills` and `resources`. Each is a **source**: a projection of a reader the framework already has, computed when an agent asks. Nothing is stored, and no domain keeps a second copy of its own state.
+Three domains exist: `seats`, `skills` and `resources`. Each is a **source**, computed when an agent asks, so it reflects what is registered at that moment.
 
 ```ts
 import { resourcesManifestSource } from "@flow-state-dev/core";
@@ -108,7 +108,7 @@ Asking for a domain name that does not exist comes back with the three real name
 
 ## What an entry does and does not promise
 
-An entry says a thing was **registered or declared** in this workspace. It does not promise the thing is open, running, or still there. Workers are projected from a record that is only ever appended to, so discovery cross-checks those rows against what the tree declares before it lists them: a worker whose `WORKER.md` is gone does not appear, even though its row remains. Treat an entry as "this exists and here is what it is for", and confirm the state of anything you are about to act on the same way you would without the catalog.
+An entry says a thing was **registered or declared** in this workspace. It does not promise the thing is open, running, or still there. Workers are projected from a record that is only ever appended to, so discovery cross-checks those rows against what the tree declares before it lists them. A worker whose `WORKER.md` is gone does not appear, even though its inventory row remains. Treat an entry as "this exists and here is what it is for", and confirm the state of anything you are about to act on the same way you would without the catalog.
 
 ## Moving skills from the prompt to the door
 

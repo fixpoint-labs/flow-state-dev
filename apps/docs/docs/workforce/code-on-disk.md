@@ -102,7 +102,7 @@ export const seatBlocks = {
 export const packageBlocks = {};
 ```
 
-A binding is where the file was found plus its name, with hyphens as underscores: `worker_` and `block_` for the two top-level folders, `resource_` and the document ref for a module in a `resources/` folder, `teamblock_` or `seatblock_` with the team or the seat for a block folder inside the team tree, and `packageblock_` with the package's folder for a block inside a [package](./packages-on-disk.md). The imports arrive in one group per walk — the two top-level folders first, then the resource modules, then the blocks in the team tree, then the package blocks — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
+A binding is where the file was found plus its name, with hyphens as underscores: `worker_` and `block_` for the two top-level folders, `resource_` and the document ref for a module in a `resources/` folder, `teamblock_` or `seatblock_` with the team or the worker for a block folder inside the team tree, and `packageblock_` with the package's folder for a block inside a [package](./packages-on-disk.md). The imports arrive in one group per walk — the two top-level folders first, then the resource modules, then the blocks in the team tree, then the package blocks — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
 
 Each export feeds a parameter that already exists:
 

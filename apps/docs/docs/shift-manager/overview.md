@@ -100,7 +100,7 @@ Shift Manager reads a Lab only through the routes its `FlowState` serves. It bui
 
 - **A `FlowState` as the default export**, with a store. `inMemoryStores()` gives an empty Lab on every start. Use `sqliteStores` or `postgresStores` to keep what it holds across restarts.
 - **An organization**, named by `resolvePrincipal` on `createFlowState`. Without one, the Lab runs in the development organization, `DEFAULT_ORG_ID`.
-- **An open [inventory](../workforce/inventory.md)**, which TEAMS, PROJECTS, Inbox and the boards read. Without it, TEAMS and PROJECTS say there's none and the rest loads.
+- **An open [inventory](../workforce/inventory.md)**, which TEAMS, Roster and Inbox read to find the Lab's workers. Without it, TEAMS says there's none and the rest loads.
 - **Who Shift Manager reads as**: `devtool: { userId }` on `createFlowState`, plus `bearerToken` when your resolver checks one. Shift Manager hands these to the page only on a loopback host.
 - **Optionally, a chief of staff**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The chief of staff](../workforce/chief-of-staff.md).
 

@@ -119,7 +119,7 @@ A Lab with no resolver runs in the framework's development organization, `DEFAUL
 
 **Who can open it.** Shift Manager reads the organization off the person's sessions. Someone the Lab holds no session for yet, such as a project's second member on their first visit, gets one opened on Workforce's roster flow, and the Lab records in it the organization its resolver puts them in. So anyone your resolver verifies can open Shift Manager, see the organization's shared projects, and open workstreams in the ones they're a member of. A Lab that holds no session for the person and serves no roster flow to open one on shows a screen saying it names no organization, in place of the Lab.
 
-**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its workers. TEAMS and PROJECTS list it, and Inbox and the boards find workers and workstreams through it. It takes two steps:
+**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its workers. TEAMS, Roster and Inbox read it to find the Lab's workers. It takes two steps:
 
 1. Register a flow that carries the action that writes the inventory: one of your own whose `internal.actions` spread `inventoryWriterActions()`.
 2. Call `openInventory` at boot, under the organization your resolver names.
@@ -158,7 +158,7 @@ const run = async (request: InventoryActionRequest) => {
 };
 ```
 
-Without an inventory, TEAMS and PROJECTS each say there is none to read, and the other sections load. The [Inventory](../../apps/docs/docs/workforce/inventory.md) page covers both calls in full.
+Without an inventory, TEAMS says there is none to read, and the other sections load. The [Inventory](../../apps/docs/docs/workforce/inventory.md) page covers the writer flow and both calls in full.
 
 **Who Shift Manager reads as.** Set `devtool: { userId }` on `createFlowState`, and add `bearerToken` when the resolver checks one. These are the settings `fsdev dev` hands the DevTool. Shift Manager passes them to the page only when `--host` is a loopback address. If the Lab turns down Shift Manager's first request because it carries no organization the resolver accepts, Shift Manager shows the Lab's answer in place of the Lab.
 
@@ -290,10 +290,10 @@ The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` pac
 
 ### What a coding run is handed
 
-When you approve a feature in Inbox, the team's own coordinator seat, not the `chief-of-staff` seat behind Shift Coordinator, files it as a task and a coder seat picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
+When you approve a feature in Inbox, the team's own coordinator, not the `chief-of-staff` worker behind Shift Coordinator, files it as a task and a coder worker picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
 
 - **The task.** The feature you approved, word for word.
-- **The seat's own files.** Its instructions, the document it names (the team's standing brief), and its skills.
+- **The worker's own files.** Its instructions, the document it names (the team's standing brief), and its skills.
 - **Where and how to work.** Its own checkout and branch, and what counts as done.
 
 It never gets the coordinator's session. Anything a run needs from a conversation has to be written on the task. A message you send to a running task reaches it separately, as described under *Talking to a worker* in [What you see](#what-you-see).

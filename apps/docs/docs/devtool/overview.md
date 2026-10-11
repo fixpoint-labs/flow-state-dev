@@ -173,7 +173,7 @@ If your app writes a [workforce inventory](/docs/workforce/inventory), the Inven
 
 The tab has one section, **Registered seats**, with each worker's Id and Kind. When nothing is registered, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
 
-Every row is labelled registered. A row stays once it is written, so a worker your files no longer declare is still listed. The tab is a record of what has been registered here. It can't tell you which workers are working now.
+Every row is labelled registered. The tab says the same: a row stays once it is written, so a worker that was fired is still listed as registered. The tab is a record of what has been registered here. It can't tell you which workers are working now.
 
 The tab works with `FSDEV_DEBUG_ENDPOINTS=0`. Each request carries the DevTool's bearer token, from `devtool.bearerToken` in your config or the Settings sheet (see [Connecting to a secured flow](./setup.md#connecting-to-a-secured-flow)). It reads every page of the collection.
 

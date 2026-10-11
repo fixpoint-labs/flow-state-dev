@@ -1203,7 +1203,7 @@ where it is when a later roster no longer names the worker. The rows are the sta
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineSeatInventoryCollection()` | registered worker, at `inventory/seats/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a person's message, or `null`), `hired` (`false`: only standard workers are listed), `incarnation` (`null`) |
+| `defineSeatInventoryCollection()` | registered worker, at `inventory/seats/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a person's message, or `null`), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
 
 The collection is readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares it: the
@@ -1824,7 +1824,7 @@ the root exports, and reaches no Node built-in.
 | `INVENTORY_REGISTER_SEATS` | The action name the writer runs: `"registerSeatsInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
 | `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats }`), one worker (`{ id, kind, actions }`: its `door` action read from `actions`, `{}` for a worker with none), and which flow writes the rows (`{ flowKind, sessionId? }`). |
-| `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, problems }`). |
+| `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
 | `seatDoorOf(seat)` / `SeatDoor` | A hired seat's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the kind has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the seat's row. A worker flow with none or two is refused when hired, so a hired seat always has one. |
 
@@ -1833,7 +1833,7 @@ the root exports, and reaches no Node built-in.
 | Error | When |
 |-------|------|
 | Two sources claiming one discovery domain | `createWorkforceCapability` construction, naming both registration sites |
-| A worker file's `discover:` names something that is not one of the three domains | The mint, by name, listing `seats`, `skills`, `resources`. A correctly spelled domain the scope does not carry is *not* an error — the seat simply sees nothing for it |
+| A worker file's `discover:` names something that is not one of the three domains | The mint, by name, listing `seats`, `skills`, `resources`. A correctly spelled domain the scope does not carry is *not* an error — the worker sees nothing for it |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable or symlinked | `readWorkforceDirectory` and `readWorkforce` throw — the root is never followed through a link |
 | Anything below the root, read as one tree | Collected in `readDeclaredRoster`'s `problems`, one entry per thing that did not load, tagged with the layer that reported it — never thrown |
