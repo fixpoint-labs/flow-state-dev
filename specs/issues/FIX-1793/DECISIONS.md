@@ -219,6 +219,7 @@ Engineering calls, recorded so nobody re-derives them.
   FIX-1791 BR-4, FIX-1794 BR-4), and FIX-1791 S9 gives that entry to `agent` and to app flows that
   declare it; FIX-1792 moved the DevTeam's workstreams to the EM, on `em`, for this. Coordinating is
   the delegates, not the flow (epic D8). S3's lead-flow check already refuses any other lead.
+- **A lead must declare delegates** (BR-42, the product owner's "limit who can be assigned as lead", 2026-10-11). It adds to S3's lead-flow check rather than a new marker in `WORKER.md`: a worker that runs a workstream does it through its delegates (epic D8). Any app's `openWorkstream` gets the same refusal.
 - **The project coordinator picks the lead from the worker descriptions on the person's roster**
   (read when the ask arrives, so hired workers count), and says so rather than opening when none fits (BR-39). It doesn't hire: hiring
   stays the chief of staff's.
