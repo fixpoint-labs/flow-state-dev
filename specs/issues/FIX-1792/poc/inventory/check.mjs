@@ -78,7 +78,7 @@ const REMOVED_EXPORTS = [
   "mailboxInstances", "MailboxInstancesOptions", "openMailboxes", "OpenMailboxesOptions", "MailboxKind", "mailboxBoardIds",
   "mailboxBoard", "mailboxBoardId", "mailboxBoardLedger", "mailboxBoardNameProblem", "mailboxBoardNamesFor",
   "mailboxBoardTaskTools", "resolveMailboxBoard", "MailboxBoardCollection", "MAILBOX_BOARDS_KEY", "MAILBOX_BOARD_CLIENT_FIELDS",
-  "mailboxTaskLists",
+  "mailboxTaskLists", "MailboxListDeclaration",
   // S9 · post lines and the route record (mailbox/mailbox-items.ts, mailbox-post-line.ts, mailbox-route.ts)
   "emitMailboxPostLine", "readMailboxPostLines", "emitMailboxRouteRecord", "MAILBOX_POST_COMPONENT",
   "MailboxTranscriptLine", "mailboxTranscriptLineSchema", "MAILBOX_ROUTE_COMPONENT", "MAILBOX_ROUTE_EVALUATOR",
@@ -217,13 +217,13 @@ const FILES = {
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/lounge/MAILBOX.md":
     { done: "P1", target: "coordinator", boards: [], use: "a mailbox without routing behaves as before" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
-    { target: "workstream", boards: ["work"], use: "the DevTeam builds a feature; the storefront project claims it, and its coding runs find the project through the claim. A Storefront workstream the EM leads and files on" },
+    { done: "P3", target: "workstream", boards: ["work"], use: "the DevTeam builds a feature; the storefront project claims it, and its coding runs find the project through the claim. A Storefront workstream the EM leads and files on" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/triage/MAILBOX.md":
     { done: "P3", target: "coordinator", boards: [], use: "where the team sorts reports; no default project lists it" },
   "packages/shift-manager/teams/devteam/workforce/teams/ops/mailboxes/oncall/MAILBOX.md":
     { done: "P3", target: "coordinator", boards: [], use: "the pager hand-off; no default project lists it" },
   "packages/shift-manager/teams/devteam/workforce/teams/ops/mailboxes/release/MAILBOX.md":
-    { target: "workstream", boards: [], use: "the storefront project lists it; it keeps no board. A Storefront workstream the EM leads" },
+    { done: "P3", target: "workstream", boards: [], use: "the storefront project lists it; it keeps no board. A Storefront workstream the EM leads" },
   "packages/shift-manager/test/fixtures/ask-lab/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
     { done: "P3", had: { boardActions: 1 }, target: "session", boards: ["work"], use: "Shift Manager's tests read its tasks, asks and inbox" },
   "packages/shift-manager/test/fixtures/ask-lab/workforce/teams/ops/mailboxes/side/MAILBOX.md":
@@ -271,6 +271,7 @@ const FILE_CLASS = {
   "packages/workforce/src/workers/register.ts": "E · S9 · the hire's mailboxBoards option goes",
   "packages/workforce/src/best-fit.ts": "E · S9 · a comment names the mailbox's route wrapper, routeByPurpose",
   "packages/shift-manager/test/devteam-coordinator-workers.test.ts": "C · S7 · DevTeam's triage and oncall take posts as coordinator workers",
+  "packages/shift-manager/test/devteam-em-workstream.test.ts": "C · S7 · V5: the EM files from the workstream it leads; the claim rows are deleted and the run still finds its project",
   "packages/shift-manager/test/devteam-cos-tool-names.test.ts": "E · S7 · the chief of staff loses setWorkstreams",
   "packages/shift-manager/test/devteam-chief-of-staff-coordinator.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
   "packages/shift-manager/test/devteam-chief-of-staff-tasks.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
@@ -477,6 +478,7 @@ const GOALS = {
   "goals/coordinators/hands-each-post-to-its-delegates": "CONVERT · FIX-1791's goal check reads the DevTeam's mailbox boards; it follows the DevTeam in P3 (S7)",
   "goals/agent-discovery/an-orchestrator-routes-a-task-by-asking": "EDIT · a roster literal's mailboxes field",
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
+  "goals/devforce-lab/it-answers-a-conversations-task": "CONVERT · the lab opens with no mailbox; its feature-board control goes with the board",
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
   "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
   "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature workstream",

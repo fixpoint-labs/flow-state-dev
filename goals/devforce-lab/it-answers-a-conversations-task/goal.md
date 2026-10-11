@@ -57,9 +57,13 @@ workstream through the projects flow). A crash or timeout is not a FAIL for a co
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| `feature-door-only` | the coder's `work` entry as before: the feature board only | `a:one-line-under-eng.coder` (and every leg: no task is ever filed for the coder) |
 | `no-filing-project` | the stores drop the workstream and project a hand-over writes onto a task session | `b:carrying-the-marker` and `b-sandbox:carrying-the-marker` (legs a, c, d, d2 stay green) |
 | `no-judge` | the coder runs with no judge | `d2:ends-errored` (and `c:judged-not-done:…`) |
+
+`feature-door-only` (the coder's `work` entry reading the feature board only) is gone with that
+board: the DevTeam's feature work is a workstream the EM leads, and the coder has the one entry.
+`a:one-line-under-eng.coder`'s red state is now a mutation: drop the coder flow's `work` entry
+and no task is filed for it.
 
 **Model:** legs a to c script the coordinator and the judge through the lab's model resolver.
 Legs d and d2: `openai/gpt-5.4-mini` for every turn and `typesafe-ai/jev` as the judge, through
@@ -95,3 +99,4 @@ Two departures from the spec's wording, both forced by the lab as it is:
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-10 | `6c65b15f1`+wip (fix/FIX-1866-p3) | scripted (a–c); `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | Controls first: `feature-door-only` FAILs `a:one-line-under-eng.coder` (no task is filed for the coder: every leg red); `no-filing-project` FAILs exactly `b:carrying-the-marker` and `b-sandbox:carrying-the-marker` ("failed for good … refused this run (no-project)"), `b:sandbox-note-kept`; `no-judge` FAILs `d2:ends-errored` ("ended completed after 1 attempt") and `c:judged-not-done:…`. Then PASS, about 40 s: d filed on the first turn, Jev `done` at 0.89; d2 Jev `not-done` at 1.0 twice. On earlier runs the coordinator asked which project and filed on the person's answer. Found on the way: with three overlapping not-done outcomes Jev's confidence split (0.66 on "Storefront is a project.", under the 0.7 floor), so the judge now asks its verdict apart from the reason; and a filing with `waitForResponse` hears the ending in the turn, not as a line, so the chief of staff's file now says never to wait on a coder's task. |
+| 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | scripted (a–c); `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | On the DevTeam with `feature` a workstream and no mailbox: a, b, c PASS; d filed on the person's answer, Jev `done` at 0.89; d2 Jev `not-done` at 1.0 twice. `no-filing-project` FAILs `b:carrying-the-marker`, `b:sandbox-note-kept`, `b-sandbox:carrying-the-marker` ("refused this run (no-project)"); `no-judge` FAILs `d2:ends-errored` and `c:judged-not-done:…`. `feature-door-only` retired with the feature board; its assertion's red state by mutation (the coder flow's `work` entry commented out, `GOAL_LEGS=a`): FAILs `a:one-line-under-eng.coder` ("the task is undefined"), file restored. |
