@@ -70,7 +70,7 @@ describe("private and shared projects", () => {
     expect(await ids(h, "alice", PROJECTS_RESOURCE, OTHER_ORG)).toEqual([]);
   });
 
-  it("refuses a private create that lists anyone but its owner, or lists workstreams, and writes nothing (BR-3)", async () => {
+  it("refuses a private create that lists anyone but its owner, and writes nothing (BR-3)", async () => {
     const h = await boot();
     const lab = await h.openSession("alice", "lab");
     const withBob = await h.act("alice", "lab", lab, "createProject", {
@@ -81,15 +81,6 @@ describe("private and shared projects", () => {
     });
     expect(withBob.settled).not.toBe("completed");
     expect(refusal(withBob)).toContain("private-has-members");
-
-    const withWorkstreams = await h.act("alice", "lab", lab, "createProject", {
-      id: "notes",
-      title: "My notes",
-      visibility: "private",
-      workstreams: ["eng.feature"]
-    });
-    expect(withWorkstreams.settled).not.toBe("completed");
-    expect(refusal(withWorkstreams)).toContain("private-has-workstreams");
     expect(await ids(h, "alice", PRIVATE_PROJECTS_RESOURCE)).toEqual([]);
 
     // Naming only herself is no one else.

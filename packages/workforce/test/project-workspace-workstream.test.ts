@@ -4,9 +4,6 @@
  * session, and the source finds the project from the workstream it leads, by
  * the session's readonly `workstreamId`, then the owner's entry, then the row
  * at the project's visibility. Files come from that visibility's scope.
- *
- * The mailbox-board path (claims) keeps its own tests in
- * `project-workspace.test.ts`.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -160,7 +157,7 @@ describe("projectWorkspace for a workstream", () => {
     expect(asked.answer.message).toContain('"bob" has no workstream "checkout"');
   });
 
-  it("refuses a run whose session leads no workstream and names no board", async () => {
+  it("refuses a run whose session leads no workstream", async () => {
     const h = await boot();
     const asked = (await h.ok("alice", "lab", await h.lab("alice"), "askSource", {})) as any;
     expect(asked.answer).toMatchObject({ kind: "refused", reason: "no-project" });

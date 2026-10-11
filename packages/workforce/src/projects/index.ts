@@ -17,7 +17,6 @@ export {
   definePrivateProjectsCollection,
   defineProjectFilesCollection,
   defineProjectsCollection,
-  defineWorkstreamClaimsCollection,
   NO_PROJECT_ID,
   PRIVATE_PROJECT_FILES_RESOURCE,
   PRIVATE_PROJECTS_RESOURCE,
@@ -30,27 +29,20 @@ export {
   projectVisibilitySchema,
   type ProjectAddress,
   type ProjectVisibility,
-  WORKSTREAM_CLAIMS_RESOURCE,
-  workstreamClaimSchema,
   type ProjectFile,
-  type ProjectRow,
-  type WorkstreamClaim
+  type ProjectRow
 } from "./collections";
 
 export {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
-  projectWritesMailboxInventory,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
-  setWorkstreamsInputSchema,
-  setWorkstreamsOutputSchema,
   type CreateProjectInput,
   type CreateProjectOutput,
   type ProjectBlocks,
-  type SetRepositoryInput,
-  type SetWorkstreamsInput
+  type SetRepositoryInput
 } from "./project-writes";
 
 export {
@@ -135,6 +127,5 @@ export {
 export {
   projectWorkspace,
   projectWorkspaceCapability,
-  type ProjectWorkspaceOptions,
   type ProjectWorkspaceRefusalReason
 } from "./project-workspace";

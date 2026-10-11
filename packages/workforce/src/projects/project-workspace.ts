@@ -34,30 +34,22 @@
  * the project's members. A task naming a project other than its
  * conversation's (1 or 2) is refused, never followed.
  *
- * **4. From a mailbox board**, given as `board`. The workstream claim path:
- *
- *   board → its mailbox → the workstream's claim → the project row → as above
- *
- * kept for the mailbox boards a project row lists until they become
- * workstreams.
- *
  * Every step reads stored, server-written data (BP-031): the session's
- * readonly fields, the entry, the claim and the rows; the mailbox id is
- * derived from the board's minted id (`<mailboxId>.<board>`), never passed
- * beside it; and the run's owner is the request's resolved user, the same
- * identity harness-manager records as the run's owner. The one thing read
+ * readonly fields, the entry and the rows; and the run's owner is the
+ * request's resolved user, the same identity harness-manager records as the
+ * run's owner. The one thing read
  * from the row being worked is its `input.project`, and only as a name the
  * membership check then decides on.
  *
  * Refusals, each naming what it refused on, before any file or clone exists:
  *
- * - `no-project`: none of the four finds a project, the task names one that
+ * - `no-project`: none of the three finds a project, the task names one that
  *   doesn't exist, or names one by anything but its visibility and id.
  * - `no-such-workstream`: the session names a workstream its owner has no
  *   entry for.
- * - `no-such-project`: the entry or the claim names a project with no row.
+ * - `no-such-project`: the entry names a project with no row.
  * - `not-the-owner`: the run's owner is not the workstream's owner.
- * - `not-a-member`: on the project, task and board paths, the run's owner is
+ * - `not-a-member`: on the project and task paths, the run's owner is
  *   not one of the project's members (for a private project, its owner).
  * - `other-project`: the task names a project other than its conversation's.
  *
@@ -86,11 +78,8 @@ import { heldTask } from "../conversation-board/held-task";
 import {
   defineProjectFilesCollection,
   definePrivateProjectFilesCollection,
-  defineWorkstreamClaimsCollection,
   projectAddressSchema,
   projectRowSchema,
-  WORKSTREAM_CLAIMS_RESOURCE,
-  workstreamClaimSchema,
   type ProjectAddress,
   type ProjectRow,
   type ProjectVisibility
@@ -122,7 +111,7 @@ export type ProjectWorkspaceRefusalReason =
 
 /**
  * The collections {@link projectWorkspace} reads: the workstream entries, the
- * workstream claims, the projects and the project files, at both
+ * projects and the project files, at both
  * visibilities, and the conversation ledger a task's row is read from. Pass it on the `uses` of the block that asks the source (for
  * harness-manager, `harnessManager({ uses: [projectWorkspaceCapability] })`).
  *
@@ -132,26 +121,12 @@ export type ProjectWorkspaceRefusalReason =
 export const projectWorkspaceCapability = defineCapability({
   name: "project-workspace",
   resources: {
-    [WORKSTREAM_CLAIMS_RESOURCE]: defineWorkstreamClaimsCollection(),
     ...PROJECT_ROW_RESOURCES,
     ...PROJECT_FILE_RESOURCES,
     ...WORKSTREAM_RESOURCES,
     ...conversationLedgerResources
   }
 });
-
-/** What {@link projectWorkspace} takes. */
-export interface ProjectWorkspaceOptions {
-  /**
-   * The mailbox board the runs are on, for runs that find their project
-   * through the board's workstream claim: the same declaration the manager
-   * drains (`mailboxBoard(mailboxId, name)`). Only its minted id is read, and
-   * the mailbox is derived from it. Omit it when every run finds its project
-   * another way (a workstream, its conversation's project, or the project
-   * its task names); a run that finds none is then refused `no-project`.
-   */
-  board?: { readonly id: string };
-}
 
 /**
  * The run source for coding runs on a project.
@@ -160,10 +135,8 @@ export interface ProjectWorkspaceOptions {
  * repository, `{ kind: "files", projectId, files }` for one with none, or a
  * refusal ({@link ProjectWorkspaceRefusalReason}).
  *
- * @param options `board`: the mailbox board whose rows the runs work, if any.
  * @returns A `RunSource` to hand `localWorkspaceHost({ source })`.
- * @throws When built, if the board's id is not a mailbox board's
- *   (`<mailboxId>.<board>`). When asked, if the block asking does not hold
+ * @throws When asked, if the block asking does not hold
  *   {@link projectWorkspaceCapability}.
  * @example
  *   harnessManager({
@@ -172,9 +145,7 @@ export interface ProjectWorkspaceOptions {
  *     // ...
  *   });
  */
-export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSource {
-  const workstream = options.board === undefined ? undefined : boardWorkstream(options.board.id);
-
+export function projectWorkspace(): RunSource {
   const source: RunSource = async (ctx): Promise<RunSourceAnswer> => {
     const named = await namedProjectOf(ctx);
     if (named.kind === "malformed") return named.refusal;
@@ -190,14 +161,11 @@ export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSour
       return otherProject(named, address) ?? fromProject(ctx, address);
     }
     if (named.kind === "named") return fromProject(ctx, named.address);
-    if (workstream === undefined) {
-      return refused(
-        "no-project",
-        "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
-          'nowhere to keep their files. A task can name one as `input.project`: `{ "visibility": "shared", "id": "<project>" }`.'
-      );
-    }
-    return fromClaim(ctx, workstream);
+    return refused(
+      "no-project",
+      "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
+        'nowhere to keep their files. A task can name one as `input.project`: `{ "visibility": "shared", "id": "<project>" }`.'
+    );
   };
   return source;
 }
@@ -245,18 +213,6 @@ function otherProject(named: NamedProject, own: ProjectAddress | undefined): Run
     `the task names ${address.visibility} project "${address.id}", but the conversation that filed it belongs to ` +
       `${own.visibility} project "${own.id}". A task works in its conversation's project.`
   );
-}
-
-/** The workstream a mailbox board's minted id names: `<mailboxId>.<board>`. */
-function boardWorkstream(boardId: string): string {
-  const dot = boardId.lastIndexOf(".");
-  if (dot <= 0 || dot === boardId.length - 1) {
-    throw new Error(
-      `projectWorkspace: "${boardId}" is not a mailbox board's id (\`<mailboxId>.<board>\`), so it ` +
-        `names no workstream to find a project by. Pass the board \`mailboxBoard\` returns.`
-    );
-  }
-  return boardId.slice(0, dot);
 }
 
 /** The bare user a run belongs to, not `identity.id`: that is the user record's storage key, which carries the org. */
@@ -311,38 +267,6 @@ async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Pro
     );
   }
   return answer(ctx, address.visibility, project);
-}
-
-/** A run on a mailbox board a project lists: found through the workstream's claim. */
-async function fromClaim(ctx: LooseBlockContext, workstream: string): Promise<RunSourceAnswer> {
-  const claims = collectionAt(ctx, WORKSTREAM_CLAIMS_RESOURCE, notHeld);
-  const projects = projectRowsAt(ctx, "shared", notHeld);
-
-  const claim = workstreamClaimSchema.safeParse((await claims.getOptional(workstream))?.state);
-  if (!claim.success) {
-    return refused(
-      "no-project",
-      `the workstream "${workstream}" belongs to no project, so its coding runs have nowhere to keep their files.`
-    );
-  }
-  const projectId = claim.data.projectId;
-  const stored = await projects.getOptional(projectId);
-  if (stored === undefined) {
-    return refused(
-      "no-such-project",
-      `the workstream "${workstream}" is claimed by project "${projectId}", which this organization does not have.`
-    );
-  }
-  // Through the schema, so a row written before `repository` existed reads as none (BP-030).
-  const project = projectRowSchema.parse(stored.state);
-  const owner = runOwnerOf(ctx);
-  if (!isMember(project, owner)) {
-    return refused(
-      "not-a-member",
-      `the run's owner${owner ? ` "${owner}"` : ""} is not a member of project "${projectId}", so it may not work on its files.`
-    );
-  }
-  return answer(ctx, "shared", project);
 }
 
 /** The answer for `project` at `visibility`: its repository, or its files, with its kept files beside either. */

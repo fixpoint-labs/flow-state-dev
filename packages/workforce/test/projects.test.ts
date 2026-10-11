@@ -3,9 +3,8 @@
  * organization: `alice` and `bob` (members), and `mallory` (in the org, not a
  * member).
  *
- * Covers the row writes (`createProject`, `setWorkstreams`, `setRepository`,
- * workstream claims) and the project files read. Identity comes from a
- * verified header, never the body (BP-031).
+ * Covers the row writes (`createProject`, `setRepository`) and the project
+ * files read. Identity comes from a verified header, never the body (BP-031).
  *
  * **Controls.** Three modules are swappable on purpose, and each swap must turn
  * this file red:
@@ -25,13 +24,9 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  MAILBOX_KIND,
-  defineMailboxInventoryCollection,
   defineProjectBlocks,
   defineProjectFilesCollection,
   defineProjectsCollection,
-  projectWritesMailboxInventory,
-  defineWorkstreamClaimsCollection,
   projectRowSchema,
 } from "../src/index";
 
@@ -49,43 +44,22 @@ vi.mock("../src/projects/cas-retry", async (original) => {
 });
 
 const ORG = "lab";
-const DECLARED_MAILBOXES = ["eng.feature", "eng.platform", "ops.release", "ops.oncall"];
 
 // --- The app's own flow: the project writes, plus test-only seeds and reads. ---
 
-const inventory = defineMailboxInventoryCollection();
-const claims = defineWorkstreamClaimsCollection();
 const projects = defineProjectsCollection();
 const projectFiles = defineProjectFilesCollection();
 
-/** Registers the declared mailboxes, as `openInventory` does at boot. */
-const seedMailboxes = handler({
-  name: "seed-mailboxes",
-  inputSchema: z.object({}),
-  outputSchema: z.object({}),
-  resources: { "mailbox-inventory": inventory },
-  execute: async (_input, ctx) => {
-    const rows = ctx.resources["mailbox-inventory"] as unknown as ResourceCollectionRef;
-    for (const id of DECLARED_MAILBOXES) await rows.upsert(id, { id, kind: MAILBOX_KIND, members: [], openedAt: null });
-    return {};
-  }
-});
-
-/** Reads what a refused write must leave alone: a row and the claims. */
+/** Reads what a refused write must leave alone: a row. */
 const inspect = handler({
   name: "inspect",
-  inputSchema: z.object({ projectId: z.string(), workstreams: z.array(z.string()) }),
-  outputSchema: z.object({ row: z.unknown(), claims: z.record(z.string().nullable()) }),
-  resources: { projects, "workstream-claims": claims },
+  inputSchema: z.object({ projectId: z.string() }),
+  outputSchema: z.object({ row: z.unknown() }),
+  resources: { projects },
   execute: async (input, ctx) => {
     const rows = ctx.resources.projects as unknown as ResourceCollectionRef;
-    const held = ctx.resources["workstream-claims"] as unknown as ResourceCollectionRef;
     const row = await rows.getOptional(input.projectId);
-    const out: Record<string, string | null> = {};
-    for (const id of input.workstreams) {
-      out[id] = ((await held.getOptional(id))?.state.projectId as string | undefined) ?? null;
-    }
-    return { row: row === undefined ? null : { ...row.state }, claims: out };
+    return { row: row === undefined ? null : { ...row.state } };
   }
 });
 
@@ -113,12 +87,6 @@ const labFlow = defineFlow({
   }
 });
 
-/**
- * A flow of its own for the seed: a flow refuses a second declaration of the
- * inventory beside the one the project writes hold.
- */
-const seederFlow = defineFlow({ kind: "seeder", actions: { seedMailboxes: { block: seedMailboxes } } });
-
 // --- Harness ---
 
 type Answer = { status: number; json: any };
@@ -127,7 +95,7 @@ type Answer = { status: number; json: any };
 async function boot(options: { primary?: ReturnType<typeof inMemoryStores> } = {}) {
   const primary = options.primary ?? inMemoryStores();
   const state = createFlowState({
-    flows: { lab: labFlow, seeder: seederFlow },
+    flows: { lab: labFlow },
     stores: { default: { primary } },
     modelResolver: createMockModelResolver({}),
     resolvePrincipal: (context: any) => {
@@ -184,10 +152,8 @@ async function boot(options: { primary?: ReturnType<typeof inMemoryStores> } = {
     return result.output;
   };
 
-  await ok("alice", "seeder", await openSession("alice", "seeder"), "seedMailboxes", {});
   const lab = await openSession("alice", "lab");
-  const inspectRow = (projectId: string, workstreams: string[] = []) =>
-    ok("alice", "lab", lab, "inspect", { projectId, workstreams }) as Promise<{ row: any; claims: Record<string, string | null> }>;
+  const inspectRow = (projectId: string) => ok("alice", "lab", lab, "inspect", { projectId }) as Promise<{ row: any }>;
 
   return { primary, stores, call, openSession, act, ok, inspectRow };
 }
@@ -196,55 +162,20 @@ type Harness = Awaited<ReturnType<typeof boot>>;
 
 const refusal = (result: { settled?: string; error?: unknown }) => JSON.stringify(result.error ?? "");
 
-/** alice creates `apollo` with bob, over workstreams from two teams. */
+/** alice creates `apollo` with bob. */
 async function apollo(h: Harness) {
   const aliceLab = await h.openSession("alice", "lab");
   const created = await h.ok("alice", "lab", aliceLab, "createProject", {
     id: "apollo",
     title: "Apollo",
     brief: "Ship the storefront.",
-    members: ["bob"],
-    workstreams: ["eng.feature", "ops.release"]
+    members: ["bob"]
   });
   return { aliceLab, created };
 }
 
-describe("the writes on a flow that reads the mailbox inventory itself", () => {
-  // A chief of staff's kind both answers "who is on which mailbox" and creates
-  // projects. One flow takes one declaration per storage key, so the kind's own
-  // read of the inventory has to be the writes' declaration, not a second one.
-  const readsMailboxes = (mailboxes: unknown) =>
-    handler({
-      name: "list-mailboxes",
-      inputSchema: z.object({}),
-      outputSchema: z.object({}),
-      resources: { mailboxes: mailboxes as typeof inventory },
-      execute: async () => ({})
-    });
-
-  it("installs beside the flow's own read when that read uses the writes' declaration", () => {
-    const blocks = defineProjectBlocks();
-    expect(() =>
-      defineFlow({
-        kind: "reads-mailboxes",
-        actions: { ...blocks.actions, listMailboxes: { block: readsMailboxes(projectWritesMailboxInventory) } }
-      })
-    ).not.toThrow();
-  });
-
-  it("is refused beside a second declaration of the inventory, naming both accessors", () => {
-    const blocks = defineProjectBlocks();
-    expect(() =>
-      defineFlow({
-        kind: "reads-mailboxes-twice",
-        actions: { ...blocks.actions, listMailboxes: { block: readsMailboxes(defineMailboxInventoryCollection()) } }
-      })
-    ).toThrow(/same effective storage key/);
-  });
-});
-
 describe("project rows", () => {
-  it("creates an org project spanning two teams, owned by the creator, listed by another member of the org", async () => {
+  it("creates an org project owned by the creator, listed by another member of the org", async () => {
     const h = await boot();
     const { created } = await apollo(h);
     expect(created.created).toBe(true);
@@ -252,10 +183,11 @@ describe("project rows", () => {
       id: "apollo",
       ownerUserId: "alice",
       members: ["alice", "bob"],
-      workstreams: ["eng.feature", "ops.release"],
       brief: "Ship the storefront.",
       status: "active"
     });
+    // A project lists no workstreams of its own: they are entries, which name it.
+    expect(created.project).not.toHaveProperty("workstreams");
 
     // Anyone in the org lists it through the browser read — mallory too: a
     // shared project is the organization's to read.
@@ -265,16 +197,12 @@ describe("project rows", () => {
     expect(listed.json.items.map((i: any) => i.clientData)).toEqual([
       expect.objectContaining({ id: "apollo", title: "Apollo", members: ["alice", "bob"] })
     ]);
-    expect((await h.inspectRow("apollo", ["eng.feature", "ops.release"])).claims).toEqual({
-      "eng.feature": "apollo",
-      "ops.release": "apollo"
-    });
   });
 
-  it("refuses each bad write and leaves the row and the claims as they were", async () => {
+  it("refuses each bad write and leaves the row as it was", async () => {
     const h = await boot();
     await apollo(h);
-    const before = await h.inspectRow("apollo", ["eng.feature", "ops.release", "eng.platform"]);
+    const before = await h.inspectRow("apollo");
     const malloryLab = await h.openSession("mallory", "lab");
     const bobLab = await h.openSession("bob", "lab");
 
@@ -289,264 +217,16 @@ describe("project rows", () => {
     const backslash = await h.act("bob", "lab", bobLab, "createProject", { id: "acme\\store", title: "Acme store" });
     expect(refusal(backslash)).toContain("invalid-project-id");
 
-    const unknown = await h.act("bob", "lab", bobLab, "createProject", {
-      id: "hermes",
-      title: "Hermes",
-      workstreams: ["eng.platform", "eng.nope"]
-    });
-    expect(refusal(unknown)).toContain("unknown-workstream");
-
-    const claimed = await h.act("bob", "lab", bobLab, "createProject", {
-      id: "hermes",
-      title: "Hermes",
-      workstreams: ["eng.platform", "eng.feature"]
-    });
-    expect(refusal(claimed)).toContain("workstream-claimed");
-    expect(refusal(claimed)).toContain("eng.feature");
-
-    // Nothing was half written: no hermes, apollo untouched, and the claim
-    // hermes took on eng.platform before it was refused was released.
     expect((await h.inspectRow("hermes")).row).toBeNull();
-    expect(await h.inspectRow("apollo", ["eng.feature", "ops.release", "eng.platform"])).toEqual(before);
-    expect(before.claims["eng.platform"]).toBeNull();
-
-    // setWorkstreams: an outsider is refused; a claimed one is refused and changes nothing.
-    await h.ok("bob", "lab", bobLab, "createProject", { id: "hermes", title: "Hermes", workstreams: ["eng.platform"] });
-    const outsider = await h.act("mallory", "lab", malloryLab, "setWorkstreams", { projectId: "hermes", workstreams: [] });
-    expect(refusal(outsider)).toContain("not-a-member");
-    const steal = await h.act("bob", "lab", bobLab, "setWorkstreams", {
-      projectId: "hermes",
-      workstreams: ["eng.platform", "ops.oncall", "ops.release"]
-    });
-    expect(refusal(steal)).toContain("workstream-claimed");
-    const after = await h.inspectRow("hermes", ["eng.platform", "ops.oncall", "ops.release"]);
-    expect(after.row.workstreams).toEqual(["eng.platform"]);
-    expect(after.claims).toEqual({ "eng.platform": "hermes", "ops.oncall": null, "ops.release": "apollo" });
-
-    // And a good one moves the claims with the row.
-    await h.ok("bob", "lab", bobLab, "setWorkstreams", { projectId: "hermes", workstreams: ["ops.oncall"] });
-    const moved = await h.inspectRow("hermes", ["eng.platform", "ops.oncall"]);
-    expect(moved.row.workstreams).toEqual(["ops.oncall"]);
-    expect(moved.claims).toEqual({ "eng.platform": null, "ops.oncall": "hermes" });
+    expect(await h.inspectRow("apollo")).toEqual(before);
   });
 
-  it("lets exactly one of two projects claiming one workstream at once land", async () => {
+  it("hands a re-sent create its row back, unchanged", async () => {
     const h = await boot();
-    const [a, b] = [await h.openSession("alice", "lab"), await h.openSession("bob", "lab")];
-    const results = await Promise.all([
-      h.act("alice", "lab", a, "createProject", { id: "left", title: "Left", workstreams: ["ops.oncall"] }),
-      h.act("bob", "lab", b, "createProject", { id: "right", title: "Right", workstreams: ["ops.oncall"] })
-    ]);
-    expect(results.filter((r) => r.settled === "completed")).toHaveLength(1);
-    const loser = results.find((r) => r.settled !== "completed")!;
-    expect(refusal(loser)).toContain("workstream-claimed");
-    const winner = results[0]!.settled === "completed" ? "left" : "right";
-    const other = winner === "left" ? "right" : "left";
-    expect((await h.inspectRow(other)).row).toBeNull();
-    expect((await h.inspectRow(winner, ["ops.oncall"])).claims["ops.oncall"]).toBe(winner);
-  });
-
-  it("hands a re-sent create of a project that holds workstreams its row back, rather than refusing it on its own claims", async () => {
-    const h = await boot();
-    await h.ok("alice", "lab", await h.openSession("alice", "lab"), "createProject", {
-      id: "atlas",
-      title: "Atlas",
-      workstreams: ["eng.feature", "ops.release"]
-    });
-
-    // The owner re-sends it, workstreams and all, from a fresh session.
-    const lab = await h.openSession("alice", "lab");
-    const resent = await h.ok("alice", "lab", lab, "createProject", {
-      id: "atlas",
-      title: "Atlas",
-      workstreams: ["eng.feature", "ops.release"]
-    });
+    const first = await h.ok("alice", "lab", await h.openSession("alice", "lab"), "createProject", { id: "atlas", title: "Atlas" });
+    const resent = await h.ok("alice", "lab", await h.openSession("alice", "lab"), "createProject", { id: "atlas", title: "Atlas" });
     expect(resent.created).toBe(false);
-    expect(resent.project.workstreams).toEqual(["eng.feature", "ops.release"]);
-    expect((await h.inspectRow("atlas", ["eng.feature", "ops.release"])).claims).toEqual({
-      "eng.feature": "atlas",
-      "ops.release": "atlas"
-    });
-  });
-
-});
-
-
-describe("project rows under racing writes", () => {
-  /** A gate one write waits on, opened by another; never waits longer than `ms`. */
-  const gate = () => {
-    let open = () => {};
-    const opened = new Promise<void>((resolve) => (open = resolve));
-    return { open: () => open(), wait: (ms: number) => Promise.race([opened, new Promise((r) => setTimeout(r, ms))]) };
-  };
-  const isKey = (key: string, collection: string, id: string) => key === `${collection}/${id}` || key.endsWith(`/${collection}/${id}`);
-
-  it("keeps the claim the winning duplicate create relies on when the losing duplicate releases its own", async () => {
-    const h = await boot();
-    const lab = await h.openSession("alice", "lab");
-    const states = h.stores.resourceState;
-    const set = states.set.bind(states);
-    let injected = false;
-    // Between this create's claim on eng.feature and its row write, a duplicate
-    // create of the same id lands its row: it found the claim held by "dup",
-    // kept it, and won the row.
-    states.set = async (scopeType, scopeId, key, state, expected) => {
-      const result = await set(scopeType, scopeId, key, state, expected);
-      if (!injected && result.ok && isKey(key, "workstream-claims", "eng.feature")) {
-        injected = true;
-        const token = (state as { token?: string }).token;
-        await set(
-          scopeType,
-          scopeId,
-          key.replace(/workstream-claims\/eng\.feature$/, "projects/dup"),
-          {
-            id: "dup",
-            title: "Dup",
-            brief: null,
-            status: "active",
-            ownerUserId: "alice",
-            members: ["alice"],
-            workstreams: ["eng.feature"],
-            sessions: [],
-            ...(token === undefined ? {} : { claimTokens: { "eng.feature": token } })
-          },
-          "absent"
-        );
-      }
-      return result;
-    };
-    const resent = await h.ok("alice", "lab", lab, "createProject", { id: "dup", title: "Dup", workstreams: ["eng.feature"] });
-    states.set = set;
-    expect(injected).toBe(true);
-    expect(resent.created).toBe(false);
-    expect(resent.project.workstreams).toEqual(["eng.feature"]);
-    // The winning row lists eng.feature, so its claim must still be there:
-    // without it another project could take a workstream "dup" holds.
-    expect((await h.inspectRow("dup", ["eng.feature"])).claims["eng.feature"]).toBe("dup");
-    const bobLab = await h.openSession("bob", "lab");
-    const steal = await h.act("bob", "lab", bobLab, "createProject", { id: "other", title: "Other", workstreams: ["eng.feature"] });
-    expect(refusal(steal)).toContain("workstream-claimed");
-  });
-
-  it("leaves the claims matching the committed list when two workstream edits race: [a] to [] against [a] to [a, b]", async () => {
-    const h = await boot();
-    const lab = await h.openSession("alice", "lab");
-    await h.ok("alice", "lab", lab, "createProject", { id: "p", title: "P", workstreams: ["eng.feature"] });
-    const [one, two] = [await h.openSession("alice", "lab"), await h.openSession("alice", "lab")];
-
-    const states = h.stores.resourceState;
-    const [set, del] = [states.set.bind(states), states.delete.bind(states)];
-    const twoClaimedB = gate();
-    const twoWroteRow = gate();
-    // The interleaving: edit one commits [] only after edit two has claimed b,
-    // and edit one's cleanup of a's claim runs only after edit two committed
-    // [a, b]. Each wait is bounded, so a fixed writer that never makes the
-    // gated write does not hang the test.
-    states.set = async (scopeType, scopeId, key, state, expected) => {
-      const row = state as { workstreams?: string[] };
-      if (isKey(key, "projects", "p") && row.workstreams?.length === 0) await twoClaimedB.wait(1_000);
-      const result = await set(scopeType, scopeId, key, state, expected);
-      if (result.ok && isKey(key, "workstream-claims", "eng.platform")) twoClaimedB.open();
-      if (result.ok && isKey(key, "projects", "p") && row.workstreams?.length === 2) twoWroteRow.open();
-      return result;
-    };
-    states.delete = async (scopeType, scopeId, key, expected) => {
-      if (isKey(key, "workstream-claims", "eng.feature")) await twoWroteRow.wait(1_000);
-      return del(scopeType, scopeId, key, expected);
-    };
-    const results = await Promise.all([
-      h.act("alice", "lab", one, "setWorkstreams", { projectId: "p", workstreams: [] }),
-      h.act("alice", "lab", two, "setWorkstreams", { projectId: "p", workstreams: ["eng.feature", "eng.platform"] })
-    ]);
-    states.set = set;
-    states.delete = del;
-    expect(results.map((r) => r.settled)).toEqual(["completed", "completed"]);
-
-    // Whatever list committed last, every workstream it lists is claimed by p,
-    // and nothing it does not list is.
-    const after = await h.inspectRow("p", ["eng.feature", "eng.platform"]);
-    expect(after.row.workstreams).toEqual(["eng.feature", "eng.platform"]);
-    for (const id of ["eng.feature", "eng.platform"]) {
-      expect(after.claims[id]).toBe(after.row.workstreams.includes(id) ? "p" : null);
-    }
-  });
-  it("releases a failed edit's stamp when the row dropped the workstream while the edit was restoring it", async () => {
-    const h = await boot();
-    const lab = await h.openSession("alice", "lab");
-    await h.ok("alice", "lab", lab, "createProject", { id: "q", title: "Q", workstreams: ["ops.oncall"] });
-    await h.ok("alice", "lab", lab, "createProject", { id: "p", title: "P", workstreams: ["eng.feature"] });
-    const recorded = (await h.inspectRow("p")).row.claimTokens?.["eng.feature"] as string | undefined;
-    const [editA, editB] = [await h.openSession("alice", "lab"), await h.openSession("alice", "lab")];
-
-    const states = h.stores.resourceState;
-    const set = states.set.bind(states);
-    let raced = false;
-    // Edit A stamps eng.feature, is refused on ops.oncall (q holds it), and
-    // hands eng.feature's claim back to the row's token. Just before that
-    // hand-back lands, edit B commits [] and finds the claim still carrying
-    // A's stamp, so it can't release it.
-    states.set = async (scopeType, scopeId, key, state, expected) => {
-      const token = (state as { token?: string }).token;
-      if (!raced && isKey(key, "workstream-claims", "eng.feature") && token !== undefined && token === recorded) {
-        raced = true;
-        await h.ok("alice", "lab", editB, "setWorkstreams", { projectId: "p", workstreams: [] });
-      }
-      return set(scopeType, scopeId, key, state, expected);
-    };
-    const refused = await h.act("alice", "lab", editA, "setWorkstreams", { projectId: "p", workstreams: ["eng.feature", "ops.oncall"] });
-    states.set = set;
-    expect(recorded).toBeTypeOf("string");
-    expect(raced).toBe(true);
-    expect(refusal(refused)).toContain("workstream-claimed");
-
-    // The committed row lists nothing, so nothing may hold eng.feature for p.
-    const after = await h.inspectRow("p", ["eng.feature"]);
-    expect(after.row.workstreams).toEqual([]);
-    expect(after.claims["eng.feature"]).toBeNull();
-    const bobLab = await h.openSession("bob", "lab");
-    await h.ok("bob", "lab", bobLab, "createProject", { id: "r", title: "R", workstreams: ["eng.feature"] });
-  });
-
-  it("never shares a claim between duplicate creates, so the refused one releases nothing the other relies on", async () => {
-    const h = await boot();
-    const lab = await h.openSession("alice", "lab");
-    await h.ok("alice", "lab", lab, "createProject", { id: "q", title: "Q", workstreams: ["ops.oncall"] });
-    const [first, second] = [await h.openSession("alice", "lab"), await h.openSession("alice", "lab")];
-
-    const states = h.stores.resourceState;
-    const set = states.set.bind(states);
-    let raced = false;
-    let other: Awaited<ReturnType<Harness["act"]>> | undefined;
-    // The first duplicate creates eng.feature's claim; before it reaches
-    // ops.oncall (q holds it), the second duplicate runs whole, over
-    // eng.feature alone.
-    states.set = async (scopeType, scopeId, key, state, expected) => {
-      const result = await set(scopeType, scopeId, key, state, expected);
-      if (!raced && result.ok && isKey(key, "workstream-claims", "eng.feature")) {
-        raced = true;
-        other = await h.act("alice", "lab", second, "createProject", { id: "dup", title: "Dup", workstreams: ["eng.feature"] });
-      }
-      return result;
-    };
-    const refused = await h.act("alice", "lab", first, "createProject", {
-      id: "dup",
-      title: "Dup",
-      workstreams: ["eng.feature", "ops.oncall"]
-    });
-    states.set = set;
-    expect(raced).toBe(true);
-    expect(refusal(refused)).toContain("workstream-claimed");
-
-    // Whichever way it fell, the claims match the rows: a row listing
-    // eng.feature holds its claim, and with no such row nobody does.
-    const after = await h.inspectRow("dup", ["eng.feature"]);
-    if (after.row === null) {
-      expect(refusal(other!)).toContain("workstream-claimed");
-      expect(after.claims["eng.feature"]).toBeNull();
-    } else {
-      expect(after.row.workstreams).toEqual(["eng.feature"]);
-      expect(after.claims["eng.feature"]).toBe("dup");
-    }
+    expect(resent.project).toEqual(first.project);
   });
 });
 

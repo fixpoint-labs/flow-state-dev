@@ -1944,13 +1944,13 @@ const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agent] })
 defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.actions } });
 ```
 
-- **`createProject { id, title, brief?, visibility?, members?, workstreams?, repository? }`** writes a
+- **`createProject { id, title, brief?, visibility?, members?, repository? }`** writes a
   row with `create` and returns `{ project, visibility, created }`. `visibility` defaults to
   `"shared"`. The owner is the calling session's owner, and is always a member. An id another owner's
-  shared project holds (`project-id-held`), `unassigned` (`invalid-project-id`), a private project
-  naming other members (`private-has-members`) or mailboxes (`private-has-workstreams`), a mailbox
-  not in the inventory, and a mailbox another project holds are each refused, and nothing is half
-  written. The same owner re-sending an id gets the row back (`created: false`).
+  shared project holds (`project-id-held`), `unassigned` (`invalid-project-id`) and a private project
+  naming other members (`private-has-members`) are each refused, and nothing is written. The same
+  owner re-sending an id gets the row back (`created: false`). A project's workstreams are the
+  entries `openWorkstream` writes, not a list on its row.
 - **`openWorkstream { project, id, title, lead, due?, objectives? }`** opens a workstream the caller
   owns: an entry at `workstreams/<projectId>/<~owner>/<id>`, and the lead's workstream session,
   owned by the caller, whose id the entry records. The lead is a worker on the caller's roster, on
@@ -1970,8 +1970,6 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   oldest first, without reports, and the progress worked out from them at read (`projectProgress`),
   never stored. A browser reads the same entries through the resource routes and parses each with
   `parseWorkstreamEntry` from `./browser`.
-- **`setWorkstreams { projectId, workstreams }`** replaces the mailboxes a shared project lists, by
-  full mailbox id. Members only. A mailbox belongs to at most one project (`workstream-claimed`).
 - **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
   returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
@@ -1982,12 +1980,13 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   never the body, since the output is logged as the tool result), the files the project keeps at
   `project-files/<projectId>/<path>`, in the org's `project-files` collection for a shared project
   and in the owner's scope for a private one. Members only. Neither collection has a browser read.
-- **`projectWorkspace({ board? })`** is a run source for a workspace host (`@flow-state-dev/workspace`):
+- **`projectWorkspace()`** is a run source for a workspace host (`@flow-state-dev/workspace`):
   the repository of the project the run works for, with the project's files beside the checkout, or
   the project's files alone when it has no repository. A run in a workstream's session, or a task
   session filed from one, works for that workstream, and is refused `not-the-owner` when the run's
-  owner isn't the workstream's. With `board`, a run on that mailbox board works in the shared
-  project that lists its mailbox, for its members only (`not-a-member`). `no-project` when neither
+  owner isn't the workstream's. A task session filed from a project's conversation works in that
+  project, and one filed from a conversation with no project works in the project its task names
+  as `input.project`, for that project's members only (`not-a-member`). `no-project` when none
   applies. The block that asks it must hold `projectWorkspaceCapability`; with harness-manager, pass
   it on `uses`:
 
@@ -2001,9 +2000,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
 - **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so give each that name with
   `projects.createProject.as({ name: "createProject", description: "…" })`. The owner is the session the worker
-  answers in, so the project or workstream belongs to the person who asked. A kind that also reads the mailbox
-  inventory (the `discover` door) declares it with `projectWritesMailboxInventory`: a flow refuses a
-  second declaration of the collection beside the writes'.
+  answers in, so the project or workstream belongs to the person who asked.
 
 Refusals are `ProjectRefusedError`, with a `reason`.
 
@@ -2431,14 +2428,13 @@ the root exports, and reaches no Node built-in.
 | `MailboxRoute` / `MailboxRouting` | What `routeByPurpose` returns, and a mailbox file's `routing:` as read (`{ fallback }`). |
 | `mailboxFlow` | The built-in mailbox kind, seeded by `mailboxInstances` when you register none. |
 | `mailboxInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in mailbox kind. Register these. |
-| `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineWorkstreamClaimsCollection`, `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the mailbox claims and the files; none has a browser read. |
-| `projectWritesMailboxInventory` | The mailbox inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineMailboxInventoryCollection()` there is a resource collision when the flow is built. |
-| `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, setRepository, readProject, readProjectFiles, actions }`. See [Projects](#projects). |
+| `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
+| `defineProjectBlocks()` | Returns `{ createProject, setRepository, readProject, readProjectFiles, actions }`. See [Projects](#projects). |
 | `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. |
-| `projectWorkspace({ board? })` / `projectWorkspaceCapability` | A run source for a coding run on a project: from the workstream its session leads, or from a mailbox board a shared project lists. The capability holds the collections it reads. See [Projects](#projects). |
+| `projectWorkspace()` / `projectWorkspaceCapability` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. The capability holds the collections it reads. See [Projects](#projects). |
 | `openMailboxes(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readMailboxesDirectory(root)` | Read a `teams/<id>/mailboxes/<name>/` tree into one `MailboxManifest` per mailbox. Ships from the `./loader` subpath (Node only). |
 | `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |

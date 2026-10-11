@@ -5,15 +5,13 @@
  */
 
 /**
- * Why a project or workstream write was refused. Each leaves the row, the
- * claims and the entries as they were.
+ * Why a project or workstream write was refused. Each leaves the row and the
+ * entries as they were.
  *
  * - `not-a-member`: the session's owner is not in the row's `members`.
  * - `no-such-project`: no row holds the id at that visibility. Another user's
  *   private project is not there to find, so it gets this too.
  * - `private-has-members`: a private create named someone besides its owner.
- * - `private-has-workstreams`: a private create listed workstreams by mailbox
- *   id, which only a shared project holds.
  * - `invalid-workstream-id`: a workstream id is empty or not one path segment.
  * - `no-such-worker`: the lead is not a worker on the caller's roster. Another
  *   user's worker gets this too.
@@ -25,8 +23,6 @@
  * - `invalid-project-id`: the id is `unassigned`, empty, or not one path segment.
  * - `invalid-repository`: the repository is a path, starts with `-`, or carries a
  *   credential. The refusal never repeats the value.
- * - `unknown-workstream`: a workstream id is not a mailbox in the inventory.
- * - `workstream-claimed`: another project holds the workstream.
  * - `too-many-workstreams`: the owner has as many open workstreams in the project
  *   as their project coordinator holds delegates.
  */
@@ -34,7 +30,6 @@ export type ProjectRefusalReason =
   | "not-a-member"
   | "no-such-project"
   | "private-has-members"
-  | "private-has-workstreams"
   | "invalid-workstream-id"
   | "no-such-worker"
   | "cannot-lead"
@@ -44,8 +39,6 @@ export type ProjectRefusalReason =
   | "project-id-held"
   | "invalid-project-id"
   | "invalid-repository"
-  | "unknown-workstream"
-  | "workstream-claimed"
   | "too-many-workstreams";
 
 /** A project or workstream write refused on the project's own terms. */
