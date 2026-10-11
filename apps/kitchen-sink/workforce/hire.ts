@@ -26,7 +26,7 @@
  * person's conversation with the coordinator under its name.
  */
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
@@ -41,7 +41,7 @@ import { dirname } from "node:path";
 import { coordinatorWorkersUnderControl, delegateFlowsUnderControl } from "../lib/coordinator-control";
 import { landingControl } from "../lib/landing-control";
 import { ROUTE_MODEL } from "../lib/models";
-import { blocks, kinds, packageBlocks, seatBlocks } from "./workforce.gen";
+import { blocks, packageBlocks, workerBlocks, workerFlows } from "./workforce.gen";
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
@@ -86,7 +86,7 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
     );
   }
 
-  // `seatBlocks` registers what each worker's own folder holds, for that
+  // `workerBlocks` registers what each worker's own folder holds, for that
   // worker alone. It grants nothing: a worker still names the block in its
   // `tools:` before the model can call it. `packageBlocks` carries every
   // package's blocks by folder; a worker gets the ones of the packages it holds.
@@ -94,7 +94,7 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
   const installation = createWorkerInstallation({
     standardWorkers: workers,
     workerFlows: () => flows as never,
-    seatBlocks,
+    workerBlocks,
     packageBlocks,
   });
   // The built-in `agent`, carrying the tool catalog, takes the coordinator's
@@ -102,13 +102,13 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
   // post and hands no answer back, in test mode only.
   const agent = landingControl(blocks, installation) ?? defineAgentWorkerFlow({ installation, catalog: blocks });
   flows = {
-    ...kinds,
+    ...workerFlows,
     agent,
     // The coordinator flow: `support.help` runs on it. Its delegates take
     // posts on `agent`, and best fit's one evaluator call runs on ROUTE_MODEL.
     // Its judgment turn, for a post best fit can't place, is the agent's own
     // turn, built from the same catalog.
-    [COORDINATOR_KIND]: defineCoordinatorFlow({
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
       delegateFlows: delegateFlowsUnderControl([agent]),
       routeModel: ROUTE_MODEL,
@@ -122,7 +122,7 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
     copies,
     errors: [
       ...errors.map((e) => e.path),
-      ...skillErrors.flatMap((seat) => seat.errors.map((e) => e.path)),
+      ...skillErrors.flatMap((worker) => worker.errors.map((e) => e.path)),
       ...teamErrors.map((e) => e.path),
     ],
   };

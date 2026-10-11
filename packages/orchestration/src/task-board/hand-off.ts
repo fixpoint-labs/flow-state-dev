@@ -1,17 +1,17 @@
 /**
- * The dispatcher seat: how a board hands a row off through the dispatch
+ * The dispatcher assignee: how a board hands a row off through the dispatch
  * protocol.
  *
- * A seat under `workers` is a block. A `dispatcher({ type: "task" })` in that
- * position is the seat that **hands off**: the board routes each row it claims
- * for the seat to that dispatcher, and the row runs in a child session, in the
+ * An assignee under `workers` is a block. A `dispatcher({ type: "task" })` in that
+ * position is the assignee that **hands off**: the board routes each row it claims
+ * for the assignee to that dispatcher, and the row runs in a child session, in the
  * block the flow declares at `flow.task.actions[action]`. A worker is just a
- * block; to run it elsewhere instead of inline, the seat holds a dispatcher.
+ * block; to run it elsewhere instead of inline, the assignee holds a dispatcher.
  * This module owns three things and nothing else:
  *
- * 1. reading a board's seats — a bare block means inline, a dispatcher hands
- *    off, and the removed seat shapes are refused by name;
- * 2. the board's "this row's work runs elsewhere" test for dispatcher seats;
+ * 1. reading a board's assignees — a bare block means inline, a dispatcher hands
+ *    off, and the removed assignee shapes are refused by name;
+ * 2. the board's "this row's work runs elsewhere" test for dispatcher assignees;
  * 3. the construction-time refusals — `assertHandOffBoardSupported` for the
  *    board, `assertHandOffBlockSupported` for the entry block the gate is
  *    given.
@@ -20,7 +20,7 @@
  * and the child-side gate is `task-entry.ts`; this module only decides what a
  * declaration *means* and refuses the ones that cannot work.
  *
- * ## Where a handed-off seat's rows land
+ * ## Where a handed-off assignee's rows land
  *
  * The dispatcher's `session` policy decides which child session a row runs in.
  * Two questions decide it: does the work get its own request (yes, for every
@@ -29,11 +29,11 @@
  * | `session`         | keyed on                                   | use it when |
  * |-------------------|--------------------------------------------|-------------|
  * | `"per-task"`      | the task id                                | work is independent — a checkout per issue |
- * | `"per-worker"`    | this seat, one child per claiming session  | the worker should remember what it already did |
+ * | `"per-worker"`    | this assignee, one child per claiming session  | the worker should remember what it already did |
  * | `{ key: fn }`     | a value the function reads off the task    | one issue across spec, implement and review |
  *
  * A shared session serialises its rows: `defineFlow` defaults the entry a
- * `per-worker` or `key` seat hands off to `queue` concurrency (an explicit
+ * `per-worker` or `key` assignee hands off to `queue` concurrency (an explicit
  * policy on the entry wins), so two rows dispatched into one child do not
  * interleave their writes.
  */
@@ -42,14 +42,14 @@ import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-
 import type { DefinedTaskCollection, Task, TaskWorker, TaskWorkerRegistry } from "../tasks";
 import type { TaskBoardBacking } from "./index";
 
-/** The address a `dispatcher({ type: "task" })` seat carries: its entry and session policy. */
-export type TaskSeatAddress = Extract<DispatchAddress, { type: "task" }>;
+/** The address a `dispatcher({ type: "task" })` assignee carries: its entry and session policy. */
+export type TaskAssigneeAddress = Extract<DispatchAddress, { type: "task" }>;
 
 /** The block `dispatcher({ type: "task" })` builds: its input is the claim envelope. */
 export type TaskDispatcherBlock = BlockDefinition<any, any, TaskDispatchInput, DispatchHandle>;
 
-/** What a board seat holds: a worker that runs inline, or a task dispatcher that hands off. */
-export type TaskSeat<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> | TaskDispatcherBlock;
+/** What a board assignee holds: a worker that runs inline, or a task dispatcher that hands off. */
+export type TaskAssignee<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> | TaskDispatcherBlock;
 
 /**
  * A worker registry whose values may also be task dispatchers.
@@ -59,40 +59,40 @@ export type TaskSeat<TIn = unknown, TOut = unknown> = TaskWorker<TIn, TOut> | Ta
  * heterogeneous — each declares its own payload schema and the board's
  * generics describe the collection, not every route.
  */
-export type TaskSeatRegistry = Record<string, TaskSeat>;
+export type TaskAssigneeRegistry = Record<string, TaskAssignee>;
 
 /**
  * True when `block` is a task dispatcher — a block carrying a `task` address —
- * and so a seat that hands off rather than runs inline.
+ * and so an assignee that hands off rather than runs inline.
  */
-export function isTaskDispatcher(block: unknown): block is TaskWorker & { dispatch: TaskSeatAddress } {
+export function isTaskDispatcher(block: unknown): block is TaskWorker & { dispatch: TaskAssigneeAddress } {
   if (typeof block !== "object" || block === null) return false;
   const candidate = block as { run?: unknown; dispatch?: { type?: unknown } };
   return typeof candidate.run === "function" && candidate.dispatch?.type === "task";
 }
 
-/** One seat that hands off: its assignee name and the address it carries. */
-export interface HandOffSeat {
+/** One assignee that hands off: its assignee name and the address it carries. */
+export interface HandOffAssignee {
   /**
-   * The seat's assignee name — the row's `assignee`, which the hand-off is
-   * addressed by. Empty when the dispatcher sat at a uniform or floor seat.
+   * The assignee's name — the row's `assignee`, which the hand-off is
+   * addressed by. Empty when the dispatcher sat at a uniform or floor assignee.
    */
   name: string;
   /**
-   * Where the dispatcher sat: an assignee seat, the uniform `workers` block,
+   * Where the dispatcher sat: a named assignee, the uniform `workers` block,
    * or the `defaultWorker` fallback. What every reader branches on.
    */
   kind: "named" | "uniform" | "floor";
   /** `assignee:<name>`, `uniform`, or `floor` — the readable form, for refusals. Never branched on. */
   label: string;
-  dispatch: TaskSeatAddress;
+  dispatch: TaskAssigneeAddress;
 }
 
 /**
- * Read one seat's value: the block that runs there and, when the block is a
+ * Read one assignee's value: the block that runs there and, when the block is a
  * task dispatcher, where it hands off to.
  *
- * The removed seat shapes are refused by name rather than silently read as
+ * The removed assignee shapes are refused by name rather than silently read as
  * inline (BP-030): a board that still says `{ block, session }`,
  * `{ worker, dispatch }` or `dispatch: { mode: "detached" }` would otherwise
  * run its worker in the drain and never hand off.
@@ -100,13 +100,13 @@ export interface HandOffSeat {
 export function resolveWorkerSlot(
   slot: unknown,
   where: string
-): { block: TaskWorker; dispatch?: TaskSeatAddress } {
+): { block: TaskWorker; dispatch?: TaskAssigneeAddress } {
   if (isTaskDispatcher(slot)) return { block: slot, dispatch: slot.dispatch };
   if (typeof slot === "object" && slot !== null && typeof (slot as { run?: unknown }).run === "function") {
     return { block: slot as TaskWorker };
   }
   const fix =
-    `A seat is a block. To run it inline, put the block there; to hand it off, put a ` +
+    `An assignee is a block. To run it inline, put the block there; to hand it off, put a ` +
     `\`dispatcher({ action, session })\` there and declare the block on the flow ` +
     `as \`tasks: { [target]: { block } }\`.`;
   if (typeof slot === "object" && slot !== null) {
@@ -118,7 +118,7 @@ export function resolveWorkerSlot(
     }
     if (keys.includes("block") || keys.includes("worker") || keys.includes("session")) {
       throw new Error(
-        `[task-board] ${where} uses the removed \`{ ${keys.join(", ")} }\` seat shape. ${fix}`
+        `[task-board] ${where} uses the removed \`{ ${keys.join(", ")} }\` assignee shape. ${fix}`
       );
     }
   }
@@ -133,34 +133,34 @@ function describe(value: unknown): string {
 
 /**
  * Flatten a board's worker declarations into the blocks the drain composes
- * and the seats that hand off.
+ * and the assignees that hand off.
  *
  * Returns the bare-block shapes `buildWorkerStep` already understands — a task
- * dispatcher is a block like any other — so reading a seat costs the drain
- * nothing: a board with no dispatcher seats produces exactly the values it was
- * handed. A dispatcher at a seat that is not an assignee (uniform, floor) is
+ * dispatcher is a block like any other — so reading an assignee costs the drain
+ * nothing: a board with no dispatcher assignees produces exactly the values it was
+ * handed. A dispatcher at a position that is not a named assignee (uniform, floor) is
  * collected with an empty name so {@link assertHandOffBoardSupported} can
  * refuse it by its label.
  */
 export function resolveWorkerSlots(config: {
   name: string;
-  workers: TaskWorker | TaskSeatRegistry;
+  workers: TaskWorker | TaskAssigneeRegistry;
   defaultWorker?: TaskWorker;
 }): {
   /** Ready for `buildWorkerStep` — bare values untouched. */
   workers: TaskWorker | TaskWorkerRegistry;
   defaultWorker?: TaskWorker;
-  handedOff: HandOffSeat[];
-  /** The assignee seats that run in the drain: named, and not a dispatcher. */
+  handedOff: HandOffAssignee[];
+  /** The named assignees that run in the drain: named, and not a dispatcher. */
   inline: string[];
 } {
-  const handedOff: HandOffSeat[] = [];
+  const handedOff: HandOffAssignee[] = [];
   const inline: string[] = [];
   const take = (
     name: string,
-    kind: HandOffSeat["kind"],
+    kind: HandOffAssignee["kind"],
     label: string,
-    resolved: { block: TaskWorker; dispatch?: TaskSeatAddress }
+    resolved: { block: TaskWorker; dispatch?: TaskAssigneeAddress }
   ) => {
     if (resolved.dispatch === undefined) {
       if (kind === "named") inline.push(name);
@@ -177,7 +177,7 @@ export function resolveWorkerSlots(config: {
   } else {
     const registry: TaskWorkerRegistry = {};
     for (const [assignee, slot] of Object.entries(config.workers as Record<string, unknown>)) {
-      const resolved = resolveWorkerSlot(slot, `"${config.name}" seat "${assignee}"`);
+      const resolved = resolveWorkerSlot(slot, `"${config.name}" assignee "${assignee}"`);
       registry[assignee] = resolved.block;
       take(assignee, "named", `assignee:${assignee}`, resolved);
     }
@@ -201,10 +201,10 @@ export function resolveWorkerSlots(config: {
 
 /**
  * Build the board's "this row's work runs in a child session" test for its
- * dispatcher seats, or `undefined` when the board holds none.
+ * dispatcher assignees, or `undefined` when the board holds none.
  *
  * When the fallback hands off, every row naming an assignee the board does
- * not run inline is handed off too, so `inline` (the names of the seats that
+ * not run inline is handed off too, so `inline` (the names of the assignees that
  * run in the drain) is what the test excludes.
  *
  * **Derived from the board's own declarations plus the row's `assignee`, and
@@ -223,21 +223,21 @@ export function resolveWorkerSlots(config: {
  * rebuild. A waiting row can change hands (FIX-1780); this then answers for
  * the new assignee, which is the worker its next claim hands it to.
  *
- * A named seat or the fallback can hand off — see
+ * A named assignee or the fallback can hand off — see
  * {@link assertHandOffBoardSupported}. With no fallback hand-off, an undeclared
  * or missing assignee is this drain's.
  */
 export function handedOffTaskPredicate(
-  handedOff: readonly HandOffSeat[],
+  handedOff: readonly HandOffAssignee[],
   inline: readonly string[] = []
 ): ((task: Task) => boolean) | undefined {
   const names = new Set<string>();
-  for (const seat of handedOff) {
-    if (seat.name.length > 0) names.add(seat.name);
+  for (const assignee of handedOff) {
+    if (assignee.name.length > 0) names.add(assignee.name);
   }
-  if (handedOff.some((seat) => seat.kind === "floor")) {
+  if (handedOff.some((assignee) => assignee.kind === "floor")) {
     const runsHere = new Set(inline);
-    // An assignee no inline seat holds reaches the fallback, which hands it
+    // An assignee no inline entry holds reaches the fallback, which hands it
     // off. A row with no assignee is refused there and fails in the drain.
     return (task: Task): boolean =>
       task.assignee !== undefined && !runsHere.has(task.assignee);
@@ -308,7 +308,7 @@ function nestedSessionStateSchema(
 }
 
 /**
- * Construction-time refusals for a board with at least one dispatcher seat.
+ * Construction-time refusals for a board with at least one dispatcher assignee.
  *
  * Every refusal is **by name and loud** — never a warning, never a degrade.
  * A board that quietly runs handed-off work on a backing that cannot settle it
@@ -322,17 +322,17 @@ export function assertHandOffBoardSupported(options: {
   backing: TaskBoardBacking;
   /** The durable collection's own declaration, when the backing has one. */
   collection?: DefinedTaskCollection;
-  handedOff: readonly HandOffSeat[];
+  handedOff: readonly HandOffAssignee[];
 }): void {
   const { name, boardId, backing, collection, handedOff } = options;
   if (handedOff.length === 0) return;
 
-  const declared = handedOff.map((seat) => seat.label).join(", ");
+  const declared = handedOff.map((assignee) => assignee.label).join(", ");
 
-  // A hand-off is addressed by the row's assignee: a named seat's name, or,
+  // A hand-off is addressed by the row's assignee: a named assignee's name, or,
   // for the fallback, the assignee the row was claimed with. A uniform worker
   // stands in for every row whatever it names, so it has no address.
-  const unnamed = handedOff.filter((seat) => seat.kind === "uniform");
+  const unnamed = handedOff.filter((assignee) => assignee.kind === "uniform");
   if (unnamed.length > 0) {
     throw new Error(
       `[task-board] "${name}" holds a task dispatcher at ${unnamed.map((s) => s.label).join(", ")}, ` +
@@ -349,7 +349,7 @@ export function assertHandOffBoardSupported(options: {
   // board, so neither can stand in.
   if (boardId === undefined || boardId.length === 0) {
     throw new Error(
-      `[task-board] "${name}" hands off seats (${declared}) but has no boardId — a board ` +
+      `[task-board] "${name}" hands off assignees (${declared}) but has no boardId — a board ` +
         `that hands off needs an explicit, stable boardId because it is hashed into the ` +
         `child session id and scopes the claim gate its entries run behind. Renaming it ` +
         `re-keys live child sessions.`
@@ -362,7 +362,7 @@ export function assertHandOffBoardSupported(options: {
   // `factory` is caller-opaque, so the board cannot establish durability.
   if (backing !== "resource") {
     throw new Error(
-      `[task-board] "${name}" hands off seats (${declared}) on a ${backing}-backed ` +
+      `[task-board] "${name}" hands off assignees (${declared}) on a ${backing}-backed ` +
         `collection — handed-off work outlives the request that claimed it, so the board ` +
         `must be durable. Pass a defineTaskCollection() to \`collection\`.`
     );
@@ -379,7 +379,7 @@ export function assertHandOffBoardSupported(options: {
   // parent and child share.
   if (collection?.scope === "session" && collection.sharedToLineage !== true) {
     throw new Error(
-      `[task-board] "${name}" hands off seats (${declared}) on a session-scoped ` +
+      `[task-board] "${name}" hands off assignees (${declared}) on a session-scoped ` +
         `collection — a child session would resolve an empty ledger and never find the row ` +
         `it was dispatched for. Add \`sharedToLineage: true\` so the ledger resolves to the ` +
         `lineage root and the child addresses the same rows the board claimed, or declare ` +

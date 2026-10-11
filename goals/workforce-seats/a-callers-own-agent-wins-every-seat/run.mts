@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { AGENT_KIND, type WorkerManifest } from "@flow-state-dev/workforce";
+import { AGENT_FLOW, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { defineCallerAgent } from "./fixtures/flows";
@@ -57,7 +57,7 @@ function records(): WorkerManifest[] {
       desk: worker.desk,
       // The two shapes that must land on the same flow: an absent key, and the
       // name written out.
-      ...(worker.namesTheKind ? { flow: AGENT_KIND } : {})
+      ...(worker.namesTheKind ? { flow: AGENT_FLOW } : {})
     },
     body: worker.body
   }));
@@ -97,14 +97,14 @@ await runGoal(async (failures) => {
 
   // ---- (a) one copy of `agent`, and it is the caller's ----------------------
   const { copies } = installWorkers(records(), (installation) =>
-    CONTROL === "builtin-agent" ? {} : { [AGENT_KIND]: defineCallerAgent(installation) }
+    CONTROL === "builtin-agent" ? {} : { [AGENT_FLOW]: defineCallerAgent(installation) }
   );
-  const agents = copies.filter((copy) => copy.kind === AGENT_KIND);
-  if (agents.length !== 1 || agents[0]!.id !== AGENT_KIND) {
-    failures.push(`(a) ${agents.length} copies of "${AGENT_KIND}" registered (${agents.map((c) => c.id).join(", ")}), wanted one, at its kind`);
+  const agents = copies.filter((copy) => copy.kind === AGENT_FLOW);
+  if (agents.length !== 1 || agents[0]!.id !== AGENT_FLOW) {
+    failures.push(`(a) ${agents.length} copies of "${AGENT_FLOW}" registered (${agents.map((c) => c.id).join(", ")}), wanted one, at its kind`);
   }
   if (copies.some((copy) => fixture.roster.some((w) => w.id === copy.id))) failures.push("(a) a copy was registered at a worker's id");
-  evidence.push(`one call registered ${agents.length} copy of "${AGENT_KIND}" for ${fixture.roster.length} workers`);
+  evidence.push(`one call registered ${agents.length} copy of "${AGENT_FLOW}" for ${fixture.roster.length} workers`);
 
   // ---- (b) every worker runs on it, as itself -------------------------------
   const stores = createSQLiteStores({ filename: join(dir, "goal.db") }) as unknown as StoreRegistry;
@@ -112,7 +112,7 @@ await runGoal(async (failures) => {
     const router = host(stores, copies);
     for (const worker of fixture.roster) {
       const sessionId = `s_${worker.id.replace(/\W/g, "_")}`;
-      const created = await call(router, "POST", [AGENT_KIND, "sessions"], {
+      const created = await call(router, "POST", [AGENT_FLOW, "sessions"], {
         userId: fixture.userId,
         sessionId,
         state: { workerId: worker.id }
@@ -121,12 +121,12 @@ await runGoal(async (failures) => {
         failures.push(`(b) ${worker.id}: its session was not created: ${created.status} ${await created.text()}`);
         continue;
       }
-      const res = await call(router, "POST", [AGENT_KIND, sessionId, "actions", "run"], {
+      const res = await call(router, "POST", [AGENT_FLOW, sessionId, "actions", "run"], {
         userId: fixture.userId,
         input: { note: fixture.note }
       });
       if (res.status !== 202) {
-        failures.push(`(b) ${worker.id}: expected 202 from the "${AGENT_KIND}" copy, got ${res.status}: ${await res.text()}`);
+        failures.push(`(b) ${worker.id}: expected 202 from the "${AGENT_FLOW}" copy, got ${res.status}: ${await res.text()}`);
         continue;
       }
       const body = (await res.json()) as { request?: { id: string } };

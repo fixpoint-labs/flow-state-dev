@@ -1,5 +1,5 @@
 ---
-description: How this organisation works — read by every seat that coordinates.
+description: How this organisation works — read by every worker that coordinates.
 llmReadable: true
 client:
   content:

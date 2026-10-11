@@ -27,7 +27,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { runAction } from "./action";
 import type { LabClients } from "./connection";
-import { PROJECT_READER_KIND, readerSessionId, toProject, type Project, type ProjectVisibility } from "./reads";
+import { PROJECT_READER_FLOW, readerSessionId, toProject, type Project, type ProjectVisibility } from "./reads";
 
 /** A project's address: where it lives, and its id. */
 export type ProjectAddress = { visibility: ProjectVisibility; id: string };
@@ -78,7 +78,7 @@ const MAX_PAGES = 50;
 
 /** The person's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
 export function projectReaderOf(sessions: readonly SessionSummary[]): string | null {
-  return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_KIND)?.id ?? null;
+  return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
 }
 
 /**
@@ -174,7 +174,7 @@ export function readProjectSetup(clients: LabClients): Promise<ProjectSetup | nu
   let read = setups.get(clients);
   if (read === undefined) {
     read = (async () => {
-      const flows = await clients.actions(PROJECT_READER_KIND).listFlows();
+      const flows = await clients.actions(PROJECT_READER_FLOW).listFlows();
       const flow = flows.find((entry) => entry.actions.includes(PROJECT_SETUP_ACTION) && entry.actions.includes("openWorkstream"));
       if (flow === undefined) return null;
       const { output } = await runAction(clients, flow.id, readerSessionId(clients.userId, flow.id), PROJECT_SETUP_ACTION, {});

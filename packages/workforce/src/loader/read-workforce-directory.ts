@@ -3,12 +3,12 @@
  *
  * Walks `<root>/org/workers/<workerName>/` and
  * `<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's
- * `WORKER.md`, and returns one plain record per worker. An org seat's id is its
- * bare folder name; a team seat's is `<teamId>.<workerName>`. Frontmatter is carried
+ * `WORKER.md`, and returns one plain record per worker. An org worker's id is its
+ * bare folder name; a team worker's is `<teamId>.<workerName>`. Frontmatter is carried
  * verbatim, so a key a consumer claims tomorrow arrives unchanged today; the
  * only keys it reads are the dialect's own — a required `description`, and the
  * one key it refuses by name. It builds no flow, no agent and no
- * registry — turning a record into a running seat is the seat factory's job.
+ * registry — turning a record into a running worker is the worker factory's job.
  *
  * Two rules run through the whole walk. **Symlinks are never followed**, at any
  * level. And **only a worker slot is reported as a near-miss** — a directory
@@ -32,15 +32,15 @@ import {
 import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
-  REFUSED_SEAT_ID_KEY_MESSAGE,
-  REFUSED_SEAT_PACKAGES_KEY_MESSAGE,
-  REFUSED_SEAT_SKILLS_KEY_MESSAGE,
-  REFUSED_SEAT_TOOLS_KEY_MESSAGE,
+  REFUSED_WORKER_ID_KEY_MESSAGE,
+  REFUSED_WORKER_PACKAGES_KEY_MESSAGE,
+  REFUSED_WORKER_SKILLS_KEY_MESSAGE,
+  REFUSED_WORKER_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
-  SEAT_ID_KEY,
-  SEAT_PACKAGES_KEY,
-  SEAT_SKILLS_KEY,
-  SEAT_TOOLS_KEY,
+  WORKER_ID_KEY,
+  WORKER_PACKAGES_KEY,
+  WORKER_SKILLS_KEY,
+  WORKER_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
   type WorkerManifest,
 } from "../manifest";
@@ -92,13 +92,13 @@ export interface ReadWorkforceDirectoryResult {
    * Usually a worker slot. It can also be a structural folder — `org`,
    * `org/workers`, `teams`, `teams/<id>`, `teams/<id>/workers` — when that
    * folder is refused or
-   * unreadable, because the seats beneath it cannot be enumerated to be named
+   * unreadable, because the workers beneath it cannot be enumerated to be named
    * individually and silence there would hide all of them at once.
    *
    * Collected rather than thrown, because a library that hands back data does
    * not get to set an app's boot policy. That makes treating a non-empty
    * `errors` as fatal the caller's call to make explicitly — and it is very
-   * often the right one: a reported path is a seat, or a set of seats, the app
+   * often the right one: a reported path is a worker, or a set of workers, the app
    * was supposed to have, so booting past it boots a short roster with nothing
    * said.
    */
@@ -108,7 +108,7 @@ export interface ReadWorkforceDirectoryResult {
 /**
  * Read every `<root>/org/workers/<name>/` and
  * `<root>/teams/<teamId>/workers/<name>/` and return one neutral manifest per
- * worker — the org's seats first, then each team's, in walk order.
+ * worker — the org's workers first, then each team's, in walk order.
  *
  * Throws only when `root` itself is refused — a symlink, or a path that cannot
  * be read at all. A configured root that does not exist, or that would take the
@@ -133,7 +133,7 @@ export async function readWorkforceDirectory(
 
   // The org level. Opened structurally so a symlinked or unreadable `org/` is
   // reported rather than walked into or passed over: either hides every org
-  // seat at once. Absence is silent — most trees declare no org seats.
+  // worker at once. Absence is silent — most trees declare no org workers.
   const orgDir = path.join(root, "org");
   const org = await openStructuralDirectory(orgDir, "org");
   if (org.refusal !== undefined) report("org", org.refusal.error);
@@ -156,7 +156,7 @@ export async function readWorkforceDirectory(
  * opens the `workers/` level, skips ignored names and plain files (a file
  * under `workers/` occupies no slot), and yields a symlinked or unreadable
  * worker folder as a refusal. What this adds is the roster's own question:
- * does the folder describe a seat.
+ * does the folder describe a worker.
  */
 async function readWorkerSlots(
   parentDir: string,
@@ -240,7 +240,7 @@ async function readWorkerSlot(
   if (md.kind !== "file") {
     throw new Error(
       `Worker folder "${workerName}" has no ${WORKER_MD}. A worker folder describes a ` +
-        `seat, and every seat is a ${WORKER_MD}. A worker whose behavior differs is a ` +
+        `worker, and every worker is a ${WORKER_MD}. A worker whose behavior differs is a ` +
         `different worker flow: define the flow in your app, pass it to hireWorkforce in ` +
         `\`workerFlows\`, and name it in this worker's \`flow:\`.`,
     );
@@ -318,8 +318,8 @@ function refusedDeclaration(
   }
 
   // The second imposed key, refused at this door for the reason the first is.
-  if (Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
-    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_SKILLS_KEY_MESSAGE}`);
+  if (Object.hasOwn(declared, WORKER_SKILLS_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_WORKER_SKILLS_KEY_MESSAGE}`);
   }
 
   // The third. Refused from the shared constant, never a literal spelled in
@@ -330,22 +330,22 @@ function refusedDeclaration(
   }
 
   // The fourth. A file that reaches a caller carrying this key is a file whose
-  // seat would run holding tools no folder of its registers — and a key refused
+  // worker would run holding tools no folder of its registers — and a key refused
   // at the hire but accepted here is the same file getting two answers
   // depending on which door read it.
-  if (Object.hasOwn(declared, SEAT_TOOLS_KEY)) {
-    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_TOOLS_KEY_MESSAGE}`);
+  if (Object.hasOwn(declared, WORKER_TOOLS_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_WORKER_TOOLS_KEY_MESSAGE}`);
   }
 
-  // The fifth, for the fourth's reason: a seat carrying packages no folder of
+  // The fifth, for the fourth's reason: a worker carrying packages no folder of
   // its holds.
-  if (Object.hasOwn(declared, SEAT_PACKAGES_KEY)) {
-    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_PACKAGES_KEY_MESSAGE}`);
+  if (Object.hasOwn(declared, WORKER_PACKAGES_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_WORKER_PACKAGES_KEY_MESSAGE}`);
   }
 
-  // The sixth: a seat signing as whichever seat its file named.
-  if (Object.hasOwn(declared, SEAT_ID_KEY)) {
-    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_ID_KEY_MESSAGE}`);
+  // The sixth: a worker signing as whichever worker its file named.
+  if (Object.hasOwn(declared, WORKER_ID_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_WORKER_ID_KEY_MESSAGE}`);
   }
 
   return undefined;
@@ -353,14 +353,14 @@ function refusedDeclaration(
 
 /**
  * Mint a worker's whole identity from its folder: `"<teamId>.<workerName>"`
- * for a team seat, the bare `"<workerName>"` for an org seat.
+ * for a team worker, the bare `"<workerName>"` for an org worker.
  *
  * The one place this string is built. Team-qualified so two teams can each have
  * a "lead" without coordinating names, and dot-joined because a `/` inside an
  * id survives registration and then fails to route — the identity is a flow
- * instance id, and a slashed one 404s on every flow route. An org seat's id
- * carries no dot, so it can never equal a team seat's: `chief-of-staff` and
- * `eng.chief-of-staff` are two seats. `parseDeclaredSeatId` reads both shapes
+ * instance id, and a slashed one 404s on every flow route. An org worker's id
+ * carries no dot, so it can never equal a team worker's: `chief-of-staff` and
+ * `eng.chief-of-staff` are two workers. `parseDeclaredWorkerId` reads both shapes
  * back.
  *
  * Throws when either segment breaks the rules, naming the rule: an id that

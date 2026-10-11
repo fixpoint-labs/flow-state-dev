@@ -1,6 +1,6 @@
 /**
  * The Chief of Staff view's pure parts: where Shift Manager lands (V1, BR-1),
- * which seat is the chief of staff (V2, D2, BR-10 to BR-12), the shift
+ * which worker is the chief of staff (V2, D2, BR-10 to BR-12), the shift
  * summary's numbers (V3; D1, BR-4), and which session
  * is the person's conversation with it (V4, BR-14).
  */
@@ -9,10 +9,10 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { STAFF_TEAM, toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
+import { STAFF_TEAM, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
-const seat = (id: string, door: string | null = "run"): Seat => ({ ...toSeat({ id, kind: "agent", door })! });
+const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
 
 describe("landing (V1, BR-1)", () => {
   it("opens Chief of Staff at /, at /cos and at any path Shift Manager doesn't know", () => {
@@ -42,29 +42,29 @@ describe("landing (V1, BR-1)", () => {
   });
 });
 
-describe("which seat is the chief of staff (V2, D2)", () => {
-  it("finds an org seat and a team's seat by its name", () => {
-    expect(chiefOfStaffOf([seat("chief-of-staff"), seat("ops.asker")])).toEqual({ kind: "one", seat: seat("chief-of-staff") });
-    expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("desk.asker")])).toEqual({ kind: "one", seat: seat("desk.chief-of-staff") });
+describe("which worker is the chief of staff (V2, D2)", () => {
+  it("finds an org worker and a team's worker by its name", () => {
+    expect(chiefOfStaffOf([worker("chief-of-staff"), worker("ops.asker")])).toEqual({ kind: "one", worker: worker("chief-of-staff") });
+    expect(chiefOfStaffOf([worker("desk.chief-of-staff"), worker("desk.asker")])).toEqual({ kind: "one", worker: worker("desk.chief-of-staff") });
   });
 
-  it("is several, and no guess, when two seats carry the name", () => {
-    expect(chiefOfStaffOf([seat("chief-of-staff"), seat("desk.chief-of-staff")])).toEqual({
+  it("is several, and no guess, when two workers carry the name", () => {
+    expect(chiefOfStaffOf([worker("chief-of-staff"), worker("desk.chief-of-staff")])).toEqual({
       kind: "several",
-      seats: [seat("chief-of-staff"), seat("desk.chief-of-staff")],
+      workers: [worker("chief-of-staff"), worker("desk.chief-of-staff")],
     });
-    expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("ops.chief-of-staff")]).kind).toBe("several");
+    expect(chiefOfStaffOf([worker("desk.chief-of-staff"), worker("ops.chief-of-staff")]).kind).toBe("several");
   });
 
-  it("is none when no seat carries exactly the name", () => {
+  it("is none when no worker carries exactly the name", () => {
     expect(chiefOfStaffOf([])).toEqual({ kind: "none" });
-    expect(chiefOfStaffOf([seat("desk.chief-of-staffs"), seat("chief"), seat("desk.chief"), seat("chief-of-staff.asker")])).toEqual({
+    expect(chiefOfStaffOf([worker("desk.chief-of-staffs"), worker("chief"), worker("desk.chief"), worker("chief-of-staff.asker")])).toEqual({
       kind: "none",
     });
   });
 
-  it("reads an org seat's row, which has no team, without error", () => {
-    expect(toSeat({ id: "chief-of-staff", kind: "agent", door: "run" })).toEqual({
+  it("reads an org worker's row, which has no team, without error", () => {
+    expect(toWorker({ id: "chief-of-staff", kind: "agent", door: "run" })).toEqual({
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
@@ -95,10 +95,10 @@ const row = (holderSessionId: string, id: string, status: string): BoardRow => (
   completedAt: null,
 });
 
-const ask = (seatId: string, suspensionId: string): Ask => ({
+const ask = (workerId: string, suspensionId: string): Ask => ({
   sessionId: `s_${suspensionId}`,
-  seatId,
-  flowId: seatId,
+  workerId,
+  flowId: workerId,
   parentSessionId: null,
   kind: "approval",
   item: { suspensionId } as Ask["item"],
@@ -114,7 +114,7 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
     inventory: {
       ok: true,
       value: {
-        seats: [seat("ops.a"), seat("ops.b"), seat("ops.c")],
+        workers: [worker("ops.a"), worker("ops.b"), worker("ops.c")],
       },
     },
     projects: { ok: true, value: { rows: [] } },
@@ -153,11 +153,11 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
 });
 
 describe("the person's conversation with the chief of staff (V4, BR-14)", () => {
-  const cos = seat("desk.chief-of-staff");
+  const cos = worker("desk.chief-of-staff");
   const session = (id: string, workerId: string | undefined, createdAt: number, parentSessionId?: string, flowKind = "agent"): SessionSummary =>
     ({ id, flowKind, flowId: flowKind, ...(workerId === undefined ? {} : { state: { workerId } }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
-  it("is the newest session on the seat's flow, naming its worker, that no other run started", () => {
+  it("is the newest session on the worker's flow, naming its worker, that no other run started", () => {
     const sessions = [
       session("old", "desk.chief-of-staff", 1),
       session("newest", "desk.chief-of-staff", 3),
@@ -182,7 +182,7 @@ describe("the person's conversation with the chief of staff (V4, BR-14)", () => 
 });
 
 describe("which conversation the view is on, once a line opened one (V4, BR-14)", () => {
-  const cos = seat("desk.chief-of-staff");
+  const cos = worker("desk.chief-of-staff");
   const session = (id: string, createdAt: number): SessionSummary =>
     ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt }) as SessionSummary;
 

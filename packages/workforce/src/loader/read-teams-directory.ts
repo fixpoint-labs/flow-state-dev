@@ -3,10 +3,10 @@
  * record.
  *
  * One optional file at `<root>/teams/<teamId>/TEAM.md`, holding what a team is
- * (`description`, required when the file exists) and what every seat on it is
- * told (the Markdown body). It builds no flow, declares no seat and mints no
- * address: turning a record into a running seat is the seat factory's job, and
- * a team is not a seat.
+ * (`description`, required when the file exists) and what every worker on it is
+ * told (the Markdown body). It builds no flow, declares no worker and mints no
+ * address: turning a record into a running worker is the worker factory's job, and
+ * a team is not a worker.
  *
  * **Its own reader rather than a widened one.** `readWorkforceDirectory` is
  * already standing at the team folder, but its whole contract is *worker slots
@@ -84,7 +84,7 @@ export interface ReadTeamsDirectoryResult {
    * library that hands back data does not get to set an app's boot policy. A
    * team reported here loads its workers all the same, and they load **without
    * the layer** — so a caller that boots past a non-empty `errors` runs those
-   * seats short of instructions their author wrote. That is the caller's
+   * workers short of instructions their author wrote. That is the caller's
    * standing call to make explicitly, and it is very often the right one to
    * make fatal.
    */
@@ -190,10 +190,10 @@ export async function readTeamsDirectory(
       description: loaded.declared["description"] as string,
       declared: loaded.declared,
       // ABSENT, not `""`, when the body is whitespace. An empty layer would be
-      // a value every kind's schema could see — a different bag for every team
-      // that wrote no instructions — and the seat factory already learned this
+      // a value every worker flow's schema could see — a different bag for every team
+      // that wrote no instructions — and the worker factory already learned this
       // one level up, where an empty body handed over as a setting turned every
-      // thin seat into a failed hire.
+      // thin worker into a failed hire.
       ...(loaded.body.trim().length > 0 ? { instructions: loaded.body } : {}),
     });
   }

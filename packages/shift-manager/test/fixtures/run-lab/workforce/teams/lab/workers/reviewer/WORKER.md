@@ -1,6 +1,6 @@
 ---
 description: Reviews each task it is handed.
-flow: seat
+flow: worker
 ---
 
 Review the task you are handed.

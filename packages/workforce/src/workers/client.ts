@@ -25,7 +25,7 @@ import {
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
-import { ROSTER_FLOW_KIND, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
+import { ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -113,11 +113,11 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
   const roster = (): Promise<{ id: string; orgId: string }> =>
     (rosterSession ??= (async () => {
-      const listed = mostRecent(await sessions.listSessions({ flowKind: ROSTER_FLOW_KIND, userId }));
+      const listed = mostRecent(await sessions.listSessions({ flowKind: ROSTER_FLOW, userId }));
       const detail =
         listed !== undefined
           ? await sessions.getSession(listed.id)
-          : await sessions.createSession({ flowKind: ROSTER_FLOW_KIND, userId });
+          : await sessions.createSession({ flowKind: ROSTER_FLOW, userId });
       return { id: detail.id, orgId: detail.orgId };
     })().catch((error: unknown) => {
       rosterSession = undefined;

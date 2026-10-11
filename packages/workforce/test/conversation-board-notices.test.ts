@@ -72,10 +72,10 @@ describe("an attempt that completes (BR-22)", () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "rota");
-      await file(host, "alice", conv, { goal: "Count seats", assignee: "eng.writer" });
+      await file(host, "alice", conv, { goal: "Count workers", assignee: "eng.writer" });
       await host.settled();
       await touch(host, "alice", conv);
-      expect(await linesAbout(host, conv, "Count seats")).toEqual([expect.stringContaining("completed by eng.writer")]);
+      expect(await linesAbout(host, conv, "Count workers")).toEqual([expect.stringContaining("completed by eng.writer")]);
       expect(host.judgment.calls).toEqual([]);
     } finally {
       await host.dispose();
@@ -244,15 +244,15 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
 
   it("never makes the person's own next message wait: it starts mid-reply, and the notice waits for both", async () => {
     const judgment = script({
-      when: (input) => JSON.stringify(input).includes("and our seats"),
-      then: { text: "Forty seats." }
+      when: (input) => JSON.stringify(input).includes("and our workers"),
+      then: { text: "Forty workers." }
     });
     let nextStartedMidReply = false;
     let landedMidReply = true;
     const { host, conv, seen } = await replyHeldOpen(judgment, async ({ host, conv }) => {
-      await host.post("alice", conv, "run", { message: "and our seats?" });
+      await host.post("alice", conv, "run", { message: "and our workers?" });
       nextStartedMidReply = await until(() =>
-        judgment.calls.some((call) => JSON.stringify(call.input).includes("and our seats"))
+        judgment.calls.some((call) => JSON.stringify(call.input).includes("and our workers"))
       );
       landedMidReply = (await linesAbout(host, conv, "Count licenses")).length > 0;
     });
@@ -263,7 +263,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
       expect(nextStartedMidReply).toBe(true);
       expect(landedMidReply).toBe(false);
       const replies = await texts(host, conv);
-      expect(replies.filter((text) => text === "Forty seats.")).toHaveLength(1);
+      expect(replies.filter((text) => text === "Forty workers.")).toHaveLength(1);
       expect(replies.filter((text) => text === "Twelve licenses.")).toHaveLength(1);
       expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
     } finally {

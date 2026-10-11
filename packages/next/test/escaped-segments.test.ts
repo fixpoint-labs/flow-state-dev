@@ -1,6 +1,6 @@
 /**
  * Next hands the catch-all route its `path` param already percent-decoded,
- * once per segment. A flow kind that carries a literal `%XX` (a seat address
+ * once per segment. A flow kind that carries a literal `%XX` (a worker address
  * whose org or user segment was escaped, e.g. `org%5Fpentest%5Flab.helper`)
  * must reach the router intact, not decoded a second time.
  */
@@ -36,7 +36,7 @@ describe("createNextHandler — a flow kind that carries percent escapes", () =>
     ["an escaped user segment", ESCAPED_USER]
   ])("dispatches an action on %s, decoded once by Next", async (_label, kind) => {
     const flowstate = createFlowState({
-      flows: { seat: runFlow(kind) },
+      flows: { worker: runFlow(kind) },
       stores: { default: { primary: inMemoryStores() } }
     });
     const { POST } = createNextHandler(flowstate);

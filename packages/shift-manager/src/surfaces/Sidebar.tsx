@@ -6,9 +6,9 @@
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `seatStates` result, so they agree with Roster. PROJECTS lists each project;
+ * `workerStates` result, so they agree with Roster. PROJECTS lists each project;
  * TEAMS is one row per
- * team with a status square per seat, the person's own workers included,
+ * team with a status square per worker, the person's own workers included,
  * opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
  *
@@ -29,7 +29,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { initialsOf } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
@@ -343,8 +343,8 @@ export function Sidebar({
   const roster = useRoster(loaded?.readAt);
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
-  const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.seats.length > 0) ? joined : undefined;
-  const states = drawn === undefined ? undefined : seatStates(drawn.snapshot);
+  const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.workers.length > 0) ? joined : undefined;
+  const states = drawn === undefined ? undefined : workerStates(drawn.snapshot);
   const counts = states === undefined ? undefined : shiftCounts(states);
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
 
@@ -434,7 +434,7 @@ export function Sidebar({
             </Heading>
             <div data-testid="teams">
               {drawn === undefined ? null : (
-                teamsOf(drawn.seats).map(({ team, seats }) => (
+                teamsOf(drawn.workers).map(({ team, workers }) => (
                   <button
                     key={team}
                     type="button"
@@ -448,17 +448,17 @@ export function Sidebar({
                   >
                     <span className="flex-1 truncate">{team}</span>
                     <span className="flex gap-0.5">
-                      {seats.map((seat) => {
-                        const status = states?.seats.get(seat.id)?.status ?? "off shift";
+                      {workers.map((worker) => {
+                        const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={seat.id} title={`${seat.name} · ${status}`} data-testid="worker" data-seat-id={seat.id} data-status={status}>
+                          <span key={worker.id} title={`${worker.name} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );
                       })}
                     </span>
                     <Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">
-                      {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{seats.length}
+                      {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{workers.length}
                     </Meta>
                   </button>
                 ))

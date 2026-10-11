@@ -38,10 +38,10 @@ const resources = {
     scope: "org",
     flowIsolation: false,
     stateSchema: z.object({
-      seatId: z.string(),
+      workerId: z.string(),
       instructions: z.string().nullable(),
     }),
-    client: { state: { read: true }, expose: ["seatId", "instructions"] },
+    client: { state: { read: true }, expose: ["workerId", "instructions"] },
   }),
 };
 
@@ -64,8 +64,8 @@ const whoami = handler({
   },
 });
 
-const handToAcmeSeat = dispatcher({
-  name: "hand-to-acme-seat",
+const handToAcmeWorker = dispatcher({
+  name: "hand-to-acme-worker",
   type: "internal",
   flowKind: "acme.eng.lead",
   action: "whoami",
@@ -81,8 +81,8 @@ const verified = {
   },
 };
 
-const seatKind = defineFlow({
-  kind: "seat",
+const workerKind = defineFlow({
+  kind: "worker",
   cardinality: "collection",
   configSchema: z.object({ instructions: z.string().nullable().default(null) }),
   resources,
@@ -92,7 +92,7 @@ const seatKind = defineFlow({
 });
 
 const privateRoster = defineResourceCollection({
-  pattern: "workforce/roster/[owner]/[seat]",
+  pattern: "workforce/roster/[owner]/[worker]",
   ownerPrivate: { param: "owner" },
   scope: "org",
   flowIsolation: false,
@@ -148,7 +148,7 @@ const appFlow = defineFlow({
   resources: { ...resources, privateRoster },
   actions: {
     whoami: { inputSchema: tagInput, block: whoami },
-    hand: { inputSchema: tagInput, block: handToAcmeSeat },
+    hand: { inputSchema: tagInput, block: handToAcmeWorker },
     peek: { inputSchema: tagInput, block: peekPrivate },
     peekBrowser: { inputSchema: tagInput, block: peekBrowser },
   },
@@ -240,23 +240,23 @@ async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}
   return { state, runtime, call, act, seenIn };
 }
 
-function seat(id: string, instructions: string) {
-  return seatKind({ id, config: { instructions } });
+function worker(id: string, instructions: string) {
+  return workerKind({ id, config: { instructions } });
 }
 
 describe("FIX-1529 hire plane", () => {
   it("E1 a session-less action on a foreign instance is 404 before it runs", async () => {
     const h = await boot();
-    h.state.register(seat("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
+    h.state.register(worker("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
     const result = await h.act(MALLORY, undefined, "whoami", { tag: "sessionless" }, "acme.eng.lead");
     expect(result).toEqual({ http: 404, error: 'Unknown flow "acme.eng.lead"' });
     expect(await h.seenIn("globex")).toEqual([]);
     expect(await h.seenIn("acme")).toEqual([]);
   });
 
-  it("E2 bob cannot open or run alice's user-owned seat", async () => {
+  it("E2 bob cannot open or run alice's user-owned worker", async () => {
     const h = await boot();
-    h.state.register(seat("acme.research", ALICE_PROMPT), {
+    h.state.register(worker("acme.research", ALICE_PROMPT), {
       pin: { orgId: "acme", userId: "alice" },
     });
     const opened = await h.call("POST", ["acme.research", "sessions"], BOB, { userId: "bob" });
@@ -281,7 +281,7 @@ describe("FIX-1529 hire plane", () => {
   it("E3 a session opened before the pin resumes as a refusal, and no block runs", async () => {
     const stores = inMemoryStores();
     const first = await boot(stores);
-    const minted = seat("acme.eng.lead", ACME_PROMPT);
+    const minted = worker("acme.eng.lead", ACME_PROMPT);
     first.state.register(minted);
     const opened = await first.call("POST", ["acme.eng.lead", "sessions"], MALLORY, {
       userId: "mallory",
@@ -291,7 +291,7 @@ describe("FIX-1529 hire plane", () => {
     expect(first.state.unregister("acme.eng.lead")).toBe(true);
 
     const second = await boot(stores);
-    const pinned = seat("acme.eng.lead", ACME_PROMPT);
+    const pinned = worker("acme.eng.lead", ACME_PROMPT);
     second.state.register(pinned, { pin: { orgId: "acme" } });
     const resumed = await second.act(
       MALLORY,
@@ -326,21 +326,21 @@ describe("FIX-1529 hire plane", () => {
       "org",
       "acme",
       "workforce/roster/eng.lead",
-      { seatId: "eng.lead", instructions: ACME_PROMPT },
+      { workerId: "eng.lead", instructions: ACME_PROMPT },
       "any"
     );
     await primary.resourceState!.set(
       "org",
       "acme",
       "workforce/roster/~alice/research",
-      { seatId: "research", instructions: ALICE_PROMPT },
+      { workerId: "research", instructions: ALICE_PROMPT },
       "any"
     );
     await primary.resourceState!.set(
       "org",
       "acme",
       "workforce/roster/alice-flat",
-      { seatId: "alice-flat", instructions: "ALICE-FLAT" },
+      { workerId: "alice-flat", instructions: "ALICE-FLAT" },
       "any"
     );
     const h = await boot(stores);
@@ -398,7 +398,7 @@ describe("FIX-1529 hire plane", () => {
       "org",
       "acme",
       "workforce/roster/~alice/research",
-      { seatId: "research", instructions: ALICE_PROMPT },
+      { workerId: "research", instructions: ALICE_PROMPT },
       "any",
     );
     const h = await boot(stores);
@@ -445,7 +445,7 @@ describe("FIX-1529 hire plane", () => {
 
   it("E6 the pin is not the address: acme.x pinned to globex admits globex and refuses acme", async () => {
     const h = await boot();
-    h.state.register(seat("acme.x", "GLOBEX-PINNED"), { pin: { orgId: "globex" } });
+    h.state.register(worker("acme.x", "GLOBEX-PINNED"), { pin: { orgId: "globex" } });
     const acme = await h.call("POST", ["acme.x", "sessions"], ALICE, { userId: "alice" });
     expect(acme.status).toBe(404);
     expect(acme.json.error).toBe('Unknown flow "acme.x"');
@@ -461,13 +461,13 @@ describe("FIX-1529 hire plane", () => {
     ]);
   });
 
-  it("E7 an internal dispatch into a foreign seat does not run that seat", async () => {
+  it("E7 an internal dispatch into a foreign worker does not run that worker", async () => {
     const h = await boot();
-    h.state.register(seat("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
+    h.state.register(worker("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
     const opened = await h.call("POST", ["app", "sessions"], MALLORY, { userId: "mallory" });
     const sessionId = opened.json.session.id as string;
     // Refused at the seam, so the sender sees it and nothing is minted on the
-    // seat. A refusal that waited for the child's admission would be accepted
+    // worker. A refusal that waited for the child's admission would be accepted
     // here, and a board's row handed to that child would stay claimed.
     expect(await h.act(MALLORY, sessionId, "hand", { tag: "handed" })).toEqual({
       http: 202,
@@ -500,8 +500,8 @@ describe("FIX-1529 hire plane", () => {
 
   it("E8 the catalog omits other orgs, other users, and every pin for an anonymous caller", async () => {
     const h = await boot();
-    h.state.register(seat("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
-    h.state.register(seat("acme.research", ALICE_PROMPT), {
+    h.state.register(worker("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
+    h.state.register(worker("acme.research", ALICE_PROMPT), {
       pin: { orgId: "acme", userId: "alice" },
     });
     const ids = async (who?: Who) =>
@@ -530,21 +530,21 @@ describe("FIX-1529 hire plane", () => {
 
   it("E9 after release, a new pin refuses the old session before the block", async () => {
     const h = await boot();
-    h.state.register(seat("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
+    h.state.register(worker("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
     expect(() =>
-      h.state.register(seat("acme.eng.lead", "GLOBEX: rebind"), { pin: { orgId: "globex" } })
+      h.state.register(worker("acme.eng.lead", "GLOBEX: rebind"), { pin: { orgId: "globex" } })
     ).toThrow();
 
     const opened = await h.call("POST", ["acme.eng.lead", "sessions"], ALICE, { userId: "alice" });
     expect(opened.status).toBe(201);
     const sessionId = opened.json.session.id as string;
     expect(h.state.unregister("acme.eng.lead")).toBe(true);
-    h.state.register(seat("acme.eng.lead", "GLOBEX: rebind"), { pin: { orgId: "globex" } });
+    h.state.register(worker("acme.eng.lead", "GLOBEX: rebind"), { pin: { orgId: "globex" } });
 
     const resumed = await h.act(ALICE, sessionId, "whoami", { tag: "rebound" }, "acme.eng.lead");
     expect(resumed).toEqual({ http: 404, error: 'Unknown flow "acme.eng.lead"' });
     const runtime = await h.state.getRuntime();
-    const rebound = seat("acme.eng.lead", "GLOBEX: rebind");
+    const rebound = worker("acme.eng.lead", "GLOBEX: rebind");
     rebound.ownerPin = { orgId: "globex" };
     await expect(
       runAction({
@@ -583,7 +583,7 @@ describe("FIX-1529 hire plane", () => {
         },
       })()
     );
-    const reaches = /can reach the rows of owner-private collection "workforce\/roster\/\[owner\]\/\[seat\]"/;
+    const reaches = /can reach the rows of owner-private collection "workforce\/roster\/\[owner\]\/\[worker\]"/;
     const leak = defineFlow({
       kind: "leak",
       actions: {
@@ -618,7 +618,7 @@ describe("FIX-1529 hire plane", () => {
       },
     })();
     (redeclared as { resources: unknown }).resources = {
-      roster: { pattern: "workforce/roster/[owner]/[seat]", scope: "org" },
+      roster: { pattern: "workforce/roster/[owner]/[worker]", scope: "org" },
     };
     expect(() => registry.register(redeclared)).toThrow(reaches);
 
@@ -641,7 +641,7 @@ describe("FIX-1529 hire plane", () => {
     };
     expect(() => registry.register(notes)).toThrow(reaches);
 
-    for (const [index, pattern] of ["workforce/[r]/[owner]/[seat]", "[a]/[b]/[c]/[d]"].entries()) {
+    for (const [index, pattern] of ["workforce/[r]/[owner]/[worker]", "[a]/[b]/[c]/[d]"].entries()) {
       expect(() =>
         defineResourceCollection({ pattern, scope: "org", stateSchema: z.object({}).passthrough() })
       ).not.toThrow();
@@ -697,7 +697,7 @@ describe("FIX-1535 debug listing keeps the hire plane", () => {
       "org",
       "acme",
       "workforce/roster/~alice/research",
-      { seatId: "research", instructions: ALICE_PROMPT },
+      { workerId: "research", instructions: ALICE_PROMPT },
       "any",
     );
     await primary.content!.set("org", "acme", "workforce/roster/~alice/research", ALICE_PROMPT);
@@ -705,7 +705,7 @@ describe("FIX-1535 debug listing keeps the hire plane", () => {
       "org",
       "acme",
       "workforce/roster/eng.lead",
-      { seatId: "eng.lead", instructions: ACME_PROMPT },
+      { workerId: "eng.lead", instructions: ACME_PROMPT },
       "any",
     );
     const h = await boot(stores, { debug: true });

@@ -14,8 +14,8 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { projectsOf, type LoadedSnapshot } from "../src/lib/derive";
-import { createLabReader, PROJECT_READER_KIND, readerSessionId, toProject, type Project } from "../src/lib/reads";
-import { ASKER_KIND } from "./fixtures/ask-lab/asker.mts";
+import { createLabReader, PROJECT_READER_FLOW, readerSessionId, toProject, type Project } from "../src/lib/reads";
+import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -47,7 +47,7 @@ async function lab(projects: NonNullable<Parameters<typeof openAskLab>[0]>["proj
 
 /** The row as the Lab stores it, read over its collection route through the owner's roster session, which the app opened. */
 async function storedRow(baseUrl: string, id: string): Promise<Project> {
-  const res = await fetch(`${baseUrl}/api/flows/sessions/${readerSessionId(ASK_LAB_USER_ID, PROJECT_READER_KIND)}/resources/projects?limit=200`);
+  const res = await fetch(`${baseUrl}/api/flows/sessions/${readerSessionId(ASK_LAB_USER_ID, PROJECT_READER_FLOW)}/resources/projects?limit=200`);
   const body = (await res.json()) as { items: Array<{ clientData: Project }> };
   const row = body.items.map((i) => i.clientData).find((p) => p.id === id);
   if (row === undefined) throw new Error(`no project ${id} stored`);
@@ -72,9 +72,9 @@ describe("PROJECTS (BR-22, D3)", () => {
 
   it("a member who holds no session on a flow that declares the projects still sees them, and a Lab with no project setup has no coordinator", async () => {
     const { baseUrl } = await lab();
-    // OTHER is a member of both projects, created none of them, and holds only a seat's session.
+    // OTHER is a member of both projects, created none of them, and holds only a worker's session.
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_FLOW, userId: OTHER, state: { workerId: "ops.asker" } });
     openApp(baseUrl, "/p/desk/stream", OTHER);
     await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
     expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toContain("empty");
@@ -108,14 +108,14 @@ describe("PROJECTS (BR-22, D3)", () => {
 });
 
 describe("a Lab that declares no projects is empty, not failed (D3)", () => {
-  /** Pass every request on, except a POST that opens a session on `kind`, which answers `status`. */
-  function refuseSessionsOn(kind: string, status: number) {
+  /** Pass every request on, except a POST that opens a session on `flow`, which answers `status`. */
+  function refuseSessionsOn(flow: string, status: number) {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      if (method === "POST" && url.includes(`/api/flows/${kind}/sessions`)) {
-        return Promise.resolve(new Response(JSON.stringify({ error: `no ${kind} here` }), { status }));
+      if (method === "POST" && url.includes(`/api/flows/${flow}/sessions`)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `no ${flow} here` }), { status }));
       }
       return real(input, init);
     });
@@ -144,8 +144,8 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
   it("a Lab that doesn't serve the roster flow has nothing that declares projects: zero projects, not a failure", async () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
-    refuseSessionsOn(PROJECT_READER_KIND, 404);
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_FLOW, userId: OTHER, state: { workerId: "ops.asker" } });
+    refuseSessionsOn(PROJECT_READER_FLOW, 404);
     const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
     expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
   });
@@ -153,8 +153,8 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
   it("a roster flow that can't be opened for this person is a failed projects read, never an empty list", async () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
-    refuseSessionsOn(PROJECT_READER_KIND, 503);
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_FLOW, userId: OTHER, state: { workerId: "ops.asker" } });
+    refuseSessionsOn(PROJECT_READER_FLOW, 503);
     const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
     const projects = "projects" in snapshot ? snapshot.projects : undefined;
     expect(projects?.ok).toBe(false);
@@ -219,7 +219,7 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
 
     // Another person never reads it: their PROJECTS list the shared one only.
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_FLOW, userId: OTHER, state: { workerId: "ops.asker" } });
     openApp(baseUrl, "/p/private/desk/brief", OTHER);
     await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
     expect(screen.queryByTestId("nav-project-private-desk")).toBeNull();
@@ -241,7 +241,7 @@ describe("grouping is the snapshot's (V4)", () => {
       readAt: 0,
       sessions: [],
       orgId: "org",
-      inventory: { ok: true, value: { seats: [] } },
+      inventory: { ok: true, value: { workers: [] } },
       projects: { ok: true, value: { rows } },
       boards: {},
       asks: { ok: true, value: [] },
@@ -283,7 +283,7 @@ describe("grouping is the snapshot's (V4)", () => {
     expect(view).toEqual({ ok: true, value: { projects: [stale] } });
   });
 
-  it("projectsOf fails only when the projects read did: an unread seat inventory leaves PROJECTS whole", () => {
+  it("projectsOf fails only when the projects read did: an unread worker inventory leaves PROJECTS whole", () => {
     const failure = { message: "store offline" };
     const rows = [project({ id: "a" })];
     expect(projectsOf({ ...snapshot(rows), inventory: { ok: false, failure } })).toEqual({ ok: true, value: { projects: rows } });

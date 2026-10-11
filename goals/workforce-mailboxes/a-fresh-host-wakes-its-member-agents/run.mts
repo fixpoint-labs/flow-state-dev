@@ -142,9 +142,9 @@ await runGoal(async (failures) => {
   if (builds.test(hire)) fail("source", `kitchen-sink's workforce/hire.ts builds its own ${builds.exec(hire)![1]}`);
   if (!/defineCoordinatorFlow\s*\(/.test(hire)) fail("source", "kitchen-sink's workforce/hire.ts never registers defineCoordinatorFlow");
   const shell = readFileSync(`${KITCHEN_SINK}/lib/workforce-shell.ts`, "utf8");
-  const asks = /export const SEAT_ASKS = \{([\s\S]*?)\} as const/.exec(shell)?.[1];
-  if (asks === undefined) fail("source", "kitchen-sink's lib/workforce-shell.ts has no SEAT_ASKS to read");
-  else if (/\bwake\s*:/.test(asks)) fail("source", "kitchen-sink's SEAT_ASKS still carries a wake column");
+  const asks = /export const WORKER_ASKS = \{([\s\S]*?)\} as const/.exec(shell)?.[1];
+  if (asks === undefined) fail("source", "kitchen-sink's lib/workforce-shell.ts has no WORKER_ASKS to read");
+  else if (/\bwake\s*:/.test(asks)) fail("source", "kitchen-sink's WORKER_ASKS still carries a wake column");
   if (!failures.some((f) => f.startsWith("[source]"))) {
     evidence.push(
       `host.mts imports only ${[...new Set(imports)].join(", ")}, registers defineCoordinatorFlow and builds no dispatcher or router; ` +

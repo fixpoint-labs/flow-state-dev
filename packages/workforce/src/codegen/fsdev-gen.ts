@@ -32,16 +32,16 @@ export interface WorkforceGeneratedModule {
 
 /** Walk `root` and render `workforce.gen.ts` from what is there. */
 async function generate(root: string): Promise<WorkforceGeneratedModule> {
-  const { files, resourceModules, seatBlocks, packageBlocks, searched } =
+  const { files, resourceModules, workerBlocks, packageBlocks, searched } =
     await discoverWorkforceCode(root);
-  const content = renderWorkforceCode(files, resourceModules, seatBlocks, packageBlocks);
+  const content = renderWorkforceCode(files, resourceModules, workerBlocks, packageBlocks);
 
   const counts = { worker: 0, block: 0 };
   for (const file of files) counts[file.slot] += 1;
   // Per-worker blocks are counted and listed by FILE rather than by
   // registration: one team-level file registers for every worker on the team,
   // and a count of registrations would not match the files an author can see.
-  const seatBlockPaths = [...new Set(seatBlocks.map((entry) => entry.path))];
+  const workerBlockPaths = [...new Set(workerBlocks.map((entry) => entry.path))];
 
   return {
     file: GENERATED_FILE_NAME,
@@ -50,18 +50,18 @@ async function generate(root: string): Promise<WorkforceGeneratedModule> {
     entries: [
       ...files.map((file) => `${file.path} -> ${file.name}`),
       ...resourceModules.map((module) => `${module.path} -> ${module.ref}`),
-      ...seatBlocks.map((entry) => `${entry.path} -> ${entry.seat}.${entry.name}`),
+      ...workerBlocks.map((entry) => `${entry.path} -> ${entry.worker}.${entry.name}`),
       ...packageBlocks.map((entry) => `${entry.path} -> ${entry.package}: ${entry.name}`),
     ],
     paths: [
       ...[...files, ...resourceModules].map((found) => found.path),
-      ...seatBlockPaths,
+      ...workerBlockPaths,
       ...packageBlocks.map((entry) => entry.path),
     ],
     summary:
-      `${counts.worker} worker kind(s), ` +
+      `${counts.worker} worker flow(s), ` +
       `${counts.block} block(s), ${resourceModules.length} resource module(s), ` +
-      `${seatBlockPaths.length} seat block(s), ${packageBlocks.length} package block(s)`,
+      `${workerBlockPaths.length} worker block(s), ${packageBlocks.length} package block(s)`,
   };
 }
 

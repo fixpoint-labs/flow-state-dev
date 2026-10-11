@@ -16,18 +16,18 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 
 const ORG = DEFAULT_ORG_ID;
 const SKILL_MD = "---\nname: refunds\ndescription: How refunds work\n---\nRefunds take five days.";
 
 async function drawerKeys(workers: ReadonlyArray<string | undefined>): Promise<string[]> {
-  const [seat] = mintSeats([
+  const [instance] = mintWorkers([
     { id: "support.otto", declared: {}, body: "You answer questions.", skills: [{ name: "refunds", skillMd: SKILL_MD }] }
   ]);
   const keys: string[] = [];
   const state = createFlowState({
-    flows: { [seat!.id]: seat! },
+    flows: { [instance!.id]: instance! },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {
@@ -48,17 +48,17 @@ async function drawerKeys(workers: ReadonlyArray<string | undefined>): Promise<s
     for (const [index, worker] of workers.entries()) {
       const sessionId = `conversation-${index}`;
       const created = await router.POST(
-        new Request(`http://localhost/api/flows/${seat!.id}/sessions`, {
+        new Request(`http://localhost/api/flows/${instance!.id}/sessions`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "alice", sessionId, ...(worker !== undefined ? { state: { workerId: worker } } : {}) })
         }),
-        { params: { path: [seat!.id, "sessions"] } }
+        { params: { path: [instance!.id, "sessions"] } }
       );
       expect(created.status).toBe(201);
       const result = await runAction({
         orgId: ORG,
-        flow: seat!,
+        flow: instance!,
         actionName: "run",
         input: { message: "how long do refunds take?" },
         userId: "alice",

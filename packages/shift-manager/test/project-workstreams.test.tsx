@@ -36,7 +36,7 @@ import { WORKER_ID_STATE_KEY, type RosterEntry } from "@flow-state-dev/workforce
 import { runAction } from "../src/lib/action";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { readProject, readProjectSetup, type ProjectAddress, type ProjectSetup } from "../src/lib/projects";
-import { createLabReader, PROJECT_READER_KIND, readerSessionId } from "../src/lib/reads";
+import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../src/lib/reads";
 import { readSessionItems } from "../src/lib/run";
 import { workforceClientFor } from "../src/lib/workforce";
 import { selectHarness } from "../teams/devteam/harness.mts";
@@ -118,7 +118,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
     projects: [{ id: APOLLO.id, title: "Apollo", members: [BOB.userId] }],
   });
@@ -131,7 +131,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
     // The Lab read opens the person's reading session on the roster flow, as the app does.
     await createLabReader(clients).read();
     const workforce = workforceClientFor(clients);
-    return { clients, reader: readerSessionId(user.userId, PROJECT_READER_KIND), roster: () => workforce.roster() };
+    return { clients, reader: readerSessionId(user.userId, PROJECT_READER_FLOW), roster: () => workforce.roster() };
   };
   const setup = await readProjectSetup((await as(ALICE)).clients);
   if (setup === null) throw new Error("the DevTeam Lab answers no project setup");
@@ -248,7 +248,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
   it("lets a worker the chief of staff hired for her lead, and refuses the coder (BR-38, BR-42)", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
-    await runAction(alice.clients, PROJECT_READER_KIND, alice.reader, "hire", {
+    await runAction(alice.clients, PROJECT_READER_FLOW, alice.reader, "hire", {
       id: "release-lead",
       flow: "agent",
       description: "Runs a release.",
@@ -399,7 +399,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     openApp(alice.clients, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     expect(conversation.getAttribute("data-session-id")).toBe(await projectCoordinator(alice, setup));
-    expect(conversation.getAttribute("data-seat-id")).toBe("project-coordinator");
+    expect(conversation.getAttribute("data-worker-id")).toBe("project-coordinator");
     // Stream draws no entry, so it never reads them; nor does Brief.
     const entryReads = () => seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
     expect(entryReads()).toEqual([]);

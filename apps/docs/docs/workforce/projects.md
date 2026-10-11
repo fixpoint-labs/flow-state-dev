@@ -46,7 +46,7 @@ Each workstream is its own entry, not part of the row, so two owners can update 
 Usually you don't declare anything. Shared projects live in the org's `projects` collection and private ones in each user's `privateProjects`, and three things declare both for you:
 
 - `hireWorkforce` returns a [roster flow](./durable-hire.md#hiring-a-worker), `workforce-roster`, with your worker flows, and you register it with them. It declares both collections, and a client lists a person's projects and reads a project's workstreams through it.
-- The blocks `defineProjectBlocks()` returns, and `openWorkstream` from `defineWorkstreamBlocks()`, declare both on themselves. A flow that holds one has the collections, whether you spread it as an action or put it in a worker kind's tool `catalog`.
+- The blocks `defineProjectBlocks()` returns, and `openWorkstream` from `defineWorkstreamBlocks()`, declare both on themselves. A flow that holds one has the collections, whether you spread it as an action or put it in a worker flow's tool `catalog`.
 - `defineCoordinatorFlow` declares both on the coordinator flow.
 
 Otherwise, on a flow of your own that reads or writes project rows without those blocks, put both in its `resources`, where you build the flow, under the keys the workforce's own flows use:
@@ -126,7 +126,7 @@ If your app should start with some projects already there, create them from its 
 
 ### Giving the writes to a worker
 
-A worker on the built-in `agent` kind can create projects and open workstreams for the person talking to it. Put the blocks in the kind's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
+A worker on the built-in `agent` worker flow can create projects and open workstreams for the person talking to it. Put the blocks in the flow's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
 
 ```ts
 import { defineAgentWorkerFlow, defineProjectBlocks } from "@flow-state-dev/workforce";
@@ -168,14 +168,14 @@ A workstream is one area of a project with one owner. It's two things:
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
 import {
-  AGENT_KIND,
+  AGENT_FLOW,
   defineProjectBlocks,
   defineWorkstreamBlocks,
   WORKSTREAM_OPENED_ENTRY,
 } from "@flow-state-dev/workforce";
 
 // Describes the built-in agent flow (see below).
-const agentLeads = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+const agentLeads = { kind: AGENT_FLOW, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
 
 const projects = defineProjectBlocks();
 const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentLeads] });
@@ -329,7 +329,7 @@ Name the worker when you build the installation. It must be a standard worker on
 ```ts
 const installation = createWorkerInstallation({
   standardWorkers: workers,
-  workerFlows: () => kinds,
+  workerFlows: () => workerFlows,
   projectCoordinator: "project-coordinator",
 });
 ```

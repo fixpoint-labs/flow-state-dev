@@ -27,7 +27,7 @@ import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
-import { ROSTER_FLOW_KIND } from "../src/workers/keys";
+import { ROSTER_FLOW } from "../src/workers/keys";
 
 export const ORG = "acme";
 export const OTHER_ORG = "beta";
@@ -46,7 +46,7 @@ export type HostExtras = {
   standardWorkers?: readonly WorkerManifest[];
   /** The standard worker the installation names as every project's coordinator. */
   projectCoordinator?: string;
-  /** More worker flows on the installation, by kind, built once it exists. */
+  /** More worker flows on the installation, keyed by `kind`, built once it exists. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The scripted models, as `createMockModelResolver` takes them. */
   models?: Parameters<typeof createMockModelResolver>[0];
@@ -56,22 +56,22 @@ const doorInput = z.object({ message: z.string() });
 
 /** A worker flow whose door echoes, with whatever actions the test adds. */
 function workerFlow(
-  kind: string,
+  flow: string,
   installation: WorkerInstallation,
   extra: Record<string, unknown> = {},
   internal: Record<string, unknown> = {}
 ) {
   const door = handler({
-    name: `${kind}-run`,
+    name: `${flow}-run`,
     inputSchema: doorInput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
-      const worker = await installation.resolveWorker(ctx, kind);
+      const worker = await installation.resolveWorker(ctx, flow);
       return `${worker.id} heard: ${input.message}`;
     }
   });
   return defineFlow({
-    kind,
+    kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
@@ -110,9 +110,9 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     lead: lead() as unknown as FlowInstance,
     lead2: lead2() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
-    [ROSTER_FLOW_KIND]: roster() as unknown as FlowInstance,
+    [ROSTER_FLOW]: roster() as unknown as FlowInstance,
     ...Object.fromEntries(
-      Object.entries(more).map(([kind, flow]) => [kind, (flow as () => unknown)() as unknown as FlowInstance])
+      Object.entries(more).map(([name, flow]) => [name, (flow as () => unknown)() as unknown as FlowInstance])
     )
   };
   const state = createFlowState({
@@ -206,11 +206,11 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
    * otherwise, since a lead runs its workstream through its delegates.
    */
   const hire = async (user: string, id: string, flow: string, org = ORG, settings?: Record<string, unknown>) => {
-    const rosterSession = await openSession(user, ROSTER_FLOW_KIND, undefined, org);
+    const rosterSession = await openSession(user, ROSTER_FLOW, undefined, org);
     const given = settings ?? (flow === "lead" || flow === "lead2" ? { delegates: [`${id}.helper`] } : undefined);
     return ok(
       user,
-      ROSTER_FLOW_KIND,
+      ROSTER_FLOW,
       rosterSession,
       "hire",
       { id, flow, description: `${user}'s ${id}`, ...(given === undefined ? {} : { settings: given }) },

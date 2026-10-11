@@ -26,18 +26,18 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { createModelResolver, defineFlow, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  AGENT_KIND,
-  COORDINATOR_KIND,
+  AGENT_FLOW,
+  COORDINATOR_FLOW,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { installWorkers } from "../../../lib/workers.mts";
-import { ASKER_KIND, defineAskerFlow } from "../../it-sends-a-turn-into-a-seat-session/lab/asker/asker.mts";
+import { ASKER_FLOW, defineAskerFlow } from "../../it-sends-a-turn-into-a-seat-session/lab/asker/asker.mts";
 
 /** The one person this Lab runs as. */
 export const USER_ID = "u_cos_goal";
@@ -49,7 +49,7 @@ export const USER_ID = "u_cos_goal";
 const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
 
 /** The flow the inventory's worker rows are written from. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
  * Open the desk Lab over the tree at `root`.
@@ -64,19 +64,19 @@ export async function openDesk(root: string) {
   const { installation, copies } = installWorkers(tree.workers, (installation) => {
     const agent = defineAgentWorkerFlow({ installation });
     return {
-      [ASKER_KIND]: defineAskerFlow(installation),
-      [AGENT_KIND]: agent,
-      [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
+      [ASKER_FLOW]: defineAskerFlow(installation),
+      [AGENT_FLOW]: agent,
+      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
     };
   });
   // The worker-row write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
-    kind: INVENTORY_WRITER_KIND,
+    kind: INVENTORY_WRITER_FLOW,
     internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    [INVENTORY_WRITER_KIND]: writer,
+    [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
     flows,
@@ -88,7 +88,7 @@ export async function openDesk(root: string) {
 
   const runtime = await flowState.getRuntime();
   const opened = await openInventory(
-    { seats: inventorySeats(installation) },
+    { workers: inventoryWorkers(installation) },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({
@@ -105,7 +105,7 @@ export async function openDesk(root: string) {
         if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
         return result;
       },
-      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
+      workerWriter: { flowKind: INVENTORY_WRITER_FLOW },
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
     },

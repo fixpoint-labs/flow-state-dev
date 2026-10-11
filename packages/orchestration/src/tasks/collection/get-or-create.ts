@@ -92,7 +92,7 @@ export interface ResourceBackingSpec extends CommonOptions {
   collection: ResourceCollectionRef<JsonObject>;
   /**
    * Refuse `setAssignee` on an `in_progress` task in this collection (FIX-982,
-   * narrowed by FIX-1780). Set by a task board with dispatcher seats, whose
+   * narrowed by FIX-1780). Set by a task board with dispatcher assignees, whose
    * child's routing key is derived from the assignee. Only this backing carries it — a handed-off board is refused at
    * construction on any other.
    */

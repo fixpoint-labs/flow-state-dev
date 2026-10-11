@@ -1,6 +1,6 @@
 /**
- * The `coder` worker kind — one file under `workforce/flows/workers/`,
- * basename = the kind id every working `WORKER.md` names in its `flow:` line.
+ * The `coder` worker flow — one file under `workforce/flows/workers/`,
+ * basename = the flow name every working `WORKER.md` names in its `flow:` line.
  *
  * This is the worker a filed task wakes. It declares one task entry, `work`,
  * and takes tasks through it from any session's board: the EM's workstream
@@ -36,7 +36,7 @@
  * running coding run, on the run's own session, found on the board of the
  * session its task was filed from.
  *
- * Every coder worker runs on this kind's one copy. A session names its worker
+ * Every coder worker runs on this worker flow's one copy. A session names its worker
  * (`installation.session()`), and the phases read that worker's own settings
  * through the installation, never `ctx.flow.config`.
  */
@@ -67,21 +67,21 @@ import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import {
   defineReadOwnFacts,
   INSPECT_ENTRY,
-  seatOf,
-  seatSettingsSchema,
-} from "../../../seat-config.mts";
+  workerOf,
+  workerSettingsSchema,
+} from "../../../worker-config.mts";
 
-/** The kind id the working `WORKER.md` names. **Pinned** — the basename must match. */
-export const CODER_KIND = "coder";
+/** The flow name the working `WORKER.md` names. **Pinned** — the basename must match. */
+export const CODER_FLOW = "coder";
 
 /** The answer manager's name: its blocks are named apart from the implement manager's. */
 const ANSWER_MANAGER = "harness-manager-answer";
 
 export interface CoderWorkerFlowOptions {
-  /** The installation whose workers run on this kind. */
+  /** The installation whose workers run on this worker flow. */
   installation: WorkerInstallation;
   /**
-   * **The slot.** How this kind is pointed at a coding harness.
+   * **The slot.** How this worker flow is pointed at a coding harness.
    *
    * One expression, handed the three feeds the harness contract declares. The
    * gate puts a scripted stub here; the honesty check puts a real coding agent
@@ -122,7 +122,7 @@ function namesFeatureWork(input: unknown): boolean {
 }
 
 /**
- * Build the working kind.
+ * Build the working worker flow.
  *
  * @param options The installation, the harness slot, the workspaces, the phases, the judge and the documents.
  * @returns The flow factory `hireWorkforce` registers one copy of, which every coder worker runs on.
@@ -130,7 +130,7 @@ function namesFeatureWork(input: unknown): boolean {
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const { installation } = options;
-  const readOwnFacts = defineReadOwnFacts(seatOf(installation, CODER_KIND));
+  const readOwnFacts = defineReadOwnFacts(workerOf(installation, CODER_FLOW));
   const judge = options.judge === undefined ? {} : { judge: options.judge };
 
   // Feature work: a task that names an issue and a phase.
@@ -163,7 +163,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   // `workerTaskEntry` keeps the turn's skill state on the session, which lets
   // a harness through that would. Refused here, at startup, naming the entry.
   for (const manager of [implement, answer]) {
-    assertHandOffBlockSupported({ name: CODER_KIND, target: WORKER_TASK_ENTRY, block: manager });
+    assertHandOffBlockSupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
   }
 
   const byTask = router({
@@ -197,11 +197,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   });
 
   return defineFlow({
-    kind: CODER_KIND,
-    // Registered once, at its kind, which is what the coordinator's
+    kind: CODER_FLOW,
+    // Registered once, under its flow name, which is what the coordinator's
     // dispatcher names in `flowKind`; the worker is named by the row's session.
     cardinality: "collection",
-    configSchema: seatSettingsSchema(),
+    configSchema: workerSettingsSchema(),
     session: installation.session(),
     // Installed at flow level. Org-scoped, and organization identity is
     // unconditional, so the org registry is always built for a request that
@@ -219,7 +219,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // The one door: any session's tasks, handed over under its board's id.
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_KIND}-${WORKER_TASK_ENTRY}`, block: byTask }),
+        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_FLOW}-${WORKER_TASK_ENTRY}`, block: byTask }),
       },
     },
   } as never);

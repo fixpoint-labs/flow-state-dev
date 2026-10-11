@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { createWorkerInstallation, hireWorkforce, ROSTER_FLOW_KIND, workerFlow, type WorkerInstallation } from "../src/index";
+import { createWorkerInstallation, hireWorkforce, ROSTER_FLOW, workerFlow, type WorkerInstallation } from "../src/index";
 import { workerConfigSchema } from "../src/worker-config";
 
 const door = z.object({ message: z.string() });
@@ -50,7 +50,7 @@ describe("hireWorkforce", () => {
     for (const count of [2, 40]) {
       const registry = createFlowRegistry();
       for (const copy of hireWorkforce(installation(count))) registry.register(copy);
-      expect(registry.list().map((flow) => flow.id).sort()).toEqual(["agent", "research", ROSTER_FLOW_KIND]);
+      expect(registry.list().map((flow) => flow.id).sort()).toEqual(["agent", "research", ROSTER_FLOW]);
       expect(registry.list().map((flow) => registry.pinOf(flow.id))).toEqual([undefined, undefined, undefined]);
     }
   });
@@ -113,7 +113,7 @@ describe("hireWorkforce", () => {
       workerFlows: { research }
     });
     const copies = hireWorkforce(made);
-    expect(copies.map((copy) => copy.id).sort()).toEqual(["agent", "research", ROSTER_FLOW_KIND]);
+    expect(copies.map((copy) => copy.id).sort()).toEqual(["agent", "research", ROSTER_FLOW]);
     const copy = copies.find((c) => c.id === "research")!;
     expect((copy.session as { createCheck?: unknown } | undefined)?.createCheck).toBe(made.createCheck);
     expect(made.workerFlows().research!.flow).toBe(made.workerFlows().research!.flow);

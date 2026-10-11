@@ -4,8 +4,8 @@
  * Every composer that talks to a worker (a task's, `@worker` in a workstream,
  * Inbox's reply) calls {@link sendTurn}, and nothing else in Shift Manager writes a
  * session item (ER-15). The line goes to the **door** the session's own flow
- * declares: the seat inventory row for the flow the session records as its
- * owner names it. Shift Manager knows no kind and no action name of its own.
+ * declares: the worker inventory row for the flow the session records as its
+ * owner names it. Shift Manager knows no flow name and no action name of its own.
  *
  * **Delivered means the session holds it (BR-4).** The door's request is
  * followed until it ends or stops. A line counts as delivered only when that
@@ -14,7 +14,7 @@
  * request started. A `suspended` request stopped short of finishing, with the
  * line in: the send resolves with `suspended` set, and `stopped` saying on
  * what. `ask` is a person's ask Inbox lists, such as a chief of staff's
- * approval to fire a seat; `wait` is any other suspension, which Inbox
+ * approval to fire a worker; `wait` is any other suspension, which Inbox
  * doesn't list. `suspended`, not `stopped`, is what tells a caller to read
  * the Lab again: `stopped` only picks the words, so a stop it reads wrong,
  * or reads as gone, never keeps an ask out of Inbox.

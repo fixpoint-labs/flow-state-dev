@@ -8,12 +8,12 @@
  *    Judged by the flow's own refusal of a full bag — every key of
  *    `workerConfigSchema()`, each with a value of the kind a hire hands over
  *    and every list non-empty — not by the names it declares. A key it leaves
- *    undeclared and a key it types differently (`seatId` as a number) both
+ *    undeclared and a key it types differently (`workerId` as a number) both
  *    count; a refusal of the flow's OWN settings does not, because every
  *    worker supplies those and no probe can.
  * 2. **One door.** Exactly one public action takes a person's message, so an
  *    app can talk to any worker without knowing its flow. "Door" is
- *    `seatDoorOf`'s definition, read here and not restated.
+ *    `workerDoorOf`'s definition, read here and not restated.
  * 3. **Attribution.** A resource that declares `writtenBy` was built by
  *    `sharedResource()`, which owns the field. Judged by where the resource
  *    came from, not by what its schema happens to accept: no finite set of
@@ -31,7 +31,7 @@
 import { FlowConfigRefusalError } from "@flow-state-dev/core";
 import { deepEqual } from "@flow-state-dev/core/helpers";
 import type { FlowType } from "@flow-state-dev/core/types";
-import { seatDoorOf } from "./seat-door";
+import { workerDoorOf } from "./worker-door";
 import { workerConfigSchema } from "./worker-config";
 import { WRITTEN_BY_KEY, declaresWrittenBy, isSharedResource } from "./shared-resource";
 
@@ -45,7 +45,7 @@ export type WorkerFlowDefinition = FlowType<any, any, any, any, any, any, any>;
  */
 export const CONTRACT_KEYS: readonly string[] = Object.keys(workerConfigSchema().shape);
 
-/** A tool as it rides into the bag: anything with a name (`seatToolSchema`). */
+/** A tool as it rides into the bag: anything with a name (`workerToolSchema`). */
 const PROBE_TOOL = { name: "worker-contract-probe-tool" };
 
 /**
@@ -57,15 +57,15 @@ const PROBE_TOOL = { name: "worker-contract-probe-tool" };
 export const CONTRACT_PROBE_BAG: Readonly<Record<string, unknown>> = Object.freeze({
   instructions: "probe",
   teamInstructions: "probe",
-  seatSkills: [
+  workerSkills: [
     {
       name: "worker-contract-probe-skill",
       skillMd: "---\nname: worker-contract-probe-skill\ndescription: probe\n---\nprobe"
     }
   ],
-  seatTools: [PROBE_TOOL],
-  seatPackages: [{ name: "probe", path: "teams/probe/packages/probe", tools: [PROBE_TOOL] }],
-  seatId: "probe",
+  workerTools: [PROBE_TOOL],
+  workerPackages: [{ name: "probe", path: "teams/probe/packages/probe", tools: [PROBE_TOOL] }],
+  workerId: "probe",
   delegates: ["probe"]
 });
 
@@ -134,7 +134,7 @@ function listed(keys: readonly string[]): string {
  * Check 1, when the flow took the bag: every contract key reads back as the
  * hire supplied it. A schema that accepts a key but transforms or defaults it
  * over would give every worker on the flow the same value, such as one
- * `seatId` for all of them.
+ * `workerId` for all of them.
  */
 function changedValuesProblem(name: string, minted: unknown): string | undefined {
   const config = ((minted as { config?: unknown } | null)?.config ?? {}) as Record<string, unknown>;
@@ -191,10 +191,10 @@ function configurationProblem(name: string, flow: WorkerFlowDefinition): string 
 
 type ActionMap = Readonly<Record<string, unknown>>;
 
-/** Check 2: exactly one door, by `seatDoorOf`'s definition. */
+/** Check 2: exactly one door, by `workerDoorOf`'s definition. */
 function doorProblem(name: string, flow: WorkerFlowDefinition): string | undefined {
   const actions = (flow.actions ?? {}) as ActionMap;
-  const found = seatDoorOf({ id: name, kind: name, actions });
+  const found = workerDoorOf({ id: name, kind: name, actions });
   if (found.door !== null) return undefined;
   if (found.problem === undefined) {
     return (
@@ -204,7 +204,7 @@ function doorProblem(name: string, flow: WorkerFlowDefinition): string | undefin
   }
   // Two or more. Each action is asked on its own, so "door" keeps one definition.
   const doors = Object.keys(actions)
-    .filter((action) => seatDoorOf({ id: name, kind: name, actions: { [action]: actions[action] } }).door === action)
+    .filter((action) => workerDoorOf({ id: name, kind: name, actions: { [action]: actions[action] } }).door === action)
     .sort();
   return (
     `worker flow "${name}" has ${doors.length} doors (${doors.map((d) => `"${d}"`).join(", ")}). ` +

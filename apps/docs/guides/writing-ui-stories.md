@@ -81,7 +81,7 @@ Components that read `useFlowContext().renderers` (currently `RequestGroup` and 
 
 ## Stories for `@flow-state-dev/react` components
 
-The react package's visual components (`FlowNavigator`, `Roster`, `BoardColumns` and `SeatDetail`) have their stories in the same Storybook, under `packages/ui/stories/react/`, in the `React` folder of the sidebar. The package has no Storybook of its own.
+The react package's visual components (`FlowNavigator`, `Roster`, `BoardColumns` and `WorkerDetail`) have their stories in the same Storybook, under `packages/ui/stories/react/`, in the `React` folder of the sidebar. The package has no Storybook of its own.
 
 These components fetch their own data, through a client they take as a prop: `resourceClient` on the panels, `client` and `sessionClient` on `FlowNavigator`. A story picks the state by passing a fake client from `packages/ui/stories/fixtures/workforce.ts`:
 

@@ -33,12 +33,12 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { LAB_DB_PATH, LAB_ORG_ID, LAB_USER_ID, routesFor, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { LAB_DB_PATH, LAB_ORG_ID, LAB_USER_ID, routesFor, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
 
 /** The published key pattern, by the tab's section name: the inventory's one collection, its workers. */
 const PATTERNS = {
-  seats: "inventory/seats/*",
+  workers: "inventory/workers/*",
 } as const;
 type Section = keyof typeof PATTERNS;
 const SECTIONS = Object.keys(PATTERNS) as Section[];
@@ -72,10 +72,10 @@ async function readStore(dbFile: string, orgId: string): Promise<Stored> {
  * The rows the tree implies: one seat row per hired worker, with the flow it
  * was hired into, and nothing else.
  */
-function expectedFromTree(tree: LabTree): { keys: string[]; seatKinds: Map<string, string> } {
-  const seatKinds = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
-  const keys = [...seatKinds.keys()].map((id) => `inventory/seats/${id}`).sort();
-  return { keys, seatKinds };
+function expectedFromTree(tree: LabTree): { keys: string[]; workerFlowNames: Map<string, string> } {
+  const workerFlowNames = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
+  const keys = [...workerFlowNames.keys()].map((id) => `inventory/workers/${id}`).sort();
+  return { keys, workerFlowNames };
 }
 
 /** The delegates the coordinator's own `WORKER.md` names. */
@@ -113,8 +113,8 @@ function judgeStore(tree: LabTree, stored: Stored): string | undefined {
   if (JSON.stringify(keys) !== JSON.stringify(expected.keys)) {
     return `the store holds ${JSON.stringify(keys)} for the lab's organization; the tree implies ${JSON.stringify(expected.keys)}`;
   }
-  for (const [id, kind] of expected.seatKinds) {
-    const row = stored[`inventory/seats/${id}`]!;
+  for (const [id, kind] of expected.workerFlowNames) {
+    const row = stored[`inventory/workers/${id}`]!;
     if (row.id !== id || row.kind !== kind) return `seat row ${id} holds ${JSON.stringify(row)}; the tree hired it as "${kind}"`;
   }
   return undefined;
@@ -241,13 +241,13 @@ export async function gradeRow5(options: {
   {
     const stores = createSQLiteStores({ filename: dbFile });
     try {
-      await stores.resourceState.set("org", foreign.org, `inventory/seats/${foreign.seat}`, { id: foreign.seat, kind: "worker" }, "any");
+      await stores.resourceState.set("org", foreign.org, `inventory/workers/${foreign.seat}`, { id: foreign.seat, kind: "worker" }, "any");
     } finally {
       stores.close();
     }
   }
   const planted = Object.keys(await readStore(dbFile, foreign.org)).sort();
-  if (JSON.stringify(planted) !== JSON.stringify([`inventory/seats/${foreign.seat}`])) {
+  if (JSON.stringify(planted) !== JSON.stringify([`inventory/workers/${foreign.seat}`])) {
     throw new Error(`the foreign row did not store: ${JSON.stringify(planted)}`);
   }
 
@@ -273,18 +273,18 @@ export async function gradeRow5(options: {
     // server saying the public map has no such action — not any error — and
     // the store must not move.
     const fabricated = await fetch(
-      `${served.origin}/api/flows/${encodeURIComponent(host.kind)}/${encodeURIComponent(host.id)}/actions/registerSeatsInInventory`,
+      `${served.origin}/api/flows/${encodeURIComponent(host.kind)}/${encodeURIComponent(host.id)}/actions/registerWorkersInInventory`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: LAB_USER_ID, input: { seats: [{ id: "fabricated.seat", kind: "worker" }] } }),
+        body: JSON.stringify({ userId: LAB_USER_ID, input: { workers: [{ id: "fabricated.seat", kind: "worker" }] } }),
       },
     );
     const refusal = await fabricated.text();
     await new Promise((r) => setTimeout(r, 500));
     const afterFabricated = await readStore(dbFile, LAB_ORG_ID);
-    const landed = "inventory/seats/fabricated.seat" in afterFabricated;
-    if (fabricated.status < 400 || !refusal.includes('does not define action \\"registerSeatsInInventory\\"') || landed) {
+    const landed = "inventory/workers/fabricated.seat" in afterFabricated;
+    if (fabricated.status < 400 || !refusal.includes('does not define action \\"registerWorkersInInventory\\"') || landed) {
       fail(
         "step 3",
         `the internal seat writer, asked over HTTP, answered ${fabricated.status} ${refusal.slice(0, 200)}, ` +
@@ -311,7 +311,7 @@ export async function gradeRow5(options: {
       Object.entries(stored)
         .filter(([key]) => key.startsWith(prefix))
         .map(([, row]) => row);
-    const storedSeats = under("inventory/seats/");
+    const storedSeats = under("inventory/workers/");
 
     // Who works with whom: the coordinator's conversation lists exactly the
     // delegates its own file names, through its own production action, and
@@ -319,7 +319,7 @@ export async function gradeRow5(options: {
     const lab = new Scenario(served, tree, routesFor(""));
     await lab.open();
     const declaredDelegates = coordinatorDelegates(tree);
-    const listed = await lab.act(tree.seatFlows[tree.coordinatorId]!, lab.seatSession(tree.coordinatorId), "listDelegates", {});
+    const listed = await lab.act(tree.workerFlows[tree.coordinatorId]!, lab.seatSession(tree.coordinatorId), "listDelegates", {});
     const delegates = Array.isArray(listed.output?.delegates)
       ? (listed.output.delegates as Array<{ worker?: string }>).map((d) => String(d.worker))
       : undefined;
@@ -372,7 +372,7 @@ export async function gradeRow5(options: {
 
       if (screen !== undefined) {
         if (screen.openExpanders !== 0) fail("step 4", `${screen.openExpanders} expander(s) were open when the tab was read`);
-        const seats = screen.sections.seats;
+        const seats = screen.sections.workers;
         const drawn = Object.keys(screen.sections).sort();
         if (JSON.stringify(drawn) !== JSON.stringify([...SECTIONS].sort())) {
           fail("step 4", `the tab draws the sections ${JSON.stringify(drawn)}; the inventory has ${JSON.stringify(SECTIONS)}`);
@@ -452,8 +452,8 @@ export async function gradeRow5(options: {
           notes,
           evidence:
             `row 5 read on the multi-seat-collab hire with the debug endpoints off: the inventory's session ${host.id} (${host.kind}), ` +
-            `opened from the navigator, showed ${screen.sections.seats!.rows.length} registered worker(s) ` +
-            `(${screen.sections.seats!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind}`).join("; ")}), ` +
+            `opened from the navigator, showed ${screen.sections.workers!.rows.length} registered worker(s) ` +
+            `(${screen.sections.workers!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind}`).join("; ")}), ` +
             `exactly as the store holds them, nothing expanded; the coordinator ${tree.coordinatorId} delegates to ${delegates.join(", ")}; ` +
             `another organization's worker row was stored and appeared nowhere; a second boot changed nothing`,
         };

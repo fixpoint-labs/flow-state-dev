@@ -4,7 +4,7 @@
  *
  * A worker files when its session's delegate list holds one that takes a task
  * (D1): no flag. What its flow carries for that is three things, and this
- * builds them over one installation and one flow kind:
+ * builds them over one installation and one worker flow:
  *
  * - **The model's tools**: `tools`, one capability for the model block's
  *   `uses`, carrying Orchestration's nine task tools while the session
@@ -61,7 +61,7 @@ export interface SessionBoardOptions {
   /** The worker installation the flow's workers, and their delegates, belong to. */
   readonly installation: WorkerInstallation;
   /**
-   * The kind of the flow that carries the board: its workers are loaded on
+   * The worker flow that carries the board: its workers are loaded on
    * it, and the tasks it hands over send their notices back to it.
    */
   readonly flowKind: string;
@@ -81,7 +81,7 @@ export interface SessionBoardOptions {
 /**
  * Build the filing kit for one worker flow.
  *
- * @param options The installation, the flow's kind, and the flows a post reaches.
+ * @param options The installation, the flow's name, and the flows a post reaches.
  */
 export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);

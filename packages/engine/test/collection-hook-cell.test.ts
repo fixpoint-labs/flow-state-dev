@@ -77,7 +77,7 @@ describe("CollectionHookContext.cell", () => {
     expect(stored?.state).toEqual({ text: "hi" });
   });
 
-  it("is the same cell for a hired seat, while scopeId stays the person", async () => {
+  it("is the same cell for a hired worker, while scopeId stays the person", async () => {
     const { ctx, stored } = await boot().run("alice", "acme", { orgId: "acme", userId: "alice" });
     expect(ctx.cell).toBe("alice:~org:acme");
     expect(ctx.scopeId).toBe("alice");

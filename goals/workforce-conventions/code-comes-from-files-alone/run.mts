@@ -14,7 +14,7 @@
  *   d  the KIND, on the fixture host. Two workers sit on ONE custom kind,
  *      `desk-clerk`, and differ only in the `desk:` their own `WORKER.md`
  *      declares. The fixture's generated module agrees with its tree
- *      (`fsdev gen --check`), the workers are hired from that module's `kinds`
+ *      (`fsdev gen --check`), the workers are hired from that module's `workerFlows`
  *      map, and each one's `answer` names the desk ITS OWN FILE declared, read
  *      from that file here rather than written into the check. An
  *      implementation that hired both onto one shared configuration gives both
@@ -101,8 +101,8 @@ const runtimeScan: Plugin = {
         `const dir = join(dirname(fileURLToPath(import.meta.url)), "flows", "workers");`,
         `let files = [];`,
         `try { files = readdirSync(dir); } catch {}`,
-        `export const kinds = {};`,
-        `for (const f of files) kinds[f.replace(/\\.[^.]+$/, "")] = (await import(pathToFileURL(join(dir, f)).href)).default;`,
+        `export const workerFlows = {};`,
+        `for (const f of files) workerFlows[f.replace(/\\.[^.]+$/, "")] = (await import(pathToFileURL(join(dir, f)).href)).default;`,
       ].join("\n"),
     }));
   },
@@ -273,7 +273,7 @@ await runGoal(async (failures) => {
   }
 
   const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
-    kinds: Record<string, unknown>;
+    workerFlows: Record<string, unknown>;
   };
   const roster = await readWorkforce(TREE);
   if (roster.errors.length > 0) {
@@ -287,7 +287,7 @@ await runGoal(async (failures) => {
     workers = workers.map((worker) => ({ ...worker, declared: { ...first } }));
   }
   const hired = await answerSeats({
-    kinds: generated.kinds,
+    kinds: generated.workerFlows,
     workers,
     userId: fixture.host.userId,
     note: fixture.host.note,
@@ -296,28 +296,28 @@ await runGoal(async (failures) => {
   });
   const seen: Record<string, string> = {};
   if (!hired.found) fail("d:registered", `no copy of the tree's custom flow "${fixture.host.kind}" was registered (registered: ${hired.registered.join(", ")})`);
-  for (const seatId of fixture.host.seats) {
-    const row = hired.answers[seatId];
+  for (const workerId of fixture.host.seats) {
+    const row = hired.answers[workerId];
     if (row === undefined) continue;
     if (row.declaredFlow !== fixture.host.kind) {
-      fail("d:flow", `${seatId} runs on "${String(row.declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
+      fail("d:flow", `${workerId} runs on "${String(row.declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
     }
     if (row.status !== 201) {
-      fail("d:session", `${seatId}: its session was not created (${row.status}): ${String(row.error ?? "")}`);
+      fail("d:session", `${workerId}: its session was not created (${row.status}): ${String(row.error ?? "")}`);
       continue;
     }
     const said = row.said;
-    seen[seatId] = said;
-    const desk = declaredDesk(seatId);
+    seen[workerId] = said;
+    const desk = declaredDesk(workerId);
     if (said === "") {
-      fail("d:answers", `${seatId}: answered nothing${row.error === undefined ? "" : `: ${String(row.error)}`}`);
+      fail("d:answers", `${workerId}: answered nothing${row.error === undefined ? "" : `: ${String(row.error)}`}`);
     } else if (!said.includes(`[${desk} desk]`)) {
-      fail("d:answers", `${seatId}: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
+      fail("d:answers", `${workerId}: its WORKER.md declares desk "${desk}", but it answered ${JSON.stringify(said)}`);
     }
   }
   // Two seats, one kind. Equal answers would pass every check above while
   // meaning the configuration came from somewhere other than their files.
-  const answers = fixture.host.seats.map((seatId) => seen[seatId] ?? "");
+  const answers = fixture.host.seats.map((workerId) => seen[workerId] ?? "");
   if (answers.length > 1 && new Set(answers).size === 1) {
     fail(
       "d:differ",
@@ -327,7 +327,7 @@ await runGoal(async (failures) => {
   }
   evidence.push(
     `on the fixture host, hired from its generated module: ` +
-      fixture.host.seats.map((seatId) => `${seatId} said ${JSON.stringify(seen[seatId] ?? "")}`).join(", ")
+      fixture.host.seats.map((workerId) => `${workerId} said ${JSON.stringify(seen[workerId] ?? "")}`).join(", ")
   );
 
   // ---- (e) the kind, through a production bundle ----------------------------

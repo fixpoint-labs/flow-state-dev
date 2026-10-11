@@ -74,10 +74,10 @@ describe("createBullmqScheduleIndex", () => {
    * The scheduler id is built from the row's identity. An app-wide row's cell
    * is the person's own id, so its scheduler id is byte-identical to the one
    * written before rows carried a cell and nothing re-registers (BR-15); two
-   * seats' rows with one key are two schedulers, and removing one leaves the
+   * workers' rows with one key are two schedulers, and removing one leaves the
    * other.
    */
-  it("keys schedulers on the cell: app-wide ids unchanged, seats apart", async () => {
+  it("keys schedulers on the cell: app-wide ids unchanged, workers apart", async () => {
     const queue = createMockQueue();
     const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
     const row = { userId: "user-1", key: "weekly", cron: "* * * * *", nextFireAt: 0 };
@@ -96,8 +96,8 @@ describe("createBullmqScheduleIndex", () => {
   /**
    * Cells and keys both carry `:`, so joining them raw let two different rows
    * name one scheduler: the second upsert replaced the first, and removing
-   * either stopped both. An app-wide row whose key happens to read like a seat
-   * suffix must stay apart from that seat's row — and keep the id it had
+   * either stopped both. An app-wide row whose key happens to read like a worker
+   * suffix must stay apart from that worker's row — and keep the id it had
    * before rows carried a cell, key colons and all.
    */
   it("never gives two (cell, key) rows one scheduler id", async () => {

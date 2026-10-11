@@ -4,7 +4,7 @@
  * and the same wiring, and differ by one block.
  *
  * What `openLab` does, in order, and nothing else: read the tree, build the
- * installation and the kinds on it, register one copy of each worker flow,
+ * installation and the worker flows on it, register one copy of each worker flow,
  * write the organization's inventory when asked, create the projects and open
  * the workstreams it was given, and hand back the handles. Every convention
  * file it reads is found by walking from one root; no file is named in this
@@ -24,7 +24,7 @@
  *    doors file each feature for the worker the caller supplies, which is what
  *    lets a control point it at the wrong delegate and watch the negative
  *    claim go red.
- * 2. **The harness slot**, handed to the `coder` kind. The one expression that
+ * 2. **The harness slot**, handed to the `coder` worker flow. The one expression that
  *    differs between this lab's two checks.
  * 3. **The host `resolvePrincipal`.** FSD does not provide login. After
  *    FIX-1442 an unconfigured host runs under the development organization,
@@ -32,7 +32,7 @@
  *    unauthenticated HTTP read is turned away for real (FIX-1515 / BR-17).
  *
  * **Not `workforce.gen.ts`.** `fsdev gen` renders that file for an app
- * directory, and `goals/` is not one. The kinds are hand-assembled here, which
+ * directory, and `goals/` is not one. The worker flows are hand-assembled here, which
  * FIX-1357's own contract says composes with a generated map rather than being
  * deprecated by it. `goals/pentest-lab/lab/host.mts` does the same, for the same
  * reason.
@@ -53,16 +53,16 @@ import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
-  AGENT_KIND,
-  COORDINATOR_KIND,
+  AGENT_FLOW,
+  COORDINATOR_FLOW,
   defineCoordinatorFlow,
   createWorkerHireBlocks,
   createWorkerInstallation,
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   createProjectInputSchema,
   createProjectOutputSchema,
@@ -72,7 +72,7 @@ import {
   defineWorkstreamBlocks,
   projectCoordinatorTools,
   projectWorkspace,
-  mergeSeatFlows,
+  mergeWorkerFlows,
   openInventory,
   resourcesFromDocs,
   WORKSTREAM_OPENED_ENTRY,
@@ -97,13 +97,13 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { DOCUMENT_KEY, INSPECT_ENTRY, SEAT_FACTS_COMPONENT, seatOf } from "./seat-config.mts";
+import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_COMPONENT, workerOf } from "./worker-config.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import { defineCoderJudge } from "./judge.mts";
-import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
+import { CODER_FLOW, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
-  EM_KIND,
+  EM_FLOW,
   FILE_ENTRY,
   defineEmWorkerFlow,
   featureIssueOf,
@@ -112,10 +112,10 @@ import type { HarnessStub } from "./harness-stub.mts";
 import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
 import {
-  openSeatSession,
+  openWorkerSession,
   RAISE_ASK_STEP,
   raiseAsk,
-  seatSessionId,
+  workerSessionId,
   type AskFeature,
   type RaiseAskResult,
 } from "./ask.mts";
@@ -123,8 +123,8 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** The flow kind the lab creates projects through at open. */
-export const PROJECTS_KIND = "projects";
+/** The flow the lab creates projects through at open. */
+export const PROJECTS_FLOW = "projects";
 
 /** The session the lab's own project writes run in, as the owner. */
 export const PROJECTS_SESSION = "devforce-projects";
@@ -136,7 +136,7 @@ export const PROJECTS_SESSION = "devforce-projects";
 const SESSION_BOARD_COLLECTION = "tasks";
 
 /** The flow the inventory's worker rows are written from: the lab's own, carrying the writer. */
-export const INVENTORY_WRITER_KIND = "inventory-writer";
+export const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
  * The standard worker every person's project coordinator runs as: the
@@ -228,7 +228,7 @@ const resolveLabPrincipal: PrincipalResolver = async (context) => {
  * cleanly.
  *
  * The shared reader collects rather than throws, which is right for a library
- * and wrong here: a seat that failed to load is a seat this lab does not have,
+ * and wrong here: a worker that failed to load is a worker this lab does not have,
  * and a short roster that still runs is the failure BR-2 exists to exclude. The
  * refusal is this lab's own policy, which is why it lives here and not behind
  * the export.
@@ -239,7 +239,7 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
     const lines = roster.problems.map((p) =>
       p.worker === undefined
         ? `${p.layer} ${p.path}: ${p.error.message}`
-        : `${p.layer} ${p.path} (seat ${p.worker}): ${p.error.message}`,
+        : `${p.layer} ${p.path} (worker ${p.worker}): ${p.error.message}`,
     );
     throw new Error(`the tree at ${root} did not load cleanly:\n  - ${lines.join("\n  - ")}`);
   }
@@ -271,7 +271,7 @@ function projectSetup(installation: WorkerInstallation) {
  * workstream's session. Read before the flows are built, which need the
  * writes' tools in their catalogs.
  */
-const LEAD_FLOWS = [AGENT_KIND, EM_KIND].map((kind) => ({ kind, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
+const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "openWorkstream", "listProjects"];
@@ -474,7 +474,7 @@ function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchem
 export interface OpenLabOptions {
   /** The store adapter this lab runs over — `inMemoryStores()` is enough. */
   stores: unknown;
-  /** The harness the `coder` kind runs. The one thing the two checks differ by. */
+  /** The harness the `coder` worker flow runs. The one thing the two checks differ by. */
   harness: HarnessStub["slot"];
   /**
    * Where each coding run works.
@@ -496,7 +496,7 @@ export interface OpenLabOptions {
    * declared worker is the only way "the row reached the worker it named" can
    * be made to go red.
    */
-  coderSeatId: string;
+  coderWorkerId: string;
   /** Wall-clock budget for one harness run. Default 60s. */
   runTimeoutMs?: number;
   /**
@@ -517,11 +517,11 @@ export interface OpenLabOptions {
    */
   requireAcceptance?: boolean;
   /**
-   * Raise the EM seat's ask on open: one pending approval, in the EM seat's
+   * Raise the EM worker's ask on open: one pending approval, in the EM worker's
    * own session, naming this feature (`ask.mts`).
    *
    * **Absent means absent**: no request and no store write for it (durable
-   * execution stays on when a seat holds a tool that asks first). Present turns durable execution on, because the answer arrives later
+   * execution stays on when a worker holds a tool that asks first). Present turns durable execution on, because the answer arrives later
    * through the engine's resume route, and open fails, naming the step, if the
    * ask could not be raised.
    */
@@ -581,21 +581,21 @@ export interface OpenLabOptions {
   saveNothing?: boolean;
 
   /**
-   * Repoint a seat at a different file-declared document, by seat id.
+   * Repoint a worker at a different file-declared document, by worker id.
    *
-   * Applied to the RECORD before the mint, so the seat genuinely runs on the
+   * Applied to the RECORD before the mint, so the worker genuinely runs on the
    * other ref rather than being graded as if it did. That is what makes it a
    * control: the prompt the manager builds then carries the wrong document's
    * token, which is the failure BR-10 exists to detect.
    */
   documentOverrides?: Record<string, string>;
   /**
-   * Rewrite one seat's resolved skill union before the mint.
+   * Rewrite one worker's resolved skill union before the mint.
    *
-   * Applied to the record for the same reason, so the seat genuinely hires with
+   * Applied to the record for the same reason, so the worker genuinely hires with
    * the mutated set and reads it back through its own config.
    */
-  mutateSkills?: (seatId: string, skills: SeatSkill[]) => SeatSkill[];
+  mutateSkills?: (workerId: string, skills: WorkerSkill[]) => WorkerSkill[];
   /**
    * Build the phase so its prompt builder ignores the task the manager hands
    * it. The red state of "a run is handed the work a person approved".
@@ -610,9 +610,9 @@ export interface OpenLabOptions {
   withoutProjectList?: boolean;
   /**
    * Leave the project tools out: not in the catalog the agent turn is built
-   * with (the `agent` kind's, and the chief of staff's on the coordinator
-   * flow), and not in any seat's `tools:`, as before the chief of staff had
-   * them. Applied to the record before the mint, so the seat boots and
+   * with (the `agent` worker flow's, and the chief of staff's on the coordinator
+   * flow), and not in any worker's `tools:`, as before the chief of staff had
+   * them. Applied to the record before the mint, so the worker boots and
    * genuinely cannot create a project. The red state of "the chief of staff
    * creates projects".
    */
@@ -634,7 +634,7 @@ export interface LabWorkspaceHost {
 }
 
 /** One skill on a worker record, as the loader shapes it. */
-export interface SeatSkill {
+export interface WorkerSkill {
   name: string;
   skillMd: string;
   files?: Array<{ path: string; content: string }>;
@@ -647,12 +647,12 @@ export interface Lab {
    * Each declared worker, by id, with the one registered copy of the flow it
    * runs on. Workers on one flow share its copy; the session names the worker.
    */
-  seats: Record<string, FlowInstance>;
+  workers: Record<string, FlowInstance>;
   /** The worker model the lab was built on. */
   installation: WorkerInstallation;
   /** File one row through the EM worker's own action, on its own session's board. */
   file(
-    seatId: string,
+    workerId: string,
     input: { issue: string; goal: string; maxAttempts?: number; project?: { visibility: "shared" | "private"; id: string } },
   ): Promise<{ output?: unknown; error?: string }>;
   /**
@@ -660,7 +660,7 @@ export interface Lab {
    * until no row on it is pending or in progress: a filing starts the board
    * by itself, so the run it started may hold the row this one finds busy.
    */
-  drain(seatId: string): Promise<{ output?: unknown; error?: string }>;
+  drain(workerId: string): Promise<{ output?: unknown; error?: string }>;
   /**
    * Read the row filed for one feature, by its issue, off the board of the EM
    * worker's own session, where it is stored. The board mints a row's id, so a
@@ -683,18 +683,18 @@ export interface Lab {
    */
   rows(): Promise<Record<string, Task>>;
   /**
-   * Every child session the EM seat's drain started, with the flow it ran on
+   * Every child session the EM worker's drain started, with the flow it ran on
    * and the worker it names — the **dispatch record**.
    *
-   * This is what BR-6 and BR-8 are graded on. A seat's absence from a result
+   * This is what BR-6 and BR-8 are graded on. A worker's absence from a result
    * says nothing: a stray dispatch whose run produced nothing would be
    * indistinguishable from no dispatch at all.
    */
   dispatched(
-    seatId: string,
+    workerId: string,
   ): Promise<Array<{ sessionId: string; flowKind: string; flowId: string | undefined; workerId: string | undefined }>>;
   /**
-   * Read one seat's own view of itself.
+   * Read one worker's own view of itself.
    *
    * `door` sends the request through the transport door instead of a direct
    * `runAction`: `"org-less"` with no credential at all, which BR-17 says is
@@ -703,7 +703,7 @@ export interface Lab {
    * returned rather than thrown, so it can be graded on its wording.
    */
   inspect(
-    seatId: string,
+    workerId: string,
     options?: { door?: "org-less" | "bearer" },
   ): Promise<{ facts?: Record<string, unknown>; error?: string }>;
   /**
@@ -732,7 +732,7 @@ export interface Lab {
     as?: keyof typeof LAB_USERS,
   ): Promise<{ output?: unknown; error?: string }>;
   /**
-   * The workspace host the coder kind runs on, when the lab built one
+   * The workspace host the coder worker flow runs on, when the lab built one
    * (`workspace: { root, remotes }`).
    */
   workspaceHost?: WorkspaceHost;
@@ -758,7 +758,7 @@ export interface Lab {
 }
 
 /**
- * Read the tree, build the installation and the kinds, and register them.
+ * Read the tree, build the installation and the worker flows, and register them.
  *
  * @param options The stores, the harness slot, the workspace and the address.
  * @returns The live lab. Call `dispose()` when done.
@@ -779,7 +779,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
-  // what makes the seats' document reads — and BR-17 — matter.
+  // what makes the workers' document reads — and BR-17 — matter.
   const resources = resourcesFromDocs(roster.documents);
 
   // The project writes, built once: the flow that creates projects at open runs
@@ -787,7 +787,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // workstream writes are built with the installation, below.
   const projectBlocks = defineProjectBlocks();
 
-  // The controls mutate the RECORD, before the mint, so a perturbed seat
+  // The controls mutate the RECORD, before the mint, so a perturbed worker
   // genuinely runs on what the control gave it rather than being graded as if
   // it did.
   const overrides = options.documentOverrides ?? {};
@@ -805,17 +805,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ? redirected
       : {
           ...redirected,
-          skills: options.mutateSkills(redirected.id, (redirected.skills ?? []) as SeatSkill[]),
+          skills: options.mutateSkills(redirected.id, (redirected.skills ?? []) as WorkerSkill[]),
         };
   });
 
   // The worker model: the tree's workers are its standard workers, and each
   // runs on one copy of the flow it names. The flows are read when first
-  // needed, so the kinds below can be built on the installation.
-  let kinds: NonNullable<HireOptions["workerFlows"]> = {};
+  // needed, so the worker flows below can be built on the installation.
+  let builtFlows: NonNullable<HireOptions["workerFlows"]> = {};
   const installation = createWorkerInstallation({
     standardWorkers: workers,
-    workerFlows: () => kinds,
+    workerFlows: () => builtFlows,
     documents: resources as never,
     // Each person's coordinator for a project, when the tree declares it.
     ...(workers.some((worker) => worker.id === PROJECT_COORDINATOR) ? { projectCoordinator: PROJECT_COORDINATOR } : {}),
@@ -827,43 +827,43 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
-    (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_KIND;
-  // A worker of either kind reads its brief by the document it names; one that
+    (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? AGENT_FLOW;
+  // A worker on either flow reads its brief by the document it names; one that
   // names none would pass every isolation check trivially, so it never boots.
   for (const worker of workers) {
-    const kind = worker.declared.flow;
-    if ((kind === EM_KIND || kind === CODER_KIND) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
-      throw new Error(`seat "${worker.id}" runs on "${kind}" and names no \`${DOCUMENT_KEY}:\`; every seat of this kind reads one`);
+    const flow = worker.declared.flow;
+    if ((flow === EM_FLOW || flow === CODER_FLOW) && typeof worker.declared[DOCUMENT_KEY] !== "string") {
+      throw new Error(`worker "${worker.id}" runs on "${flow}" and names no \`${DOCUMENT_KEY}:\`; every worker on this flow reads one`);
     }
   }
 
   // The EM: its doors file for the worker the caller names, and its turn holds
   // the lead's tool, which updates the workstream its session leads. A worker
   // that isn't one of its delegates is refused at the hand-over.
-  const emKind = defineEmWorkerFlow({
+  const emFlow = defineEmWorkerFlow({
     installation,
-    coderWorker: options.coderSeatId,
+    coderWorker: options.coderWorkerId,
     resources,
     catalog: { updateWorkstream: workstreamBlocks.updateWorkstreamTool },
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
   });
   // The EM worker the lab's doors and its ask run as, read off the tree. Two
   // would be a guess, so the lab refuses.
-  const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_KIND);
+  const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_FLOW);
   if (emRecords.length > 1) {
-    throw new Error(`the tree declares ${emRecords.length} EM seats; this lab runs one`);
+    throw new Error(`the tree declares ${emRecords.length} EM workers; this lab runs one`);
   }
-  // With no EM seat the coder kind has no door, and a worker flow with none is
+  // With no EM worker the coder worker flow has no door, and a worker flow with none is
   // refused when it is registered. An open asked to raise the ask names that
   // step instead, since it is the one that has nothing to ask from.
   if (emRecords.length === 0 && options.ask !== undefined) {
-    throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found 0`);
+    throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found 0`);
   }
-  const coderSeatOf = seatOf(installation, CODER_KIND);
-  const coderKind = defineCoderWorkerFlow({
+  const coderWorkerOf = workerOf(installation, CODER_FLOW);
+  const coderFlow = defineCoderWorkerFlow({
     installation,
     answerWorkspace: answerHost,
-    answerPhase: defineAnswerPhase({ seatOf: coderSeatOf }),
+    answerPhase: defineAnswerPhase({ workerOf: coderWorkerOf }),
     ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
     // What a files run starts on, kept so its done-condition asks for a change.
     harness: (feeds) =>
@@ -877,7 +877,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
     phase: defineImplementPhase({
-      seatOf: coderSeatOf,
+      workerOf: coderWorkerOf,
       requireAcceptance: options.requireAcceptance === true,
       ...(options.dropTask === true ? { dropTask: true } : {}),
     }),
@@ -885,7 +885,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resources,
   });
 
-  // The built-in `agent` kind, which the chief of staff (`org/workers/
+  // The built-in `agent` worker flow, which the chief of staff (`org/workers/
   // chief-of-staff/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
   // its `tools:`, and in this tree only the chief of staff does. Hire and fire
@@ -903,7 +903,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
-    // The kind carries them, and only the chief of staff's line names them; a
+    // The worker flow carries them, and only the chief of staff's line names them; a
     // project coordinator's line names `readProject`, `listLeads` and
     // `openWorkstream`, and a workstream's lead's `updateWorkstream`.
     catalog: {
@@ -917,27 +917,27 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // The worker inventory, which the discovery door reads.
       defineCapability({
         name: "lab-inventory",
-        resources: { seatInventory: defineSeatInventoryCollection() },
+        resources: { workerInventory: defineWorkerInventoryCollection() },
       }),
       createWorkforceCapability({
         roster: { workers: roster.workers },
-        inventory: { seats: "seatInventory" },
+        inventory: { workers: "workerInventory" },
       }),
     ],
   };
-  const agentKind = defineAgentWorkerFlow({ installation, ...agentTurn });
-  kinds = {
-    [EM_KIND]: emKind as never,
-    [CODER_KIND]: coderKind as never,
-    [AGENT_KIND]: agentKind as never,
+  const agentFlow = defineAgentWorkerFlow({ installation, ...agentTurn });
+  builtFlows = {
+    [EM_FLOW]: emFlow as never,
+    [CODER_FLOW]: coderFlow as never,
+    [AGENT_FLOW]: agentFlow as never,
     // The chief of staff's flow. A delivery reaches a delegate on a flow that
     // takes a delegated post: here, `agent` and the EM's `em`, so the chief of
     // staff can hand feature work to its EM delegate. `coder` takes tasks, not
     // posts. Best fit's evaluator runs on Jev, through the AI Gateway: it
     // reports the confidence the chief of staff's `minConfidence:` reads.
-    [COORDINATOR_KIND]: defineCoordinatorFlow({
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
-      delegateFlows: [agentKind, emKind as never],
+      delegateFlows: [agentFlow, emFlow as never],
       routeModel: "typesafe-ai/jev",
       agent: coordinatorMemory(agentTurn, {
         model: "openai/gpt-5.4-mini",
@@ -950,8 +950,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // a worker would be refused on its first turn, or a worker flow doesn't
   // declare the installation's session, naming each (BR-2).
   const copies = hireWorkforce(installation);
-  const copyOf = (kind: string): FlowInstance => copies.find((copy) => copy.id === kind)!;
-  const seats: Record<string, FlowInstance> = Object.fromEntries(
+  const copyOf = (flow: string): FlowInstance => copies.find((copy) => copy.id === flow)!;
+  const copiesByWorker: Record<string, FlowInstance> = Object.fromEntries(
     installation.standardWorkers().map((worker) => [worker.id, copyOf(flowOf(worker.id))]),
   );
 
@@ -959,7 +959,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // caller-supplied rows, so it is internal only.
   const inventoryWriter =
     options.inventory === true
-      ? defineFlow({ kind: INVENTORY_WRITER_KIND, internal: { actions: { ...inventoryWriterActions() } } } as never)()
+      ? defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)()
       : undefined;
 
   if (options.workstreams !== undefined && options.projects === undefined) {
@@ -971,7 +971,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // of staff and the project coordinator open workstreams with the same
   // writes as tools.
   const projectsFlow = defineFlow({
-    kind: PROJECTS_KIND,
+    kind: PROJECTS_FLOW,
     actions: {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
@@ -991,13 +991,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (writeLatency !== undefined) console.error(`[devforce-lab] holding checked store writes up to ${writeLatency}ms`);
 
   // One record for the Lab's own flows and the worker flows' copies. A copy's
-  // id is its kind, so a worker flow named like one of the Lab's flows
+  // id is its flow's name, so a worker flow named like one of the Lab's flows
   // (`projects`, `inventory-writer`) would take that flow's key;
-  // `mergeSeatFlows` refuses it, by name.
-  const flows: Record<string, unknown> = mergeSeatFlows(
+  // `mergeWorkerFlows` refuses it, by name.
+  const flows: Record<string, unknown> = mergeWorkerFlows(
     {
-      ...(inventoryWriter === undefined ? {} : { [INVENTORY_WRITER_KIND]: inventoryWriter }),
-      [PROJECTS_KIND]: projectsFlow,
+      ...(inventoryWriter === undefined ? {} : { [INVENTORY_WRITER_FLOW]: inventoryWriter }),
+      [PROJECTS_FLOW]: projectsFlow,
     },
     copies,
   );
@@ -1031,8 +1031,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // built with it too.
   const router = await state.getRouter();
 
-  /** The session a seat's actions run in — one per worker, stable across a run. */
-  const sessionFor = seatSessionId;
+  /** The session a worker's actions run in — one per worker, stable across a run. */
+  const sessionFor = workerSessionId;
 
   // The inventory, in-process, under the lab's organization. A problem fails
   // the open, naming it.
@@ -1055,8 +1055,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // The standard workers, the ones every member has. A person's own workers
     // are theirs, on their roster, and not listed here.
     const opened = await openInventory(
-      { seats: inventorySeats(installation) },
-      { run, seatWriter: { flowKind: INVENTORY_WRITER_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+      { workers: inventoryWorkers(installation) },
+      { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {
       await state.dispose();
@@ -1170,20 +1170,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
   };
 
-  // The ask, last, once everything it runs over is registered. One EM seat is
-  // what this tree declares; a tree with none, or two, has no single seat the
+  // The ask, last, once everything it runs over is registered. One EM worker is
+  // what this tree declares; a tree with none, or two, has no single worker the
   // ask belongs to, and that is a refusal rather than a guess.
   let ask: RaiseAskResult | undefined;
   if (options.ask !== undefined) {
     try {
       if (emRecords.length !== 1) {
         throw new Error(
-          `${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found ${emRecords.length}`,
+          `${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found ${emRecords.length}`,
         );
       }
       ask = await raiseAsk({
         state,
-        emFlow: copyOf(EM_KIND),
+        emFlow: copyOf(EM_FLOW),
         emWorker: emRecords[0]!.id,
         feature: options.ask,
         principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
@@ -1225,18 +1225,18 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   };
 
   const act = async (
-    seatId: string,
+    workerId: string,
     actionName: string,
     input: unknown,
   ): Promise<{ output?: unknown; error?: string }> => {
-    const flow = seats[seatId];
-    if (flow === undefined) throw new Error(`no seat "${seatId}" is declared`);
+    const flow = copiesByWorker[workerId];
+    if (flow === undefined) throw new Error(`no worker "${workerId}" is declared`);
     try {
-      await openSeatSession(runtime.stores, { flow, workerId: seatId, principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } });
+      await openWorkerSession(runtime.stores, { flow, workerId: workerId, principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } });
     } catch (error) {
       return { error: messageOf(error) };
     }
-    return await actOn(flow, sessionFor(seatId), actionName, input);
+    return await actOn(flow, sessionFor(workerId), actionName, input);
   };
 
   /** Wait until no row on the EM's own board is pending or in progress, or `timeoutMs` passes. */
@@ -1251,12 +1251,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   return {
     roster: { ...roster, workers },
-    seats,
+    workers: copiesByWorker,
     installation,
 
-    file: (seatId, input) => act(seatId, FILE_ENTRY, input),
-    drain: async (seatId) => {
-      const result = await act(seatId, DRAIN_ENTRY, {});
+    file: (workerId, input) => act(workerId, FILE_ENTRY, input),
+    drain: async (workerId) => {
+      const result = await act(workerId, DRAIN_ENTRY, {});
       if (result.error === undefined) await settled(2 * (options.runTimeoutMs ?? 60_000));
       return result;
     },
@@ -1276,13 +1276,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
     rows: emRows,
 
-    dispatched: async (seatId: string) => {
+    dispatched: async (workerId: string) => {
       const children = await runtime.stores.session.list({
         userId: LAB_USER_ID,
-        parentage: { parentOf: sessionFor(seatId) },
+        parentage: { parentOf: sessionFor(workerId) },
       });
       // **The worker, not the flow.** Two workers on this tree run on the SAME
-      // kind — the coder and the reviewer — so a dispatch record read by flow
+      // worker flow — the coder and the reviewer — so a dispatch record read by flow
       // alone cannot tell them apart, and BR-8's whole claim is which of the
       // two the row reached. The child session names it.
       return (children as Array<{ id: string; flowKind: string; flowId?: string; state?: Record<string, unknown> }>).map(
@@ -1298,8 +1298,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       );
     },
 
-    inspect: async (seatId: string, inspectOptions?: { door?: "org-less" | "bearer" }) => {
-      if (seatId in seats === false) throw new Error(`no seat "${seatId}" is declared`);
+    inspect: async (workerId: string, inspectOptions?: { door?: "org-less" | "bearer" }) => {
+      if (workerId in copiesByWorker === false) throw new Error(`no worker "${workerId}" is declared`);
 
       // BR-17 is about the DOOR, and the door is the transport host: a bare
       // `runAction` never reaches `resolvePrincipal`, so an org-less one runs
@@ -1321,20 +1321,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         // on a stored org rather than the verified one — a green that means
         // nothing either way. The bearer probe opens it through the same door
         // first, naming the worker, so its org is the verified one.
-        const probeSession = `${inspectOptions.door}-${seatId}`;
+        const probeSession = `${inspectOptions.door}-${workerId}`;
         if (bearer) {
-          const created = await door("POST", `${flowOf(seatId)}/sessions`, {
-            body: { userId: LAB_USER_ID, sessionId: probeSession, state: { [WORKER_ID_STATE_KEY]: seatId } },
+          const created = await door("POST", `${flowOf(workerId)}/sessions`, {
+            body: { userId: LAB_USER_ID, sessionId: probeSession, state: { [WORKER_ID_STATE_KEY]: workerId } },
           });
           if (created.status !== 201 && created.status !== 409) {
             return { error: `${created.status}: ${JSON.stringify(created.body)}` };
           }
         }
-        const segments = [flowOf(seatId), probeSession, "actions", INSPECT_ENTRY];
+        const segments = [flowOf(workerId), probeSession, "actions", INSPECT_ENTRY];
         const request = new Request(`http://lab/api/flows/${segments.join("/")}`, {
           method: "POST",
           // The inline stream, because the plain POST acks 202 with no output
-          // and the positive half is graded on the seat's facts.
+          // and the positive half is graded on the worker's facts.
           headers: {
             accept: "text/event-stream",
             ...(bearer ? { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` } : {}),
@@ -1363,7 +1363,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         const facts = events
           .filter(
             (event) =>
-              event.item?.type === "component" && event.item.component === SEAT_FACTS_COMPONENT,
+              event.item?.type === "component" && event.item.component === WORKER_FACTS_COMPONENT,
           )
           .at(-1)?.item?.data;
         const completed = events.some((event) => event.type === "request.completed");
@@ -1371,12 +1371,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         const seen = events.map((event) => event.type).join(", ");
         return {
           error: completed
-            ? `request.completed fired with no ${SEAT_FACTS_COMPONENT} component (events: ${seen})`
+            ? `request.completed fired with no ${WORKER_FACTS_COMPONENT} component (events: ${seen})`
             : `request.completed never fired (events: ${seen})`,
         };
       }
 
-      const result = await act(seatId, INSPECT_ENTRY, {});
+      const result = await act(workerId, INSPECT_ENTRY, {});
       return result.error === undefined
         ? { facts: (result.output ?? {}) as Record<string, unknown> }
         : { error: result.error };

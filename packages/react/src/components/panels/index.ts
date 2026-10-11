@@ -1,7 +1,7 @@
 /**
  * The standing right-panel regions (FIX-1477 S5, S6; FIX-1622 S1).
  *
- * `Roster` lists an organization's seats; `BoardColumns` groups one board's
+ * `Roster` lists an organization's workers; `BoardColumns` groups one board's
  * rows by status, and `BoardList` draws them as one list with each row's
  * status. They share a read (`reads.ts`) and a theming contract
  * (`chrome.ts`), neither of which leaves the package: a shared read exported
@@ -11,12 +11,12 @@ export {
   Roster,
   rosterPropNames,
   type RosterProps,
-  type RosterSeat,
-  type RosterSeatRow,
+  type RosterWorker,
+  type RosterWorkerRow,
   type RosterSlots
 } from "./Roster";
 
-export { SeatDetail, type SeatDetailProps } from "./SeatDetail";
+export { WorkerDetail, type WorkerDetailProps } from "./WorkerDetail";
 
 export {
   BoardColumns,

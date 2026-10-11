@@ -29,10 +29,10 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
-  mintSeats,
+  mintWorkers,
   resolveWorkerFlows,
   standardOnlyReason,
   type HireOptions,
@@ -57,7 +57,7 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "./keys";
-import { COORDINATOR_KIND } from "../coordinator/coordinator-keys";
+import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE } from "../projects/collections";
 import {
   PRIVATE_WORKSTREAMS_RESOURCE,
@@ -82,13 +82,13 @@ export interface WorkerInstallationOptions {
    */
   standardWorkers?: readonly WorkerManifest[];
   /**
-   * The worker flows, by kind, as `hireWorkforce` takes them. A function is
+   * The worker flows, by name, as `hireWorkforce` takes them. A function is
    * read when first needed, so a worker flow defined with this installation's
    * `session` and `resources` can be handed back to it.
    */
   workerFlows?: HireOptions["workerFlows"] | (() => HireOptions["workerFlows"]);
-  /** The blocks each standard worker's own folders register (`fsdev gen`'s `seatBlocks`). */
-  seatBlocks?: HireOptions["seatBlocks"];
+  /** The blocks each standard worker's own folders register (`fsdev gen`'s `workerBlocks`). */
+  workerBlocks?: HireOptions["workerBlocks"];
   /** The blocks each package carries (`fsdev gen`'s `packageBlocks`). */
   packageBlocks?: HireOptions["packageBlocks"];
   /** The documents a worker may be granted (`resourcesFromDocs(...)`). */
@@ -268,7 +268,7 @@ export interface WorkerInstallation extends WorkerGrants {
    * it, so the worker it loaded is gone on the resumed run.
    *
    * @param ctx The block's context. The block must declare {@link resources}.
-   * @param flowKind The running flow's kind.
+   * @param flowKind The running flow's name.
    * @throws WorkerTurnRefusedError when the turn can't run as the worker.
    */
   resolveWorker(ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker>;
@@ -348,7 +348,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (standard.has(manifest.id)) {
       throw new Error(`createWorkerInstallation: standard worker "${manifest.id}" is declared twice.`);
     }
-    if (standardWorkerFlow(manifest, AGENT_KIND) === undefined) {
+    if (standardWorkerFlow(manifest, AGENT_FLOW) === undefined) {
       throw new Error(
         `createWorkerInstallation: standard worker "${manifest.id}" declares a \`flow:\` that names no flow.`
       );
@@ -378,10 +378,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           `Name one the installation's files declare.`
       );
     }
-    if (standardWorkerFlow(manifest, AGENT_KIND) !== COORDINATOR_KIND) {
+    if (standardWorkerFlow(manifest, AGENT_FLOW) !== COORDINATOR_FLOW) {
       throw new Error(
         `createWorkerInstallation: the project coordinator "${projectCoordinator}" runs on flow ` +
-          `"${standardWorkerFlow(manifest, AGENT_KIND)}"; a project coordinator runs on "${COORDINATOR_KIND}".`
+          `"${standardWorkerFlow(manifest, AGENT_FLOW)}"; a project coordinator runs on "${COORDINATOR_FLOW}".`
       );
     }
   }
@@ -404,10 +404,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const workerFlowsOption = (): HireOptions["workerFlows"] => {
     const read = typeof options.workerFlows === "function" ? options.workerFlows() : options.workerFlows;
     const given =
-      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([kind, entry]) => [kind, buildOf(entry)]));
-    if (given !== undefined && Object.hasOwn(given, AGENT_KIND)) return given;
+      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([flow, entry]) => [flow, buildOf(entry)]));
+    if (given !== undefined && Object.hasOwn(given, AGENT_FLOW)) return given;
     boundAgent ??= defineAgentWorkerFlow({ installation });
-    return { [AGENT_KIND]: boundAgent as never, ...given };
+    return { [AGENT_FLOW]: boundAgent as never, ...given };
   };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
   const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
@@ -426,7 +426,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(),
-    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND),
+    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW),
     ...WORKSTREAM_RESOURCES
   } as const;
 
@@ -457,16 +457,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
    */
   const mint = (
     manifest: WorkerManifest
-  ): { ok: true; seat: FlowInstance } | { ok: false; problems: string[] } => {
+  ): { ok: true; worker: FlowInstance } | { ok: false; problems: string[] } => {
     try {
-      const [seat] = mintSeats([manifest], {
+      const [worker] = mintWorkers([manifest], {
         workerFlows: workerFlowsOption(),
-        ...(options.seatBlocks !== undefined ? { seatBlocks: options.seatBlocks } : {}),
+        ...(options.workerBlocks !== undefined ? { workerBlocks: options.workerBlocks } : {}),
         ...(options.packageBlocks !== undefined ? { packageBlocks: options.packageBlocks } : {}),
         ...(options.documents !== undefined ? { documents: options.documents } : {}),
         ...(options.references !== undefined ? { references: options.references } : {})
       });
-      return { ok: true, seat: seat! };
+      return { ok: true, worker: worker! };
     } catch (error) {
       return { ok: false, problems: hireRefusalReasons(error, manifest.id) };
     }
@@ -529,7 +529,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
     const file = standard.get(workerId);
     if (file === undefined) return { found: "none" };
-    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_KIND)! };
+    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_FLOW)! };
   };
 
   const configurationProblems = (id: string, row: WorkerRow): string[] => {
@@ -781,8 +781,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
     const minted = mint(manifest);
     if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${minted.problems.join("; ")}.`);
-    const seat = (minted as { seat: FlowInstance }).seat;
-    const reached = (seat.resources ?? {}) as Record<string, unknown>;
+    const instance = (minted as { worker: FlowInstance }).worker;
+    const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
     // What the worker's grants let its model do with each grantable resource:
     // the mint narrows a read-only grant by turning its write flags off.
@@ -792,13 +792,13 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
-    markVerifiedWorker(ctx.session as object, workerId, seat.config as Readonly<Record<string, unknown>>, granted);
+    markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
     return {
       id: workerId,
       standard: worker.found === "standard",
       flow,
       description,
-      config: seat.config as Readonly<Record<string, unknown>>,
+      config: instance.config as Readonly<Record<string, unknown>>,
       reaches: (accessor: string) => Object.hasOwn(reached, accessor)
     };
   };
@@ -870,7 +870,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     projectCoordinator: () =>
       projectCoordinator === undefined
         ? undefined
-        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_KIND)! },
+        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_FLOW)! },
     configurationProblems,
     standardWorkerProblems
   };

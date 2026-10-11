@@ -20,17 +20,17 @@ function asList(output: unknown): DelegateList {
   return { delegates, max: typeof value.max === "number" ? value.max : delegates.length };
 }
 
-/** Read the delegates of the coordinator conversation `sessionId` on `kind`. */
-export async function readDelegates(clients: LabClients, kind: string, sessionId: string): Promise<DelegateList> {
-  return asList((await runAction(clients, kind, sessionId, "listDelegates", {})).output);
+/** Read the delegates of the coordinator conversation `sessionId` on `flow`. */
+export async function readDelegates(clients: LabClients, flow: string, sessionId: string): Promise<DelegateList> {
+  return asList((await runAction(clients, flow, sessionId, "listDelegates", {})).output);
 }
 
 /** Add `worker` to the conversation's delegates. */
-export async function addDelegate(clients: LabClients, kind: string, sessionId: string, worker: string): Promise<DelegateList> {
-  return asList((await runAction(clients, kind, sessionId, "addDelegate", { worker })).output);
+export async function addDelegate(clients: LabClients, flow: string, sessionId: string, worker: string): Promise<DelegateList> {
+  return asList((await runAction(clients, flow, sessionId, "addDelegate", { worker })).output);
 }
 
 /** Remove `worker` from the conversation's delegates. */
-export async function removeDelegate(clients: LabClients, kind: string, sessionId: string, worker: string): Promise<DelegateList> {
-  return asList((await runAction(clients, kind, sessionId, "removeDelegate", { worker })).output);
+export async function removeDelegate(clients: LabClients, flow: string, sessionId: string, worker: string): Promise<DelegateList> {
+  return asList((await runAction(clients, flow, sessionId, "removeDelegate", { worker })).output);
 }

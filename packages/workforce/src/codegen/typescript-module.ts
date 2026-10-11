@@ -4,7 +4,7 @@
  *
  * The locked folders (`./discover`), the `resources/` module walk
  * (`./discover-resource-modules`) and the `blocks/` walk
- * (`./discover-seat-blocks`) all read `.ts` and `.tsx` as modules and nothing
+ * (`./discover-worker-blocks`) all read `.ts` and `.tsx` as modules and nothing
  * else. One definition, so a walk cannot quietly stop finding `.tsx` while the
  * others still do.
  */

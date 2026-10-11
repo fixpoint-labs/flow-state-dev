@@ -131,7 +131,7 @@ async function settle(
   else await collection.fail(id, "boom");
 }
 
-/** A row claimed for a handed-off seat and still holding a live lease. */
+/** A row claimed for a handed-off assignee and still holding a live lease. */
 async function handOff(
   collection: TaskCollectionRef,
   id: string

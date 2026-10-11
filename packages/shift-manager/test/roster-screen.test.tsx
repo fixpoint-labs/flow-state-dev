@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import type { LabClients } from "../src/lib/connection";
-import { STAFF_TEAM, toBoardRow, toSeat, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
+import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
 /** What the person's roster read answers: their own workers and the standard ones. */
@@ -32,14 +32,14 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 });
 
 const ORG = "acme";
-const seat = (id: string, kind = "worker") => toSeat({ id, kind })!;
+const worker = (id: string, kind = "worker") => toWorker({ id, kind })!;
 const row = (holder: string, id: string, status: string, assignee: string): BoardRow =>
   toBoardRow(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
-const ask = (seatId: string, suspensionId: string, message: string): Ask =>
+const ask = (workerId: string, suspensionId: string, message: string): Ask =>
   ({
     sessionId: `s_${suspensionId}`,
-    seatId,
-    flowId: seatId,
+    workerId,
+    flowId: workerId,
     parentSessionId: null,
     kind: "approval",
     item: { suspensionId, requestId: `r_${suspensionId}`, reason: "human_approval", message },
@@ -48,18 +48,18 @@ const ask = (seatId: string, suspensionId: string, message: string): Ask =>
   }) as unknown as Ask;
 
 /**
- * Two teams and one org seat: eng.coder running (and one parked), eng.reviewer
+ * Two teams and one org worker: eng.coder running (and one parked), eng.reviewer
  * parked, ops.asker with a pending ask and a queued row, ops.idle nothing,
  * chief-of-staff nothing.
  */
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
-  const seats = [seat("eng.coder", "coder"), seat("eng.reviewer"), seat("ops.asker", "asker"), seat("ops.idle"), seat("chief-of-staff", "cos")];
+  const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("chief-of-staff", "cos")];
   const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
   return {
     readAt: Date.UTC(2026, 9, 1, 9, 30),
     sessions: [],
     orgId: ORG,
-    inventory: options.inventory === "failed" ? { ok: false, failure: { message: "inventory offline" } } : { ok: true, value: { seats } },
+    inventory: options.inventory === "failed" ? { ok: false, failure: { message: "inventory offline" } } : { ok: true, value: { workers } },
     boards:
       options.inventory === "failed"
         ? {}
@@ -92,12 +92,12 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Roster (V3)", () => {
-  it("groups every seat, on shift, on call, off shift, with Staff's seat in it", async () => {
+  it("groups every worker, on shift, on call, off shift, with Staff's worker in it", async () => {
     await open("/roster");
     const page = await screen.findByTestId("roster");
     expect(attrs(within(page).getAllByTestId("roster-group"), "data-status")).toEqual(["on shift", "on call", "off shift"]);
     const workers = within(page).getAllByTestId("roster-worker");
-    expect(workers.map((w) => [w.getAttribute("data-seat-id"), w.getAttribute("data-status")])).toEqual([
+    expect(workers.map((w) => [w.getAttribute("data-worker-id"), w.getAttribute("data-status")])).toEqual([
       ["eng.coder", "on shift"],
       ["eng.reviewer", "on call"],
       ["ops.asker", "on call"],
@@ -117,10 +117,10 @@ describe("Roster (V3)", () => {
     const page = await screen.findByTestId("roster");
     await within(page).findByTestId("roster-worker-own");
     const workers = within(page).getAllByTestId("roster-worker");
-    const own = workers.filter((w) => w.getAttribute("data-own") === "true").map((w) => w.getAttribute("data-seat-id"));
+    const own = workers.filter((w) => w.getAttribute("data-own") === "true").map((w) => w.getAttribute("data-worker-id"));
     expect(own).toEqual(["amber-1f2e"]);
     // The standard ones are the inventory's rows, drawn once each.
-    expect(workers.filter((w) => w.getAttribute("data-seat-id") === "eng.coder")).toHaveLength(1);
+    expect(workers.filter((w) => w.getAttribute("data-worker-id") === "eng.coder")).toHaveLength(1);
     expect(workers).toHaveLength(6);
   });
 
@@ -132,7 +132,7 @@ describe("Roster (V3)", () => {
     await open("/roster", lab({ inventory: "failed" }));
     const page = await screen.findByTestId("roster");
     await within(page).findByTestId("roster-worker-own");
-    expect(within(page).getAllByTestId("roster-worker").map((w) => w.getAttribute("data-seat-id")).sort()).toEqual(["amber-1f2e", "eng.coder"]);
+    expect(within(page).getAllByTestId("roster-worker").map((w) => w.getAttribute("data-worker-id")).sort()).toEqual(["amber-1f2e", "eng.coder"]);
     expect(within(page).getByTestId("roster-inventory-failure").textContent).toContain("inventory offline");
   });
 
@@ -148,10 +148,10 @@ describe("Roster (V3)", () => {
 
   it("draws slots as a count and one square per held task, with no free squares (D2)", async () => {
     await open("/roster");
-    const coder = (await screen.findAllByTestId("roster-worker")).find((w) => w.getAttribute("data-seat-id") === "eng.coder")!;
+    const coder = (await screen.findAllByTestId("roster-worker")).find((w) => w.getAttribute("data-worker-id") === "eng.coder")!;
     expect(within(coder).getByTestId("roster-slots").textContent).toBe("2 in use");
     expect(within(coder).getAllByTestId("roster-slot")).toHaveLength(2);
-    const asker = screen.getAllByTestId("roster-worker").find((w) => w.getAttribute("data-seat-id") === "ops.asker")!;
+    const asker = screen.getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === "ops.asker")!;
     // A queued row is not a slot, and an ask is not a slot.
     expect(within(asker).getByTestId("roster-slots").textContent).toBe("0 in use");
     expect(within(asker).queryAllByTestId("roster-slot")).toHaveLength(0);
@@ -161,36 +161,36 @@ describe("Roster (V3)", () => {
   it("HOLDING chips open their task, and waits-on lists each parked task and each ask", async () => {
     await open("/roster");
     const workers = await screen.findAllByTestId("roster-worker");
-    const coder = workers.find((w) => w.getAttribute("data-seat-id") === "eng.coder")!;
+    const coder = workers.find((w) => w.getAttribute("data-worker-id") === "eng.coder")!;
     const chips = within(coder).getAllByTestId("roster-holding");
     expect(chips.map((c) => c.getAttribute("data-task-id"))).toEqual(["E-1", "E-2"]);
     expect(attrs(within(coder).getAllByTestId("roster-wait"), "data-id")).toEqual(["E-2"]);
-    const asker = workers.find((w) => w.getAttribute("data-seat-id") === "ops.asker")!;
+    const asker = workers.find((w) => w.getAttribute("data-worker-id") === "ops.asker")!;
     expect(within(asker).getAllByTestId("roster-wait").map((w) => [w.getAttribute("data-kind"), w.getAttribute("data-id")])).toEqual([["ask", "q1"]]);
-    const idle = workers.find((w) => w.getAttribute("data-seat-id") === "ops.idle")!;
+    const idle = workers.find((w) => w.getAttribute("data-worker-id") === "ops.idle")!;
     expect(within(idle).getByTestId("roster-no-wait").textContent).toBe("—");
 
     act(() => fireEvent.click(chips[0]!));
     expect(window.location.pathname).toBe("/tasks/s_eng.tasks/E-1/session");
   });
 
-  it("names its gaps: standing watches, which seat holds a task, and the harness", async () => {
+  it("names its gaps: standing watches, which worker holds a task, and the harness", async () => {
     await open("/roster");
     expect((await screen.findByTestId("roster-gap-watches")).textContent).toBe(GAPS.roster.watches);
-    expect(screen.getByTestId("roster-gap-seat-match").textContent).toBe(GAPS.roster.seatMatch);
+    expect(screen.getByTestId("roster-gap-worker-match").textContent).toBe(GAPS.roster.workerMatch);
     expect(GAPS.roster.watches).toMatch(/FIX-1675/);
-    expect(GAPS.roster.seatMatch).toMatch(/FIX-1672/);
+    expect(GAPS.roster.workerMatch).toMatch(/FIX-1672/);
     expect(screen.getAllByTestId("roster-worker-harness")[0]!.getAttribute("title")).toBe(GAPS.harness);
   });
 
-  it("a picked team shows exactly its seats, its counts, and its name in the title", async () => {
+  it("a picked team shows exactly its workers, its counts, and its name in the title", async () => {
     await open("/roster?team=ops");
     const page = await screen.findByTestId("roster");
-    expect(attrs(within(page).getAllByTestId("roster-worker"), "data-seat-id")).toEqual(["ops.asker", "ops.idle"]);
+    expect(attrs(within(page).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["ops.asker", "ops.idle"]);
     expect(within(page).getByTestId("roster-title").textContent).toMatch(/ops$/);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^0 on shift · 1 on call · 1 off shift · 1 waiting on you/);
     act(() => fireEvent.click(within(page).getAllByTestId("roster-team-option").find((o) => o.getAttribute("data-team") === STAFF_TEAM)!));
-    expect(attrs(within(screen.getByTestId("roster")).getAllByTestId("roster-worker"), "data-seat-id")).toEqual(["chief-of-staff"]);
+    expect(attrs(within(screen.getByTestId("roster")).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["chief-of-staff"]);
   });
 
   it("BR-13: a team the inventory doesn't have reads as All", async () => {
@@ -216,7 +216,7 @@ describe("Roster (V3)", () => {
     const page = await screen.findByTestId("roster");
     expect(within(page).getByTestId("partial-mark").getAttribute("title")).toBe(GAPS.roster.partial);
     // The asker's only wait was its ask: drawn from the boards, it reads off shift.
-    expect(within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-seat-id") === "ops.asker")!.getAttribute("data-status")).toBe("off shift");
+    expect(within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === "ops.asker")!.getAttribute("data-status")).toBe("off shift");
   });
 
   it("BR-20, failure taxonomy: asks that did not load are named on Roster with the Lab's answer and Retry", async () => {
@@ -250,8 +250,8 @@ describe("Roster in design v2's form", () => {
   it("tags each task and ask waiting on you WAITING, with what on one line and when on the next", async () => {
     await open("/roster");
     const workers = await screen.findAllByTestId("roster-worker");
-    const waits = (seatId: string) =>
-      within(workers.find((w) => w.getAttribute("data-seat-id") === seatId)!)
+    const waits = (workerId: string) =>
+      within(workers.find((w) => w.getAttribute("data-worker-id") === workerId)!)
         .getAllByTestId("roster-wait")
         .map((w) => [within(w).getByTestId("roster-wait-tag").textContent, within(w).getByTestId("roster-wait-what").textContent, within(w).getByTestId("roster-wait-when").textContent]);
     expect(waits("eng.coder")).toEqual([["WAITING", "you · E-2", "E-2 title"]]);
@@ -347,13 +347,13 @@ describe("the sidebar (V4)", () => {
     expect(screen.getByTestId("footer-on-call").textContent).toBe("2 on call");
   });
 
-  it("TEAMS is one row per team, Staff first, with a square per seat and its on-shift count; no worker list", async () => {
+  it("TEAMS is one row per team, Staff first, with a square per worker and its on-shift count; no worker list", async () => {
     await open("/inbox");
     const teams = screen.getAllByTestId("team");
     expect(attrs(teams, "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
     expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/1", "1/2", "0/2"]);
     const eng = teams[1]!;
-    expect(within(eng).getAllByTestId("worker").map((w) => [w.getAttribute("data-seat-id"), w.getAttribute("data-status"), w.getAttribute("title")])).toEqual([
+    expect(within(eng).getAllByTestId("worker").map((w) => [w.getAttribute("data-worker-id"), w.getAttribute("data-status"), w.getAttribute("title")])).toEqual([
       ["eng.coder", "on shift", "coder · on shift"],
       ["eng.reviewer", "on call", "reviewer · on call"],
     ]);
@@ -364,7 +364,7 @@ describe("the sidebar (V4)", () => {
     await open("/inbox");
     act(() => fireEvent.click(screen.getAllByTestId("team")[2]!));
     expect(`${window.location.pathname}${window.location.search}`).toBe("/roster?team=ops");
-    expect(attrs(await screen.findAllByTestId("roster-worker"), "data-seat-id")).toEqual(["ops.asker", "ops.idle"]);
+    expect(attrs(await screen.findAllByTestId("roster-worker"), "data-worker-id")).toEqual(["ops.asker", "ops.idle"]);
     expect(screen.getAllByTestId("team")[2]!.getAttribute("aria-current")).toBe("page");
   });
 
@@ -376,12 +376,12 @@ describe("the sidebar (V4)", () => {
     ];
     await open("/inbox");
     // The inventory alone has no row for either: they show only once the roster read lands.
-    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-seat-id="amber-1f2e"]')).not.toBeNull());
+    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-worker-id="amber-1f2e"]')).not.toBeNull());
     const teams = screen.getAllByTestId("team");
     expect(attrs(teams, "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
-    expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-seat-id")).toEqual(["chief-of-staff", "amber-1f2e"]);
+    expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["chief-of-staff", "amber-1f2e"]);
     // A standard worker the inventory already has is drawn once.
-    expect(attrs(within(teams[1]!).getAllByTestId("worker"), "data-seat-id")).toEqual(["eng.coder", "eng.reviewer", "eng.mine"]);
+    expect(attrs(within(teams[1]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["eng.coder", "eng.reviewer", "eng.mine"]);
     expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/2", "1/3", "0/2"]);
   });
 
@@ -390,7 +390,7 @@ describe("the sidebar (V4)", () => {
     await open("/inbox", lab({ inventory: "failed" }));
     const teams = within(screen.getByTestId("teams"));
     await teams.findByTestId("worker");
-    expect(attrs(teams.getAllByTestId("worker"), "data-seat-id")).toEqual(["amber-1f2e"]);
+    expect(attrs(teams.getAllByTestId("worker"), "data-worker-id")).toEqual(["amber-1f2e"]);
     expect(teams.getByTestId("teams-failure").textContent).toContain("inventory offline");
   });
 
@@ -411,7 +411,7 @@ describe("the sidebar (V4)", () => {
     };
     await open("/roster");
     await within(await screen.findByTestId("roster")).findByTestId("roster-worker-own");
-    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-seat-id="amber-1f2e"]')).not.toBeNull());
+    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-worker-id="amber-1f2e"]')).not.toBeNull());
     expect(reads).toBe(1);
   });
 

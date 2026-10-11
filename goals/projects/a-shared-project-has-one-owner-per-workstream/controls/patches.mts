@@ -54,8 +54,8 @@ export const SCRATCH: Record<"second-org" | "entry-writer", ModulePatch> = {
   },
   "entry-writer": {
     module: HOST,
-    from: String.raw`\[PROJECTS_KIND\]: projectsFlow,`,
-    to: `[PROJECTS_KIND]: projectsFlow, ...(await import(${JSON.stringify(pathToFileURL(ENTRY_WRITER.pathname).href)})).goalFlows(),`,
+    from: String.raw`\[PROJECTS_FLOW\]: projectsFlow,`,
+    to: `[PROJECTS_FLOW]: projectsFlow, ...(await import(${JSON.stringify(pathToFileURL(ENTRY_WRITER.pathname).href)})).goalFlows(),`,
   },
 };
 

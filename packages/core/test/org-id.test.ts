@@ -4,7 +4,7 @@
  *
  * Drop the lone-surrogate check and the second case fails: `"\uD800"` would be
  * admitted, and anything that UTF-8-encodes the id (a storage key, a hired
- * seat's address) maps it onto the same bytes as `"�"`.
+ * worker's address) maps it onto the same bytes as `"�"`.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, isValidOrgId } from "../src/types/auth";

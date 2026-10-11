@@ -390,7 +390,7 @@ describe("compileTransportPattern", () => {
 
 describe("parseFlowRoute — segments arrive decoded, and are decoded no further", () => {
   it("keeps a literal percent escape inside a flow kind", () => {
-    // Next hands `params.path` decoded once; an escaped seat address still
+    // Next hands `params.path` decoded once; an escaped worker address still
     // carries `%5F` after that decode, and must resolve as written.
     expect(parseFlowRoute("POST", ["org%5Fpentest%5Flab.helper", "actions", "run"])).toEqual({
       kind: "execute_action",

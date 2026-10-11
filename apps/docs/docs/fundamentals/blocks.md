@@ -657,11 +657,11 @@ A flow can be registered as several copies that differ by the settings each was 
 block declares what it needs of whatever flow installs it, and reads it from `ctx.flow.config`:
 
 ```ts
-const seatConfig = z.object({ harness: z.string(), model: z.string() });
+const workerConfig = z.object({ harness: z.string(), model: z.string() });
 
 const engineerWork = handler({
   name: "engineer-work",
-  flowConfigSchema: seatConfig,
+  flowConfigSchema: workerConfig,
   execute: async (input, ctx) => {
     const model = ctx.flow.config.model; // typed as string
     // ...

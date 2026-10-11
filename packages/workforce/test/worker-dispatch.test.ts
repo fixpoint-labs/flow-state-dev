@@ -11,16 +11,16 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { bootHost, FIXTURE } from "./worker-model-harness";
 
-const envelope = (seat: string, taskId: string) => ({
+const envelope = (worker: string, taskId: string) => ({
   boardId: "board",
-  seat,
+  assignee: worker,
   taskId,
   attempt: 1,
   createdAt: 1,
   payload: { worker: "someone-else" }
 });
 
-async function send(userId: string, seat: string, taskId: string) {
+async function send(userId: string, worker: string, taskId: string) {
   const stores = createInMemoryStores();
   const h = bootHost(stores);
   await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE });
@@ -30,7 +30,7 @@ async function send(userId: string, seat: string, taskId: string) {
   const res = await h.fetcherFor(userId)(`/api/flows/filer/filer-${userId}/actions/send`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId, sessionId: `filer-${userId}`, input: envelope(seat, taskId) })
+    body: JSON.stringify({ userId, sessionId: `filer-${userId}`, input: envelope(worker, taskId) })
   });
   expect(res.status).toBe(202);
   const [sent] = await h.settled(`filer-${userId}`);

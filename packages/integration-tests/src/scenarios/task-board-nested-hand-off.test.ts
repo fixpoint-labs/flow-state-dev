@@ -11,7 +11,7 @@
  *
  * That is exactly why the flow declares each board's task entry itself:
  * nesting one board's drain inside another board's worker is ordinary
- * composition here, not a discovery problem. Both boards' seats reach the
+ * composition here, not a discovery problem. Both boards' assignees reach the
  * flow the same way any board's does — each hand-off names its entry, and the
  * flow declares both under `tasks` — regardless of how deep the inner board's
  * drain sits inside the outer worker. What this
@@ -77,7 +77,7 @@ function buildNestedFlow() {
     ],
   });
 
-  // The OUTER board's handed-off worker. The outer seat holds a dispatcher, so
+  // The OUTER board's handed-off worker. The outer assignee holds a dispatcher, so
   // this composition — and the inner board inside it — is reachable only
   // through the flow's `top` task entry, never through `outerBoard.drain`
   // itself.
@@ -114,7 +114,7 @@ function buildNestedFlow() {
     // Both boards' entries — neither is discovered through the other's
     // structure, so both must be declared explicitly. `defineFlow` gates each
     // behind its own board: the outer worker is reached through the outer
-    // seat's hand-off, the inner worker through the inner seat's, which sits
+    // assignee's hand-off, the inner worker through the inner assignee's, which sits
     // inside the outer worker's drain.
     task: { actions: { top: { block: outerWorker }, deep: { block: innerWorker } } },
   })({ id: "nested-hand-off" });

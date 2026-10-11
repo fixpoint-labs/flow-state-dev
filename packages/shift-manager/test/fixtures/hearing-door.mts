@@ -9,7 +9,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 
-/** What a fixture seat says when it hears `message`. */
+/** What a fixture worker says when it hears `message`. */
 export const fixtureHeardLine = (message: string) => `Heard: ${message}`;
 
 const messageInput = z.object({ message: z.string() });
@@ -30,6 +30,6 @@ export const hearingDoor = {
     block: hear,
     inputSchema: messageInput,
     userMessage: (input: { message: string }) => input.message,
-    description: "A person's line into this seat's session.",
+    description: "A person's line into this worker's session.",
   },
 };

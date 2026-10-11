@@ -158,7 +158,7 @@ describe("defineResourceCollection", () => {
       "**",
       "workforce/roster/[owner]/notes",
       "workforce/roster/*/*",
-      "workforce/roster/[owner]/[seat]",
+      "workforce/roster/[owner]/[worker]",
     ]) {
       expect(() =>
         defineResourceCollection({

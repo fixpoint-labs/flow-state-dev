@@ -104,7 +104,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
-- `"handed-off"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a [seat that hands off](#seats-that-hand-off) reports it, and `counts.in_progress` is how many are still running.
+- `"handed-off"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a [assignee that hands off](#assignees-that-hand-off) reports it, and `counts.in_progress` is how many are still running.
 - `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a hand-off: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
@@ -323,15 +323,15 @@ There is no `defaultWorker` unless you pass one.
 
 The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `addTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
 
-A registry seat can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Seats that hand off](#seats-that-hand-off).
+A registry assignee can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that hand off](#assignees-that-hand-off).
 
-## Seats that hand off
+## Assignees that hand off
 
-A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. An assignee can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
-A dispatch run is an ordinary session — of this flow, or of the flow the seat names with `flowKind`. Which session a row lands in is derived from the seat's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
+A dispatch run is an ordinary session — of this flow, or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
-A seat hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. The stamped address is `type: "task"` — do not set `type` on the seat. A board can mix seats that hand off with seats that run inline:
+An assignee hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. A board can mix assignees that hand off with assignees that run inline:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -371,7 +371,7 @@ export default defineFlow({
 })();
 ```
 
-`implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the seat is the only way in.
+`implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the assignee is the only way in.
 
 ### Which session a task runs in
 
@@ -380,10 +380,10 @@ export default defineFlow({
 | `session` | How many runs | Reach for it when |
 |---|---|---|
 | `"per-task"` | one per task; a follow-up task runs in the session of the task it follows | tasks are independent |
-| `"per-worker"` | one per seat, shared by every task the seat runs | the worker should remember what it already did |
-| `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several seats, or a key you compute from the task |
+| `"per-worker"` | one per assignee, shared by every task the assignee runs | the worker should remember what it already did |
+| `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several assignees, or a key you compute from the task |
 
-The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow seat names. A `key` function that returns an empty string fails that task.
+The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two assignees, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow assignee names. A `key` function that returns an empty string fails that task.
 
 ```ts
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -395,7 +395,7 @@ implement: dispatcher({
 }),
 ```
 
-When the flow a seat hands off to needs state in each new session, such as a required readonly field, give the dispatcher a `state` beside `session`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. It works with every `session` policy, the presets included. Each new run is created with it, and the target flow's [`stateSchema` and `createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept or refuse it. A run that already exists keeps its own state. Without one, a flow that needs it refuses every new run, and the task fails with `create-refused`.
+When the flow an assignee hands off to needs state in each new session, such as a required readonly field, give the dispatcher a `state` beside `session`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. It works with every `session` policy, the presets included. Each new run is created with it, and the target flow's [`stateSchema` and `createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept or refuse it. A run that already exists keeps its own state. Without one, a flow that needs it refuses every new run, and the task fails with `create-refused`.
 
 ```ts
 implement: dispatcher({
@@ -406,7 +406,7 @@ implement: dispatcher({
 }),
 ```
 
-A run that handles several tasks does so under its entry's `concurrency` policy. The entry a `per-worker` or `key` seat hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` seat's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
+A run that handles several tasks does so under its entry's `concurrency` policy. The entry a `per-worker` or `key` assignee hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` assignee's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
 
 ```ts
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
@@ -414,7 +414,7 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 
 The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A task keeps its session for its whole life. If its worker parks it on a question, the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there, or file a follow-up task with `followUpOf`, which runs in the same session. That holds for a seat that hands off `per-task` and on a Workforce conversation's board; a `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The finished task itself never changes.
+A task keeps its session for its whole life. If its worker parks it on a question, the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there, or file a follow-up task with `followUpOf`, which runs in the same session. That holds for an assignee that hands off `per-task` and on a Workforce conversation's board; a `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The finished task itself never changes.
 
 ### Sending a task to a flow chosen per task
 
@@ -494,20 +494,20 @@ An entry with `from` that a board in the same flow also hands off to is refused 
 
 ### What the board requires
 
-`taskBoard()` throws, naming the board and the seat, unless all of these hold for a board with any seat that hands off:
+`taskBoard()` throws, naming the board and the assignee, unless all of these hold for a board with any assignee that hands off:
 
 - **`boardId` is set.** It is part of every dispatch run's session identity, so renaming it orphans work already in flight.
 - **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the run settles its row after the request that claimed it is gone.
-- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its seats hand off within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
+- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its assignees hand off within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
 - **The dispatcher is a named registry entry or `defaultWorker`.** A uniform `workers` block has no assignee to route by, so it can't be a dispatcher. `defaultWorker` can: it hands each task over under the assignee the task names.
 
-`defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, for an entry with `from` that a board in the same flow also hands off to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
+`defineFlow()` throws for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, for an entry with `from` that a board in the same flow also hands off to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
 
 A board that hands tasks off fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or blocked task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
 
 ### What the drain reports
 
-`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `kind` (`"named"`), `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name`, kind `"floor"` and the label `floor`. Branch on `kind`; `label` is for messages. The list is empty on a board with no dispatcher.
+`board.handedOff` lists the dispatcher assignees in declaration order, each with its `name`, `kind` (`"named"`), `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name`, kind `"floor"` and the label `floor`. Branch on `kind`; `label` is for messages. The list is empty on a board with no dispatcher.
 
 The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 
@@ -515,7 +515,7 @@ The hand-off block itself returns `{ handedOff: true, taskId, sessionId, request
 
 Don't read `sessionId` as an id for this hand-off. `requestId` is the one value that is always one per dispatch. `sessionId` is the run, which is shared under `per-worker` and a shared `{ key }`; even under `per-task` it identifies the row rather than the dispatch, so a retry of that row re-enters the same session. `adopted` is how you tell the two apart: `false` when the dispatch created the session, `true` when it re-entered one that already existed.
 
-When the dispatch arrives, the run re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, still routed to this seat. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing, so the row is left exactly as it was. If the row is still `in_progress`, whether a newer attempt, another seat, or a row recreated under the same id holds it, that claim runs until its lease runs out and the next drain reclaims it. A row that was deleted, or is already settled or parked, has no outstanding claim, so there is nothing to reclaim.
+When the dispatch arrives, the run re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, still routed to this assignee. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing, so the row is left exactly as it was. If the row is still `in_progress`, whether a newer attempt, another assignee, or a row recreated under the same id holds it, that claim runs until its lease runs out and the next drain reclaims it. A row that was deleted, or is already settled or parked, has no outstanding claim, so there is nothing to reclaim.
 
 Nothing renews the row's lease while the dispatch waits in the host's queue, so a run that starts more than a lease later finds a row the queue already counts as free. It takes that row back rather than refusing it: the claim is renewed on the same attempt, and the run proceeds if that write lands. It refuses only when the renewal is declined, which is the case another drain has already reclaimed the row and is running it elsewhere. The board claims with the collection's default two-minute lease and exposes no setting for it, so a deep queue in front of the run costs waiting and nothing else.
 
@@ -537,7 +537,7 @@ if (task?.run) {
 
 Each row names the run that took it. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. Two rows can share a session, but never a request.
 
-To open the run, read the session first. A seat can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
+To open the run, read the session first. An assignee can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
 
 ```ts
 const session = await client.getSession(task.run.sessionId);
@@ -600,7 +600,7 @@ separate completion message for it. The `addTask_<board>` action has no wait opt
 - `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
-`onError` reaches a [seat that hands off](#seats-that-hand-off) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
+`onError` reaches a [assignee that hands off](#assignees-that-hand-off) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 
@@ -642,7 +642,7 @@ Then the board run fails, after every other task has finished. `onError: "skip"`
 
 A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
 
-On a [seat that hands off](#seats-that-hand-off) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
+On a [assignee that hands off](#assignees-that-hand-off) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
 
 Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
 

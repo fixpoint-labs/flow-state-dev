@@ -270,7 +270,7 @@ async function readHelpDesk(page: Page): Promise<Reading> {
 }
 
 /** The seat a working row names, or `undefined` for background work. */
-function seatOf(workingRow: string): string | undefined {
+function workerOf(workingRow: string): string | undefined {
   return /^(\S+) (?:is working|was working at the last check)$/.exec(workingRow.trim())?.[1];
 }
 
@@ -343,7 +343,7 @@ async function follow(page: Page, sentAt: number, answered: (r: Reading) => bool
  */
 function othersWorking(readings: Reading[], seat: string): string[] {
   const seen = readings.flatMap((r) => r.working);
-  return [...new Set(seen.map(seatOf).filter((s): s is string => s !== undefined && s !== seat))];
+  return [...new Set(seen.map(workerOf).filter((s): s is string => s !== undefined && s !== seat))];
 }
 
 type Message = { role: string; text: string };
@@ -596,7 +596,7 @@ async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, eviden
   // below is the one "Talk" opens and not the last seat session leg b read.
   await showHelpDesk(page);
   await talkTo(page, seat.id);
-  const box = panel(page).getByLabel("Message this seat");
+  const box = panel(page).getByLabel("Message this worker");
   await box.waitFor({ timeout: 15_000 });
   // Which session "Talk" opened, from the server's index by worker: the person's own, not a run. Not graded.
   const started = await readUntil(() => workerSessions(page, ORIGIN, seat.id), (listed) => listed.length > 0, 10_000);
@@ -888,7 +888,7 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
       // Every run the post started ends before the answers are counted, so a second answer is not missed.
       const f = await follow(page, sentAt, (r) => (answersTo(r.lines, post.mark)?.length ?? 0) > 0, fixture.smoke.withinMs, fixture.smoke.withinMs);
       const answers = answersTo(f.readings.at(-1)!.lines, post.mark) ?? [];
-      const worked = [...new Set(f.readings.flatMap((r) => r.working).map(seatOf))];
+      const worked = [...new Set(f.readings.flatMap((r) => r.working).map(workerOf))];
       answeredBy.push(answers[0]);
       const said = `post ${i + 1} ${JSON.stringify(post.text)}: ${answers.length} line(s) ${secs(sentAt, f.lineAt)}, ${answers.map((l) => `${l.label}: ${JSON.stringify(l.body)}`).join(" | ") || "none"}; working seen: ${worked.join(", ") || "none"}; cleared ${secs(sentAt, f.clearedAt)}`;
       console.log(`  smoke ${said}`);

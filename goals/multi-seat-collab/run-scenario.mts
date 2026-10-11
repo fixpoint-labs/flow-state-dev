@@ -30,12 +30,12 @@ import { join } from "node:path";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce";
 import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../lib/index.mts";
 import { allTaskRows, requests as storedRequests, type StoredTask } from "../coordinators/files-tasks-down-the-owners-chain/store.mts";
-import { LAB_DB_PATH, LAB_USER_ID, type LabTree } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import type { PieceInput } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/piece.mts";
-import { workLineSchema, type WorkLine } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
+import { LAB_DB_PATH, LAB_USER_ID, type LabTree } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
+import type { PieceInput } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/piece.mts";
+import { workLineSchema, type WorkLine } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 
 /** The config `fsdev dev` is pointed at. */
-export const LAB_CONFIG = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "fsdev.config.mts");
+export const LAB_CONFIG = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "fsdev.config.mts");
 
 /** What a served lab hands back. */
 export interface ServedLab {
@@ -95,7 +95,7 @@ export async function serveLab(options: {
       cwd: options.workDir,
       env: intentFreeEnv(process.env, {
         GOAL_CONTROL: options.control,
-        MULTI_SEAT_COLLAB_OUTBOX: outbox,
+        MULTI_WORKER_COLLAB_OUTBOX: outbox,
         ...(options.debugEndpoints === false ? { FSDEV_DEBUG_ENDPOINTS: "0" } : {}),
       }),
       stdio: ["ignore", "pipe", "pipe"],
@@ -259,7 +259,7 @@ export class Scenario {
    */
   async open(): Promise<void> {
     for (const worker of this.tree.roster.workers.map((record) => record.id)) {
-      const { status, body } = await this.json(`/${encodeURIComponent(this.tree.seatFlows[worker]!)}/sessions`, {
+      const { status, body } = await this.json(`/${encodeURIComponent(this.tree.workerFlows[worker]!)}/sessions`, {
         method: "POST",
         body: JSON.stringify({ userId: LAB_USER_ID, sessionId: this.seatSession(worker), state: { [WORKER_ID_STATE_KEY]: worker } }),
       });
@@ -302,7 +302,7 @@ export class Scenario {
 
   /** Run one of the planner's conversation's actions. */
   onConversation(action: string, input: unknown, userId: string = LAB_USER_ID, settleWithinMs = 30_000): Promise<ActResult> {
-    return this.act(this.tree.seatFlows[this.tree.plannerId]!, this.conversation, action, input, userId, settleWithinMs);
+    return this.act(this.tree.workerFlows[this.tree.plannerId]!, this.conversation, action, input, userId, settleWithinMs);
   }
 
   /**

@@ -1,5 +1,5 @@
 /**
- * Which harness this tree puts in the `coder` kind's slot when it is served
+ * Which harness this tree puts in the `coder` worker flow's slot when it is served
  * as the DevTeam team profile.
  *
  *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start
@@ -155,7 +155,7 @@ export const CLAUDE_CODE_RUN_TIMEOUT_MS = 10 * 60_000;
 export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
   return harnessStub({
     steps: [
-      "Reading the seat's instructions, brief and conventions.",
+      "Reading the worker's instructions, brief and conventions.",
       "Planning the change for this row.",
       "Writing SCRIPTED-RUN.md in the checkout.",
       "Checking the checkout before committing.",

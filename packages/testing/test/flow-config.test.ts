@@ -12,7 +12,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { testBlock } from "../src";
 
-const seatConfig = z.object({ harness: z.string(), model: z.string() });
+const workerConfig = z.object({ harness: z.string(), model: z.string() });
 
 /** Reports what it saw, so the assertion is on the value the block read. */
 const readConfig = handler({
@@ -61,7 +61,7 @@ describe("test context — the flow config bag", () => {
     // that refusal is not what this test is about.
     const engineer = defineFlow({
       kind: "engineer-harness",
-      configSchema: seatConfig,
+      configSchema: workerConfig,
       actions: { work: { block: readConfig } }
     });
 

@@ -44,8 +44,8 @@ describe("@flow-state-dev/workforce/browser", () => {
     // The other direction: emptying the entry would pass the walk above.
     const entry = await import("@flow-state-dev/workforce/browser");
     expect(typeof entry.createWorkforceClient).toBe("function");
-    expect(entry.ROSTER_FLOW_KIND).toBe("workforce-roster");
-    expect(entry.COORDINATOR_KIND).toBe("coordinator");
+    expect(entry.ROSTER_FLOW).toBe("workforce-roster");
+    expect(entry.COORDINATOR_FLOW).toBe("coordinator");
     expect(entry.COORDINATOR_ROUTE).toBe("coordinator-route");
     expect(entry.COORDINATOR_JUDGMENT).toBe("coordinator-judgment");
     expect(typeof entry.parseWorkstreamEntry).toBe("function");

@@ -52,7 +52,7 @@ import {
   openLab,
   type Lab,
   type OpenLabOptions,
-  type SeatSkill,
+  type WorkerSkill,
 } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub, type HarnessStubOptions, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
@@ -79,7 +79,7 @@ interface Fixture {
    * kind. Hired with the team seats, and outside this check's per-seat legs:
    * the chief of staff runs the `coordinator` kind, which has no inspect entry.
    */
-  orgSeats: Record<string, { kind: string }>;
+  orgWorkers: Record<string, { kind: string }>;
   /**
    * The team workers on the `coordinator` kind (`teams/<team>/workers/`), by
    * id. Hired with the others and, like the org seats, outside the per-seat
@@ -176,7 +176,7 @@ function controlOptions(): Partial<OpenLabOptions> {
     // The board's `coder` assignee addressed at the seat that is declared and
     // must never be reached. The row still runs; it runs on the wrong seat.
     case "address-the-reviewer":
-      return { coderSeatId: fixture.silentSeat };
+      return { coderWorkerId: fixture.silentSeat };
     // The working seat repointed at the coordinator's document. Its own brief's
     // token can then reach the prompt by no route at all.
     case "swap-documents":
@@ -189,7 +189,7 @@ function controlOptions(): Partial<OpenLabOptions> {
     // equality catches it; a check that only excluded siblings would not.
     case "drop-own-skill":
       return {
-        mutateSkills: (seatId: string, skills: SeatSkill[]) =>
+        mutateSkills: (seatId: string, skills: WorkerSkill[]) =>
           seatId === fixture.assignedSeat
             ? skills.filter((skill) => skill.name !== "branch-naming")
             : skills,
@@ -214,7 +214,7 @@ async function open(label: string, over: Partial<OpenLabOptions> = {}): Promise<
     stores: inMemoryStores(),
     harness: stub.slot,
     workspace,
-    coderSeatId: fixture.assignedSeat,
+    coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     // Model-free: a row on a session's board is judged before it closes, and the stub
     // answers nothing a judge could pass. The judge is it-answers-a-conversations-task's.
@@ -326,17 +326,17 @@ await runGoal(async (failures) => {
   try {
     // ---- (a) BR-1, BR-2 — the tree alone produced all of it ---------------
     {
-      const seatIds = Object.keys(lab.seats).sort();
+      const workerIds = Object.keys(lab.workers).sort();
       const wantedSeats = [
         ...Object.keys(fixture.seats),
-        ...Object.keys(fixture.orgSeats),
+        ...Object.keys(fixture.orgWorkers),
         ...Object.keys(fixture.teamCoordinators),
       ];
-      if (!sameSet(seatIds, wantedSeats)) {
-        note(`hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(wantedSeats)}`);
+      if (!sameSet(workerIds, wantedSeats)) {
+        note(`hired ${JSON.stringify(workerIds)}, wanted ${JSON.stringify(wantedSeats)}`);
       }
-      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats, ...fixture.teamCoordinators })) {
-        const seat = lab.seats[seatId] as { kind?: string } | undefined;
+      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgWorkers, ...fixture.teamCoordinators })) {
+        const seat = lab.workers[seatId] as { kind?: string } | undefined;
         if (seat === undefined) continue;
         if (seat.kind !== expected.kind) {
           note(`${seatId} was hired into kind "${String(seat.kind)}", not "${expected.kind}"`);
@@ -368,7 +368,7 @@ await runGoal(async (failures) => {
       let hiredAnyway = -1;
       try {
         const bad = await open("badtree", { root: badRoot });
-        hiredAnyway = Object.keys(bad.lab.seats).length;
+        hiredAnyway = Object.keys(bad.lab.workers).length;
         await bad.lab.dispose();
       } catch (error) {
         refusal = error instanceof Error ? error.message : String(error);
@@ -380,7 +380,7 @@ await runGoal(async (failures) => {
       }
 
       evidence.push(
-        `one root produced ${seatIds.length} seats on ${
+        `one root produced ${workerIds.length} seats on ${
           new Set(Object.values(fixture.seats).map((s) => s.kind)).size
         } kinds, ${docRefs.length} documents and no mailbox; a tree naming an ` +
           `unregistered kind refused the whole roster and its corrected twin hired cleanly`,
@@ -424,7 +424,7 @@ await runGoal(async (failures) => {
       // is a fact about one run; "it declares no task entry" is a fact about
       // what the seat can ever do.
       const entriesOf = (seatId: string): string[] =>
-        Object.keys((lab.seats[seatId] as { task?: { actions?: object } } | undefined)?.task?.actions ?? {});
+        Object.keys((lab.workers[seatId] as { task?: { actions?: object } } | undefined)?.task?.actions ?? {});
       const emEntries = entriesOf(fixture.coordinatorSeat);
       if (emEntries.length > 0) {
         note(
@@ -590,7 +590,7 @@ await runGoal(async (failures) => {
 
   // ---- (e) BR-7 — a hand-off to an instance nobody minted -----------------
   {
-    const missing = await open("noseat", { coderSeatId: fixture.unknownSeat });
+    const missing = await open("noseat", { coderWorkerId: fixture.unknownSeat });
     try {
       await missing.lab.file(fixture.coordinatorSeat, filing);
       await missing.lab.drain(fixture.coordinatorSeat);
@@ -627,7 +627,7 @@ await runGoal(async (failures) => {
       stores: inMemoryStores(),
       harness: stub.slot,
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-      coderSeatId: fixture.assignedSeat,
+      coderWorkerId: fixture.assignedSeat,
       logger: silentLogger,
       withoutJudge: true,
     });
@@ -719,12 +719,12 @@ await runGoal(async (failures) => {
       if (landed.error !== undefined) {
         note(`the same read carrying a verified bearer did not land — ${landed.error}`);
       } else if (
-        landed.facts?.seat !== fixture.coordinatorSeat ||
+        landed.facts?.worker !== fixture.coordinatorSeat ||
         landed.facts?.documentRef !== expected?.document
       ) {
         note(
           `the bearer read landed without ${fixture.coordinatorSeat}'s own facts: ` +
-            JSON.stringify({ seat: landed.facts?.seat, documentRef: landed.facts?.documentRef }),
+            JSON.stringify({ seat: landed.facts?.worker, documentRef: landed.facts?.documentRef }),
         );
       }
       evidence.push(

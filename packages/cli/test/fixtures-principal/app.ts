@@ -12,7 +12,7 @@
  *   - `placeholder` a resolver that claims the reserved development org
  *   - `bodyorg`     a resolver that reads the action body's `input`, as a
  *                   resolver keyed on a request field would
- * and one hired-seat-shaped instance, `acme-dev.desk`, pinned to the app's
+ * and one hired-worker-shaped instance, `acme-dev.desk`, pinned to the app's
  * own user, so a terminal outside the pin has something to be refused by.
  *
  * Every instance shares one in-memory store registry, so a test can read what
@@ -113,10 +113,10 @@ const bodyOrgFlow = defineFlow({
 })();
 
 /** A collection kind, so an instance can be registered under a pin. */
-const seatKind = defineFlow({ kind: "seat", cardinality: "collection", actions: respond });
+const workerKind = defineFlow({ kind: "worker", cardinality: "collection", actions: respond });
 
-/** The seat's address and its owner: the app's own user in the app's own org. */
-export const SEAT_ID = `${APP_ORG}.desk`;
+/** The worker's address and its owner: the app's own user in the app's own org. */
+export const WORKER_ID = `${APP_ORG}.desk`;
 
 /** Assemble the app the way its `fsdev.config.ts` does. */
 export function makeApp() {
@@ -132,6 +132,6 @@ export function makeApp() {
     resolvePrincipal: () => ({ userId: APP_USER, orgId: APP_ORG }),
   });
   // A fresh instance per app: registering stamps the pin onto the instance.
-  app.register(seatKind({ id: SEAT_ID }), { pin: { orgId: APP_ORG, userId: APP_USER } });
+  app.register(workerKind({ id: WORKER_ID }), { pin: { orgId: APP_ORG, userId: APP_USER } });
   return app;
 }

@@ -10,7 +10,7 @@
  * Pinned here, at full `runAction` composition:
  *
  * - BR-1 / BR-2 — the link names the session the run is actually in, whatever
- *   the seat's session policy: per-task, per-worker (two rows, one session, two
+ *   the assignee's session policy: per-task, per-worker (two rows, one session, two
  *   requests) and a custom key. Never the claiming parent's coordinate.
  * - BR-4 — every refusal arm of the gate writes nothing: the row is exactly as
  *   the drain left it.
@@ -304,7 +304,7 @@ describe("a gate that refuses the dispatch writes no link", () => {
     ["the attempt was superseded", (row) => ({ attempts: row.attempts + 1 })],
     ["the row was recreated", (row) => ({ incarnationId: `${row.incarnationId}-recreated` })],
     ["the row is no longer in progress", () => ({ status: "cancelled" })],
-    ["the row routes to another seat", () => ({ assignee: "someone-else" })],
+    ["the row routes to another assignee", () => ({ assignee: "someone-else" })],
   ];
 
   it.each(arms)("%s", async (_label, tamper) => {

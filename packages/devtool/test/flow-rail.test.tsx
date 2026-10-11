@@ -373,7 +373,7 @@ describe("the tool's three affordances, as slots", () => {
       vi.fn(async (input: unknown, init?: RequestInit) => {
         const url = String(input);
         if (init?.method === "POST") {
-          return new Response(JSON.stringify({ error: "Seat is not accepting sessions" }), {
+          return new Response(JSON.stringify({ error: "Worker is not accepting sessions" }), {
             status: 500,
             headers: { "content-type": "application/json" },
           });

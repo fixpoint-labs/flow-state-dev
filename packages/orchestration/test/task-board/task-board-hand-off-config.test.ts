@@ -43,12 +43,12 @@ function worker(name: string, extra?: Record<string, unknown>): TaskWorker {
   }) as TaskWorker;
 }
 
-let seatCount = 0;
-/** A seat that hands off: the dispatcher a board reads its address from. */
-function seat(action = "implement"): TaskWorker {
-  seatCount += 1;
+let assigneeCount = 0;
+/** An assignee that hands off: the dispatcher a board reads its address from. */
+function assignee(action = "implement"): TaskWorker {
+  assigneeCount += 1;
   return dispatcher({
-    name: `seat-${action}-${seatCount}`,
+    name: `assignee-${action}-${assigneeCount}`,
     type: "task",
     action,
     session: "per-task",
@@ -69,8 +69,8 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     expect(board.backing).toBe("request");
   });
 
-  it("refuses the removed `{ worker, dispatch }` seat shape by name", () => {
-    // A seat is a block. The old entry shape would otherwise be read as an
+  it("refuses the removed `{ worker, dispatch }` assignee shape by name", () => {
+    // An assignee is a block. The old entry shape would otherwise be read as an
     // object with no `run`, and the board must say which shape it saw rather
     // than fail later on a row nobody routes.
     expect(() =>
@@ -85,7 +85,7 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     ).toThrow(/removed `dispatch: \{ mode \}` option/);
   });
 
-  it("refuses the removed `{ block, session }` seat shape by name", () => {
+  it("refuses the removed `{ block, session }` assignee shape by name", () => {
     expect(() =>
       taskBoard({
         name: "old-block-shape",
@@ -93,29 +93,29 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
         collection: durable,
         workers: { summarize: { block: worker("summarize-2c"), session: "per-task" } as never },
       })
-    ).toThrow(/removed `\{ block, session \}` seat shape/);
+    ).toThrow(/removed `\{ block, session \}` assignee shape/);
   });
 
-  it("refuses a seat that is not a block, naming the seat", () => {
+  it("refuses an assignee that is not a block, naming the assignee", () => {
     expect(() =>
       taskBoard({
         name: "not-a-block",
         workers: { summarize: "summarize" as never },
       })
-    ).toThrow(/seat "summarize" is not a block/);
+    ).toThrow(/assignee "summarize" is not a block/);
   });
 
-  it("reads a dispatcher seat as handed off, with the address it carries", () => {
-    // The drain must see blocks in every seat. A dispatcher is one, so the
+  it("reads a dispatcher assignee as handed off, with the address it carries", () => {
+    // The drain must see blocks in every assignee. A dispatcher is one, so the
     // routing table is built from the same shape it always was; what the
-    // board adds is knowing which seats hand off, and where to.
+    // board adds is knowing which assignees hand off, and where to.
     const board = taskBoard({
       name: "unwrap-board",
       boardId: "unwrap-board",
       collection: durable,
       workers: {
         summarize: worker("summarize-3"),
-        implement: seat("implement"),
+        implement: assignee("implement"),
       },
     });
 
@@ -132,7 +132,7 @@ describe("isTaskDispatcher", () => {
   it("tells a task dispatcher from an inline block and from a registry", () => {
     const block = worker("discriminate");
 
-    expect(isTaskDispatcher(seat("implement"))).toBe(true);
+    expect(isTaskDispatcher(assignee("implement"))).toBe(true);
     expect(isTaskDispatcher(block)).toBe(false);
     expect(isTaskDispatcher({ summarize: block })).toBe(false);
     expect(isTaskDispatcher(undefined)).toBe(false);
@@ -150,7 +150,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       taskBoard({
         name: "no-id",
         collection: durable,
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/no boardId.*assignee:implement|assignee:implement.*no boardId/s);
   });
@@ -163,7 +163,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       taskBoard({
         name: "request-backed",
         boardId: "request-backed",
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/request-backed collection|must be durable/);
   });
@@ -174,7 +174,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         name: "seq-backed",
         boardId: "seq-backed",
         collection: { backing: "sequencer", collectionId: "seq-backed" },
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/sequencer-backed collection|must be durable/);
   });
@@ -187,7 +187,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         name: "factory-backed",
         boardId: "factory-backed",
         collection: () => ({}) as unknown as TaskCollectionRef,
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/factory-backed collection|must be durable/);
   });
@@ -202,7 +202,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       name: "session-state",
       boardId: "session-state",
       collection: durable,
-      workers: { implement: seat("implement") },
+      workers: { implement: assignee("implement") },
     });
     expect(() =>
       defineFlow({
@@ -229,7 +229,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       name: "cap-session",
       boardId: "cap-session",
       collection: durable,
-      workers: { implement: seat("implement") },
+      workers: { implement: assignee("implement") },
     });
     expect(() =>
       defineFlow({
@@ -242,7 +242,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
 
   it("does NOT refuse sessionStateSchema on an INLINE worker of a hand-off board", () => {
     // The collision is a property of running in the child session a handed-off
-    // seat may share with other rows, which an inline worker never joins.
+    // assignee may share with other rows, which an inline worker never joins.
     // Refusing it would be a guard firing on a condition it does not actually
     // test.
     const board = taskBoard({
@@ -251,7 +251,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       collection: durable,
       workers: {
         summarize: worker("sum-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
-        implement: seat("implement"),
+        implement: assignee("implement"),
       },
     });
     expect(() =>
@@ -270,7 +270,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       collection: durable,
       workers: {
         summarize: worker("sum-good"),
-        implement: seat("implement"),
+        implement: assignee("implement"),
       },
     });
 
@@ -280,7 +280,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
   });
 });
 
-describe("hand-off dispatch — the uniform and floor seats", () => {
+describe("hand-off dispatch — the uniform and floor assignees", () => {
   it("refuses a task dispatcher as the uniform worker — a hand-off is addressed by the row's assignee", () => {
     // A uniform worker stands in for every row whatever it names, so there is
     // no assignee to address the hand-off by.
@@ -289,7 +289,7 @@ describe("hand-off dispatch — the uniform and floor seats", () => {
         name: "uniform-hand-off",
         boardId: "uniform-hand-off",
         collection: durable,
-        workers: seat("uniform-impl"),
+        workers: assignee("uniform-impl"),
       })
     ).toThrow(/a uniform worker cannot hand off/);
   });
@@ -302,7 +302,7 @@ describe("hand-off dispatch — the uniform and floor seats", () => {
       boardId: "floor-hand-off",
       collection: durable,
       workers: { summarize: worker("sum-floor") },
-      defaultWorker: seat("floor-impl"),
+      defaultWorker: assignee("floor-impl"),
     });
     expect(board.handedOff.map((s) => [s.kind, s.label])).toEqual([["floor", "floor"]]);
   });
@@ -330,7 +330,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "session-hand-off",
         boardId: "session-hand-off",
         collection: sessionScoped,
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/session-scoped collection/);
   });
@@ -341,7 +341,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "session-hand-off-named",
         boardId: "session-hand-off-named",
         collection: sessionScoped,
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/assignee:implement/);
   });
@@ -352,7 +352,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "session-hand-off-fix",
         boardId: "session-hand-off-fix",
         collection: sessionScoped,
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).toThrow(/sharedToLineage/);
   });
@@ -379,7 +379,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "user-hand-off",
         boardId: "user-hand-off",
         collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
-        workers: { implement: seat("implement") },
+        workers: { implement: assignee("implement") },
       })
     ).not.toThrow();
   });
@@ -392,7 +392,7 @@ describe("the session-schema refusal sees composed children", () => {
       name: kind,
       boardId: kind,
       collection: durable,
-      workers: { implement: seat("implement") },
+      workers: { implement: assignee("implement") },
     });
     return defineFlow({
       kind,

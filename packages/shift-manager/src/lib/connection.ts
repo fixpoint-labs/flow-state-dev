@@ -43,7 +43,7 @@ export type LabClients = {
   readonly sessions: SessionClient;
   readonly resources: ResourceClient;
   readonly recovery: RecoveryClient;
-  /** An action client for one flow kind, as this user. */
+  /** An action client for one flow, as this user. */
   actions(flowKind: string): Client;
 };
 

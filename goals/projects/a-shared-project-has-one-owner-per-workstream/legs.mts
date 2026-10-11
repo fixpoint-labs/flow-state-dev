@@ -47,7 +47,7 @@ type WorkstreamInput = { id: string; title: string; objectives: string[]; due: s
 /** The engine's refusal of a write by anyone but the row's owner. */
 const OWNER_RULE = "A row of an owner-writes collection is written only by the user it belongs to.";
 
-const PROJECTS_KIND = "projects";
+const PROJECTS_FLOW = "projects";
 const ROSTER_KIND = "workforce-roster";
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
@@ -289,8 +289,8 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
     const r = leg("a");
     o.say(`leg a: Alice makes private "${P.id}" and shared "${S.id}" (Bob a member)`);
     const made = [
-      await act(alice, PROJECTS_KIND, ownSession(alice, PROJECTS_KIND), "createProject", { id: P.id, title: P.title, visibility: "private" }),
-      await act(alice, PROJECTS_KIND, ownSession(alice, PROJECTS_KIND), "createProject", { id: S.id, title: S.title, brief: S.brief, visibility: "shared", members: [bob.person.userId] }),
+      await act(alice, PROJECTS_FLOW, ownSession(alice, PROJECTS_FLOW), "createProject", { id: P.id, title: P.title, visibility: "private" }),
+      await act(alice, PROJECTS_FLOW, ownSession(alice, PROJECTS_FLOW), "createProject", { id: S.id, title: S.title, brief: S.brief, visibility: "shared", members: [bob.person.userId] }),
     ];
     for (const m of made) if (m.status !== "completed") throw new Error(`setup: Alice's createProject ${m.status}: ${m.error}`);
 
@@ -341,7 +341,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
 
   // ---- leg b: one owner per workstream ------------------------------------
   const r = leg("b");
-  const setup = await act(alice, PROJECTS_KIND, ownSession(alice, PROJECTS_KIND), "projectSetup", {});
+  const setup = await act(alice, PROJECTS_FLOW, ownSession(alice, PROJECTS_FLOW), "projectSetup", {});
   const projectCoordinator = setup.output?.projectCoordinator as string | null | undefined;
   if (setup.status !== "completed" || typeof projectCoordinator !== "string") {
     throw new Error(`setup: projectSetup ${setup.status}: ${show(setup.output)} ${setup.error ?? ""}`);
@@ -358,7 +358,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
       settings: { delegates: ["eng.coder"], tools: ["updateWorkstream"], model: "openai/gpt-5.4-mini" },
     });
     if (hired.status !== "completed") throw new Error(`setup: ${who.person.label}'s hire of ${lead} ${hired.status}: ${hired.error}`);
-    const opened = await act(who, PROJECTS_KIND, ownSession(who, PROJECTS_KIND), "openWorkstream", {
+    const opened = await act(who, PROJECTS_FLOW, ownSession(who, PROJECTS_FLOW), "openWorkstream", {
       project: shared,
       id: ws.id,
       title: ws.title,
@@ -410,7 +410,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   const landed: string[] = [];
 
   // (1) The app's action, naming her entry.
-  const viaAction = await act(bob, PROJECTS_KIND, ownSession(bob, PROJECTS_KIND), "updateWorkstream", {
+  const viaAction = await act(bob, PROJECTS_FLOW, ownSession(bob, PROJECTS_FLOW), "updateWorkstream", {
     project: shared,
     owner: alice.person.userId,
     id: d.aliceWs.id,
@@ -469,7 +469,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   if (landed.length > 0) r.failures.push(`b:bobs-write-refused — ${landed.join(" / ")}`);
 
   // The owner's own write lands: Bob sets his workstream's status.
-  const own = await act(bob, PROJECTS_KIND, ownSession(bob, PROJECTS_KIND), "updateWorkstream", { project: shared, id: d.bobWs.id, status: d.statusWord });
+  const own = await act(bob, PROJECTS_FLOW, ownSession(bob, PROJECTS_FLOW), "updateWorkstream", { project: shared, id: d.bobWs.id, status: d.statusWord });
   if (own.status !== "completed") r.failures.push(`b:owner-writes — Bob's write to his own entry ${own.status}: ${own.error}`);
 
   // The project read, as each of them gets it: two workstreams, both owners' objectives.

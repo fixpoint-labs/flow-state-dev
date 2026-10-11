@@ -94,7 +94,7 @@ async function open(model: ModelResolver): Promise<Lab> {
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-tasks-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
   });
   return opened;
@@ -290,7 +290,7 @@ async function openCoderLab(model: ModelResolver, stub: HarnessStub, options: { 
     harness: stub.slot,
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-tasks-")), remotes: { allow: ["file"] } },
-    coderSeatId: CODER,
+    coderWorkerId: CODER,
     inventory: true,
     projects: [
       { id: "storefront", title: "Storefront", repository: remote.url },
@@ -643,7 +643,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
         stores: inMemoryStores(),
         harness: attached,
         workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-attached-")), remotes: { allow: ["file"] } },
-        coderSeatId: CODER,
+        coderWorkerId: CODER,
       }),
     ).rejects.toThrow(/task entry "work".*sessionStateSchema/);
   });

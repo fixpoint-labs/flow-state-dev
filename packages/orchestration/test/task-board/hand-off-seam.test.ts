@@ -55,12 +55,12 @@ const PAYLOAD: TaskWorkerInput = {
 /** The binding a board puts on its hand-off; the gate is irrelevant to the seam. */
 const BINDING = { boardId: "issue-work", gate: (entry: unknown) => entry as never };
 
-/** A hand-off at seat `implement`, for the dispatcher address a seat would carry. */
+/** A hand-off at assignee `implement`, for the dispatcher address an assignee would carry. */
 function handOffWith(session: "per-task" | "per-worker" | { key: (task: TaskWorkerInput) => string }) {
   return createHandOff({
     name: "issue-work-hand-off-implement",
     boardId: "issue-work",
-    seat: "implement",
+    assignee: "implement",
     address: { type: "task", action: "implement", session },
     binding: BINDING,
   });
@@ -167,7 +167,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
       provenance: { taskId: "t1" },
       payload: {
         boardId: "issue-work",
-        seat: "implement",
+        assignee: "implement",
         taskId: "t1",
         attempt: 1,
         createdAt: 1_700_000_000_000,
@@ -321,7 +321,7 @@ describe("the child session key", () => {
     expect(harness.spec()?.session).toEqual({ key: "task|10:issue-work|2:t1" });
   });
 
-  it("frames a per-worker key on the seat, not the task", async () => {
+  it("frames a per-worker key on the assignee, not the task", async () => {
     const perWorker = handOffWith("per-worker");
     const harness = drive({ seam: accepted, block: perWorker });
     await harness.run();
@@ -337,7 +337,7 @@ describe("the child session key", () => {
     expect(harness.spec()?.session).toEqual({ key: "custom:t1:do the background thing" });
   });
 
-  it("throws on an empty custom key, naming the seat and the task, before the claim is released", async () => {
+  it("throws on an empty custom key, naming the assignee and the task, before the claim is released", async () => {
     const blank = handOffWith({ key: () => "" });
     const harness = drive({ seam: accepted, block: blank });
 
@@ -353,16 +353,16 @@ describe("the child session key", () => {
   });
 });
 
-describe("a seat that names another flow", () => {
-  it("forwards flowKind from the seat address through the seam", async () => {
-    // TaskSeatAddress allows flowKind (Jake required it legal on task). The
+describe("an assignee that names another flow", () => {
+  it("forwards flowKind from the assignee address through the seam", async () => {
+    // TaskAssigneeAddress allows flowKind (Jake required it legal on task). The
     // author-facing dispatcher() already forwards it; the drain's hand-off
     // is the path a real board takes, and omitting it makes the seam resolve
     // on the sender — `no-entry` against the wrong flow.
     const block = createHandOff({
       name: "issue-work-hand-off-implement",
       boardId: "issue-work",
-      seat: "implement",
+      assignee: "implement",
       address: {
         type: "task",
         action: "work",
@@ -381,7 +381,7 @@ describe("a seat that names another flow", () => {
     });
   });
 
-  it("omits flowKind when the seat addresses this flow", async () => {
+  it("omits flowKind when the assignee addresses this flow", async () => {
     const harness = drive({ seam: accepted });
     await harness.run();
     expect(harness.spec()?.flowKind).toBeUndefined();

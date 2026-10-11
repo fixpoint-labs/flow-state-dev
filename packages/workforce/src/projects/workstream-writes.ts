@@ -298,7 +298,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       );
     }
   }
-  const leadFlowKinds = new Set(options.leadFlows.map((flow) => flow.kind));
+  const leadFlowNames = new Set(options.leadFlows.map((flow) => flow.kind));
   /**
    * Why a worker on the caller's roster can't lead, or `undefined` when it
    * can: it runs on a lead flow, and it lists delegates, since a lead runs its
@@ -306,7 +306,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
    */
   const leadProblem = (worker: RosterWorker): string | undefined => {
     if (worker.problem !== undefined) return `can't lead a workstream: ${worker.problem}`;
-    if (!leadFlowKinds.has(worker.flow)) return `runs on flow "${worker.flow}", which can't lead a workstream`;
+    if (!leadFlowNames.has(worker.flow)) return `runs on flow "${worker.flow}", which can't lead a workstream`;
     if (worker.delegates.length === 0) {
       return "lists no delegates, so it can't lead a workstream: a lead runs its workstream through its delegates";
     }
@@ -417,10 +417,10 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   });
 
   /** One dispatcher per lead flow: creates the lead's session, linked at create, and runs nothing. */
-  const openSessionOn = (kind: string) =>
+  const openSessionOn = (flow: string) =>
     dispatcher({
-      name: `workstream-open-session-${kind}`,
-      flowKind: kind,
+      name: `workstream-open-session-${flow}`,
+      flowKind: flow,
       action: WORKSTREAM_OPENED_ENTRY,
       inputSchema: openStepSchema,
       session: {
@@ -429,7 +429,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       },
       payload: () => ({})
     });
-  const dispatchers = new Map([...leadFlowKinds].map((kind) => [kind, openSessionOn(kind)] as const));
+  const dispatchers = new Map([...leadFlowNames].map((flow) => [flow, openSessionOn(flow)] as const));
   const createSession = router({
     name: "workstream-open-session",
     inputSchema: openStepSchema,

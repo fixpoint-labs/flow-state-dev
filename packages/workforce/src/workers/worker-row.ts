@@ -24,7 +24,7 @@ import { WORKERS_PATTERN } from "./keys";
  * heard of (BP-030). The envelope is this package's.
  */
 export const workerRowSchema = z.object({
-  /** The flow the worker runs on: a registered worker flow's kind. */
+  /** The flow the worker runs on: a registered worker flow's name. */
   flow: z.string().min(1),
   /** One line saying what the worker is for. */
   description: z.string().nullable().default(null),

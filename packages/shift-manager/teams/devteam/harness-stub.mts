@@ -14,7 +14,7 @@
  *
  * The slot is the whole of D2. Two checks drive the same tree, the same hire
  * and the same wiring and differ by this one expression — so a future change
- * that hard-codes a harness inside the `coder` kind breaks the gate, not just a
+ * that hard-codes a harness inside the `coder` worker flow breaks the gate, not just a
  * test.
  */
 

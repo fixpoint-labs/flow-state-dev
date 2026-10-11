@@ -30,7 +30,7 @@ For a working example, the [kitchen-sink reference app](https://github.com/fixpo
 
 ## Hire a roster
 
-A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` is `engineering.lead`. An org seat belongs to no team: it lives at `org/workers/<name>/WORKER.md` and goes by its folder name alone, so `org/workers/chief-of-staff/` is `chief-of-staff`.
+A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` is `engineering.lead`. An org worker belongs to no team: it lives at `org/workers/<name>/WORKER.md` and goes by its folder name alone, so `org/workers/chief-of-staff/` is `chief-of-staff`.
 
 ```md
 ---
@@ -109,7 +109,7 @@ The **chief of staff** is an org-level worker a person asks about the organizati
 
 A [coordinator](./coordinators.md) files tasks for its delegates on its conversation's board, and any worker can file tasks for delegates of its own, as [Delegating work](./delegating-work.md) shows. A task names its worker by id, the name `discover` lists: `engineering.lead`. When the board hands the task over, the task runs in a session of that worker's flow that names it, one run per task.
 
-A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
+A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A worker flow you write takes tasks when it declares a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
 
 Filing a task for a worker that isn't one of the filer's delegates, or that takes no tasks, is refused, and the refusal names the worker. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
 
@@ -124,9 +124,9 @@ Filing a task for a worker that isn't one of the filer's delegates, or that take
 ## Related pages
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
-- [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
+- [The built-in worker](./built-in-worker) — the `agent` worker flow a record with no `flow:` runs on: its settings, tools, skills, and memory.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
-- [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
+- [Code on disk](./code-on-disk) — your own flows, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
 - [Coordinators](./coordinators) — a worker that hands each message to its delegates, and files tasks for them on its conversation's board.

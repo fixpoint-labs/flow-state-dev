@@ -141,7 +141,7 @@ await runGoal(async (failures) => {
   const lab = await openLab({
     stores: inMemoryStores(),
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-    coderSeatId: ASSIGNED_SEAT,
+    coderWorkerId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
     // ---- the one expression that differs from the contract gate ----

@@ -10,7 +10,7 @@
  * One thing is substituted, below the wiring under test: the model.
  * `KITCHEN_SINK_TEST_MODE=1` makes the config build its model resolver from
  * `test/mock-flowstate`, which this file mocks with a scripted `agent-answer`,
- * so a seat's answer is fixed.
+ * so a worker's answer is fixed.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1500/PLAN.md`), and the red
  * state each was seen in before its green was trusted:

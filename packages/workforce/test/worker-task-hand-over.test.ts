@@ -80,7 +80,7 @@ describe("which worker a name on a task means", () => {
     expect(await lookup.state({ assignee: "eng.auditor", taskId: "t1", input: {} }, ctx)).toEqual({ workerId: "eng.auditor" });
   });
 
-  it("lets a list's own seat names through the filing check without asking", () => {
+  it("lets a list's own worker names through the filing check without asking", () => {
     const check = lookup.filingCheck({ [LIST_ID]: ["coder"] });
     expect(check("coder", LIST_ID, ctx)).toBeUndefined();
     expect(check("coder", "other.list", ctx)).toMatch(/No worker is named "coder"/);

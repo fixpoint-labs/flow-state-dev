@@ -43,7 +43,7 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
 }
 
-/** TEAMS, as the tree declares it: each team's seat ids, an org seat (no team in its id) under Staff. */
+/** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under Staff. */
 function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
   for (const worker of roster.workers) {
@@ -54,7 +54,7 @@ function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
 }
 
 describe.each([
-  ["multi-seat-collab", "packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts", "packages/shift-manager/test/fixtures/multi-seat-collab/workforce"],
+  ["multi-worker-collab", "packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts", "packages/shift-manager/test/fixtures/multi-worker-collab/workforce"],
   ["devteam", "packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce"],
 ])("%s", (name, configPath, treePath) => {
   let opened: Opened;
@@ -63,19 +63,19 @@ describe.each([
   }, 120_000);
   afterAll(async () => opened?.lab.handle.close());
 
-  it("TEAMS is exactly the seats the Lab registered, per team, each with its kind", () => {
+  it("TEAMS is exactly the workers the Lab registered, per team, each with its worker flow", () => {
     const { snapshot, roster } = opened;
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     const read = Object.fromEntries(
-      teamsOf(snapshot.inventory.value.seats).map(({ team, seats }) => [team, seats.map((s) => s.id).sort()]),
+      teamsOf(snapshot.inventory.value.workers).map(({ team, workers }) => [team, workers.map((s) => s.id).sort()]),
     );
     expect(read).toEqual(declaredTeams(roster));
-    for (const seat of snapshot.inventory.value.seats) {
-      expect(seat.kind).toBe(roster.workers.find((w) => w.id === seat.id)!.declared.flow);
+    for (const worker of snapshot.inventory.value.workers) {
+      expect(worker.kind).toBe(roster.workers.find((w) => w.id === worker.id)!.declared.flow);
     }
   });
 
-  // multi-seat-collab declares no board: the planner files on its own
+  // multi-worker-collab declares no board: the planner files on its own
   // conversation's, so its rows reach Shift Manager as that conversation's
   // board, keyed by the conversation.
   it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board", async () => {

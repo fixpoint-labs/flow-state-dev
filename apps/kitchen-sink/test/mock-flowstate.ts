@@ -3,12 +3,12 @@
  *
  * Composed into `lib/flowstate.ts` only when `KITCHEN_SINK_TEST_MODE === "1"`
  * (Playwright E2E). Mocks every generator on the chat-agent run path, and the
- * `agent` seat kind's answers, so the suite never calls a real model. `policy: "allow"` returns an empty no-op
+ * `agent` worker kind's answers, so the suite never calls a real model. `policy: "allow"` returns an empty no-op
  * result for any straggler generator (memory capture, bias analyzers, etc.)
  * whose silence doesn't break the user-visible response.
  *
  * A scenario that names a hold (`holdBeforeAnswer`) is held before its model
- * runs, so a page can be seen showing a seat as working before it answers.
+ * runs, so a page can be seen showing a worker as working before it answers.
  *
  * This is an app-local test seam, not deployment glue — it lives under
  * `test/` and is gated by an explicit env flag.
@@ -21,7 +21,7 @@ import {
   skillClassifierMock,
   autoTitleMock,
   sideChainBriefMock,
-  agentSeatMock,
+  agentWorkerMock,
   coordinatorRouteMock,
 } from "@/lib/e2e-mock-script";
 
@@ -33,9 +33,9 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
       "skill-classifier": skillClassifierMock,
       "auto-title": autoTitleMock,
       "background-brief": sideChainBriefMock,
-      // An `agent` seat answers through one of these two, by its own setting.
-      "agent-answer": agentSeatMock,
-      "agent-answer-with-activate-tool": agentSeatMock,
+      // An `agent` worker answers through one of these two, by its own setting.
+      "agent-answer": agentWorkerMock,
+      "agent-answer-with-activate-tool": agentWorkerMock,
     },
     // A best-fit coordinator's one evaluation, by its evaluator's block name.
     evaluators: { "coordinator-route": coordinatorRouteMock },

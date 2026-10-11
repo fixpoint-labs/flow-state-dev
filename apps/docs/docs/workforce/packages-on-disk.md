@@ -29,7 +29,7 @@ Over $500, page on-call with the invoice id before calling issue-refund.
 
 The body is instructions. On the built-in worker, they're in the prompt on every turn, after its team's instructions and its own; a kind of your own decides for itself. `description` is a label for people and never reaches the model. It is the only key the frontmatter takes.
 
-Each file in `blocks/` is one of the package's tools, written like a block in any other [`blocks/` folder](./code-on-disk.md#blocks-a-worker-can-call): it default-exports a block, and the file's basename, the block's own `name` and the name a worker lists must all be the same. A package block may read a store the kind installed but may not declare one.
+Each file in `blocks/` is one of the package's tools, written like a block in any other [`blocks/` folder](./code-on-disk.md#blocks-a-worker-can-call): it default-exports a block, and the file's basename, the block's own `name` and the name a worker lists must all be the same. A package block may read a store the worker flow installed but may not declare one.
 
 A package with no `blocks/` folder is fine. It is instructions and nothing else. If that's all you need, a [skill](../skills/overview.md) the worker lists under `skills: active:` does the same job, and can also stay out of the prompt until it's relevant. Reach for a package when a tool goes with the words.
 
@@ -39,7 +39,7 @@ Run `fsdev gen` after adding or removing a block, as you would for any other `bl
 
 Where the folder sits decides who holds it.
 
-- **A worker's own.** `workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`. That worker holds it, always. An [org seat](./workers-on-disk.md#the-tree) keeps its own at `workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`.
+- **A worker's own.** `workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`. That worker holds it, always. An [org worker](./workers-on-disk.md#the-tree) keeps its own at `workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`.
 - **A team's library.** `workforce/teams/<team>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/packages/<name>/blocks/<block>.ts`. A worker on that team holds it once it names it.
 - **The org's library.** `workforce/org/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/packages/<name>/blocks/<block>.ts`. Any worker holds it once it names it.
 
@@ -64,18 +64,18 @@ What a worker can call from the packages it holds depends on its `tools:` line, 
 - **A `tools:` line.** The line is the whole list. Name a package's block there to keep it: `tools: [search, issue-refund]`.
 - **`tools: []`.** No tools. The worker still gets the package's instructions.
 
-If a worker's `tools:` line names something that is both a block in a package it holds and a tool in the kind's [catalog](./built-in-worker.md#tools), the worker is refused at startup, and the message names both.
+If a worker's `tools:` line names something that is both a block in a package it holds and a tool in the worker flow's [catalog](./built-in-worker.md#tools), the worker is refused at startup, and the message names both.
 
 A package's tools reach only the workers that hold it. They are not in your app's tool catalog, and a worker that doesn't hold the package can't name them.
 
 ## In your app
 
-`fsdev gen` writes a `packageBlocks` export onto `workforce.gen.ts`, keyed by each package's folder and then by block name. Pass it to `createWorkerInstallation` beside `seatBlocks`:
+`fsdev gen` writes a `packageBlocks` export onto `workforce.gen.ts`, keyed by each package's folder and then by block name. Pass it to `createWorkerInstallation` beside `workerBlocks`:
 
 ```ts
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
+import { packageBlocks, workerBlocks, workerFlows } from "./workforce/workforce.gen";
 
 const { workers, errors, packageErrors } = await readWorkforce("./workforce");
 if (errors.length || packageErrors.length) {
@@ -83,13 +83,13 @@ if (errors.length || packageErrors.length) {
   throw new Error(`workforce failed to load:\n${reported.join("\n")}`);
 }
 
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, seatBlocks, packageBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows, workerBlocks, packageBlocks });
 const flows = hireWorkforce(installation);
 ```
 
 Leave `packageBlocks` out and a held package brings its instructions and no tools.
 
-`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org seat has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided from its `packages:` line, when its configuration is checked.
+`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org worker has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided from its `packages:` line, when its configuration is checked.
 
 ## When a file is wrong
 
@@ -123,12 +123,12 @@ hireWorkforce: 1 standard worker problem(s); nothing was registered:
 
 A preset that builds its tools per turn isn't checked at startup. If one of those tools shares a name with a package block, that turn fails with an error saying there are two tools with that name.
 
-## In a kind of your own
+## In a worker flow of your own
 
-A seat that holds at least one package receives it on the `seatPackages` setting, one entry per package in the order it holds them:
+A worker that holds at least one package receives it on the `workerPackages` setting, one entry per package in the order it holds them:
 
 ```ts
-seatPackages?: Array<{
+workerPackages?: Array<{
   name: string;           // the folder's name
   path: string;           // e.g. "teams/support/packages/escalation"
   instructions?: string;  // the PACKAGE.md body, absent when empty
@@ -136,7 +136,7 @@ seatPackages?: Array<{
 }>;
 ```
 
-A seat that holds none doesn't get the key. Compose [`workerConfigSchema()`](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) into your kind's `configSchema` and it accepts the setting. What your kind does with it is up to you. A worker file that writes `seatPackages:` itself is refused by name.
+A worker that holds none doesn't get the key. Compose [`workerConfigSchema()`](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare) into your worker flow's `configSchema` and it accepts the setting. What your flow does with it is up to you. A worker file that writes `workerPackages:` itself is refused by name.
 
 ## What this does not do
 

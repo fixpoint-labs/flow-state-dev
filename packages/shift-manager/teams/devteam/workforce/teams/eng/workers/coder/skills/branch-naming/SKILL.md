@@ -1,6 +1,6 @@
 ---
 name: branch-naming
-description: How the coder seat names the work it leaves behind.
+description: How the coder worker names the work it leaves behind.
 ---
 
 Work on the branch you were given. Do not create another one.

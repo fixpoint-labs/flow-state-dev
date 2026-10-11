@@ -268,7 +268,7 @@ describe("defineScheduleCollection", () => {
    * never enters it (`resolveResourceScopeId`). So two organizations writing
    * through an unpinned flow cannot hold two different schedules at one key:
    * they hold the SAME resource, in the same cell, and the index's
-   * `(cell, key)` identity mirrors that exactly. (A hired seat is different:
+   * `(cell, key)` identity mirrors that exactly. (A hired worker is different:
    * it stores per (org, person), so each organization is its own cell — see
    * "one row per storage cell" below.)
    *
@@ -350,13 +350,13 @@ describe("defineScheduleCollection", () => {
 
   /**
    * A person can hold a schedule with one key in several storage cells at
-   * once: a hired seat per organization, plus their own app-wide cell. Each is
+   * once: a hired worker per organization, plus their own app-wide cell. Each is
    * its own schedule, so each is its own index row, and nothing written in one
    * cell may move or remove another cell's row.
    */
   describe("one row per storage cell", () => {
-    const ACME_SEAT = { ...HOOK_CTX, cell: "user-1:~org:org-acme", orgId: "org-acme" };
-    const GLOBEX_SEAT = { ...HOOK_CTX, cell: "user-1:~org:org-globex", orgId: "org-globex" };
+    const ACME_WORKER = { ...HOOK_CTX, cell: "user-1:~org:org-acme", orgId: "org-acme" };
+    const GLOBEX_WORKER = { ...HOOK_CTX, cell: "user-1:~org:org-globex", orgId: "org-globex" };
     const weekly = (orgId: string, over: Record<string, unknown> = {}) => ({
       cron: "0 0 * * 0",
       kind: "send-digest",
@@ -365,16 +365,16 @@ describe("defineScheduleCollection", () => {
       ...over,
     });
 
-    async function twoSeats() {
+    async function twoWorkers() {
       const index = createFakeIndex();
       const coll = defineScheduleCollection({ pattern: "schedules/*", index });
-      await coll.onInstanceCreated!("schedules/weekly", weekly("org-acme"), ACME_SEAT);
-      await coll.onInstanceCreated!("schedules/weekly", weekly("org-globex"), GLOBEX_SEAT);
+      await coll.onInstanceCreated!("schedules/weekly", weekly("org-acme"), ACME_WORKER);
+      await coll.onInstanceCreated!("schedules/weekly", weekly("org-globex"), GLOBEX_WORKER);
       return { index, coll };
     }
 
     it("writes one row per cell, each with its own cell, person and organization (BR-2)", async () => {
-      const { index } = await twoSeats();
+      const { index } = await twoWorkers();
       expect([...index.rows.values()].map((r) => [r.cell, r.userId, r.orgId, r.key])).toEqual([
         ["user-1:~org:org-acme", "user-1", "org-acme", "weekly"],
         ["user-1:~org:org-globex", "user-1", "org-globex", "weekly"],
@@ -382,49 +382,49 @@ describe("defineScheduleCollection", () => {
     });
 
     it("disabling in one cell leaves the other cell's row (BR-6)", async () => {
-      const { index, coll } = await twoSeats();
+      const { index, coll } = await twoWorkers();
       await coll.onInstanceUpdated!(
         "schedules/weekly",
         weekly("org-acme", { enabled: false }),
         weekly("org-acme"),
-        ACME_SEAT
+        ACME_WORKER
       );
       expect([...index.rows.keys()]).toEqual(["user-1:~org:org-globex/weekly"]);
     });
 
     it("deleting in one cell leaves the other cell's row (BR-6)", async () => {
-      const { index, coll } = await twoSeats();
-      await coll.onInstanceDeleted!("schedules/weekly", GLOBEX_SEAT);
+      const { index, coll } = await twoWorkers();
+      await coll.onInstanceDeleted!("schedules/weekly", GLOBEX_WORKER);
       expect([...index.rows.keys()]).toEqual(["user-1:~org:org-acme/weekly"]);
     });
 
     it("a cron that stops parsing removes only its own cell's row (BR-7)", async () => {
-      const { index, coll } = await twoSeats();
+      const { index, coll } = await twoWorkers();
       await coll.onInstanceUpdated!(
         "schedules/weekly",
         weekly("org-acme", { cron: "not a cron" }),
         weekly("org-acme"),
-        ACME_SEAT
+        ACME_WORKER
       );
       expect([...index.rows.keys()]).toEqual(["user-1:~org:org-globex/weekly"]);
     });
 
     it("an organization mismatch removes only its own cell's row (BR-8)", async () => {
-      const { index, coll } = await twoSeats();
+      const { index, coll } = await twoWorkers();
       await coll.onInstanceUpdated!(
         "schedules/weekly",
         weekly("org-initech"),
         weekly("org-acme"),
-        ACME_SEAT
+        ACME_WORKER
       );
       expect([...index.rows.keys()]).toEqual(["user-1:~org:org-globex/weekly"]);
     });
 
-    it("keeps the app-wide cell and a seat cell in one organization apart (BR-3)", async () => {
+    it("keeps the app-wide cell and a worker cell in one organization apart (BR-3)", async () => {
       const index = createFakeIndex();
       const coll = defineScheduleCollection({ pattern: "schedules/*", index });
       await coll.onInstanceCreated!("schedules/weekly", weekly(EXEC_ORG), HOOK_CTX);
-      await coll.onInstanceCreated!("schedules/weekly", weekly("org-acme"), ACME_SEAT);
+      await coll.onInstanceCreated!("schedules/weekly", weekly("org-acme"), ACME_WORKER);
       expect([...index.rows.keys()].sort()).toEqual([
         "user-1/weekly",
         "user-1:~org:org-acme/weekly",

@@ -19,11 +19,11 @@ export interface WorkerManifest {
   /**
    * The worker's identity and flow address. On a file-declared record it is one
    * of two declared shapes:
-   * - a team seat (`teams/<teamId>/workers/<name>/`) is "<teamId>.<name>", e.g. "engineering.lead";
-   * - an org seat (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "chief-of-staff".
+   * - a team worker (`teams/<teamId>/workers/<name>/`) is "<teamId>.<name>", e.g. "engineering.lead";
+   * - an org worker (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "chief-of-staff".
    * On a runtime hire it is the org-qualified address instead, and the declared
-   * id is {@link WorkerManifest.seatId}. To read a seat's team, parse
-   * `manifest.seatId ?? manifest.id` with `parseDeclaredSeatId` rather than
+   * id is {@link WorkerManifest.workerId}. To read a worker's team, parse
+   * `manifest.workerId ?? manifest.id` with `parseDeclaredWorkerId` rather than
    * splitting on the dot; never parse a hire's `id`, whose org reads as a team.
    * Dot-joined, not slash-joined: a "/" here is unroutable (decision 2).
    * Minted once, by the loader, in one helper — and the record's only identity field.
@@ -33,51 +33,51 @@ export interface WorkerManifest {
   declared: Record<string, unknown>;
   /**
    * The worker's instructions: Markdown body verbatim, frontmatter removed.
-   * Empty for a thin seat; reaches a hired flow as `config.instructions`.
+   * Empty for a thin worker; reaches a hired flow as `config.instructions`.
    */
   body: string;
   /**
-   * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union, already
+   * The skills this worker can see — the org ∪ team (team workers only) ∪ own-folder union, already
    * resolved, in level order.
    *
    * Filled by the joined loader (`readWorkforce`) and **absent on a hand-built
-   * record**, which is the difference between "this seat has no skills" and
+   * record**, which is the difference between "this worker has no skills" and
    * "nobody read any folders for it". A non-empty set reaches a hired flow as
-   * `config.seatSkills` ({@link SEAT_SKILLS_KEY}), the same way a body reaches
+   * `config.workerSkills` ({@link WORKER_SKILLS_KEY}), the same way a body reaches
    * it as `instructions`.
    *
    * Carried on the record rather than looked up at run time because a running
    * block deliberately cannot see which instance it is: the record is what the
-   * mint reads, so the record is where a per-seat set has to ride.
+   * mint reads, so the record is where a per-worker set has to ride.
    */
   skills?: InitialSkill[];
   /**
-   * The instructions this seat's TEAM wrote — its team's, never its own.
+   * The instructions this worker's TEAM wrote — its team's, never its own.
    *
    * Filled by the joined loader (`readWorkforce`) from the team's
    * {@link TEAM_MD}, and **absent on a hand-built record**, which is the
-   * difference between "this seat's team wrote none" and "nobody read a team
+   * difference between "this worker's team wrote none" and "nobody read a team
    * file for it" — the same shape and the same story as {@link
    * WorkerManifest.skills}.
    *
    * Absent rather than empty when a team wrote nothing, all the way down: it
    * reaches a hired flow as `config.teamInstructions` ({@link
    * TEAM_INSTRUCTIONS_KEY}) only when it is here, so a team with no file
-   * changes nothing about the bag its seats receive. Always absent on an org
-   * seat, which has no team.
+   * changes nothing about the bag its workers receive. Always absent on an org
+   * worker, which has no team.
    *
    * Never merged with {@link WorkerManifest.body}. Two layers that cannot be
-   * told apart at the seam are one layer, and a kind that wants only the seat's
+   * told apart at the seam are one layer, and a worker flow that wants only the worker's
    * own charter must be able to have it.
    */
   teamInstructions?: string;
   /**
-   * The packages this seat can reach — the org's library, its team's library,
+   * The packages this worker can reach — the org's library, its team's library,
    * and the ones in its own folder — in that order.
    *
    * Filled by the joined loader (`readWorkforce`), and **absent when none are
    * in reach**, as on a hand-built record. Reach is not holding: the hire
-   * gives the seat every package at the `worker` level and, from the two
+   * gives the worker every package at the `worker` level and, from the two
    * libraries, only the ones its file names in `packages:`.
    */
   packages?: PackageManifest[];
@@ -92,9 +92,9 @@ export interface WorkerManifest {
  * (which reads folders) and the join (which reads nothing) never hold two
  * spellings of one record.
  *
- * A team is not a seat. This record declares no flow, reaches no `hireWorkforce`
+ * A team is not a worker. This record declares no flow, reaches no `hireWorkforce`
  * roster, and mints no address — it carries what a team says about itself and
- * what it tells its seats, and nothing else.
+ * what it tells its workers, and nothing else.
  */
 export interface TeamManifest {
   /** The team's id, which is its folder's name. Derived, never declared. */
@@ -112,18 +112,18 @@ export interface TeamManifest {
   /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
   declared: Record<string, unknown>;
   /**
-   * What every seat on this team is told: the file's Markdown body, verbatim.
+   * What every worker on this team is told: the file's Markdown body, verbatim.
    *
    * **Absent when the body is empty or whitespace**, never `""`. Whitespace is
-   * not instructions — the rule the seat factory already applies one level up,
-   * where an empty body handed over as a setting turned every thin seat into a
+   * not instructions — the rule the worker factory already applies one level up,
+   * where an empty body handed over as a setting turned every thin worker into a
    * failed hire.
    */
   instructions?: string;
 }
 
 /**
- * The single setting name the seat factory imposes: where a worker's body
+ * The single setting name the worker factory imposes: where a worker's body
  * arrives in its flow's settings bag.
  *
  * Declared here rather than in the factory because both halves of the package
@@ -145,10 +145,10 @@ export const INSTRUCTIONS_KEY = "instructions";
 export const REFUSED_PERSONA_KEY = "persona";
 
 /**
- * `seatSkills` — imposed by the seat factory on every record, and where a
- * seat's resolved skill set arrives in its flow's settings bag.
+ * `workerSkills` — imposed by the worker factory on every record, and where a
+ * worker's resolved skill set arrives in its flow's settings bag.
  *
- * Spelled `seatSkills` rather than `skills` because the built-in kind's bag
+ * Spelled `workerSkills` rather than `skills` because the built-in worker flow's bag
  * already carries an author-written `skills` object (the always-on list and the
  * activate-tool switch). One key that is sometimes authored and sometimes
  * imposed is the `instructions`-versus-body collision again, and that one is
@@ -159,20 +159,20 @@ export const REFUSED_PERSONA_KEY = "persona";
  * the one spelling that is not theirs to accept. Two doors refusing two
  * spellings is the bug this constant prevents.
  */
-export const SEAT_SKILLS_KEY = "seatSkills";
+export const WORKER_SKILLS_KEY = "workerSkills";
 
 /**
- * `teamInstructions` — where a seat's TEAM-level instructions will arrive in
+ * `teamInstructions` — where a worker's TEAM-level instructions will arrive in
  * its flow's settings bag.
  *
  * Filled from the team's own {@link TEAM_MD}: the loader reads that file once
  * per team, joins its body onto every worker record under it, and the factory
- * imposes this key for the records that carry one. A kind reading it for a
- * seat whose team wrote none gets `undefined` — the key is ABSENT, never an
+ * imposes this key for the records that carry one. A worker flow reading it for a
+ * worker whose team wrote none gets `undefined` — the key is ABSENT, never an
  * empty string, so "this team said nothing" is not a value every team without
- * a file hands its seats.
+ * a file hands its workers.
  *
- * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link SEAT_SKILLS_KEY},
+ * Declared here, beside {@link INSTRUCTIONS_KEY} and {@link WORKER_SKILLS_KEY},
  * because it is the same sort of thing as both — a value the framework will
  * derive from where a file sits, never one a file declares — and for
  * the same reason they are here: every door that imposes or refuses it reads
@@ -183,7 +183,7 @@ export const SEAT_SKILLS_KEY = "seatSkills";
  * with it instead of leaving a door open with nothing said.
  *
  * The contract declared this key before anything filled it, and that was the
- * point: a kind composes the contract once and did not have to change again
+ * point: a worker flow composes the contract once and did not have to change again
  * when the team-level file arrived to fill it.
  */
 export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
@@ -193,7 +193,7 @@ export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
  * author types, and the architect's locked file contract.
  *
  * Optional, unlike every other file in this dialect: a team folder with no
- * {@link TEAM_MD} is not a problem of any kind, and its seats hire exactly as
+ * {@link TEAM_MD} is not a problem of any kind, and its workers hire exactly as
  * they do without one.
  */
 export const TEAM_MD = "TEAM.md";
@@ -226,9 +226,9 @@ export interface PackageManifest {
   path: string;
   /** Where the folder sits: the org's library, a team's library, or one worker's own folder. */
   level: "org" | "team" | "worker";
-  /** The team whose folder holds it. Set at the `team` level, and at the `worker` level for a team seat. */
+  /** The team whose folder holds it. Set at the `team` level, and at the `worker` level for a team worker. */
   team?: string;
-  /** The worker id (`<team>.<worker>`, or `<worker>` for an org seat) whose folder holds it. Set at the `worker` level only. */
+  /** The worker id (`<team>.<worker>`, or `<worker>` for an org worker) whose folder holds it. Set at the `worker` level only. */
   worker?: string;
   /** The file's required `description` — a label for people, never handed to a model. */
   description: string;
@@ -245,10 +245,10 @@ export interface PackageManifest {
  * refuses an authored one. Names no subject — the caller supplies what it can
  * name.
  *
- * Refused for the reason `seatSkills` is, and it is the sharper case of the
+ * Refused for the reason `workerSkills` is, and it is the sharper case of the
  * two: a flow whose `configSchema` composes the contract declares this key and
- * would take an authored one happily, so a seat could run on team instructions
- * its team never wrote — and only that seat, silently. A team's instructions
+ * would take an authored one happily, so a worker could run on team instructions
+ * its team never wrote — and only that worker, silently. A team's instructions
  * are its team's to write.
  */
 export const REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE =
@@ -262,11 +262,11 @@ export const REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE =
  *
  * - `id` is the folder's name. A derived field frontmatter can overwrite was
  *   never derived.
- * - `flow` would read this file as a second place a seat can be declared. A
- *   second seat list is the one failure this convention refuses outright — a
- *   team file describes a team, and every seat is a `WORKER.md`.
+ * - `flow` would read this file as a second place a worker can be declared. A
+ *   second worker list is the one failure this convention refuses outright — a
+ *   team file describes a team, and every worker is a `WORKER.md`.
  * - `instructions` is what the body already is, and two sources for one value
- *   have no precedence rule. The same collision the seat factory refuses rather
+ *   have no precedence rule. The same collision the worker factory refuses rather
  *   than resolves.
  *
  * {@link TEAM_INSTRUCTIONS_KEY} is refused too, and deliberately not from this
@@ -281,7 +281,7 @@ const REFUSED_TEAM_KEYS: ReadonlyArray<{ key: string; because: string }> = [
   {
     key: "flow",
     because:
-      `A ${TEAM_MD} describes a team, not a seat — every seat is a WORKER.md in ` +
+      `A ${TEAM_MD} describes a team, not a worker — every worker is a WORKER.md in ` +
       `this team's \`workers/\` folder.`,
   },
   {
@@ -322,21 +322,21 @@ export function refusedTeamDeclarationMessage(
 }
 
 /**
- * The one wording for {@link SEAT_SKILLS_KEY}, shared by the loader and the
- * seat factory. Names no subject — the caller supplies what it can name.
+ * The one wording for {@link WORKER_SKILLS_KEY}, shared by the loader and the
+ * worker factory. Names no subject — the caller supplies what it can name.
  *
  * Refused for the reason `persona` is: a flow whose `configSchema` declares
- * `seatSkills` would take an authored one happily, and the seat would run with
+ * `workerSkills` would take an authored one happily, and the worker would run with
  * a skill set nobody's folders back — silently, and only for that worker.
  */
-export const REFUSED_SEAT_SKILLS_KEY_MESSAGE =
-  `declares \`${SEAT_SKILLS_KEY}:\`, which is not a setting a worker declares. ` +
-  `A seat's skills are the folders it can see — the org's, its team's, and its own — ` +
+export const REFUSED_WORKER_SKILLS_KEY_MESSAGE =
+  `declares \`${WORKER_SKILLS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A worker's skills are the folders it can see — the org's, its team's, and its own — ` +
   `and reading them is the loader's job.`;
 
 /**
  * The one wording for {@link REFUSED_PERSONA_KEY}, shared by the loader and the
- * seat factory so a record gets the same answer whichever one reads it.
+ * worker factory so a record gets the same answer whichever one reads it.
  *
  * Written as the rule rather than as a change to it: a caller reading this has
  * a file to fix, not a history to catch up on. It names no subject, because the
@@ -349,7 +349,7 @@ export const REFUSED_PERSONA_KEY_MESSAGE =
   `\`configSchema\` must declare that key too.`;
 
 /**
- * A key a `SKILL.md` may not declare when it is read as part of a seat's set.
+ * A key a `SKILL.md` may not declare when it is read as part of a worker's set.
  *
  * A skill's scope is derived from where its folder sits — org, a team, or
  * beside a worker — so a file that declares one is contradicting the only thing
@@ -372,7 +372,7 @@ export const REFUSED_SKILL_SCOPE_KEY_MESSAGE =
   `Where a skill folder sits is what decides who can see it.`;
 
 /**
- * The one wording for a skill name that reaches a single seat from more than
+ * The one wording for a skill name that reaches a single worker from more than
  * one of the levels it reads.
  *
  * A function rather than a string because the useful part of this refusal is
@@ -383,121 +383,121 @@ export const REFUSED_SKILL_SCOPE_KEY_MESSAGE =
  */
 export const duplicateSkillNameMessage = (
   name: string,
-  seat: string,
+  worker: string,
   paths: string[],
 ): string =>
-  `Skill "${name}" reaches seat "${seat}" from ${paths.length} levels — ` +
+  `Skill "${name}" reaches worker "${worker}" from ${paths.length} levels — ` +
   `${paths.join(" and ")}. Remove one: there is no precedence rule.`;
 
 /**
- * `seatTools` — imposed by the seat factory on every record, and where the
- * blocks a seat's `tools:` resolved to **from its own levels** arrive in its
+ * `workerTools` — imposed by the worker factory on every record, and where the
+ * blocks a worker's `tools:` resolved to **from its own levels** arrive in its
  * flow's settings bag.
  *
  * The fourth contract key, and the one that carries live blocks rather than
  * strings. A tool name in a `WORKER.md` resolves worker folder → team folder →
  * the app's catalog, first match wins; the first two resolve to a block the
  * hire step already holds, and they ride here, already resolved. The names that
- * fell through to the app's catalog stay in `tools:`, which is what the kind
+ * fell through to the app's catalog stay in `tools:`, which is what the worker flow
  * checks its catalog against.
  *
- * Spelled `seatTools` rather than `seatBlocks` because the two are different
+ * Spelled `workerTools` rather than `workerBlocks` because the two are different
  * things and one name for both is the collision this package refuses rather
- * than resolves: `seatBlocks` is the generated map of what a seat's folders
- * REGISTER, and this is the subset the seat's file DECLARED out of it.
+ * than resolves: `workerBlocks` is the generated map of what a worker's folders
+ * REGISTER, and this is the subset the worker's file DECLARED out of it.
  * Registration makes a name resolvable; declaration grants use.
  *
- * Declared here for the reason {@link SEAT_SKILLS_KEY} is: the factory imposes
+ * Declared here for the reason {@link WORKER_SKILLS_KEY} is: the factory imposes
  * it, every door refuses an authored one, and two spellings of one key is the
  * bug.
  */
-export const SEAT_TOOLS_KEY = "seatTools";
+export const WORKER_TOOLS_KEY = "workerTools";
 
 /**
- * The one wording for {@link SEAT_TOOLS_KEY}, shared by every door that refuses
+ * The one wording for {@link WORKER_TOOLS_KEY}, shared by every door that refuses
  * an authored one. Names no subject — the caller supplies what it can name.
  *
- * Refused for the reason `seatSkills` is: a kind composing the contract
- * declares this key and would take an authored one happily, so a seat could run
- * carrying tools no folder of its backs — and only that seat, silently.
+ * Refused for the reason `workerSkills` is: a worker flow composing the contract
+ * declares this key and would take an authored one happily, so a worker could run
+ * carrying tools no folder of its backs — and only that worker, silently.
  */
-export const REFUSED_SEAT_TOOLS_KEY_MESSAGE =
-  `declares \`${SEAT_TOOLS_KEY}:\`, which is not a setting a worker declares. ` +
-  `A seat names its tools in \`tools:\`, and resolving each name against the blocks its ` +
+export const REFUSED_WORKER_TOOLS_KEY_MESSAGE =
+  `declares \`${WORKER_TOOLS_KEY}:\`, which is not a setting a worker declares. ` +
+  `A worker names its tools in \`tools:\`, and resolving each name against the blocks its ` +
   `folders register is the loader's job.`;
 
 /**
  * `packages` — the `WORKER.md` key a worker takes packages from its team's or
  * the org's library with, by name: `packages: [escalation]`.
  *
- * Read by the hire step and never handed to a kind as a setting, like
+ * Read by the hire step and never handed to a worker flow as a setting, like
  * `resources:`. A package in the worker's own folder needs no line here.
  */
 export const PACKAGES_KEY = "packages";
 
 /**
- * `seatPackages` — imposed by the seat factory, and where the packages a seat
+ * `workerPackages` — imposed by the worker factory, and where the packages a worker
  * HOLDS arrive in its flow's settings bag: each one's name, address,
  * instructions and blocks.
  *
- * **Imposed only on a seat that holds at least one package**, the way
- * `teamInstructions` is imposed only on a seat whose team wrote some. A seat
- * holding none carries no such key, so every kind that hires today keeps
- * hiring; a hand-rolled kind that has not declared it is refused, by name, the
- * first time a seat of it holds a package, rather than dropping the package.
+ * **Imposed only on a worker that holds at least one package**, the way
+ * `teamInstructions` is imposed only on a worker whose team wrote some. A worker
+ * holding none carries no such key, so every worker flow that hires today keeps
+ * hiring; a hand-rolled flow that has not declared it is refused, by name, the
+ * first time a worker of it holds a package, rather than dropping the package.
  *
- * Its own key rather than {@link SEAT_TOOLS_KEY}, whose meaning is what the
- * seat's `tools:` line named. What a kind does with a held package is the
- * kind's: the built-in `agent` kind puts the instructions in the prompt after
- * the team's and the seat's own, and offers the blocks when the seat wrote no
+ * Its own key rather than {@link WORKER_TOOLS_KEY}, whose meaning is what the
+ * worker's `tools:` line named. What a worker flow does with a held package is the
+ * flow's: the built-in `agent` worker flow puts the instructions in the prompt after
+ * the team's and the worker's own, and offers the blocks when the worker wrote no
  * `tools:` line.
  */
-export const SEAT_PACKAGES_KEY = "seatPackages";
+export const WORKER_PACKAGES_KEY = "workerPackages";
 
 /**
- * The one wording for {@link SEAT_PACKAGES_KEY}, shared by every door that
+ * The one wording for {@link WORKER_PACKAGES_KEY}, shared by every door that
  * refuses an authored one. Names no subject — the caller supplies what it can
  * name.
  */
-export const REFUSED_SEAT_PACKAGES_KEY_MESSAGE =
-  `declares \`${SEAT_PACKAGES_KEY}:\`, which is not a setting a worker declares. ` +
-  `A seat holds the packages in its own \`${PACKAGES_KEY}/\` folder and the ones its ` +
+export const REFUSED_WORKER_PACKAGES_KEY_MESSAGE =
+  `declares \`${WORKER_PACKAGES_KEY}:\`, which is not a setting a worker declares. ` +
+  `A worker holds the packages in its own \`${PACKAGES_KEY}/\` folder and the ones its ` +
   `\`${PACKAGES_KEY}:\` line names, and reading them is the loader's job.`;
 
 /**
- * `seatId` — imposed by the seat factory on every record: the seat's own id,
+ * `workerId` — imposed by the worker factory on every record: the worker's own id,
  * the record id a team's `members:` lists.
  *
- * A block cannot see which seat it runs in, because core keeps the flow's id
- * off the block context. The seat's settings are the one per-seat fact a block
- * can read, so this is how a block inside a seat signs what it files or posts
- * (`ctx.flow.config.seatId`).
+ * A block cannot see which worker it runs in, because core keeps the flow's id
+ * off the block context. The worker's settings are the one per-worker fact a block
+ * can read, so this is how a block inside a worker signs what it files or posts
+ * (`ctx.flow.config.workerId`).
  *
  * **Imposed on every record, never authored.** Refused by name at every door
- * for the sharpest version of `seatSkills`'s reason: every composed kind
- * declares it, so an authored one would be accepted and the seat could sign as
- * any other seat on the roster.
+ * for the sharpest version of `workerSkills`'s reason: every composed worker flow
+ * declares it, so an authored one would be accepted and the worker could sign as
+ * any other worker on the roster.
  */
-export const SEAT_ID_KEY = "seatId";
+export const WORKER_ID_KEY = "workerId";
 
 /**
- * The one wording for {@link SEAT_ID_KEY}, shared by every door that refuses
+ * The one wording for {@link WORKER_ID_KEY}, shared by every door that refuses
  * an authored one. Names no subject — the caller supplies what it can name.
  */
-export const REFUSED_SEAT_ID_KEY_MESSAGE =
-  `declares \`${SEAT_ID_KEY}:\`, which is not a setting a worker declares. ` +
-  `A seat's id is its record's id, and the hire step hands it to every seat.`;
+export const REFUSED_WORKER_ID_KEY_MESSAGE =
+  `declares \`${WORKER_ID_KEY}:\`, which is not a setting a worker declares. ` +
+  `A worker's id is its record's id, and the hire step hands it to every worker.`;
 
 /**
  * The one wording for a package block that declares its own resources — the
  * package form of {@link colocatedResourceMessage}, refused for its reason: a
- * package is held per seat and a store is the kind's.
+ * package is held per worker and a store is the worker flow's.
  */
 export const packageResourceMessage = (packagePath: string, key: string, accessors: string[]): string =>
   `holds package "${packagePath}", whose block "${key}" declares ` +
-  `${accessors.map((a) => `"${a}"`).join(", ")}. A package is held by one seat at a time and a ` +
-  `store is the kind's, so there is nowhere to install it that would not also install it for ` +
-  `every other seat of this kind. Declare the store on the kind ` +
+  `${accessors.map((a) => `"${a}"`).join(", ")}. A package is held by one worker at a time and a ` +
+  `store is the worker flow's, so there is nowhere to install it that would not also install it for ` +
+  `every other worker on this flow. Declare the store on the worker flow ` +
   `(\`defineAgentWorkerFlow({ uses })\`) and let the block use it.`;
 
 /**
@@ -505,33 +505,33 @@ export const packageResourceMessage = (packagePath: string, key: string, accesso
  * match — the one-name rule, on either map.
  *
  * A function rather than a string because the useful part is the two spellings
- * and which of them the model would have been advertised: a seat authorizes by
+ * and which of them the model would have been advertised: a worker authorizes by
  * the map's key and the generator advertises the block's own `name`, so a
- * disagreement is a seat authorizing one tool and a model calling another. The
+ * disagreement is a worker authorizing one tool and a model calling another. The
  * caller names the map, because the two maps are refused at different doors —
- * the app's catalog when the kind is built, a seat's own when it is hired.
+ * the app's catalog when the worker flow is built, a worker's own when it is hired.
  */
 export const oneNameMessage = (key: string, blockName: string, whichMap: string): string =>
   `${whichMap} registers "${key}", and the block under that key calls itself "${blockName}". ` +
   `One tool has one name: the file's, the map key's and the block's own must agree. ` +
-  `The model would be advertised "${blockName}", so a seat authorizing "${key}" would never ` +
+  `The model would be advertised "${blockName}", so a worker authorizing "${key}" would never ` +
   `reach it. Rename the block to "${key}", or rename the file to "${blockName}".`;
 
 /**
- * The one wording for a block that arrives on a seat's own map and declares its
+ * The one wording for a block that arrives on a worker's own map and declares its
  * own resources.
  *
- * A seat's folder is ONE seat's and a store is the kind's, so there is nowhere
- * to install it that does not also install it for every sibling seat of that
- * kind. Refused by name at the door, with both fixes, because the alternative
+ * A worker's folder is ONE worker's and a store is the worker flow's, so there is nowhere
+ * to install it that does not also install it for every sibling worker on that
+ * flow. Refused by name at the door, with both fixes, because the alternative
  * is the defect this epic exists to kill: the tool is hired, advertised to the
  * model, called, and its handle is simply not there.
  */
 export const colocatedResourceMessage = (key: string, accessors: string[]): string =>
   `registers block "${key}" in its own folder, and that block declares ` +
-  `${accessors.map((a) => `"${a}"`).join(", ")}. A seat's own folder is one seat's and a store ` +
-  `is the kind's, so there is nowhere to install it that would not also install it for every ` +
-  `other seat of this kind. Either declare the store on the kind ` +
+  `${accessors.map((a) => `"${a}"`).join(", ")}. A worker's own folder is one worker's and a store ` +
+  `is the worker flow's, so there is nowhere to install it that would not also install it for every ` +
+  `other worker on this flow. Either declare the store on the worker flow ` +
   `(\`defineAgentWorkerFlow({ uses })\`), or move the block to \`workforce/blocks/\` and name ` +
   `it in this worker's \`tools:\`.`;
 

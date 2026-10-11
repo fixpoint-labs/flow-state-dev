@@ -138,7 +138,7 @@ This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both
 
 ### Hiring while the app runs
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
+Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
 
@@ -148,16 +148,16 @@ export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -H 'content-type: application/json' \
   -H "authorization: Bearer dev-token" \
-  -d '{"userId":"you","input":{"seatId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
+  -d '{"userId":"you","input":{"workerId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
 ```
 
 The admin hire goes over HTTP because the admin flow checks a token and the CLI carries none.
 
-The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
+The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A worker the admin action hires belongs to the operator who hired it.
 
-The admin flow also has a `fire` action, which removes a seat the admin action hired. A hired seat doesn't show in the rail and doesn't join `support.help`: a coordinator's delegates are the ones its file names. The page has no control for hiring.
+The admin flow also has a `fire` action, which removes a worker the admin action hired. A hired worker doesn't show in the rail and doesn't join `support.help`: a coordinator's delegates are the ones its file names. The page has no control for hiring.
 
-The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
+The worker answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the worker is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The worker carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
 
 ```bash
 curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.new-hire/actions/run \
@@ -166,14 +166,14 @@ curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.new-
   -d '{"userId":"you","input":{"message":"Where is my order?"}}'
 ```
 
-Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
+Restart the app and ask the worker something. The reload runs at startup, before the app serves anything, and reports any worker it could not bring back.
 
 ## The page (`app/`)
 
 - **Layout**: three columns. A `FlowNavigator` rail over your conversations with the coordinator, with workers, and with the assistant; the stream; and a standing panel with the roster (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
 - **Coordinators**: Open `support.help` in the rail to read your conversation with it and post. Your post calls the coordinator flow's `run` action, the same one the [HTTP call above](#posting-to-the-coordinator-over-http) reaches, and appears as `devuser`, the one user this app runs as. Answers appear while the view is open, and the view shows which specialist is working.
-- **Seats**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
-- **Roster**: The team panel's roster lists seats [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no seats have been hired in this organization yet, while the rail lists the four specialists.
+- **Workers**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
+- **Roster**: The team panel's roster lists workers [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no workers have been hired in this organization yet, while the rail lists the four specialists.
 - **Session management**: Open the assistant in the rail and press the **+** on its row (New session) to start a session. Its sessions are listed under it; pick one to switch to it.
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
@@ -232,7 +232,7 @@ Most are optional. These are the ones you're likely to set:
 | `OPENAI_API_KEY` | Optional. Enables voice. |
 | `KITCHEN_SINK_TEST_MODE` | `1` runs every model as a script and needs no key. See [Without a model key](#without-a-model-key). |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
-| `STORE_TYPE` | `filesystem` keeps sessions and hired seats in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
+| `STORE_TYPE` | `filesystem` keeps sessions and hired workers in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
 | `REDIS_URL` | Redis for BullMQ background jobs, local dev only. `docker compose -f docker-compose.dev.yml up -d`, run from `apps/kitchen-sink`, starts one. |
 | `FSD_BULLMQ_DISPATCH` | `1` sends every action dispatch through the BullMQ queue instead of running it in process. Needs `REDIS_URL`. |
@@ -305,7 +305,7 @@ apps/kitchen-sink/
     flow-state/              Shared item-renderer UI (installed from @flow-state-dev/ui)
     chat-agent/              chat-agent-specific renderers
     ui/                      shadcn/ui primitives
-    ...                      Shared app UI (team panel, seat pane, mode selector, etc.)
+    ...                      Shared app UI (team panel, worker pane, mode selector, etc.)
   lib/
     flowstate.ts             Re-exports the FlowState from fsdev.config.ts for routes and the CLI
     mcp.ts                   Optional MCP capability (env-gated)

@@ -49,8 +49,8 @@ async function board(options: { immutableAssignee?: boolean } = {}): Promise<Tas
   });
 }
 
-/** A seat that hands off — what makes a board freeze its assignees. */
-function seat(name: string): TaskWorker {
+/** An assignee that hands off — what makes a board freeze its assignees. */
+function assignee(name: string): TaskWorker {
   return dispatcher({
     name,
     type: "task",
@@ -329,13 +329,13 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
     });
   }
 
-  it("declines reassignment through the board capability when a seat hands off", async () => {
+  it("declines reassignment through the board capability when an assignee hands off", async () => {
     const name = "wired-hand-off-board";
     const boardHandle = taskBoard({
       name,
       boardId: "wired-hand-off",
       collection: defineTaskCollection({ id: "wired-hand-off-coll", scope: "user" }),
-      workers: { implement: seat("wired-impl") },
+      workers: { implement: assignee("wired-impl") },
     });
 
     const result = await testBlock(reassignThroughCapability(boardHandle, name), {
@@ -349,8 +349,8 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
     });
   });
 
-  it("leaves reassignment working on a durable board with no dispatcher seat", async () => {
-    // Same backing, same resolution path — only the seat differs. Without
+  it("leaves reassignment working on a durable board with no dispatcher assignee", async () => {
+    // Same backing, same resolution path — only the assignee differs. Without
     // this, a guard keyed on "durable" rather than "hands off"
     // would pass the test above and quietly freeze every durable board.
     const name = "wired-inline-board";
@@ -380,7 +380,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
  * unbypassable from inside that board. It says nothing about a second board.
  *
  * Two boards may bind the same `defineTaskCollection` value, and only one of them
- * need declare a dispatcher seat. They then share rows: the handed-off board routes
+ * need declare a dispatcher assignee. They then share rows: the handed-off board routes
  * those rows by assignee, and the sibling holds a ref that was built with no such
  * rule. A `setAssignee` through the sibling succeeds, and the handed-off board
  * watches its routing key move underneath it — the exact failure the guard
@@ -424,7 +424,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
 
   it("declines through a sibling board that shares the ledger and hands nothing off", async () => {
     // User-scoped, and every hand-off fixture below matches: a board with a
-    // dispatcher seat is refused at construction on a session-scoped collection,
+    // dispatcher assignee is refused at construction on a session-scoped collection,
     // because a child session runs in its own session and would resolve an empty
     // ledger. Scope is incidental to the freeze policy under test here — what
     // matters is that two boards share one ledger.
@@ -434,7 +434,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       name: "hand-off-owner-a",
       boardId: "hand-off-owner-a",
       collection: ledger,
-      workers: { implement: seat("owner-impl-a") },
+      workers: { implement: assignee("owner-impl-a") },
     });
 
     const sibling = taskBoard({
@@ -469,7 +469,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       name: "hand-off-owner-b",
       boardId: "hand-off-owner-b",
       collection: ledger,
-      workers: { implement: seat("owner-impl-b") },
+      workers: { implement: assignee("owner-impl-b") },
     });
 
     const result = await testBlock(reassignThroughCapability(sibling, "sibling-b"), {
@@ -484,7 +484,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
   });
 
   it("leaves two boards sharing a ledger alone when neither hands off", async () => {
-    // The promotion is driven by a dispatcher seat, not by sharing. Without
+    // The promotion is driven by a dispatcher assignee, not by sharing. Without
     // this, "freeze the ledger" could degrade into "freeze anything shared".
     const ledger = defineTaskCollection({ id: "shared-ledger-c", scope: "session" });
 
@@ -525,7 +525,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         name: "invalid-hand-off-e",
         // no boardId — refused
         collection: ledger,
-        workers: { implement: seat("owner-impl-e") },
+        workers: { implement: assignee("owner-impl-e") },
       })
     ).toThrow(/no boardId/);
 
@@ -556,7 +556,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         name: "invalid-hand-off-f",
         boardId: "invalid-hand-off-f",
         collection: ledger,
-        workers: { implement: seat("owner-impl-f") },
+        workers: { implement: assignee("owner-impl-f") },
       })
     ).toThrow(/session-scoped collection/);
 
@@ -587,7 +587,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       name: "hand-off-owner-d",
       boardId: "hand-off-owner-d",
       collection: handOffLedger,
-      workers: { implement: seat("owner-impl-d") },
+      workers: { implement: assignee("owner-impl-d") },
     });
 
     const unrelated = taskBoard({

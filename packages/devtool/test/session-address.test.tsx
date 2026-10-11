@@ -25,8 +25,8 @@ vi.mock("../src/react/lib/client", () => ({
 import { DevToolProvider, useDevTool } from "../src/react/context/devtool-context";
 import { readSessionAddress, writeSessionHint } from "../src/react/config";
 
-const seatA: FlowListEntry = { id: "eng.em", kind: "em", cardinality: "collection", requireUser: false, actions: [] };
-const seatB: FlowListEntry = { id: "eng.coder", kind: "coder", cardinality: "collection", requireUser: false, actions: [] };
+const workerA: FlowListEntry = { id: "eng.em", kind: "em", cardinality: "collection", requireUser: false, actions: [] };
+const workerB: FlowListEntry = { id: "eng.coder", kind: "coder", cardinality: "collection", requireUser: false, actions: [] };
 
 let ctx: ReturnType<typeof useDevTool>;
 function Probe() {
@@ -65,7 +65,7 @@ describe("opening a session from its address", () => {
   beforeEach(() => {
     localStorage.clear();
     // A fresh array per read, as the wire gives one.
-    listFlows.mockReset().mockImplementation(async () => [seatA, seatB]);
+    listFlows.mockReset().mockImplementation(async () => [workerA, workerB]);
     getSession.mockReset();
   });
 
@@ -109,8 +109,8 @@ describe("opening a session from its address", () => {
   });
 
   it("wins over a saved session for the owning instance, even when that instance opens first", async () => {
-    // The operator was last on dsx_old under the coder seat. The link names
-    // dsx_run under the same seat. The saved session must not take the
+    // The operator was last on dsx_old under the coder worker. The link names
+    // dsx_run under the same worker. The saved session must not take the
     // workspace while the link's read is still in flight.
     writeSessionHint({ baseUrl: undefined, userId: "u1", flowId: "eng.coder" }, "dsx_old");
     const linkRead = deferred<unknown>();

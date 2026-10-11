@@ -64,7 +64,7 @@ export function verifiedWorkerOf(session: object): string | undefined {
  *
  * @param ctx Any block's context.
  */
-export function seatConfigOf(ctx: {
+export function turnConfigOf(ctx: {
   readonly session: object;
   readonly flow?: { readonly config: unknown };
 }): Readonly<Record<string, unknown>> {

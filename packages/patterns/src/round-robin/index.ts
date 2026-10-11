@@ -76,7 +76,7 @@ export { createSynthesize } from "./blocks/default-synthesizer";
 export { createInitContributions } from "./blocks/init-contributions";
 export { createRecordContribution } from "./blocks/record-contribution";
 
-/** A single seat in the round-robin roster. */
+/** A single worker in the round-robin roster. */
 export interface RosterEntry {
   /**
    * Stable name used for context attribution and as the audit task's

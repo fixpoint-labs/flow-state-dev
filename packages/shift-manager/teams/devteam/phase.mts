@@ -4,12 +4,12 @@
  * Two halves, and the split is the whole claim:
  *
  * - **`buildPrompt` leads with the task the manager hands over** (`run.task`,
- *   the work a person approved or posted), **then is composed out of the seat's
+ *   the work a person approved or posted), **then is composed out of the worker's
  *   own configuration**: the worker the run's session names, loaded through
  *   the block context the manager hands it.
- *   Nothing here names a file, a seat or a token: the instructions are the
- *   `WORKER.md` body the mint put on the seat, the brief is whatever ref that
- *   seat's own frontmatter declared, and the conventions are the skill union
+ *   Nothing here names a file, a worker or a token: the instructions are the
+ *   `WORKER.md` body the mint put on the worker, the brief is whatever ref that
+ *   worker's own frontmatter declared, and the conventions are the skill union
  *   the tree resolved for it. That is what makes BR-10 gradeable — the prompt
  *   carries three tokens that live in three different files and in none of
  *   this lab's code.
@@ -40,7 +40,7 @@ import type {
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { runAcceptance } from "./acceptance.mts";
-import type { SeatOf } from "./seat-config.mts";
+import type { WorkerOf } from "./worker-config.mts";
 
 /** The phase segment of every run record's topic, and of every row filed here. */
 export const PHASE = "implement";
@@ -53,10 +53,10 @@ export const PHASE = "implement";
 type ValidatedWorkspace = { baseRef: string } | { host: true };
 
 /**
- * Compose the prompt: the task first, then the seat that was woken.
+ * Compose the prompt: the task first, then the worker that was woken.
  *
  * The task is the job, as the board handed it over (`run.task`): what a person
- * approved or posted, word for word. The seat's files are how this team works:
+ * approved or posted, word for word. The worker's files are how this team works:
  * its instructions, its standing brief and its conventions. Where the two
  * disagree, the task wins, which is why it comes first. The run's terms close
  * it.
@@ -65,25 +65,25 @@ type ValidatedWorkspace = { baseRef: string } | { host: true };
  * environment.
  *
  * Exported because the honesty check grades the same prompt the gate does: one
- * builder, two harnesses, which is the only way "the prompt carried the seat's
+ * builder, two harnesses, which is the only way "the prompt carried the worker's
  * own files" means the same thing in both halves.
  *
  * @param run What the manager hands a prompt builder for this attempt.
  * @param options The phase's options: how the run's worker is loaded, and
  *   whether acceptance decides.
  * @returns The prompt.
- * @throws If the seat declares a document it does not hold — a seat reading
+ * @throws If the worker declares a document it does not hold — a worker reading
  *   nothing is the silent pass this whole lab exists to refuse, so it is loud.
  */
-export async function buildSeatPrompt(
+export async function buildWorkerPrompt(
   run: PromptRunContext,
   options: ImplementPhaseOptions,
 ): Promise<string> {
-  const { seat } = await seatSections(run, options.seatOf);
+  const { worker } = await workerSections(run, options.workerOf);
 
   return [
     ...(options.dropTask === true ? [] : taskSection(run.task)),
-    ...seat,
+    ...worker,
     `# Where and how to work`,
     ``,
     `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
@@ -106,34 +106,34 @@ export async function buildSeatPrompt(
  * phases carry them, so a coder works the same way whichever board its task
  * came from.
  *
- * @throws If the seat declares a document it does not hold.
+ * @throws If the worker declares a document it does not hold.
  */
-async function seatSections(
+async function workerSections(
   run: PromptRunContext,
-  seatOf: SeatOf,
-): Promise<{ seat: string[] }> {
+  workerOf: WorkerOf,
+): Promise<{ worker: string[] }> {
   const ctx = run.ctx;
-  const { config } = await seatOf(ctx as never);
+  const { config } = await workerOf(ctx as never);
 
   const documentRef = config.document;
   if (documentRef === undefined) {
     throw new Error(
-      `the seat handed row ${run.issue} declares no \`document:\`, so it has no brief to ` +
-        `work from. Every seat of this kind names one file-declared document.`,
+      `the worker handed row ${run.issue} declares no \`document:\`, so it has no brief to ` +
+        `work from. Every worker on this flow names one file-declared document.`,
     );
   }
   const ref = ctx.resources[documentRef];
   if (ref === undefined) {
     throw new Error(
-      `the seat handed row ${run.issue} names document "${documentRef}", which is not ` +
+      `the worker handed row ${run.issue} names document "${documentRef}", which is not ` +
         `installed on its flow. Installed: ${Object.keys(ctx.resources).join(", ")}`,
     );
   }
   const brief = (await (ref as { readContent(): Promise<string | null> }).readContent()) ?? "";
 
-  const skills = config.seatSkills ?? [];
+  const skills = config.workerSkills ?? [];
   return {
-    seat: [
+    worker: [
       `# Your instructions`,
       ``,
       (config.instructions ?? "").trim(),
@@ -153,7 +153,7 @@ async function seatSections(
 /**
  * The most of each of `deps` and `priorWork` a prompt carries, in characters of
  * its JSON. The task leads the prompt, so an uncapped dependency output would
- * push the seat's files and the run's terms toward the end of the context. The
+ * push the worker's files and the run's terms toward the end of the context. The
  * goal and context are never capped: they are what a person wrote.
  */
 const MAX_TASK_OUTPUT_CHARS = 4_000;
@@ -287,8 +287,8 @@ async function hasNewCommit(workspacePath: string, baseRef: string): Promise<boo
  * its own.
  */
 export interface ImplementPhaseOptions {
-  /** How a run loads the worker its session names: `seatOf(installation, CODER_KIND)`. */
-  seatOf: SeatOf;
+  /** How a run loads the worker its session names: `workerOf(installation, CODER_FLOW)`. */
+  workerOf: WorkerOf;
   /**
    * Also require the brief's acceptance check to pass before the row settles.
    *
@@ -317,14 +317,14 @@ export interface ImplementPhaseOptions {
 /**
  * Build the implement phase.
  *
- * @param options `seatOf` to load the run's worker, `requireAcceptance` to add
+ * @param options `workerOf` to load the run's worker, `requireAcceptance` to add
  *   the brief's condition to the done-condition. See {@link ImplementPhaseOptions}.
- * @returns The phase spec to hand the coder kind.
+ * @returns The phase spec to hand the coder worker flow.
  */
 export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec {
   return {
     phase: PHASE,
-    buildPrompt: (run: PromptRunContext) => buildSeatPrompt(run, options),
+    buildPrompt: (run: PromptRunContext) => buildWorkerPrompt(run, options),
     isDone: async (context: CompletionRunContext) => {
       // **The run itself says it ran out of road, so a commit is not the job.**
       // Checked before the probe: "a commit the base ref lacks" is the weakest
@@ -382,8 +382,8 @@ export const ANSWER_PHASE = "answer";
 
 /** What the answer phase is built from. */
 export interface AnswerPhaseOptions {
-  /** How a run loads the worker its session names: `seatOf(installation, CODER_KIND)`. */
-  seatOf: SeatOf;
+  /** How a run loads the worker its session names: `workerOf(installation, CODER_FLOW)`. */
+  workerOf: WorkerOf;
 }
 
 /**
@@ -399,10 +399,10 @@ export interface AnswerPhaseOptions {
  * @returns The prompt.
  */
 export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPhaseOptions): Promise<string> {
-  const { seat } = await seatSections(run, options.seatOf);
+  const { worker } = await workerSections(run, options.workerOf);
   return [
     ...taskSection(run.task),
-    ...seat,
+    ...worker,
     `# Where and how to work`,
     ``,
     `Task ${run.issue}, attempt ${run.attempt}.`,

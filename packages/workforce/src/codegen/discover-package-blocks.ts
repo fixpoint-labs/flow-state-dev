@@ -5,9 +5,9 @@
  * A package's tools are blocks like any other, found the way every block in
  * the tree is found — from the tree's shape, at build time, without opening a
  * module — so a bundled deploy registers exactly what a local one does. What
- * this door adds over the seat-blocks door beside it is only WHERE it looks,
- * and what it keys a block by: the package's address, not a seat. Which seat
- * may call a package's block is decided at the hire, from which seats hold the
+ * this door adds over the worker-blocks door beside it is only WHERE it looks,
+ * and what it keys a block by: the package's address, not a worker. Which worker
+ * may call a package's block is decided at the hire, from which workers hold the
  * package; nothing here grants anything.
  *
  * A package's text is not read here. `PACKAGE.md` is the loader's; this door
@@ -31,7 +31,7 @@ import {
   validateSegment,
   walkTeams,
 } from "../loader";
-import { BLOCKS_SLOT, readBlocksSlot } from "./discover-seat-blocks";
+import { BLOCKS_SLOT, readBlocksSlot } from "./discover-worker-blocks";
 
 /** Where a package's blocks may sit, as the command reports it. */
 export const PACKAGE_BLOCK_SLOT_PATTERNS: readonly string[] = Object.freeze([
@@ -109,7 +109,7 @@ async function readWorkerPackagesSlots(
     if ((await classify(workerDir)).kind !== "directory") continue;
     // A badly named worker folder is the worker reader's to report, and the
     // loader skips its packages; so does this walk, or it would generate
-    // blocks for a package no seat can hold.
+    // blocks for a package no worker can hold.
     try {
       validateSegment(workerName, "Worker");
     } catch {

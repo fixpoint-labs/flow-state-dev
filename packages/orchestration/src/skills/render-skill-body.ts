@@ -23,9 +23,9 @@
  * The fix is phrasing, not plumbing, because the honest sentence is the only
  * one this function is in a position to write. It is handed a collection, a
  * name, a mount path and an argument string — it cannot see the consuming
- * generator's tool list, and for a workforce seat that list is assembled per
- * turn: from `ctx.flow.config.tools` plus the seat's own colocated blocks,
- * which are not catalog keys at all, when the seat wrote a `tools:` line; and
+ * generator's tool list, and for a workforce worker that list is assembled per
+ * turn: from `ctx.flow.config.tools` plus the worker's own colocated blocks,
+ * which are not catalog keys at all, when the worker wrote a `tools:` line; and
  * from the tools of the capability presets it picked when it wrote none. An
  * intersection rendered here would be a
  * guess wearing the same grant-shaped sentence. So: describe the skill, say
@@ -47,9 +47,9 @@ import { stripFrontmatter } from "./internal/strip-frontmatter";
  * which is a weaker check than it looks: "only these tools are usable" would
  * have satisfied every one of them.
  *
- * It says **"this generator"**, never "this seat". This renderer is shared by
+ * It says **"this generator"**, never "this worker". This renderer is shared by
  * both skill entry points, and the legacy `createSkillsCapability` attaches to
- * an ordinary generator with no seat anywhere — "seat" is workforce
+ * an ordinary generator with no worker anywhere — "worker" is workforce
  * vocabulary, and on that path it would be undefined terminology in a model's
  * prompt.
  *

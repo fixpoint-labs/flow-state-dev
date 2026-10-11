@@ -14,15 +14,15 @@ import { clearHandedLine, handToChiefOfStaff, useHandedLine } from "../src/lib/o
 import { GAPS as gaps } from "../src/gaps";
 import { JumpTo } from "../src/surfaces/JumpTo";
 
-const withSeats = (seats: unknown[]) =>
+const withWorkers = (workers: unknown[]) =>
   ({
     orgId: "org",
     sessions: [],
     boards: {},
     resources: { ok: true, value: [] },
-    inventory: { ok: true, value: { workstreams: [], seats } },
+    inventory: { ok: true, value: { workstreams: [], workers } },
   }) as unknown as LoadedSnapshot;
-const snapshot = withSeats([{ id: "chief-of-staff", kind: "agent", door: "talk" }]);
+const snapshot = withWorkers([{ id: "chief-of-staff", kind: "agent", door: "talk" }]);
 
 afterEach(() => {
   cleanup();
@@ -56,7 +56,7 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
 
   it("stays open with the reason when there is no Coordinator, and hands nothing over", () => {
     const onClose = vi.fn();
-    render(<JumpTo snapshot={withSeats([])} gaps={gaps} onClose={onClose} />);
+    render(<JumpTo snapshot={withWorkers([])} gaps={gaps} onClose={onClose} />);
     type("> hello");
     enter();
     expect(screen.getByTestId("jump-message-failure")).toBeTruthy();

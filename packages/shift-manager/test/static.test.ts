@@ -6,7 +6,7 @@
  * as that item's own installed file beside the copies, and its look is the
  * design-system package's one import.
  *
- * The tree names are read from the two goal trees themselves, so a seat
+ * The tree names are read from the two goal trees themselves, so a worker
  * added there is checked too. Each check is shown to reach the code
  * it covers by planting a violation and seeing it caught.
  */
@@ -39,7 +39,7 @@ const sources = walk(src).filter((f) => /\.(tsx?|css)$/.test(f));
 /** Every name a tree declares that a shell could be tempted to write in. */
 async function treeNames(): Promise<Set<string>> {
   const names = new Set<string>();
-  for (const tree of ["packages/shift-manager/teams/devteam/workforce", "packages/shift-manager/test/fixtures/multi-seat-collab/workforce"]) {
+  for (const tree of ["packages/shift-manager/teams/devteam/workforce", "packages/shift-manager/test/fixtures/multi-worker-collab/workforce"]) {
     const roster = await readDeclaredRoster(join(repo, tree));
     for (const worker of roster.workers) {
       const [team, ...rest] = worker.id.split(".");
@@ -56,9 +56,9 @@ async function treeNames(): Promise<Set<string>> {
  * until someone writes down why it isn't a tree name.
  */
 const SHIFT_MANAGER_WORDS: Record<string, string> = {
-  worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-seat-collab also names a kind `worker`",
+  worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-worker-collab also names a worker flow `worker`",
   "chief-of-staff":
-    "the seat id the Chief of Staff screen finds its seat by; DevTeam declares an org seat under it so it has one",
+    "the worker id the Chief of Staff screen finds its worker by; DevTeam declares an org worker under it so it has one",
 };
 
 /** Quoted string literals in a file that equal a tree name. */
@@ -90,21 +90,21 @@ function literalColours(file: string, text: string): string[] {
 }
 
 describe("V8", () => {
-  it("names no seat, team or kind from either goal tree (BR-5)", async () => {
+  it("names no worker, team or worker flow from either goal tree (BR-5)", async () => {
     const names = await treeNames();
     expect(names.size).toBeGreaterThan(10);
     const hits = sources.flatMap((file) => namedIn(readFileSync(file, "utf8"), names).map((n) => `${relative(pkg, file)}: "${n}"`));
     expect(hits).toEqual([]);
     // The check reaches what it covers: a planted tree name is caught.
     const planted = [...names].find((n) => n.includes("."))!;
-    expect(namedIn(`const seat = "${planted}";`, names)).toEqual([planted]);
+    expect(namedIn(`const worker = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("reads the seat inventory and the projects on workforce's roster flow, and opens no reader on any other kind", async () => {
-    const { ROSTER_FLOW_KIND } = await import("@flow-state-dev/workforce");
+  it("reads the worker inventory and the projects on workforce's roster flow, and opens no reader on any other flow", async () => {
+    const { ROSTER_FLOW } = await import("@flow-state-dev/workforce");
     const reads = await import("../src/lib/reads");
-    expect(reads.PROJECT_READER_KIND).toBe(ROSTER_FLOW_KIND);
-    expect(Object.keys(reads).filter((name) => name.endsWith("_READER_KIND"))).toEqual(["PROJECT_READER_KIND"]);
+    expect(reads.PROJECT_READER_FLOW).toBe(ROSTER_FLOW);
+    expect(Object.keys(reads).filter((name) => name.endsWith("_READER_FLOW"))).toEqual(["PROJECT_READER_FLOW"]);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {

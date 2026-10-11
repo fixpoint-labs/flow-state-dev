@@ -23,18 +23,18 @@ const flows: FlowListEntry[] = [
 
 const sections = [
   { label: "Mailboxes", kinds: ["chat"] },
-  { label: "Seats", kinds: ["agent"] },
+  { label: "Workers", kinds: ["agent"] },
 ];
 
 describe("groupFlowsIntoSections", () => {
   it("puts two instances of one collection kind under ONE kind row", () => {
-    const [, seats] = groupFlowsIntoSections(flows, sections);
+    const [, workers] = groupFlowsIntoSections(flows, sections);
 
     // A flat list over instances gives two rows here, which is the shape being
     // replaced.
-    expect(seats!.kinds).toHaveLength(1);
-    expect(seats!.kinds[0]!.kind).toBe("agent");
-    expect(seats!.kinds[0]!.instances.map((i) => i.id)).toEqual([
+    expect(workers!.kinds).toHaveLength(1);
+    expect(workers!.kinds[0]!.kind).toBe("agent");
+    expect(workers!.kinds[0]!.instances.map((i) => i.id)).toEqual([
       "engineer-a",
       "engineer-b",
     ]);
@@ -55,9 +55,9 @@ describe("groupFlowsIntoSections", () => {
   });
 
   it("gives a collection kind no leaf of its own — its leaves are its instances", () => {
-    const [, seats] = groupFlowsIntoSections(flows, sections);
+    const [, workers] = groupFlowsIntoSections(flows, sections);
 
-    expect(seats!.kinds[0]!.leaf).toBeNull();
+    expect(workers!.kinds[0]!.leaf).toBeNull();
   });
 
   it("renders a section whose kinds the server does not have as empty, leaving the others alone", () => {
@@ -85,7 +85,7 @@ describe("groupFlowsIntoSections", () => {
   it("keeps a kind in one section out of another", () => {
     const views = groupFlowsIntoSections(flows, [
       { label: "Mailboxes", kinds: ["chat"] },
-      { label: "Seats", kinds: ["agent"] },
+      { label: "Workers", kinds: ["agent"] },
     ]);
 
     expect(views[0]!.kinds.map((k) => k.kind)).toEqual(["chat"]);

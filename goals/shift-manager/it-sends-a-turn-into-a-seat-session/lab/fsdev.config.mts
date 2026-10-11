@@ -31,8 +31,8 @@ import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type { AskFeature } from "../../../../packages/shift-manager/teams/devteam/ask.mts";
 import { LAB_TREE, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 import { BASE_REF, createScratchRepo } from "../../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { CODER_KIND } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
-import { EM_KIND, EM_TURN } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
+import { EM_FLOW, EM_TURN } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { recordingHarness } from "./recording-harness.mts";
 import { EM_ANSWER, ROWS, STORE_ENV } from "./rows.mts";
 
@@ -46,12 +46,12 @@ const ASK_FEATURE = (
 ).feature;
 
 const roster = await readDeclaredRoster(LAB_TREE);
-const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
-const ems = roster.workers.filter((w) => w.declared.flow === EM_KIND);
+const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
+const ems = roster.workers.filter((w) => w.declared.flow === EM_FLOW);
 if (ems.length !== 1) throw new Error(`wanted one EM worker in the DevTeam tree, found ${ems.length}`);
 const emSeatId = ems[0]!.id;
-const coderSeatId = ((ems[0]!.declared.delegates as string[] | undefined) ?? []).find((id) => kindOf(id) === CODER_KIND);
-if (coderSeatId === undefined) throw new Error(`the DevTeam's EM "${emSeatId}" names no delegate on the coder kind`);
+const coderWorkerId = ((ems[0]!.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);
+if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${emSeatId}" names no delegate on the coder kind`);
 
 /** The EM's turn, scripted: one answer, no tool call. Every other model is left unresolved. */
 const scriptedEm: GeneratorModel = {
@@ -76,7 +76,7 @@ const lab = await openLab({
   harness: recordingHarness,
   runTimeoutMs: RUN_TIMEOUT_MS,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
-  coderSeatId,
+  coderWorkerId,
   modelResolver,
   inventory: true,
   ask: ASK_FEATURE,

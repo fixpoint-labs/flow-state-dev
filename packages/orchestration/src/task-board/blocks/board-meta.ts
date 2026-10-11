@@ -102,7 +102,7 @@ export interface BoardMetaCompletedOptions extends BoardMetaOptions {
    * the board hands its exit question, and for the same reason it has to be the
    * same one. See {@link isHandedOff}.
    *
-   * Absent for every board with no dispatcher seat, which is what keeps
+   * Absent for every board with no dispatcher assignee, which is what keeps
    * the reason this block reports bit-for-bit what it was for those boards.
    */
   runsElsewhere?: RunsElsewhere;

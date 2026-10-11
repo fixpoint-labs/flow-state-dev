@@ -59,7 +59,7 @@ describe("a notice that has waited out its patience", () => {
         { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
-        { when: (input) => JSON.stringify(input).includes("and our seats"), then: { text: "Forty seats." } }
+        { when: (input) => JSON.stringify(input).includes("and our workers"), then: { text: "Forty workers." } }
       ]
     });
 
@@ -86,7 +86,7 @@ describe("a notice that has waited out its patience", () => {
     await host.post("alice", conv, "run", { message: "count our licenses" });
     expect(await until(async () => (await noticeRequests(host, conv)).length > 0)).toBe(true);
     await sleep(nextAfterMs);
-    await host.post("alice", conv, "run", { message: "and our seats?" });
+    await host.post("alice", conv, "run", { message: "and our workers?" });
     expect(await until(() => calls === 2)).toBe(true);
     // The filing reply ends; the person's next reply is still running.
     first.open();

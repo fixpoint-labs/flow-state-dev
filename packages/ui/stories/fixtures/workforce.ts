@@ -1,7 +1,7 @@
 /**
  * Fake read sources for the `@flow-state-dev/react` workforce stories.
  *
- * `Roster`, `BoardColumns`, `SeatDetail` and `FlowNavigator` each take the
+ * `Roster`, `BoardColumns`, `WorkerDetail` and `FlowNavigator` each take the
  * client they read through as a prop, so a story drives every state from the
  * outside: a read that never settles is loading, a rejected read is the error
  * line, an empty page is empty. Each source is built once at module scope,
@@ -60,8 +60,8 @@ export function failingItemSource(message: string): PanelItemSource {
 }
 
 /** One roster row, as the roster collection publishes it. */
-export function rosterRow(seatId: string, flow: string, instructions: string | null = null) {
-  return { topic: seatId, clientData: { seatId, flow, instructions } };
+export function rosterRow(workerId: string, flow: string, instructions: string | null = null) {
+  return { topic: workerId, clientData: { workerId, flow, instructions } };
 }
 
 /** One board row, as a board publishes it. */

@@ -1,6 +1,6 @@
 /**
  * Specs for the install half of the code door: a generated `resourceModules`
- * map becomes the capabilities a worker kind installs and the resources a flow
+ * map becomes the capabilities a worker flow installs and the resources a flow
  * declares.
  *
  * The two halves have different destinations and the same folder, so the checks
@@ -64,7 +64,7 @@ function doc(ref: string, body = "the body"): ResourceDoc {
 }
 
 describe("splitResourceModules", () => {
-  // BR-7 — a capability lands on a kind through the `uses` option an app
+  // BR-7 — a capability lands on a worker flow through the `uses` option an app
   // already writes by hand, and its declared resources reach the flow from
   // there. Asserted on a real flow: `uses` is the whole reason a capability
   // cannot go in the resource map, so stopping at the returned list would not

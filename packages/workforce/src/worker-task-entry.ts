@@ -1,11 +1,11 @@
 /**
- * The entries every worker kind takes work through: tasks, and delegated
- * posts. A leaf module, so a kind that declares an entry and the lookup that
+ * The entries every worker flow takes work through: tasks, and delegated
+ * posts. A leaf module, so a flow that declares an entry and the lookup that
  * checks for it share the name without either importing the other.
  */
 
 /**
- * The task entry every worker kind takes tasks through. **Pinned**: a list's
+ * The task entry every worker flow takes tasks through. **Pinned**: a list's
  * fallback hands over to it, and so does the wake.
  */
 export const WORKER_TASK_ENTRY = "work";

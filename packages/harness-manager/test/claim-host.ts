@@ -48,8 +48,8 @@ export const FIXED_BOARD = "feature-board";
 /** The ledger kept per partition, one set of rows per conversation. */
 export const CONVERSATIONS = "tasks";
 export const PHASE = "implement";
-/** The seat the rows are assigned to, which the gate checks. */
-const SEAT = "coder";
+/** The assignee the rows are assigned to, which the gate checks. */
+const ASSIGNEE = "coder";
 
 const dirs: string[] = [];
 /** Remove every directory a host made. Call from `afterAll`. */
@@ -233,7 +233,7 @@ export function claimHost(options: HostOptions) {
         await ref.addTask({
           id: input.id,
           goal: input.goal,
-          assignee: SEAT,
+          assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
@@ -375,7 +375,7 @@ export function claimHost(options: HostOptions) {
       "work",
       {
         boardId: ledgerId,
-        seat: SEAT,
+        assignee: ASSIGNEE,
         taskId: id,
         attempt: claimed.attempts,
         createdAt: claimed.createdAt,

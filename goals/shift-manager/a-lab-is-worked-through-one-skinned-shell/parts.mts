@@ -384,13 +384,13 @@ export function part4(base: string, report: Report): void {
   const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\bconst kind = PROJECT_READER_KIND;/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kind");
+  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\bconst kind = PROJECT_READER_FLOW;/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kind");
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));
   const opens = [...conversation.matchAll(/\bcreateSession\(\s*\{([^}]*\}[^}]*)\}/g)].map((m) => m[1]!);
   const openCount = conversation.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*seat\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*seat\.id\s*\}/.test(opens[0]!)) {
+  if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*worker\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*worker\.id\s*\}/.test(opens[0]!)) {
     report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
   }
   report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), an action whose answer a view reads (action.ts; ${actionSends} sendAction), the person's project coordinator (Project.tsx, through ensureWorkerSession), the person's reading sessions (reads.ts; ${creates.length} createSession on the reader kind), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);

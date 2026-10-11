@@ -1,6 +1,6 @@
 /**
  * BR-12 for every status the task substrate ships, plus the legacy word a
- * persisted row may still carry (V5); which seat holds a row; BR-15's
+ * persisted row may still carry (V5); which worker holds a row; BR-15's
  * "done rows are left out".
  *
  * The status list is the substrate's own enum, not a copy: a status added
@@ -9,8 +9,8 @@
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isBlocked, isDone } from "../src/lib/columns";
-import { openRows, seatFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
-import { toBoardRow, toSeat, type BoardRow } from "../src/lib/reads";
+import { openRows, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
+import { toBoardRow, toWorker, type BoardRow } from "../src/lib/reads";
 
 /** Where BR-12 puts each shipped status. */
 const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
@@ -54,24 +54,24 @@ describe("BR-12: a row's column", () => {
 const row = (status: string, assignee: string | null, id = status): BoardRow =>
   toBoardRow("s_1.tasks", "s_1", id, { id, title: id, status, assignee });
 
-describe("which seat holds a row, when a bare name is in more than one team", () => {
-  const ops = toSeat({ id: "ops.builder", kind: "worker" })!;
-  const eng = toSeat({ id: "eng.builder", kind: "worker" })!;
+describe("which worker holds a row, when a bare name is in more than one team", () => {
+  const ops = toWorker({ id: "ops.builder", kind: "worker" })!;
+  const eng = toWorker({ id: "eng.builder", kind: "worker" })!;
   const rowFor = (assignee: string) => toBoardRow("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
 
-  it("attributes the row to no seat, never to several", () => {
-    const roster: Roster = { seats: [ops, eng] };
-    expect(seatFor(roster, rowFor("builder"))).toBeUndefined();
+  it("attributes the row to no worker, never to several", () => {
+    const roster: Roster = { workers: [ops, eng] };
+    expect(workerFor(roster, rowFor("builder"))).toBeUndefined();
   });
 
-  it("resolves a name only one seat carries", () => {
-    const roster: Roster = { seats: [ops, toSeat({ id: "eng.reviewer", kind: "worker" })!] };
-    expect(seatFor(roster, rowFor("builder"))?.id).toBe("ops.builder");
+  it("resolves a name only one worker carries", () => {
+    const roster: Roster = { workers: [ops, toWorker({ id: "eng.reviewer", kind: "worker" })!] };
+    expect(workerFor(roster, rowFor("builder"))?.id).toBe("ops.builder");
   });
 
-  it("a full seat id always wins", () => {
-    const roster: Roster = { seats: [ops, eng] };
-    expect(seatFor(roster, rowFor("ops.builder"))?.id).toBe("ops.builder");
+  it("a full worker id always wins", () => {
+    const roster: Roster = { workers: [ops, eng] };
+    expect(workerFor(roster, rowFor("ops.builder"))?.id).toBe("ops.builder");
   });
 });
 

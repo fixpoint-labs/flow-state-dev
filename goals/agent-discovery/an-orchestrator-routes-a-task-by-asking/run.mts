@@ -25,7 +25,7 @@ import { createInMemoryStores, createModelResolver, ensureSessionRecord, runActi
 import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  defineSeatInventoryCollection,
+  defineWorkerInventoryCollection,
   createWorkerInstallation, hireWorkforce,
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
@@ -54,12 +54,12 @@ const fx = loadFixture<Fixture>(import.meta.url);
 // the env override so it auto-wires the AI Gateway from AI_GATEWAY_API_KEY.
 stripIntentOverrides();
 
-const SEAT_INVENTORY_KEY = "seatInventory";
+const SEAT_INVENTORY_KEY = "workerInventory";
 
 /** The live inventory, mounted on whoever needs to read or write it. */
 const inventoryMount = defineCapability({
   name: "inventory-mount",
-  resources: { [SEAT_INVENTORY_KEY]: defineSeatInventoryCollection() },
+  resources: { [SEAT_INVENTORY_KEY]: defineWorkerInventoryCollection() },
 });
 
 /**
@@ -101,7 +101,7 @@ const seedInventory = handler({
   name: "seed-inventory",
   inputSchema: z.object({ seats: z.array(z.object({ id: z.string(), kind: z.string() })) }),
   outputSchema: z.object({ written: z.number() }),
-  resources: { [SEAT_INVENTORY_KEY]: defineSeatInventoryCollection() },
+  resources: { [SEAT_INVENTORY_KEY]: defineWorkerInventoryCollection() },
   execute: async (input: { seats: { id: string; kind: string }[] }, ctx: any) => {
     for (const row of input.seats) {
       await ctx.resources[SEAT_INVENTORY_KEY].upsert(row.id, row);
@@ -141,7 +141,7 @@ async function route(blankPurposes: boolean): Promise<{
       inventoryMount,
       createWorkforceCapability({
         roster: { workers: roster },
-        inventory: { seats: SEAT_INVENTORY_KEY },
+        inventory: { workers: SEAT_INVENTORY_KEY },
       }),
     ],
   });

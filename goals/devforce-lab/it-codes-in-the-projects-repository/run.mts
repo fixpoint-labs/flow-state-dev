@@ -153,7 +153,7 @@ async function emAct(lab: Lab, sessionId: string, actionName: string, input: unk
   const runtime = await lab.state.getRuntime();
   return (await runAction({
     orgId: LAB_ORG_ID,
-    flow: lab.seats[EM_SEAT] as FlowInstance,
+    flow: lab.workers[EM_SEAT] as FlowInstance,
     actionName,
     input,
     userId: LAB_USER_ID,
@@ -212,7 +212,7 @@ await runGoal(async (failures) => {
     stores: inMemoryStores(),
     harness: stub.slot,
     workspace,
-    coderSeatId: CODER_SEAT,
+    coderWorkerId: CODER_SEAT,
     logger: silentLogger,
     inventory: true,
     projects: [

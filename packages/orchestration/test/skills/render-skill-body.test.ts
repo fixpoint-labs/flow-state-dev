@@ -109,10 +109,10 @@ describe("formatAllowedToolsIntentNote — the wording is the deliverable", () =
   });
 
   // The renderer is shared with the legacy `createSkillsCapability`, which
-  // attaches to an ordinary generator. "Seat" is workforce vocabulary and
+  // attaches to an ordinary generator. "Worker" is workforce vocabulary and
   // would be undefined terminology in a model's prompt on that path.
-  it("says `generator`, never `seat`", () => {
+  it("says `generator`, never `worker`", () => {
     expect(note).toContain("this generator");
-    expect(note).not.toMatch(/\bseat\b/i);
+    expect(note).not.toMatch(/\bworker\b/i);
   });
 });

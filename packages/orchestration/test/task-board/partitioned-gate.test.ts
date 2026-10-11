@@ -81,7 +81,7 @@ async function harness() {
       actionName: "work",
       input: {
         boardId,
-        seat: "work",
+        assignee: "work",
         taskId: "t1",
         attempt: row.attempts,
         createdAt: row.createdAt,
