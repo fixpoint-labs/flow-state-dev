@@ -814,6 +814,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * host an ask, and the ask path refuses on it.
    */
   clearResumeOwed?(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * Mark an open asked row as owing its cancel (`Task.cancelOwed`): its ask
+   * is over and the cancel the asking call wrote failed (FIX-1844). The
+   * row's next ending, the touch's cancel among them, clears it. `unchanged`
+   * on a row that has ended, isn't an ask, or is already marked.
+   *
+   * Optional, like `clearResumeOwed`: both built-in backings implement it.
+   * On a ref without it, a failed cancel leaves the row open, as before.
+   */
+  markCancelOwed?(id: string): Promise<TaskWriteOutcome>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;

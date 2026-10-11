@@ -746,7 +746,9 @@ Two functions sit under the option, for a layer that builds its own board surfac
 - `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
   it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
   answer whose resume was lost to a crash is still delivered. It returns at once when nothing
-  is owed.
+  is owed. It also cancels each task whose ask was stopped or timed out while the ask's own
+  cancel failed (`Task.cancelOwed`). Until something touches the board, that task's worker may
+  keep running.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
