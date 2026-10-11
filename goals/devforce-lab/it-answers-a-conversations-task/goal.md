@@ -13,9 +13,8 @@ Before this, the coder took rows from the feature board only, so a conversation'
 refused when filed.
 
 **Input:** `fixtures/input.json`: the marker file's name, a second project with its own repository
-and a workstream in it, a project the person isn't a member of, the ask a person types, what the
-person answers when the coordinator asks which project, and the two answers a run gives without
-doing the work. It is **held-out**: the stub reads the marker file by the name in the fixture, and
+and a workstream in it, a project the person isn't a member of, the ask a person types, and the
+two answers a run gives without doing the work. It is **held-out**: the stub reads the marker file by the name in the fixture, and
 every project, workstream and word is read from it, so another file name, another second project
 or another ask passes a correct implementation. Each marker is a random string committed to a
 project's repository, or left in a project's files by an earlier run, after the lab opens.
@@ -84,10 +83,10 @@ Two departures from the spec's wording, both forced by the lab as it is:
   project coordinator) hands work to the workstreams the person owns, and it is a workstream's
   lead that files the coder's task. So the conversation that names nothing is the workstream's,
   and the project comes from its workstream.
-- **Leg d may take two turns.** The chief of staff has no tool that lists projects, so on the
-  person's first words it asks which project they mean, as its `WORKER.md` tells it to when it
-  can't tell. The person's answer (`whichProject`) is sent as the next turn. Each real-model leg
-  runs one conversation and is never retried.
+- **Leg d files on the person's first words.** The chief of staff reads the person's projects
+  with `listProjects` and names storefront, the one with a repository, without asking; that it
+  does is FIX-1869's goal (`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`).
+  Each real-model leg runs one conversation and is never retried.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

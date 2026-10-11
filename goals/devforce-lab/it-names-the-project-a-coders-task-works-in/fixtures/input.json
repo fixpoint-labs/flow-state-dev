@@ -1,0 +1,11 @@
+{
+  "ask": "the coder should take a look at our repo",
+  "secondProject": {
+    "id": "billing",
+    "title": "Billing"
+  },
+  "strangersProject": {
+    "id": "ledger",
+    "title": "Ledger"
+  }
+}
