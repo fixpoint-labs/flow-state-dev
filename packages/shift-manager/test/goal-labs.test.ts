@@ -1,5 +1,5 @@
 /**
- * The shared reads over the two goal Labs, each loaded through its own fsdev
+ * The shared reads over the goal Labs and the `fsd` profile, each loaded through its own fsdev
  * config the way the `shift-manager` command loads it (V4; BR-7, BR-13, BR-14).
  *
  * What the reads return is compared against the tree each Lab was opened from
@@ -26,9 +26,18 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; clients: LabClients };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
-  // DevTeam keeps a store across restarts; each open here gets its own.
-  process.env.DEVTEAM_STORE = join(mkdtempSync(join(tmpdir(), "sm-goal-labs-")), "devteam.sqlite");
-  const loaded = await loadFsdevConfig({ cwd: repo, configPath }).finally(() => delete process.env.DEVTEAM_STORE);
+  // DevTeam and fsd keep a store across restarts; each open here gets its own.
+  // fsd's coder defaults to Claude Code, which checks for an account at start;
+  // these reads need no coder, so it opens on the scripted one.
+  const dir = mkdtempSync(join(tmpdir(), "sm-goal-labs-"));
+  process.env.DEVTEAM_STORE = join(dir, "devteam.sqlite");
+  process.env.FSD_STORE = join(dir, "fsd.sqlite");
+  process.env.DEVFORCE_LAB_HARNESS = "stub";
+  const loaded = await loadFsdevConfig({ cwd: repo, configPath }).finally(() => {
+    delete process.env.DEVTEAM_STORE;
+    delete process.env.FSD_STORE;
+    delete process.env.DEVFORCE_LAB_HARNESS;
+  });
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
   const devtool = loaded.flowState.meta.devtool;
@@ -56,6 +65,7 @@ function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
 describe.each([
   ["multi-worker-collab", "packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts", "packages/shift-manager/test/fixtures/multi-worker-collab/workforce"],
   ["devteam", "packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce"],
+  ["fsd", "packages/shift-manager/teams/devteam/fsd.fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce"],
 ])("%s", (name, configPath, treePath) => {
   let opened: Opened;
   beforeAll(async () => {
@@ -104,7 +114,10 @@ describe.each([
     expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
   }, 60_000);
 
-  it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
+  // Jump to finds a document through the flow of a session the user has. fsd
+  // opens no session at start (no ask, no workstream), so a fresh fsd open has
+  // none to find yet; the claim is checked on the Labs that open one.
+  it.runIf(name !== "fsd")("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
     const { snapshot, roster, clients } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
     const readable = roster.documents.filter(declaredBrowserReadable);

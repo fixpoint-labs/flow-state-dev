@@ -13,7 +13,9 @@
  * - the request's abort signal reaches the provider call;
  * - an answer carries `confidence` only when the model reported one, read
  *   from Jev's `providerMetadata.typesafe.confidence[questionId]`. No number
- *   is ever defaulted, and a boolean's `probability` is never copied into it.
+ *   is ever defaulted, and a boolean's `probability` is never copied into it;
+ * - the state reaches the model as the value it is: the SDK reads an array
+ *   state as decision parts, so an array goes over as one json part.
  */
 import { experimental_evaluate, type Experimental_EvaluationModel } from "ai";
 import type { ModelIdentity } from "@flow-state-dev/contracts";
@@ -101,7 +103,7 @@ function toFsdAnswer(raw: Record<string, unknown>, confidence: unknown): Evaluat
 export async function runEvaluation(options: RunEvaluationOptions): Promise<EvaluationCallResult> {
   const result = await experimental_evaluate({
     model: options.model as unknown as SdkEvaluationModel,
-    state: options.state,
+    state: Array.isArray(options.state) ? [{ type: "json", value: options.state }] : options.state,
     questions: options.questions,
     maxRetries: 0,
     abortSignal: options.signal,

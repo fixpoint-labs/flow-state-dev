@@ -582,8 +582,12 @@ separate count is worth having: it says how many of a path's touches actually
 landed. Read `0` and `null` differently. `0` means the run touched the path and
 nothing applied. `null` means the row was written before the field existed.
 
-The plan record reads the same way, from `observed-plan`. A to-do item's status
-is the harness's own word for it, and stays empty until the harness reports one.
+The plan record reads the same way, from `observed-plan`. Its shape is the one
+every harness shares, described in [the run's plan](./coding-agents.md#the-runs-plan);
+importing `observedPlanCollection` from this package or from `@flow-state-dev/core`
+gives the same object. A to-do item's status is the harness's own word for it, and
+stays empty until the harness reports one. Plan entries reach an open page as they
+change, rather than when the request ends.
 
 The plan record fills only when the agent keeps a to-do list with Claude Code's to-do tools,
 `TaskCreate` and `TaskUpdate`. That takes two things. The run has to be offered the tools: on
@@ -706,6 +710,29 @@ const agent = claudeCodeAgent({
 This is the interim story. Routing approvals through flow-state-dev's own
 human-in-the-loop suspend and resume is a follow-up; `onToolApproval` is the seam
 that work will plug into.
+
+## Checking for a credential before you start
+
+A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It sends no message, so it costs no model turn, and takes about half a second.
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"] });
+const account = await probeClaudeAccount({ env });
+if (account.status !== "account") throw new Error(`Claude Code can't run: ${account.reason}`);
+```
+
+Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential the run will see and no other. It resolves to one of:
+
+| `status` | When | Also carries |
+|----------|------|--------------|
+| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them |
+| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
+| `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
+
+It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
 
 ## Error handling
 

@@ -9,7 +9,9 @@
  * where it lands; leave it out to model a provider that reports none.
  *
  * `answers` may be a function of the call's state, so one script answers
- * several states, for example one routing decision per post.
+ * several states, for example one routing decision per post. The state is
+ * the value the evaluator evaluated: the SDK sends it as one text or json
+ * part, and the mock reads that part back.
  *
  * Failure modes:
  * - `error`: every call rejects with it (a provider failure);
@@ -27,7 +29,19 @@ export type MockEvaluationAnswer =
   | { type: "score"; score: number; probabilities?: Record<string, number>; confidence?: number }
   | { type: "boolean"; probability: number; confidence?: number };
 
-/** What one call to the mock received. */
+/**
+ * The value an evaluator evaluated, from the parts the SDK sends: a lone
+ * text or json part is its text or value; anything else stays as sent.
+ */
+function evaluatedState(state: unknown): unknown {
+  if (!Array.isArray(state) || state.length !== 1) return state;
+  const part = state[0] as { type?: unknown; text?: unknown; value?: unknown };
+  if (part.type === "text") return part.text;
+  if (part.type === "json") return part.value;
+  return state;
+}
+
+/** What one call to the mock received, its state as the value evaluated. */
 export type MockEvaluationCall = {
   state: unknown;
   questions: Record<string, unknown>;
@@ -90,7 +104,8 @@ export function mockEvaluationModel(options: MockEvaluationModelOptions = {}): M
     modelId: options.modelId ?? "mock-evaluation",
     supportedQuestionTypes: options.supportedQuestionTypes ?? ["choice", "score", "boolean"],
     calls,
-    async doEvaluate(call: MockEvaluationCall) {
+    async doEvaluate(sent: MockEvaluationCall) {
+      const call = { ...sent, state: evaluatedState(sent.state) };
       calls.push(call);
       if (options.error !== undefined) throw options.error;
       if (options.hold === true) {

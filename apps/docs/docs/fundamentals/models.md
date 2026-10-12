@@ -441,7 +441,7 @@ generator({ name: "chat", model: "intent/chat", prompt: "..." });
 
 An [evaluator](/docs/fundamentals/blocks#evaluator) needs a model that supports evaluation, which is a separate capability from generating text. The AI SDK exposes it as `evaluationModel(...)` on providers that have it.
 
-Model strings resolve the way generator strings do. With the provider's package installed and its key set, the string goes to that provider directly. Otherwise it goes through a configured gateway. The difference is the door: the resolver asks for the provider's evaluation model, and if the provider or gateway has none, you get an error before anything is sent. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. With an older version installed, the error says to upgrade it.
+Model strings resolve the way generator strings do. With the provider's package installed and its key set, the string goes to that provider directly. Otherwise it goes through a configured gateway. The difference is the door: the resolver asks for the provider's evaluation model, and if the provider or gateway has none, you get an error before anything is sent. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.108 or later. With an older version installed, the error says to upgrade it.
 
 ```ts
 evaluator({ name: "triage", model: "typesafe-ai/jev", questions });          // Jev, through Vercel's AI Gateway

@@ -344,14 +344,20 @@ Full behaviour, including what an empty or symlinked directory does, is on the
 ### Recording what a run did
 
 `recordWork: true` records the run's file operations and its own to-do list as
-state you can read afterwards. Off by default; on, the agent declares three
+state you can read afterwards. Off by default; on, the agent declares four
 resource collections and writes into them as it goes:
 
 | Accessor | One entry per |
 |----------|---------------|
 | `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`, `appliedCount`. Paths, never contents |
 | `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
+| `observed-plan-list` | run whose plan could not be written in full — `status: "incomplete"` and the `reason`. Written only when a plan entry fails to write |
 | `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
+
+The `observed-plan` shape and its `observed-plan-list` marker are defined in
+`@flow-state-dev/core` and re-exported here, so either import gives the same
+object. Their entries stream to an open page as they change. See
+[the run's plan](https://flow-state.dev/docs/tools/coding-agents#the-runs-plan).
 
 ```ts
 claudeCodeAgent({ detached: true, recordWork: true });
@@ -371,7 +377,7 @@ run kept no list; it is not a recording failure.
 
 Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
 and a request that runs the agent more than once — both answer per run.
-All three declare client state reads, so
+All four declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
 route pages.
@@ -472,6 +478,29 @@ default, not a lock. `disallowedTools` merges instead, so adding your own
 doesn't silently take the relocation ones away. `contain: false` turns all
 three off, which is what a trusted-workspace deployment wants and what nothing
 else should.
+
+### Checking for a credential before you start
+
+A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It sends no message, so it costs no model turn, and takes about half a second.
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"] });
+const account = await probeClaudeAccount({ env });
+if (account.status !== "account") throw new Error(`Claude Code can't run: ${account.reason}`);
+```
+
+Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential the run will see and no other. It resolves to one of:
+
+| `status` | When | Also carries |
+|----------|------|--------------|
+| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them |
+| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
+| `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
+
+It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
 
 ## Running tests
 

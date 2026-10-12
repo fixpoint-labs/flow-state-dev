@@ -564,10 +564,34 @@ export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
  * exported from `@flow-state-dev/core/types`.
  */
 export {
+  harnessFailureKind,
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
 } from "./types/harness";
+
+/**
+ * The run's plan record: the shape every harness writes its to-do list into,
+ * the per-run list marker, and the writer for whole-list plans.
+ */
+export {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  observedOutcomeSchema,
+  observedPlanCollection,
+  observedPlanItemStateSchema,
+  observedPlanListCollection,
+  observedPlanListStateSchema,
+  replacePlanList,
+} from "./types/harness-plan";
+export type {
+  ObservedOutcome,
+  ObservedPlanListStatus,
+  PlanListCollection,
+  PlanListItem,
+  PlanListMarkerCollection,
+  ReplacePlanListResult,
+} from "./types/harness-plan";
 
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";

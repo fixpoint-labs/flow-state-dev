@@ -27,6 +27,8 @@
  * - {@link HarnessBlock} — the conformance alias.
  * - {@link HarnessResolver} and {@link HarnessSessionHook} — the signatures a
  *   host feeds per-run configuration through.
+ * - {@link HarnessFailureKind} / {@link harnessFailureKind} — the neutral
+ *   classification a harness puts on the error it fails with.
  *
  * Nothing in core imports a harness package, and nothing here names a vendor
  * notion. A harness's own extras (an SDK's result enum, the tools it observed)
@@ -279,3 +281,58 @@ export type HarnessSessionHook = (
   sessionId: string,
   ctx: HarnessCallbackContext,
 ) => void | Promise<void>;
+
+/**
+ * Why a harness run failed, in framework vocabulary, for the failures a host
+ * has to tell apart. One kind today:
+ *
+ * - `"unknown-conversation"`: the harness was asked to continue a
+ *   conversation (`resume`) and reported that it does not know it.
+ *
+ * Carried on the **error** a harness block fails with, as its
+ * `harnessFailure` field, never on the handle: a refused continuation ends the
+ * run before there is a handle to return. Each harness package sets it for its
+ * own vendor's failure, so a host reads the classification and never a
+ * vendor's message. A failure a harness has not classified reads as `null`,
+ * which a host treats as an ordinary error.
+ */
+export type HarnessFailureKind = "unknown-conversation";
+
+/** An error a harness block fails with, carrying its {@link HarnessFailureKind}. */
+export interface ClassifiedHarnessError extends Error {
+  readonly harnessFailure: HarnessFailureKind | null;
+}
+
+const HARNESS_FAILURE_KINDS: ReadonlySet<string> = new Set<HarnessFailureKind>([
+  "unknown-conversation",
+]);
+
+/** How deep {@link harnessFailureKind} follows `cause`. Bounds a cyclic chain. */
+const MAX_CAUSE_DEPTH = 8;
+
+/**
+ * The {@link HarnessFailureKind} a harness classified an error as, or `null`.
+ *
+ * Follows `cause`, so the classification still reads after the framework or a
+ * host wraps the harness's error. A value that is not a known kind reads as
+ * `null`, so a host's branch on the result stays exhaustive.
+ *
+ * ```ts
+ * catch (err) {
+ *   if (harnessFailureKind(err) === "unknown-conversation") showRefused();
+ *   else showError(err);
+ * }
+ * ```
+ */
+export function harnessFailureKind(error: unknown): HarnessFailureKind | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (typeof current !== "object" || current === null) return null;
+    const kind = (current as { harnessFailure?: unknown }).harnessFailure;
+    if (typeof kind === "string" && HARNESS_FAILURE_KINDS.has(kind)) {
+      return kind as HarnessFailureKind;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
+}

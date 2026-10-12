@@ -55,6 +55,9 @@ type Answer = 'remember' | 'skip'
  * An evaluation model scripted per call: each call takes the next step. A
  * step is an answer (optionally with a reported confidence) or an error.
  */
+/** The evaluated text: the SDK sends a string state as one text part. */
+const textOf = (state: unknown): string => String((state as Array<{ text?: string }>)[0]?.text)
+
 function scriptedModel(steps: Array<{ choice: Answer; confidence?: number } | Error>) {
   const calls: Array<{ state: unknown }> = []
   let index = 0
@@ -71,7 +74,7 @@ function scriptedModel(steps: Array<{ choice: Answer; confidence?: number } | Er
         step instanceof Error
           ? { error: step }
           : { answers: { capture: { type: 'choice', ...step } } }
-      calls.push(call)
+      calls.push({ ...call, state: textOf(call.state) })
       return mockEvaluationModel(options).doEvaluate(call as never)
     },
   }
@@ -99,7 +102,7 @@ function racingModel(script: { hold: string; fail: string; skip: string }) {
     modelId: 'racing',
     supportedQuestionTypes: ['choice', 'score', 'boolean'],
     async doEvaluate(call: { state: unknown }) {
-      const state = String(call.state)
+      const state = textOf(call.state)
       calls.push(state)
       if (!holding && state.includes(script.hold)) {
         holding = true
@@ -322,7 +325,7 @@ describe('capture with an evaluator', () => {
         modelId: 'gated',
         supportedQuestionTypes: ['choice', 'score', 'boolean'],
         async doEvaluate(call: { state: unknown }) {
-          const state = String(call.state)
+          const state = textOf(call.state)
           calls.push(state)
           if (state.includes('turn A')) await gateA.pass()
           if (state.includes('turn C')) await gateC.pass()

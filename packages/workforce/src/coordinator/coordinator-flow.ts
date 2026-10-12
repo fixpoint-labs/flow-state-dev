@@ -273,7 +273,9 @@ const postStateSchema = z.object({
   /** Why this round's answers go no further, when it was refused at the cap on open rounds. */
   note: z.string().optional(),
   /** Why best fit handed this post to the judgment turn, when it did: the turn's record says it. */
-  fit: bestFitWhySchema.optional()
+  fit: bestFitWhySchema.optional(),
+  /** Best fit's evaluator error, when it failed and best fit asked again as a language model: every record says it. */
+  evaluationFailed: z.string().optional()
 });
 
 type PostState = z.infer<typeof postStateSchema>;
@@ -643,12 +645,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     recent: post.recent
   });
 
-  /** What every record of this request's routing starts with, its note included when it has one. */
+  /** What every record of this request's routing starts with, its note and best fit's evaluator error included when it has them. */
   const recordOf = (post: PostState) => ({
     postId: post.postId,
     round: post.round,
     policy: post.policy,
-    ...(post.note === undefined ? {} : { note: post.note })
+    ...(post.note === undefined ? {} : { note: post.note }),
+    ...(post.evaluationFailed === undefined ? {} : { evaluationFailed: post.evaluationFailed })
   });
 
   /** What the judgment turn reads: the user's post, or the answers going back out. */
@@ -1047,16 +1050,34 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
       .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
 
+  /** Keep the evaluator's error on the post before asking again, so the record says the call failed. */
+  const noteEvaluationFailed = handler({
+    name: "coordinator-route-note-failed",
+    inputSchema: failedEvaluationSchema,
+    outputSchema: z.object({}),
+    requestStateSchema,
+    execute: async (evaluated, ctx) => {
+      await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({
+        ...state,
+        evaluationFailed: evaluated.failed
+      })) as never);
+      return {};
+    }
+  });
+
   const evaluateRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema }).step(
     routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
   );
+  const isFailedEvaluation = (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success;
   const askRoute =
     routeModelId === undefined
       ? evaluateRoute
-      : evaluateRoute.stepIf(
-          (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success,
-          routeAsked(routeModelId).rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
-        );
+      : evaluateRoute
+          .tapIf(isFailedEvaluation, noteEvaluationFailed)
+          .stepIf(
+            isFailedEvaluation,
+            routeAsked(routeModelId).rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
+          );
 
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
   const placedSchema = z.union([

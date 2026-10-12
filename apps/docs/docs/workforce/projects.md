@@ -509,6 +509,48 @@ A coordinator filing for a coding worker from a conversation with no project nam
 
 Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
 
+### Working in a checkout you already have
+
+By default a coding run gets a fresh branch in the host's own clone of the project's repository. That clone lives under the host's root, so to see what a run did you fetch from it. When the server runs on the machine where you already have the repository checked out, you can have runs work in that checkout instead. Each run gets a worktree of your checkout on a branch of its own, and the branch shows up in `git branch` there.
+
+The project's row names a remote, never a folder. The server's config says which projects are worked in which checkout:
+
+```ts
+harnessManager({
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: [] },
+    localRepositories: ["/home/me/acme"],
+    source: projectWorkspace({
+      checkouts: [
+        {
+          remote: "https://github.com/acme/acme.git",
+          checkout: "/home/me/acme",
+          projects: [
+            { orgId: "acme", id: "web" },
+            { orgId: "acme", id: "api" },
+          ],
+          baseRef: "main",
+        },
+      ],
+    }),
+  }),
+  uses: [projectWorkspaceCapability],
+});
+```
+
+Only shared projects can be listed, each by its organization and id. A run uses the checkout only when its project is listed, the run's session belongs to that organization, and the project's `repository` is exactly the `remote` given here. The organization comes from the server's verified identity for the session, never from anything a task says. A private project with the same id and remote, or a shared one in another organization on the same server, never touches your checkout. Neither does a listed project whose repository was changed to something else. On a multi-tenant server, add `tenantId` to an entry; an entry without one matches only runs with no tenant. Those runs go the usual way: a clone, if the host allows the remote, or a refusal.
+
+The checkout also has to be in the host's `localRepositories`. That list is what lets the host touch a folder on its machine at all. If the two disagree, the run is refused with `invalid-remote`, naming the path, before git runs. A relative `checkout` path, a `remote` a project couldn't store, or a project listed twice is refused when `projectWorkspace()` is called, naming the entry.
+
+Each run's place has the worktree in `checkout/` and the [project's files](#the-projects-own-files) in `project/` beside it, as for any other repository. The branch is cut from `baseRef`, or from whatever your checkout has checked out when `baseRef` is left out. Nothing is fetched, so `main` is whatever you last pulled. The server never switches, resets or cleans your own working tree.
+
+Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
+
+To review a run, open its worktree, or run `git diff main...<branch>` from your checkout. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
+
+A fresh worktree has no `node_modules`. The coding agent installs them the way your repository tells it to. With pnpm that comes from the machine's shared store and takes seconds once the checkout has been installed.
+
 ### The project's own files
 
 Notes, memory and anything else kept for a project live under the project's id: `project-files/<projectId>/<path>`. A shared project's files are the organization's `project-files` collection, declared with `defineProjectFilesCollection()`. A private project's are the same keys in its owner's own scope, `definePrivateProjectFilesCollection()`. Like the project collections, every call returns the same declaration. Both are shared across flows and loaded only when read.

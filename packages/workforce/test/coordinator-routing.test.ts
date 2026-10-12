@@ -80,6 +80,8 @@ describe("best fit (V3)", () => {
     expect(records).toEqual([
       expect.objectContaining({ round: 0, policy: "best-fit", by: "evaluated", delegates: [{ worker: "licenses", outcome: "delivered" }] })
     ]);
+    // The evaluator answered, so nothing says it failed.
+    expect(records[0]).not.toHaveProperty("evaluationFailed");
   });
 
   it("holds the next post for the delegate still on the last one, with no call; a removed holder holds nothing (BR-14)", async () => {
@@ -120,7 +122,13 @@ describe("best fit (V3)", () => {
     expect(asked).toContain("who plans the release?");
     expect(heardBy(host)).toEqual(["eng.em"]);
     expect((await host.items(id)).records).toEqual([
-      expect.objectContaining({ policy: "best-fit", by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] })
+      expect.objectContaining({
+        policy: "best-fit",
+        by: "evaluated",
+        delegates: [{ worker: "eng.em", outcome: "delivered" }],
+        // The record says the evaluator failed before the language model picked.
+        evaluationFailed: expect.stringContaining("is a language model, not a decision model")
+      })
     ]);
   });
 
@@ -131,10 +139,12 @@ describe("best fit (V3)", () => {
     await post(host, id, "first");
     await post(host, id, "second");
     expect(heardBy(host)).toEqual(["support.general", "support.general"]);
-    expect((await host.items(id)).records.map((record: any) => [record.by, record.fit])).toEqual([
+    const records = (await host.items(id)).records;
+    expect(records.map((record: any) => [record.by, record.fit])).toEqual([
       ["fallback", { reason: "not-a-choice", choice: "nobody.here" }],
       ["fallback", { reason: "failed" }]
     ]);
+    expect(records.every((record: any) => record.evaluationFailed?.includes("not a decision model"))).toBe(true);
   });
 
   it("sends a failed call, and a pick that isn't a delegate, to the fallback (BR-15)", async () => {

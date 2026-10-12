@@ -69,6 +69,64 @@ conversation, and each prompt is one run inside it. Either way it is the value
 The shapes are declared in `@flow-state-dev/core` as `harnessRunInputSchema` and
 `harnessRunHandleSchema`, and a block that conforms is a `HarnessBlock`.
 
+A run that fails returns no handle; the block throws. One failure is worth telling
+apart from the rest: you asked the agent to continue a conversation with `resume`,
+and it doesn't know that conversation. `harnessFailureKind(error)` from
+`@flow-state-dev/core` returns `"unknown-conversation"` for that failure and `null`
+for every other one, so you can say "the agent refused to continue this
+conversation" without matching on any agent's error message. It reads through
+wrapped errors, so the error a flow hands you works as well as the agent's own.
+Claude Code classifies its refusals today.
+
+## The run's plan
+
+A coding agent often keeps its own to-do list while it works. A harness that
+reports one records it in a resource collection, `observed-plan`, separate from
+the run's items. The shape is the same whichever harness wrote it, and it lives
+in `@flow-state-dev/core`:
+
+```ts
+import { OBSERVED_PLAN, observedPlanCollection, observedPlanItemStateSchema } from "@flow-state-dev/core";
+```
+
+Each entry is one to-do item, keyed under the request and the run that wrote it,
+with its wording (`title`), the status the harness last confirmed (`status`), the
+one before (`previousStatus`), and how the last attempt to change it settled
+(`lastOutcome`). Every field can be `null`. A status is the harness's own word for
+it, so read it as text rather than matching a fixed list.
+
+Entries stream to an open page as they change, so a plan you show beside a
+session stays in step while the run works.
+
+A run's plan is a record of what the agent planned, not a work queue. Nothing in
+it starts work, and writing to it hands the agent nothing.
+
+Not every harness reports a plan. Read the session's resource manifest first. If
+it doesn't list `observed-plan`, the harness records none, and a reader should say
+so rather than show an empty list.
+
+Beside the entries, each run has a list marker in `observed-plan-list`, keyed by
+the run. It says whether the run's plan is `complete`, still `writing`, or
+`incomplete`, how many places it holds, and why it's incomplete. Read it before
+the entries:
+
+- `complete` with no places means the agent reported an empty list.
+- `incomplete`, or `writing` once the run has ended, means a write failed
+  partway. Show what's there as possibly incomplete, with the reason, not as the
+  plan.
+- With a count, show only the places below it.
+- No marker and no entries means the run reported no plan.
+
+To record a plan from a harness of your own, declare `observedPlanCollection` and
+`observedPlanListCollection` on the block. If your agent reports its whole list
+each time, with no ids, hand it to `replacePlanList(plan, marker, runNamespace,
+items)`: it keys entries by place, keeps an entry's earlier status when its
+wording is unchanged, removes entries past the end, and writes the marker. It
+never throws; a list it can't store in full leaves the marker `incomplete` and
+the run carries on. Call it from one writer per run. If your agent reports items
+by id, upsert entries under `<requestId>/<run>/<item id>` and mark the run
+`incomplete` when a write fails.
+
 ## The prompt is the input; everything else is configuration
 
 A harness block takes one thing: the prompt. Where the run works, which

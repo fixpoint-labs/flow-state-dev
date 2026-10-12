@@ -2080,7 +2080,7 @@ describe("claudeCodeAgent — recordWork", () => {
     expect(block.declaredResources).toBeUndefined();
   });
 
-  it("declares all three collections when on", () => {
+  it("declares all four collections when on", () => {
     const block = claudeCodeAgent({
       resolveClaudeAgent: scriptedQuery([RESULT_OK]),
       recordWork: true,
@@ -2089,6 +2089,7 @@ describe("claudeCodeAgent — recordWork", () => {
       "observed-file-ops",
       "observed-gaps",
       "observed-plan",
+      "observed-plan-list",
     ]);
   });
 

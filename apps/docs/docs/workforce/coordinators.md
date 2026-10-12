@@ -296,6 +296,7 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 | `delegates` | Each delegate the decision touched: `worker`, `outcome` (`delivered`, `skipped` or `failed`), and `reason` when it wasn't delivered. |
 | `none` | Why nobody was delivered to, when nobody was. |
 | `fit` | Why best fit sent the post to the fallback or the coordinator's own turn: `reason` is `coordinator` (the call picked the coordinator), `below-floor`, `no-confidence`, `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the `minConfidence` in force where there are some. |
+| `evaluationFailed` | Best fit's evaluator error, when that call failed and best fit asked again as a language model. `by` and `fit` say what the second ask came to. |
 | `note` | Why this round's answers go no further: the conversation already had 50 rounds open. |
 
 A post best fit gave to the coordinator's own turn because its pick was below the floor reads like this:
@@ -333,6 +334,29 @@ export function SupportDesk({ children }: { children: ReactNode }) {
 ```
 
 Import names from `@flow-state-dev/workforce/browser` in a client component; the package root is server code. A type-only import from the root, as above, is fine.
+
+### Reading it from your app
+
+Outside a renderer, read the records from the conversation's requests. Continuing the [example above](#talking-to-it):
+
+```ts
+import { createSessionClient } from "@flow-state-dev/client";
+import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
+import type { CoordinatorRouteRecord } from "@flow-state-dev/workforce";
+
+const sessions = createSessionClient({ baseUrl });
+const requests = await sessions.listSessionRequests(session.id, { includeItems: true });
+
+const records = requests
+  .flatMap((request) => request.items ?? [])
+  .flatMap((item) =>
+    item.type === "component" && item.component === COORDINATOR_ROUTE
+      ? [item.data as CoordinatorRouteRecord]
+      : [],
+  );
+```
+
+Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first, so sort them by `startedAtMs` before flattening if you want the decisions in the order they were made. `postId` and `round` say which post and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`sessions.listSessionRequests`](../api/client.md#sessionslistsessionrequestssessionid-options) for its other options.
 
 ## Handing out tasks
 

@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  harnessFailureKind,
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
@@ -114,5 +115,37 @@ describe("the harness contract", () => {
     });
 
     expect(parsed).toEqual({ prompt: "do the thing" });
+  });
+});
+
+describe("harnessFailureKind", () => {
+  // A host decides "refused" versus "error" on this alone, never on a
+  // vendor's message, so it must read only what a harness deliberately set.
+  const refused = Object.assign(new Error("vendor words"), {
+    harnessFailure: "unknown-conversation",
+  });
+
+  it("reads the classification a harness set on its error", () => {
+    expect(harnessFailureKind(refused)).toBe("unknown-conversation");
+  });
+
+  it("still reads it after the error is wrapped", () => {
+    const wrapped = new Error("block failed", { cause: new Error("step failed", { cause: refused }) });
+    expect(harnessFailureKind(wrapped)).toBe("unknown-conversation");
+  });
+
+  it("reads every other failure as unclassified", () => {
+    expect(harnessFailureKind(new Error("No conversation found with session ID: x"))).toBeNull();
+    expect(harnessFailureKind(Object.assign(new Error("x"), { harnessFailure: null }))).toBeNull();
+    expect(harnessFailureKind(Object.assign(new Error("x"), { harnessFailure: "made-up" }))).toBeNull();
+    expect(harnessFailureKind("a string")).toBeNull();
+    expect(harnessFailureKind(undefined)).toBeNull();
+  });
+
+  it("stops on a cyclic cause chain", () => {
+    const a = new Error("a") as Error & { cause?: unknown };
+    const b = new Error("b", { cause: a });
+    a.cause = b;
+    expect(harnessFailureKind(a)).toBeNull();
   });
 });
