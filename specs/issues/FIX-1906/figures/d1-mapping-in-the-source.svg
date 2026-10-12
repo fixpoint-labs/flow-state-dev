@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1: where the mapping from a remote to a checkout lives. Chosen: an option of projectWorkspace, bound to visibility and id. Instead of: an option of the workspace host, bound to project ids. It comes down to the first row, a private project with the same id and remote: no worktree under the chosen option, the operator's checkout under the other. Second row, the price: the checkout is named twice, in the mapping and in localRepositories, against once. Third row, a tie: the row stays a remote either way. Locks in: workforce gains one option, the host none. Flips if: the host learns a project's visibility from a trusted source."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1: where the mapping from a remote to a checkout lives. Chosen: an option of projectWorkspace, bound to a shared project's organization and id. Instead of: an option of the workspace host, bound to project ids. It comes down to the first row, a twin with the same id and remote, private or in another organization: no worktree under the chosen option, the operator's checkout under the other. Second row, the price: the checkout is named twice, in the mapping and in localRepositories, against once. Third row, a tie: the row stays a remote either way. Locks in: workforce gains one option, the host none. Flips if: the host learns a project's full address and organization from a trusted source."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">projectWorkspace option · visibility + id</text>
+    <text class="t-h c-code" x="228" y="112">projectWorkspace option · org + id</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Workspace host option · project ids</text>
@@ -51,12 +51,12 @@
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A PRIVATE TWIN:</text>
-    <text class="t-lbl" x="32" y="169">SAME ID, SAME REMOTE</text>
+    <text class="t-lbl" x="32" y="156">A TWIN: SAME ID, REMOTE,</text>
+    <text class="t-lbl" x="32" y="169">PRIVATE OR OTHER ORG</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">No worktree of your checkout</text>
-    <text class="t-s" x="248" y="179">its address isn't named</text>
+    <text class="t-s" x="248" y="179">only shared, in your org, is named</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Gets your checkout</text>
     <text class="t-s" x="612" y="179">the host sees only a bare id</text>
@@ -95,7 +95,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">The host learns a project's full address</text>
+    <text class="t-b" x="494" y="369">The host learns a project's address and org</text>
     <text class="t-s" x="494" y="387">from a trusted source; then it can bind safely</text>
   </g>
 </svg>

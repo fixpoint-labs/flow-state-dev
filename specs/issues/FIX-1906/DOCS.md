@@ -34,8 +34,8 @@ links to the other rather than repeating it.
 >           remote: "https://github.com/acme/acme.git",
 >           checkout: "/home/me/acme",
 >           projects: [
->             { visibility: "shared", id: "web" },
->             { visibility: "shared", id: "api" },
+>             { orgId: "acme", id: "web" },
+>             { orgId: "acme", id: "api" },
 >           ],
 >           baseRef: "main",
 >         },
@@ -46,10 +46,14 @@ links to the other rather than repeating it.
 > });
 > ```
 >
-> A run uses the checkout only when its project is listed by both visibility and id, and the
-> project's `repository` is exactly the `remote` given here. A private project with the same id
-> and remote isn't listed, so its runs never touch your checkout. Neither does a listed project
-> whose repository was changed to something else. Those runs go the usual way: a clone, if the
+> Only shared projects can be listed, each by its organization and id. A run uses the checkout
+> only when its project is listed, the run's session belongs to that organization, and the
+> project's `repository` is exactly the `remote` given here. The organization comes from the
+> server's verified identity for the session, never from anything a task says. A private project
+> with the same id and remote, or a shared one in another organization on the same server, never
+> touches your checkout. Neither does a listed project whose repository was changed to something
+> else. On a multi-tenant server, add `tenantId` to an entry; an entry without one matches only
+> runs with no tenant. Those runs go the usual way: a clone, if the
 > host allows the remote, or a refusal.
 >
 > The checkout also has to be in the host's `localRepositories`. That list is what lets the host
@@ -95,15 +99,16 @@ Appended to the bullet, after the harness-manager example:
 
 > Pass `checkouts` to have some projects' runs work in a checkout on the server's machine
 > instead of a clone. Each entry gives a `remote`, the absolute `checkout` path, the `projects`
-> it serves by `{ visibility, id }`, and an optional `baseRef` (the checkout's `HEAD` when
-> omitted). A run uses the checkout only when its project is listed and its `repository` equals
-> `remote` exactly; every other run is answered as before. List the same path in the host's
+> it serves, shared projects only, by `{ orgId, id, tenantId? }`, and an optional `baseRef` (the
+> checkout's `HEAD` when omitted). A run uses the checkout only when its project is shared and
+> listed with the run's own organization and tenant, as the server verified them, and its
+> `repository` equals `remote` exactly; every other run is answered as before. List the same path in the host's
 > `localRepositories`. A relative path, a `remote` a project couldn't store, or a project listed
 > twice is refused when `projectWorkspace()` is called.
 
 The API row for `projectWorkspace()` becomes:
 
-> | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed projects' runs to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
+> | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 
 ## Publication ownership
 

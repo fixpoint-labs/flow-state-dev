@@ -10,12 +10,13 @@ The cases, written as rules. Each says what a person or the system does and what
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A run's project is named in the mapping by visibility and id, and its row's repository equals the mapping's `remote` | The source answers the checkout path, with the project's kept files and the mapping's `baseRef` | CI · goal leg a |
-| BR-2 | A project with the same id but the other visibility, and the same remote, runs | Not mapped: the source answers the row's remote, as today, and the host clones it or refuses it by its allowlist | CI · goal leg b, failing under `match-by-id` |
+| BR-1 | A run's project is shared, an entry names its id with the run's session's `orgId` (and `tenantId`, exactly: an entry without one matches only a session with none), and its row's repository equals the entry's `remote` | The source answers the checkout path, with the project's kept files and the mapping's `baseRef` | CI · goal leg a |
+| BR-2 | A private project with the same id and remote as a mapped one runs | Not mapped: private projects never are. The source answers the row's remote, as today, and the host clones it or refuses it by its allowlist | CI · goal leg b |
+| BR-21 | A shared project with the same id and remote runs in another organization, or another tenant, or in a session with no `orgId` | Not mapped, as BR-2. The organization is the session's server-set one, never anything on the task (BP-031) | CI · goal leg b, failing under `ignore-org` |
 | BR-3 | A named project's row names a different remote, or none | Not mapped. Its remote goes the remote way; with none, the run works on its files alone, as today | CI |
 | BR-4 | A project the mapping doesn't name has the mapped remote on its row | Not mapped (ER-13) | CI |
 | BR-5 | The mapping names a checkout the host doesn't list in `localRepositories` | The host refuses the run as `invalid-remote` before any git process, naming the path. Never a clone, never a silent fallback | CI |
-| BR-6 | The mapping is built with a relative checkout path, a remote a row couldn't store, or one project address named twice | Refused when `projectWorkspace()` is called, naming the entry | CI |
+| BR-6 | The mapping is built with a relative checkout path, a remote a row couldn't store, or one project (organization, tenant and id) named twice | Refused when `projectWorkspace()` is called, naming the entry | CI |
 | BR-7 | No `checkouts` option is given | Every answer is exactly today's | Existing suite |
 
 ## The place and the branch
@@ -27,7 +28,7 @@ The cases, written as rules. Each says what a person or the system does and what
 | BR-10 | The mapping's `baseRef` names a branch the checkout doesn't have | The provision fails naming the ref; nothing is left behind | CI |
 | BR-11 | The run writes in `project/` | Saved to `project-files/<projectId>/` and absent from `git status` in the worktree (FIX-1762 BR-28, BR-29) | CI · goal leg a |
 | BR-12 | A fixed `sourceRepo` app, or any local repository answered with no kept files, runs | Unchanged: the place is the checkout itself (FIX-1762 BR-22) | Existing suite |
-| BR-13 | A settled run continues, after an answered question or a person's turn | The same worktree is handed back on the same branch, with its uncommitted work. The branch was never detached (D3) | Existing harness-manager goals, rerun |
+| BR-13 | A settled run continues, after an answered question or a person's turn | The same worktree is handed back on the same branch, with its uncommitted work and its kept files. The branch was never detached (D3) | Goal leg c, failing under `detach` · the harness-manager continuation goals, rerun (a fixed `sourceRepo`) |
 | BR-14 | A person ran `git worktree remove` on a settled run's worktree, then the run continues | The worktree is added again on the run's existing branch | CI |
 | BR-15 | A person checked the run's branch out in their own tree, then the run continues | The provision fails: git won't check a branch out twice. Nothing is reset | CI |
 | BR-16 | The mapping changes or is removed while a run is in flight | The run keeps the repository its record names. New runs follow the new mapping | CI |
@@ -47,7 +48,8 @@ outside. The same fence is drawn in [SPEC.md](SPEC.md#what-changes).
 ```mermaid
 flowchart LR
   A["shared fsd · named · same remote"] -->|"the gate · BR-1"| K["the operator's checkout"]
-  B["private fsd · same remote"] -.->|"not named · BR-2"| K
+  B["private fsd · same remote"] -.->|"never mapped · BR-2"| K
+  O["another org's shared fsd · same remote"] -.->|"other org · BR-21"| K
   C["unnamed project · same remote"] -.->|"not named · BR-4"| K
   D["named project · other remote"] -.->|"remote differs · BR-3"| K
   E["path not in localRepositories"] -.->|"refused · BR-5"| K
@@ -63,5 +65,5 @@ worktree as they were. A project that isn't mapped is not an error: it is today'
 ## Acceptance criteria this issue owns
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met): on this repository's checkout, a named
-project's run is a worktree there that installs and builds, a private twin is not, and each leg
-fails under its control. ER-3 and ER-4 are proved here and consumed by FIX-1904 and the closure.
+project's run is a worktree there that installs and builds and continues after it settles, a
+twin in another organization or a private one is not, and each leg fails under its control. ER-3 and ER-4 are proved here and consumed by FIX-1904 and the closure.

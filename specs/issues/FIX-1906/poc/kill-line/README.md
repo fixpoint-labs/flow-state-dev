@@ -25,7 +25,9 @@ bash specs/issues/FIX-1906/poc/kill-line/check.sh            # every fact must P
 CONTROL=1 bash specs/issues/FIX-1906/poc/kill-line/check.sh  # every control must FAIL
 ```
 
-It removes its worktree, branch and scratch repository on exit.
+It removes its worktree, branch and scratch repository on exit. A setup step that fails, such as a
+scratch commit on a machine with no git identity, stops it with exit 2, so a control never "fails"
+because its setup did.
 
 ## What it showed (2026-10-12, `main` at `be18f487`, node 22.22.0, pnpm 10.4.1, turbo 2.9.16)
 
