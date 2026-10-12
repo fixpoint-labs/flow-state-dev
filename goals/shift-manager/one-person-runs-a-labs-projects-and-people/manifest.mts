@@ -61,7 +61,7 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     unread: { legs: [/^\[control unread\] PROJECTS equals the store's rows:/] },
     "gap-tabs": { legs: [/^\[control gap-tabs\] a project's four tabs:/] },
     "no-gate": { legs: [/^\[control no-gate\] the outsider's open is refused:/], only: /^\[control no-gate\] the outsider's open is refused:/ },
-    // The session-naming write of an opened entry shares the retry, so the entries leg may go red too.
+    // The entries leg's hand-off misses on some runs with no control at all, so a red there is allowed.
     "no-retry": {
       legs: [/^\[control no-retry\] a write race lands whole:/],
       only: /^\[control no-retry\] (a write race lands whole|entries opened through the app show for both members):/,
