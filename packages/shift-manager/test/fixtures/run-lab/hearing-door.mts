@@ -1,6 +1,9 @@
 /**
  * The door a fixture worker flow takes a user's line through.
  *
+ * It lives in `run-lab` so that folder, copied into an empty project, can
+ * import it without leaving itself.
+ *
  * Every worker flow has one door: the public action that declares
  * `userMessage` and takes `{ message }`. A fixture whose point is its board or
  * its runs, not conversation, answers a line by saying it heard it, so a test
