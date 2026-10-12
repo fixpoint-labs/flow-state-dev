@@ -134,6 +134,20 @@ a new field. Then keep it internal until all three harnesses have written it.
   by item, so it has no empty list to report and writes no *complete* marker; a plan row it fails
   to write marks the turn *incomplete*, besides the gap row it writes today, so the panel reads
   one signal for every harness.
+- **Sign-in is probed** (epic ER-1), with the one probe FIX-1904 picked ([below](#shared-with-other-specs)).
+  A host where Claude Code is not signed in shows the mode unavailable with that reason and
+  opens no session. A sign-in that lapses later fails that turn with Claude Code's own error.
+- **One flow kind per harness**, from one factory: each rail lists its own sessions, and a
+  session can't switch harness.
+
+## Shared with other specs
+
+| With | What is shared | Position |
+|---|---|---|
+| FIX-1914 (the gate) | The setting | One function reads `KITCHEN_SINK_HARNESS_WORKSPACE`, as above; FIX-1914's gate and this spec's worktree both call it |
+| FIX-1916, FIX-1917 (Codex, Cursor) | The plan writer and the session's worktree | They call `replacePlanList` and write the list marker rather than each keeping a copy; their sessions get worktrees through the same factory, on `kitchen-sink/<flow kind>/<session>` |
+| FIX-1904 (another epic, Shift Manager's start check) | The sign-in probe | **One probe, in `@flow-state-dev/claude-code`**, the one FIX-1904 D1 picked: the Agent SDK's `accountInfo()`, asked once with no model turn, where `apiKeySource: "none"` means no account. Kitchen Sink's mode check and Shift Manager's start check both call it. Whichever lands first builds it; the other imports it |
+| Shift Manager (harness-manager) | Worktrees of the same checkout | Its branches start `conductor/`; this mode's start `kitchen-sink/`, scoped by flow kind and session. Neither prefix is a prefix of the other, so no branch, and no worktree under `.kitchen-sink/harness/`, collides |
 
 ## Considered and dropped
 
@@ -173,6 +187,7 @@ The one unproved mechanism, live rows on a lazily loaded collection, is a CI che
   server runs from, with the worktree root derived from it. The worktree comes from
   `@flow-state-dev/workspace`, not a second path. Whole-list plans get one writer in core,
   ahead of Codex and Cursor needing it, and each turn's plan a marker that tells an empty list
-  from none and a half-written list from a whole one.
+  from none and a half-written list from a whole one. The sign-in probe is FIX-1904's, shared
+  rather than built twice, and the session branches got a prefix of their own.
 
 **Open: none.**
