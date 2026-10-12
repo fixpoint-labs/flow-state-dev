@@ -3,17 +3,36 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n) and [DECISIONS.md](DECISIONS.md) (D-n); epic rules are ER-n. `tdd`. **One PR**: the
-ledger, its two entries and `handOff` go in the same change as the row path (epic ER-10), so no
-build carries two fences. **Gate:** starts only after FIX-1875 merges with `dispatchTask`'s shape
+(BR-n) and [DECISIONS.md](DECISIONS.md) (D-n); epic rules are ER-n. `tdd`. **Two PRs** (D3).
+**P1** adds two task-board seams in `core` and `orchestration` (S15 to S17); it changes no
+Workforce behaviour, adds no fence and removes nothing, and has no gate. **P2** is S1 to S14 on
+those seams, and is the single-fence change: the ledger, its two entries and `handOff` go in the
+same change as the row path (epic ER-10), so no build carries two fences. **Gate (P2):** starts
+only after P1 merges, and after FIX-1875 merges with `dispatchTask`'s shape
 reserving the post form (`post: true` on a routing turn, FIX-1875 D2 and BR-26; here BR-5), not just `target`. If it merged
 without that, stop and return a blocker; don't add the post form here silently.
 
 ## Surfaces
 
+### P1 · board seams (`core`, `orchestration`)
+
+Today a board dispatcher names one fixed entry (`packages/core/src/types/dispatch.ts`, the `task`
+address's `action`), offers only keyed sessions (`TaskSessionPolicy`: `per-task`, `per-worker`, a
+key function), and the hand-over always sends `{ key }` (`hand-off.ts`). The dispatch layer below
+already delivers `{ id }` into an existing session. Mirror the per-row lookups the hand-over
+already makes, `resolveTaskFlowKind` and `resolveTaskState`.
+
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the conversation board's hand-over | One rule for a post row: it goes to the delegate's post entry, in the session written on the row (S3); every other row keeps going to `work` in a task session. The claim gate is the same one. A session that isn't the row's refuses it | BR-1 BR-16 BR-17 BR-20 · D1 |
+| S15 | `core` · `packages/core/src/types/dispatch.ts`, the `task` address | `action` is a string or a function of the row, `(task, ctx) => string`. `TaskSessionPolicy` gains `{ id: (task, ctx) => string }`, an existing session, never created. P2 needs a keyed session and an id session on one board, so the per-row choice must reach both; the smaller shape is yours | D3 |
+| S16 | `orchestration` · `packages/orchestration/src/task-board/blocks/hand-off.ts` | Resolve the entry per row beside `resolveTaskFlowKind`, before the claim is released; a name the target flow doesn't declare is refused by the seam's existing `no-entry`, claim held. Pass an `id` session through to the existing `{ id }` delivery, refused by name when the session isn't there or isn't this principal's. A string `action` and every keyed policy behave as today | D3 |
+| S17 | `core` · `orchestration` · docs and release note | Document both options in `packages/orchestration/README.md` and `apps/docs/docs/orchestration/task-board.md` (and `packages/core/README.md` where it lists session policies). One `.changeset/*.md`, `minor`, for `@flow-state-dev/core` and `@flow-state-dev/orchestration` | — |
+
+### P2 · the single fence (`workforce`, DevTeam, goals, docs)
+
+| ID | Package · role | Change | Rules |
+|---|---|---|---|
+| S1 | `workforce` · the conversation board's hand-over (`packages/workforce/src/conversation-board/board.ts`) | One rule for a post row: it goes to the delegate's post entry, in the session written on the row (S3); every other row keeps going to `work` in a task session. On S15–S16: the entry is chosen per row, and a post row's session is `delegate:<key>`, or by id for a workstream; a follow-up's key is still derived as today. The delegate check accepts a post-only delegate for a post row, and still refuses it for a task. The claim gate is the same one. A session that isn't the row's refuses it | BR-1 BR-16 BR-17 BR-20 · D1 |
 | S2 | `workforce` · the post entry (`delegatedPostEntry`, `delegatedPostOnFinished`) | Behind the claim gate: read the post off the row, run the turn as today, settle the row with the reply; an empty reply, a failure or a cancel fails it. At the deadline, send the conversation the wake (S6) instead of a miss. Declared under `task.actions`, so `defineFlow` puts the claim gate and its lease renewal on it; refuse it under `internal` | BR-6 BR-9 BR-11 BR-12 BR-23 · D1 |
 | S3 | `workforce` · the row's post fields | Top-level, server-written fields for a post (post id, round, delegate record, session, from, coordinator, recent lines, deadline), set only by the post path. The session is resolved when the post is filed: today's per-delegate key for this conversation, or for a workstream the session its `target` resolves to. Row id derived from post, round and delegate record. The round is filterable, for S7 | BR-2 BR-4 BR-13 |
 | S4 | `workforce` · the coordinator's delivery | Every pick (fixed policies, route-on rounds, judgment) files a post row through FIX-1875's dispatch path. The routing record reads filing outcomes. **Remove** the open/dispatch/settle sequencer, both post dispatchers and the router | BR-1 BR-3 BR-7 |
@@ -32,6 +51,11 @@ without that, stop and return a blocker; don't add the post form here silently.
 
 ```mermaid
 flowchart TD
+  subgraph P1["P1 · board seams"]
+    S15["S15 · entry per row, session by id"] --> S16["S16 · hand-over resolves both"]
+    S16 --> S17["S17 · docs and changeset"]
+  end
+  S17 -->|"P1 merges"| S1
   S3["S3 · post fields on the row"] --> S1["S1 · hand-over to the post entry"]
   S3 --> S2["S2 · post entry behind the gate"]
   S1 --> S4["S4 · coordinator files rows"]
@@ -56,6 +80,8 @@ the same PR.
 
 | ID | Runs after | Passes when |
 |---|---|---|
+| V10 | S15 S16 | Red first. A board whose entry is a function sends each row to the entry it returns; a name the target flow doesn't declare is refused `no-entry` with the claim held; a string entry behaves as today |
+| V11 | S15 S16 | Red first. An `id` session delivers into that existing session; a missing one, or one that isn't this principal's, is refused by name, never created, claim held; `per-task`, `per-worker` and a key function behave as today |
 | V1 | S1 S3 | A post row runs in the session written on it, the delegate's existing session for the conversation, never a task session; a session that isn't the row's refuses it; a non-post row still runs in a task session; a session made before the change is reused (BR-1 BR-17 BR-20) |
 | V2 | S2 | The turn sees today's message and lines (BR-6); an empty reply, a failure and a cancel each fail the row (BR-9); a second settle is refused (BR-11); a delegate turn longer than the lease still lands one line, and the row is not handed out again (BR-23) |
 | V3 | S4 S5 | Every policy and every round files one row per pick; a repeat is `skipped` (BR-2); records match today's for the same scripted run (BR-3); the model's extra task fields are refused (BR-5) |
@@ -93,13 +119,17 @@ post fields.
 
 ## Docs
 
-Reconcile and publish [DOCS.md](DOCS.md) after V9 passes. It updates `coordinators.md`,
+P1 documents its two options itself (S17). P2: reconcile and publish [DOCS.md](DOCS.md) after V9 passes. It updates `coordinators.md`,
 `chief-of-staff.md` and the Workforce README; FIX-1876 owns the glossary and the shared
 vocabulary pass.
 
 ## Release note
 
-One `.changeset/*.md`, `minor` for `@flow-state-dev/workforce` (BP-022), telling an app three
+P1: one `.changeset/*.md`, `minor`, for `@flow-state-dev/core` and `@flow-state-dev/orchestration`:
+a task board's dispatcher can choose its entry per row and can run a row in an existing session by
+id (S17).
+
+P2: one `.changeset/*.md`, `minor` for `@flow-state-dev/workforce` (BP-022), telling an app three
 things: a worker file naming `handOff` is refused at load and should name `dispatchTask` (BR-18);
 a delegate flow declares `delegatedPostEntry` under `task` entries (D1); and an answer for a post
 delivered before the upgrade is dropped, its round closing at its deadline, so a long `rounds: N`
@@ -166,3 +196,8 @@ V9 cover every lab that declares the post entry under `internal` (C1), admitted 
 closure map (#3153); S9 marks the `handOff` refusal and its test with `retired-name-refusal`, and
 `chief-of-staff.md` is kept by FIX-1876's keep-list (C3); S10 adds the `ask-lab` fixture; a
 release note is planned. No decision changed.
+
+Amended 2026-10-12 after #3142 merged (D3): the build found the board can't choose an entry per row
+or reach an existing session by id, which S1 assumed while scoped to Workforce. The product owner
+chose prerequisite seams: P1 (S15 to S17, V10, V11) lands first; P2 is S1 to S14 unchanged in
+intent, with S1 naming the seams it uses. No rule changed.
