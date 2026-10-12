@@ -28,8 +28,8 @@ The cases, written as rules. Each says what a host or the run does and what happ
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-10 | A real run, no prompt given, works a multi-step job that names no tool | The plan record holds the agent's own to-do items, read back from state, and at least one reaches `completed` | Goal check, 3 of 3 runs |
-| BR-11 | The same run with `""` | No plan rows | Goal check control, 2 of 2 runs |
+| BR-10 | A real run is given no prompt | The real SDK is handed Claude Code's own prompt. Whether the agent then keeps a to-do list is up to the agent and the model; on today's default model it usually doesn't | Goal check, default arm (`prompt:preset`) |
+| BR-11 | A real run is offered the to-do tools and keeps a to-do list | The plan record holds its items, read back from state, and at least one reaches `completed`. With recording off there is no record | Goal check, planning arm · control `no-record` |
 | BR-12 | A run reports no plan at all | Nothing is invented. The record stays empty and the plan panel says "no plan recorded for this turn" ([ER-5](../../epics/FIX-1907/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1915's panel) | Existing recorder tests |
 
 ## Failure taxonomy
@@ -40,8 +40,9 @@ is the honest answer.
 
 ## Acceptance criteria this issue owns
 
-[The goal](SPEC.md#the-goal-and-how-well-know-its-met): on a real model, a run with no prompt
-given and a job that names no tool fills the plan record on 3 of 3 runs, and the same check fails
-under `GOAL_CONTROL=empty-prompt`. This satisfies the epic's
-[ER-7](../../epics/FIX-1907/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt) on the fix
-branch, not the finding branch.
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met), as amended. On a real model, a run
+with no prompt given starts from Claude Code's own prompt, and the same check fails under
+`GOAL_CONTROL=empty-prompt`. A run that keeps a to-do list leaves it in the plan record, and that
+check fails under `GOAL_CONTROL=no-record`. This proves ER-7's recorder on a real run. It does
+**not** make Claude Code's plan panel fill unasked on today's default model. That gap is the
+epic's to weigh ([D1 → Outcome](DECISIONS.md#d1)).

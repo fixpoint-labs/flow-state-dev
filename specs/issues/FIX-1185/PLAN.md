@@ -13,7 +13,7 @@ the POC line), then `tdd` for the default. One PR.
 | S1 | `claude-code` · the agent options type and the SDK query-options type | `systemPrompt` takes the SDK's own union (string, string array, the `claude_code` preset with optional `append`), forwarded verbatim (D2) | BR-2 BR-4 BR-5 |
 | S2 | `claude-code` · where the block builds the SDK query options | `undefined` becomes the preset with nothing appended (D1). Every other value, `""` included, passes through untouched | BR-1 BR-3 BR-7 BR-8 BR-9 |
 | S3 | `claude-code` · the option's doc comment, the README's options section | Say what omitting, a string, `""` and the preset each give, and that a string drops the to-do guidance | BR-2 BR-3 |
-| S4 | `goals/claude-code-harness/it-keeps-its-own-plan/` | **New** goal: `goal.md`, `run.mts`, a held-out job fixture, `GOAL_CONTROL=empty-prompt` | BR-10 BR-11 |
+| S4 | `goals/claude-code-harness/it-keeps-its-own-plan/` | **New** goal: `goal.md`, `run.mts`, two held-out job fixtures, a default arm and a planning arm, `GOAL_CONTROL=empty-prompt` and `no-record` | BR-10 BR-11 |
 | S5 | Docs | Publish [DOCS.md](DOCS.md) · one `minor` changeset for `@flow-state-dev/claude-code` (a default changes for every host) | — |
 
 Nothing is removed.
@@ -36,7 +36,7 @@ flowchart TD
 | V1 | S1 | Type test: each SDK prompt shape is accepted by the block and the capability; a non-prompt object is a type error |
 | V2 | S2 | Agent spec: the options the stubbed SDK receives carry the preset when none is given (BR-1); the string, `""`, the preset and an array pass through byte-identical (BR-2 to BR-5). Red first: on today's `main` the BR-1 case fails |
 | V3 | S2 | The second path (BP-035): the same assertions on a detached resumed run, an in-session run, `recordWork` off, and through the capability (BR-6 to BR-9) |
-| VG | S4 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `pnpm tsx goals/claude-code-harness/it-keeps-its-own-plan/run.mts` PASSES 3 of 3 on a real model, after the same run FAILED 2 of 2 under `GOAL_CONTROL=empty-prompt` on *at least two plan rows* |
+| VG | S4 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met), as amended: `pnpm tsx goals/claude-code-harness/it-keeps-its-own-plan/run.mts` PASSES on a real model, with `GOAL_CONTROL=empty-prompt` failing `prompt:preset` and `GOAL_CONTROL=no-record` failing `plan:rows` |
 | V4 | S3 S5 | `pnpm --filter @flow-state-dev/claude-code test` and `typecheck` green; the docs build |
 
 D1's check is V2's BR-1 case plus VG; D2's is V2's BR-2 case.
@@ -58,7 +58,7 @@ The option keeps its name, `systemPrompt`. Everything else is yours to name.
 | Forward the SDK's shape; never translate or validate it | The package forwards `sandbox` the same way. A copy of the SDK's union drifts the day the SDK adds a field |
 | The recorder is not touched | D1 rests on the plan being the agent's own. Any instruction the recorder adds would make the record ours |
 | The goal check reads the plan record from state, through the resource route | The issue's verification asks for rows read back from state. A count of tool calls in the stream passes while the record stays empty |
-| The goal's job names no tool and does not mention planning | Otherwise the PASS proves the Aug 19 result again, not the default |
+| The goal's fixture jobs name no tool and do not mention planning; only the planning arm adds the request, in code | The default arm reports whether the agent plans unasked, and that report means nothing if the job asks |
 | `""` stays the blank start, and the control uses it | A host that wants today's behaviour needs one spelling, and the control must be exactly today's behaviour |
 
 ## Docs

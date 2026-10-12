@@ -38,6 +38,14 @@ It comes down to whose plan it is: a line we inject records our instruction, not
 plan rows. Then the blank prompt was not the whole cause, and the plan line is the fallback, said
 in the docs as an instruction we add.
 
+**Outcome (Oct 12, after implementation): this fired.** With Claude Code's own prompt, the
+default model kept no plan on 3 of 3 runs. The empty prompt did not either, so the control
+separated nothing ([Settled](#settled)). D1 still ships, for a narrower reason: CLI parity,
+with no promise that the agent plans. The fallback named above, a plan line the block adds when
+recording, is **not** adopted here. The measurement shows it needs the tools switched on too,
+and it records a plan we asked for. Whether to add it is a separate call for the epic. It is
+not part of this amendment.
+
 <a name="d2"></a>
 ## D2 · A caller's own string still replaces that prompt; adding to it is a separate, explicit form
 
@@ -85,7 +93,21 @@ text meant to sit on top. Then replacement protects nobody and the addition is t
 - **An instruction to use the tools restores the calls on the SDK path** — **CONFIRMED** once,
   0 → 9 calls and 3 plan rows read back from state
   ([the Aug 19 measurement](https://linear.app/fixpoint-labs/issue/FIX-1185)). One run, not a
-  paired control; the goal check repeats it under the control.
+  paired control; the goal check repeats it under the control. **Re-measured Oct 12** on the
+  current default model: it holds only when the tools are also named in `allowedTools` and the
+  instruction is in the job. 4 rows, 1 completed, 1 run.
+- **Claude Code switches its to-do tools off by default on newer models** (Codex P1 on
+  [#3166](https://github.com/fixpoint-labs/flow-state-dev/pull/3166)) — **CONFIRMED**. In the
+  binary bundled with Agent SDK 0.3.234, `TaskCreate`/`TaskUpdate` are offered on Opus 4.8 and
+  later, Sonnet 5, Fable 5 and Mythos 5 only when named in `tools` or `allowedTools`, or when
+  `CLAUDE_CODE_ENABLE_TODO_TOOLS` is set. On real runs (`claude-sonnet-5`, Claude Code's
+  default) the run's `system/init` did not list them, with the preset (3 runs) and with `""`
+  (2 runs). Headless `claude -p` on the same binary and job did not list them either, so the
+  issue's "the CLI plans, the SDK doesn't" does not reproduce on this model.
+- **Offering the tools is not enough for the agent to plan unasked** — **CONFIRMED** on 4 runs.
+  With the tools named in `allowedTools`: 0 rows on 3 runs with the preset alone, and 0 rows on
+  1 run that added a `systemPrompt` `append` telling it to use them. Verdict log:
+  `goals/claude-code-harness/it-keeps-its-own-plan/goal.md`.
 
 ## How it got here
 
@@ -94,5 +116,9 @@ text meant to sit on top. Then replacement protects nobody and the addition is t
   a real-model goal check reading the plan record from state.
 - **Amended after merge (Oct 12, cross-spec check)**: BR-12 quotes FIX-1915's panel text, "no
   plan recorded for this turn". This spec has no Evolution document, so the line is here.
+- **Amended after implementation (Oct 12)**: the goal check failed on the current default model.
+  The goal is narrowed to CLI parity plus a recorder proved on a real run. BR-10 and BR-11 are
+  rewritten to match, D1 records its outcome, and the Codex P1 from #3166 is settled as
+  confirmed. The docs no longer promise that the agent plans on its own.
 
 **Open: none.**
