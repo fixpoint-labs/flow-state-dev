@@ -141,9 +141,10 @@ export async function readBack(world: World, state: LegA, restarted: boolean): P
   const coordinator = await projectCoordinatorOf(world);
   if ("error" in coordinator) r.fail(tabs, `the Stream's coordinator can't be graded: ${coordinator.error}`);
   for (const row of [row1, row2]) {
-    // A tab-level gap only: a Stream whose conversation has no line yet draws `project-stream-conversation-empty`.
+    // Any tab-level gap only: a Stream whose conversation has no line yet draws `project-stream-conversation-empty`.
+    const gaps = ["brief", "workstreams", "board", "stream"].map((t) => `[data-testid=project-${t}-empty]`).join(", ");
     const noGap = async (name: string) => {
-      if ((await world.page.locator(`[data-testid=project-${name}-empty]`).count()) > 0) r.fail(tabs, `${row.id}'s ${name} draws a project-${name}-empty gap state`);
+      if ((await world.page.locator(gaps).count()) > 0) r.fail(tabs, `${row.id}'s ${name} draws a project-<tab>-empty gap state`);
     };
     const tab = async (name: string) => {
       await world.open(`/p/${encodeURIComponent(row.id)}/${name}`);
