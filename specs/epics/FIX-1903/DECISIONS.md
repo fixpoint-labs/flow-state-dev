@@ -78,14 +78,14 @@ you fetch it first.
 |---|---|
 | **Instead of** | The coordinator attaching a project's MCP servers to the workers it hands work to, through `handOff` (retiring, [FIX-1870 D2](../FIX-1870/DECISIONS.md#d2)) or a field on `dispatchTask` · or MCP servers in a worker's `WORKER.md` |
 | **Because** | A hand-over carries config only on the paths that use it: a row approved in Inbox, or filed by the chief of staff, would miss it. The run's own task row names its project on every path, and that read already gives the run its repository. A worker serves many projects, so its file can't say which tracker a project uses |
-| **Locks in** | MCP servers are a project setting. Read when a coding run starts and handed to its harness; the harness gets a per-run MCP option, a generic one ([ER-9](BUSINESS-RULES.md#what-no-child-may-do)). A row names a host-approved server alias only; the alias's endpoint and the environment variable that holds its credential are host config, and the value reaches the MCP connection only ([ER-6](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont), [ER-14](BUSINESS-RULES.md#what-no-child-may-do)). A row that could name a URL and a variable could send any host secret anywhere. Coding runs only in this epic |
+| **Locks in** | MCP servers are a project setting, read when a coding run starts. FSD connects to them for the run with its owner's key, and the harness gets their tools only, through one generic option, `mcpTools` ([ER-9](BUSINESS-RULES.md#what-no-child-may-do)). A row names a host-approved server alias only; the alias's endpoint is host config, the key is each person's own, set on Settings, and the key reaches FSD's MCP connection only ([ER-6](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont), [ER-14](BUSINESS-RULES.md#what-no-child-may-do)). A row that could name a URL and a variable could send any host secret anywhere. Coding runs only in this epic, Claude Code first; Cursor and Codex later |
 
 **What would change my mind:** a worker that doesn't code (the chief of staff, the EM) turns
 out to need Linear for the goal. Then those workers get the project's servers too, through the
 MCP capability (`createMcpCapability` in `packages/tools/src/mcp/capability.ts`), still read
 from the project.
 
-![D4: how a project's MCP servers reach the worker that works the item. Chosen: the coding run reads them from its own project when it starts. Instead of: the coordinator attaches them when it hands work over. It comes down to the first row, which runs get them: every coding run for the project, against only runs a coordinator handed over. Second row, the price: the harness gains a per-run MCP option. Third row: no dependency on dispatchTask, against waiting for it. Locks in MCP servers as a project setting, chosen by host alias, with no URL or credential on the row. Flips if a worker that doesn't code needs Linear for the goal](figures/d4-read-at-run-start.svg)
+![D4: how a project's MCP servers reach the worker that works the item. Chosen: the coding run reads them from its own project when it starts. Instead of: the coordinator attaches them when it hands work over. It comes down to the first row, which runs get them: every coding run for the project, against only runs a coordinator handed over. Second row, the price: FSD holds the connection per run and the harness gains a tools-only option. Third row: no dependency on dispatchTask, against waiting for it. Locks in MCP servers as a project setting, chosen by host alias, with no URL or credential on the row. Flips if a worker that doesn't code needs Linear for the goal](figures/d4-read-at-run-start.svg)
 
 It comes down to which runs get them: a run started from Inbox never passes through a
 coordinator's hand-over.
@@ -135,8 +135,8 @@ Every rule has one owner. Read a row to see where it is built and where it is on
 
 The handover's binding points are rules now: the layer boundary is
 [ER-9](BUSINESS-RULES.md#what-no-child-may-do); both projects shared, on one remote, told apart
-by their briefs, is [ER-1](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont); the Linear
-credential variable is [ER-6](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont); no
+by their briefs, is [ER-1](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont); each person's
+Linear key is [ER-6](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont); no
 picker is [ER-15](BUSINESS-RULES.md#what-no-child-may-do); "worker", never "seat", is
 [ER-16](BUSINESS-RULES.md#what-no-child-may-do). Review round 1 (Cursor, Codex) settled:
 
@@ -145,10 +145,19 @@ picker is [ER-15](BUSINESS-RULES.md#what-no-child-may-do); "worker", never "seat
 - **FIX-1905 is one PR, after FIX-1904**, not two stacked PRs ([D1](#d1), [PLAN](PLAN.md)).
 - **The checkout mapping is bound to project ids** in the operator's host config, never resolved
   from a row's remote alone ([D3](#d3), [ER-13](BUSINESS-RULES.md#what-no-child-may-do)).
-- **A row names an MCP server by host-approved alias only**; endpoint and credential variable are
-  host config ([D4](#d4), [ER-14](BUSINESS-RULES.md#what-no-child-may-do)).
-- **A missing `LINEAR_MCP_API_KEY` is a degraded run, not a pass**: the closure's leg a must FAIL
+- **A row names an MCP server by host-approved alias only**; the endpoint is host config
+  ([D4](#d4), [ER-14](BUSINESS-RULES.md#what-no-child-may-do)).
+- **A missing key is a degraded run, not a pass**: with no key on Settings and
+  `LINEAR_MCP_API_KEY` unset, the closure's leg a must FAIL
   ([ER-7](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont)).
+
+After merge, the owner decided on FIX-1905's spec review
+([#3174](https://github.com/fixpoint-labs/flow-state-dev/pull/3174#issuecomment-6131359139)):
+
+- **FSD holds the MCP connection and the key, not the coding agent.** The run gets tools only,
+  through `mcpTools` ([ER-6](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont), [ER-9](BUSINESS-RULES.md#what-no-child-may-do)).
+- **Each person sets their own key on Settings**; there are no admins. `LINEAR_MCP_API_KEY` only
+  seeds the operator identity for headless runs ([ER-6](BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont)).
 - **Q1 is whether to keep the goal**, not a default inside it; merging accepts the
   recommendation unless the owner says otherwise ([Q1](#q1)).
 - **A run's branch is reviewed in its worktree** or diffed from the checkout; normal git refuses

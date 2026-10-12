@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **opens `pnpm shift-manager:dev` to work on FSD** | Finds Storefront, Platform and Sandbox, demo projects on a scratch repository. A coding run is a script that commits one file | Finds two projects, FSD and Shift Manager, each with a brief that names its focus. An item they pick is worked by a coding agent in a worktree of their own checkout |
-| **wants the coder to read the Linear issue it is working** | Pastes the issue into the conversation. A coding run has no Linear, and no project can give it any | The project carries Linear as an MCP server, and every coding run for the project gets it |
+| **wants the coder to read the Linear issue it is working** | Pastes the issue into the conversation. A coding run has no Linear, and no project can give it any | The project carries Linear as an MCP server, and every coding run for the project gets it, acting as the person it works for |
 | **runs one item on each project at once** | Has no way to point either project at their checkout | Two runs, two worktrees, two branches in the one checkout, and neither waits on the other's work |
 | **maintains the DevTeam goal checks** | The DevTeam profile is both the daily dev Lab and the goal Lab | Unchanged. DevTeam stays the goal Lab, served by `--config` ([D2](DECISIONS.md#d2)) |
 
@@ -28,7 +28,7 @@ Linear available to it.**
 |---|---|
 | **The real need** | The people who build Shift Manager use it every day on the code they are building. That needs no setup step, a real coding agent, and the issue tracker the work comes from |
 | **Smaller, and rejected** | "The two projects show in the sidebar." [FIX-1904](https://linear.app/fixpoint-labs/issue/FIX-1904) alone meets it while every run is a script in a scratch repository with no Linear. Nothing is worked |
-| **Bigger, and not this epic's** | A Linear issue picker in Shift Manager · a run that pushes and opens a pull request ([FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768)) · each person signing in to Linear as themselves · MCP for workers that don't code (the chief of staff, the EM) · a Lab served from a published install, with no checkout |
+| **Bigger, and not this epic's** | A Linear issue picker in Shift Manager · a run that pushes and opens a pull request ([FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768)) · signing in to Linear by OAuth (each person pastes their own key instead) · MCP for workers that don't code (the chief of staff, the EM) · a Lab served from a published install, with no checkout |
 | **Not done if** | A person sets anything but their credentials before the first item · a run's worktree is not in their checkout · a project row holds a folder, a credential, an MCP address or a variable name · a missing Linear credential is silent · a DevTeam goal check fails · the closure goal check hasn't run · a bug the closure run found is open |
 
 ```mermaid
@@ -37,20 +37,21 @@ flowchart LR
   O --> B["leg b · a Shift Manager item, at the same time"]
   A -->|"worktree of the checkout · answer names the issue title"| P["PASS · the goal is met"]
   B -->|"its own worktree and branch · both settle"| P
-  C["control · Linear removed from the project"] -.-> A
+  C["control · Linear removed from the project, or no key in either source"] -.-> A
   A -.->|"under the control"| F["must FAIL · no title"]
 ```
 
 The person gives only the issue id, so the title in the answer can only come from Linear. With
-Linear removed from the project, leg a must fail, which is what makes its pass mean something.
+Linear removed from the project, or with no key on Settings and `LINEAR_MCP_API_KEY` unset, leg a
+must fail, which is what makes its pass mean something.
 
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue, [FIX-1919](https://linear.app/fixpoint-labs/issue/FIX-1919), on one `main` commit after every other child merges ([ER-20](BUSINESS-RULES.md#the-closure)) |
 | **Signal** | In a real browser, as the dev profile's owner: leg a files work on FSD through the chief of staff, naming one Linear issue by id. Its run's worktree is a worktree of the checkout (`git worktree list` there names it), its branch is in the checkout, its session shows a Linear tool call, and its answer names the issue's title. Leg b does the same on Shift Manager while leg a runs: a second worktree and branch, both rows settle `completed` |
-| **Input** | A fresh store, the command with no flags, a held-out Linear issue picked at run time and read only, the credentials a person has in their shell |
+| **Input** | A fresh store, the command with no flags, a held-out Linear issue picked at run time and read only, the person's Claude credential in their shell and their Linear key set on Settings (`LINEAR_MCP_API_KEY` stands in only for a headless run) |
 | **Anti-game** | No assertion on a child's own output. The prompt carries the id and never the title. The check edits no config and sets no variable a person wouldn't |
-| **Control that must fail** | The project's Linear setting removed: leg a must FAIL its title. Today's `main`: both legs must FAIL (no FSD project) |
+| **Control that must fail** | The project's Linear setting removed, or no key on Settings and `LINEAR_MCP_API_KEY` unset: leg a must FAIL its title. Today's `main`: both legs must FAIL (no FSD project) |
 
 | | |
 |---|---|
@@ -73,7 +74,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 |---|---|---|---|
 | [FIX-1906](https://linear.app/fixpoint-labs/issue/FIX-1906) · the local checkout | First, proof that a fresh worktree of this repository gets its dependencies and builds. Then the host maps a named project's remote to this machine's checkout and cuts worktrees from it, with the project's files beside each one; two projects on one checkout don't collide | Without it the projects point at a remote the host can't reach, or at a clone the person never sees ([D3](DECISIONS.md#d3)) | Backlog · spec route |
 | [FIX-1904](https://linear.app/fixpoint-labs/issue/FIX-1904) · the dev profile | A profile `shift-manager:dev` opens by default: FSD and Shift Manager, shared, on this repository, each brief naming its focus, and the coder as Q1 decides (Claude Code, if the recommendation stands) | The substance a person sees ([D2](DECISIONS.md#d2)) | Backlog · spec route · builds after FIX-1906 |
-| [FIX-1905](https://linear.app/fixpoint-labs/issue/FIX-1905) · project MCP settings | MCP servers on a project row; a coding run gets its project's servers when it starts; Linear on both dev projects | Without it the agent works an issue it can't read ([D4](DECISIONS.md#d4)) | Backlog · spec route · one PR, after FIX-1904 |
+| [FIX-1905](https://linear.app/fixpoint-labs/issue/FIX-1905) · project MCP settings | MCP servers on a project row; a coding run gets its project's servers' tools when it starts, connected by FSD with its owner's key; each person's key on a Settings page; Linear on both dev projects | Without it the agent works an issue it can't read ([D4](DECISIONS.md#d4)) | Backlog · spec route · one PR, after FIX-1904 |
 | [FIX-1919](https://linear.app/fixpoint-labs/issue/FIX-1919) · closure · **required** | The QA plan and its run on one `main` commit: both legs, each team's journey, every child's own check | Proves the whole ([ER-20](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1904, FIX-1905, FIX-1906 |
 
 Three issues and a closure. Whether three is really two: FIX-1906 could fold into FIX-1904, but

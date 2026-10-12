@@ -19,7 +19,7 @@ turns Linear on in a profile that has to exist first.
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1906** local checkout | spec → impl PR | FIX-1762's host and run source · D3 | **First, before the rest builds on it:** proof that a fresh worktree of this repository installs and builds once, as a thin spike in its spec or its goal check's first leg. The spec chooses how a worktree gets its dependencies: a shared pnpm store, `node_modules` linked from the checkout, or an accepted first-run install, with its latency stated. Then the remote-to-checkout mapping, bound to project ids (ER-13); the project's files beside a worktree of a local checkout; the no-collision test (ER-4); whether a settled run's worktree detaches its branch | FIX-1904 | Medium |
-| **FIX-1905** project MCP settings | spec → 1 impl PR, after FIX-1904 merges | The run's project, as `projectWorkspace()` reads it · D4 | The row's server aliases and the host config they resolve against (ER-14), the read at run start, a per-run MCP option on the Claude Code harness, the missing-credential notice, and Linear on both dev projects | The closure run | Medium |
+| **FIX-1905** project MCP settings | spec → 1 impl PR, after FIX-1904 merges | The run's project, as `projectWorkspace()` reads it · D4 | The row's server aliases and the host config they resolve against (ER-14), the read at run start, FSD's MCP connection per run with a call path on `createMcpManager`, `mcpTools` on the Claude Code harness, each person's key on a write-only Settings page with the operator seed (ER-6), the missing-key notice, and Linear on both dev projects | The closure run | Medium–large: about 1.5× the first estimate, still one PR |
 | **FIX-1904** dev profile | spec → impl PR | The mapping · Q1's answer · D2 | The profile and its two projects and briefs; `start` and `dev` defaulting to it; the coder default; the dev page | FIX-1905 | Small–medium |
 | **FIX-1919** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | Both legs, each team's journey, every child's check, the seam sweep, a QA report, and a bug child for every failure | The wrap | Medium, repeats per retest |
 
@@ -46,7 +46,7 @@ links for current state. The one input, FIX-1762, is Done (PRs
 | Seam | Between | Rule |
 |---|---|---|
 | The dev profile file | FIX-1904 and FIX-1905 | FIX-1904 creates it; FIX-1905 adds only the Linear alias to its two projects and to its host config |
-| The coding harness's options | FIX-1904 and FIX-1905 | FIX-1904 picks the harness; FIX-1905 adds per-run MCP servers and lets the run call the servers' tools. Neither widens the run's environment (ER-6) |
+| The coding harness's options | FIX-1904 and FIX-1905 | FIX-1904 picks the harness; FIX-1905 adds `mcpTools`, relaying the tools of FSD's own connection. Neither widens the run's environment, and no key reaches the run (ER-6) |
 | A worktree of this repository | FIX-1906 and the closure | A coding agent that can't install or build in a fresh worktree hits the kill line. FIX-1906's spec proves it can, first, and picks the dependency strategy |
 | `apps/docs/docs/shift-manager/overview.md` | FIX-1904 and FIX-1905 | FIX-1904 publishes the dev section; FIX-1905 adds the Linear line to it |
 | `apps/docs/docs/workforce/projects.md` | FIX-1905 and FIX-1906 | FIX-1905 adds the MCP setting; FIX-1906 adds the host mapping. Whoever lands second links rather than repeats |
