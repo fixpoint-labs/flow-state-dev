@@ -1,0 +1,130 @@
+<svg viewBox="0 0 940 460" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: nine rules by six issues and Shift Manager. FIX-1914 owns the picker with its unavailable state, and Flow State mode keeping its own tasks. FIX-1915 owns one session per harness conversation, items from the harness emitter only, one session flow with options only, and the plan record in core. FIX-1916 and FIX-1917 own no rule and consume FIX-1915's. FIX-1185 owns Claude Code's plan filling on the SDK path. The closure owns the proof. Shift Manager, outside the epic, owns driving a harness from a task board and across harnesses; every child here stays out of it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .out   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .none  { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+    .fence { stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-out { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="460"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE, SHIFT MANAGER OUTSIDE THE FENCE</text>
+  <text class="t-col" x="242" y="36">FIX-1914</text>
+  <text class="t-col" x="242" y="49">picker</text>
+  <text class="t-col" x="340" y="36">FIX-1915</text>
+  <text class="t-col" x="340" y="49">Claude</text>
+  <text class="t-col" x="438" y="36">FIX-1916</text>
+  <text class="t-col" x="438" y="49">Codex</text>
+  <text class="t-col" x="536" y="36">FIX-1917</text>
+  <text class="t-col" x="536" y="49">Cursor</text>
+  <text class="t-col" x="634" y="36">FIX-1185</text>
+  <text class="t-col" x="634" y="49">plan tools</text>
+  <text class="t-col" x="732" y="36">FIX-1918</text>
+  <text class="t-col" x="732" y="49">closure</text>
+  <text class="t-col" x="830" y="36">Shift Manager</text>
+  <text class="t-col" x="830" y="49">outside</text>
+  <line class="fence" x1="821" y1="34" x2="821" y2="420"/>
+  <g id="r1">
+    <text class="t-row" x="16" y="79">ER-1 picker, modes, unavailable</text>
+    <rect class="own" x="236" y="58" width="92" height="32" rx="3"/><text class="t-own" x="244" y="78">OWNS</text>
+    <rect class="use" x="334" y="58" width="92" height="32" rx="3"/><text class="t-use" x="342" y="78">consumes</text>
+    <rect class="use" x="432" y="58" width="92" height="32" rx="3"/><text class="t-use" x="440" y="78">consumes</text>
+    <rect class="use" x="530" y="58" width="92" height="32" rx="3"/><text class="t-use" x="538" y="78">consumes</text>
+    <rect class="use" x="628" y="58" width="92" height="32" rx="3"/><text class="t-use" x="636" y="78">consumes</text>
+    <rect class="use" x="726" y="58" width="92" height="32" rx="3"/><text class="t-use" x="734" y="78">consumes</text>
+    <rect class="none" x="824" y="58" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r2">
+    <text class="t-row" x="16" y="119">ER-8 Flow State keeps its tasks</text>
+    <rect class="own" x="236" y="98" width="92" height="32" rx="3"/><text class="t-own" x="244" y="118">OWNS</text>
+    <rect class="use" x="334" y="98" width="92" height="32" rx="3"/><text class="t-use" x="342" y="118">consumes</text>
+    <rect class="use" x="432" y="98" width="92" height="32" rx="3"/><text class="t-use" x="440" y="118">consumes</text>
+    <rect class="use" x="530" y="98" width="92" height="32" rx="3"/><text class="t-use" x="538" y="118">consumes</text>
+    <rect class="use" x="628" y="98" width="92" height="32" rx="3"/><text class="t-use" x="636" y="118">consumes</text>
+    <rect class="use" x="726" y="98" width="92" height="32" rx="3"/><text class="t-use" x="734" y="118">consumes</text>
+    <rect class="none" x="824" y="98" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r3">
+    <text class="t-row" x="16" y="159">ER-2 one session, one conversation</text>
+    <rect class="use" x="236" y="138" width="92" height="32" rx="3"/><text class="t-use" x="244" y="158">consumes</text>
+    <rect class="own" x="334" y="138" width="92" height="32" rx="3"/><text class="t-own" x="342" y="158">OWNS</text>
+    <rect class="use" x="432" y="138" width="92" height="32" rx="3"/><text class="t-use" x="440" y="158">consumes</text>
+    <rect class="use" x="530" y="138" width="92" height="32" rx="3"/><text class="t-use" x="538" y="158">consumes</text>
+    <rect class="none" x="628" y="138" width="92" height="32" rx="3"/>
+    <rect class="use" x="726" y="138" width="92" height="32" rx="3"/><text class="t-use" x="734" y="158">consumes</text>
+    <rect class="none" x="824" y="138" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r4">
+    <text class="t-row" x="16" y="199">ER-3, ER-11 items from the harness</text>
+    <rect class="use" x="236" y="178" width="92" height="32" rx="3"/><text class="t-use" x="244" y="198">consumes</text>
+    <rect class="own" x="334" y="178" width="92" height="32" rx="3"/><text class="t-own" x="342" y="198">OWNS</text>
+    <rect class="use" x="432" y="178" width="92" height="32" rx="3"/><text class="t-use" x="440" y="198">consumes</text>
+    <rect class="use" x="530" y="178" width="92" height="32" rx="3"/><text class="t-use" x="538" y="198">consumes</text>
+    <rect class="use" x="628" y="178" width="92" height="32" rx="3"/><text class="t-use" x="636" y="198">consumes</text>
+    <rect class="use" x="726" y="178" width="92" height="32" rx="3"/><text class="t-use" x="734" y="198">consumes</text>
+    <rect class="none" x="824" y="178" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r5">
+    <text class="t-row" x="16" y="239">ER-6 one flow, options only</text>
+    <rect class="use" x="236" y="218" width="92" height="32" rx="3"/><text class="t-use" x="244" y="238">consumes</text>
+    <rect class="own" x="334" y="218" width="92" height="32" rx="3"/><text class="t-own" x="342" y="238">OWNS</text>
+    <rect class="use" x="432" y="218" width="92" height="32" rx="3"/><text class="t-use" x="440" y="238">consumes</text>
+    <rect class="use" x="530" y="218" width="92" height="32" rx="3"/><text class="t-use" x="538" y="238">consumes</text>
+    <rect class="none" x="628" y="218" width="92" height="32" rx="3"/>
+    <rect class="use" x="726" y="218" width="92" height="32" rx="3"/><text class="t-use" x="734" y="238">consumes</text>
+    <rect class="none" x="824" y="218" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r6">
+    <text class="t-row" x="16" y="279">ER-5 one plan record in core</text>
+    <rect class="use" x="236" y="258" width="92" height="32" rx="3"/><text class="t-use" x="244" y="278">consumes</text>
+    <rect class="own" x="334" y="258" width="92" height="32" rx="3"/><text class="t-own" x="342" y="278">OWNS</text>
+    <rect class="use" x="432" y="258" width="92" height="32" rx="3"/><text class="t-use" x="440" y="278">consumes</text>
+    <rect class="use" x="530" y="258" width="92" height="32" rx="3"/><text class="t-use" x="538" y="278">consumes</text>
+    <rect class="use" x="628" y="258" width="92" height="32" rx="3"/><text class="t-use" x="636" y="278">consumes</text>
+    <rect class="use" x="726" y="258" width="92" height="32" rx="3"/><text class="t-use" x="734" y="278">consumes</text>
+    <rect class="none" x="824" y="258" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r7">
+    <text class="t-row" x="16" y="319">ER-7 Claude plan fills on the SDK</text>
+    <rect class="none" x="236" y="298" width="92" height="32" rx="3"/>
+    <rect class="use" x="334" y="298" width="92" height="32" rx="3"/><text class="t-use" x="342" y="318">consumes</text>
+    <rect class="none" x="432" y="298" width="92" height="32" rx="3"/>
+    <rect class="none" x="530" y="298" width="92" height="32" rx="3"/>
+    <rect class="own" x="628" y="298" width="92" height="32" rx="3"/><text class="t-own" x="636" y="318">OWNS</text>
+    <rect class="use" x="726" y="298" width="92" height="32" rx="3"/><text class="t-use" x="734" y="318">consumes</text>
+    <rect class="none" x="824" y="298" width="92" height="32" rx="3"/>
+  </g>
+  <g id="r8">
+    <text class="t-row" x="16" y="359">ER-9 board and cross-harness</text>
+    <rect class="use" x="236" y="338" width="92" height="32" rx="3"/><text class="t-use" x="244" y="358">stays out</text>
+    <rect class="use" x="334" y="338" width="92" height="32" rx="3"/><text class="t-use" x="342" y="358">stays out</text>
+    <rect class="use" x="432" y="338" width="92" height="32" rx="3"/><text class="t-use" x="440" y="358">stays out</text>
+    <rect class="use" x="530" y="338" width="92" height="32" rx="3"/><text class="t-use" x="538" y="358">stays out</text>
+    <rect class="use" x="628" y="338" width="92" height="32" rx="3"/><text class="t-use" x="636" y="358">stays out</text>
+    <rect class="use" x="726" y="338" width="92" height="32" rx="3"/><text class="t-use" x="734" y="358">stays out</text>
+    <rect class="out" x="824" y="338" width="92" height="32" rx="3"/><text class="t-out" x="832" y="358">OWNS</text>
+  </g>
+  <g id="r9">
+    <text class="t-row" x="16" y="399">ER-17, ER-18 the proof</text>
+    <rect class="use" x="236" y="378" width="92" height="32" rx="3"/><text class="t-use" x="244" y="398">consumes</text>
+    <rect class="use" x="334" y="378" width="92" height="32" rx="3"/><text class="t-use" x="342" y="398">consumes</text>
+    <rect class="use" x="432" y="378" width="92" height="32" rx="3"/><text class="t-use" x="440" y="398">consumes</text>
+    <rect class="use" x="530" y="378" width="92" height="32" rx="3"/><text class="t-use" x="538" y="398">consumes</text>
+    <rect class="use" x="628" y="378" width="92" height="32" rx="3"/><text class="t-use" x="636" y="398">consumes</text>
+    <rect class="own" x="726" y="378" width="92" height="32" rx="3"/><text class="t-own" x="734" y="398">OWNS</text>
+    <rect class="none" x="824" y="378" width="92" height="32" rx="3"/>
+  </g>
+  <text class="t-use" x="16" y="446">A dotted cell has no stake. FIX-1916 and FIX-1917 own nothing: each consumes FIX-1915's rules, which is the point of one flow.</text>
+</svg>

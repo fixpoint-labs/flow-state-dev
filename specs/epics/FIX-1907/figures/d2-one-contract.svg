@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 416" role="img" aria-label="D2: how does Kitchen Sink drive a harness? Chosen: each harness block through the shared contract. Instead of: harness-manager on a task board, or Claude Code&#x27;s in-session resume. It comes down to what is under test: only the contract is shared by all three. The price: Claude Code&#x27;s in-session path goes unexercised here. A tie: items reach the session live either way. Locks in Claude Code running detached with resolvers. Flips if app authors mostly use the in-session path."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .recom  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does Kitchen Sink drive a harness?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The block and its shared contract</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">harness-manager, or in-session</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT IS</text>
+    <text class="t-lbl" x="32" y="169">UNDER TEST</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">What all three share</text>
+    <text class="t-s" x="248" y="179">resume, onSession and the handle</text>
+    <text class="mark minus" x="592" y="162">&#8722;</text>
+    <text class="t-b" x="612" y="161">A board, or one harness</text>
+    <text class="t-s" x="612" y="179">orchestration, or Claude Code only</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">CLAUDE CODE&#x27;S</text>
+    <text class="t-lbl" x="32" y="231">OWN RESUME</text>
+    <text class="mark minus" x="228" y="218">&#8722;</text>
+    <text class="t-b" x="248" y="217">Not exercised here</text>
+    <text class="t-s" x="248" y="235">its own tests cover it</text>
+    <text class="mark plus" x="592" y="218">+</text>
+    <text class="t-b" x="612" y="217">Exercised</text>
+    <text class="t-s" x="612" y="235">the path many apps may take</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">ITEMS WHILE</text>
+    <text class="t-lbl" x="32" y="289">IT RUNS</text>
+    <text class="mark tie" x="228" y="276">=</text>
+    <text class="t-b" x="248" y="275">Live</text>
+    <text class="t-s" x="248" y="293">from the harness emitter</text>
+    <text class="mark tie" x="592" y="276">=</text>
+    <text class="t-b" x="612" y="275">Live</text>
+    <text class="t-s" x="612" y="293">from the same emitter</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="347">LOCKS IN</text>
+    <text class="t-b" x="32" y="367">Claude Code runs detached with resolvers</text>
+    <text class="t-s" x="32" y="385">a harness differs only by its options</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="347">FLIPS IF</text>
+    <text class="t-b" x="494" y="367">App authors mostly use in-session resume</text>
+    <text class="t-s" x="494" y="385">then Kitchen Sink tests that path too</text>
+  </g>
+</svg>

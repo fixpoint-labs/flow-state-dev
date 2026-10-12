@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 388" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 12 October 2026. An input lane: FIX-1735 and FIX-1701, both done. This epic spec in review at the now line. FIX-1914 the picker: spec once the open question is answered, then implementation. FIX-1915 Claude Code mode: spec beside, implementation after FIX-1914 merges. FIX-1916 Codex and FIX-1917 Cursor: specs beside, implementations side by side after FIX-1915 merges. FIX-1185 Claude plan tools: one bar that can run any time before the closure. The closure FIX-1918: QA plan written early, run after every other child merges. The critical path runs through the FIX-1914, FIX-1915 and Codex or Cursor implementations, then the closure run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .in     { fill:var(--prose); stroke:none; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .now    { stroke:var(--gone); stroke-width:1.4; }
+    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-in   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="388"/>
+
+  <text class="t-lbl" x="16" y="18">THE PATH &#8212; A CHAIN WITH ONE FORK, AS OF 12 OCT 2026</text>
+  <path class="axis" d="M220 40 L924 40"/>
+  <text class="t-s" x="226" y="32">done</text>
+  <text class="t-now" x="318" y="32">now</text>
+  <text class="t-s" x="520" y="32">ahead &#183; not scheduled</text>
+  <path class="now" d="M314 40 L314 330"/>
+
+  <g id="inputs">
+    <text class="t-in" x="16" y="70">FIX-1735, FIX-1701 &#183; inputs</text>
+    <rect class="in" x="226" y="56" width="80" height="22" rx="3"/>
+    <text class="t-w" x="232" y="71">both done</text>
+  </g>
+  <g id="epic-spec">
+    <text class="t-ln" x="16" y="106">FIX-1907 &#183; this spec</text>
+    <rect class="flight" x="280" y="92" width="80" height="22" rx="3"/>
+    <text class="t-s" x="286" y="107">in review</text>
+  </g>
+  <g id="picker">
+    <text class="t-ln" x="16" y="142">FIX-1914 &#183; the picker</text>
+    <rect class="todo" x="368" y="128" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="143">spec</text>
+    <rect class="todo" x="472" y="128" width="88" height="22" rx="3"/>
+    <text class="t-s" x="480" y="143">impl</text>
+  </g>
+  <g id="claude">
+    <text class="t-ln" x="16" y="178">FIX-1915 &#183; Claude Code mode</text>
+    <rect class="todo" x="368" y="164" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="179">spec</text>
+    <rect class="todo" x="568" y="164" width="108" height="22" rx="3"/>
+    <text class="t-s" x="576" y="179">impl</text>
+  </g>
+  <g id="codex">
+    <text class="t-ln" x="16" y="214">FIX-1916 &#183; Codex mode</text>
+    <rect class="todo" x="368" y="200" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="215">spec</text>
+    <rect class="todo" x="684" y="200" width="88" height="22" rx="3"/>
+    <text class="t-s" x="692" y="215">impl</text>
+  </g>
+  <g id="cursor">
+    <text class="t-ln" x="16" y="250">FIX-1917 &#183; Cursor mode</text>
+    <rect class="todo" x="368" y="236" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="251">spec</text>
+    <rect class="todo" x="684" y="236" width="88" height="22" rx="3"/>
+    <text class="t-s" x="692" y="251">impl</text>
+  </g>
+  <g id="plan-tools">
+    <text class="t-ln" x="16" y="286">FIX-1185 &#183; Claude plan tools</text>
+    <rect class="todo" x="368" y="272" width="208" height="22" rx="3"/>
+    <text class="t-s" x="376" y="287">diagnose, then a fix or a finding</text>
+  </g>
+  <g id="closure">
+    <text class="t-ln" x="16" y="322">FIX-1918 &#183; closure</text>
+    <rect class="todo" x="368" y="308" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="323">QA plan</text>
+    <rect class="todo" x="784" y="308" width="124" height="22" rx="3"/>
+    <text class="t-s" x="792" y="323">run on main</text>
+  </g>
+  <path class="crit" d="M360 103 L368 139 M560 139 L568 175 M676 175 L684 211 M772 211 L784 319"/>
+  <text class="t-g" x="16" y="358">Critical path: this spec &#8594; FIX-1914 &#8594; FIX-1915 &#8594; FIX-1916 or FIX-1917 &#8594; the closure run.</text>
+  <text class="t-s" x="16" y="374">Specs run side by side; FIX-1914's waits on the open question. Codex and Cursor are the one parallel window.</text>
+</svg>
