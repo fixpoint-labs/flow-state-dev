@@ -13,7 +13,8 @@ import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LAB_ORG_ID, type Lab } from "../teams/devteam/host.mts";
+import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
+import { LAB_ORG_ID, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 import { createLabClients } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
 import { serveLab } from "./helpers/serve-lab";
@@ -129,6 +130,23 @@ describe("the fsd profile", () => {
     const fsd = await openProfile("fsd.fsdev.config.mts", tempStore("br5-fsd"), { DEVTEAM_STORE: devteamStore });
     expect(Object.keys(await projectRows(fsd)).sort()).toEqual(["fsd", "shift-manager"]);
     expect(Object.keys(await projectRows(devteam)).sort()).toEqual(["platform", "sandbox", "storefront"]);
+  }, 120_000);
+
+  it("hands openLab its checkout mapping, and allows no remote", async () => {
+    // What the profile handed `openLab`, read by wrapping it: the mapping's
+    // own shape and where its runs work is fsd-checkout.test.ts.
+    let handed: OpenLabOptions | undefined;
+    vi.doMock("../teams/devteam/host.mts", async (original) => {
+      const host = (await original()) as typeof import("../teams/devteam/host.mts");
+      return { ...host, openLab: (options: OpenLabOptions) => host.openLab((handed = options)) };
+    });
+    try {
+      await openProfile("fsd.fsdev.config.mts", tempStore("handed"));
+    } finally {
+      vi.doUnmock("../teams/devteam/host.mts");
+    }
+    const workspace = handed?.workspace as { remotes?: unknown; checkouts?: unknown } | undefined;
+    expect({ remotes: workspace?.remotes, checkouts: workspace?.checkouts }).toEqual({ remotes: { allow: [] }, checkouts: CHECKOUTS });
   }, 120_000);
 
   // The profile maps only its two shared projects to this checkout, and

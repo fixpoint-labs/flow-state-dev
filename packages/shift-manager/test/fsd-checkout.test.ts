@@ -5,14 +5,15 @@
  * branch cut from local `main`; a run the mapping misses is refused by name,
  * and nothing is cloned.
  *
- * The profile's own workspace (its remotes and its mapping) is read from what
- * the profile handed `openLab` when it opened. The runs then go through
- * `openLab` with that workspace as it stands except for the runs' root and the
- * checkout, which is a temp repository with `main` and a feature branch
- * checked out: CI's checkout has no local `main`, and a check must not add
- * worktrees to the checkout it runs in. The coder is scripted (it commits
- * `SCRIPTED-RUN.md`), and the chief of staff's model is scripted to make one
- * tool call, so nothing here spends a model.
+ * The profile's mapping is read from its leaf module (`fsd-checkouts.mts`),
+ * with no Lab opened; that the profile hands it to `openLab`, with no remote
+ * allowed, is `fsd-profile.test.ts`. The runs then go through `openLab` with
+ * that workspace except for the runs' root and the checkout, which is a temp
+ * repository with `main` and a feature branch checked out: CI's checkout has
+ * no local `main`, and a check must not add worktrees to the checkout it runs
+ * in. The coder is scripted (it commits `SCRIPTED-RUN.md`), and the chief of
+ * staff's model is scripted to make one tool call, so nothing here spends a
+ * model.
  *
  * Every grade reads the checkout itself (`git worktree list`, `git branch`,
  * `git merge-base`), never what the host returned.
@@ -22,18 +23,19 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, write
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type { ProjectCheckout } from "@flow-state-dev/workforce";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { commitScriptedWork } from "../teams/devteam/harness.mts";
 import { harnessStub, type HarnessStub } from "../teams/devteam/harness-stub.mts";
-import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type LabWorkspaceHost, type OpenLabOptions } from "../teams/devteam/host.mts";
+import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
+import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createScratchRepo } from "../teams/devteam/scratch-repo.mts";
 
 const REMOTE = "https://github.com/fixpoint-labs/flow-state-dev.git";
-const PROFILE = fileURLToPath(new URL("../teams/devteam/fsd.fsdev.config.mts", import.meta.url));
+const CHECKOUTS_MODULE = fileURLToPath(new URL("../teams/devteam/fsd-checkouts.mts", import.meta.url));
 const CODER = "eng.coder";
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" }).trim();
@@ -57,36 +59,6 @@ afterEach(async () => {
   for (const lab of opened) await lab.dispose();
   opened = [];
 });
-
-/**
- * The workspace the profile opened its Lab with, and its rows' remotes, read
- * from one open of it on a temp store and the scripted coder.
- */
-let profile: { workspace: LabWorkspaceHost; checkouts: readonly ProjectCheckout[]; repositories: string[] };
-beforeAll(async () => {
-  const vars = { FSD_STORE: join(mkdtempSync(join(tmpdir(), "sm-fsd-checkout-")), "store.sqlite"), DEVFORCE_LAB_HARNESS: "stub" };
-  const before = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
-  Object.assign(process.env, vars);
-  try {
-    vi.resetModules();
-    let handed: OpenLabOptions | undefined;
-    vi.doMock("../teams/devteam/host.mts", async (original) => {
-      const host = (await original()) as typeof import("../teams/devteam/host.mts");
-      return { ...host, openLab: (options: OpenLabOptions) => host.openLab((handed = options)) };
-    });
-    const mod = (await import("../teams/devteam/fsd.fsdev.config.mts")) as { lab: Lab };
-    const repositories = (mod.lab.projects ?? []).map((p) => String(p.project.repository));
-    await mod.lab.dispose();
-    const workspace = handed?.workspace as LabWorkspaceHost;
-    profile = { workspace, checkouts: workspace.checkouts ?? [], repositories };
-  } finally {
-    vi.doUnmock("../teams/devteam/host.mts");
-    for (const [k, v] of Object.entries(before)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  }
-}, 120_000);
 
 /**
  * A checkout like a user's: `main` with one commit, and a feature branch one
@@ -139,7 +111,7 @@ async function openMapped(checkout: string, stub: HarnessStub, model?: ModelReso
     stores: inMemoryStores(),
     harness: stub.slot,
     runTimeoutMs: 30_000,
-    workspace: { ...profile.workspace, root, checkouts: profile.checkouts.map((entry) => ({ ...entry, checkout })) },
+    workspace: { root, remotes: { allow: [] }, checkouts: CHECKOUTS.map((entry) => ({ ...entry, checkout })) },
     coderWorkerId: CODER,
     withoutJudge: true,
     projects: [
@@ -179,11 +151,10 @@ function expectWorktreeFromMain(user: ReturnType<typeof userCheckout>, cwd: stri
 }
 
 describe("the fsd profile's checkout mapping", () => {
-  it("maps exactly FSD and Shift Manager of the Lab's organization, on the rows' remote, to this checkout, from main, and allows no remote", () => {
-    expect(profile.workspace.remotes.allow).toEqual([]);
+  it("maps exactly FSD and Shift Manager of the Lab's organization, on the rows' remote, to this checkout, from main", () => {
     const toplevel = realpathSync(git(fileURLToPath(new URL(".", import.meta.url)), "rev-parse", "--show-toplevel"));
-    expect(profile.checkouts).toHaveLength(1);
-    const [entry] = profile.checkouts as [ProjectCheckout];
+    expect(CHECKOUTS).toHaveLength(1);
+    const [entry] = CHECKOUTS as [ProjectCheckout];
     expect(realpathSync(entry.checkout)).toBe(toplevel);
     expect(entry.projects).toEqual([
       { orgId: LAB_ORG_ID, id: "fsd" },
@@ -191,12 +162,12 @@ describe("the fsd profile's checkout mapping", () => {
     ]);
     expect(entry.baseRef).toBe("main");
     // One remote for the rows and the mapping: a drift is a silent miss (BR-14).
-    expect(profile.repositories).toEqual([entry.remote, entry.remote]);
+    // The rows are held to the same REMOTE by fsd-profile.test.ts's BR-1.
     expect(entry.remote).toBe(REMOTE);
   });
 
   it("BR-16: holds no machine path; the checkout is worked out from where the file is", () => {
-    const source = readFileSync(PROFILE, "utf8");
+    const source = readFileSync(CHECKOUTS_MODULE, "utf8");
     expect(source).not.toMatch(/["'`](\/(home|Users|root|tmp|mnt|opt|var|srv|workspace)\/|[A-Za-z]:\\\\)/);
     expect(source).toMatch(/new URL\("\.\.\/\.\.\/\.\.\/\.\.", import\.meta\.url\)/);
   });

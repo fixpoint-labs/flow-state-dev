@@ -780,11 +780,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // A feature task works in its project: the workstream's it was filed from,
   // or the one it names.
+  const lab = "remotes" in options.workspace ? options.workspace : undefined;
+  const remotes = lab?.remotes.allow ?? [];
+  const saveNothing = options.saveNothing === true;
   const workspaceHost: WorkspaceHost | undefined =
-    "sourceRepo" in options.workspace ? undefined : labWorkspaceHost(options.workspace, options.saveNothing === true);
-  // An answer task works in its project too, in places of its own.
-  const answerHost = answerWorkspaceHost(options.workspace, options.saveNothing === true);
-  if (options.saveNothing === true && workspaceHost === undefined) {
+    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing);
+  // An answer task works in its project too, in places of its own. A lab on
+  // one fixed repository reaches no remote here: only a project with no
+  // repository can answer there.
+  const answerHost = workspaceHostOf(join(options.workspace.root, "answers"), remotes, lab?.checkouts, saveNothing);
+  if (saveNothing && workspaceHost === undefined) {
     throw new Error("openLab: `saveNothing` needs a `{ root, remotes }` workspace; a fixed repository keeps no files");
   }
 
@@ -1410,35 +1415,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 }
 
 /**
- * The lab's workspace host: `localWorkspaceHost` over `root`, reaching only
- * the remotes listed, with `projectWorkspace()` as its source, given the
- * lab's `checkouts` ({@link checkoutSource}). `saveNothing`
+ * A workspace host of the lab's: `localWorkspaceHost` over `root`, reaching
+ * only the `remotes` listed, with `projectWorkspace()` as its source, given
+ * the lab's `checkouts` ({@link checkoutSource}). The lab builds two: a
+ * board's rows' and, beside it, a conversation's answer tasks'. `saveNothing`
  * is the `no-sync-back` control's seam: the host is the same, and its `save`
  * reports nothing saved.
  */
-function labWorkspaceHost(options: LabWorkspaceHost, saveNothing: boolean): WorkspaceHost {
-  const host = localWorkspaceHost({
-    root: options.root,
-    remotes: { allow: [...options.remotes.allow] },
-    ...checkoutSource(options),
-  });
-  if (!saveNothing) return host;
-  return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
-}
-
-/**
- * The coder's workspace host for an answer task: `localWorkspaceHost` beside
- * the lab's own, with `projectWorkspace()` as its source and the lab's
- * `checkouts`, so a task works in its project (in a mapped checkout as a
- * board's row does) and is refused with none. A lab on one fixed repository reaches
- * no remote here: only a project with no repository can answer there.
- */
-function answerWorkspaceHost(workspace: WorkspaceConfig | LabWorkspaceHost, saveNothing: boolean): WorkspaceHost {
-  const host = localWorkspaceHost({
-    root: join(workspace.root, "answers"),
-    remotes: { allow: "remotes" in workspace ? [...workspace.remotes.allow] : [] },
-    ...checkoutSource("remotes" in workspace ? workspace : {}),
-  });
+function workspaceHostOf(
+  root: string,
+  remotes: readonly string[],
+  checkouts: LabWorkspaceHost["checkouts"],
+  saveNothing: boolean,
+): WorkspaceHost {
+  const host = localWorkspaceHost({ root, remotes: { allow: [...remotes] }, ...checkoutSource(checkouts) });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
 }
@@ -1448,7 +1438,7 @@ function answerWorkspaceHost(workspace: WorkspaceConfig | LabWorkspaceHost, save
  * the two never disagree: every checkout a project is mapped to is one the
  * host may work in, and no other is.
  */
-function checkoutSource({ checkouts }: Pick<LabWorkspaceHost, "checkouts">) {
+function checkoutSource(checkouts: LabWorkspaceHost["checkouts"]) {
   if (checkouts === undefined || checkouts.length === 0) return { source: projectWorkspace() };
   return {
     source: projectWorkspace({ checkouts }),
