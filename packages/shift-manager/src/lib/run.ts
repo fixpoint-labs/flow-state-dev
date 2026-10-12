@@ -14,7 +14,7 @@
  */
 import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import type { RequestStatus } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, type RequestStatus } from "@flow-state-dev/core/types";
 import type { LabClients } from "./connection";
 import { describeFailure, type Failure } from "./reads";
 
@@ -187,7 +187,7 @@ export async function interruptRun(
  * under, when it records them. Found in the run session's manifest by these
  * patterns; a flow that declares neither records neither.
  */
-const RECORDED = { plan: "observed-plan/**", files: "observed-file-ops/**" } as const;
+const RECORDED = { plan: `${OBSERVED_PLAN}/**`, files: "observed-file-ops/**" } as const;
 
 /** One step of the plan the run recorded. */
 export type PlanStep = { id: string; title: string; status: string | null };
