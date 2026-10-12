@@ -25,7 +25,7 @@
  *   bind only. A request with no bearer is refused, as in the checks.
  *
  * The harness is picked by `DEVFORCE_LAB_HARNESS` (see `harness.mts`): the
- * lab's scripted run by default, no model, which says what it is doing in the
+ * lab's scripted run by default (this profile's; the `fsd` profile's is Claude Code), no model, which says what it is doing in the
  * run's session and commits one file so the row settles; or `claude-code`, a
  * real coding agent.
  *
@@ -52,7 +52,7 @@ import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { selectHarness } from "./harness.mts";
+import { startHarness } from "./harness.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
@@ -133,7 +133,7 @@ const DEFAULT_WORKSTREAMS = [
 // A store from before the lab's org id changed is set aside, loudly, not reused.
 await setAsideLegacyOrgStore(STORE);
 
-const harness = selectHarness();
+const harness = await startHarness("stub");
 
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
