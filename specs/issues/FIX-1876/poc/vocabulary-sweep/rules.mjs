@@ -2,14 +2,17 @@
  * FIX-1876 vocabulary sweep — what is retired, where it is looked for, and what is kept.
  *
  * The implementer extends KEEP (never RETIRED) as it classifies the hits a rename leaves;
- * every KEEP entry carries its reason. A legacy reader is not kept here: it carries the
- * `legacy-name:` marker on its own line, so a reviewer sees it in the diff.
+ * every KEEP entry carries its reason. A line that names a retired name on purpose (a legacy
+ * reader, or FIX-1872's refusal of a worker file naming `handOff`) is not kept here: it carries
+ * the `retired-name-refusal` marker on that line, so a reviewer sees it in the diff. It is the
+ * marker FIX-1875's sweep uses, so the repository has one spelling for a deliberate old name.
  */
 
 /** The roots the sweep owns. Every tracked file under one is scanned or excluded by name. */
 export const ROOTS = ["packages", "apps", "docs/architecture", ".changeset", "goals"];
 
-export const LEGACY_MARKER = "legacy-name:";
+/** FIX-1875's marker, under FIX-1875's name, so the two sweeps share one spelling. */
+export const REFUSAL_MARKER = "retired-name-refusal";
 
 const CODE = /^(packages|apps)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
 const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
@@ -99,6 +102,13 @@ export const KEEP = [
     path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "the chief of staff's approval ask: a question to a person"
+  },
+  {
+    path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
+    // FIX-1872's exact sentence, and only on a line naming `handOff` once: a stale mention beside it stays open.
+    line: /^(?!.*`handOff`.*`handOff`).*A file that still names `handOff` is refused\b/,
+    rules: ["handoff-symbol-in-docs", "handoff-prose"],
+    why: "WR-25b: FIX-1872's sentence that a worker file still naming handOff is refused; a page can't carry the marker"
   },
   {
     path: /^(packages\/shift-manager\/|apps\/docs\/docs\/shift-manager\/)/,

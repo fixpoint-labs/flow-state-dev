@@ -5,7 +5,8 @@
  * Walks every git-tracked file under the swept roots, finds each use of a retired
  * name or a retired meaning (rules.mjs → RETIRED), and fails on any hit that the
  * keep list (rules.mjs → KEEP) does not classify. A line carrying the marker
- * `legacy-name:` is a deliberate legacy reader (BP-030) and is counted, not failed.
+ * `retired-name-refusal` names a retired name on purpose (a legacy reader, BP-030, or a refusal)
+ * and is counted, not failed.
  *
  *   node specs/issues/FIX-1876/poc/vocabulary-sweep/sweep.mjs            # report + verdict
  *   node specs/issues/FIX-1876/poc/vocabulary-sweep/sweep.mjs --list     # every unclassified hit
@@ -18,7 +19,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { EXCLUDE, KEEP, LEGACY_MARKER, RETIRED, ROOTS } from "./rules.mjs";
+import { EXCLUDE, KEEP, REFUSAL_MARKER, RETIRED, ROOTS } from "./rules.mjs";
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
@@ -72,11 +73,11 @@ for (const path of scanned) {
   }
 }
 
-const legacy = [];
+const marked = [];
 const kept = [];
 const open = [];
 for (const hit of hits) {
-  if (hit.text.includes(LEGACY_MARKER)) legacy.push(hit);
+  if (hit.text.includes(REFUSAL_MARKER)) marked.push(hit);
   else if (KEEP.some((k) => k.path.test(hit.path) && (!k.line || k.line.test(hit.text)) && (!k.rules || k.rules.includes(hit.rule))))
     kept.push(hit);
   else open.push(hit);
@@ -90,7 +91,7 @@ for (const h of open) byFile.set(h.path, (byFile.get(h.path) ?? 0) + 1);
 console.log(`commit ${execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()}`);
 console.log(`files: ${files.length} tracked under ${ROOTS.join(" ")} · ${scanned.length} scanned · ${[...excluded.values()].reduce((a, b) => a + b, 0)} excluded · ${unruled.length} with no rule`);
 for (const [why, n] of excluded) console.log(`  excluded ${n} · ${why}`);
-console.log(`hits: ${hits.length} · legacy-marked ${legacy.length} · kept ${kept.length} · OPEN ${open.length}`);
+console.log(`hits: ${hits.length} · refusal-marked ${marked.length} · kept ${kept.length} · OPEN ${open.length}`);
 console.log(`open by rule: ${JSON.stringify(byRule(open))}`);
 // A line two rules both hit is one line to change: report lines as well as hits.
 const openLines = new Set(open.map((h) => `${h.path}:${h.line}`));

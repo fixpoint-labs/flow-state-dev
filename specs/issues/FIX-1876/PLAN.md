@@ -29,8 +29,9 @@ Starts when FIX-1875 and FIX-1872 have both merged. Rule IDs are [BUSINESS-RULES
 **Removed:** the files renamed above under their old names; no export alias (D1). **Kept on
 purpose:** `isTaskDispatcher`, `dispatcher()`, `TaskDispatcher` (already dispatch);
 `abortHandoff` and the engine's request-record hand-over unless rewording is cheap (WR-5); every
-person ask (WR-3); the board's `onIdle: "wait"` (WR-23); the three internal wire values (D2). Each one
-the sweep flags has a keep-list entry in its rules.
+person ask (WR-3); the board's `onIdle: "wait"` (WR-23); the three internal wire values (D2); FIX-1872's
+refusal of a worker file naming `handOff`, marked `retired-name-refusal` (WR-25). Each one the sweep flags has a
+keep-list entry in its rules or the marker.
 
 ## Sequence
 
@@ -77,7 +78,7 @@ A name FIX-1875 or FIX-1872 already renamed keeps their choice (WR-22).
 
 | Check | Proves | Fails when |
 |---|---|---|
-| C1 · the sweep, per family then full, and in CI from P3 | WR-1 to WR-7, WR-15, WR-20 to WR-24 · D1 | An open line, a file with no rule, or an unmarked old name |
+| C1 · the sweep, per family then full, and in CI from P3 | WR-1 to WR-7, WR-15, WR-20 to WR-25 · D1 | An open line, a file with no rule, or an unmarked old name |
 | C2 · `--control` | The sweep can fail | It passes with a planted `parkOnAsk` |
 | C3 · Leg 2, the upgrade scenario on SQLite | WR-8 to WR-13 · D2 | The turn doesn't resume with the answer, the board holds two rows, or the public route resumes the old gate |
 | C4 · Leg 2 with the legacy readers stubbed out | C3 depends on them | It passes |
@@ -96,8 +97,9 @@ A name FIX-1875 or FIX-1872 already renamed keeps their choice (WR-22).
   regression (WR-10). Find every caller with the sweep, not by memory ([tenet 5](../../../docs/philosophy.md#5-fix-at-the-owning-layer)).
 - **G2 · Names only.** *Because* the epic's proof is that nothing changed but names; an edit to an
   assertion, a branch or a default is a finding, not a fix (ER-8, ER-11).
-- **G3 · Mark every legacy reader with `legacy-name:` and the rule it serves.** *Because* the sweep
-  counts them, and a later cleanup finds them by the marker.
+- **G3 · Mark every deliberate retired-name line, a legacy reader or a refusal, with `retired-name-refusal` and the rule it serves.** *Because* the sweep
+  counts them, and a later cleanup finds them by the marker. It is FIX-1875's marker, so the
+  repository has one spelling for a deliberate old name, whether it reads one or refuses one (WR-25a).
 - **G4 · A writer never writes an old name of a renamed mark.** *Because* reading both is only safe
   if new records are unambiguous (WR-15). The kept wire values are written as today.
 
@@ -117,8 +119,9 @@ Premise it settled: the issue's list is a small part of the job ([DECISIONS → 
 ## At implement time
 
 - **Re-run the sweep first** on the merged FIX-1875 and FIX-1872 commit. Their renames drop out; the
-  coordinator's `handOff` tool should already be gone. If FIX-1875 merged a stored mark named with
-  *wait* in another meaning (its draft `awaitingDispatch`), add it to P1's map (WR-22).
+  coordinator's `handOff` tool should already be gone; its load-time refusal stays, marked (WR-25).
+  If either merged a name that uses *wait* or *dispatch* in another meaning, add it to P1's map
+  (WR-22).
 - **Finish the keep list** before renaming: classify every person ask (Shift Manager, the harness
   inbox, approvals, the chief of staff) and every unrelated "hand off" (WR-3, WR-5), each with its
   reason. Then everything left is a rename.
