@@ -18,7 +18,7 @@ because each one hands the next a surface that must stop moving. Only the QA pla
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1875** dispatchTask | spec → impl PR | `wait-for-response.ts` and the notices · D1 · ER-3 | The tool; `waitForResponse` and `timeoutMs` retired; public ask names renamed | FIX-1872 · FIX-1876 | Medium |
-| **FIX-1872** one fence | spec → impl PR | `dispatchTask` · D2 | Today's coordinator posts sorted into tells and answers; answers as rows, workstream sessions included, tells as plain messages; the `handOff` tool, the ledger and its two entries removed in one PR | FIX-1876 | Medium |
+| **FIX-1872** one fence | spec → impl PR | `dispatchTask` · D2 | Today's coordinator posts sorted into tells and answers; answers as rows, a workstream's row carrying its `target` (added to `dispatchTask`), tells as `dispatcher()` messages; the `handOff` tool, the ledger and its two entries removed in one PR | FIX-1876 | Medium |
 | **FIX-1876** docs and vocabulary | spec → impl PR | Both above, merged · D3 | Internal ask and hand-off names renamed, with a migration for rows already marked; the pages in [DOCS.md](DOCS.md) | The closure run | Small–medium |
 | **FIX-1887** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The reruns, the sweep, a QA report, and a bug child for every failure | The wrap | Medium, repeats per retest |
 

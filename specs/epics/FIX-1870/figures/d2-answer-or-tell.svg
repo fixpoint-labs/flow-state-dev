@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 448" role="img" aria-label="D2: what a coordinator&#39;s post becomes, three options side by side. Chosen: a post that needs an answer is a task, one per delegate, and a tell that expects no reply is a plain message. Instead of: a task for every post, tells included, or today&#39;s post fenced by the delivery ledger. It comes down to the first row, what is tracked to an ending: the chosen split tracks exactly what expects an answer; a task for every post gives a tell a deadline and a missed answer it never needed; today&#39;s ledger keeps a second answer-once fence. Second row, the price: the chosen split files one row per delegate for each post that needs an answer, and FIX-1872 must first sort today&#39;s posts into tells and answers; a task for every post files a row for every post; the ledger files none. Third row, a tie: each delegate&#39;s own line, rounds and routing hold in all three. Locks in the delivery ledger removed and no model-facing tell tool. Flips if a post&#39;s own lines, rounds or routing can&#39;t run as rows."
+<svg viewBox="0 0 940 448" role="img" aria-label="D2: what a coordinator&#39;s post becomes, three options side by side. Chosen: a post that needs an answer is a task, one per delegate, and a tell that expects no reply is a plain message. Instead of: a task for every post, tells included, or today&#39;s post fenced by the delivery ledger. It comes down to the first row, what is tracked to an ending: the chosen split tracks exactly what expects an answer; a task for every post gives a tell a deadline and a missed answer it never needed; today&#39;s ledger keeps a second answer-once fence. Second row, the price: the chosen split files one row per delegate for each post that needs an answer, and FIX-1872 must first sort today&#39;s posts into tells and answers; a task for every post files a row for every post; the ledger files none. Third row, a tie: each delegate&#39;s own line, rounds and routing hold in all three. Locks in the delivery ledger removed, a tell as a dispatcher() message with no row, and no model-facing tell tool. Flips if a post&#39;s own lines, rounds or routing can&#39;t run as rows."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -102,7 +102,7 @@
     <rect class="foot" x="16" y="350" width="446" height="82" rx="5"/>
     <text class="t-lbl" x="32" y="371">LOCKS IN</text>
     <text class="t-b" x="32" y="391">The delivery ledger is removed</text>
-    <text class="t-s" x="32" y="409">a tell is dispatcher() or a session message</text>
+    <text class="t-s" x="32" y="409">a tell is a dispatcher() message, no row</text>
     <text class="t-s" x="32" y="424">no model-facing tell tool</text>
   </g>
 

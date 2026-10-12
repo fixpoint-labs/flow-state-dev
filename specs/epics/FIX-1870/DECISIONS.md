@@ -44,13 +44,14 @@ Decided by the product owner, 2026-10-11, answering this spec's Open 1.
 
 | | |
 |---|---|
-| **Instead of** | [FIX-1816 D3](../../issues/FIX-1816/DECISIONS.md#d3), merged: a coordinator's post stays a post, fenced by FIX-1791's delivery ledger (`packages/workforce/src/delivery-ledger.ts`) beside the claim ticket · or a task for every post, tells included · or a lighter row-less path for group threads |
+| **Instead of** | [FIX-1816 D3](../../issues/FIX-1816/DECISIONS.md#d3), merged: a coordinator's post stays a post, fenced by FIX-1791's delivery ledger (`packages/workforce/src/delivery-ledger.ts`) beside the claim ticket · or a task for every post, tells included |
 | **Because** | Anything that needs a confirmed answer is tracked to an ending: claimed once, done or failed, and the caller hears it. A tell that expects no reply needs none of that. Claude Code draws the same line: Agent and team tasks are tracked to an ending, SendMessage messages are not. Two fences that both decide "answered once" disagree at the edges, and FIX-1815 decided on one ([its D2](../FIX-1815/DECISIONS.md#d2)) and never built it. A task for every post would give a tell a deadline and a missed answer it never needed. FIX-1816 D3 kept each delegate's own line, a routing policy and rounds for what the person sees; D2 keeps them and changes only the fence, so it amends D3 rather than reversing it |
-| **Locks in** | Every coordinator post that expects an answer is a task, one per delegate, sent through `dispatchTask`. One answer per delegate per post per round, each delegate's own line, the round deadline, the missed answer and the routing record keep working ([ER-6](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). A tell that expects no reply is a plain message, `dispatcher()` from flow code or a session message, with no row, no deadline and no once-only check. No model-facing tell tool is added. FIX-1872's spec first checks whether any coordinator post today is a tell: if none is, every post is a task and nothing changes but names; if some are, those become plain messages. The coordinator's `handOff` tool and the ledger go in one change, FIX-1872, so no build ships two fences. A question kind of task, shown differently in the UI, waits until something needs it |
+| **Locks in** | Every coordinator post that expects an answer is a task, one per delegate, sent through `dispatchTask`. A post to a workstream keeps its route: the row carries the delegate record's `target` and is worked in that session, so FIX-1872 adds the coordinate to `dispatchTask` ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). One answer per delegate per post per round, each delegate's own line, the round deadline, the missed answer and the routing record keep working ([ER-6](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). A tell that expects no reply is a `dispatcher()` message, into the target's session for a workstream, with no row, no deadline and no once-only check; it is not the conversation board's `-tell` notice flush. No model-facing tell tool is added. FIX-1872's spec first checks whether any coordinator post today is a tell: if none is, every post is a task and nothing changes but names; if some are, those become plain messages. The coordinator's `handOff` tool and the ledger go in one change, FIX-1872, so no build ships two fences. A question kind of task, shown differently in the UI, waits until something needs it |
 
 **What would change my mind:** a post's own lines, rounds or routing can't run as rows. Then D2
 narrows to task endings, the ledger stays for posts, and FIX-1872 shrinks to the hand-off route.
-That, or a row cost FIX-1872's spec can't accept, comes back to this epic, not to a local fix.
+That comes back to this epic, not to a local fix (ER-14). A row per delegate is the accepted price,
+not a second flip.
 
 ![D2: what a coordinator's post becomes, three options side by side. Chosen: a post that needs an answer is a task, one per delegate, and a tell is a plain message. Instead of: a task for every post, or today's post fenced by the delivery ledger. It comes down to the first row, what is tracked to an ending: the split tracks exactly what expects an answer, a task for every post gives a tell a deadline it never needed, and the ledger keeps a second fence. Second row, the price: a row per delegate for each post that needs an answer, with today's posts sorted first; a row for every post; or none. Third row, a tie: each delegate's own line, rounds and routing hold in all three. Locks in the ledger removed and no tell tool. Flips if a post's own lines can't run as rows](figures/d2-answer-or-tell.svg)
 
@@ -100,7 +101,8 @@ Every rule has one owner. Read a row to see where it is built and where it is on
   notice clears it. It never refuses a duplicate answer, so ER-5 and the sweep hold with it in place.
 - **`openWorkstream` is not a hand-off tool.** FIX-1793's project-coordinator action starts a
   workstream; ER-2 and ER-10 don't touch it. A post *to* a workstream's session that expects an answer
-  is a coordinator post like any other, and moves to a row under ER-5; a tell stays a message.
+  is a coordinator post like any other, and moves to a row carrying the record's `target` under ER-5;
+  a tell stays a `dispatcher()` message into that session.
 - **The coordinator checks are FIX-1791's, FIX-1794's and FIX-1610's goals.** The earlier
   "FIX-1840 check" was FIX-1794's `files-tasks-down-the-owners-chain`; FIX-1840 only appears in a
   verdict row there.
@@ -130,6 +132,7 @@ None built. The premise, that every result path already comes from a row ending,
   closure; wait depth and timeout restated as they ship, with `onTimeout: "continue"` dropped.
 - **Open 1 answered (2026-10-11, after merge)** — the owner: anything that needs a confirmed
   answer is a task, a tell is a plain message. D2 now reads that way and amends FIX-1816 D3 to
-  match; a question kind of task is deferred. Folded by a follow-up PR.
+  match; a question kind of task is deferred. Folded by a follow-up PR, whose review added the
+  workstream `target` on a task row and pinned a tell to `dispatcher()`.
 
 **Open: 0.**

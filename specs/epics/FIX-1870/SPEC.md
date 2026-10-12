@@ -74,7 +74,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1875](https://linear.app/fixpoint-labs/issue/FIX-1875) · dispatchTask | The tool, with `wait`; retires `waitForResponse` / `timeoutMs` on `addTask` and the public ask names | The substance ([D1](DECISIONS.md#d1)) | Backlog · spec route |
-| [FIX-1872](https://linear.app/fixpoint-labs/issue/FIX-1872) · one fence | Coordinator posts that need an answer through `dispatchTask`, a workstream's existing session included, and any tell as a plain message; the coordinator's `handOff` tool, the delivery ledger and its `delegateAnswer` / `delegateMissed` entries removed in the same change | Without it two fences stay ([D2](DECISIONS.md#d2)) | Backlog · spec route · blocked by FIX-1875 |
+| [FIX-1872](https://linear.app/fixpoint-labs/issue/FIX-1872) · one fence | Coordinator posts that need an answer through `dispatchTask`, a workstream's row carrying its `target` into its existing session, and any tell as a `dispatcher()` message; the coordinator's `handOff` tool, the delivery ledger and its `delegateAnswer` / `delegateMissed` entries removed in the same change | Without it two fences stay ([D2](DECISIONS.md#d2)) | Backlog · spec route · blocked by FIX-1875 |
 | [FIX-1876](https://linear.app/fixpoint-labs/issue/FIX-1876) · docs and vocabulary | Internal ask names and the hand-off names that mean "deliver new work" renamed; the published pages and glossary describe one path | Without it the docs teach two mechanisms for one ([D3](DECISIONS.md#d3)) | Backlog · spec route · blocked by FIX-1875, FIX-1872 |
 | [FIX-1887](https://linear.app/fixpoint-labs/issue/FIX-1887) · closure · **required** | The QA plan and its run on one `main` commit: the three reruns, the surface sweep, every child's own check | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1875, FIX-1872, FIX-1876 |
 
@@ -107,7 +107,7 @@ wait until both have stopped moving the files they rename.
 ## What stays as it is
 
 - **What a waited-on or dispatched task does**, every limit included ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
-- **A tell that expects no reply**, as a plain message: `dispatcher()` or a session message, with no row.
+- **A tell that expects no reply**, as a plain `dispatcher()` message (into the target's session for a workstream), with no row; not the board's `-tell` notice flush.
 - **`dispatcher()`**, as transport for flow code, and [FIX-1312](https://linear.app/fixpoint-labs/issue/FIX-1312)'s reply-to-sender (`session: { from: true }`).
 - **`addTask`, `assignTask` and the other task tools**, as board CRUD.
 - **Ask as a question to a person**: approvals, Shift Manager's AskCard, the harness question inbox.
