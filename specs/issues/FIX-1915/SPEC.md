@@ -53,6 +53,7 @@ carried.
 | **Input** | A fresh random token per run, and a job long enough to stop. Any other token or job must pass. Durable store (`STORE_TYPE=filesystem`) |
 | **Anti-game** | Assert on what the page shows and on the id in session state. Never on the scripted SDK, never on a prompt Kitchen Sink built from earlier turns |
 | **Control that must fail** | `GOAL_CONTROL=no-resume`: **c** and **s** FAIL. `GOAL_CONTROL=no-record`: **p** FAILS (the panel says "reports no plan"). Today's `main`: every leg FAILS, as there is no Claude Code mode |
+| **The gate** | FIX-1914's goal check gains two legs: with harness modes off, opening Claude Code creates *no session* and *no harness flow is served*. Both FAIL under its `GOAL_CONTROL=gate-open` |
 
 ## What changes
 
@@ -121,5 +122,5 @@ continuity breaks, or we hold this issue for a plan that FIX-1185 owns.
 **Open: none.** D2 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `core` + `claude-code` + `shift-manager` + `kitchen-sink` · large (12 surfaces, 10
+Feature · `core` + `claude-code` + `shift-manager` + `kitchen-sink` · large (12 surfaces, 11
 checks, 5 doc surfaces) · 2 PRs · epic [FIX-1907](../../epics/FIX-1907/SPEC.md)

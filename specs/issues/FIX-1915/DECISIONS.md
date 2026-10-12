@@ -28,7 +28,7 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | One directory every session shares, such as the person's own repository |
 | **Because** | Two sessions running at once in one tree overwrite each other's work, and nothing stops them: the turn queue is per session. A session's directory must also never change, since a harness continues a conversation where it started. One directory per session gives both, for all three harnesses |
-| **Locks in** | Kitchen Sink is a place to try a harness, not to work on your code: a new session starts in an empty directory. Directories stay until the host clears them |
+| **Locks in** | Kitchen Sink is a place to try a harness, not to work on your code: a new session starts in an empty directory. Directories stay until the host clears them. The root is the one host setting FIX-1914 gates every harness mode on, `KITCHEN_SINK_HARNESS_WORKSPACE` |
 
 ![D1: where does a harness session work? Chosen: its own directory under one root the host sets. Instead of: one directory every session shares. It comes down to two sessions at once: shared, they overwrite each other with nothing to stop them. The price: a session starts empty, so a person cannot point it at their own repository. A tie: either is stable across turns. Locks in Kitchen Sink as a place to try a harness. Flips if the product wants people to work on their own repositories](figures/d1-workspace.svg)
 
@@ -77,16 +77,27 @@ a new field. Then keep it internal until all three harnesses have written it.
 - **No approval prompts; the sandbox is the fence.** Kitchen Sink has no in-page approval for a
   harness, so the SDK's prompts would have no one to answer them. Writes stay in the session's
   directory. No sandbox, or a server running as root, makes the mode unavailable with that reason.
-- **The binding is two fields in session state**: the confirmed id, written only by `onSession`,
-  and the id the turn asked for, noted by `resume`. The page derives *continued*, *started a new
-  one* or *refused*. Kitchen Sink writes no item.
+  The run sees an allowlisted environment (`harnessEnv`), as Shift Manager passes Claude Code,
+  never the server's whole environment.
+- **The binding is session state, with a record per turn.** The session holds the confirmed id,
+  written only by `onSession`. Each turn holds, under its request, the id it asked for (noted by
+  `resume`) and the id `onSession` confirmed *during that turn*, if any. The page derives the
+  notice from that turn's entry and its end: confirmed what it asked → *continued*; confirmed
+  another → *started a new one*; confirmed nothing and failed → *refused*; stopped → *stopped*,
+  never refused. Two session-wide fields can't tell a refusal from a turn that confirmed and then
+  failed. Kitchen Sink writes no item.
 - **A turn sent while one runs waits** (`concurrency: "queue"`).
-- **The panel shows the latest turn that recorded a plan**, in three states: rows · "no plan
-  recorded for this turn" · "this harness reports no plan", when no record is declared.
+- **The panel shows the session's latest turn**, in three states: its rows · "no plan recorded
+  for this turn", even when an earlier turn recorded one · "this harness reports no plan", when
+  no record is declared. An earlier turn's plan is never shown as the current one.
 - **The plan record streams live** (`client.live: true`); today it refreshes when the request ends.
-- **The root is `KITCHEN_SINK_HARNESS_ROOT`**, defaulting under the user's home, never a temp
-  directory a reboot clears.
-- **Sign-in is not probed.** The first turn fails with Claude Code's own error.
+- **The root is `KITCHEN_SINK_HARNESS_WORKSPACE`**, FIX-1914's one host setting. It must name an
+  existing directory; Kitchen Sink never creates or defaults it. Unset, or on Vercel, harness
+  modes are off, and the same server-side check that hides the mode decides whether the Claude
+  Code flow is registered at all (FIX-1914 BR-15).
+- **Sign-in is probed** (epic ER-1). A host where Claude Code is not signed in shows the mode
+  unavailable with that reason and opens no session. A sign-in that lapses later fails that turn
+  with Claude Code's own error.
 - **One flow kind per harness**, from one factory: each rail lists its own sessions, and a
   session can't switch harness.
 
@@ -97,7 +108,7 @@ a new field. Then keep it internal until all three harnesses have written it.
 | Drive Claude Code through harness-manager, or its in-session resume | Epic D2 |
 | Kitchen Sink writes a notice item when a conversation moves or is refused | Epic ER-11: no shell-written items. Session state carries it |
 | One flow kind, harness chosen per session | The rail per mode would need a filter, and a session could change harness mid-conversation |
-| A plan reader helper in core | Two readers today (Shift Manager, the panel), about ten lines each. File one when a third appears |
+| A plan reader helper in core | Two readers today (Shift Manager, the panel), a few lines each. The one part not to hand-copy is the turn's key prefix, which the recorder escapes; see [PLAN → Notes from review](PLAN.md#notes-from-review) |
 | Move the file and gap records to core too | Only Claude Code writes them. The epic moves the plan alone |
 | Approval prompts in the page | A new in-page approval surface for harnesses; not needed to test the contract |
 
@@ -114,5 +125,9 @@ The one unproved mechanism, live rows on a lazily loaded collection, is a CI che
 - **Draft** — framed as the first harness mode plus the shared parts; one session flow on the
   shared contract, a directory per session, a refused conversation shown and never replaced, the
   plan shape public in core and shipped first; two PRs.
+- **Review round 1** — the binding gained a record per turn, because two session-wide fields
+  could not tell a refusal from a turn that confirmed and then failed, nor from a stop; sign-in
+  is probed, because the epic's ER-1 requires it; the root became FIX-1914's
+  `KITCHEN_SINK_HARNESS_WORKSPACE` gate, so the mode is registered only through it.
 
 **Open: none.**

@@ -12,12 +12,12 @@ is the plan record in core, which needs no picker.
 |---|---|---|---|
 | S1 | `core` · a harness plan-record module beside `types/harness` | The plan key, its item state schema, its outcome enum and the collection definition, moved from Claude Code unchanged except `client.live: true`. Exported from the package root (D3) | BR-19 BR-21 BR-22 |
 | S2 | `claude-code` · `sdk/work-collections` | Import S1 and **remove** the local definitions. Re-export the same names from `sdk`, as the same objects. File and gap records stay | BR-20 |
-| S3 | `shift-manager` · the recorded-work reader | Read the plan pattern from S1's key, **removing** its own copy of the string | — |
-| S4 | Docs and release notes for S1 to S3 | Per [DOCS.md](DOCS.md): core README, Claude Code README, coding agents page, Claude Code page. Changesets: `core` minor, `claude-code` patch | — |
+| S3 | `shift-manager` · the recorded-work reader | Read the plan pattern from S1's key, **removing** its own copy (the `observed-plan/**` glob) | — |
+| S4 | Docs and release notes for S1 to S3 | Per [DOCS.md](DOCS.md): core README, Claude Code README, coding agents page, Claude Code page. Changesets: `core` patch, `claude-code` patch (additive, per AGENTS.md) | — |
 | S5 | `kitchen-sink` · the harness session flow factory | One factory: a flow kind and a function that builds a harness block from the shared resolvers. One action taking the prompt, `concurrency: "queue"`. Session state holds the binding. No harness-specific code | BR-5 BR-7 ER-6 |
-| S6 | `kitchen-sink` · the binding resolvers | `resume` reads the confirmed id and notes what the turn asked for; `onSession` writes the confirmed id. Nothing else writes either (D2) | BR-1 to BR-4 BR-6 BR-7 ER-2 |
-| S7 | `kitchen-sink` · the workspace resolver | `<root>/<flow kind>/<tenant>/<session>`, each segment derived the way the Claude Code page's checkout example does it, created on first use. Root from `KITCHEN_SINK_HARNESS_ROOT`, defaulting under the user's home (D1) | BR-11 BR-12 |
-| S8 | `kitchen-sink` · Claude Code mode | The flow from S5 with `claudeCodeAgent`: `detached`, `recordWork`, `bypassPermissions`, `containmentSandbox` on S7's directory with `failIfUnavailable`. Its availability probe for FIX-1914's picker. Registered in `fsdev.config.ts`; the package and the SDK added as dependencies | BR-10 BR-13 BR-23 |
+| S6 | `kitchen-sink` · the binding resolvers | `resume` reads the confirmed id and notes, under the turn's request, what it asked for; `onSession` writes the confirmed id and marks it confirmed for that turn. Nothing else writes either (D2) | BR-1 to BR-4 BR-6 BR-7 BR-9 ER-2 |
+| S7 | `kitchen-sink` · the workspace resolver | `<root>/<flow kind>/<tenant>/<session>`, each segment derived the way the Claude Code page's checkout example does it, created on first use. The root is FIX-1914's `KITCHEN_SINK_HARNESS_WORKSPACE`, read through its gate; never created or defaulted here (D1) | BR-11 BR-12 |
+| S8 | `kitchen-sink` · Claude Code mode | The flow from S5 with `claudeCodeAgent`: `detached`, `recordWork`, `bypassPermissions`, `containmentSandbox` on S7's directory with `failIfUnavailable`, and `env` from `harnessEnv` with an allowlist like Shift Manager's. Its own check in FIX-1914's mode-check slot: SDK, root, sandbox, sign-in. Registered in `fsdev.config.ts` only through FIX-1914's gate; the package and the SDK added as dependencies | BR-10 BR-13 BR-23 BR-24 |
 | S9 | `kitchen-sink` · the session view in FIX-1914's Claude Code slot | The conversation with Claude Code's items through the existing renderers, a stop control on the session's abort, and the binding notice read from session state | BR-3 BR-4 BR-8 BR-9 ER-3 ER-4 |
 | S10 | `kitchen-sink` · the plan panel | Reads the manifest for the plan record, then the latest turn's rows by request prefix. Three states. Read-only | BR-14 to BR-18 ER-5 |
 | S11 | `kitchen-sink` · a scripted Claude Code for test mode | Behind the app's existing test mode, through the block's `resolveClaudeAgent` seam: a script that names a session, emits items with a pause, writes plan rows, refuses a named id | All CI rows |
@@ -58,11 +58,12 @@ flowchart TD
 | V2 | A | The Claude Code `sdk` names are `===` core's (BR-20); Claude Code's recorder tests pass unchanged | Re-declare the collection in Claude Code |
 | V3 | A | Shift Manager's recorded-work tests pass, reading the key from core | Change S1's key |
 | V4 | A | A plan row upserted mid-run reaches a subscribed client as a live delta, on the lazy collection (BR-21) | Drop `live` |
-| V5 | B | Resolvers, with a scripted Claude Code: BR-1 to BR-4. Nothing but `onSession` writes the confirmed id (D2) | Clear the id on a refused resume, as the lab does: BR-3 fails |
+| V5 | B | Resolvers, with a scripted Claude Code: BR-1 to BR-4, including a turn that confirms *X* then fails (an error, not a refusal) and one that fails before confirming (refused). Nothing but `onSession` writes the confirmed id (D2) | Clear the id on a refused resume, as the lab does: BR-3 fails · derive the notice from session-wide fields only: the confirmed-then-failed turn reads wrong |
 | V6 | B | Workspace: every turn of a session gets one directory; two sessions, two; hostile ids stay inside the root (BR-11, BR-12) | Key by session id raw |
-| V7 | B | Browser, scripted: a step shows before the turn completes; stop leaves the id and turn 2 continues it; a second turn queues (BR-5, BR-8, BR-9) | Await the run before rendering |
-| V8 | B | Browser, scripted: the panel's three states and latest-turn labelling (BR-14 to BR-17); no control in it writes (BR-18) | Return `[]` for an undeclared record: BR-16 fails |
-| V9 | B | Availability: each named reason disables the mode (BR-23) | Set `VERCEL=1` and expect available |
+| V7 | B | Browser, scripted: a step shows before the turn completes; stop leaves the id and turn 2 continues it; a stop before the confirmation shows stopped, not refused; a second turn queues (BR-5, BR-8, BR-9) | Await the run before rendering |
+| V8 | B | Browser, scripted: the panel's three states and latest-turn labelling, including turn 2 with no plan after turn 1 recorded one (BR-14 to BR-17); no control in it writes (BR-18) | Return `[]` for an undeclared record: BR-16 fails · pick the latest turn *with* rows: BR-15 fails |
+| V9 | B | Availability: each named reason disables the mode, sign-in included (BR-23) | Report a host with no sign-in as available |
+| VH | B | FIX-1914's goal check (`goals/kitchen-sink-harness-mode/opens-on-the-picker/`), extended with two legs: with harness modes off, opening `/claude-code` creates **no session**, and **no harness flow is served** (`/api/flows/claude-code-session/…` not found) (BR-24) | `GOAL_CONTROL=gate-open`: both legs FAIL |
 | VG | B | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness/claude-code-continues-its-conversation/run.mts` PASSES on real Claude Code after FAILING under `GOAL_CONTROL=no-resume` (**c**, **s**) and `GOAL_CONTROL=no-record` (**p**) | The controls are the red state |
 
 The second path (BP-035) here is the resumed turn, the stopped turn and the reload. A check that
@@ -73,8 +74,8 @@ covers only a first turn proves none of them.
 | Where | Name | Why pinned |
 |---|---|---|
 | Flow kinds | `claude-code-session`, and `codex-session`, `cursor-session` for the siblings | FIX-1914's rail lists a mode's sessions by kind. Confirm with FIX-1914's spec at implement time |
-| Host setting | `KITCHEN_SINK_HARNESS_ROOT` | A person types it |
-| Goal controls | `GOAL_CONTROL=no-resume`, `GOAL_CONTROL=no-record` | The goal check and the closure name them |
+| Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE` | FIX-1914's, the one setting every harness mode is gated on. A person types it |
+| Goal controls | `GOAL_CONTROL=no-resume`, `GOAL_CONTROL=no-record`; FIX-1914's `gate-open` for VH | The goal checks and the closure name them |
 | Record key | `observed-plan` | Stored rows and Shift Manager read it today (BP-030) |
 
 Everything else is yours to name.
@@ -101,13 +102,15 @@ Kitchen Sink section with PR-B, after VG. Reconcile each against shipped behavio
 harness session flow (kind, buildAgent):
     shared resolvers:
         cwd       ← workspace(root, kind, tenant, session)       (D1)
-        resume    ← state.binding.confirmed; note it as asked    (D2)
-        onSession ← state.binding.confirmed = id                 (only writer)
+        resume    ← state.binding.confirmed; turns[request].asked = it          (D2)
+        onSession ← state.binding.confirmed = id; turns[request].confirmed = id  (only writer)
     one action "turn", queued per session:
         step buildAgent(shared resolvers) with { prompt }
 
 page:
-    notice   ← asked vs confirmed, once the turn ends: continued · new · refused
+    notice   ← this turn's entry and how it ended:
+               stopped → stopped · confirmed = asked → continued
+               confirmed ≠ asked → new · none confirmed, failed → refused
     panel    ← manifest has observed-plan?  no → "reports no plan"
                rows under the latest turn's request prefix? no → "none this turn"
 ```
@@ -116,14 +119,32 @@ page:
 
 ## At implement time
 
-- Read FIX-1914's merged spec and code for the mode slot, the rail and how availability is shown.
-  This plan assumes a mode is a flow kind plus a session view plus a probe.
+- Read FIX-1914's merged spec and code for the mode slot, the rail, the gate and how
+  availability is shown. This plan assumes a mode is a flow kind registered through the gate,
+  plus a session view, plus its own check.
+- Find the cheapest sign-in probe that doesn't start a run. If there is none, raise it to the
+  epic as an ER-1 question rather than dropping BR-23's sign-in reason.
 - Check whether FIX-1185 has landed. If its fix writes plan rows, VG's **p** leg reads rows;
   either way it passes on the record's state.
 - `client.live` on a `prefetchMode: "lazy"` collection is V4's question. If it does not stream,
   raise it to the epic rather than polling in the panel.
 - The Claude Agent SDK may need listing as a server-only package in `next.config.mjs`.
 - Compare [EVOLUTION.md](EVOLUTION.md)'s claims against current code before moving S1.
+
+## Notes from review
+
+Recorded for the implementer, not baked into the design. Quoted verbatim; elisions marked.
+
+- **cursor[bot], PLAN S5–S7:** "S5, S6, and S7 are one conceptual unit (“harness session host plumbing”) for a single consumer app. Consider merging to **one surface row** in this table (factory + binding + workspace) and keeping ER-6 / the sketch as the split between generic vs harness-specific."
+- **cursor[bot], PLAN S11:** "Consider folding into V5–V8 as “scripted agent via `resolveClaudeAgent` + existing `KITCHEN_SINK_TEST_MODE`”, with a pointer to `labs/fsd-coding-skill/test/scripted-claude.ts` as the canonical script shape — unless you want S11 as documentation for FIX-1916/17 test seams."
+- **cursor[bot], pinned flow kinds:** "Pre-pinning `codex-session` / `cursor-session` before FIX-1916/1917 specs exist may be premature. [...] siblings could be “`<harness>-session` via same factory” without freezing names in this issue’s pinned table."
+- **cursor[bot], the plan reader:** "S10 (plan panel) is that third reader on manifest + request prefix. You may still keep the helper out of **core** (reasonable), but the plan should name **where** the shared ~30 lines live so kitchen-sink panel, goals, and shift-manager don’t diverge."
+- **Second look (PR comment), the plan reader:** "the prefix is `<request>/…`, and the recorder **percent-escapes** the request id [...]. `readRecordedWork` builds the prefix from the raw `requestId`. A second hand-copy of that is where the two readers will diverge. A small `planRowsPrefix(requestId)` exported next to the schema in S1, used by both, costs less than the divergence." And: "`PlanStep` (`{id,title,status}`) in that file is a third hand-written row shape. Once the schema is in core, derive it from the schema."
+- **cursor[bot], S10 live reads:** "S10 should reference the same manifest/prefix rules and **`useResourceCollectionList` / `useSession` with `live: true`** so implementers don’t poll or buffer until turn end." And: "steer implementers away from **re-listing all prefixes on every plan delta**".
+- **cursor[bot], S7:** "Claude Code `physicalPath` / doc `segment` checkout — S7 should say to match workspace encoding + realpath, not raw `join`."
+- **Second look, S5:** "build S5 as the extraction from S8 (write Claude Code mode concretely, then pull the factory out) so the shared surface is whatever Claude Code actually needed, not what this spec predicts."
+- **Second look, the lab's resolvers:** "Add a Follow-ups line: “if the lab or a sibling needs the keep-the-id binding, lift S6 into a shared helper”."
+- **cursor[bot], spec bundle:** "BR-1–BR-7 overlap heavily on “recorded id + server-owned binding.” Grouping into fewer rules with sub-bullets [...] would dedupe against DECISIONS “Decided, not asked” and PLAN V5." And: "pick **one spine**: DECISIONS (forks) → grouped BUSINESS-RULES → PLAN (S* + V* only) → DOCS as a **checklist**, not draft prose."
 
 ## Follow-ups
 

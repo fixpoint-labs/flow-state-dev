@@ -69,32 +69,32 @@ Replaces the epic's draft of the same section.
 > list sits beside it.
 >
 > It runs on your machine, through the Claude Code Agent SDK, signed in the way Claude Code is
-> on its own. Sign in with the `claude` command first. A deployed Kitchen Sink, a host without
-> the SDK, a server running as root, or a machine where Claude Code's sandbox isn't available
-> shows the mode as unavailable, with the reason.
+> on its own. Sign in with the `claude` command first. A host that isn't signed in, a host
+> without the SDK, a server running as root, or a machine where Claude Code's sandbox isn't
+> available shows the mode as unavailable, with the reason.
 >
 > **Where it works.** Each session gets its own empty directory under one root, and every turn
-> of that session works there. Set the root with `KITCHEN_SINK_HARNESS_ROOT`; by default it is
-> under your home directory. Two sessions never share a directory. Claude Code runs without
+> of that session works there. The root is `KITCHEN_SINK_HARNESS_WORKSPACE`, the setting that
+> turns the harness modes on. Two sessions never share a directory. Claude Code runs without
 > asking for approval, inside its sandbox: it can write only in the session's directory.
 > Delete old session directories yourself when you no longer need them.
 >
 > **Continuing.** A session is one Claude Code conversation. Stop a turn and the next one picks
 > up the same conversation. If Claude Code can't continue it, the session says so on every
-> turn and keeps trying. It never quietly starts a new conversation; start a new session for
-> that. If Claude Code answers in a different conversation of its own accord, the session says
+> turn and keeps trying. A turn you stopped shows as stopped, not refused. It never quietly
+> starts a new conversation; start a new session for that. If Claude Code answers in a different conversation of its own accord, the session says
 > it started a new one and follows it.
 >
-> **The plan panel** shows what Claude Code recorded of its to-do list for the latest turn that
-> kept one, read-only. Claude Code doesn't report its plan through the SDK yet, so the panel
+> **The plan panel** shows what Claude Code recorded of its to-do list for the session's latest
+> turn, read-only. Claude Code doesn't report its plan through the SDK yet, so the panel
 > says "no plan recorded for this turn". Nothing in the panel starts work.
 >
 > Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across
 > a restart.
 
-## UPDATE · `apps/kitchen-sink/README.md` · "Environment variables" table, after `PORT`
+## UPDATE · `apps/kitchen-sink/README.md` · "Environment variables" table, the `KITCHEN_SINK_HARNESS_WORKSPACE` row FIX-1914 adds
 
-> | `KITCHEN_SINK_HARNESS_ROOT` | Where coding-harness sessions work. Each session gets its own directory under it. Defaults to a directory under your home. |
+> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The directory the coding harness modes work in; each session gets its own directory under it. Unset, they're off. Ignored on Vercel, where they're always off. |
 
 The opening paragraph's "in a directory you choose" (epic draft, published by FIX-1914) stays
 true: the person chooses the root. No other page changes. The sentence "Claude Code doesn't

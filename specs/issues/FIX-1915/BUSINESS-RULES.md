@@ -12,7 +12,7 @@ the goal check, on real Claude Code in a real browser.
 |---|---|---|---|
 | BR-1 | The first turn of a new session runs | Claude Code starts a conversation, and its id is recorded the moment Claude Code names it, before the turn ends | CI · goal **c** |
 | BR-2 | A later turn runs | It asks to continue the recorded conversation, and Claude Code confirms the same id | CI · goal **c** |
-| BR-3 | Claude Code refuses the conversation, or the turn ends before it confirms one | The session says Claude Code did not continue conversation *X*, with the run's error. The recorded id stays, and the next turn asks for *X* again ([D2](DECISIONS.md#d2)) | CI |
+| BR-3 | Claude Code refuses the conversation, or the turn fails before Claude Code confirms an id *in that turn* | The session says Claude Code did not continue conversation *X*, with the run's error. The recorded id stays, and the next turn asks for *X* again ([D2](DECISIONS.md#d2)). A turn that confirmed *X* and then failed shows its error, not a refusal | CI, both paths |
 | BR-4 | Claude Code confirms a different id than the turn asked for | The recorded id moves to the new one, and the session says Claude Code started a new conversation | CI |
 | BR-5 | A turn is sent while another is running | It waits, then continues the same conversation | CI |
 | BR-6 | The page is reloaded, or the server restarts on a durable store | The same session holds the same id, and the next turn continues it | Goal **r** |
@@ -23,8 +23,8 @@ the goal check, on real Claude Code in a real browser.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-8 | A run is in progress | Its steps show before the turn completes, every one written by Claude Code's emitter. Kitchen Sink writes no item of its own | CI · goal **l** |
-| BR-9 | The person stops a turn | The run is cancelled, the turn shows as stopped, the recorded id stays, and the next turn continues the conversation | CI · goal **s** |
-| BR-10 | A host is not signed in to Claude Code | The first turn fails with Claude Code's own error, shown as that turn's error | CI, with a scripted error |
+| BR-9 | The person stops a turn | The run is cancelled, the turn shows as stopped, never as refused, even when it stopped before Claude Code confirmed an id. The recorded id stays, and the next turn continues the conversation | CI, stopped before and after the confirmation · goal **s** |
+| BR-10 | A host's sign-in lapses after the mode opened | That turn fails with Claude Code's own error, shown as that turn's error. The recorded id stays | CI, with a scripted error |
 
 ## Where it works
 
@@ -39,9 +39,9 @@ the goal check, on real Claude Code in a real browser.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-14 | Claude Code records plan rows during a turn | The panel shows each row's wording and status while the run works, equal to the record | CI · goal **p** |
-| BR-15 | A turn recorded no plan | The panel says "no plan recorded for this turn". Until FIX-1185 lands, that is every Claude Code turn | CI · goal **p** |
+| BR-15 | The session's latest turn recorded no plan | The panel says "no plan recorded for this turn", even when an earlier turn recorded one. Until FIX-1185 lands, that is every Claude Code turn | CI · goal **p** |
 | BR-16 | The harness declares no plan record at all | The panel says "this harness reports no plan" | CI |
-| BR-17 | Several turns recorded plans | The panel shows the latest of them, labelled with its turn | CI |
+| BR-17 | Several turns ran | The panel shows the latest turn's plan, labelled with its turn. An earlier turn's rows are never shown as the current plan | CI |
 | BR-18 | The person uses the panel | Nothing in it starts, edits or hands off work (epic ER-10) | CI · review |
 
 ## The plan record in core
@@ -57,7 +57,8 @@ the goal check, on real Claude Code in a real browser.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-23 | The host is deployed, lacks the Claude Code SDK, runs as root, or has no sandbox | The mode reports itself unavailable with that reason, and opens no session. The picker (FIX-1914) shows it | CI |
+| BR-23 | Harness modes are on for this host (FIX-1914), but it lacks the Claude Code SDK, runs as root, has no sandbox, or is not signed in to Claude Code | The mode reports itself unavailable with that reason through FIX-1914's mode check, and opens no session (epic ER-1) | CI |
+| BR-24 | Harness modes are off for this host: deployed, or no `KITCHEN_SINK_HARNESS_WORKSPACE` (FIX-1914 BR-6, BR-7) | No Claude Code flow is registered. Opening `/claude-code` creates no session, and its flow's API is not found (FIX-1914 BR-14, BR-15) | FIX-1914's goal check, extended here |
 
 ## Failure taxonomy
 
