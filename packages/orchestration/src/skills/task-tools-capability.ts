@@ -990,6 +990,25 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * call, so a replay of a waiting or dispatching call reuses them instead of
    * re-counting against a board that now holds this follow-up.
    */
+  /**
+   * A decision read from the roster, which can change between a call and its
+   * replay: recorded with the call when `memoize`, so the replay of a call
+   * that already filed or readied its row decides as the first call did, and
+   * reaches its own write instead of a refusal (FIX-1875 BR-15). `null`
+   * stands for "nothing to refuse" in the record, which holds JSON only.
+   */
+  async function decideOnce<T>(
+    ctx: BlockContext,
+    memoize: boolean,
+    name: string,
+    decide: () => Promise<T>,
+  ): Promise<T> {
+    const call = memoize ? toolCallOf(ctx) : undefined;
+    return call !== undefined && ctx.runOnce !== undefined
+      ? ctx.runOnce(`fsd.decide.${name}:${call.logicalId}`, decide)
+      : decide();
+  }
+
   async function checkNewTask(
     ctx: BlockContext,
     collection: TaskCollectionRef,
@@ -1023,7 +1042,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     const bad =
       assignee === undefined
         ? undefined
-        : checkAssignee(assignee, await rosterFor(roster, ctx));
+        : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
     return {
       init: {
@@ -1282,14 +1301,22 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         if (!collection) return noBoardError;
         const row = collection.get(taskId);
         if (!row) return taskNotFoundError(taskId);
-        const bad =
-          input.assignee === undefined
-            ? undefined
-            : checkAssignee(input.assignee, await rosterFor(roster, ctx));
-        if (bad) return bad;
-        const owner = await ownerFor(ctx, input.assignee ?? row.assignee);
-        if (owner === undefined) return assigneeRequiredError;
-        const assignee = owner === row.assignee ? undefined : owner;
+        // Recorded with the call (BR-15): a replay after the team changed
+        // decides as the first call did, and reaches its own write.
+        const decided = await decideOnce(ctx, true, "owner", async () => {
+          const bad =
+            input.assignee === undefined
+              ? undefined
+              : checkAssignee(input.assignee, await rosterFor(roster, ctx));
+          return bad ?? { owner: (await ownerFor(ctx, input.assignee ?? row.assignee)) ?? null };
+        });
+        if ("error" in decided) return decided;
+        if (decided.owner === null) return assigneeRequiredError;
+        // An owner the call names is always written, even the row's own: an
+        // assignTask landing between this read and the write must not stand
+        // over the later dispatch (BR-25). Only an inherited owner is left out.
+        const assignee =
+          input.assignee !== undefined || decided.owner !== row.assignee ? decided.owner : undefined;
         if (input.wait === true) {
           return waitAnswer(
             await dispatchAndWait(ctx, collection, { taskId, ...(assignee !== undefined ? { assignee } : {}) }, timeout),
@@ -1320,8 +1347,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (!collection) return noBoardError;
       const checked = await checkNewTask(ctx, collection, { ...input, goal: input.goal! }, true);
       if ("error" in checked) return checked;
-      const owner = await ownerFor(ctx, checked.init.assignee);
-      if (owner === undefined) return assigneeRequiredError;
+      const owner = await decideOnce(ctx, true, "owner", async () => (await ownerFor(ctx, checked.init.assignee)) ?? null);
+      if (owner === null) return assigneeRequiredError;
       const init: TaskInit = { ...checked.init, assignee: owner };
       return fileNewTask(collection, checked.followUp, input.followUpOf, async () =>
         input.wait === true ? waitAnswer(await dispatchAndWait(ctx, collection, init, timeout)) : fileReady(ctx, collection, init),

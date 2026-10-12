@@ -146,7 +146,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const w = word();
     const filing = await act(alice, "coordinator", conv, "run", { message: `[file:desk.alpha] [slow:${HOLD_MS}] Summarize the ${w} notes` });
     const filed = await toolOutputs(alice, conv, filing.requestId);
-    const taskId = filed.filter((t) => (t.name === "addTask" || t.name === "dispatchTask")).map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
+    const taskId = filed.filter((t) => t.name === "dispatchTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     const quietAt = await quiet();
     const filingSessionId = await filingOf(alice, conv);
     const found = taskId === null ? null : await find(alice, { worker: "desk.alpha", taskId, filingSessionId });
@@ -155,7 +155,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const w2 = word();
     const splitting = await act(alice, "coordinator", conv, "run", { message: `[file:desk.sub] [split:desk.alpha] Plan the ${w2} rollout` });
     const subFiled = await toolOutputs(alice, conv, splitting.requestId);
-    const subTaskId = subFiled.filter((t) => (t.name === "addTask" || t.name === "dispatchTask")).map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
+    const subTaskId = subFiled.filter((t) => t.name === "dispatchTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     await quiet();
     const subSession = subTaskId === null ? null : await find(alice, { worker: "desk.sub", taskId: subTaskId, filingSessionId });
     const appSplit =

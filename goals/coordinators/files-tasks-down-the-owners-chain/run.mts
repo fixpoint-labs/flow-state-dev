@@ -223,7 +223,7 @@ function gradeA(o: any, store: string): LegResult {
   const subRow = rows.find((x) => x.id === S.taskId);
   const subSessions = all.filter((s) => s.state.taskId === S.taskId && S.taskId !== null);
   const sub = subSessions[0];
-  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => (i.toolCall?.name === "addTask" || i.toolCall?.name === "dispatchTask")).map(toolOutput);
+  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => i.toolCall?.name === "dispatchTask").map(toolOutput);
   const pieces = allTaskRows(store).filter((x) => sub !== undefined && x.partition.startsWith(`${sub.id}~`));
   const toolPiece = pieces.find((x) => x.goal === `a piece of: Plan the ${S.word} rollout`);
   const pieceRun = toolPiece === undefined ? undefined : all.find((s) => s.state.taskId === toolPiece.id);
@@ -353,13 +353,12 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
   const messages = items(store, E.conv, "message");
-  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && (i.toolCall?.name === "addTask" || i.toolCall?.name === "dispatchTask"));
+  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
   // The leg proves a task that ends after its filing turn is heard (FIX-1794 BR-24). A filing that
   // waits for its answer hears the ending as the tool's result instead, and never reaches a notice.
   const waited = firstCalls.filter((i) => {
     try {
-      const args = JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown; wait?: unknown };
-      return args.wait === true || args.waitForResponse === true;
+      return (JSON.parse(i.toolCall?.arguments ?? "{}") as { wait?: unknown }).wait === true;
     } catch {
       return false;
     }
@@ -397,7 +396,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     r.failures.push(`e:no-turn-on-retry — wanted the first failure to run the task again with no line and no turn; retry lines ${retried.length}, notice requests that woke a turn with no ending ${turnsWithoutEnding.length}`);
   }
   const woke = heard[0]?.requestId;
-  const refiled = tools.filter((i) => i.requestId === woke && (i.toolCall?.name === "addTask" || i.toolCall?.name === "dispatchTask")).map(toolOutput);
+  const refiled = tools.filter((i) => i.requestId === woke && i.toolCall?.name === "dispatchTask").map(toolOutput);
   const again = rows.filter((x) => refiled.some((y) => y?.ok === true && y.taskId === x.id) && x.partition === task.partition && x.goal.includes(E.goalWord));
   if (woke === undefined || again.length === 0) {
     r.failures.push(`e:refiled — wanted the turn the notice woke to file the task again with addTask; its addTask calls answered ${show(refiled)}; tools it called ${show(tools.filter((i) => i.requestId === woke).map((i) => i.toolCall?.name))}`);
