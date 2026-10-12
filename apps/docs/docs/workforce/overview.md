@@ -127,6 +127,60 @@ Filing a task for a worker that isn't one of the filer's delegates, or that take
 
 [Handing out tasks](./coordinators.md#handing-out-tasks) has the details: filing, retries, questions and follow-ups.
 
+## Serving it to your users
+
+To put the app in front of real users, serve it over HTTP, tell the server who each caller is, and have the client send the caller's credential.
+
+On the server, pass a `resolvePrincipal` to `createFlowState` and hand the result to a host adapter. When the call came over HTTP, the resolver gets it as `request`, a Fetch `Request`, so headers are `request.headers.get(...)`. It answers for every flow that declares no `authentication` of its own, including the built-in `agent` flow and the roster flow `hireWorkforce` returns.
+
+`createFlowState` takes flows as a record keyed by id. `mergeWorkerFlows` adds the flows `hireWorkforce` returned, the same `flows` registered above, to your own, and throws if an id is already taken.
+
+```ts title="server.ts"
+import { createFlowState } from "@flow-state-dev/engine";
+import { serve } from "@flow-state-dev/node";
+import { mergeWorkerFlows } from "@flow-state-dev/workforce";
+
+const flowState = createFlowState({
+  flows: mergeWorkerFlows({ /* your own flows, by id */ }, flows),
+  stores, // your stores
+  resolvePrincipal: async ({ request }) => {
+    const token = request?.headers.get("authorization")?.replace(/^Bearer /, "");
+    const session = token ? await verifyToken(token) : null; // your auth library
+    if (session === null) return null; // refused with 401
+    return { userId: session.userId, orgId: session.orgId };
+  },
+});
+
+await serve(flowState, { port: 3000 });
+```
+
+The resolver returns `{ userId, orgId }` from the verified credential, or `null` when it can't identify the caller. Every request runs in an organization, so a resolver that yields no `orgId` is refused with 401 too. To answer with a different status, throw `PrincipalResolutionError` from `@flow-state-dev/engine`, for example `new PrincipalResolutionError("Forbidden", { status: 403 })`.
+
+`serve()` runs a long-lived Node server. Next.js and Vercel have their own adapters; [Host adapters](../server/host-adapters.md) lists them.
+
+In the browser or in Node, give the client a `fetcher` that adds the credential. Pass the same one to `createWorkforceClient` and to every `createClient` you open on a worker's session:
+
+```ts
+import { createClient } from "@flow-state-dev/client";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+// token: the signed-in user's credential, from your auth library
+// userId: that user's id; baseUrl: where the server above is reachable
+const fetcher = (input: RequestInfo | URL, init?: RequestInit) => {
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  return fetch(input, { ...init, headers });
+};
+
+const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
+const lead = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
+```
+
+Actions run as the user and organization your resolver returns; the client's `userId` doesn't override it.
+
+[Authentication](../server/authentication.md) covers per-flow resolvers, machine callers and what a resolver protects. [Client options](../configuration/client.md) covers `baseUrl` and the other transport options.
+
 ## What it will not do
 
 - It does not run your task boards. A board drains its rows. Workforce tells the board which worker a name means, and gives workers a way to take a task.

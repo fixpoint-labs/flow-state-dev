@@ -23,13 +23,14 @@ const client = createClient({
   // such as "http://localhost:3000", plus any base path. See /docs/configuration/client#choosing-baseurl
 });
 
-const { requestId } = await client.sendAction("chat", { message: "Hello" });
+const { request } = await client.sendAction("chat", { message: "Hello" });
+const requestId = request.id;
 // `flowKind` is the instance the client is bound to: a flow's kind, or one
 // copy's id for a flow that runs as several. Every call goes to that instance,
 // and a session it starts is recorded as that instance's.
 ```
 
-`sendAction` returns a `requestId`. Execution is async. The server returns `202 Accepted`; the real work happens in the background. Connect to the stream to receive results.
+`sendAction` resolves to `{ status, request, session?, error? }`, where `status` is `"in_progress"`, `"completed"`, `"failed"` or `"incomplete"` and you use `request.id` to connect to the request's stream. Execution is async. The server returns `202 Accepted`; the real work happens in the background. Connect to the stream to receive results.
 
 ## createTypedClient
 
@@ -44,7 +45,7 @@ const client = createTypedClient({
   userId: "user_1",
 });
 
-const { requestId } = await client.actions.chat({ message: "Hello" });
+const { request } = await client.actions.chat({ message: "Hello" });
 ```
 
 Action names and input shapes are checked at compile time. The typed client also exposes `sendAction` if you need it.

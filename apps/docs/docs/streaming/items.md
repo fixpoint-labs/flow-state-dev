@@ -11,7 +11,7 @@ Items stream to clients over SSE as blocks execute. Every event has a sequence n
 When a client invokes an action, the server starts executing blocks and streaming results immediately:
 
 ```
-POST /api/flows/:kind/actions/:action  -->  202 { requestId }
+POST /api/flows/:kind/actions/:action  -->  202 { status, request: { id }, session }
 GET  /api/flows/:kind/requests/:requestId/stream  -->  SSE events
 ```
 
@@ -488,8 +488,8 @@ import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
 
-// sendAction returns a requestId, then connect to the stream
-const { requestId } = await client.sendAction("chat", { message: "Hello" });
+// sendAction returns the request it started; connect to its stream with request.id
+const { request } = await client.sendAction("chat", { message: "Hello" });
 ```
 
 See [Client Overview](/docs/client/overview) for the full client API.
