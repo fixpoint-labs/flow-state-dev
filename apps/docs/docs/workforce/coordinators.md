@@ -336,7 +336,7 @@ Import names from `@flow-state-dev/workforce/browser` in a client component; the
 
 ## Handing out tasks
 
-A post gets an answer. When work has to be done instead, a coordinator can hand a **task** to one of its delegates that takes tasks, on its conversation's board. Filing works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
+A post gets an answer. When work has to be done instead, a coordinator can hand a **task** to one of its delegates that takes tasks, on its conversation's board. Handing out tasks works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
 
 ```ts
 await help.sendAction(
@@ -389,7 +389,7 @@ It hears when a task completes, with what came back; when it fails for good, wit
 | `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A recorded task stays recorded until `dispatchTask_tasks` |
 | `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
 
-A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, file it again.
+A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
 
 To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
 

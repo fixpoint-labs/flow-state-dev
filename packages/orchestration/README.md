@@ -710,17 +710,18 @@ refused when it loads; give the work to workers on a task board instead.
 
 `taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-`listTasks`, and `answerTask`. `createTaskToolsCapability(resolver, roster?)` points them at a
+`listTasks`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
+`createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
 context, read on each call that checks an assignee, for a board whose team changes
-while it is in use. `taskToolActions` exposes the same nine as flow
+while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
-`dispatchTask` starts work now, on a board whose owner passes a way to start a row: pass
-`createTaskToolsCapability(resolver, roster, { dispatches: true })` only when the board's writes
-wake whatever runs it. It takes `addTask`'s fields, or `taskId` for a recorded row, and `wait`
+`dispatchTask` starts work now. Pass
+`createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
+ready row as soon as it's written, the way a Workforce conversation does. It takes `addTask`'s fields, or `taskId` for a recorded row, and `wait`
 to park the turn until the task ends, returning the task's output as `answer`. `timeoutMs`
 bounds the wait (30 s to an hour, five minutes by default). On such a board `addTask` and
 `assignTask` record rows that wait for a dispatch, and `addTask` answers
@@ -742,7 +743,7 @@ Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, na
 working the task or the one that last did. A row has none until a run starts on it, and a new
 claim clears it until the next run starts.
 
-Two functions sit under the wait, for a layer that builds its own board surface:
+For a layer that builds its own board surface:
 
 - `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
   `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from
@@ -781,7 +782,9 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
 `session_has_unfinished_task`, and `task_awaiting_answer` — a coordinator
-rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+rule like "when a tool returns `ok: false`, re-plan" covers all of them. `dispatchTask`
+adds its own (`assignee_required`, `task_not_dispatchable`, its target and wait errors); the
+task board page lists them.
 
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
 the task goes back to `pending` with the answer, its next attempt gets it as

@@ -24,7 +24,7 @@ delegates: [eng.coder, eng.reviewer]
 ---
 ```
 
-`delegates:` is who works for this worker. A coordinator hands posts to this list, and any worker files tasks for it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
+`delegates:` is who works for this worker. A coordinator hands posts to this list, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
 
 When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` records a task without starting it, until `dispatchTask` names it by its `taskId`. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
 
@@ -149,9 +149,9 @@ your conversation ── task ──▶ lead's task session ── pieces ──
         ◀── "completed, with both results" ──┘
 ```
 
-Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can file the work again, for the same delegate or another. A piece filed in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't file it again, the task fails naming the retry.
+Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can dispatch the work again, for the same delegate or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
 
-Only the turn a failure woke can retry it. A piece filed in any later turn is new work, so a failure the worker left alone still fails the task.
+Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
 
 Every session in the chain is yours, and only your own workers appear in it.
 

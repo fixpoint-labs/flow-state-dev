@@ -558,8 +558,9 @@ Nothing a caller or a model sets can write `run`. Naming a session doesn't grant
 
 ### Giving another worker work
 
-`addTask` and `assignTask` record work and who owns it. They don't start it. When you want
-another worker to start now, dispatch the task:
+On a board that dispatches, `addTask` records a task without starting it, and `assignTask`
+changes who owns a task, leaving a recorded one recorded. When you want another worker to
+start now, dispatch the task:
 
 ```ts
 dispatchTask({ goal: "Draft the release note", assignee: "writer" })
@@ -587,8 +588,8 @@ Your turn pauses until the task ends, then carries on with the task's output as 
 result, `{ ok: true, taskId, answer }`. Nothing holds a request open while it waits, so a server
 restart loses nothing. A wait has a time limit, five minutes unless you set `timeoutMs` between
 30 000 (30 seconds) and 3 600 000 (an hour). When it runs out, the task is cancelled. On a
-long-lived server the limit fires at the deadline; where the sweep is an external cron, not
-sooner than its next run. A worker you're waiting on can't stop to ask you a question; it
+long-lived server the limit fires at the deadline; where the durability sweeper runs as an
+external cron, not sooner than its next run. A worker you're waiting on can't stop to ask you a question; it
 answers with what it has, or fails. One wait per step, where a step is one model call and the
 tool calls it makes.
 
@@ -596,13 +597,13 @@ Only wait when the result changes what you do next. Otherwise let the task run a
 
 `dispatchTask` is on a board that can start work at once, such as a conversation's board in
 Workforce. A board that a drain runs decides for itself when each task runs, so it has no
-`dispatchTask`, and its `addTask` files the task as before. Waiting needs more: a board that
+`dispatchTask`, and its `addTask` files a task the drain runs. Waiting needs more: a board that
 wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
-`createTaskToolsCapability` only when the board's writes wake whatever runs it, and add
-`resumesAsks: true` only when that also calls `resumeOwedAsks` each time it touches the board
-outside a turn.
+`createTaskToolsCapability` only when something starts a ready row as soon as it's written,
+the way a Workforce conversation does, and add `resumesAsks: true` only when that also calls
+`resumeOwedAsks` each time it touches the board outside a turn.
 
 | Input | |
 |---|---|
@@ -628,7 +629,7 @@ apply. When it ends, the waiting turn continues with the answer, and the convers
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.
 
-**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`, rather than filing a task that nobody waits for. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`.
+**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`. Nothing is filed. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`.
 
 ## Concurrency and error handling
 

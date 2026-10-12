@@ -974,17 +974,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   type FollowUp = { root: string; assignee: string | undefined; id: string };
 
   /**
-   * `addTask`'s checks on a new task, in its order, run by `addTask` and
-   * `dispatchTask` alike so the two refuse identically (FIX-1875 BR-14): the
-   * follow-up (in this board's partition only), then the assignee against the
-   * roster. The creation cap comes last, at the write ({@link fileNewTask}).
-   * Every refusal comes before anything is filed.
-   *
-   * `memoize` records the follow-up's checks, and the id they pick, with the
-   * call, so a replay of a waiting or dispatching call reuses them instead of
-   * re-counting against a board that now holds this follow-up.
-   */
-  /**
    * A decision read from the roster, which can change between a call and its
    * replay: recorded with the call when `memoize`, so the replay of a call
    * that already filed or readied its row decides as the first call did, and
@@ -1003,6 +992,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       : decide();
   }
 
+  /**
+   * `addTask`'s checks on a new task, in its order, run by `addTask` and
+   * `dispatchTask` alike so the two refuse identically (FIX-1875 BR-14): the
+   * follow-up (in this board's partition only), then the assignee against the
+   * roster. The creation cap comes last, at the write ({@link fileNewTask}).
+   * Every refusal comes before anything is filed.
+   *
+   * `memoize` records the follow-up's checks, and the id they pick, with the
+   * call, so a replay of a waiting or dispatching call reuses them instead of
+   * re-counting against a board that now holds this follow-up.
+   */
   async function checkNewTask(
     ctx: BlockContext,
     collection: TaskCollectionRef,

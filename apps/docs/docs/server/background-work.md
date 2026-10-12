@@ -204,9 +204,7 @@ still a disagreement: ownership is by instance, not by kind. A `task` dispatcher
 
 A dispatch returns before the work it started has run. That is right for a job that outlives
 the turn, and wrong when the next step needs the result. For that case, a worker dispatches the
-task and waits for it.
-
-A worker dispatches the task and waits for it: `dispatchTask` with `wait: true`. The task lands
+task and waits for it: `dispatchTask` with `wait: true`. The task lands
 on the board the worker's task tools write to (in Workforce, the conversation's own board),
 and the turn parks on it. When the task ends, the turn picks up where it stopped,
 with the task's output as the tool's result. Nothing holds the request open in between. A server
@@ -227,7 +225,7 @@ itself working a task can't wait: `dispatchTask` with `wait` is refused there wi
 
 Waiting has a cost you can see in the run. The turn is saved when it parks and loaded again
 when the answer arrives. Steps it already ran aren't run again; the model picks up with the
-answer as the tool's result. Use an ask when the answer changes what this turn says or does
+answer as the tool's result. Wait when the answer changes what this turn says or does
 next. When it doesn't, dispatch the task without waiting and let the turn end. See
 [the task board](/docs/orchestration/task-board#giving-another-worker-work) for the tool, its
 limits and its errors.

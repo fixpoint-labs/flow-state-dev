@@ -19,6 +19,7 @@
 //   node specs/issues/FIX-1875/poc/surface-sweep/sweep.mjs            # inventory, exit 0
 //   node specs/issues/FIX-1875/poc/surface-sweep/sweep.mjs --assert   # exit 1 while a RETIRED name is live
 //   node specs/issues/FIX-1875/poc/surface-sweep/sweep.mjs --control  # plant an unclassified hit, expect exit 2
+//   node specs/issues/FIX-1875/poc/surface-sweep/sweep.mjs --assert --plant-live  # plant live uses beside each allowed pass, expect exit 1 naming each
 //
 // Totality: every file with a hit must fall in exactly one bucket. A hit in no
 // bucket exits 2, so a new kind of surface can't hide.
@@ -55,19 +56,32 @@ const REGRESSION = [
 ];
 
 /**
- * A line that names a retired name and is not one of: a refusal on purpose,
- * Playwright's own `page.waitForResponse(...)` (a method of the browser API,
- * not ours), a dated row of a goal's verdict log (history, like a
- * changelog), or a published migration note, a paragraph that opens
- * `**Moving from` and names the old field to say what replaces it.
+ * A line that names a retired name and is live. Three passes are allowed, each
+ * an exact shape, and each strips only what it allows before the line is
+ * tested again, so a second retired name on the same line still counts:
+ *
+ * - Playwright's `.waitForResponse((r) => ...)`: a method of the browser API
+ *   called with a predicate. Ours was only ever a field (`waitForResponse:`),
+ *   never a call, so `addTask({ waitForResponse: true })` still counts.
+ * - A goal's verdict-log row dated before the names were retired
+ *   (`RETIRED_ON`): history, like a changelog. A row dated later counts.
+ * - The published migration note in `apps/docs/`, a paragraph opening
+ *   `**Moving from \`waitForResponse\`.**`: its backticked
+ *   `waitForResponse` mentions say what replaces it. Any other retired name in
+ *   it, and the same text anywhere else, counts.
  */
+const RETIRED_ON = "2026-10-12";
+const PLAYWRIGHT_WAIT_RE = /\.waitForResponse\(\(\w+\)\s*=>/g;
+const VERDICT_ROW_RE = /^\| (\d{4}-\d{2}-\d{2}) \|/;
+const MIGRATION_NOTE = "**Moving from `waitForResponse`.** ";
+
 function isLiveRetired(p, line) {
   if (!RETIRED_RE.test(line) || line.includes(REFUSAL_MARKER)) return false;
-  const rest = line.replace(/\.waitForResponse\(/g, "");
-  if (!RETIRED_RE.test(rest)) return false;
-  if (p.startsWith("goals/") && p.endsWith(".md") && /^\| \d{4}-\d{2}-\d{2} /.test(line)) return false;
-  if (p.endsWith(".md") && line.startsWith("**Moving from ")) return false;
-  return true;
+  let rest = line.replace(PLAYWRIGHT_WAIT_RE, "");
+  const row = /^goals\/.+\/goal\.md$/.test(p) ? VERDICT_ROW_RE.exec(line) : null;
+  if (row !== null && row[1] < RETIRED_ON) return false;
+  if (p.startsWith("apps/docs/") && line.startsWith(MIGRATION_NOTE)) rest = rest.replaceAll("`waitForResponse`", "");
+  return RETIRED_RE.test(rest);
 }
 
 /** History may remember a name; it is never live. */
@@ -99,6 +113,15 @@ for (const p of files) {
   } catch {
     // A tracked file deleted in the working tree: nothing to read.
   }
+}
+if (process.argv.includes("--plant-live")) {
+  // Each narrowed pass, beside a live use it must not hide: every one of these
+  // must be reported RETIRED (run with --assert; expect exit 1 and these paths).
+  contents.set("goals/planted/tool-use.mts", "await page.waitForResponse((r) => r.ok());\naddTask({ goal: 'x', waitForResponse: true });");
+  contents.set("goals/planted/call.mts", "const r = await tools.waitForResponse({ taskId });");
+  contents.set("goals/planted/goal.md", "| 2026-10-13 | abc | model | PASS | used waitForResponse |");
+  contents.set("packages/planted/README.md", "**Moving from `waitForResponse`.** Send `waitForResponse` to addTask.");
+  contents.set("apps/docs/docs/planted.md", "**Moving from `waitForResponse`.** Call `addTaskAndWait`.");
 }
 if (process.argv.includes("--control")) {
   // The negative control: a hit in a path no bucket claims.

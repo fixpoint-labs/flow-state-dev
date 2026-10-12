@@ -1739,8 +1739,8 @@ answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. A recorded task starts
 when `dispatchTask` names its `taskId`; `assignTask` changes its owner and leaves it recorded.
 `dispatchTask` returns once the task is stored, without waiting for it to run, unless it is
-given `wait: true`. The
-conversation hears once when the task ends. See
+given `wait: true`. Unless
+it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks).
 
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow
