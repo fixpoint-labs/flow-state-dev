@@ -21,9 +21,9 @@ without that, stop and return a blocker; don't add the post form here silently.
 | S6 | `workforce` · the coordinator's ending entry | A post row's ending (via `onTaskSettled`) lands the reply as the delegate's line, keeps it in its round, releases the hold, closes rounds and sends answers on; a failed one only ends its part. A small internal wake entry closes overdue rounds. **Remove** `DELEGATE_ANSWER_ACTION` and `DELEGATE_MISSED_ACTION` | BR-8 BR-9 BR-10 BR-12 BR-19 |
 | S7 | `workforce` · rounds | The coordinator keeps each round's deadline and open flag only. Close reads the board's rows for that round (one filtered read) and checks every one has ended. **Remove** `delivery-ledger.ts`, its test and the session state key; tolerate a saved value | BR-13 BR-14 BR-18 |
 | S8 | `workforce` · workstream records | Lift "a workstream takes posts, not tasks" for post rows only; ordinary tasks keep the refusal. Target resolution stays where it is today, when the post is filed, with the same check; the resolved session is written on the row (S3). None yet files no row and records `failed` | BR-15 BR-16 BR-17 |
-| S9 | `workforce` · worker loading | A coordinator worker file naming `handOff` is refused at load, naming `dispatchTask`. Each line that names `handOff` on purpose (this refusal, its test, the published sentence in `chief-of-staff.md`) carries FIX-1875's marker `retired-name-refusal`, so FIX-1876's sweep skips it | BR-18 |
+| S9 | `workforce` · worker loading | A coordinator worker file naming `handOff` is refused at load, naming `dispatchTask`. The refusal message and its test carry FIX-1875's marker `retired-name-refusal`. The published sentence in `chief-of-staff.md` can't carry a marker; FIX-1876 keeps it with a keep-list entry (its WR-25, #3155) | BR-18 |
 | S10 | `shift-manager` · DevTeam's chief of staff and project coordinator `WORKER.md` | `handOff` → `dispatchTask` in their instructions; the EM's post entry moves to `task` entries (S2), and so does the `ask-lab` test fixture's (`asker.mts`) | — |
-| S11 | `goals/` · the checks that read the ledger, and every lab that declares the post entry | `hands-each-post-to-its-delegates` (`devteam.mts`, `leg-e.mts`, `goal.md`), `a-shared-project-has-one-owner-per-workstream`, `two-users-share-a-project-and-nothing-else`: ledger reads become row reads, listed in the PR as fence lines; tool names renamed. These row reads are the proof that posts are rows (ER-6). The post entry moves from `internal` to `task` entries (S2) wherever a goal declares it, or BR-18 refuses the lab at build: `hands-each-post-to-its-delegates/leg-e.mts`; `workers/files-and-splits-down-the-chain/lab/fsdev.config.mts`, whose `poster` raw block also becomes `delegatedPostEntry`, since a raw block never settles its row; `workforce-mailboxes/a-routed-post-gets-one-answer/run.mts`, whose `no-context` control keeps its line-stripping wrapper and still fails at **context** only; `pentest-lab/lab/workforce/flows/workers/probe.mts`; and kitchen-sink's `no-landing` control (`apps/kitchen-sink/lib/landing-control.ts`), which still fails at its own legs only. Each move is a declaration-move line in the PR | ER-6 ER-11 BR-18 |
+| S11 | `goals/` · the checks that read the ledger, and every lab that declares the post entry | **Ledger reads → row reads** in `hands-each-post-to-its-delegates` (`devteam.mts`, `leg-e.mts`, `goal.md`), `a-shared-project-has-one-owner-per-workstream` and `two-users-share-a-project-and-nothing-else`, listed in the PR as fence lines; tool names renamed. These row reads are the proof that posts are rows (ER-6). **Declaration moves:** every lab that declares the post entry moves it from `internal` to `task` entries (S2), or BR-18 refuses it at build; V9 names the reruns. Each move is a named entry in the epic's closure map (#3153). Three moves keep a control invariant: `files-and-splits-down-the-chain`'s raw `poster` block becomes `delegatedPostEntry`, since a raw block never settles its row; `a-routed-post-gets-one-answer`'s `no-context` control keeps its line-stripping wrapper and still fails at **context** only; kitchen-sink's `no-landing` control (`apps/kitchen-sink/lib/landing-control.ts`) still fails at its own legs only | ER-6 ER-11 BR-18 |
 | S12 | `goals/coordinators/one-fence-answers-each-post-once/` | **New** goal check, per `SPEC.md`: leg b (the fence: replayed endings, a double hand-off, a stale settle after cancel) and leg d (the deadline wake). Both controls run against leg b | — |
 | S13 | Docs | Publish [DOCS.md](DOCS.md) | — |
 | S14 | `specs/` · predecessors on `main` | Dated amendment notes: FIX-1816 D3 and its change log (two answer-once checks become one, by epic FIX-1870 D2, carried out here), and a superseded note on FIX-1791's ledger rules (BR-20 to BR-22, BR-27). In the implementation PR, so `main` says superseded when the behaviour changes | — |
@@ -63,7 +63,7 @@ the same PR.
 | V5 | S7 | Today's `coordinator-rounds` and `coordinator-followup-context` cases pass with ledger reads replaced; close reads the board by round, and the coordinator's state holds no row list; a saved ledger is ignored then dropped (BR-13 BR-14 BR-18) |
 | V6 | S8 | A workstream post's row carries the entry's session and runs there; none yet files no row and records `failed`; an ordinary task to it is refused (BR-15 to BR-17) |
 | V7 | S9 | A file naming `handOff` fails to load with the `dispatchTask` hint; no tool list on any flow carries `handOff` (BR-18) |
-| V9 | S11 | The FIX-1791, FIX-1794 and FIX-1610 checks and the two project goals pass; FIX-1610's `no-context` control fails at **context** only; FIX-1875's leg e of `files-and-splits-down-the-chain`, the pentest lab and the kitchen-sink `no-landing` control rerun with their verdicts unchanged; each diff passes the epic's rename-map script with its fence and declaration-move lines listed |
+| V9 | S11 | The FIX-1791, FIX-1794 and FIX-1610 checks and the two project goals pass; FIX-1610's `no-context` control fails at **context** only; FIX-1875's leg e of `files-and-splits-down-the-chain`, the pentest lab and the kitchen-sink `no-landing` control rerun with their verdicts unchanged; each diff passes the epic's rename-map script, with its fence lines listed and its declaration moves matched by the map's named entries (#3153) |
 | VG | S12 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES after `GOAL_CONTROL=no-ending-dedupe` FAILED `b:one-line` and the `main` run FAILED `b:no-ledger` |
 
 ## Pinned names
@@ -99,11 +99,11 @@ vocabulary pass.
 
 ## Release note
 
-One `.changeset/*.md`, `minor` for `@flow-state-dev/workforce` (BP-022). It tells an app three
-things: `handOff` is gone, so a worker file naming it is refused at load and should name
-`dispatchTask`; a delegate flow declares `delegatedPostEntry` under `task` entries, not
-`internal`; and an answer for a post delivered before the upgrade is dropped, its round closing
-at its deadline (BR-19). The last is expected upgrade behaviour, not a bug.
+One `.changeset/*.md`, `minor` for `@flow-state-dev/workforce` (BP-022), telling an app three
+things: a worker file naming `handOff` is refused at load and should name `dispatchTask` (BR-18);
+a delegate flow declares `delegatedPostEntry` under `task` entries (D1); and an answer for a post
+delivered before the upgrade is dropped, its round closing at its deadline, so a long `rounds: N`
+conversation can lose one round once (BR-19). The last is expected upgrade behaviour, not a bug.
 
 ## Sketch · pseudocode, illustrative, react to the shape
 
@@ -161,9 +161,8 @@ Recorded verbatim for the implementer from review round 1 on #3142. None changes
 - **Cursor, `DECISIONS.md` upgrade loss:** "“Delivery in flight at upgrade loses its answer” is a sharp edge — intentional per ER-10 (no drain period). Worth calling out in DOCS or BR-19 as *expected* upgrade behavior so support doesn’t treat it as a bug."
 - **Cursor, `PLAN.md` V8:** "V8 (BR-22 SQLite bench) is separate from VI (`check.mjs` inventory). One explicit cross-reference would avoid implementers assuming the POC script proves perf." *Moot: V8 and VI were cut in the restraint pass.*
 
-## Amendments
-
-- **2026-10-12, cross-spec review of epic FIX-1870** (after #3142 merged): S11 and V9 cover every
-  lab that declares the post entry under `internal` (C1); S9 marks deliberate `handOff` lines
-  with `retired-name-refusal` (C3); S10 adds the `ask-lab` fixture; a release note is planned.
-  No decision changed.
+Amended 2026-10-12 after #3142 merged, from the epic FIX-1870 cross-spec review (#3154): S11 and
+V9 cover every lab that declares the post entry under `internal` (C1), admitted by the epic's
+closure map (#3153); S9 marks the `handOff` refusal and its test with `retired-name-refusal`, and
+`chief-of-staff.md` is kept by FIX-1876's keep-list (C3); S10 adds the `ask-lab` fixture; a
+release note is planned. No decision changed.
