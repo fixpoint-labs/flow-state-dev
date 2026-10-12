@@ -1099,6 +1099,8 @@ await runGoal(async (failures) => {
   let served = await startLab(pages, fired, store);
   // Each Lab's log, kept when the run fails so a red can be read after the scratch store is gone.
   const logs = [served.log];
+  // Set as the last step: a leg that throws leaves it false, and runGoal records the throw only after this returns.
+  let finished = false;
   try {
     const apis = {
       owner: labApi(served.origin, LAB_USERS.owner),
@@ -1144,10 +1146,11 @@ await runGoal(async (failures) => {
     if (COS_LEG) {
       await cos({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, fail, evidence);
     }
+    finished = true;
   } finally {
     served.child.kill("SIGTERM");
     await served.exited;
-    if (failures.length > 0) {
+    if (!finished || failures.length > 0) {
       const kept = join(SCRATCH, `lab-${RUN_STAMP}.log`);
       writeFileSync(kept, logs.map((log, i) => `===== Lab ${i + 1} =====\n${log()}`).join("\n"));
       console.error(`the Lab's log is kept at ${kept}`);
