@@ -185,11 +185,7 @@ export type HostOptions = {
   agent?: CoordinatorFlowOptions["agent"];
   /** How long a round waits for its answers. */
   roundDeadlineMs?: number;
-  /**
-   * Route by best fit on a language model: the evaluator call is refused the
-   * way the gateway refuses one (`... is a language model, not a decision
-   * model`), and this script answers best fit's question instead.
-   */
+  /** When set, the evaluator throws and this generator answers best fit's question. */
   languageRoute?: MockGeneratorInstance;
   /**
    * Whether `helper` reports a cancelled run (`delegatedPostOnFinished` as its

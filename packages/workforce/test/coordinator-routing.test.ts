@@ -114,7 +114,6 @@ describe("best fit (V3)", () => {
     const id = await host.conversation("alice", "desk");
     await post(host, id, "who plans the release?");
     expect(languageRoute.calls).toHaveLength(1);
-    // It is asked over the same options the evaluator is, the coordinator among them.
     const asked = JSON.stringify(languageRoute.calls[0]!.input);
     expect(asked).toContain("eng.em");
     expect(asked).toContain("Ask the team anything.");

@@ -1019,14 +1019,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     questions: (bestFit: BestFitCaseValue) => ({ worker: choice(ROUTE_QUESTION, bestFit.ladder.options) })
   });
 
-  /**
-   * Best fit's question put to a language model, when the evaluator call
-   * fails on a `routeModel` string: a gateway serves most model ids as
-   * language models only, and refuses them as evaluation models. Same
-   * options, same state, and its pick reaches the ladder as the evaluator's
-   * would, with no confidence. A `routeModel` that is an evaluation model
-   * instance has no language model to ask, so its failure stands.
-   */
+  /** A gateway serves most model ids as language models only, so a failed evaluator call on a string asks again here. */
   const routeModelId = typeof options.routeModel === "string" ? options.routeModel : undefined;
   const routeAsked = (model: string) =>
     generator({
@@ -1054,7 +1047,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
       .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
 
-  /** Best fit's one call: the evaluator, then, when it fails on a model string, the same question as a language model. */
   const evaluateRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema }).step(
     routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
   );
