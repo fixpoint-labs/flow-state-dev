@@ -190,6 +190,7 @@ describe("where a run's branch is cut from, and what becomes of it", () => {
     const attempt = host().provision(mapped("web", "no-such-branch"), { place: ["run-1"], branch: "fsd/run-1" });
 
     await expect(attempt).rejects.toThrow(/no-such-branch/);
+    await expect(attempt).rejects.toMatchObject({ reason: "remote-unreadable" });
     expect(branches()).not.toContain("fsd/run-1");
     expect(worktrees()).toEqual([repo]);
     expect(existsSync(join(root, "run-1", "checkout"))).toBe(false);

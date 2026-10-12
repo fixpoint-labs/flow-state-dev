@@ -709,7 +709,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
         } catch (error) {
           if (!gitAnsweredNo(error)) throw error;
-          throw new Error(`${repo} has no "${base}" to cut the run's branch from.`);
+          throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
         }
         return { ref: base, commitish: base };
       },
