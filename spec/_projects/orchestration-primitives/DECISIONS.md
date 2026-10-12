@@ -22,6 +22,10 @@ Accepted. The Plan/Task series reshaped Plan & Execute, Supervisor, Coordinator 
 queue-shaped patterns onto it (FIX-447, FIX-448), and the substrate epics since have hardened one
 store rather than several.
 
+![PD-1's trade-off](figures/pd1-one-work-unit.svg)
+
+It comes down to hardening: one board is fixed once, per-pattern stores are each fixed alone.
+
 ### PD-2 · A skill carries instructions, never how its work runs
 
 **Binds** FIX-930 and any epic that touches skills or patterns.
@@ -36,6 +40,10 @@ path; `context: pattern` and `context: fork` are gone, and FIX-916
 
 **Costs** a skill can no longer pick a bespoke loop. Accepted, because three skill execution modes
 collapsed into one, which is PD-1 applied to skills.
+
+![PD-2's trade-off](figures/pd2-skill-carries-instructions.svg)
+
+It comes down to how many ways a skill's work runs: a per-skill mode keeps three paths.
 
 ### PD-3 · Anything that expects an answer is a task; a tell is a plain message
 
