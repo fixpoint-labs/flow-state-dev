@@ -33,7 +33,7 @@ spelling, so a record written before the upgrade is simply the same record.
 | WR-12 | A gate id minted as `ask:<board>:<task>#…` | The prefix keeps that spelling (a wire value, D2). Every gate is found by its stored id | Leg 2 |
 | WR-13 | A notice owed before the upgrade, carrying `asked: true` | The flag keeps that spelling (a wire value, D2): orchestration's notice and Workforce's strict notice schema both take it unchanged, so its ending resumes the turn and wakes none | Leg 2 · the notice-decision tests, unchanged |
 | WR-14 | An item log stored before the upgrade has a board ending `"handed-off"`, or a dispatch block output with `handedOff: true` | Every reader of it in the framework (Shift Manager, the DevTool, the board's own readers) treats it as `"dispatched"` | A reader test with an old log |
-| WR-15 | Any writer of a renamed mark (the row field, the gate reason, the ending) | Writes the new name only. No write path emits an old one after the upgrade | The sweep: a writer is not a legacy reader, so it has no `legacy-name:` marker and fails |
+| WR-15 | Any writer of a renamed mark (the row field, the gate reason, the ending) | Writes the new name only. No write path emits an old one after the upgrade | The sweep: a writer is not a legacy reader, so it has no `retired-name-refusal` marker and fails |
 
 ## Public names
 
@@ -50,8 +50,9 @@ spelling, so a record written before the upgrade is simply the same record.
 |---|---|---|---|
 | WR-20 | A tracked file under a swept root has no rule that scans it and no exclusion | The sweep fails, naming it (totality) | `0 with no rule` |
 | WR-21 | A keep-list entry or exclusion has no reason | It is refused in review; every entry says why | Review |
-| WR-22 | FIX-1875 or FIX-1872 already renamed a name on the list | The sweep stops finding it, and the upstream name stands, unless it uses *wait* or *dispatch* in another meaning (FIX-1875's draft `awaitingDispatch`). Then P1 renames it, reading both if it is stored | The sweep on the merged commit · review |
+| WR-22 | FIX-1875 or FIX-1872 already renamed a name on the list | The sweep stops finding it, and the upstream name stands, unless it uses *wait* or *dispatch* in another meaning. Then P1 renames it, reading both if it is stored | The sweep on the merged commit · review |
 | WR-24 | A pull request adds a use of a retired word | CI's Process guards fail on it, from P3 on | The sweep and its `--control` in CI |
+| WR-25 | A line names a retired name on purpose: a legacy reader (WR-8, WR-9, WR-14) or FIX-1872's refusal of a worker file that names `handOff` (its message and its test) | It carries `retired-name-refusal` on that line and is counted, not failed. A published page can't carry the marker, so the chief of staff page's sentence "A file that still names `handOff` is refused" has a keep-list entry instead. P2 adds the marker to any FIX-1872 refusal line that lacks it | The sweep on the merged commit · review |
 
 ## Failure taxonomy
 

@@ -46,7 +46,7 @@ It comes down to what a reader meets: the listed set leaves the old word in the 
 |---|---|
 | **Instead of** | A one-time migration that rewrites stored records to the new names, which is what the issue's "with a migration for rows already marked" first suggests · or renaming every stored mark and reading both names for each |
 | **Because** | Six kinds of record outlive a deploy under the old names. A row's `ask` field and a suspension's reason `"ask"` are shown in the DevTool and traces, where *ask* reads as a question to a person; the `"handed-off"` ending is a public value apps match on ([WR-17](BUSINESS-RULES.md#public-names)). The other three are internal wire values nobody reads as a word: the `fsd.ask.*` run-once keys, the `ask:` gate-id prefix, and a notice's `asked` flag (Workforce's notice schema is strict, so a renamed flag would refuse a notice owed across the upgrade). D1's reason is what a reader meets; a wire value nobody reads stays as it is ([BP-030](../../../docs/contributing/best-practices.md)), which deletes three legacy readers. A wait parked across the upgrade must still find the three that are renamed, or the colleague's answer is lost. There is no migration runner across the memory, SQLite and Postgres stores and resource-backed collections, and a rewrite would race a turn that is resuming, so the new code reads both names |
-| **Locks in** | The row field, the gate reason and the board's ending: every reader accepts the old value and the new one, every writer writes only the new one, and each legacy reader carries a `legacy-name:` comment on its line, so the sweep counts it and a reviewer sees it. The security reading goes with it: an old `"ask"` gate is still a wait gate, so the public resume route still refuses it ([WR-10](BUSINESS-RULES.md#records-written-before-the-upgrade)). The run-once keys, the gate-id prefix and the notice flag keep their spelling, each one the sweep flags a keep-list entry naming it a wire value; the identifiers that carry them are renamed |
+| **Locks in** | The row field, the gate reason and the board's ending: every reader accepts the old value and the new one, every writer writes only the new one, and each legacy reader carries a `retired-name-refusal` comment on its line (the one marker for a deliberate old name, shared with FIX-1875), so the sweep counts it and a reviewer sees it. The security reading goes with it: an old `"ask"` gate is still a wait gate, so the public resume route still refuses it ([WR-10](BUSINESS-RULES.md#records-written-before-the-upgrade)). The run-once keys, the gate-id prefix and the notice flag keep their spelling, each one the sweep flags a keep-list entry naming it a wire value; the identifiers that carry them are renamed |
 
 **What would change my mind:** a store migration runner shipping before this builds. Then rewrite
 once and drop the readers. Or the owner wanting no old spelling left in the store at all: then
@@ -81,9 +81,16 @@ It comes down to what a reviewer can read: one rename map per PR.
   A dispatched row's ending is `"dispatched"`. Pinned in [PLAN.md](PLAN.md#pinned-names).
 - **Whatever FIX-1875 or FIX-1872 already renamed, they own, unless the new name breaks the one-word
   rule.** If either renames a name on the list, its choice stands and the sweep stops finding it.
-  The exception is *wait* used in another meaning: FIX-1875's draft stores a "recorded, not
-  dispatched" row mark named `awaitingDispatch`. Renaming it before FIX-1875 merges costs nothing;
-  after a deploy it needs a legacy reader. If it merges under that name, P1 renames it ([WR-22](BUSINESS-RULES.md#the-sweep)).
+  The exception would be *wait* or *dispatch* used in another meaning; P1 renames such a name
+  ([WR-22](BUSINESS-RULES.md#the-sweep)). None is known: FIX-1875's row mark shipped as
+  `undispatched`.
+- **`undispatched` and the `"dispatched"` ending are two things, not one.** FIX-1875's
+  `undispatched` marks a task on a conversation's board that was recorded and not yet started with
+  `dispatchTask`. The `"dispatched"` ending is how a drain-run board's drain ends when every
+  outstanding task is running in a dispatch run. A pending task on a drain-run board has no
+  `undispatched` mark and hasn't been dispatched either, so neither name is the other's opposite,
+  and no page or doc comment says so. This issue doesn't rename or describe the mark; FIX-1875 owns
+  it.
 - **The board's `onIdle: "wait"` keeps its name.** It means the board stays alive when idle and
   leaves the exit to `shouldExit`. That is a different sense of *wait* (the board waits for work,
   nobody is parked on a row), and renaming the option is a behavioural API change this issue
@@ -138,3 +145,10 @@ None.
   reader meets, because a review showed the cheaper option had not been weighed and a strict
   Workforce schema made the renamed notice flag a lost-wait risk. The sweep runs in CI from P3,
   because an on-demand check contradicts D1's own reason for the full reach.
+- **Cross-spec alignment (2026-10-12, after merge)** — a follow-up PR from `main`, from the epic's
+  cross-spec review against FIX-1875 and FIX-1872. Wording and plan only, no decision moved: the
+  sweep honours one marker for a deliberate old name, FIX-1875's `retired-name-refusal`, in place
+  of `legacy-name:`, and exempts FIX-1872's `handOff` refusal ([WR-25](BUSINESS-RULES.md#the-sweep));
+  the glossary's *Dispatch a task* row splits the two kinds of board, and *Assignees that dispatch*
+  says how it relates to `dispatchTask` and links FIX-1875's section; the stale `awaitingDispatch`
+  reference is gone (FIX-1875 shipped `undispatched`).

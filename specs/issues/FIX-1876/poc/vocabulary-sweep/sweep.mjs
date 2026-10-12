@@ -5,7 +5,8 @@
  * Walks every git-tracked file under the swept roots, finds each use of a retired
  * name or a retired meaning (rules.mjs → RETIRED), and fails on any hit that the
  * keep list (rules.mjs → KEEP) does not classify. A line carrying the marker
- * `legacy-name:` is a deliberate legacy reader (BP-030) and is counted, not failed.
+ * `retired-name-refusal` names a retired name on purpose (a legacy reader, BP-030, or a refusal)
+ * and is counted, not failed.
  *
  *   node specs/issues/FIX-1876/poc/vocabulary-sweep/sweep.mjs            # report + verdict
  *   node specs/issues/FIX-1876/poc/vocabulary-sweep/sweep.mjs --list     # every unclassified hit
