@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 468" role="img" aria-label="Before and after a fresh open of pnpm shift-manager:dev. Before: the DevTeam profile, three demo projects on a scratch repository, a demo feature to approve in Inbox, the scripted coder, a run branch in a hidden clone, and a start with no credential that runs the script. After: the fsd profile on the same tree with its own store, two shared projects FSD and Shift Manager on this repository, an empty Inbox, Claude Code by default, a run branch in a worktree of your checkout cut from main, and a refusal before it listens that names what to set. DevTeam stays, opened with --config."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="468"/>
+
+  <g id="heads">
+    <rect class="lost" x="212" y="16" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="228" y="33">TODAY</text>
+    <text class="t-h c-lost" x="228" y="52">pnpm shift-manager:dev</text>
+    <rect class="chosen" x="576" y="16" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="592" y="33">AFTER</text>
+    <text class="t-h c-code" x="592" y="52">pnpm shift-manager:dev</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="98">OPENS</text>
+    <text class="t-b" x="228" y="96">the DevTeam profile</text>
+    <text class="t-s" x="228" y="113">teams/devteam/fsdev.config.mts</text>
+    <text class="t-b" x="592" y="96">the fsd profile</text>
+    <text class="t-s" x="592" y="113">same tree, its own store</text>
+    <line class="row" x1="16" y1="124" x2="924" y2="124"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="150">PROJECTS</text>
+    <text class="t-b" x="228" y="148">Storefront · Platform · Sandbox</text>
+    <text class="t-s" x="228" y="165">demo, on a scratch repository</text>
+    <text class="t-b" x="592" y="148">FSD · Shift Manager</text>
+    <text class="t-s" x="592" y="165">shared, both on this repository</text>
+    <line class="row" x1="16" y1="176" x2="924" y2="176"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="202">INBOX</text>
+    <text class="t-b" x="228" y="200">a demo feature to approve</text>
+    <text class="t-s" x="228" y="217">Approve starts a run</text>
+    <text class="t-b" x="592" y="200">empty</text>
+    <text class="t-s" x="592" y="217">until a worker asks you</text>
+    <line class="row" x1="16" y1="228" x2="924" y2="228"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="254">THE CODER</text>
+    <text class="t-b" x="228" y="252">the script, by default</text>
+    <text class="t-s" x="228" y="269">commits SCRIPTED-RUN.md</text>
+    <text class="t-b" x="592" y="252">Claude Code, by default</text>
+    <text class="t-s" x="592" y="269">stub only when you set it</text>
+    <line class="row" x1="16" y1="280" x2="924" y2="280"/>
+  </g>
+
+  <g id="row-5">
+    <text class="t-lbl" x="32" y="306">A RUN'S BRANCH</text>
+    <text class="t-b" x="228" y="304">in a hidden clone</text>
+    <text class="t-s" x="228" y="321">of a scratch repository</text>
+    <text class="t-b" x="592" y="304">in your checkout</text>
+    <text class="t-s" x="592" y="321">a worktree, cut from main</text>
+    <line class="row" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+
+  <g id="row-6">
+    <text class="t-lbl" x="32" y="358">NO CREDENTIAL</text>
+    <text class="t-b" x="228" y="356">starts anyway</text>
+    <text class="t-s" x="228" y="373">every run is the script</text>
+    <text class="t-b" x="592" y="356">refused before it listens</text>
+    <text class="t-s" x="592" y="373">names what to set</text>
+    <line class="row" x1="16" y1="384" x2="924" y2="384"/>
+  </g>
+
+  <g id="devteam">
+    <rect class="foot" x="16" y="396" width="908" height="40" rx="5"/>
+    <text class="t-lbl" x="32" y="420">UNCHANGED</text>
+    <text class="t-b" x="140" y="421">DevTeam: its projects, ask, store and scripted coder, opened with --config teams/devteam/fsdev.config.mts</text>
+  </g>
+</svg>
