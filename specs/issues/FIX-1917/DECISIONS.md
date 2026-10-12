@@ -89,7 +89,8 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
   start through FIX-1914's per-mode check, and gets each session's worktree through FIX-1915's
   factory, the one every harness mode uses.
 - **The turn's notice is FIX-1915's.** Cursor confirms the agent when it opens it, before the
-  prompt, so only a refused resume reads as refused. Stop is the block's own abort and reads as
+  prompt, so only a resume the Cursor package classifies as an unknown agent (FIX-1915 S13)
+  reads as refused; any other failure before that is an error. Stop is the block's own abort and reads as
   stopped; a command Cursor started can outlive it, and the README says so.
 
 ## Considered and dropped
@@ -133,6 +134,7 @@ plan?" to D1, and from "key by item id" to D2.
   gate; one empty-state string; the changeset is a patch.
 - **Amended after merge (Oct 12, cross-spec check)**: the option is `recordPlan`; checks match on
   "reports no plan"; the run's environment is fenced through a child process (BR-23), under the
-  fence FIX-1915 owns (BR-13b).
+  fence FIX-1915 owns (BR-13b). BR-3 reads a refusal only from the package's unknown-conversation
+  classification (S8).
 
 **Open: none.**

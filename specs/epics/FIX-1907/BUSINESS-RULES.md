@@ -27,7 +27,7 @@ it and where it's checked.
 | ER-10 | Create a task for a harness, or turn a plan item into board work | D3. The plan is not a work queue |
 | ER-11 | Patch a harness gap in Kitchen Sink: a shell-written item, invented progress, or a plan kept by the app. Fix the package, or file a bug | The test bed exists to show the gap, not to hide it |
 | ER-12 | Import or list harness sessions started outside Kitchen Sink, or turn on harness modes on a deployed host | Not built. Both widen the epic past "use each harness directly" |
-| ER-13 | Change the harness handle or the `resume` / `onSession` contract, other than moving the plan record into core | Three packages and harness-manager read it |
+| ER-13 | Change the harness handle or the `resume` / `onSession` contract, other than moving the plan record into core and adding the neutral unknown-conversation classification beside it (FIX-1915 S13) | Three packages and harness-manager read it |
 
 ## How the set is run
 

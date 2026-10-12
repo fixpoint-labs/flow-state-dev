@@ -22,6 +22,7 @@ is the plan record in core, which needs no picker.
 | S10 | `kitchen-sink` · the plan panel | Reads the manifest for the plan record, then the latest turn's list marker and rows by request prefix. Its states: rows · "this turn's plan is empty" (marker *complete*, no places) · "no plan recorded for this turn" (no marker, no rows) · "<Mode label> reports no plan", the label from FIX-1914's mode list · rows marked "may be incomplete", with the reason (marker *incomplete*, or still *writing* after the turn ended). With a count in the marker, only places below it show. Read-only | BR-14 to BR-18 BR-22c BR-22d ER-5 |
 | S11 | `kitchen-sink` · a scripted Claude Code for test mode | Behind the app's existing test mode, through the block's `resolveClaudeAgent` seam: a script that names a session, emits items with a pause, writes plan rows, refuses a named id | All CI rows |
 | S12 | Docs for S5 to S10 | Kitchen Sink README, per [DOCS.md](DOCS.md) | — |
+| S13 | `core` and `claude-code` · the unknown-conversation classification | No harness package has one today: the Codex and Cursor blocks document only that a refused resume throws before `onSession` (`packages/codex/src/agent.ts:93`, `packages/cursor/src/agent.ts:101`), and their run errors carry one code for every failure (`CODEX_AGENT_RUN_FAILED`, `CURSOR_AGENT_RUN_FAILED`, `CLAUDE_AGENT_RUN_FAILED`). Core gains a neutral classification on the error a harness block fails with, beside the handle in `types/harness`, additive and not a field on the handle (epic ER-13). Each package sets it for its own unknown-conversation failure: Claude Code's here, measured at implement time; Codex's `no rollout found for thread id` in FIX-1916; Cursor's equivalent in FIX-1917. The shared flow and the page read only the classification | BR-3 ER-6 ER-13 |
 
 ## Sequence
 
@@ -31,6 +32,7 @@ flowchart TD
   S1 --> S3["S3 · Shift Manager reads its key"]
   S2 --> S4["S4 · docs and changesets"]
   S3 --> S4
+  S13["S13 · unknown conversation, classified"] --> S4
   S4 -->|"PR-A merged · FIX-1914 merged"| S5["S5 · session flow"]
   S5 --> S6["S6 · binding"]
   S5 --> S7["S7 · workspace"]
@@ -47,7 +49,7 @@ flowchart TD
 
 | PR | Surfaces | depends_on | Why it stands alone |
 |---|---|---|---|
-| PR-A | S1 S2 S3 S4 | — | The public shape first (BP-004, D3), with `replacePlanList` and the list marker. Needs no picker, so it can merge while FIX-1914 is in flight, and FIX-1916, FIX-1917 and FIX-1185 build on it |
+| PR-A | S1 S2 S3 S4 S13 | — | The public shape first (BP-004, D3), with `replacePlanList`, the list marker and the unknown-conversation classification. Needs no picker, so it can merge while FIX-1914 is in flight, and FIX-1916, FIX-1917 and FIX-1185 build on it |
 | PR-B | S5 to S12 · the goal check | PR-A · FIX-1914 | The mode. Needs FIX-1914's mode slot and rail |
 
 ## Checks
@@ -61,7 +63,7 @@ flowchart TD
 | V10 | A | `replacePlanList`: a list of three, then three with the second reworded, then two. Places hold the new items, each `applied`; unchanged wording with a changed status keeps the earlier status as `previousStatus`, a repeated status leaves it as it was, reworded clears it; place 2 is deleted; it never calls `list()` (BR-22a, BR-22b) | Key by index without the trim: a stale third row survives |
 | V11 | A | A confirmed empty list writes a *complete* marker with no places, and a reader tells it from a turn that reported nothing (BR-22c) | Skip the marker when the list is empty: the two read the same |
 | V12 | A | A collection that fails on the second write: the marker ends *incomplete* with the error, and a reader shows the rows as incomplete, never as the plan. The same for a Claude Code plan row whose write fails (BR-22d) | Write the marker *complete* before the rows, or not at all |
-| V5 | B | Resolvers, with a scripted Claude Code: BR-1 to BR-4, including a turn that confirms *X* then fails (an error, not a refusal) and one that fails before confirming (refused). Nothing but `onSession` writes the confirmed id (D2) | Clear the id on a refused resume, as the lab does: BR-3 fails · derive the notice from session-wide fields only: the confirmed-then-failed turn reads wrong |
+| V5 | B | Resolvers, with a scripted Claude Code: BR-1 to BR-4, including a turn that confirms *X* then fails (an error, not a refusal), one that fails before confirming with the unknown-conversation classification (refused), and one that fails before confirming for another reason (an error; the id stays). Claude Code's own unknown-conversation failure carries the classification and no other run error does (S13). Nothing but `onSession` writes the confirmed id (D2) | Clear the id on a refused resume, as the lab does: BR-3 fails · derive the notice from session-wide fields only: the confirmed-then-failed turn reads wrong · read every failure before confirmation as refused: the other-reason turn reads refused |
 | V6 | B | Worktree: every turn of a session, and a restart, gets the same worktree and branch; two sessions, two; hostile ids stay inside the root and make valid, distinct branches; the main checkout's `git status` is unchanged after a run edits a file; a deleted session leaves its worktree and branch; a variable set on the server and left off the allowlist is not visible to the run; with harness modes turned off and the server restarted, the mode's sessions stay in the store, unlisted (FIX-1914 BR-16) (BR-11 to BR-13b, BR-23a) | Key by session id raw · hand the run the repository itself · leave `env` unset: the planted variable shows · delete sessions when modes go off |
 | V7 | B | Browser, scripted: a step shows before the turn completes; stop leaves the id and turn 2 continues it; a stop before the confirmation shows stopped, not refused; a second turn queues (BR-5, BR-8, BR-9) | Await the run before rendering |
 | V8 | B | Browser, scripted: the panel's states (S10) and latest-turn labelling, including turn 2 with no plan after turn 1 recorded one (BR-14 to BR-17); no control in it writes (BR-18) | Return `[]` for an undeclared record: BR-16 fails · pick the latest turn *with* rows: BR-15 fails |
@@ -117,7 +119,9 @@ harness session flow (kind, buildAgent):
 page:
     notice   ← this turn's entry and how it ended:
                stopped → stopped · confirmed = asked → continued
-               confirmed ≠ asked → new · none confirmed, failed → refused
+               confirmed ≠ asked → new
+               failed, classified unknown conversation → refused
+               none confirmed, failed otherwise → error, id kept
     panel    ← manifest has observed-plan?  no → "reports no plan"
                marker for the latest turn:
                  complete, count 0 → "empty"

@@ -12,4 +12,6 @@
 
 Amended after merge by the cross-spec check (2026-10-12): FIX-1915 is merged, so this spec consumes its worktree and fence (BR-13b) and drops its own repository-check option.
 
+Amended again (2026-10-12): the Codex package gains one error mapping to FIX-1915 S13's unknown-conversation classification; the rest of "no change to the Codex package" stands.
+
 Re-check FIX-1915's rows against its merged spec before implementing.

@@ -85,7 +85,8 @@ a new field. Then keep it internal until all three harnesses have written it.
   written only by `onSession`. Each turn holds, under its request, the id it asked for (noted by
   `resume`) and the id `onSession` confirmed *during that turn*, if any. The page derives the
   notice from that turn's entry and its end: confirmed what it asked → *continued*; confirmed
-  another → *started a new one*; confirmed nothing and failed → *refused*; stopped → *stopped*,
+  another → *started a new one*; failed with the harness's unknown-conversation classification
+  → *refused*; confirmed nothing and failed otherwise → an error, id kept; stopped → *stopped*,
   never refused. Two session-wide fields can't tell a refusal from a turn that confirmed and then
   failed. Kitchen Sink writes no item.
 - **A turn sent while one runs waits** (`concurrency: "queue"`).
@@ -198,5 +199,8 @@ The one unproved mechanism, live rows on a lazily loaded collection, is a CI che
   `replacePlanList` keeps a previous status only on a status change and marks its rows
   *applied*; the undeclared panel state names the mode; S8 pins `systemPrompt` and passes the
   allowlisted environment to the sign-in probe; VH loops over every harness mode.
+- **Amended again (Oct 12, cross-spec check, decided by the coordinator)**: a turn is refused
+  only when the harness reports it doesn't know the stored conversation, through a neutral
+  classification each package sets (S13); any other failure before confirmation is an error.
 
 **Open: none.**

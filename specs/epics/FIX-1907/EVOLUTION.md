@@ -12,7 +12,7 @@ Only lineage that spans children. Per-harness lineage belongs in each child's ow
 | The Claude Code docs say a run's plan is not a work queue; source [`apps/docs/docs/tools/claude-code-sdk.md#the-plan-is-not-a-work-queue`](../../../apps/docs/docs/tools/claude-code-sdk.md#the-plan-is-not-a-work-queue) | **Retained**, widened from one harness to three | D3 | ER-5 and ER-10 | No behaviour change for Claude Code |
 
 Amended after merge by the cross-spec check (2026-10-12, follow-up PR from `main`): the Flow State
-question is answered as recommended (#3167), so the first two rows hold as written.
+question is answered as recommended (#3167), so the first two rows hold as written. ER-13 now also allows FIX-1915 S13's additive unknown-conversation classification, which each harness package sets for its own error.
 
 Shipped inputs FIX-1735 (#2654) and FIX-1701 (#2569) are consumed, not superseded. Re-check each
 cited intent against current code before implementing.

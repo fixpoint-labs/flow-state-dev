@@ -71,8 +71,11 @@ list.
   environment.** Measured: `login status` exits 1 with only an environment key, though a run
   works with one. Either alone would mark a working host unavailable.
 - **Codex's default model.** The cost estimate is then absent, as the Codex page documents.
-- **No change to the Codex package.** Its thread lifecycle already matches FIX-1915's binding
-  (the POC, legs A to E), and the epic forbids changing the contract here (ER-13).
+- **No change to the Codex package, except one error mapping.** Its thread lifecycle already
+  matches FIX-1915's binding (the POC, legs A to E), and the epic forbids changing the contract
+  here (ER-13). The exception: the package classifies Codex's `no rollout found for thread id`
+  failure as an unknown conversation (FIX-1915 S13), so the shared flow can tell a refusal from
+  any other early failure without a Codex branch.
 
 ## Which methods already do this job
 
@@ -110,5 +113,6 @@ new run.
 - **Amended after merge (Oct 12, cross-spec check)**: Codex consumes FIX-1915's worktree, so
   the repository-check option is gone; the `.git` fence is required (FIX-1915 BR-13b); only
   Codex refusing a known thread is a refusal; a lapsed sign-in is an error, not a refusal.
+  The Codex package maps that one error to FIX-1915's unknown-conversation classification.
 
 **Open: 1.**

@@ -11,7 +11,6 @@
 | The Cursor runtime's environment: every local shell spawn in `@cursor/sdk` 1.0.31 builds its environment from `{...process.env, ...}` (`dist/esm/357.js`'s direct spawn and the Zsh, Bash, PowerShell and Naive executors); the sandbox option changes only file and network policy; neither the SDK's `LocalAgentOptions` nor our block has an environment option. Source [`packages/cursor/src/types.ts`](../../../packages/cursor/src/types.ts) (the `local` bag) and the cross-spec POC, read from source on 2026-10-12; no real run (no Cursor key) | **Amended** for Kitchen Sink: the runtime runs in a child process whose own environment is the allowlist | FIX-1915 BR-13b requires an allowlisted environment for every harness mode | BR-23, PLAN S5, V8 | The block and the SDK are unchanged; no environment option is promised |
 | Epic FIX-1907 D2, D3, ER-2, ER-5, ER-6, ER-11; FIX-1915 D1, D2 and its session flow. Sources [`../../epics/FIX-1907/DECISIONS.md`](../../epics/FIX-1907/DECISIONS.md), [`../FIX-1915/DECISIONS.md`](../FIX-1915/DECISIONS.md) | **Retained**, applied to Cursor | — | This spec | — |
 
-Amended after merge by the cross-spec check (2026-10-12): `recordPlan` settled, "reports no plan" matched as text, and the environment fence (BR-23) added under FIX-1915 BR-13b.
+Amended after merge by the cross-spec check (2026-10-12): `recordPlan` settled, "reports no plan" matched as text, and the environment fence (BR-23) added under FIX-1915 BR-13b. Amended again: a refusal is read only from the Cursor package's unknown-conversation classification (FIX-1915 S13, PLAN S8).
 
-FIX-1915's documents are at its review head until it merges. Re-check each source against
-current code and the merged FIX-1915 before PR-A.
+FIX-1915 is merged on `main`. Re-check each source against current code and FIX-1915 before PR-A.

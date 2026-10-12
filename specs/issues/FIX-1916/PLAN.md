@@ -14,9 +14,10 @@ no surface to any of them.
 | S1 | `kitchen-sink` · Codex mode | FIX-1915's factory with flow kind `codex-session` and `codexAgent`: `sandboxMode: "workspace-write"`, `approvalPolicy: "never"`, the sandbox fenced to the session's worktree, not `.git` (FIX-1915 BR-13b), `client.env` from `harnessEnv`. No plan collection. The package and the SDK at the version `@flow-state-dev/codex` pins added as dependencies | BR-1 to BR-13 |
 | S2 | `kitchen-sink` · Codex's own check | In FIX-1914's per-mode slot: SDK installed and at the pinned version (build the block inside the check, so the package's version refusal becomes a reason), signed in, sandbox runs. Registration in `fsdev.config.ts` only through FIX-1914's gate | BR-15 to BR-19 |
 | S3 | `kitchen-sink` · a scripted Codex client for test mode | Behind the app's existing test mode, through `resolveCodexClient`: names a thread, re-names it on resume, refuses a named id by throwing Codex's error, fails a turn after naming, emits a command item with a pause, holds a turn open until stopped | All CI rows |
-| S4 | Docs | Per [DOCS.md](DOCS.md): Kitchen Sink README, the Codex page, the coding agents page. No changeset: `kitchen-sink` is private, and no published package changes | — |
+| S4 | Docs | Per [DOCS.md](DOCS.md): Kitchen Sink README, the Codex page, the coding agents page. Changeset: `codex` patch, for S5 only | — |
+| S5 | `codex` · the one error mapping | A failure carrying Codex's `no rollout found for thread id` sets core's unknown-conversation classification (FIX-1915 S13) on the error the block fails with. No other error does. Nothing else in the package changes | BR-3 BR-20 |
 
-Nothing is removed. **Nothing in the Codex package changes** (ER-13). If a check here needs one,
+Nothing is removed. **Nothing in the Codex package changes but S5's error mapping** (ER-13). If a check here needs one,
 that is a gap in the package, filed as an epic child (ER-15), not patched in Kitchen Sink.
 
 ## Sequence
@@ -25,8 +26,10 @@ that is a gap in the package, filed as an epic child (ER-15), not patched in Kit
 flowchart TD
   P["FIX-1915 PR-B merged · FIX-1914 merged"] --> S3["S3 · scripted Codex"]
   P --> S1["S1 · Codex mode"]
+  P --> S5["S5 · the error mapping"]
+  S5 --> V
   S1 --> S2["S2 · Codex's own check"]
-  S3 --> V["V1 to V5"]
+  S3 --> V["V1 to V6"]
   S2 --> V
   V --> S4["S4 · docs"]
   S4 --> VG["VG · goal check, real Codex"]
@@ -43,6 +46,7 @@ One PR. FIX-1915 left Codex a parallel window beside Cursor (epic PLAN), and thi
 | V3 | The panel reads "Codex reports no plan" (BR-13) | Declare the plan collection on the block: the panel reads "no plan recorded for this turn" |
 | V4 | Availability: each reason in BR-15 to BR-18 shows and registers no flow; a mismatched SDK leaves the server up (BR-16) | Build the block at module scope: a planted version crashes the start |
 | V5 | A variable set on the server and left off the allowlist is not visible to a command the scripted run reports (BR-12) | Leave `client.env` unset |
+| V6 | S5: an error carrying `no rollout found for thread id` is classified as an unknown conversation; a sign-in error and a failed spawn are not (BR-3, BR-20) | Classify every error before a thread is named: the sign-in case reads refused |
 | VG | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness/codex-continues-its-thread/run.mts` PASSES on real Codex after FAILING under `GOAL_CONTROL=no-resume` (**c**, **s**); FIX-1914's gate legs FAIL for Codex under `GOAL_CONTROL=gate-open` | The controls are the red state |
 
 For leg **x**, plant the refusal the way a person meets it: remove the thread's record from the

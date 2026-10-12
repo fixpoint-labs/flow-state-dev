@@ -23,7 +23,7 @@ Cursor calls the conversation an *agent*; each turn is one *run* inside it.
 |---|---|---|---|
 | BR-1 | The first turn of a new session runs | Cursor opens an agent, and its id is recorded when the SDK opens it, before the prompt is sent | CI · goal **c** |
 | BR-2 | A later turn runs | It asks Cursor to resume the recorded agent, and the same id is confirmed | CI · goal **c** |
-| BR-3 | Cursor refuses to resume the agent | The turn fails with Cursor's error, and the session says Cursor did not continue agent *X*. The recorded id stays; the next turn asks for *X* again (FIX-1915 D2). A refused resume throws before `onSession`, so the id is never overwritten. If Cursor ever confirms a different id, FIX-1915's "started a new one" state applies unchanged | CI |
+| BR-3 | Cursor reports it doesn't know the agent: the run fails with an error the Cursor package classifies as an unknown conversation (FIX-1915 S13) | The turn fails with Cursor's error, and the session says Cursor did not continue agent *X*. Any other failure before Cursor opens the agent is an error, not a refusal, and the id stays. The recorded id stays; the next turn asks for *X* again (FIX-1915 D2). A refused resume throws before `onSession`, so the id is never overwritten. If Cursor ever confirms a different id, FIX-1915's "started a new one" state applies unchanged | CI |
 | BR-3a | Cursor resumes the agent, and the run then fails | The turn shows its error, not a refusal: Cursor confirmed *X* in that turn, when it opened the agent | CI |
 | BR-4 | The page is reloaded, or the server restarts on a durable store | The same session holds the same agent id, and the next turn continues it | Goal **r** |
 

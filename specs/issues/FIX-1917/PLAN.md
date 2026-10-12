@@ -18,6 +18,7 @@ session flow.
 | S5 | `kitchen-sink` · Cursor mode | 1915/S5's factory with kind `cursor-session` and `cursorAgent`: the option from S3 on, `composer-2.5`, `mode: "agent"`, the sandbox on and fenced to the session's worktree, not `.git`. Cursor's local runtime runs in a child process whose own environment is the allowlist (BR-23); no block or SDK environment option is assumed. Each session's worktree and branch (`kitchen-sink/cursor-session/<session>`) come from the factory, through `@flow-state-dev/workspace`. Its own check in FIX-1914's mode-check slot: the pinned SDK, and a Cursor key in the environment or a stored Cursor login (the SDK's login status, no run). Registered in `fsdev.config.ts` only when the mode is available, decided once per server start. The package and the SDK added as dependencies | BR-1 to BR-7 BR-21 BR-22 BR-23 ER-6 |
 | S6 | `kitchen-sink` · a scripted Cursor for test mode | Behind the app's test mode, through the block's `resolveCursorClient` seam: opens an agent, emits steps with a pause, sends `updateTodos` with a partial update and a whole-list result, fails one update, refuses a named agent id | All CI rows |
 | S7 | `kitchen-sink` README | Per [DOCS.md](DOCS.md) | — |
+| S8 | `cursor` · the unknown-agent mapping | The error a refused resume throws sets core's unknown-conversation classification (FIX-1915 S13); measure Cursor's message at implement time against the pinned SDK. No other error does | BR-3 |
 
 FIX-1915's session view and panel are used as they are; a change Cursor needs there is raised to
 the epic (ER-15).
@@ -30,6 +31,8 @@ flowchart TD
   S1 --> S2["S2 · hand-off to replacePlanList"]
   S2 --> S3["S3 · the option"]
   S3 --> S4["S4 · docs and changeset"]
+  P1 --> S8["S8 · unknown-agent mapping"]
+  S8 --> S4
   S4 -->|"PR-A merged · FIX-1915 PR-B merged"| S5["S5 · Cursor mode"]
   S6["S6 · scripted Cursor"] --> S5
   S5 --> S7["S7 · README"]
@@ -39,7 +42,7 @@ flowchart TD
 
 | PR | Surfaces | depends_on | Why it stands alone |
 |---|---|---|---|
-| PR-A | S1 S2 S3 S4 | FIX-1915 PR-A | The Cursor package can record its plan for any host. It needs core's shape and `replacePlanList`, not the picker or the session flow, so it can merge while those are in flight |
+| PR-A | S1 S2 S3 S4 S8 | FIX-1915 PR-A | The Cursor package can record its plan for any host. It needs core's shape and `replacePlanList`, not the picker or the session flow, so it can merge while those are in flight |
 | PR-B | S5 S6 S7 · the goal check | PR-A · FIX-1915 PR-B (which needs FIX-1914) | The mode. A flow kind and options on FIX-1915's flow |
 
 ## Checks
@@ -50,7 +53,7 @@ flowchart TD
 | V2 | A | Hand-off over an in-memory collection: a sequence of Cursor results ends with the record equal to the last list, the same-wording pair as two rows, an unknown status as itself (BR-15, BR-17); a confirmed empty list still calls `replacePlanList`, so the marker is *complete* with no places (BR-15a). The helper's own cases are FIX-1915's V10 to V12, not repeated here | Skip the call on an empty list: it reads as "no plan recorded for this turn" |
 | V3 | A | Block with a scripted client: option off declares no resources and writes nothing (BR-19); on, two invocations in one request keep separate rows and markers (BR-18); with 1915/V12's collection that fails on its second write, the marker ends *incomplete* and the run finishes (BR-15b) | Turn the option on by default |
 | V4 | A | A Cursor row parses with core's `observedPlanItemStateSchema` and reaches a subscribed client live (reuses 1915/V4's harness) | Write a field the shape lacks |
-| V5 | B | Resolvers with the scripted Cursor: BR-1 to BR-3a. A refused resume leaves the id and the next turn asks for it again; a resume that succeeds and then fails reads as an error, not a refusal | Clear the id on a refused resume · read the notice from session-wide fields: BR-3a reads as refused |
+| V5 | B | Resolvers with the scripted Cursor: BR-1 to BR-3a. A resume classified as an unknown agent leaves the id and the next turn asks for it again; a resume that succeeds and then fails, and an early failure without the classification, read as errors, not refusals | Clear the id on a refused resume · read the notice from session-wide fields: BR-3a reads as refused · read every early failure as refused |
 | V6 | B | Browser, scripted: a step shows before the turn completes; stop shows stopped, leaves the id, and the next turn continues; the panel shows the partial-update fixture's whole list, then "no plan recorded for this turn" on a later turn without one (BR-5, BR-6, BR-9, BR-16) | Register the Cursor flow with the option off: the panel says "Cursor reports no plan" |
 | V7 | B | Availability: each named reason disables the mode, sign-in included, and an unavailable mode registers no flow (BR-22) | Report a host with no key and no stored login as available |
 | V8 | B | A canary variable planted in the server is not visible to a command in a real Cursor run, and a control run on the unscrubbed path sees it (BR-23). The first implementation step of PR-B | Start the runtime in the server's own process: the canary shows |
