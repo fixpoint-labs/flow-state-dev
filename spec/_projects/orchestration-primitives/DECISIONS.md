@@ -37,6 +37,31 @@ path; `context: pattern` and `context: fork` are gone, and FIX-916
 **Costs** a skill can no longer pick a bespoke loop. Accepted, because three skill execution modes
 collapsed into one, which is PD-1 applied to skills.
 
+### PD-3 · Anything that expects an answer is a task; a tell is a plain message
+
+**Binds** FIX-1870, FIX-1786's coordinator, FIX-1816 (its D3 is amended), and every later epic
+that sends work or words from one worker to another.
+
+A post that needs a confirmed answer is a task, sent through `dispatchTask`: claimed once, ended
+done or failed, and the caller hears the ending. A tell that expects no reply is a plain message,
+`dispatcher()` from flow code or a session message, with no row, deadline or once-only check. It
+is the split Claude Code draws between a task and a message. FIX-1870's D2 becomes "every
+coordinator post that expects an answer is a task", which amends FIX-1816's D3 from two answer-once
+checks to one, the claim ticket, and lets FIX-1872 remove the coordinator delivery ledger. FIX-1872's
+spec first checks whether any coordinator post today is a tell. Rejected: today's ledger-backed
+message, a second check beside the claim ticket, and a task for every post, which gives a tell a
+row nobody answers. No model-facing tell tool is added. A separate "question" task class, shown
+differently in the UI, is deferred until something needs it.
+
+**Costs** what D3 protected, each delegate's own line, the routing policy and the rounds, has to
+ride on tasks instead of the ledger, and the sender has to know which kind it is sending. Accepted,
+because one way to be answered once is one thing to keep right. If FIX-1870's regression gate
+shows a post's per-delegate lines or rounds can't run as tasks, this flips back to D3's two checks.
+
+![PD-3's trade-off](figures/pd3-asks-are-tasks.svg)
+
+It comes down to a post that expects an answer: today's message needs a second once-only check to get one.
+
 ## Decided once
 
 | Question | Answer | Settled by |
@@ -46,56 +71,9 @@ collapsed into one, which is PD-1 applied to skills.
 | How does a flow reply to whoever dispatched it? | `session: { from: true }`, stamped by the seam, not supplied by the caller | FIX-1312 / FIX-1171 |
 | How is a flow addressed when several instances of one kind run? | By its global instance id; a bare kind no longer means the first one registered | FIX-1320 |
 | Can a task outlive the request that created it? | **Yes**, as a detached task under a lease | FIX-939 |
+| Do True Plan Mode and the pattern catalog stay in this project? | **No.** FIX-312 and FIX-449 moved to Human-in-the-Loop; FIX-451, the architecture page and catalog, to Multi-Agent Patterns | Product owner, Oct 11 |
+| What carries a post that expects an answer, and what carries one that doesn't? | **A task** through `dispatchTask`, claimed once; a tell is a plain message with no once-only check ([PD-3](#pd-3--anything-that-expects-an-answer-is-a-task-a-tell-is-a-plain-message)) | Product owner, Oct 11; amends FIX-1816 D3 |
 
 ## Open
 
-### Keep True Plan Mode and the docs catalog in this project, or move them out?
-
-**In plain terms.** When this project started in April it promised five things. Two shipped (the
-Task primitive and patterns reshaped onto it), one shipped and was then reversed (skills declaring
-patterns, PD-2),
-and two never started: True Plan Mode in kitchen-sink (FIX-312, FIX-449) and the architecture page
-plus pattern catalog (FIX-451, with FIX-922 asking what the catalog should still list). The
-project's target date was Jun 12. Since then the project has turned into a home for the task
-substrate and, now, for consolidating how workers hand work to each other.
-
-**The trade-off.** Keeping them says this project is not done until a person can plan with an
-agent in kitchen-sink and read a catalog of patterns. Moving them out lets this project finish
-when dispatching work is one tool, and gives True Plan Mode an owner that is about the product
-experience.
-
-**My recommendation.** Move FIX-312 and FIX-449 to the kitchen-sink or Workforce project that owns
-the reference app's experience. Keep FIX-451 here, re-cut after FIX-1870 wraps so the catalog
-documents one dispatch tool, not three.
-
-**What would change my mind.** If True Plan Mode is still the demo you mean to launch the
-multi-agent story with, it belongs beside the primitive it proves, and stays.
-
-**What being wrong costs.** Low and reversible: moving an issue between projects is one field.
-The real cost of not deciding is that this project reads as permanently unfinished, with two
-stale milestones nobody is working toward.
-
-### Keep the coordinator's own answer-once check, or let the board's be the only one?
-
-**In plain terms.** When a coordinator passes a person's message on to its delegates, a ledger in
-Workforce makes sure each delegate answers it once. Board tasks have their own check, the claim
-ticket. FIX-1816's D3 (merged, product-owner approved) kept both: "each serves one kind, and no
-third is added." FIX-1870, filed after it, routes the coordinator's delivery through
-`dispatchTask` and removes the ledger (its child FIX-1872). Both can't be built toward. The ledger
-lives in `packages/workforce`, which another project owns, so this binds both projects.
-
-**The trade-off.** Removing the ledger leaves one check to keep right and one path to test. Keeping
-it protects what D3 was protecting: a post shows each delegate's own line, follows a routing
-policy and runs in rounds, and an ask folds those into one reply.
-
-**My recommendation.** Follow FIX-1870, the later word, but only once its first deliverable, an
-inventory of what each dispatch path does on timeout, restart, double delivery and park, shows a
-post sent as a row without a wait still shows each delegate's own line. Then record it as an
-amendment to FIX-1816's D3 so the two specs agree. Until then PR-2 covers board tasks only.
-
-**What would change my mind.** If the inventory shows a post's rounds or routing policy can't
-run as a row, keep D3: two checks, one per kind, and FIX-1872 is cut back to the board's side.
-
-**What being wrong costs.** Settled before FIX-1872 starts, it is a spec change. Settled after, a
-wrong removal means a coordinator's post can reach a delegate twice, and a wrong keep means
-FIX-1872's work is redone. Either is reversible, the first only by rollback.
+None.

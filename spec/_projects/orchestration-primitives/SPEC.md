@@ -11,7 +11,7 @@ the ways work moves between workers on it.
 | | |
 |---|---|
 | **Winning when** | Every multi-agent pattern stores its work as Task rows, and work one worker gives another is answered once, whichever path delivers it. One dispatch tool over the board (FIX-1870) is the current bet for getting there |
-| **The read** | Parallel paths for the same job. Today: **3** worker-to-worker dispatch paths (`addTask({ waitForResponse })`, the board hand-over, the coordinator's `handOff`; `post-to-mailbox` went with mailboxes in FIX-1792) and **2** answer-once fences (the board claim ticket, the coordinator delivery ledger). The conversation board's notice marker (FIX-1794) also tracks delivery, but as a debt that makes sure an ending is told, not a fence that refuses a second telling. Done is 1 path; whether it is 1 fence or 2 is open ([Decisions](DECISIONS.md) → *Open*). Two patterns, `roundRobin` and `debate`, still run their roster in their own loop rather than on the board; FIX-922 decides whether they stay patterns |
+| **The read** | Parallel paths for the same job. Today: **3** worker-to-worker dispatch paths (`addTask({ waitForResponse })`, the board hand-over, the coordinator's `handOff`; `post-to-mailbox` went with mailboxes in FIX-1792) and **2** answer-once fences (the board claim ticket, the coordinator delivery ledger). The conversation board's notice marker (FIX-1794) also tracks delivery, but as a debt that makes sure an ending is told, not a fence that refuses a second telling. Done is 1 path and 1 fence, the claim ticket: a post that expects an answer is a task, and a tell is a plain message with no fence ([Decisions](DECISIONS.md) → PD-3). Two patterns, `roundRobin` and `debate`, still run their roster in their own loop rather than on the board; FIX-922 decides whether they stay patterns |
 | **Now** | 5 epics done (the Plan/Task series counted as one) · 1 in flight · 1 filed, spec being written. The task store, durable execution and flow addressing have landed. dispatchTask (FIX-1870) consolidates the dispatch paths |
 | **Kill line** | If dispatchTask's regression gate shows the dispatch paths differ in behaviour, not only in name, one tool is the wrong bet. Then the job becomes naming the kinds clearly; answered-once still holds as the finish line, and the remaining epics change with it |
 
@@ -51,7 +51,7 @@ flowchart LR
   D980 -->|"settle + park"| D1870["FIX-1870 · dispatchTask"]
   D1312 -->|"reply-to-sender transport"| D1870
   X1815["FIX-1815 · ask and assign"] -.->|"ask + assign semantics"| D1870
-  X1816["FIX-1816 · the ask"] -.->|"two fences kept, D3"| D1870
+  X1816["FIX-1816 · the ask"] -.->|"the ask, D3 amended by PD-3"| D1870
   X1786["FIX-1786 · Workforce concepts"] -.->|"task envelope + assignee"| D1870
   classDef done stroke-width:2px
   classDef proposed stroke-dasharray:4 3
@@ -60,8 +60,8 @@ flowchart LR
 
 dispatchTask is where both lines meet. The board half gives it a row to hand over, the dispatch
 half gives it transport. FIX-1815, FIX-1816 and FIX-1786 sit in Workforce: Shift Manager and are
-inputs, drawn dotted: they settled the ask, the two fences and the task envelope dispatchTask
-consolidates.
+inputs, drawn dotted: they settled the ask, the fences and the task envelope dispatchTask
+consolidates. FIX-1816's D3 kept two fences; PD-3 amends it to one.
 
 ## What this project is not
 
