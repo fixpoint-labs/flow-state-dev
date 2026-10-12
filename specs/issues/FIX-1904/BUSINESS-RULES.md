@@ -35,8 +35,8 @@ ER-5 to ER-7 to the same profile.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-13 | A coding item is filed on FSD or Shift Manager, from a conversation or a board | Its worktree is a worktree of the checkout the server runs from, its branch is in that checkout, and the branch starts from local `main`, not from the checked-out branch (ER-3, D3) | Goal leg b |
-| BR-14 | The checkout mapping misses a run (a project the person made, or a remote that differs from the row's) | Refused by name before any clone. Nothing is fetched from GitHub (D3) | Goal control `no-checkout` · CI |
-| BR-15 | A private project is created with id `fsd` and this repository's remote | It gets no worktree of the checkout: the mapping names the shared address only (ER-13) | FIX-1906's control, consumed · CI over the profile's config |
+| BR-14 | The checkout mapping misses a run (a project the person made, a remote that differs from the row's, or a session with no `orgId` or another organization's) | Refused by name before any clone. Nothing is fetched from GitHub (D3) | Goal control `no-checkout` · CI |
+| BR-15 | A private project is created with id `fsd` and this repository's remote | It gets no worktree of the checkout: only shared projects are mapped, and the mapping names the two in the Lab's organization (ER-13) | FIX-1906's control, consumed · CI over the profile's config |
 | BR-16 | The profile is read for the checkout's location | The location is worked out at start from where the profile's file is. No file holds a machine path (ER-11) | Review · a grep in CI |
 
 ## Failure taxonomy

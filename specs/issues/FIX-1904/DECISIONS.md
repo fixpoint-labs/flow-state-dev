@@ -72,7 +72,7 @@ It comes down to what Approve does on the first card: on this repository it is a
 | | |
 |---|---|
 | **Instead of** | Allowing `github.com` in the profile's remotes, so a run the checkout mapping misses is cloned from GitHub |
-| **Because** | The epic wants the branch a person reviews in the repository they review in. A clone fallback hides it, and nothing on screen says which happened. With no remote allowed, a missed run is refused by name. The mapping names the two addresses (`shared`/`fsd`, `shared`/`shift-manager`), so another project with the same remote gets no worktree of the checkout ([ER-13](../../epics/FIX-1903/BUSINESS-RULES.md#what-no-child-may-do)) |
+| **Because** | The epic wants the branch a person reviews in the repository they review in. A clone fallback hides it, and nothing on screen says which happened. With no remote allowed, a missed run is refused by name. The mapping names the two shared projects in the Lab's organization (`fsd` and `shift-manager`, each with `orgId: LAB_ORG_ID`), so another project with the same remote, private or in another organization, gets no worktree of the checkout ([ER-13](../../epics/FIX-1903/BUSINESS-RULES.md#what-no-child-may-do)) |
 | **Locks in** | The profile works only from a checkout of this repository. A project a person adds with a remote is refused until remotes are allowed. A run branches from local `main`, never fetched |
 
 ![D3: what happens to a run the checkout mapping misses. Chosen: refused by name, the profile reaches no remote. Instead of: cloned from GitHub. It comes down to the first row, where the branch a person reviews ends up: their checkout or a named refusal, against a hidden clone with nothing said. Second row, the price: a project created on this Lab with a remote is refused, against cloned. Third row, a tie: the two dev projects get a worktree of the checkout either way. Locks in the profile needs a checkout of this repository. Flips if people add their own repository projects to this Lab](figures/d3-checkout-or-refused.svg)
@@ -113,5 +113,8 @@ It comes down to where a missed run's branch goes: refused is visible, and a hid
   two projects and keeps the profile's hosts off every remote.
 - **Round 1 (2026-10-12)** — the probe moved into `@flow-state-dev/claude-code`, shared with
   FIX-1915, and V1 ran in the spec phase rather than after implementation began.
+- **Correction (2026-10-12)** — FIX-1906's round 1 keyed the mapping on a shared project's
+  organization and id, not visibility and id. The profile's entries name the Lab's `orgId`, and
+  `localRepositories` is derived from the mapping. No decision moved.
 
 **Open: none.**

@@ -10,13 +10,13 @@ integration package, not Layer 1, and gains one export (S1). Every other surface
 
 ## What FIX-1906 provides, and what this issue adds
 
-Named from FIX-1906's design brief and [epic D3](../../epics/FIX-1903/DECISIONS.md#d3). It is
+Named from FIX-1906's spec as of its review round 1 ([PR #3177](https://github.com/fixpoint-labs/flow-state-dev/pull/3177), `0c42dfd`) and [epic D3](../../epics/FIX-1903/DECISIONS.md#d3). It is
 **not merged** when this spec is written; re-read its merged spec and code before S3.
 
 | FIX-1906 provides (consume, don't rebuild) | FIX-1904 adds |
 |---|---|
-| A `projectWorkspace()` option in workforce that maps a remote to a checkout for named project addresses: `checkouts: [{ remote, checkout, projects: [{ visibility, id }], baseRef? }]`. A row is mapped only when its address is named and its `repository` equals `remote` | The two entries' values: this repository's remote, the checkout path worked out at start, `shared`/`fsd` and `shared`/`shift-manager`, `baseRef: "main"` |
-| The host's existing operator allowance, `localWorkspaceHost({ localRepositories })`, now accepting the project's kept files beside the worktree (`checkout/` and `project/`) | The same checkout path in `localRepositories`, on both of the Lab's hosts |
+| A `projectWorkspace()` option in workforce that maps a remote to a checkout for named shared projects: `checkouts: [{ remote, checkout, projects: [{ orgId, id, tenantId? }], baseRef? }]`. A row is mapped only when it is shared, an entry names its id with the run's server-set `session.identity.orgId` (and `tenantId`, exactly), and its `repository` equals `remote`. A private row, or a session with no `orgId`, is never mapped | The two entries' values: this repository's remote, the checkout path worked out at start, `{ orgId: LAB_ORG_ID, id: "fsd" }` and `{ orgId: LAB_ORG_ID, id: "shift-manager" }` with no `tenantId`, `baseRef: "main"`. `LAB_ORG_ID` (`"devforce-lab"`) is exported from `teams/devteam/host.mts`, the organization every Lab session is opened in (its door's `resolvePrincipal`, `openWorkerSession`, in-process runs); the Lab sets no tenant |
+| The host's existing operator allowance, `localWorkspaceHost({ localRepositories })`, now accepting the project's kept files beside the worktree (`checkout/` and `project/`) `localRepositories` derived from the unique `checkouts[].checkout` paths, on both of the Lab's hosts, never configured separately |
 | No collision between two runs on one checkout (ER-4); a settled run's branch stays checked out in its worktree | Nothing. The docs say how to review that branch |
 | The dependency strategy: the machine's pnpm store, and a first-run `pnpm install` by the agent (~6 s), a full build ~86 s | Nothing; the run budget already covers it |
 
@@ -25,8 +25,8 @@ Named from FIX-1906's design brief and [epic D3](../../epics/FIX-1903/DECISIONS.
 | ID | Package · file or role | Change | Rules |
 |---|---|---|---|
 | S1 | `claude-code` · `src/sdk/`, exported from `@flow-state-dev/claude-code/sdk` · then `shift-manager` · `teams/devteam/harness.mts` | **The shared probe** (D1, with FIX-1915; whichever lands first builds it): `probeClaudeAccount({ env, timeoutMs })` resolves `account` (an `apiKeySource` or `tokenSource` came back), `none` (neither, or no answer within `timeoutMs`, with that reason) or `sdk-missing`. One streaming-input `query()` that never sends a message, closed after `accountInfo()`, as in V1. The caller passes the run's environment (`CLAUDE_CODE_PASS`), so probe and run see one account. Then in `harness.mts`: `selectHarness` takes the profile's default choice; DevTeam passes `stub` (today's), `fsd` passes `claude-code`; on Claude Code it calls the probe and refuses on `none` or `sdk-missing`. A start line names the coder | BR-6 to BR-12 |
-| S2 | `shift-manager` · `teams/devteam/host.mts` · the lab's workspace options | `LabWorkspaceHost` gains the checkout mapping as one optional field. `openLab` passes it to `projectWorkspace()` and the checkout path to `localRepositories`, on **both** `labWorkspaceHost` and `answerWorkspaceHost`. Absent means today, so DevTeam is unchanged | BR-13 to BR-15 · ER-10 |
-| S3 | `shift-manager` · new `teams/devteam/fsd.fsdev.config.mts` | The `fsd` profile: the same tree through `openLab`; SQLite at `FSD_STORE` or `.fsdev/fsd.sqlite`; the two projects with their briefs and members as DevTeam sets them; `inventory` and `devtool` on; no `ask`, no `workstreams` (D2); `remotes: { allow: [] }` (D3); the S2 mapping with the checkout worked out from the file's own location; the S1 harness with default `claude-code` | BR-1 to BR-5 · BR-16 |
+| S2 | `shift-manager` · `teams/devteam/host.mts` · the lab's workspace options | `LabWorkspaceHost` gains the checkout mapping as one optional field. `openLab` passes it to `projectWorkspace()` and derives `localRepositories` from its unique `checkouts[].checkout` paths, on **both** `labWorkspaceHost` and `answerWorkspaceHost`. Absent means today, so DevTeam is unchanged | BR-13 to BR-15 · ER-10 |
+| S3 | `shift-manager` · new `teams/devteam/fsd.fsdev.config.mts` | The `fsd` profile: the same tree through `openLab`; SQLite at `FSD_STORE` or `.fsdev/fsd.sqlite`; the two projects with their briefs and members as DevTeam sets them; `inventory` and `devtool` on; no `ask`, no `workstreams` (D2); `remotes: { allow: [] }` (D3); the S2 mapping with the checkout worked out from the file's own location and both entries naming `LAB_ORG_ID`; the S1 harness with default `claude-code` | BR-1 to BR-5 · BR-16 |
 | S4 | `shift-manager` · `scripts/checkout.mts` | The default `--config` becomes S3's file. Header updated | BR-1 · BR-4 |
 | S5 | `shift-manager` · `package.json` | `@anthropic-ai/claude-agent-sdk` as a devDependency. Expected: it is only an optional peer of `claude-code`, so pnpm's strict layout won't resolve it from `shift-manager` without it | BR-8 |
 | S6 | `shift-manager` · tests | The S3 config under `goal-labs.test.ts` beside DevTeam, run with `DEVFORCE_LAB_HARNESS=stub`; S1's cases with a scripted probe | BR-2 to BR-12 |
@@ -87,7 +87,7 @@ its pages, its team profiles and its checks under `goals/shift-manager/`."
 |---|---|
 | Nothing in S1 or S3 changes DevTeam's behaviour or default | ER-10. Five goal checks read DevTeam unedited |
 | The coder check has two outcomes, run or refuse. No path returns the script without `stub` | ER-2 and Q1: a run that quietly used the script reads as an agent's |
-| One mapping value feeds both workspace hosts | Two writers of one rule drift; the conversation path is the one the goal uses (tenet 5) |
+| One mapping value feeds both workspace hosts, and `localRepositories` is derived from it | Two writers of one rule drift; the conversation path is the one the goal uses (tenet 5) |
 | The profile's remotes allow list stays empty | D3: a missed mapping must be a refusal, never a clone |
 | The checkout path is computed, never written | ER-11; the file is in the repository and a path is one machine's |
 | No "seat" in code or prose | ER-16 |
@@ -101,6 +101,8 @@ paragraph later; leave them out.
 
 - Read FIX-1906's merged option names and its refusal reason for an unlisted path; S2 and BR-14's
   check use them as shipped.
+- Confirm every session a Lab run starts from carries `orgId: LAB_ORG_ID` as FIX-1906's source
+  reads it. One with none maps nothing, and under D3 that run is refused by name (BR-14), never cloned.
 - `--dev` serves the pages through Vite from `packages/shift-manager`, and the runs root sits in
   `.fsdev/` under it. Check that a run's file writes and its `pnpm install` don't reload the page or
   exhaust the watcher. If they do, keep the runs root out of what Vite watches.
