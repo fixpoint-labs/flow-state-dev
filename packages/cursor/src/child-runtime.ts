@@ -1,14 +1,19 @@
 /**
- * The environment fence: Cursor's local runtime in a child process whose
- * environment is exactly the block's `env`.
+ * `env`: Cursor's local runtime in a child process whose environment is
+ * exactly the block's `env`.
  *
  * Cursor's SDK takes no environment option, and every shell its local runtime
  * starts copies the environment of the process the SDK runs in. Run in the
- * server's own process, a command Cursor runs can read every key, token and
+ * server's own process, a command Cursor runs starts with every key, token and
  * connection string the server holds. The one lever is the process itself, so
  * when a host sets `env` this package starts a separate Node process with that
  * environment and nothing inherited, loads the SDK there, and drives the agent
  * over the IPC channel. `runtime/cursor-runtime-child.mjs` is the other half.
+ *
+ * This narrows what commands start with; it is not a security boundary. The
+ * child runs as the same OS user, and on Linux a command can still read the
+ * server's environment through `/proc/<pid>/environ`. Containing a command
+ * that goes looking takes a separate user or a container.
  *
  * The client this builds satisfies the same seam the in-process client does
  * ({@link ResolvedCursorClient}), so the block cannot tell them apart. Each
@@ -16,8 +21,8 @@
  * the agent.
  *
  * **Never a fallback.** A process that cannot start, or that dies, fails the
- * run with that reason. Running in-process instead would quietly hand the run
- * the environment the host asked to keep from it.
+ * run with that reason. Running in-process instead would quietly start the
+ * run's commands with the environment the host chose not to hand them.
  *
  * The protocol: the parent sends `{ id, op }` requests (`open`, `send`, `wait`,
  * `cancel`) and the child answers `{ id, value }` or `{ id, error }`. After

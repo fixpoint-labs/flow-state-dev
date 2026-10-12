@@ -136,7 +136,7 @@ Cursor's own `onStep` and `onDelta` observers are forwarded through `send`
 untouched. The item stream is built from the run's messages rather than from
 those callbacks, so taking both shows you the same run twice. With `env` set
 they can't be passed, because the runtime runs in another process
-([Keeping your server's environment from the run](#keeping-your-servers-environment-from-the-run)).
+([Choosing the environment the run starts with](#choosing-the-environment-the-run-starts-with)).
 
 ## Recording the run's plan
 
@@ -189,7 +189,7 @@ is rarely what you want.
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
 
-## Keeping your server's environment from the run
+## Choosing the environment the run starts with
 
 Cursor's SDK runs in your server's process, and every shell command Cursor runs
 gets a copy of that process's environment: every key, token and connection string
@@ -197,8 +197,9 @@ your server was started with. The SDK has no option to narrow it, and its sandbo
 limits files and network, not environment variables.
 
 Set `env` and the block runs Cursor's runtime in a separate Node process whose
-environment is exactly what you pass, with nothing inherited. Build it from names
-with `harnessEnv` from `@flow-state-dev/core`:
+environment is exactly what you pass, with nothing inherited. Commands Cursor
+runs start with only those variables. Build it from names with `harnessEnv` from
+`@flow-state-dev/core`:
 
 ```ts
 import { harnessEnv } from "@flow-state-dev/core";
@@ -221,6 +222,13 @@ the separate process. If the process can't start, or dies, the run fails with th
 reason. It never falls back to running in your server's process.
 
 Leave `env` out and the runtime runs in your process, as before.
+
+`env` decides what commands start with. It is not a security boundary. The
+separate process still runs as the same operating-system user as your server, and
+on Linux a process can read the environment of any other process its user owns,
+your server's included, through `/proc`. So a command that goes looking can still
+find your server's secrets. When that matters, run the server, or Cursor's
+runtime, as a separate user or in its own container.
 
 Deriving a safe directory per run is a recipe rather than a one-liner, and the
 Claude Code page works one through in

@@ -12,6 +12,8 @@
  * - `hang`: stream one message, then wait until cancelled; on cancel, write
  *   `cancelled` to `$FIX1917_CANCEL_MARK` when that is set.
  * - `die`: exit the process mid-run.
+ * - `wedged`: stream one message, then wait forever; a cancel never settles,
+ *   as a wedged runtime's might never.
  */
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -27,6 +29,10 @@ function makeRun(prompt) {
       if (prompt === "die") {
         yield { type: "thinking", text: "about to die" };
         process.exit(3);
+      }
+      if (prompt === "wedged") {
+        yield { type: "thinking", text: "working" };
+        await new Promise(() => {});
       }
       if (prompt === "hang") {
         yield { type: "thinking", text: "working" };
@@ -51,6 +57,7 @@ function makeRun(prompt) {
       return { status: "finished", result: "done" };
     },
     async cancel() {
+      if (prompt === "wedged") await new Promise(() => {});
       if (process.env.FIX1917_CANCEL_MARK) writeFileSync(process.env.FIX1917_CANCEL_MARK, "cancelled");
       release();
     },

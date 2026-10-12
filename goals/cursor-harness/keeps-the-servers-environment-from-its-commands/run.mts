@@ -3,8 +3,10 @@
  *
  * Two real Cursor runs in a throwaway directory, each told to run one shell
  * command that prints a variable planted in this process. The control runs with
- * `env` unset and must see it; the fenced run sets `env` and must not. Graded on
- * the run's items, which is what the stream carried, not on what the model says.
+ * `env` unset and must see it; the fenced run sets `env` and must not find it in
+ * its command's own environment. Graded on the run's items, which is what the
+ * stream carried, not on what the model says. What a same-user command could dig
+ * out of `/proc` is out of scope: `env` is not a security boundary.
  *
  * Run: CURSOR_API_KEY=… pnpm tsx goals/cursor-harness/keeps-the-servers-environment-from-its-commands/run.mts
  * Control: GOAL_CONTROL=ignore-env (the fenced leg runs with env unset; f:fenced must FAIL)

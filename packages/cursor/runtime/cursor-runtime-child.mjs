@@ -3,9 +3,11 @@
  * when a `cursorAgent` block is given an `env`.
  *
  * Cursor's SDK has no environment option: every shell its local runtime starts
- * copies the process's own environment. So the only way to keep a server's
- * secrets away from the commands Cursor runs is to give the runtime a process
- * whose environment is exactly the allowlist. The parent starts this script
+ * copies the process's own environment. So the only way to start the commands
+ * Cursor runs with less than the server's environment is to give the runtime a
+ * process whose environment is exactly the allowlist. That narrows what they
+ * start with; it is not a security boundary (same OS user, so `/proc` still
+ * shows the server's environment on Linux). The parent starts this script
  * with that environment and drives one agent and one run in it over the IPC
  * channel; `src/child-runtime.ts` is the other half and documents the protocol.
  *

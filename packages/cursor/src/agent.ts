@@ -164,9 +164,15 @@ export interface CursorAgentOptions {
    * inherits the server's whole `process.env`.
    *
    * Set, the block runs Cursor's local runtime in a separate Node process
-   * whose environment is exactly this, nothing inherited. Cursor's SDK has no
+   * whose environment is exactly this, nothing inherited, so the commands
+   * Cursor runs start with only these variables. Cursor's SDK has no
    * environment option of its own and copies its process's environment into
-   * every shell it starts, so the process is the only fence. Build it with
+   * every shell it starts, so the process is the only lever.
+   *
+   * Not a security boundary. The process runs as the same OS user as the
+   * server, and on Linux a command can read any same-user process's
+   * environment through `/proc/<pid>/environ`, the server's included. Use a
+   * separate user or a container when that matters. Build it with
    * core's `harnessEnv({ pass: [...] })`. Name `PATH` (the run's shell commands
    * are found through it) and `HOME` (Cursor keeps its agents and its stored
    * login under it, so a resumed agent is found only with the same `HOME`), and
@@ -176,7 +182,7 @@ export interface CursorAgentOptions {
    * It never falls back to this process. Because the options cross a process
    * boundary, a function anywhere in `agent` or `send` (`onStep`, `onDelta`,
    * custom tools) is refused when the block is built, and so is a custom
-   * `resolveCursorClient`, which would bypass the fence.
+   * `resolveCursorClient`, which would bypass the separate process.
    */
   env?: Record<string, string>;
   /**
@@ -205,7 +211,7 @@ export interface CursorAgentOptions {
 export const INTERNAL_SDK_VERSION_READER = Symbol("cursor.internal.readInstalledSdkVersion");
 
 /**
- * The module the environment fence's child process loads the SDK from, keyed
+ * The module the `env` child process loads the SDK from, keyed
  * by a symbol for the same reason as {@link INTERNAL_SDK_VERSION_READER}: the
  * specs point the child at a scripted SDK, and no host can.
  */
@@ -290,12 +296,12 @@ function assertNoOwnedKeys(agent: CursorCreateOptions | undefined, send: CursorS
 }
 
 /**
- * Refuse what cannot cross into the environment fence's child process.
+ * Refuse what cannot cross into the `env` child process.
  *
  * Options reach the child as data, so a function in either group would be
  * dropped or fail to send at run time; refusing it here names it at wiring
  * time instead. A custom client resolver is refused because it would bypass
- * the child process entirely, which is the fence.
+ * the child process entirely, and with it the narrowed environment.
  */
 function assertFenceable(
   agent: CursorCreateOptions | undefined,
@@ -616,6 +622,7 @@ async function mirrorRun(
           // Written in stream order, so the record ends equal to the last list
           // Cursor confirmed. An empty list is still a write: it is what tells
           // "the plan is empty" from "no plan recorded".
+          // Awaited on purpose: a write left in flight could land after the next list's.
           await writePlan?.(event.items);
         }
         await emitTranslatedEvent(event, ctx, emitState, blockName);
@@ -798,15 +805,33 @@ function closeQuietly(agent: CursorAgentLike | null): void {
   }
 }
 
+/** How long a cancel gets to settle before the block stops waiting on it. */
+const CANCEL_GRACE_MS = 5_000;
+
 /**
  * Best-effort cancel so a deadline or a thrown stream does not leave the
  * local runtime running after the block has walked away.
+ *
+ * Bounded: a wedged runtime may never answer, and the block's `finally` closes
+ * the agent only once this returns. Closing is what ends a runtime that will
+ * not stop on its own, so an unbounded wait here would keep it alive forever.
  */
 async function cancelQuietly(run: CursorRunLike): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await run.cancel();
+    const cancelled = Promise.resolve(run.cancel());
+    // Claimed so a cancel that rejects after the grace has run out is not unhandled.
+    cancelled.catch(() => {});
+    await Promise.race([
+      cancelled,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, CANCEL_GRACE_MS);
+      }),
+    ]);
   } catch {
     // Same: cancel is in service of the throw, not a second outcome.
+  } finally {
+    clearTimeout(timer);
   }
 }
 

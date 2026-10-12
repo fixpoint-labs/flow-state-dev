@@ -1,5 +1,5 @@
 /**
- * The environment fence (`env`): what a command Cursor runs can read.
+ * `env`: the environment a command Cursor runs starts with.
  *
  * Cursor's SDK copies its process's environment into every shell it starts
  * and takes no environment option, so with `env` set the block runs the
@@ -10,8 +10,13 @@
  * Cursor command would see. One spec loads the real installed SDK in the
  * child, to hold the trip across the process boundary against the real thing.
  *
- * A real Cursor run (a model, a key) is not here; that is the canary run in
- * `env-fence.real.spec.ts`, which runs only when `CURSOR_API_KEY` is set.
+ * A real Cursor run (a model, a key) is not here; that is the canary goal
+ * `goals/cursor-harness/keeps-the-servers-environment-from-its-commands/`,
+ * which runs only when `CURSOR_API_KEY` is set.
+ *
+ * None of this is a security boundary: the child runs as the server's OS user,
+ * so on Linux a command can still read the server's environment through
+ * `/proc`. These specs hold what a command starts with, nothing more.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
@@ -133,6 +138,22 @@ describe("cursorAgent — env set: when the runtime's process fails", () => {
     await vi.waitFor(() => expect(existsSync(mark)).toBe(true), { timeout: 5_000 });
     expect(readFileSync(mark, "utf8")).toBe("cancelled");
   }, 30_000);
+
+  it("a stop still ends the run when the runtime's process never answers the cancel", async () => {
+    // Without a bound on the cancel, the block waits on the child's answer
+    // forever and never reaches the close that arms the kill.
+    const block = cursorAgent({ ...FENCED_FAKE, env: harnessEnv({ pass: ["PATH"] }) });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    setTimeout(() => ac.abort(), 500);
+
+    const started = Date.now();
+    await expect(block.config.execute?.({ prompt: "wedged" }, runtime.ctx as never)).rejects.toBeInstanceOf(
+      CursorAgentAbortedError,
+    );
+    expect(Date.now() - started).toBeLessThan(15_000);
+  }, 20_000);
 });
 
 describe("cursorAgent — env set, the installed SDK across the process boundary", () => {

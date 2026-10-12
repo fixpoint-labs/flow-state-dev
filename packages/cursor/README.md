@@ -85,12 +85,15 @@ default; off, the block declares no session state. Guide:
 [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
 
 `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
-separate process with exactly those variables, so commands Cursor runs can't read the rest of
-your server's environment. Name `PATH`, `HOME` and `CURSOR_API_KEY` in it
-(`harnessEnv({ pass: [...] })` from `@flow-state-dev/core`). With `env` set, functions in `agent`
-or `send` and a custom `resolveCursorClient` are refused when the block is built, because they
-can't reach that process. Leave it out and the runtime runs in your process, as before. Guide:
-[Keeping your server's environment from the run](https://flow-state.dev/docs/tools/cursor#keeping-your-servers-environment-from-the-run).
+separate process with exactly those variables, so commands Cursor runs start with only them
+rather than a copy of your server's environment. It is not a security boundary: the process runs
+as the same OS user, and on Linux a command can still read another process's environment, your
+server's included, through `/proc`. Use a separate user or a container when that matters. Name
+`PATH`, `HOME` and `CURSOR_API_KEY` in it (`harnessEnv({ pass: [...] })` from
+`@flow-state-dev/core`). With `env` set, functions in `agent` or `send` and a custom
+`resolveCursorClient` are refused when the block is built, because they can't reach that process.
+Leave it out and the runtime runs in your process, as before. Guide:
+[Choosing the environment the run starts with](https://flow-state.dev/docs/tools/cursor#choosing-the-environment-the-run-starts-with).
 
 ## The handle
 
