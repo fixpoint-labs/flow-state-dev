@@ -75,6 +75,14 @@ describe("what a view of its own draws", () => {
     expect(screen.queryByTestId("cos")).toBeNull();
   });
 
+  it("says what it is in a session opened before a first line, rather than drawing nothing", async () => {
+    // A project's Stream opens its coordinator session as the tab opens, so the
+    // session exists and reads empty: the screen must still say what it is.
+    drawn([], { session: "s1" });
+    expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
+    expect(read.mock.calls[0]![1]).toBe("s1");
+  });
+
   it("keeps its look hooks the same whatever its test id, so one rule styles every conversation", () => {
     const { container } = drawn([]);
     expect(container.querySelector('[data-look="conversation-feed"]')).toBeTruthy();
