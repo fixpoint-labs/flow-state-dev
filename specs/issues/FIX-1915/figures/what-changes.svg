@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="Before and after, in three layers: app, harness package, core. Before: the only app that runs Claude Code for real is Shift Manager, through harness-manager and a task board row; the plan record shape sits in the Claude Code package and refreshes when the request ends. After: Kitchen Sink's Claude Code mode runs one harness session flow, which hands the Claude Code block its own git worktree per session and the recorded conversation, and records the confirmed id back; the run's items reach the session view while it works; the plan record shape now sits in core, streams live, and a read-only panel shows it. Shift Manager is unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .moved { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 3; }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .arrn  { stroke:var(--code); stroke-width:1.5; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="headers">
+    <text class="t-h" x="96" y="28">Today</text>
+    <text class="t-h" x="560" y="28">After</text>
+  </g>
+
+  <g id="bands">
+    <rect class="band" x="16" y="42" width="908" height="128" rx="4"/>
+    <text class="t-lbl" x="24" y="58">APP</text>
+    <rect class="band" x="16" y="180" width="908" height="110" rx="4"/>
+    <text class="t-lbl" x="24" y="196">HARNESS</text>
+    <rect class="band" x="16" y="300" width="908" height="104" rx="4"/>
+    <text class="t-lbl" x="24" y="316">CORE</text>
+    <line x1="470" y1="36" x2="470" y2="410" stroke="var(--rule)" stroke-width="1.4"/>
+  </g>
+
+  <g id="before">
+    <rect class="box" x="96" y="70" width="340" height="40" rx="5"/>
+    <text class="t-b" x="108" y="88">Shift Manager · harness-manager</text>
+    <text class="t-s" x="108" y="102">the only app that runs it for real</text>
+    <rect class="box" x="96" y="120" width="340" height="40" rx="5"/>
+    <text class="t-b" x="108" y="138">a task board row, a checkout per task</text>
+    <text class="t-s" x="108" y="152">the run is a job, not a session</text>
+    <rect class="box" x="96" y="204" width="160" height="40" rx="5"/>
+    <text class="t-b" x="108" y="222">Claude Code block</text>
+    <text class="t-s" x="108" y="236">items · handle</text>
+    <rect class="old" x="270" y="204" width="166" height="74" rx="5"/>
+    <text class="t-b c-gone" x="282" y="222">plan record shape</text>
+    <text class="t-s" x="282" y="238">lives in this package</text>
+    <text class="t-s" x="282" y="252">refreshes at request end</text>
+    <text class="t-s" x="282" y="266">nothing in an app reads it</text>
+    <path class="arr" d="M176 160 V204"/>
+    <text class="t-s" x="96" y="340">nothing harness-wide here</text>
+  </g>
+
+  <g id="after">
+    <rect class="new" x="560" y="66" width="364" height="42" rx="5"/>
+    <text class="t-b c-code" x="572" y="84">Kitchen Sink · Claude Code mode</text>
+    <text class="t-s" x="572" y="98">session view · stop · binding notice · plan panel</text>
+    <rect class="new" x="560" y="118" width="364" height="44" rx="5"/>
+    <text class="t-b c-code" x="572" y="136">one harness session flow</text>
+    <text class="t-s" x="572" y="151">a worktree per session · resume · onSession · queued turns</text>
+    <rect class="box" x="560" y="204" width="200" height="74" rx="5"/>
+    <text class="t-b" x="572" y="222">Claude Code block</text>
+    <text class="t-s" x="572" y="238">detached · recordWork</text>
+    <text class="t-s" x="572" y="252">sandboxed to its worktree</text>
+    <text class="t-s" x="572" y="266">items as they happen</text>
+    <rect class="box" x="774" y="204" width="122" height="74" rx="5"/>
+    <text class="t-b" x="786" y="222">file and gap records</text>
+    <text class="t-s" x="786" y="238">stay here</text>
+    <rect class="moved" x="560" y="326" width="364" height="64" rx="5"/>
+    <text class="t-b" x="572" y="346">plan record shape · moved here</text>
+    <text class="t-s" x="572" y="362">streams live · one shape for every harness</text>
+    <text class="t-s" x="572" y="378">Codex and Cursor write it next</text>
+    <path class="arrn" d="M660 162 V204"/>
+    <path class="arrn" d="M660 278 V326"/>
+    <path class="arrn" d="M912 326 V108"/>
+    <text class="t-s" x="806" y="314">the panel reads it</text>
+  </g>
+</svg>
