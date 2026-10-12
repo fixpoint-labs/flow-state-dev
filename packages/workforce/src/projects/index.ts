@@ -134,5 +134,7 @@ export {
 export {
   projectWorkspace,
   projectWorkspaceCapability,
+  type ProjectCheckout,
+  type ProjectWorkspaceOptions,
   type ProjectWorkspaceRefusalReason
 } from "./project-workspace";
