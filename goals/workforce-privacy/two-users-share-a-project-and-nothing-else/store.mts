@@ -81,3 +81,11 @@ export function conversationRecord(file: string, userId: string, sessionId: stri
 export function anythingRunning(file: string): boolean {
   return open(file, (db) => ((db.prepare("SELECT COUNT(*) AS n FROM requests WHERE status IN ('pending','queued','in_progress','running')").get() as { n: number }).n ?? 0) > 0);
 }
+
+/** One of `userId`'s worker rows (`workforce/workers/<id>`) as stored, whatever the client projection exposes. */
+export function workerRow(file: string, userId: string, id: string): Record<string, any> | undefined {
+  return open(file, (db) => {
+    const row = db.prepare("SELECT state FROM resource_state WHERE resource_key = ? AND scope_id LIKE ?").get(`workforce/workers/${id}`, `${userId}:%`) as { state: string } | undefined;
+    return row === undefined ? undefined : (JSON.parse(row.state) as Record<string, any>);
+  });
+}

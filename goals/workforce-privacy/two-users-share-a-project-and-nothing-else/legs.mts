@@ -20,7 +20,7 @@ import { rowsOf, sessionOn } from "./milestone.mts";
 import { act, everythingIn, refusal, talk, textOf, type Connected, type Person, type RosterEntry, type SessionSummary } from "./people.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 import { askInStream, delegatesPanel, projectGroups, projectWorkstreams, rosterRows, type ProjectAt } from "./screens.mts";
-import { anythingRunning, conversationRecord, sessionRows, taskRows, type Delivery, type StoredSession } from "./store.mts";
+import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession } from "./store.mts";
 
 const hex = (n = 2) => randomBytes(n).toString("hex");
 const WORDS = ["amber", "basalt", "cobalt", "delta", "ember", "fjord", "garnet", "harbor", "indigo", "juniper", "kestrel", "lagoon", "marble", "nimbus", "orchid", "pewter", "quill", "russet", "saffron", "tundra"];
@@ -266,7 +266,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const added = own1.filter((x) => !own0.includes(x));
     const listed = (await alice.workforce.roster()).find((e) => e.id === name);
     const rosterSession = await sessionOn(alice, ROSTER);
-    const row = (await rowsOf(alice, rosterSession, WORKERS)).rows.find((x) => named(x.topic, name))?.data as { flow?: string; settings?: Record<string, unknown> } | undefined;
+    // The row as stored: the client's projection of a worker row leaves its settings out.
+    const row = (await rowsOf(alice, rosterSession, WORKERS)).rows.some((x) => named(x.topic, name)) ? (workerRow(o.store, A.userId, name) as { flow?: string; settings?: Record<string, unknown> } | undefined) : undefined;
     if (hires.length === 0) r.fail("a3", `the chief of staff's turn called no \`hire\` (reply: "${turn.reply.slice(0, 300)}")`);
     if (listed === undefined || row === undefined) r.fail("a3", `no worker \`${name}\` on Alice's roster after the turn (new: ${show(added)})`);
     else if (listed.flow !== COORDINATOR) r.fail("a3", `\`${name}\` is on flow \`${listed.flow}\`, not \`${COORDINATOR}\``);
@@ -590,15 +591,16 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         const unsettled = filed.filter((t) => !["completed", "errored", "cancelled", "failed"].includes(t.status));
         if (unsettled.length > 0) r.fail("b5", `task(s) never ended: ${show(unsettled.map((t) => `${t.id}:${t.status}`))}`);
         // What the session heard: the notices sent into it, not the lead's own replies that name a task.
-        const lines = emItems.filter((i) => i.type === "message" && i.role !== "assistant");
+        const lines = emItems.filter((i) => i.type === "message" && (i as { provenance?: { blockName?: string } }).provenance?.blockName === "conversation-task-line");
         for (const t of filed) {
-          const heard = lines.filter((i) => textOf(i).includes(t.id)).length;
+          const heard = new Set(lines.filter((i) => textOf(i).includes(t.id)).map((i) => i.requestId)).size;
           if (heard !== 1 && !["pending"].includes(t.status)) r.fail("b5", `the EM's workstream session heard task \`${t.id}\` end ${heard} times, not once`);
         }
         const updates = emItems.filter((i) => i.type === "tool_output" && /updateWorkstream$/.test(String(i.toolCall?.name ?? "")));
-        const lastAdd = Math.max(...adds.map((i) => i.createdAt ?? 0));
-        const after = updates.filter((i) => (i.createdAt ?? 0) > lastAdd);
-        if (after.length === 0) r.fail("b5", `the EM never updated the workstream entry after filing (no \`updateWorkstream\` after its last \`addTask\` at ${lastAdd}; updates at ${show(updates.map((i) => i.createdAt ?? null))})`);
+        const at = (i: { ts?: number; createdAt?: number }) => i.ts ?? i.createdAt ?? 0;
+        const lastAdd = Math.max(...adds.map(at));
+        const after = updates.filter((i) => at(i) > lastAdd);
+        if (after.length === 0) r.fail("b5", `the EM never updated the workstream entry after filing (no \`updateWorkstream\` after its last \`addTask\` at ${lastAdd}; updates at ${show(updates.map(at))})`);
         const entry = (await entriesOf(alice, S)).find((e) => e.owner === A.userId && e.id === ws!.id);
         const drawn = await projectWorkstreams(o.browser, origin(), A, true, r, "b5-alice-workstreams", S);
         const shown = drawn.value?.entries.find((x) => x.owner === A.userId && x.id === ws!.id);
@@ -632,7 +634,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const traces = await alice.routes.items(s.id, "block_trace");
       const offered = new Set<string>();
       for (const t of traces.filter((x) => x.requestId === turn.requestId)) {
-        const tools = (t as any).tools ?? (t as any).input?.tools ?? (t as any).request?.tools;
+        const tools = (t as any).generator?.tools ?? (t as any).tools ?? (t as any).input?.tools ?? (t as any).request?.tools;
         if (Array.isArray(tools)) for (const x of tools) offered.add(typeof x === "string" ? x : String(x?.name ?? ""));
         else if (tools !== undefined && typeof tools === "object") for (const k of Object.keys(tools)) offered.add(k);
       }
