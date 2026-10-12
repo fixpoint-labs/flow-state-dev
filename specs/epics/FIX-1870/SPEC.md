@@ -8,7 +8,7 @@
 |---|---|---|
 | **builds a worker that needs a colleague's result before it continues** | Calls `addTask({ waitForResponse: true })`, a board tool that a flag turns into a delivery tool | Calls `dispatchTask({ …, wait: true })`. Same park, same resume, same limits |
 | **builds a worker that hands work over and moves on** | Picks from four overlapping tools: `addTask` plus an assignee, the board's hand-over, the coordinator's `handOff`, and (until FIX-1792) `post-to-mailbox` | Calls `dispatchTask` without `wait`, and hears the ending through `onTaskSettled`. `addTask` and `assignTask` only record work the board schedules |
-| **runs a coordinator** | Its deliveries are fenced by a delivery ledger the board doesn't know about | Each delivery is a task row, and the board's claim ticket fences it. One answer per delegate per post, each delegate's own line, rounds and routing still hold ([Open 1](DECISIONS.md#open)) |
+| **runs a coordinator** | Its deliveries are fenced by a delivery ledger the board doesn't know about | Each post that needs an answer is a task row per delegate, and the board's claim ticket fences it. One answer per delegate per post, each delegate's own line, rounds and routing still hold. A tell that expects no reply is a plain message ([D2](DECISIONS.md#d2)) |
 | **reads the docs** | "Ask" names a kind of hand-off and a question to a person; "hand-off" names delivering new work | Ask is a question to a person. Hand-off is passing your own work to another session mid-work. New work is dispatched |
 | **maintains the framework** | Keeps two answer-once fences in agreement | Keeps one |
 
@@ -28,7 +28,7 @@ can wait for the result. Today it has to pick from four tools that overlap.**
 |---|---|
 | **The real need** | Every new worker author has to learn which of four tools to use, and every maintainer keeps two fences in agreement. Ask and assign do the same work for the recipient; only the caller differs |
 | **Smaller, and rejected** | "`dispatchTask` ships." [FIX-1875](https://linear.app/fixpoint-labs/issue/FIX-1875) alone meets it, while the coordinator keeps its delivery ledger beside the claim ticket and the docs still teach ask as a kind of hand-off. Two fences and two words for one thing stay |
-| **Bigger, and not this epic's** | Waiting on several tasks at once · a row-less question tool for workers · channels |
+| **Bigger, and not this epic's** | Waiting on several tasks at once · a row-less question tool for workers · a question kind of task · channels |
 | **Not done if** | Any of the three regression checks changed by more than names · a coordinator check changed by more than names and its declared fence lines · a retired name is still exported · the delivery ledger is still in the coordinator's state · a published page or package README still teaches `waitForResponse` or the `handOff` tool · the closure goal check hasn't run · a bug the closure run found is open |
 
 ```mermaid
@@ -57,12 +57,12 @@ the sweep, which is what makes its pass mean something.
 | | |
 |---|---|
 | **Lead measure** | The children whose goal check has passed, listed by name. **None today** |
-| **Not doing** | Changing what a waited-on or dispatched task does · waiting on several tasks at once · a row-less question tool for workers · channels |
+| **Not doing** | Changing what a waited-on or dispatched task does · waiting on several tasks at once · a row-less question tool for workers · a model-facing tell tool · a special class of task for questions ("question" or "ask", shown differently in the UI), until something needs it · channels |
 | **Kill line** | One of the three regression checks can't stay identical. That would mean ask and assign really do behave differently for the recipient, and one tool would be hiding two |
 
 ## What's in the box
 
-![In the box: dispatchTask, the claim ticket as the only fence, one meaning per word. Unchanged: the task tools as board CRUD, dispatcher() as transport. Replaced in one line: waitForResponse, handOff, the delivery ledger. Not built: multi-wait, a row-less question tool, channels, any behaviour change](figures/end-state.svg)
+![In the box: dispatchTask, the claim ticket as the only fence with a post that needs an answer as a row and a tell as a message, one meaning per word. Unchanged: the task tools as board CRUD, dispatcher() as transport. Replaced in one line: waitForResponse, handOff, the delivery ledger. Not built: multi-wait, a row-less question tool, a question kind of task, channels, any behaviour change](figures/end-state.svg)
 
 The box is one tool and one fence; everything under them already ships. The fence keeps a rename
 from becoming a redesign ([ER-8](BUSINESS-RULES.md#what-no-child-may-do)).
@@ -74,7 +74,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1875](https://linear.app/fixpoint-labs/issue/FIX-1875) · dispatchTask | The tool, with `wait`; retires `waitForResponse` / `timeoutMs` on `addTask` and the public ask names | The substance ([D1](DECISIONS.md#d1)) | Backlog · spec route |
-| [FIX-1872](https://linear.app/fixpoint-labs/issue/FIX-1872) · one fence | Coordinator delivery through `dispatchTask`, a workstream's existing session included; the coordinator's `handOff` tool, the delivery ledger and its `delegateAnswer` / `delegateMissed` entries removed in the same change | Without it two fences stay ([D2](DECISIONS.md#d2)) | Backlog · spec route · blocked by FIX-1875 |
+| [FIX-1872](https://linear.app/fixpoint-labs/issue/FIX-1872) · one fence | Coordinator posts that need an answer through `dispatchTask`, a workstream's row carrying its `target` into its existing session, and any tell as a `dispatcher()` message; the coordinator's `handOff` tool, the delivery ledger and its `delegateAnswer` / `delegateMissed` entries removed in the same change | Without it two fences stay ([D2](DECISIONS.md#d2)) | Backlog · spec route · blocked by FIX-1875 |
 | [FIX-1876](https://linear.app/fixpoint-labs/issue/FIX-1876) · docs and vocabulary | Internal ask names and the hand-off names that mean "deliver new work" renamed; the published pages and glossary describe one path | Without it the docs teach two mechanisms for one ([D3](DECISIONS.md#d3)) | Backlog · spec route · blocked by FIX-1875, FIX-1872 |
 | [FIX-1887](https://linear.app/fixpoint-labs/issue/FIX-1887) · closure · **required** | The QA plan and its run on one `main` commit: the three reruns, the surface sweep, every child's own check | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1875, FIX-1872, FIX-1876 |
 
@@ -101,12 +101,13 @@ flowchart LR
 ```
 
 An edge is what one issue hands the next; the dashed edge is an input from FIX-1815. The set is a
-straight chain: the ledger can't go until coordinator delivery is a row, and the internal renames
+straight chain: the ledger can't go until a coordinator post that needs an answer is a row, and the internal renames
 wait until both have stopped moving the files they rename.
 
 ## What stays as it is
 
 - **What a waited-on or dispatched task does**, every limit included ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+- **A tell that expects no reply**, as a plain `dispatcher()` message (into the target's session for a workstream), with no row; not the board's `-tell` notice flush.
 - **`dispatcher()`**, as transport for flow code, and [FIX-1312](https://linear.app/fixpoint-labs/issue/FIX-1312)'s reply-to-sender (`session: { from: true }`).
 - **`addTask`, `assignTask` and the other task tools**, as board CRUD.
 - **Ask as a question to a person**: approvals, Shift Manager's AskCard, the harness question inbox.
@@ -120,14 +121,14 @@ difference between ask and assign gets buried under one name. The kill line catc
 
 1. **[D1](DECISIONS.md#d1) · One tool, `dispatchTask`, with an optional `wait`.** If wrong: the
    model misuses `wait` where a fire-and-forget was right, and turns park for no reason.
-2. **[D2](DECISIONS.md#d2) · Every coordinator delivery is a row; the claim ticket is the only
-   fence.** It amends a merged decision, FIX-1816 D3, and waits on [Open 1](DECISIONS.md#open).
-   If wrong: a coordinator post answered twice, or each delegate's own line folded into one.
+2. **[D2](DECISIONS.md#d2) · A coordinator post that needs an answer is a task; a tell is a plain
+   message; the claim ticket is the only fence.** Decided by the owner, 2026-10-11; it amends a
+   merged decision, FIX-1816 D3. If wrong: a coordinator post answered twice, or each delegate's
+   own line folded into one.
 3. **[D3](DECISIONS.md#d3) · Ask, hand-off and dispatch each mean one thing.** Decided by the
    owner, 2026-10-11. If wrong: a rename pass over published pages that a later epic undoes.
 
-**Open: 1** · [when a coordinator passes a message on, does it become a task?](DECISIONS.md#open)
-Reasoning and what lost: [DECISIONS.md](DECISIONS.md). Rules:
+**Open: 0.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
 Epic · 3 issues and a closure · Orchestration Primitives · Goal 4, keep the foundation honest
