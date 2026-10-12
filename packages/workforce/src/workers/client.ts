@@ -64,6 +64,7 @@ export interface WorkforceClient {
    * criteria's keys: a session that carries a criteria key the call doesn't
    * name is not returned. With `workstreamId`, the one session the user's
    * entry for that workstream names, or `undefined` while it names none.
+   * Throws when the worker isn't on the user's roster.
    */
   findWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary | undefined>;
   /**

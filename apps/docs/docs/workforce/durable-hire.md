@@ -36,6 +36,21 @@ is saved. A bad value, a flow your installation doesn't run workers on or keeps 
 workers, or an id already on the user's roster is refused, and nothing is written. An id can't be
 a standard worker's: fork it instead.
 
+`sendAction` returns when the write starts, not when it finishes. Before you send a write that
+depends on an earlier one, such as an `edit` of a worker you just hired or forked, wait for the
+earlier request to leave `in_progress`, and go on only if it `completed`:
+
+```ts
+const { request } = await roster.sendAction("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
+let status = (await roster.getRequestStatus(request.id)).status
+while (status === "in_progress") {
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  status = (await roster.getRequestStatus(request.id)).status
+}
+if (status !== "completed") throw new Error(`fork ${status}`)
+await roster.sendAction("edit", { id: "my-researcher", instructions: "Cite every source." }, { sessionId })
+```
+
 The same four writes are blocks, from `createWorkerHireBlocks(installation)`, if you'd rather
 mount them on a flow of your own or hand them to a model as tools:
 

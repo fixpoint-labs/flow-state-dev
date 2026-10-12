@@ -1164,7 +1164,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...recordOf(post),
         by: "unplaced",
         delegates: [],
-        none: why
+        none: why,
+        ...(post.fit === undefined ? {} : { fit: post.fit })
       });
       // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);

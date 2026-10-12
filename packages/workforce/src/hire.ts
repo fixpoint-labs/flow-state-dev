@@ -28,6 +28,7 @@ import type {
   BlockDefinition,
   DeclaredResourceEntry,
   FlowInstance,
+  FlowInstanceOptions,
   FlowType,
   OrgConfig,
   RequestConfig,
@@ -361,8 +362,8 @@ export interface HireOptions {
   references?: DeclaredResources;
 }
 
-/** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
-type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
+/** The type arguments every `FlowOf` shares: any actions, scopes and resources. */
+type WideFlowType<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
   Record<string, ActionConfig>,
   SessionConfig | undefined,
   RequestConfig | undefined,
@@ -371,6 +372,38 @@ type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
   Record<string, DeclaredResourceEntry>,
   TConfigSchema
 >;
+
+/**
+ * A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere.
+ *
+ * `FlowType`'s properties as they are, and its call signature re-declared as a
+ * method, so it is checked bivariantly. Under `strictFunctionTypes` (any app on
+ * `strict: true`) the call's `options` are checked contravariantly, and a flow
+ * that declares a session — every worker flow does — takes narrower options than
+ * the wide ones, so `defineFlow(...)` itself would not be accepted.
+ */
+type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = Omit<WideFlowType<TConfigSchema>, never> &
+  {
+    mint(
+      options?: FlowInstanceOptions<
+        Record<string, ActionConfig>,
+        SessionConfig | undefined,
+        RequestConfig | undefined,
+        UserConfig | undefined,
+        OrgConfig | undefined,
+        Record<string, DeclaredResourceEntry>,
+        TConfigSchema
+      >
+    ): FlowInstance<
+      Record<string, ActionConfig>,
+      SessionConfig | undefined,
+      RequestConfig | undefined,
+      UserConfig | undefined,
+      OrgConfig | undefined,
+      Record<string, DeclaredResourceEntry>,
+      TConfigSchema
+    >;
+  }["mint"];
 
 /**
  * A flow of either shape: one that declares settings, and one that declares

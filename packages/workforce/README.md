@@ -1557,7 +1557,8 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
 
   `ensureWorkerSession` returns the user's most recent session with the worker, or creates one.
   Two calls at once get the same session. `findWorkerSession` takes the same argument and returns
-  the session or `undefined`, creating nothing. The roster flow keeps one session per user, of the
+  the session or `undefined`, creating nothing. Both throw `No worker "<id>" on your roster.` for a
+  worker that isn't on the user's roster. The roster flow keeps one session per user, of the
   flow kind `workforce-roster`; if you list every flow's sessions, filter out
   `flowKind === "workforce-roster"`. Two first calls at once may create two roster sessions, which
   is harmless: the roster lives in the user's scope, not in either session.

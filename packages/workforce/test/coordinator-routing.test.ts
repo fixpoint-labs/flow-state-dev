@@ -172,6 +172,8 @@ describe("best fit (V3)", () => {
     const { records, messages } = await host.items(id);
     expect(records).toEqual([expect.objectContaining({ by: "unplaced", delegates: [] })]);
     expect(records[0].none).toMatch(/best fit couldn't place it, and the coordinator's own turn failed/);
+    // Why best fit missed survives the turn failing: the record still says the call failed.
+    expect(records[0].fit).toEqual({ reason: "failed" });
     expect(messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
   });
 
