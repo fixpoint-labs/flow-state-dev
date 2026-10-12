@@ -1068,14 +1068,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const evaluateRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema }).step(
     routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
   );
-  const evaluationFailed = (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success;
+  const isFailedEvaluation = (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success;
   const askRoute =
     routeModelId === undefined
       ? evaluateRoute
       : evaluateRoute
-          .tapIf(evaluationFailed, noteEvaluationFailed)
+          .tapIf(isFailedEvaluation, noteEvaluationFailed)
           .stepIf(
-            evaluationFailed,
+            isFailedEvaluation,
             routeAsked(routeModelId).rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
           );
 

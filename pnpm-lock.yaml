@@ -125,8 +125,8 @@ importers:
   apps/kitchen-sink:
     dependencies:
       '@ai-sdk/gateway':
-        specifier: ^4.0.85
-        version: 4.0.92(zod@3.25.76)
+        specifier: ^4.0.108
+        version: 4.0.111(zod@3.25.76)
       '@ai-sdk/mcp':
         specifier: ^2.0.7
         version: 2.0.7(zod@3.25.76)
@@ -1939,12 +1939,6 @@ packages:
 
   '@ai-sdk/gateway@4.0.111':
     resolution: {integrity: sha512-+Uq8GgAsEkq3rv1AoYyqpCeHSOXG5ZP7KnsquM8yyIXkn1oBeZbFZvTtNE6gC9Eg1VK34KwImv8NrtB6tfm2wA==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/gateway@4.0.92':
-    resolution: {integrity: sha512-awX24+QedfcIDTAdwkCUNG08vPJjkQI9KZLGh4Ua+vNbgeaNFJre96OIbBefOD9XPHSVpdXjwqtWmo4Yh7oczw==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -12129,13 +12123,6 @@ snapshots:
     dependencies:
       '@ai-sdk/provider': 4.0.27
       '@ai-sdk/provider-utils': 5.0.59(zod@3.25.76)
-      '@vercel/oidc': 3.2.0
-      zod: 3.25.76
-
-  '@ai-sdk/gateway@4.0.92(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.18
-      '@ai-sdk/provider-utils': 5.0.47(zod@3.25.76)
       '@vercel/oidc': 3.2.0
       zod: 3.25.76
 
