@@ -1035,6 +1035,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       inputSchema: bestFitCaseSchema,
       outputSchema: z.object({ worker: z.string() }),
       itemVisibility: { client: false, history: false },
+      // Only `routeModel` picks: no coercion pass on another model.
+      repair: { coerce: false },
       prompt: (bestFit: BestFitCaseValue) =>
         [
           ROUTE_QUESTION,
