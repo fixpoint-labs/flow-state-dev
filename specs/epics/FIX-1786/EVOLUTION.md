@@ -4,8 +4,9 @@
 
 Lineage that spans more than one child. Two predecessor epics are superseded in part, one
 lock is amended, and today's code differs from the target in the ways the second table checks.
-This epic's own D3 was amended after merge three times, as [the binding section](#amendment-binding),
-[the visibility section](#amendment-visibility) and [the hand-off section](#amendment-handoff) record.
+This epic's own D3 was amended after merge four times, as [the binding section](#amendment-binding),
+[the visibility section](#amendment-visibility), [the hand-off section](#amendment-handoff) and
+[the exports section](#amendment-exports) record.
 Child-specific lineage belongs in each child's own evolution record.
 
 ## Predecessor designs
@@ -170,3 +171,61 @@ Linear issues and the shipped files.
 
 FIX-1802, FIX-1794 and FIX-1796 carry their own entries for this amendment. FIX-1791 and
 FIX-1792 state nothing it makes false, so they are unchanged. No stored data changes.
+
+<a name="amendment-exports"></a>
+## Amended after merge: the Layer 1 exports the set shipped (2026-10-12)
+
+**The problem.** The closure's layer fence ([FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)'s
+P4, [ER-22](BUSINESS-RULES.md#what-no-child-may-do)) found public Layer 1 exports that
+[D3](DECISIONS.md#d3) didn't name, and filed
+[FIX-1896](https://linear.app/fixpoint-labs/issue/FIX-1896). Each one is recorded here as a generic
+Layer 1 change, or flagged if it breaks the layer rule. None does: no export a child added,
+renamed or removed names a worker, coordinator, workstream, project, hire or roster of workers.
+Original epic review: [#2795](https://github.com/fixpoint-labs/flow-state-dev/pull/2795).
+
+**How it was checked.** Every public entry point of `contracts`, `core`, `engine` and
+`orchestration` (each `exports` path in its `package.json`) was read with the TypeScript checker
+at the pre-epic baseline `cad4e278` and after every first-parent merge on `main` up to `f1ae3521`
+that touched Layer 1 source, and each merge's added and removed names were diffed. The fence's
+own PR list left out three children that changed Layer 1, FIX-1828, FIX-1834 and FIX-1836; this
+walk doesn't depend on that list. `endingOf` and `applyEndingRecorder`, which the fence's grep
+found, are on no entry point, so they aren't public.
+
+**What it found.** Two mechanisms the children built without coming back to this epic first, and
+four additions to existing surfaces. The rest D3 already counts; this table names them.
+
+| Merge | Child | Public names (entry point) | D3 |
+|---|---|---|---|
+| [#2848](https://github.com/fixpoint-labs/flow-state-dev/pull/2848), [#2827](https://github.com/fixpoint-labs/flow-state-dev/pull/2827) | FIX-1790, FIX-1793's P1 | None added: options on existing types | (1), (2) |
+| [#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850) | FIX-1788's P1 | `core/types`: `SessionCreateCheck`, `SessionCreateCheckInput`, `SessionCreateCheckResult`, `SessionCreatePath`, `SessionCreatePrincipal` · `core/helpers`: `getReadonlyStateKeys` · `engine`: `ReadonlySessionStateError`, `SessionCreateRefusedError`, `SessionCreateRequest`, `refuseReadonlyStateChange`, `refuseServerOwnedState` | (3) |
+| [#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850) | FIX-1788's P1 | `core`, `core/types`: `TaskStateTarget`, `resolveTaskState`, a `task` dispatcher's child starting state looked up per task | Addition, building (3) |
+| [#2845](https://github.com/fixpoint-labs/flow-state-dev/pull/2845) | FIX-1794's P1 | `orchestration`, `orchestration/tasks`: `TaskPartitionContext`, `TaskPartitionFn` | (4) |
+| [#2935](https://github.com/fixpoint-labs/flow-state-dev/pull/2935) | FIX-1794's P2 | `orchestration`: `AssigneeRoster`, `AssigneeRosterSource`; `WorkerRoster` leaves, renamed `AssigneeRoster` | (5), T1; the rename is [D7](DECISIONS.md#d7)'s board rename, landed early |
+| [#2856](https://github.com/fixpoint-labs/flow-state-dev/pull/2856) | FIX-1788's P2 | `orchestration`: `SkillsPartitionFn`, `partitionedSkillsCollection`, `resolveSkillsCollection` | (6) |
+| [#2866](https://github.com/fixpoint-labs/flow-state-dev/pull/2866) | FIX-1788's P4 | `core`, `core/types`: `ResourceVisibility`, `ResourceVisibilityRule`, `ResourceVisibilityTarget` | (7) |
+| [#2970](https://github.com/fixpoint-labs/flow-state-dev/pull/2970) | FIX-1834 | `core`: `ConcurrencyPolicyName` gains `hold` and `defer` · `engine`: `ConcurrencyDeferLimitError` | **(8), new** |
+| [#2990](https://github.com/fixpoint-labs/flow-state-dev/pull/2990) | FIX-1836 | `engine`: `DEFER_PATIENCE_MS`, `DeferWaitStep`, `LeaseTurn`, `planDeferWait` | **(8), new** |
+| [#2935](https://github.com/fixpoint-labs/flow-state-dev/pull/2935) | FIX-1794's P2 | `orchestration`, `orchestration/tasks`: `TaskEnding`, `TaskEndingRecorder` | **(9), new** |
+| [#2847](https://github.com/fixpoint-labs/flow-state-dev/pull/2847) | FIX-1789 | `core`: `FlowConfigRefusalError`, `FlowConfigIssue`, `FlowConfigPath` | **Addition, new** |
+| [#2955](https://github.com/fixpoint-labs/flow-state-dev/pull/2955) | FIX-1828 | `core`: `SessionItem` gains `role` | **Addition, new** |
+| [#3050](https://github.com/fixpoint-labs/flow-state-dev/pull/3050) | FIX-1866's P1 | `orchestration`, `orchestration/tasks`: `FailOptions`, with `noRetry` | **Addition, new** |
+| [#2909](https://github.com/fixpoint-labs/flow-state-dev/pull/2909) | FIX-1814 | Removed. `core`: `Agent`, `AgentOverrides`, `AgentRegistry`, `AgentSpec`, `MaterializeAgentFn`, `MaterializeAgentOptions`, `PersonaInlineConfig`, `PersonaSource` · `orchestration`: `DEFAULT_WORKER_PROMPT`, `FLOOR_WORKER_KEY`, `WorkerMaterializationDeps`, `buildUserMessage`, `materializeWorker`, `workerInputSchema` | Removal, skill sub-agents ([D10](DECISIONS.md#d10)) |
+| [#3071](https://github.com/fixpoint-labs/flow-state-dev/pull/3071) | FIX-1792 | `MANIFEST_DOMAINS` drops `mailboxes` | Removal |
+| [#3073](https://github.com/fixpoint-labs/flow-state-dev/pull/3073) | FIX-1796 | `orchestration/task-board`: `HandOffSeat`, `TaskSeat`, `TaskSeatAddress`, `TaskSeatRegistry` become `HandOffAssignee`, `TaskAssignee`, `TaskAssigneeAddress`, `TaskAssigneeRegistry` · `MANIFEST_DOMAINS`: `seats` becomes `workers` | Renames ([D7](DECISIONS.md#d7)) |
+
+Every other merge in the window that changed a Layer 1 entry point is another epic's or no
+epic's (FIX-1815's ask and assigned-work children, FIX-1772, FIX-1846, FIX-1128, FIX-1608), so
+it isn't this record's to count.
+
+**What changed in this set.**
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| [D3](DECISIONS.md#d3): "seven mechanisms, two renames and two removals", in its title, *Because* and *Locks in* | **Amended** to nine mechanisms and four additions to existing surfaces. *Because* gains the eighth and ninth things Workforce cannot fake; *Locks in* gains (8), (9) and the additions | A conversation's requests are arbitrated only by the engine, and only the ledger's own write is atomic, so neither can be built in Workforce. The four additions extend surfaces that shipped; none is a new behaviour a child had to come back for | D3's call: no worker noun in Layer 1, and none of these names one. "Any other Layer 1 change comes back to this epic" stands |
+| The count elsewhere: D1's *Locks in* and its figure, the tree, the box's text and figure, [ER-22](BUSINESS-RULES.md#what-no-child-may-do) and the kill line | **Amended** to nine, with the additions | One count across the set. ER-22 is what a child checks before a Layer 1 change | The two public renames and the two public removals |
+| The *How it got here* entries and the earlier amendment sections that count seven | **Kept as written** | They record what was decided then | A new *How it got here* entry |
+
+**Recorded after the fact.** ER-22 asks for an escalation to this epic before a Layer 1 change
+outside D3. FIX-1834, FIX-1836 and FIX-1794's P2 merged without D3 naming their changes; this
+records them after the fact, as the binding section did for FIX-1788's P1. None is about a worker's own state, so the
+[kill line](SPEC.md#the-goal-and-how-well-know-its-met) isn't reached. No stored data changes.
