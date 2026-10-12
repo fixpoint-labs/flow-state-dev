@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork: does a fresh open of shift-manager:dev run a real coding agent or the scripted one. Recommended: a real coding agent, Claude Code, refusing to start without a credential. Instead of: the scripted run, with the agent one setting away. It comes down to the first row, whether a fresh open meets the goal: yes, against only after a setting. Second row, the price: every open needs a Claude credential and runs spend model time, against free. Third row, a tie: neither falls back silently. Locks in a loud refusal when no credential is set. Flips if most opens are for screen work, where an agent is unwanted."
+<svg viewBox="0 0 940 420" role="img" aria-label="Open fork: keep the goal, a real coding agent on a fresh open of shift-manager:dev, or relax the goal and its acceptance to allow the scripted coder. Recommended: keep the goal, with Claude Code by default, refusing to start without a credential. Instead of: relax the goal, with the script by default. It comes down to the first row, whether a fresh open meets the goal as written: yes, against no, the goal and its check are rewritten. Second row, the price: every open needs a Claude credential and runs spend model time, against free. Third row, a tie: neither falls back silently. Locks in a loud refusal when no credential is set. Flips if most opens are for screen work, where an agent is unwanted."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,16 +37,16 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">OPEN · THE CALL</text>
-    <text class="t-q" x="32" y="52">On a fresh open, does the coder run a real coding agent, or the scripted one?</text>
+    <text class="t-q" x="32" y="52">Keep the goal, a real agent on a fresh open, or relax it to allow the script?</text>
   </g>
 
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">A real agent, loud without a key</text>
+    <text class="t-h c-code" x="228" y="112">Keep it: a real agent by default</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">The script; the agent one setting away</text>
+    <text class="t-h c-lost" x="592" y="112">Relax it: the script by default</text>
   </g>
 
   <g id="row-decides">
@@ -59,7 +59,7 @@
     <text class="t-b" x="248" y="161">Yes</text>
     <text class="t-s" x="248" y="179">an agent works the item</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Only after a setting</text>
+    <text class="t-b" x="612" y="161">No: the goal is rewritten</text>
     <text class="t-s" x="612" y="179">a script can&#x27;t work an item</text>
   </g>
 

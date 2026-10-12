@@ -67,7 +67,7 @@
     <rect class="use" x="770" y="278" width="146" height="36" rx="3"/><text class="t-use" x="782" y="300">consumes</text>
   </g>
   <g id="er16">
-    <text class="t-row" x="16" y="344">ER-16, ER-17 the proof</text>
+    <text class="t-row" x="16" y="344">ER-20, ER-21 the proof</text>
     <rect class="use" x="308" y="322" width="146" height="36" rx="3"/><text class="t-use" x="320" y="344">consumes</text>
     <rect class="use" x="462" y="322" width="146" height="36" rx="3"/><text class="t-use" x="474" y="344">consumes</text>
     <rect class="use" x="616" y="322" width="146" height="36" rx="3"/><text class="t-use" x="628" y="344">consumes</text>

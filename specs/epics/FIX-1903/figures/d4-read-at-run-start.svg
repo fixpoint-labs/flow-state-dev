@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D4: how a project&#x27;s MCP servers reach the worker that works the item. Chosen: the coding run reads them from its own project when it starts. Instead of: the coordinator attaches them when it hands work over. It comes down to the first row, which runs get them: every coding run for the project, against only runs a coordinator handed over, so a row approved in Inbox misses them. Second row, the price: the harness gains a per-run MCP option, against a field on the hand-over. Third row: no wait for dispatchTask, against building on it or on the retiring handOff. Locks in MCP servers as a project setting with no credential on the row. Flips if a worker that doesn&#x27;t code needs Linear for the goal."
+<svg viewBox="0 0 940 420" role="img" aria-label="D4: how a project&#x27;s MCP servers reach the worker that works the item. Chosen: the coding run reads them from its own project when it starts. Instead of: the coordinator attaches them when it hands work over. It comes down to the first row, which runs get them: every coding run for the project, against only runs a coordinator handed over, so a row approved in Inbox misses them. Second row, the price: the harness gains a per-run MCP option, against a field on the hand-over. Third row: no wait for dispatchTask, against building on it or on the retiring handOff. Locks in MCP servers as a project setting, chosen by host alias, with no URL or credential on the row. Flips if a worker that doesn&#x27;t code needs Linear for the goal."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -91,7 +91,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">MCP servers are a project setting</text>
-    <text class="t-s" x="32" y="389">no credential on the row; coding runs only</text>
+    <text class="t-s" x="32" y="389">a host alias: no URL or secret on the row</text>
   </g>
 
   <g id="flips-if">

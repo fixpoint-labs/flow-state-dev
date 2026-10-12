@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3: where a run&#x27;s worktree comes from. Chosen: your own checkout, with the project row naming a remote and the host mapping it. Instead of: a file URL to the checkout in the row, which the host clones. It comes down to the first row, where the branch a person reviews ends up: in their checkout, against a hidden clone they must fetch from. Second row, the price: a workspace host change, against none today. Third row: the row stays a remote, against a machine&#x27;s path in a shared row. Locks in the remote-to-checkout mapping as host config. Flips if branches in the checkout prove a nuisance."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3: where a run&#x27;s worktree comes from. Chosen: your own checkout, with the project row naming a remote and the host mapping it. Instead of: a file URL to the checkout in the row, which the host clones. It comes down to the first row, where the branch a person reviews ends up: in their checkout, against a hidden clone they must fetch from. Second row, the price: a workspace host change, against none today. Third row: the row stays a remote, against a machine&#x27;s path in a shared row. Locks in the remote-to-checkout mapping as host config, bound to the projects it names. Flips if branches in the checkout prove a nuisance."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -90,7 +90,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">The mapping is host config, never a row</text>
+    <text class="t-b" x="32" y="371">Host config, bound to named projects</text>
     <text class="t-s" x="32" y="389">runs cut conductor/ branches in your checkout</text>
   </g>
 
