@@ -36,3 +36,5 @@ FIX-1915 extends this check with *no session created* and *no harness flow serve
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-12 | ff0a87181 | n/a (no model) | PASS | One build, four starts: unset (production reason naming the setting), not-a-checkout (names the path), checkout ("Not built yet." ×3), vercel ("Runs on a local machine." ×3); every harness address refused with its card's reason and drew nothing; Flow State opened at /flow-state and its rail led back; phone 390px stacked, no sideways scroll |
+| 2026-10-12 | ff0a87181 | n/a (no model) | FAIL (control `gate-open`) | Reddened **picker** and **address** only: on unset, not-a-checkout and vercel each harness mode showed "Not built yet." instead of the host's reason; the checkout start stayed green |
