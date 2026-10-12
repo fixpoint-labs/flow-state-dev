@@ -24,9 +24,9 @@ already makes, `resolveTaskFlowKind` and `resolveTaskState`.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S15 | `core` · `packages/core/src/types/dispatch.ts`, the `task` address | `action` is a string or a function of the row, `(task, ctx) => string`. `TaskSessionPolicy` gains `{ id: (task, ctx) => string }`, an existing session, never created. P2 needs a keyed session and an id session on one board, so the per-row choice must reach both; the smaller shape is yours | D3 |
-| S16 | `orchestration` · `packages/orchestration/src/task-board/blocks/hand-off.ts` | Resolve the entry per row beside `resolveTaskFlowKind`, before the claim is released; a name the target flow doesn't declare is refused by the seam's existing `no-entry`, claim held. Pass an `id` session through to the existing `{ id }` delivery, refused by name when the session isn't there or isn't this principal's. A string `action` and every keyed policy behave as today | D3 |
-| S17 | `core` · `orchestration` · docs and release note | Document both options in `packages/orchestration/README.md` and `apps/docs/docs/orchestration/task-board.md` (and `packages/core/README.md` where it lists session policies). One `.changeset/*.md`, `minor`, for `@flow-state-dev/core` and `@flow-state-dev/orchestration` | — |
+| S15 | `core` · `packages/core/src/types/dispatch.ts`, the `task` address and the helper `dispatcher()` and the board share (`taskSessionKeyFor`) | Two closed per-row choices, typed here so P1 doesn't re-decide them. **Entry:** `action: string \| { among: readonly string[]; by: (task, ctx) => string }`. Every name in `among` is declared and verified like a string `action` (`defineFlow` for the same flow, the seam for another), so the board still lists where each assignee's rows can land; update the `DispatchAddress` comment to say a per-row entry is a choice among declared ones. **Session:** `TaskSessionPolicy` gains `{ by: (task, ctx) => { key: string } \| { id: string } }`, so one board can send some rows to a keyed session and others to an existing one, as P2 needs. `id` is the existing `SessionTarget` `{ id }`: never created. Both options apply to `dispatcher()` too, since it shares the helper | D3 |
+| S16 | `orchestration` · `packages/orchestration/src/task-board/blocks/hand-off.ts` | Resolve the entry and session per row beside `resolveTaskFlowKind`, before the claim is released. `by`'s answer outside `among` is refused there, claim held. Resolvers read the packed row, not stores. Pass `{ id }` through to the engine's existing delivery (`create-request-host.ts`), whose `session-not-found` and `session-not-addressable` refusals stay the guard; P1 doesn't touch `engine`. A string `action` and every keyed policy behave as today | D3 |
+| S17 | `core` · `orchestration` · docs and release note | Document both options in `packages/orchestration/README.md` and `apps/docs/docs/orchestration/task-board.md` (and `packages/core/README.md` where it lists session policies). #3092 edits the same task-board page: if it is still open when P1 starts, P1 waits for it or rebases on it, never rewrites the page beside it. One `.changeset/*.md`, `minor`, for `@flow-state-dev/core` and `@flow-state-dev/orchestration`, naming no Workforce feature or issue | — |
 
 ### P2 · the single fence (`workforce`, DevTeam, goals, docs)
 
@@ -52,7 +52,7 @@ already makes, `resolveTaskFlowKind` and `resolveTaskState`.
 ```mermaid
 flowchart TD
   subgraph P1["P1 · board seams"]
-    S15["S15 · entry per row, session by id"] --> S16["S16 · hand-over resolves both"]
+    S15["S15 · entry and session chosen per row"] --> S16["S16 · hand-over resolves both"]
     S16 --> S17["S17 · docs and changeset"]
   end
   S17 -->|"P1 merges"| S1
@@ -80,8 +80,8 @@ the same PR.
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V10 | S15 S16 | Red first. A board whose entry is a function sends each row to the entry it returns; a name the target flow doesn't declare is refused `no-entry` with the claim held; a string entry behaves as today |
-| V11 | S15 S16 | Red first. An `id` session delivers into that existing session; a missing one, or one that isn't this principal's, is refused by name, never created, claim held; `per-task`, `per-worker` and a key function behave as today |
+| V10 | S15 S16 | Red first. A board with `{ among, by }` sends each row to the entry `by` returns; a name outside `among` is refused with the claim held; a name in `among` the flow doesn't declare fails at definition, as a string `action` does; a string `action` behaves as today |
+| V11 | S15 S16 | Red first, on the board's hand-off and on `dispatcher()`. `{ by }` returning `{ id }` delivers into that existing session; a missing one is refused `session-not-found`; another principal's, even with the id taken from row data, is refused `session-not-addressable` (BP-031), never created, claim held; `{ by }` returning `{ key }`, `per-task`, `per-worker` and a key function behave as today |
 | V1 | S1 S3 | A post row runs in the session written on it, the delegate's existing session for the conversation, never a task session; a session that isn't the row's refuses it; a non-post row still runs in a task session; a session made before the change is reused (BR-1 BR-17 BR-20) |
 | V2 | S2 | The turn sees today's message and lines (BR-6); an empty reply, a failure and a cancel each fail the row (BR-9); a second settle is refused (BR-11); a delegate turn longer than the lease still lands one line, and the row is not handed out again (BR-23) |
 | V3 | S4 S5 | Every policy and every round files one row per pick; a repeat is `skipped` (BR-2); records match today's for the same scripted run (BR-3); the model's extra task fields are refused (BR-5) |
@@ -176,6 +176,13 @@ surface, which S10 and S11 come from. The premise held; nothing changed.
   PR, owns "no file names a retired surface"; the retained POC is not updated here (BP-037).
 
 ## Notes from review
+
+From review on #3197 (the D3 amendment), for the implementer:
+
+- **Second look, finding 4:** "`hand-off.ts` now has three near-identical per-row lookups [...] each re-building the same `{assignee, taskId, input, filedBy}` query object inline [...] build the `TaskTargetQuery` once and pass it." Worth doing in S16.
+- **Cursor, `DECISIONS.md` D3:** the first consumer of both options is the conversation board; other boards keep a string `action` and keyed sessions.
+- **Cursor, `PLAN.md` S16:** "could S16 branch on row kind and pass `{ id: packedSessionId }` without adding [an option] to `TaskSessionPolicy`?" *Not taken: the orchestration board has no row kinds; the per-row session is the generic form, and it reads the server-written row field (S3).*
+
 
 Recorded verbatim for the implementer from review round 1 on #3142. None changes the approach.
 

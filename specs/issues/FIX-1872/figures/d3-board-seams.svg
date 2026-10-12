@@ -86,7 +86,7 @@
     <rect class="foot" x="16" y="270" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="291">LOCKS IN</text>
     <text class="t-b" x="32" y="311">A board picks each row&#39;s entry and session</text>
-    <text class="t-s" x="32" y="329">public on every task board; P2 waits on P1</text>
+    <text class="t-s" x="32" y="329">among declared entries; P2 waits on P1</text>
   </g>
 
   <g id="flips-if">
