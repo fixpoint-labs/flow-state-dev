@@ -45,7 +45,11 @@ export type TurnSendState =
 export function useTurnSend() {
   const [state, setState] = useState<TurnSendState>({ kind: "idle" });
   const mounted = useRef(true);
-  useEffect(() => () => void (mounted.current = false), []);
+  // Set on every mount, not just the first: StrictMode unmounts and remounts once in dev.
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
   const run = useCallback(async (send: (held: () => void) => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
     setState({ kind: "sending" });
     try {

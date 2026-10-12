@@ -3,6 +3,7 @@
  * The turn composer keeps what the user typed after they pressed Send. A send
  * that finishes clears the draft only if it is still the line that was sent.
  */
+import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
@@ -89,5 +90,20 @@ describe("a delivered line that stopped the worker says on what", () => {
     expect(wait).toMatch(/Delivered\..*waiting/);
     expect(wait).not.toMatch(/Inbox/);
     expect(await sendAs(null)).toBe("Delivered.");
+  });
+});
+
+describe("a send finishes under StrictMode (dev mounts every effect twice)", () => {
+  it("clears the draft and says delivered", async () => {
+    render(
+      <StrictMode>
+        <TurnComposer testId="turn" label="Message" placeholder="" blocked={null} send={async () => ({ stopped: null })} />
+      </StrictMode>,
+    );
+    const input = screen.getByTestId("turn-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "a line" } });
+    await act(async () => fireEvent.click(screen.getByTestId("turn-send")));
+    expect(screen.getByTestId("turn-status").getAttribute("data-state")).toBe("delivered");
+    expect(input.value).toBe("");
   });
 });
