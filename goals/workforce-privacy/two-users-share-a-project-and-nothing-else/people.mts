@@ -52,7 +52,8 @@ export interface Shipped {
  */
 export async function loadShipped(root: string, options: { tolerateMissing?: boolean } = {}): Promise<Shipped> {
   const client = (await import(pathToFileURL(join(root, "packages", "client", "src", "index.ts")).href)) as Shipped["client"];
-  const workforce = (await import(pathToFileURL(join(root, "packages", "workforce", "src", "browser.ts")).href)) as Shipped["workforce"];
+  // A copy: a module namespace can't take the stand-ins the baseline needs.
+  const workforce = { ...(await import(pathToFileURL(join(root, "packages", "workforce", "src", "browser.ts")).href)) } as Shipped["workforce"];
   for (const name of ["createWorkforceClient", "deriveWorkerSessionId"] as const) {
     if (workforce[name] !== undefined) continue;
     if (!options.tolerateMissing) throw new Error(`the commit's @flow-state-dev/workforce/browser exports no ${name}`);
