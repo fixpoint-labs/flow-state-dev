@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="237">POST</text>
     <text class="mark minus" x="228" y="226">−</text>
     <text class="t-b" x="248" y="225">One per delegate, on everyone</text>
-    <text class="t-s" x="248" y="243">FIX-1875's spec measures the cost</text>
+    <text class="t-s" x="248" y="243">FIX-1872's spec measures the cost</text>
     <text class="mark plus" x="592" y="226">+</text>
     <text class="t-b" x="612" y="225">None</text>
     <text class="t-s" x="612" y="243">a ledger record instead</text>

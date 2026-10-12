@@ -17,8 +17,8 @@ because each one hands the next a surface that must stop moving. Only the QA pla
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1875** dispatchTask | spec → impl PR | `wait-for-response.ts` and the notices · D1 · ER-3 | The tool; `waitForResponse`, `timeoutMs` and the coordinator `handOff` tool retired; public ask names renamed | FIX-1872 · FIX-1876 | Medium |
-| **FIX-1872** one fence | spec → impl PR | `dispatchTask` · D2 | Coordinator delivery as rows; the ledger and its two entries removed | FIX-1876 | Medium |
+| **FIX-1875** dispatchTask | spec → impl PR | `wait-for-response.ts` and the notices · D1 · ER-3 | The tool; `waitForResponse` and `timeoutMs` retired; public ask names renamed | FIX-1872 · FIX-1876 | Medium |
+| **FIX-1872** one fence | spec → impl PR | `dispatchTask` · D2 | Coordinator delivery as rows, workstream sessions included; the `handOff` tool, the ledger and its two entries removed in one PR | FIX-1876 | Medium |
 | **FIX-1876** docs and vocabulary | spec → impl PR | Both above, merged · D3 | Internal ask and hand-off names renamed, with a migration for rows already marked; the pages in [DOCS.md](DOCS.md) | The closure run | Small–medium |
 | **FIX-1887** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The reruns, the sweep, a QA report, and a bug child for every failure | The wrap | Medium, repeats per retest |
 
@@ -31,7 +31,7 @@ links for current state. The one input, FIX-1820, is Done (2026-10-11, PRs
 
 ## What unblocks what, from here
 
-1. **This spec merges** → FIX-1875's spec starts, and the closure's QA plan with it. FIX-1872 and
+1. **Open 1 is answered, then this spec merges** → FIX-1875's spec starts, and the closure's QA plan with it. FIX-1872 and
    FIX-1876 can be specced in parallel, against FIX-1875's spec once it is approved.
 2. **FIX-1875 merges** → FIX-1872's implementation starts.
 3. **FIX-1872 merges** → FIX-1876's implementation starts.
@@ -42,13 +42,13 @@ links for current state. The one input, FIX-1820, is Done (2026-10-11, PRs
 
 | Seam | Between | Rule |
 |---|---|---|
-| The coordinator's delivery | FIX-1875 and FIX-1872 | FIX-1875 retires the `handOff` tool, so the judgment turn delivers through `dispatchTask` rows while policy routing still runs on the ledger. FIX-1791's check must stay green across that gap; FIX-1872 closes it |
+| The coordinator's delivery | FIX-1875 and FIX-1872 | FIX-1875 leaves the coordinator alone: `handOff` and `dispatchTask` coexist for one release. FIX-1872 swaps the delivery path and removes `handOff` and the ledger together, so no build carries two fences (ER-10) |
 | `task-tools-capability.ts` and `wait-for-response.ts` | FIX-1875 and FIX-1876 | FIX-1875 changes the public surface; FIX-1876 renames internals afterward, names only |
 | `background-work.md`, `task-board.md`, `coordinators.md`, `chief-of-staff.md`, `glossary.md` | All three | Each child updates the pages its surface change breaks; FIX-1876 publishes the shared narrative and the vocabulary pass. Whoever lands later links rather than repeats |
 
 ## Not children, deliberately
 
-FIX-1815 (done) · FIX-1791 · FIX-1794 · FIX-1312 · FIX-1637 and FIX-1796 (they wait on FIX-1876's
+FIX-1815 (done) · FIX-1816 (its D3 is amended by D2, pending Open 1) · FIX-1786 (the task envelope and filing API) · FIX-1791 · FIX-1794 · FIX-1312 · FIX-1637 and FIX-1796 (they wait on FIX-1876's
 vocabulary) · FIX-1818 (canceled; FIX-1872 closes it in favour of itself).
 
 ## Wrap

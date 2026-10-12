@@ -40,9 +40,9 @@ describe one mechanism.
 
 | | |
 |---|---|
-| **Instead of** | Keeping FIX-1791's delivery ledger (`packages/workforce/src/delivery-ledger.ts`) beside the claim ticket, or a lighter row-less path for group threads |
-| **Because** | Two mechanisms that both decide "answered once" disagree at the edges. FIX-1815 decided on one fence ([its D2](../FIX-1815/DECISIONS.md#d2)) and never built it. A row-less path keeps a second fence alive, because something still has to refuse the duplicate answer |
-| **Locks in** | A coordinator on the everyone policy, with rounds, files one row per delegate per post. One answer per delegate per post per round, and the routing record, keep working. FIX-1875's spec measures the row cost; if it's unacceptable, that comes up here, not to a local fix |
+| **Instead of** | [FIX-1816 D3](../../issues/FIX-1816/DECISIONS.md#d3), merged: a coordinator's post stays a post, fenced by FIX-1791's delivery ledger (`packages/workforce/src/delivery-ledger.ts`) beside the claim ticket · or a lighter row-less path for group threads |
+| **Because** | Two mechanisms that both decide "answered once" disagree at the edges. FIX-1815 decided on one fence ([its D2](../FIX-1815/DECISIONS.md#d2)) and never built it. A row-less path keeps a second fence alive, because something still has to refuse the duplicate answer. FIX-1816 D3 kept two for what the person sees: each delegate's own line, a routing policy, rounds. D2 keeps that and changes only the fence, so it amends D3 rather than reversing it, on the condition [Open 1](#open) asks the owner to accept |
+| **Locks in** | A coordinator on the everyone policy, with rounds, files one row per delegate per post. One answer per delegate per post per round, each delegate's own line, the round deadline, the missed answer and the routing record keep working ([ER-6](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). The coordinator's `handOff` tool and the ledger go in one change, FIX-1872, so no build ships two fences. FIX-1872's spec measures the row cost; if it's unacceptable, that comes up here, not to a local fix |
 
 ![D2: one fence or two. Chosen: every coordinator delivery is a task row, fenced by the board claim ticket. Instead of: the delivery ledger kept beside it. It comes down to the first row: two fences that both decide answered once disagree at the edges. Second row, the price: the everyone policy files one row per delegate per post. Third row, a tie: one answer per delegate per post holds either way. Locks in the ledger and its delegateAnswer and delegateMissed entries removed. Flips if the row cost of the everyone policy is too high to carry](figures/d2-one-fence.svg)
 
@@ -78,9 +78,50 @@ Every rule has one owner. Read a row to see where it is built and where it is on
 - **Why FIX-1818 was canceled.** [FIX-1815 Q1](../FIX-1815/DECISIONS.md#q1), the product owner,
   2026-10-08: it did not move that epic's goal, and ask could ride an existing fence. FIX-1872
   carries its intent; FIX-1872 closes it in favour of itself.
-- **No separate wait depth.** Depth is the task chain limit, `MAX_TASK_DEPTH`.
-- **`onTimeout: "continue"` is the only new behaviour, and it is a caller choice.** The row runs on,
-  as an unwaited dispatch would; its ending reaches the filer through `onTaskSettled`.
+- **Wait depth stays one.** A turn that is itself working a task can't wait, as `addTaskAndWait`
+  refuses today ([FIX-1816's cut](../../issues/FIX-1816/DECISIONS.md#cut-before-the-gate)).
+  `MAX_TASK_DEPTH` bounds the task chain, not waits. Nested waits would be a behaviour change (ER-8).
+- **A timeout cancels the row, as it ships.** Keeping a timed-out row running is not built here;
+  it would be new behaviour that no rerun proves (ER-8).
+- **The coordinator's `handOff` tool retires in FIX-1872, with the ledger.** Retiring it in
+  FIX-1875 left a window where deliveries were rows and the ledger still fenced routing: two fences
+  (ER-10). `handOff` and `dispatchTask` coexist until FIX-1872 merges.
+- **The conversation board's notice marker is not a fence.** FIX-1794's marker
+  (`conversation-board/ledger.ts`, `recordEnding`) records a notice owed; only delivering the
+  notice clears it. It never refuses a duplicate answer, so ER-5 and the sweep hold with it in place.
+- **`openWorkstream` is not a hand-off tool.** FIX-1793's project-coordinator action starts a
+  workstream; ER-2 and ER-10 don't touch it. A delivery *to* a workstream's session is a coordinator
+  delivery, and moves to a row under ER-5.
+- **The coordinator checks are FIX-1791's, FIX-1794's and FIX-1610's goals.** The earlier
+  "FIX-1840 check" was FIX-1794's `files-tasks-down-the-owners-chain`; FIX-1840 only appears in a
+  verdict row there.
+
+<a name="open"></a>
+## Open
+
+### 1 · When a coordinator passes your message on to its delegates, does that become a task, or stay a message?
+
+**In plain terms.** Today a coordinator hands a person's message to its delegates as a post, and a
+ledger makes sure each delegate answers once. Board tasks have their own check. FIX-1816 (merged)
+kept both on purpose, because a post shows each delegate's answer as its own line. D2 makes each
+delegate's share a task, with one check for everything. The question is whether the person still
+sees each delegate's own line, in rounds, routed the same way. The project-spec asks the same
+(#3102, Open 2), so one answer settles both.
+
+**The trade-off.** One check is one thing to keep right, and it is the epic's goal. Two checks
+protect what FIX-1816 protected for certain, at the cost of the two disagreeing at the edges.
+
+**My recommendation.** Make it a task, on one condition: FIX-1872's spec shows, before any code,
+that a post sent as rows still lands each delegate's answer as its own line, keeps rounds and
+routing, and passes the three coordinator checks with only fence lines changed. FIX-1816 D3 is then
+amended (fence changed, what the person sees kept), as [EVOLUTION.md](EVOLUTION.md) records.
+
+**What would change my mind.** A post's own lines, rounds or routing can't run as rows. Then D2
+narrows to task endings: the ledger stays for posts, FIX-1872 shrinks to the hand-off route, and the
+goal and sweep drop "no delivery ledger".
+
+**What being wrong costs.** Decided now, a spec edit. Decided after FIX-1872 starts, a coordinator
+post answered twice, or FIX-1872 redone. This spec should not merge until it is answered.
 
 ## What the end-state POC showed
 
@@ -95,5 +136,8 @@ None built. The premise, that every result path already comes from a row ending,
   over the board; the owner fixed the vocabulary (D3).
 - **Spec written (2026-10-11)** — closure FIX-1887 filed; D2 settles the everyone policy's row cost
   at epic level, since a row-less path keeps a second fence.
+- **Review folded (2026-10-12)** — D2 names the FIX-1816 D3 amendment and waits on Open 1; the
+  `handOff` retirement moved into FIX-1872; the coordinator checks and package READMEs joined the
+  closure; wait depth and timeout restated as they ship, with `onTimeout: "continue"` dropped.
 
-**Open: none.**
+**Open: 1.**

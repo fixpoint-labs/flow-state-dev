@@ -28,7 +28,7 @@ The shared story once, and who publishes each specific. The prose is proposed re
 > Your turn pauses until the task ends, then carries on with the task's output as the tool's
 > result. Nothing holds a request open while it waits, so a server restart loses nothing. A wait
 > has a time limit, five minutes unless you set one between 30 seconds and an hour. When it runs
-> out, the task is cancelled, unless you asked to keep it running. A worker you're waiting on
+> out, the task is cancelled. A worker you're waiting on
 > can't stop to ask you a question; it answers with what it has, or fails.
 >
 > Only wait when the result changes what you do next. Otherwise let the task run and carry on.
@@ -44,7 +44,9 @@ The shared story once, and who publishes each specific. The prose is proposed re
 |---|---|---|
 | "Giving another worker work" above, replacing the ask section and the `waitForResponse` / `timeoutMs` table rows | FIX-1875, with the tool | This document; option table in FIX-1875's `DOCS.md` |
 | `background-work.md` "Waiting for the answer" rewritten to point at the section above | FIX-1875 | Its `DOCS.md` |
-| `coordinators.md` and `chief-of-staff.md`: the `handOff` tool replaced by `dispatchTask` | FIX-1875 | Its `DOCS.md` |
+| `coordinators.md` and `chief-of-staff.md`: the `handOff` tool replaced by `dispatchTask` | FIX-1872 | Its `DOCS.md` |
+| `packages/orchestration/README.md`: the `waitForResponse` / `timeoutMs` section replaced by `dispatchTask` | FIX-1875 | Its `DOCS.md` |
+| `packages/workforce/README.md`: the coordinator `handOff` section and the delivery ledger replaced by rows | FIX-1872 | Its `DOCS.md` |
 | `coordinators.md`: one answer per delegate per post, fenced by the task row | FIX-1872 | Its `DOCS.md` |
 | The glossary rows above; every remaining use of "ask" or "hand-off" for delivering work, across `apps/docs` | FIX-1876 | This document, then its `DOCS.md` |
 
