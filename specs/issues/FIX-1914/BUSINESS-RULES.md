@@ -21,14 +21,14 @@ this issue owns, and obey ER-9 to ER-13.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-5 | Any host, any setting | Flow State is available. It needs nothing it doesn't need today | Goal check |
-| BR-6 | The host is on Vercel (`VERCEL` set) | Each harness mode: unavailable, "runs on a local machine". The workspace setting does not override it | Goal check, `VERCEL=1` start |
-| BR-7 | A local host without `KITCHEN_SINK_HARNESS_WORKSPACE` | Each harness mode: unavailable, naming the setting and what it is for | Goal check, default start |
-| BR-8 | The setting names a directory that doesn't exist | Unavailable, naming the directory. Kitchen Sink does not create it | Unit test |
-| BR-9 | Local, setting valid, the mode's issue not yet merged | Unavailable, "not built yet" | Goal check |
-| BR-10 | Local, setting valid, the mode is built | The mode's own check decides (sign-in, key). Its reason is shown as the mode's issue writes it | That mode's issue |
+| BR-6 | The host is on Vercel (`VERCEL` set) | Each harness mode: unavailable, "runs on a local machine". `KITCHEN_SINK_HARNESS_WORKSPACE` does not override it | Goal check, `VERCEL=1` start |
+| BR-7 | `KITCHEN_SINK_HARNESS_WORKSPACE` is unset | In local development (`NODE_ENV !== "production"`), the repository is the top level of the checkout the server runs from, and the host gate is passed. Unavailable, naming the setting and what it is for, only when the server runs outside any git checkout, or in production | Unit test (development legs) · goal check, unset production start |
+| BR-8 | The setting is set, but not to the top level of a git checkout: the path doesn't exist, isn't a git repository, or is a directory inside a checkout | Unavailable, naming the path and which of the three it is. Kitchen Sink creates nothing | Unit test · goal check, the not-a-checkout start |
+| BR-9 | Not on Vercel, a repository resolved (BR-7, or the setting naming a checkout's top level), the mode's issue not yet merged | Unavailable, "not built yet" | Goal check |
+| BR-10 | Not on Vercel, a repository resolved, the mode is built | The mode's own check decides (sign-in, key). Its reason is shown as the mode's issue writes it | That mode's issue |
 | BR-11 | A mode's own check throws | Unavailable, with the error's message. The picker still renders the other three | Unit test |
 | BR-12 | More than one reason applies | Only the first, in the order of BR-6 to BR-10 | Unit test |
-| BR-13 | The host's setting, or a mode's own sign-in or key, changes | Availability is decided once when the server starts, so the picker follows the change at the next restart. No rebuild | Goal check: one build, three starts |
+| BR-13 | The host's setting, or a mode's own sign-in or key, changes | Availability is decided once when the server starts, so the picker follows the change at the next restart. No rebuild | Goal check: one build, four starts |
 
 ## An unavailable mode refuses everywhere
 
@@ -79,7 +79,7 @@ and re-runs each mode's check.
 ## Acceptance criteria this issue owns
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met): on one production build, the front page
-shows four modes with the right reason under each of three host settings, an unavailable mode
+shows four modes with the right reason under each of four host settings, an unavailable mode
 opened by address draws no rail, and every browser check that opened the shell passes at
 `/flow-state`. The same check fails under `GOAL_CONTROL=gate-open`. It also owns the opening of
 Kitchen Sink's README ([ER-18](../../epics/FIX-1907/BUSINESS-RULES.md#the-closure)).

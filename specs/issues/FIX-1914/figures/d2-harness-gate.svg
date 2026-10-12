@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 416" role="img" aria-label="D2: when may a coding harness mode run? Chosen: off until the host names a workspace. Instead of: on unless the host looks deployed. It comes down to a copy someone else can reach: there, the default-on option runs a coding agent for anyone if the deploy check misses. The price: one setting on a laptop. Locks in a fresh clone showing the harness modes unavailable. Flips if Kitchen Sink gets real sign-in."
+<svg viewBox="0 0 940 416" role="img" aria-label="D2: when may a coding harness mode run on this host? Chosen: on a git checkout, the one the host names or, in local development, the one the server runs from. Instead of: off until the host names one, as first reviewed. It comes down to the first run on a laptop: the chosen option runs with no setting, on the server's own checkout. A tie: both keep a production copy off unless the host names a repository. The price: a dev server someone else can reach runs an agent for them. Locks in harness modes on under pnpm dev, off in production without the setting, and off on Vercel always. Flips if dev servers turn out to be reachable by others."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,61 +43,61 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Off until the host names a workspace</text>
+    <text class="t-h c-code" x="228" y="112">On a checkout: named, or the dev server&#8217;s</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">On unless the host looks deployed</text>
+    <text class="t-h c-lost" x="592" y="112">Off until the host names one</text>
   </g>
 
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A COPY SOMEONE</text>
-    <text class="t-lbl" x="32" y="169">ELSE CAN REACH</text>
+    <text class="t-lbl" x="32" y="156">FIRST RUN</text>
+    <text class="t-lbl" x="32" y="169">ON A LAPTOP</text>
     <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Offers no harness</text>
-    <text class="t-s" x="248" y="179">and serves no harness flow</text>
+    <text class="t-b" x="248" y="161">Works at once with pnpm dev</text>
+    <text class="t-s" x="248" y="179">on the checkout the server runs from</text>
     <text class="mark minus" x="592" y="162">&#8722;</text>
-    <text class="t-b" x="612" y="161">One missed check runs an agent</text>
-    <text class="t-s" x="612" y="179">for anyone: there is no sign-in</text>
+    <text class="t-b" x="612" y="161">One setting to add first</text>
+    <text class="t-s" x="612" y="179">the reason names it</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">FIRST RUN</text>
-    <text class="t-lbl" x="32" y="231">ON A LAPTOP</text>
-    <text class="mark minus" x="228" y="218">&#8722;</text>
-    <text class="t-b" x="248" y="217">One setting to add</text>
-    <text class="t-s" x="248" y="235">the reason names it</text>
-    <text class="mark plus" x="592" y="218">+</text>
-    <text class="t-b" x="612" y="217">Works at once</text>
-    <text class="t-s" x="612" y="235">no setting</text>
+    <text class="t-lbl" x="32" y="218">A PRODUCTION</text>
+    <text class="t-lbl" x="32" y="231">COPY</text>
+    <text class="mark tie" x="228" y="218">=</text>
+    <text class="t-b" x="248" y="217">Off unless the host names a repository</text>
+    <text class="t-s" x="248" y="235">and Vercel off even then</text>
+    <text class="mark tie" x="592" y="218">=</text>
+    <text class="t-b" x="612" y="217">Off unless the host names a repository</text>
+    <text class="t-s" x="612" y="235">and Vercel off even then</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="276">WHERE THE</text>
-    <text class="t-lbl" x="32" y="289">RUN WORKS</text>
-    <text class="mark plus" x="228" y="276">+</text>
-    <text class="t-b" x="248" y="275">The setting is the directory</text>
-    <text class="t-s" x="248" y="293">the run needs one anyway</text>
-    <text class="mark minus" x="592" y="276">&#8722;</text>
-    <text class="t-b" x="612" y="275">Still to be chosen</text>
-    <text class="t-s" x="612" y="293">a second setting, or a guess</text>
+    <text class="t-lbl" x="32" y="276">A DEV SERVER</text>
+    <text class="t-lbl" x="32" y="289">OTHERS REACH</text>
+    <text class="mark minus" x="228" y="276">&#8722;</text>
+    <text class="t-b" x="248" y="275">Runs an agent for them</text>
+    <text class="t-s" x="248" y="293">over a tunnel or a shared machine</text>
+    <text class="mark plus" x="592" y="276">+</text>
+    <text class="t-b" x="612" y="275">Offers no harness</text>
+    <text class="t-s" x="612" y="293">until the host names a repository</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="347">LOCKS IN</text>
-    <text class="t-b" x="32" y="367">A fresh clone shows the harness modes off</text>
-    <text class="t-s" x="32" y="385">and Vercel stays off even with the setting</text>
+    <text class="t-b" x="32" y="367">pnpm dev shows the harness modes on</text>
+    <text class="t-s" x="32" y="385">production off without the setting, Vercel always</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="347">FLIPS IF</text>
-    <text class="t-b" x="494" y="367">Kitchen Sink gets real sign-in</text>
-    <text class="t-s" x="494" y="385">so a reachable copy no longer means anyone</text>
+    <text class="t-b" x="494" y="367">Dev servers turn out reachable by others</text>
+    <text class="t-s" x="494" y="385">then off until named, in development too</text>
   </g>
 </svg>

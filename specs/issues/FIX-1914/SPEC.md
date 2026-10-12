@@ -10,7 +10,7 @@
 | **picks Flow State** | n/a | Gets today's app at `/flow-state`, unchanged: the assistant open, the support desk, workers and assistant sessions in the rail |
 | **picks a mode this host can't run** | n/a | Sees why, in one line that says what to do. No session opens, nothing runs |
 | **picks a coding harness once its issue lands** | n/a | Gets a rail of that harness's own sessions only, with **New session**, beside its stream. FIX-1915, FIX-1916 and FIX-1917 fill the stream |
-| **reaches a deployed copy** | The assistant and the support desk | Flow State only. The three coding harnesses show as local-only, and the host serves no harness flow at all |
+| **reaches a deployed copy** | The assistant and the support desk | Flow State only. The three coding harnesses show as unavailable with the reason, and the host serves no harness flow at all |
 
 ## The goal, and how we'll know it's met
 
@@ -27,7 +27,7 @@ today's app, with every browser test and goal that used it passing against it.**
 
 ```mermaid
 flowchart LR
-  B["one production build · three server starts"] --> F["open the front page"]
+  B["one production build · four server starts"] --> F["open the front page"]
   F -->|"four modes · each unavailable one with its host's reason"| P["PASS"]
   F --> U["open a harness mode by its address"]
   U -->|"the same reason · no rail drawn"| P
@@ -37,16 +37,16 @@ flowchart LR
   U -.->|"under the control"| X["must FAIL · the host's reason is gone"]
 ```
 
-The check reads what the browser shows. One build serves all three host settings, so a reason
+The check reads what the browser shows. One build serves every host setting, so a reason
 baked in at build time fails, and with the gate forced open the unavailable leg must fail.
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/kitchen-sink-harness-mode/opens-on-the-picker/` · real browser, production build, scripted model (no harness runs in this issue) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Four modes listed, Flow State available. Each harness mode shows the reason for the start: no workspace, local only (`VERCEL=1`), or "not built yet". `/codex` by address shows its card's reason and draws no rail. The 8 e2e specs and 6 `kitchen-sink-talk` goals that open the shell pass at `/flow-state` |
-| **Input** | Three host settings on one build: none, workspace set, `VERCEL=1` with workspace set. Any other harness mode by address must behave the same |
+| **Signal** | Four modes listed, Flow State available. Each harness mode shows the reason for the start: no repository named on a production server, not a checkout's top level, local only (`VERCEL=1`), or "not built yet". `/codex` by address shows its card's reason and draws no rail. The 8 e2e specs and 6 `kitchen-sink-talk` goals that open the shell pass at `/flow-state` |
+| **Input** | Four host settings on one production build: the setting unset, the setting naming a directory that is not a git checkout, the setting naming a checkout's top level, and `VERCEL=1` with it naming one. Any other harness mode by address must behave the same. Unset in local development (on, the server's own checkout) is a unit check, V1: a production build can't start in development |
 | **Anti-game** | Assert on the page as drawn, not on the availability function. Never rebuild between starts. A support-desk check deleted or skipped is a fail; the [entry-points POC](poc/entry-points/) `--after` catches one still opening `/` |
-| **Control that must fail** | `GOAL_CONTROL=gate-open` forces every mode past the host gate: with no workspace set, `/codex` FAILS on *the workspace reason shown*. Today's `main` FAILS the front-page leg on *four modes listed*. FIX-1915 extends this check with *no session created* and *no harness flow served*, under the same control |
+| **Control that must fail** | `GOAL_CONTROL=gate-open` forces every mode past the host gate: with the setting unset on the production start, `/codex` FAILS on *the repository reason shown*. Today's `main` FAILS the front-page leg on *four modes listed*. FIX-1915 extends this check with *no session created* and *no harness flow served*, under the same control |
 
 ## What changes
 
@@ -54,13 +54,18 @@ baked in at build time fails, and with the gate forced open the unavailable leg 
 
 Today's front page moves whole behind the Flow State card; three new addresses wait behind a gate.
 
-**What a person sets, to try a coding harness locally:**
+**What a host sets, to name the repository the coding harnesses work on.** In local development
+nothing is needed: unset, they work on the checkout the server runs from. A production server
+runs them only with the setting, and Vercel never does.
 
 ```diff
   # apps/kitchen-sink/.env.local
   AI_GATEWAY_API_KEY=…
-+ KITCHEN_SINK_HARNESS_WORKSPACE=/Users/me/scratch/harness-playground
++ KITCHEN_SINK_HARNESS_WORKSPACE=/Users/me/code/flow-state-dev
 ```
+
+The setting names the top level of a git checkout. Each session gets its own worktree and
+branch of it, under a derived root outside the checkout, as FIX-1915 defines it.
 
 **What every browser check that opened the shell changes:**
 
@@ -106,8 +111,11 @@ the harness frame do not change.
 1. **[D1](DECISIONS.md#d1) · The picker is its own front page; each mode has its own address,
    and today's app moves whole to `/flow-state`.** If wrong: 6 files of browser checks change
    address for a separation nobody needed, or a later "open where I left off" request fights it.
-2. **[D2](DECISIONS.md#d2) · Coding harness modes are off until this host names the directory they
-   work in.** If wrong: a first-time user meets a setting before they meet a harness.
+2. **[D2](DECISIONS.md#d2) · Coding harness modes run on a git checkout: the one the host names,
+   or in local development the one the server runs from. A production server without the setting,
+   and Vercel always, keeps them off.** This changes what was first reviewed (off until named):
+   `pnpm dev` in a checkout now shows them on. If wrong: a dev server someone else can reach, over
+   a tunnel or a shared machine, runs a coding agent for them.
 
 D2 is the one to weigh: it sets who can run a coding agent through Kitchen Sink.
 Cases: [BUSINESS-RULES.md](BUSINESS-RULES.md). Lineage: [EVOLUTION.md](EVOLUTION.md).

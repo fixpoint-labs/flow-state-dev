@@ -11,7 +11,8 @@ unanswered. The epic's D1 to D3 bind this issue and are not reopened here.
 flowchart TD
   I["FIX-1914"] --> D1["D1 · picker is the front page · a mode per address"]
   D1 -.->|"rejected · today's page threads a mode through it"| X1["a mode switcher inside one shell"]
-  I --> D2["D2 · harness modes off until the host names a workspace"]
+  I --> D2["D2 · harness modes on a git checkout · named, or the server's own in local dev"]
+  D2 -.->|"rejected · a setting before a dev server runs anything"| X2b["off until the host names one"]
   D2 -.->|"rejected · one missed check exposes a coding agent"| X2["on unless the host looks deployed"]
   I --> Q["Open · today's app becomes Flow State mode, or moves out"]
 ```
@@ -68,28 +69,42 @@ It comes down to "unchanged": a switcher would make today's page carry the mode.
 with the picker one click away rather than in front.
 
 <a name="d2"></a>
-## D2 · Coding harness modes are off until this host names the directory they work in
+## D2 · Coding harness modes run on a git checkout: the one the host names, or in local development the one the server runs from
+
+Settled with FIX-1915, which owns where a session works (its D1, on [its spec PR](https://github.com/fixpoint-labs/flow-state-dev/pull/3165)).
+This spec's gate and FIX-1915's resolver read the setting through one shared function
+([below](#shared-with-other-specs)).
 
 | | |
 |---|---|
-| **Instead of** | On by default, turned off when the host looks deployed |
-| **Because** | Kitchen Sink has no sign-in: every caller is the same user ([`kitchen-sink-principal`](../../../apps/kitchen-sink/lib/kitchen-sink-principal.ts)). A harness mode on a host someone else can reach lets anyone run a coding agent on that machine, and "looks deployed" is a guess that misses a tunnel or a container. The setting is the directory the run works in, which a harness needs anyway ([epic DOCS](../../epics/FIX-1907/DOCS.md)), so opting in costs nothing extra |
-| **Locks in** | A fresh clone shows the three harness modes unavailable, naming the setting. The host serves no harness flow while it is off, so the page is not the only fence. A Vercel host stays off even with the setting |
+| **Instead of** | Off until the host names a directory, this decision as first reviewed · on unless the host looks deployed |
+| **Because** | A harness mode works on the repository itself, each session in its own worktree and branch (FIX-1915 D1). In local development the server already runs from a checkout, so that is the repository, and `pnpm dev` needs no setting. A production server is a different matter: Kitchen Sink has no sign-in, every caller is the same user ([`kitchen-sink-principal`](../../../apps/kitchen-sink/lib/kitchen-sink-principal.ts)), so a reachable production copy runs a harness only when its host names the repository. "Looks deployed" stays rejected: it is a guess that misses a tunnel or a container. Whether the server was started for development is not a guess |
+| **Locks in** | **A visible change from the spec as first reviewed:** `pnpm dev` in a checkout shows the three harness modes on (each "not built yet" until its issue lands), with no setting. A production server without `KITCHEN_SINK_HARNESS_WORKSPACE` keeps them off, naming the setting. A setting that isn't the top level of a git checkout keeps them off, naming why. Vercel stays off even with the setting. While off, the host serves no harness flow, so the page is not the only fence |
 
-![D2: harness modes off until the host names a workspace, chosen, beside on unless the host looks deployed. Decides it: a copy someone else can reach](figures/d2-harness-gate.svg)
+![D2: when may a coding harness mode run on this host? Chosen: on a git checkout, the one the host names or, in local development, the one the server runs from. Instead of: off until the host names one, as first reviewed. It comes down to the first run on a laptop: the chosen option runs with no setting. Both keep a production copy off unless the host names a repository. The price: a dev server someone else can reach runs an agent for them. Locks in harness modes on under pnpm dev, off in production without the setting, off on Vercel always. Flips if dev servers turn out to be reachable by others](figures/d2-harness-gate.svg)
 
-It comes down to a reachable copy: default-on is one missed check from running agents for anyone.
+It comes down to the first run on a laptop: the server's own checkout is the repository, so no setting.
 
-**What would change my mind:** Kitchen Sink gaining real sign-in, so a reachable copy no longer
-means anyone. Then deploy detection is enough.
+**What would change my mind:** dev servers turning out to be reachable by others in practice,
+through tunnels or shared machines. Then off until the host names a repository, in development
+too, as first reviewed. Kitchen Sink gaining real sign-in would let deploy detection do instead.
 
 ## Decided, not asked
 
 - **Availability is decided on the server, once per start**, never inlined into the browser
   bundle, and the flow list registers a mode's flow only when that mode is available. One build
   must serve a laptop and a deployed copy, and the page and the server must never disagree.
-- **One reason per unavailable mode, the first that applies:** deployed host, then no workspace,
-  then not built yet, then the mode's own check (sign-in, key), which its issue supplies.
+- **One reason per unavailable mode, the first that applies:** Vercel, then no repository (unset
+  on a production server or outside a checkout; set to a missing path, a directory that isn't a
+  git repository, or one that isn't its checkout's top level), then not built yet, then the mode's
+  own check (sign-in, key, sandbox), which its issue supplies.
+- **One function reads `KITCHEN_SINK_HARNESS_WORKSPACE`**, and this gate and FIX-1915's resolver
+  both call it. It returns the repository or off with a reason: on Vercel, off; set, it must be
+  the top level of an existing git checkout, else off naming why; unset with
+  `NODE_ENV !== "production"`, the top level of the checkout the server runs from, or off if there
+  is none; unset otherwise, off. Built here in S2, since this lands first. The root the worktrees
+  live under is derived from the repository by FIX-1915, outside the checkout, and is never a
+  second setting.
 - **"Not built yet" is an ordinary unavailable reason.** FIX-1914 merges before any harness mode
   works, and the picker never names a mode as runnable before it runs.
 - **The picker remembers nothing.** `/` always shows the four.
@@ -105,7 +120,7 @@ means anyone. Then deploy detection is enough.
 - **Offer a flow only on a host that opted in.** Closest: the `workforce-admin` flow, which is
   "not registered at all unless `WORKFORCE_ADMIN_TOKENS` is set"
   ([README → Hiring while the app runs](../../../apps/kitchen-sink/README.md#hiring-while-the-app-runs)).
-  D2's gate is the same shape, one setting and no flow without it. The bash sandbox's
+  D2's gate follows it on a production server: one setting, and no flow without it. The bash sandbox's
   `VERCEL` check (`selectBashProvider`) is reused as the second signal, not copied.
 - **List one flow's sessions in a rail, with New session.** `FlowNavigator` sections by flow
   kind, as the Flow State rail does today. The harness frame is a section, not a new list.
@@ -113,12 +128,20 @@ means anyone. Then deploy detection is enough.
   `preflight` and `probe`: no harness package reports whether it can run. Each mode's own check
   is its issue's; a missing one is filed under the epic (ER-15), not written here.
 
+## Shared with other specs
+
+| With | What is shared | Position |
+|---|---|---|
+| FIX-1915 (Claude Code mode) | The setting | One function reads `KITCHEN_SINK_HARNESS_WORKSPACE`, as above; this spec's gate and FIX-1915's worktree resolver both call it. FIX-1915 derives the worktree root from the repository it returns |
+| FIX-1915, FIX-1916, FIX-1917 | The mode-check slot and the rail | Each fills the slot with its own check and registers its flow only through S3 |
+
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
 | Keep `/` working for old test links with a redirect when it carries `?e2eSession=` | A hidden second front door for tests only. The 6 files change once |
-| A dedicated on/off flag beside the workspace setting | Two settings for one decision, and the flag alone leaves the run with no directory |
+| A dedicated on/off flag beside the setting | Two settings for one decision, and the flag alone leaves the run with no repository |
+| A second setting for the worktree root | Nothing else reads it, and the gate and the resolver would have two things to agree on. FIX-1915 derives it |
 | Leave the harness frame to FIX-1915 | The epic gives the rail to this issue (ER-1, the rail seam), and FIX-1915's mode PR is planned on it, as are FIX-1916 and FIX-1917's. Built once here, three sibling modes don't race to build it. It has no live path until FIX-1915 lands: a component test proves it here, FIX-1915's goal check in a browser. The kind it lists by is now fixed by FIX-1915, so its shape is not a guess |
 | Decide availability per request | The flow list is built once per process, so a per-request page can disagree with it after a change, and a restart is needed anyway |
 
@@ -131,3 +154,7 @@ means anyone. Then deploy detection is enough.
   list now follows each mode's full availability rather than the host alone, because a mode whose
   own check failed would otherwise be served while the picker called it unavailable. The open
   question now gates merge, as the epic says.
+- **Review round 2**: aligned with FIX-1915, where the owner moved harness sessions onto the
+  repository itself, each in its own worktree and branch. The setting now names a git checkout,
+  read by one function shared with FIX-1915, and D2 changed: unset in local development is on,
+  using the server's own checkout; a production server stays off without the setting.

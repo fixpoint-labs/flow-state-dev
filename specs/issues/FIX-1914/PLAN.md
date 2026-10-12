@@ -11,7 +11,7 @@ is under `apps/kitchen-sink/`, `goals/` and docs; nothing under `packages/`.
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
 | S1 | `lib/` · the mode list, a leaf module (BP-019) | The four modes: id, label, address, and for a harness mode its flow kind (unset until its issue fills it; see *Pinned names*). Imported by the browser and the server | BR-1 BR-2 |
-| S2 | `lib/` · the gate, server only | Each mode's availability and first reason, in BR-12's order: the host (`VERCEL` unset, a workspace setting naming an existing directory), then "not built yet", then the mode's own check, a slot its issue fills (it may be async). Evaluated **once per server start** and memoized | BR-5–BR-13 |
+| S2 | `lib/` · the gate, server only | The one reader of `KITCHEN_SINK_HARNESS_WORKSPACE`, a function FIX-1915's resolver calls too: the repository, or off with a reason ([DECISIONS → Decided, not asked](DECISIONS.md#decided-not-asked)). Then each mode's availability and first reason, in BR-12's order: the host (not Vercel, and the reader returned a repository), then "not built yet", then the mode's own check, a slot its issue fills (it may be async). Evaluated **once per server start** and memoized | BR-5–BR-13 |
 | S3 | `fsdev.config.ts` · the flow list | A harness mode's flow is added only when S2 says **that mode** is available, for every reason in BR-6 to BR-11, not the host alone. The config already awaits at module scope, so the result is in hand before `createFlowState`. Today there are none; this is the seam FIX-1915 registers through | BR-15 |
 | S4 | `app/page.tsx` · **replaced** | The picker: a server-rendered page reading S2's result, four cards, the reason on each unavailable one | BR-1 BR-3 BR-4 |
 | S5 | `app/flow-state/page.tsx` · **moved** | Today's `app/page.tsx`, moved whole. One addition: the rail's header row with the mode name and the link back | BR-17 BR-18 BR-19 |
@@ -74,21 +74,21 @@ fault or the picker's, never both.
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S2 | Each of BR-6 to BR-12 for each harness mode, with the env stubbed per case. Flow State available in every case. A mode's check runs once per start |
+| V1 | S2 | Each of BR-6 to BR-12 for each harness mode, with the env and `NODE_ENV` stubbed per case, including BR-7's development legs (a checkout found, none) and BR-8's three. Real temporary directories and `git init`, not a stubbed filesystem. Flow State available in every case. A mode's check runs once per start |
 | V2 | S3 | A stand-in harness flow is not registered when its mode is unavailable for any reason (host off, or its own check failing or throwing); it is when the mode is available. D2's check |
 | V3 | S5, S9 | The e2e suite and the 6 `kitchen-sink-talk` goals pass at `/flow-state`, before the picker exists |
 | V4 | S9 | `node specs/issues/FIX-1914/poc/entry-points/check.mjs --after` passes: nothing still opens `/` expecting the shell |
 | V5 | S4, S6 | Component tests: four cards in order; an unavailable mode by address renders the reason and no navigator. D1's check |
 | V6 | S7 | Component test over a stubbed session client holding two flow kinds: only the mode's kind listed; **New session** creates on it; empty state (BR-21–BR-23). Flow State's rail lists neither (BR-19) |
 | V7 | S8 | `gate-open` is ignored outside a test-mode build |
-| VG | all | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness-mode/opens-on-the-picker/` PASSES on one build across three starts, after the same run FAILED under `GOAL_CONTROL=gate-open` and on today's `main` |
+| VG | all | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness-mode/opens-on-the-picker/` PASSES on one build across four starts, after the same run FAILED under `GOAL_CONTROL=gate-open` and on today's `main` |
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
 | Addresses | `/`, `/flow-state`, `/claude-code`, `/codex`, `/cursor` | The README, the closure and every browser check type them (D1) |
-| Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE` | A person types it (D2). FIX-1915's workspace resolver reads this same setting; see *At implement time* |
+| Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE`, naming the top level of a git checkout | A person types it (D2). FIX-1915's resolver reads it through the same function and gives a worktree per session via `@flow-state-dev/workspace`; see *At implement time* |
 | Goal control | `gate-open` | The goal check and FIX-1915's extension of it use it |
 | Flow kinds | `claude-code-session`, `codex-session`, `cursor-session` | One per harness, built by FIX-1915's shared session-flow factory. S1 holds them; S7's rail lists by them |
 | Mode labels | Flow State, Claude Code, Codex, Cursor | The epic's ER-1 |
@@ -116,7 +116,10 @@ private.
 
 ```
 the gate (server, once per start, memoized):
-    host on  ←  not on Vercel  and  workspace setting names a directory
+    repository  ←  the shared reader:
+        Vercel → off;  set → a checkout's top level, or off naming why;
+        unset, not production → the server's own checkout's top level, or off;  unset → off
+    host on  ←  not on Vercel  and  a repository
     for each mode:
         flow state       → available
         host not on      → the host's reason
@@ -133,9 +136,10 @@ negative controls fail as they should. The premise held: the move is an address 
 
 ## At implement time
 
-- **The workspace setting is one setting.** FIX-1915 reads this same
-  `KITCHEN_SINK_HARNESS_WORKSPACE`, with one subdirectory per session under it, and registers only
-  through S3. If either spec's name changes before merge, use the merged one; never ship two.
+- **The setting is one setting, read by one function.** FIX-1915 calls S2's reader of
+  `KITCHEN_SINK_HARNESS_WORKSPACE` for the repository and gives a worktree per session via
+  `@flow-state-dev/workspace`, under a derived root outside the checkout, as FIX-1915
+  defines it. It registers only through S3. If either spec's name changes before merge, use the merged one; never ship two.
 - **The mode's own check is FIX-1915's sign-in probe** (its BR-23). Keep the slot's name and shape
   stable once S2 lands; the sibling modes fill it the same way.
 - Re-run the entry-points check; a browser check added since this spec must be in the table.
