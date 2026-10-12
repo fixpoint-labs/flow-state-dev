@@ -115,5 +115,23 @@ export const KEEP = [
     path: /^packages\/engine\/src\/context\/request-principal\.ts$/,
     rules: ["handoff-symbol"],
     why: "a local variable for a request record passed to its holder; not a delivery of work"
+  },
+  {
+    path: /^packages\//,
+    line: /\babortHandoff\b/,
+    rules: ["handoff-symbol", "handoff-prose"],
+    why: "WR-5: the engine's abort of a request record handed to its holder; not a delivery of work"
+  },
+  {
+    path: /^packages\/(orchestration|engine)\/(src|test)\//,
+    line: /fsd\.ask\.(step|plan|file)/,
+    rules: ["ask-mark"],
+    why: "D2: the run-once keys are a process-internal wire value, kept so a replay across the upgrade finds its record (WR-11)"
+  },
+  {
+    path: /^packages\/(orchestration\/(src\/tasks\/notice\/task-notice\.ts|test\/tasks\/task-notice\.test\.ts)|workforce\/src\/conversation-board\/task-settled\.ts)$/,
+    line: /\basked\??:/,
+    rules: ["ask-mark", "ask-prose"],
+    why: "D2: a notice's asked flag is a process-internal wire value, kept so a notice owed across the upgrade is taken (WR-13)"
   }
 ];

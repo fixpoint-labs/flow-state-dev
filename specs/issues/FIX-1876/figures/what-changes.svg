@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="Today and after, for three families. Ask, the word for a waited-on task: parkOnAsk, the ask gate, row.ask and the fsd.ask keys become parkOnWait, the wait gate, row.wait and the fsd.wait keys, with the old marks still read. Hand-off, the word for a dispatched row: createHandOff, the handed-off ending and the section Assignees that hand off become the dispatch names, the dispatched ending and Assignees that dispatch, with old logs still read. Published words: the glossary and the task board pages say dispatch and wait, and hand-off means mid-work only. Kept, in grey: ask as a question to a person, isTaskDispatcher and dispatcher(), goal directories and retained specs."
+<svg viewBox="0 0 940 380" role="img" aria-label="Today and after, for three families. Ask, the word for a waited-on task: parkOnAsk, the ask gate, row.ask become parkOnWait, the wait gate and row.wait, with the old marks still read and the internal fsd.ask keys kept. Hand-off, the word for a dispatched row: createHandOff, the handed-off ending and the section Assignees that hand off become the dispatch names, the dispatched ending and Assignees that dispatch, with old logs still read. Published words: the glossary and the task board pages say dispatch and wait, and hand-off means mid-work only, held by the sweep in CI. Kept, in grey: ask as a question to a person, isTaskDispatcher and dispatcher(), goal directories and retained specs."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -39,7 +39,7 @@
     <rect class="new" x="592" y="44" width="332" height="66" rx="5"/>
     <text class="t-c" x="608" y="66">wait</text>
     <text class="t-s" x="608" y="84">parkOnWait · WaitEndedError · gate "wait"</text>
-    <text class="t-s" x="608" y="100">row.wait · fsd.wait.* · old marks still read</text>
+    <text class="t-s" x="608" y="100">row.wait · old marks read · fsd.ask.* kept</text>
   </g>
 
   <g id="dispatch">
@@ -67,7 +67,7 @@
     <rect class="new" x="592" y="208" width="332" height="66" rx="5"/>
     <text class="t-c" x="608" y="230">one word per thing</text>
     <text class="t-s" x="608" y="248">Dispatch a task · Wait · Hand-off mid-work</text>
-    <text class="t-s" x="608" y="264">held by the sweep: zero open lines</text>
+    <text class="t-s" x="608" y="264">held by the sweep in CI: zero open lines</text>
   </g>
 
   <g id="kept">

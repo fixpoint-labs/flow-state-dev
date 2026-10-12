@@ -15,6 +15,9 @@ No dependencies; run from the repository root. It reads git-tracked files only.
 by named rules, none unruled. 2,156 open lines in 289 files: 995 in the wait family, 1,156 in the
 dispatch family, 7 stale `post-to-mailbox` mentions. The keep list is seeded, not finished, so
 some wait-family lines are questions to a person that will be kept. The control fails as it should.
+After review round 1 added keep entries for `abortHandoff` and the three internal wire values D2
+keeps, the same tree reads 2,135 open lines in 288 files.
 
 Throwaway as written. P3 of the plan moves it to `goals/vocabulary/one-word-per-thing/`, where it
-becomes the goal check. Not part of any package's tests.
+becomes the goal check and runs, with `--control`, in CI's Process guards. Not part of any
+package's tests.

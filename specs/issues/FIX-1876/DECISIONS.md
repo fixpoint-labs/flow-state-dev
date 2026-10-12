@@ -15,8 +15,9 @@ flowchart TD
   E["FIX-1876 · one word per thing"] --> D1["D1 · every use, public names included, held by a sweep"]
   D1 -.->|"rejected"| X1["the issue's listed internals and the glossary"]
   D1 -.->|"rejected"| X1b["public names and pages, comments and tests left"]
-  E --> D2["D2 · read the old marks, rewrite nothing"]
+  E --> D2["D2 · rename the marks a reader meets and read both · keep the internal ones"]
   D2 -.->|"rejected"| X2["a one-time rewrite of stored records"]
+  D2 -.->|"rejected"| X2b["rename every stored mark"]
   E --> D3["D3 · three PRs · wait, dispatch, published words"]
   D3 -.->|"rejected"| X3["one PR over about 290 files"]
 ```
@@ -39,20 +40,23 @@ nothing else in the plan changes.
 It comes down to what a reader meets: the listed set leaves the old word in the API and the board.
 
 <a name="d2"></a>
-## D2 · Read the old marks; rewrite nothing in the store
+## D2 · Rename the stored marks a reader meets, read both; keep the internal ones as they are
 
 | | |
 |---|---|
-| **Instead of** | A one-time migration that rewrites stored records to the new names, which is what the issue's "with a migration for rows already marked" first suggests |
-| **Because** | Four things are written under the old names and outlive a deploy: a task row's `ask` field, a suspension's reason `"ask"`, the `fsd.ask.step`, `fsd.ask.plan` and `fsd.ask.file` run-once entries, and the `"handed-off"` ending in a board's item log. A turn parked on a wait when the server upgrades must find all of them, or it never resumes and the colleague's answer is lost. There is no migration runner across the memory, SQLite and Postgres stores and resource-backed collections, and a rewrite would race a turn that is resuming. Reading both names is what [BP-030](../../../docs/contributing/best-practices.md) asks for |
-| **Locks in** | Every reader of the four marks accepts the old value and the new one; every writer writes only the new one. Each legacy reader carries a `legacy-name:` comment on its line, so the sweep counts it and a reviewer sees it. The security reading goes with it: an old `"ask"` gate is still a wait gate, so the public resume route still refuses it ([WR-3](BUSINESS-RULES.md#records-written-before-the-upgrade)) |
+| **Instead of** | A one-time migration that rewrites stored records to the new names, which is what the issue's "with a migration for rows already marked" first suggests · or renaming every stored mark and reading both names for each |
+| **Because** | Six kinds of record outlive a deploy under the old names. A row's `ask` field and a suspension's reason `"ask"` are shown in the DevTool and traces, where *ask* reads as a question to a person; the `"handed-off"` ending is a public value apps match on ([WR-17](BUSINESS-RULES.md#public-names)). The other three are internal wire values nobody reads as a word: the `fsd.ask.*` run-once keys, the `ask:` gate-id prefix, and a notice's `asked` flag (Workforce's notice schema is strict, so a renamed flag would refuse a notice owed across the upgrade). D1's reason is what a reader meets; a wire value nobody reads stays as it is ([BP-030](../../../docs/contributing/best-practices.md)), which deletes three legacy readers. A wait parked across the upgrade must still find the three that are renamed, or the colleague's answer is lost. There is no migration runner across the memory, SQLite and Postgres stores and resource-backed collections, and a rewrite would race a turn that is resuming, so the new code reads both names |
+| **Locks in** | The row field, the gate reason and the board's ending: every reader accepts the old value and the new one, every writer writes only the new one, and each legacy reader carries a `legacy-name:` comment on its line, so the sweep counts it and a reviewer sees it. The security reading goes with it: an old `"ask"` gate is still a wait gate, so the public resume route still refuses it ([WR-10](BUSINESS-RULES.md#records-written-before-the-upgrade)). The run-once keys, the gate-id prefix and the notice flag keep their spelling, each one the sweep flags a keep-list entry naming it a wire value; the identifiers that carry them are renamed |
 
 **What would change my mind:** a store migration runner shipping before this builds. Then rewrite
-once and drop the readers.
+once and drop the readers. Or the owner wanting no old spelling left in the store at all: then
+the three internal marks are renamed and read both ways too, at the cost of three more legacy
+readers.
 
-![D2: what happens to records written under the old names. Chosen: read both names, write only the new. Instead of: a one-time rewrite of stored records. It comes down to the first row: a wait parked across the upgrade. Reading both resumes it; a rewrite races the resuming turn and has no runner across four store kinds. Second row, the price: legacy readers stay in the code, each marked, against none after the rewrite. Third row, a tie: new records look the same. Locks in every reader accepting both and an old ask gate still refused from outside. Flips if a store migration runner ships first](figures/d2-read-old-marks.svg)
+![D2: what happens to records written under the old names. Chosen: rename the marks a reader meets, read both names, write only the new, and keep the process-internal marks as they are. Instead of: a one-time rewrite of stored records. It comes down to the first row: a wait parked across the upgrade. Reading both resumes it; a rewrite races the resuming turn and has no runner across four store kinds. Second row, the price: legacy readers for the row field, the gate reason and the ending stay in the code, each marked, against none after the rewrite. Third row, a tie: new records look the same. Locks in every reader of a renamed mark accepting both, the internal marks kept as wire values, and an old ask gate still refused from outside. Flips if a store migration runner ships first](figures/d2-read-old-marks.svg)
 
-It comes down to a wait parked across the upgrade: a rewrite races it and has no runner.
+It comes down to a wait parked across the upgrade: a rewrite races it and has no runner. Only the
+marks a reader meets are worth that price.
 
 <a name="d3"></a>
 ## D3 · Three PRs in a chain: wait, dispatch, then the published words
@@ -60,7 +64,7 @@ It comes down to a wait parked across the upgrade: a rewrite races it and has no
 | | |
 |---|---|
 | **Instead of** | One PR over about 290 files |
-| **Because** | The two families touch different packages and different stored marks. The wait family is `core`, `engine`, `orchestration` and `workforce`, with three of the four marks. The dispatch family is the task board, its ending and its pages. Each PR passes the sweep for its own family (`--only ask`, `--only handoff`), so a reviewer reads one rename map at a time. The third publishes the shared narrative and the glossary once both names exist, and runs the sweep at full scope |
+| **Because** | The two families touch different packages and different stored marks. The wait family is `core`, `engine`, `orchestration` and `workforce`, with both of the renamed stored marks. The dispatch family is the task board, its ending and its pages. Each PR passes the sweep for its own family (`--only ask`, `--only handoff`), so a reviewer reads one rename map at a time. The third publishes the shared narrative and the glossary once both names exist, and runs the sweep at full scope |
 | **Locks in** | P1 wait, then P2 dispatch, then P3 published words, merged in that order. P1 and P2 each fix any published page their renames break, so no merge leaves a page naming a symbol that is gone |
 
 **What would change my mind:** FIX-1875 and FIX-1872 renaming most of the wait family
@@ -75,8 +79,16 @@ It comes down to what a reviewer can read: one rename map per PR.
 - **The new names follow the error codes already shipped.** The codes a model reads are
   `wait_timed_out`, `wait_task_failed` and `wait_task_cancelled`, so the gate is a *wait gate*.
   A dispatched row's ending is `"dispatched"`. Pinned in [PLAN.md](PLAN.md#pinned-names).
-- **Whatever FIX-1875 or FIX-1872 already renamed, they own.** If either renames a name on the
-  list, its choice stands and the sweep simply stops finding it.
+- **Whatever FIX-1875 or FIX-1872 already renamed, they own, unless the new name breaks the one-word
+  rule.** If either renames a name on the list, its choice stands and the sweep stops finding it.
+  The exception is *wait* used in another meaning: FIX-1875's draft stores a "recorded, not
+  dispatched" row mark named `awaitingDispatch`. Renaming it before FIX-1875 merges costs nothing;
+  after a deploy it needs a legacy reader. If it merges under that name, P1 renames it ([WR-22](BUSINESS-RULES.md#the-sweep)).
+- **The board's `onIdle: "wait"` keeps its name.** It means the board stays alive when idle and
+  leaves the exit to `shouldExit`. That is a different sense of *wait* (the board waits for work,
+  nobody is parked on a row), and renaming the option is a behavioural API change this issue
+  doesn't take on. The glossary's *Wait* row says so
+  ([WR-23](BUSINESS-RULES.md#which-word-a-use-gets)).
 - **The old docs anchor keeps working.** `#assignees-that-hand-off` stays as an explicit anchor
   on the renamed section, so links from outside the site still land.
 - **Retained specs, changelogs and goal directories keep their words.** They record history and
@@ -100,9 +112,11 @@ file. Closest entry: none.
 - **Deprecated aliases for the exported names.** One release of `parkOnAsk` beside `parkOnWait`.
   Dropped: nothing outside the framework calls them in this repository, the project is pre-1.0,
   and FIX-1875 removes `waitForResponse` with no alias. An alias is also an open sweep hit.
-- **A CI lint now.** The sweep could run in CI and keep the words out for good. Dropped from this
-  issue as new tooling with its own false-positive cost; filed as a follow-up in
-  [PLAN.md](PLAN.md#follow-ups).
+- **Running the sweep on demand only.** D1's reason for the full reach is that only a rule a
+  machine runs holds; a goal nobody runs drifts back just the same. The repository already runs
+  `scripts/check-retired-terms.mjs` and its `--control` in CI's Process guards, so the sweep joins
+  it there at P3 ([PLAN.md → S14](PLAN.md#surfaces)). Its false-positive cost is the keep list P1
+  to P3 build anyway.
 
 ## Open
 
@@ -119,3 +133,8 @@ None.
   held by a sweep, after the sweep showed the issue's list missed the board's whole
   dispatcher feature and most of the wait gate's exported names), records
   written before the upgrade (read both names), and the cut (three PRs).
+- **Review round 1 (2026-10-12)** — D2 now keeps the three process-internal stored marks (the
+  run-once keys, the gate-id prefix, the notice flag) as they are and renames only the ones a
+  reader meets, because a review showed the cheaper option had not been weighed and a strict
+  Workforce schema made the renamed notice flag a lost-wait risk. The sweep runs in CI from P3,
+  because an on-demand check contradicts D1's own reason for the full reach.

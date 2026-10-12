@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2: what happens to records written under the old names. Chosen: read both names, write only the new. Instead of: a one-time rewrite of stored records. It comes down to the first row, a wait parked across the upgrade: reading both resumes it, while a rewrite races the resuming turn and has no runner across four kinds of store. Second row, the price: legacy readers stay in the code, each marked, against none after a rewrite. Third row, a tie: new records look the same. Locks in every reader accepting both and an old ask gate still refused from outside. Flips if a store migration runner ships first."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: what happens to records written under the old names. Chosen: rename the marks a reader meets, read both names, write only the new, and keep the process-internal marks as they are. Instead of: a one-time rewrite of stored records. It comes down to the first row, a wait parked across the upgrade: reading both resumes it, while a rewrite races the resuming turn and has no runner across four kinds of store. Second row, the price: legacy readers for the row field, the gate reason and the ending stay in the code, each marked, against none after a rewrite. Third row, a tie: new records look the same. Locks in every reader of a renamed mark accepting both, the run-once keys, gate-id prefix and notice flag kept as wire values, and an old ask gate still refused from outside. Flips if a store migration runner ships first."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Read both names, write the new</text>
+    <text class="t-h c-code" x="228" y="112">Rename what readers meet, read both</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Rewrite stored records once</text>
@@ -56,7 +56,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Resumes with its answer</text>
-    <text class="t-s" x="248" y="179">the old row, gate and keys are found</text>
+    <text class="t-s" x="248" y="179">the old row and gate are found, keys kept</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Races the resuming turn</text>
     <text class="t-s" x="612" y="179">and no runner across four store kinds</text>
@@ -65,7 +65,7 @@
   <g id="row-2">
     <text class="t-lbl" x="32" y="218">THE PRICE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Legacy readers stay in code</text>
+    <text class="t-b" x="248" y="223">Legacy readers for three marks</text>
     <text class="t-s" x="248" y="241">each marked legacy-name: for later</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">None after the rewrite</text>
@@ -87,7 +87,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Every reader of a stored mark takes both</text>
+    <text class="t-b" x="32" y="371">Every reader of a renamed mark takes both</text>
     <text class="t-s" x="32" y="389">an old ask gate still refused from outside</text>
   </g>
 

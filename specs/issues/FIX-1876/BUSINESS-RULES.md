@@ -16,22 +16,24 @@ rules). The plan turns each into a check.
 | WR-5 | It is "hand off" or "asked" in an unrelated sense (a record passed to its holder, "the state I asked for") | Reword it where that is cheap; otherwise keep it with the reason | The keep list |
 | WR-6 | It is in a retained spec, a `CHANGELOG.md`, a dated blog post, or a goal directory's path | It keeps its word: that is history | The sweep's named exclusions |
 | WR-7 | It is a pending `.changeset` fragment announcing `post-to-mailbox` | It is amended so the release notes don't announce a removed tool. A goal log's dated verdict row mentioning it is history and is kept | The `post-to-mailbox` rule |
+| WR-23 | It is *wait* in another sense: the board's `onIdle: "wait"` (the board stays alive when idle) | It keeps its name, and the glossary's *Wait* row says it is a different setting. No sweep rule looks for *wait*, so nothing flags it | [DOCS.md](DOCS.md), read in review |
 
 ## Records written before the upgrade
 
-A wait parked when the server upgrades is the case D2 exists for. These marks are read under
-both names and written under the new one only.
+A wait parked when the server upgrades is the case D2 exists for. The marks a reader meets are
+read under both names and written under the new one only; the process-internal ones keep their
+spelling, so a record written before the upgrade is simply the same record.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | WR-8 | A task row stored with `ask: { gateId, deadline }` | It reads as waited on: the notice resumes its turn, listing shows it waited on, a stop or timeout cancels it as today | Leg 2 · a unit check per reader |
 | WR-9 | A suspension stored with reason `"ask"` | It is a wait gate everywhere a wait gate is tested: the resume operation finds it, the durability sweep times it out at its deadline, and it is never an expired approval | Leg 2 · the sweeper's and resume path's tests, with an `"ask"` record |
 | WR-10 | The public resume route is asked to resume an old `"ask"` gate | It answers not-found, as it does for a new wait gate. A legacy gate must never become resumable from outside its conversation | Leg 2's signal · a route test with an `"ask"` record |
-| WR-11 | A turn replays a wait call whose filing was recorded under `fsd.ask.step`, `fsd.ask.plan` or `fsd.ask.file` | It finds that record and does not file a second row: the colleague's work runs once | Leg 2 counts one row · the filing test's existing legacy cases, kept |
-| WR-12 | A gate id minted as `ask:<board>:<task>#…` | It is found by its stored id, as every gate is, so it needs no reader. New ids use `wait:` | Leg 2 |
-| WR-13 | A stored notice, owed before the upgrade, carries the old waited-on flag | It reads as waited on: its ending resumes the turn and wakes none | A notice-decision test with the old flag |
+| WR-11 | A turn replays a wait call whose filing was recorded under `fsd.ask.step`, `fsd.ask.plan` or `fsd.ask.file` | The keys keep that spelling (a wire value, D2), so the replay finds its record and does not file a second row: the colleague's work runs once | Leg 2 counts one row · the filing test's existing legacy cases, unchanged |
+| WR-12 | A gate id minted as `ask:<board>:<task>#…` | The prefix keeps that spelling (a wire value, D2). Every gate is found by its stored id | Leg 2 |
+| WR-13 | A notice owed before the upgrade, carrying `asked: true` | The flag keeps that spelling (a wire value, D2): orchestration's notice and Workforce's strict notice schema both take it unchanged, so its ending resumes the turn and wakes none | Leg 2 · the notice-decision tests, unchanged |
 | WR-14 | An item log stored before the upgrade has a board ending `"handed-off"`, or a dispatch block output with `handedOff: true` | Every reader of it in the framework (Shift Manager, the DevTool, the board's own readers) treats it as `"dispatched"` | A reader test with an old log |
-| WR-15 | Any writer | Writes the new name only. No write path emits an old mark after the upgrade | The sweep: a writer is not a legacy reader, so it has no `legacy-name:` marker and fails |
+| WR-15 | Any writer of a renamed mark (the row field, the gate reason, the ending) | Writes the new name only. No write path emits an old one after the upgrade | The sweep: a writer is not a legacy reader, so it has no `legacy-name:` marker and fails |
 
 ## Public names
 
@@ -48,7 +50,8 @@ both names and written under the new one only.
 |---|---|---|---|
 | WR-20 | A tracked file under a swept root has no rule that scans it and no exclusion | The sweep fails, naming it (totality) | `0 with no rule` |
 | WR-21 | A keep-list entry or exclusion has no reason | It is refused in review; every entry says why | Review |
-| WR-22 | FIX-1875 or FIX-1872 already renamed a name on the list | The sweep stops finding it, and the upstream name stands | The sweep on the merged commit |
+| WR-22 | FIX-1875 or FIX-1872 already renamed a name on the list | The sweep stops finding it, and the upstream name stands, unless it uses *wait* or *dispatch* in another meaning (FIX-1875's draft `awaitingDispatch`). Then P1 renames it, reading both if it is stored | The sweep on the merged commit · review |
+| WR-24 | A pull request adds a use of a retired word | CI's Process guards fail on it, from P3 on | The sweep and its `--control` in CI |
 
 ## Failure taxonomy
 
@@ -57,11 +60,12 @@ both names and written under the new one only.
 | A renamed export | Compile error naming the export | An app developer, at upgrade |
 | A legacy mark not read | A parked turn never resumes; the sweep can't catch it | A person waiting on a colleague: the answer is lost. Leg 2 is the guard |
 | A legacy gate resumable from outside | A security regression | Nobody, until exploited. WR-10 is the guard |
+| A renamed internal mark | A parked turn never resumes, or a notice is refused | Nobody until it happens; D2 keeps those marks, and the keep list names them |
 | A missed use | `OPEN > 0` in the sweep | The implementer, before the PR |
 
 ## Acceptance criteria this issue owns
 
-- The sweep passes on the commit where all three PRs have merged, and its control fails.
+- The sweep passes on the commit where all three PRs have merged, and its control fails, both in CI.
 - Leg 2 passes, and fails with the legacy readers removed.
 - The glossary and the task board pages carry the rows and sections in [DOCS.md](DOCS.md).
 - [ER-7](../../epics/FIX-1870/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt) and
