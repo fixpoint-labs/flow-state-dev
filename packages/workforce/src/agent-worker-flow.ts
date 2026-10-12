@@ -1200,12 +1200,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   const bound: AgentTurnBinding =
     installation !== undefined
       ? {
-          // The session's delegates and its board's notices, server-written:
-          // a create that seeds either is refused.
-          session: {
-            ...installation.session(board?.sessionStateShape),
-            ...(board !== undefined ? { serverOwned: [...board.serverOwned] } : {})
-          },
+          session: installation.session(board?.sessionStateShape),
           resources: { ...installation.resources, ...installation.documents, ...(board?.resources ?? {}) },
           resourceVisibility: installation.resourceVisibility,
           request: { onStarted: resolveTurnWorker }

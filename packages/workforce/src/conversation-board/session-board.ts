@@ -40,7 +40,7 @@
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
+import { delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
@@ -51,7 +51,7 @@ import { questionPark } from "./question-park";
 import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
-  CONVERSATION_BOARD_SERVER_OWNED,
+  WORKER_SERVER_OWNED,
   conversationBoardStateShape,
   taskSettledEntry
 } from "./task-settled";
@@ -114,7 +114,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The session state the delegates and the board keep, for `installation.session(...)`. */
     sessionStateShape: { ...delegateStateShape, ...conversationBoardStateShape },
     /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
-    serverOwned: [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED] as readonly string[],
+    serverOwned: WORKER_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow: a run of the board,
      * the notice of a task the session filed, and a split task's settle and

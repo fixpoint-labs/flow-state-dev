@@ -42,6 +42,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { DELEGATE_SERVER_OWNED } from "../delegates/delegate-list";
 import { replayNotices } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
@@ -76,6 +77,9 @@ export const conversationBoardStateShape = {
 
 /** {@link conversationBoardStateShape}'s fields, for the flow's `session.serverOwned`: only the board writes them. */
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE, PARENT_BINDING_STATE];
+
+/** Delegate fields plus the board's. Every worker create refuses them, and a board's `serverOwned` is this list. */
+export const WORKER_SERVER_OWNED: readonly string[] = [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED];
 
 const settledSchema = z.object({
   act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask"]),

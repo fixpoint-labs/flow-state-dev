@@ -42,8 +42,7 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
-import { CONVERSATION_BOARD_SERVER_OWNED } from "../conversation-board/task-settled";
-import { DELEGATE_SERVER_OWNED } from "../delegates/delegate-list";
+import { WORKER_SERVER_OWNED } from "../conversation-board/task-settled";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
@@ -220,13 +219,6 @@ export type WorkerSessionStateShape = {
   readonly [FILING_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
-
-/**
- * The session-state fields every worker flow refuses on a caller's create:
- * the delegate list and the conversation board's fields. Only the server
- * writes them, on the flows that carry them.
- */
-const WORKER_SERVER_OWNED: readonly string[] = [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED];
 
 /** The installation's worker model. Build it once, at boot. */
 export interface WorkerInstallation extends WorkerGrants {
