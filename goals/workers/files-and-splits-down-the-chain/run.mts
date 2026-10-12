@@ -374,7 +374,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
-  const calls = tools.filter((i) => i.requestId === E.turn.requestId && (i.toolCall?.name === "addTask" || i.toolCall?.name === "dispatchTask"));
+  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
   const ids = calls.map(toolOutput).filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const filed = rows.filter((x) => ids.includes(x.id) && (x.assignee === "crew.one" || x.assignee === "crew.two") && x.partition.startsWith(`${E.conv}~`));
   if (filed.length === 0) {
@@ -386,8 +386,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     calls
       .filter((i) => {
         try {
-          const args = JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown; wait?: unknown };
-          return args.wait === true || args.waitForResponse === true;
+          return (JSON.parse(i.toolCall?.arguments ?? "{}") as { wait?: unknown }).wait === true;
         } catch {
           return false;
         }
