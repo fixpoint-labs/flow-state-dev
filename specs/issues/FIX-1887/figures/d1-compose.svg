@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: what does the closure run? Chosen: the checks that already prove each part, plus two scripts, no new journey. Instead of: a new fixture where a real model waits and hands over with dispatchTask, or the three reruns alone. It comes down to the first row, the epic&#x27;s claim that only names changed: only the two scripts show it; a new fixture and the reruns alone both pass on a check that was widened. Second row, the five teams: every team is walked by an existing check in the chosen option and by the fixture; the reruns alone miss the docs reader and the maintainer. Third row, the price: about a dozen checks it does not own and an hour a run; a new fixture to write; the cheapest. Locks in the scripts shipping now. Flips if a team has no check that walks it." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What does the closure run?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Existing checks + 2 scripts</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">A new fixture, one model</text>
+    <rect class="lost" x="692" y="76" width="232" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">The three reruns alone</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">ONLY NAMES</text>
+    <text class="t-lbl" x="32" y="169">CHANGED</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">Shown, hunk by hunk</text>
+    <text class="t-s" x="244" y="179">the rename-map script</text>
+    <text class="mark minus" x="466" y="162">&#8722;</text>
+    <text class="t-b" x="484" y="161">Not shown</text>
+    <text class="t-s" x="484" y="179">passes a widened check</text>
+    <text class="mark minus" x="706" y="162">&#8722;</text>
+    <text class="t-b" x="724" y="161">Not shown</text>
+    <text class="t-s" x="724" y="179">passes a widened check</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="220">THE FIVE</text>
+    <text class="t-lbl" x="32" y="233">TEAMS</text>
+    <text class="mark plus" x="226" y="226">+</text>
+    <text class="t-b" x="244" y="225">Each walked by a check</text>
+    <text class="t-s" x="244" y="243">table in PLAN, part 2</text>
+    <text class="mark plus" x="466" y="226">+</text>
+    <text class="t-b" x="484" y="225">Each walked again</text>
+    <text class="t-s" x="484" y="243">re-proved from scratch</text>
+    <text class="mark minus" x="706" y="226">&#8722;</text>
+    <text class="t-b" x="724" y="225">Two teams missed</text>
+    <text class="t-s" x="724" y="243">docs reader, maintainer</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="278">WHAT IT</text>
+    <text class="t-lbl" x="32" y="291">COSTS</text>
+    <text class="mark minus" x="226" y="284">&#8722;</text>
+    <text class="t-b" x="244" y="283">A dozen checks it doesn&#x27;t own</text>
+    <text class="t-s" x="244" y="301">about an hour a run</text>
+    <text class="mark minus" x="466" y="284">&#8722;</text>
+    <text class="t-b" x="484" y="283">A fixture to write</text>
+    <text class="t-s" x="484" y="301">and its controls</text>
+    <text class="mark plus" x="706" y="284">+</text>
+    <text class="t-b" x="724" y="283">Cheapest</text>
+    <text class="t-s" x="724" y="301">three checks, no scripts</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">The scripts ship in this spec, before the run</text>
+    <text class="t-s" x="32" y="389">children run the same judge on their own diffs</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A team has no check that walks its after</text>
+    <text class="t-s" x="494" y="389">then that team gets a journey of its own</text>
+  </g>
+</svg>

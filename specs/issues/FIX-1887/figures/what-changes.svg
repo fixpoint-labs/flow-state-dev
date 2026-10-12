@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="Two panels. Today: FIX-1875, FIX-1872 and FIX-1876 merge one after another, each green on its own check at its own commit, and the epic's rename-map script, which three of their plans cite, does not exist. After: one main commit, recorded on a clean tree after every child has merged, carrying four parts in order. The two scripts, new and built in this spec, run first because they need no model: the rename-map script over the six checks since the epic spec merged, with its planted-edit control, and the surface sweep at the commit and at the main commit before FIX-1875, which must fail. Part 1 is the epic's goal check: FIX-1820's closure runner over the three regression checks and two coordinator checks, and FIX-1610's check, each with its controls. Part 2 maps each of the epic's five teams to the check that walks it. Part 3 reruns each child's own check with its control. Part 4 is the gap sweep, written in the report. A clean run opens the closure PR with the report as its body. A finding becomes a child of FIX-1870 that blocks FIX-1887, and the whole plan runs again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .n-alone { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-old  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-part { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 3; }
+    .n-find { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .line   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .pin    { fill:var(--accent); }
+    .loop   { stroke:var(--prose); stroke-width:1.3; fill:none; stroke-dasharray:5 3; }
+    .rule   { stroke:var(--rule); stroke-width:1; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-pr   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · EACH CHILD GREEN ON ITS OWN CHECK AND COMMIT</text>
+    <rect class="n-alone" x="16" y="36" width="214" height="54" rx="5"/>
+    <text class="t-b" x="30" y="56">FIX-1875 · dispatchTask</text>
+    <text class="t-s" x="30" y="74">its own check · its commit</text>
+    <rect class="n-alone" x="242" y="36" width="214" height="54" rx="5"/>
+    <text class="t-b" x="256" y="56">FIX-1872 · one fence</text>
+    <text class="t-s" x="256" y="74">its own check · its commit</text>
+    <rect class="n-alone" x="468" y="36" width="214" height="54" rx="5"/>
+    <text class="t-b" x="482" y="56">FIX-1876 · vocabulary</text>
+    <text class="t-s" x="482" y="74">its own sweep · its commit</text>
+    <rect class="n-old" x="694" y="36" width="230" height="54" rx="5"/>
+    <text class="t-b" x="708" y="56">the epic&#x27;s rename-map script</text>
+    <text class="t-gone" x="708" y="74">three plans cite it · not built</text>
+  </g>
+
+  <path class="rule" d="M16 108 H924"/>
+
+  <g id="commit">
+    <text class="t-lbl" x="16" y="132">AFTER · ONE COMMIT</text>
+    <rect class="pin" x="16" y="142" width="4" height="226"/>
+    <text class="t-b" x="28" y="160">one main commit</text>
+    <text class="t-s" x="28" y="176">clean tree · HEAD</text>
+    <text class="t-s" x="28" y="190">every child merged</text>
+    <text class="t-s" x="28" y="204">real model · SQLite</text>
+    <path class="line" d="M140 174 H156"/>
+  </g>
+
+  <g id="scripts">
+    <rect class="n-new" x="158" y="142" width="250" height="100" rx="5"/>
+    <text class="t-acc" x="172" y="160">FIRST · NEW · BUILT IN THIS SPEC</text>
+    <text class="t-b" x="172" y="180">rename-map script</text>
+    <text class="t-s" x="172" y="196">six checks since f1ae352 · names only</text>
+    <text class="t-b" x="172" y="216">surface sweep</text>
+    <text class="t-s" x="172" y="232">HEAD clean · pre-FIX-1875 must FAIL</text>
+  </g>
+
+  <g id="part-1">
+    <rect class="n-part" x="420" y="142" width="250" height="100" rx="5"/>
+    <text class="t-lbl" x="434" y="160">PART 1 · THE EPIC&#x27;S GOAL CHECK</text>
+    <text class="t-b" x="434" y="180">FIX-1820&#x27;s runner, composed</text>
+    <text class="t-s" x="434" y="196">FIX-1816 · FIX-1817 · FIX-1820</text>
+    <text class="t-s" x="434" y="210">+ FIX-1791 · FIX-1794 checks</text>
+    <text class="t-b" x="434" y="230">FIX-1610&#x27;s check · controls</text>
+  </g>
+
+  <g id="part-2">
+    <rect class="n-part" x="682" y="142" width="242" height="100" rx="5"/>
+    <text class="t-lbl" x="696" y="160">PART 2 · ONE JOURNEY PER TEAM</text>
+    <text class="t-b" x="696" y="180">five teams, each mapped</text>
+    <text class="t-s" x="696" y="196">to the check that walks it</text>
+    <text class="t-s" x="696" y="210">no new journey</text>
+  </g>
+
+  <g id="part-3">
+    <rect class="n-part" x="158" y="256" width="370" height="76" rx="5"/>
+    <text class="t-lbl" x="172" y="274">PART 3 · EACH CHILD&#x27;S OWN CHECK</text>
+    <text class="t-b" x="172" y="294">a recorded task waits · one fence · one word</text>
+    <text class="t-s" x="172" y="312">add-starts · no-ending-dedupe · --control must FAIL</text>
+  </g>
+
+  <g id="part-4">
+    <rect class="n-part" x="540" y="256" width="384" height="76" rx="5"/>
+    <text class="t-lbl" x="554" y="274">PART 4 · GAP SWEEP, IN THE REPORT</text>
+    <text class="t-b" x="554" y="294">seams, published promises, not done if</text>
+    <text class="t-s" x="554" y="312">each mapped to a check that ran, or a finding</text>
+  </g>
+
+  <g id="outcome">
+    <rect class="n-part" x="158" y="352" width="370" height="54" rx="5"/>
+    <text class="t-b" x="172" y="374">files nothing → the closure PR</text>
+    <text class="t-s" x="172" y="392">S1 to S4 · the report is its body</text>
+    <rect class="n-find" x="540" y="352" width="384" height="54" rx="5"/>
+    <text class="t-b" x="554" y="374">a finding → a child of FIX-1870</text>
+    <text class="t-pr" x="554" y="392">blocks FIX-1887 · whole plan again, fresh commit</text>
+    <path class="loop" d="M924 380 H932 V114 H8 V150 H16"/>
+  </g>
+</svg>
