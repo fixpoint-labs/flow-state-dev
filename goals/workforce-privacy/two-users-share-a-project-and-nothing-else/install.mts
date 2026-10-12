@@ -11,7 +11,7 @@
  *   whatever is serving it, and the screens they read.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
@@ -117,6 +117,8 @@ export class Install {
   }
 
   async stop(): Promise<void> {
+    // Keep the server's own log beside the store, for reading a failure after the run.
+    if (this.served !== undefined) writeFileSync(`${this.opts.store}.${this.opts.record.boots.length}.server.log`, this.served.log());
     await this.served?.stop();
     this.served = undefined;
   }

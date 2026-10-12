@@ -28,6 +28,8 @@ const pick = <T,>(xs: readonly T[]): T => xs[randomInt(xs.length)]!;
 const word = () => pick(WORDS);
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (v: unknown) => JSON.stringify(v)?.slice(0, 400);
+/** Whether a collection row's topic names `id`: the bare id, or a path ending in it. */
+const named = (topic: string, id: string) => topic === id || topic.endsWith(`/${id}`);
 const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
 
 const ROSTER = "workforce-roster";
@@ -210,14 +212,14 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const name = `${word()}-${hex()}`;
       r.saw("a2", `held-out: forks \`${from.id}\` (flow \`${from.flow}\`) as \`${name}\`. Surface: the roster flow's \`fork\` action, since no screen draws a fork and the chief of staff has no fork tool (an unpromised screen: an observation, D2)`);
       const rosterSession = await sessionOn(alice, ROSTER);
-      const before = JSON.stringify((await rowsOf(alice, rosterSession, STANDARD_WORKERS)).rows.find((x) => x.topic.endsWith(`/${from.id}`)) ?? null);
+      const before = JSON.stringify((await rowsOf(alice, rosterSession, STANDARD_WORKERS)).rows.find((x) => named(x.topic, from.id)) ?? null);
       const bobBefore = await ownIds(bob);
       const forked = await act(alice, ROSTER, rosterSession, "fork", { from: from.id, id: name });
       if (forked.status !== "completed") r.fail("a2", `Alice's fork ended ${forked.status}: ${forked.error ?? show(forked.output)}`);
       else {
         facts.fork = name;
         const rows = (await rowsOf(alice, rosterSession, WORKERS)).rows;
-        if (rows.length !== 1 || !rows[0]!.topic.endsWith(`/${name}`)) r.fail("a2", `the store should hold one worker row for Alice, \`${name}\`; it holds ${show(rows.map((x) => x.topic))}`);
+        if (rows.length !== 1 || !named(rows[0]!.topic, name)) r.fail("a2", `the store should hold one worker row for Alice, \`${name}\`; it holds ${show(rows.map((x) => x.topic))}`);
         else if ((rows[0]!.data as { flow?: string })?.flow !== from.flow && (rows[0]!.data as { flow?: string })?.flow !== undefined) r.fail("a2", `the fork's row names flow ${show((rows[0]!.data as any).flow)}, not \`${from.flow}\``);
         else r.saw("a2", `store: one worker row, \`${rows[0]!.topic}\``);
         const manifest = await alice.routes.get(`/sessions/${encodeURIComponent(rosterSession)}/manifest`);
@@ -227,8 +229,9 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         else r.saw("a2", "the worker collection is declared at user scope");
         const listed = (await alice.workforce.roster()).find((e) => e.id === name);
         if (listed?.flow !== from.flow || listed.standard) r.fail("a2", `Alice's roster lists the fork as ${show(listed)}`);
-        const after = JSON.stringify((await rowsOf(alice, rosterSession, STANDARD_WORKERS)).rows.find((x) => x.topic.endsWith(`/${from.id}`)) ?? null);
-        if (after !== before) r.fail("a2", `the standard worker \`${from.id}\` changed: ${before} → ${after}`);
+        const after = JSON.stringify((await rowsOf(alice, rosterSession, STANDARD_WORKERS)).rows.find((x) => named(x.topic, from.id)) ?? null);
+        if (before === "null") r.fail("a2", `setup: no standard-worker row for \`${from.id}\` to compare`);
+        else if (after !== before) r.fail("a2", `the standard worker \`${from.id}\` changed: ${before} → ${after}`);
         else r.saw("a2", `the standard worker \`${from.id}\` is unchanged`);
         const bobAfter = await ownIds(bob);
         if (!sameSet(bobAfter, bobBefore) || (await bob.workforce.roster()).some((e) => e.id === name)) r.fail("a2", `Bob's roster changed: ${show(bobBefore)} → ${show(bobAfter)}`);
@@ -263,7 +266,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const added = own1.filter((x) => !own0.includes(x));
     const listed = (await alice.workforce.roster()).find((e) => e.id === name);
     const rosterSession = await sessionOn(alice, ROSTER);
-    const row = (await rowsOf(alice, rosterSession, WORKERS)).rows.find((x) => x.topic.endsWith(`/${name}`))?.data as { flow?: string; settings?: Record<string, unknown> } | undefined;
+    const row = (await rowsOf(alice, rosterSession, WORKERS)).rows.find((x) => named(x.topic, name))?.data as { flow?: string; settings?: Record<string, unknown> } | undefined;
     if (hires.length === 0) r.fail("a3", `the chief of staff's turn called no \`hire\` (reply: "${turn.reply.slice(0, 300)}")`);
     if (listed === undefined || row === undefined) r.fail("a3", `no worker \`${name}\` on Alice's roster after the turn (new: ${show(added)})`);
     else if (listed.flow !== COORDINATOR) r.fail("a3", `\`${name}\` is on flow \`${listed.flow}\`, not \`${COORDINATOR}\``);
@@ -463,6 +466,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const mine = workstreams[key]!;
       const other = workstreams[key === "alice" ? "bob" : "alice"]!;
       const w = `${word()}-${hex()}`;
+      // Earlier steps' work (b2's leads filing) settles first, so what appears next is this hand-off's.
+      await quiet(o.store);
       const before = sessionIds(o.store);
       const entries0 = (await entriesOf(who, P)).length;
       const ledger0 = conversationRecord(o.store, person.userId, pcSession[key]!).ledger.length;
@@ -583,7 +588,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         if (named.length !== filed.length) r.fail("b5", `a task names no issue and phase: ${show(filed.map((t) => t.input))}`);
         const unsettled = filed.filter((t) => !["completed", "errored", "cancelled", "failed"].includes(t.status));
         if (unsettled.length > 0) r.fail("b5", `task(s) never ended: ${show(unsettled.map((t) => `${t.id}:${t.status}`))}`);
-        const lines = emItems.filter((i) => i.type === "message");
+        // What the session heard: the notices sent into it, not the lead's own replies that name a task.
+        const lines = emItems.filter((i) => i.type === "message" && i.role !== "assistant");
         for (const t of filed) {
           const heard = lines.filter((i) => textOf(i).includes(t.id)).length;
           if (heard !== 1 && !["pending"].includes(t.status)) r.fail("b5", `the EM's workstream session heard task \`${t.id}\` end ${heard} times, not once`);
@@ -591,7 +597,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         const updates = emItems.filter((i) => i.type === "tool_output" && /updateWorkstream$/.test(String(i.toolCall?.name ?? "")));
         const lastAdd = Math.max(...adds.map((i) => i.createdAt ?? 0));
         const after = updates.filter((i) => (i.createdAt ?? 0) > lastAdd);
-        if (after.length === 0) r.fail("b5", "the EM never updated the workstream entry after filing (no `updateWorkstream` after its last `addTask`)");
+        if (after.length === 0) r.fail("b5", `the EM never updated the workstream entry after filing (no \`updateWorkstream\` after its last \`addTask\` at ${lastAdd}; updates at ${show(updates.map((i) => i.createdAt ?? null))})`);
         const entry = (await entriesOf(alice, S)).find((e) => e.owner === A.userId && e.id === ws!.id);
         const drawn = await projectWorkstreams(o.browser, origin(), A, true, r, "b5-alice-workstreams", S);
         const shown = drawn.value?.entries.find((x) => x.owner === A.userId && x.id === ws!.id);
@@ -637,7 +643,9 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       r.via("b6", "action");
       const tasksBefore = taskRows(o.store).length;
       const refused = await act(alice, COORDINATOR, s.id, "addTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
-      if (refused.status === "completed") r.fail("b6", `the app's addTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
+      const declined = (refused.output as { ok?: boolean } | undefined)?.ok === false;
+      if (refused.status === "completed" && declined) r.saw("b6", `the app's addTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
+      else if (refused.status === "completed") r.fail("b6", `the app's addTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
       else r.saw("b6", `the app's addTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
       if (taskRows(o.store).length !== tasksBefore) r.fail("b6", "a task row was stored");
     }
@@ -754,7 +762,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       else r.saw("c2", `Bob's roster doesn't list \`${fork}\``);
       const bobSession = await sessionOn(bob, ROSTER);
       const bobRows = await rowsOf(bob, bobSession, WORKERS);
-      if (bobRows.rows.some((x) => x.topic.endsWith(`/${fork}`))) r.fail("c2", `${readsHers}: the worker collection through his session holds it`);
+      if (bobRows.rows.some((x) => named(x.topic, fork))) r.fail("c2", `${readsHers}: the worker collection through his session holds it`);
       const byKey = await refusal(() => bob.resources.getCollectionItemState(bobSession, bobRows.ref, `workforce/workers/${fork}`));
       if (byKey.status === undefined && byKey.value != null) r.fail("c2", `${readsHers}: read back by key: ${show(byKey.value)}`);
       else r.saw("c2", `Bob reading it by key: ${byKey.status === undefined ? "not found" : `refused, ${byKey.status}`}`);

@@ -235,7 +235,7 @@ await runGoal(async (failures) => {
     }
     // Every store this run owned is deleted, pass or fail (QR-8).
     const stores = join(SCRATCH, "stores");
-    for (const f of existsSync(stores) ? readdirSync(stores) : []) rmSync(join(stores, f), { recursive: true, force: true });
+    for (const f of existsSync(stores) && process.env.GOAL_KEEP_STORES !== "1" ? readdirSync(stores) : []) rmSync(join(stores, f), { recursive: true, force: true });
   }
 
   cost.unshift(`whole run: ${Math.round((Date.now() - started) / 1000)} s, one command, fresh stores, nothing to set up by hand`);
