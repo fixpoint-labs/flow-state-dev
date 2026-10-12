@@ -3,7 +3,8 @@
 //
 // The epic's (FIX-1870) anti-game: since the epic spec merged, the diff to the
 // three regression checks is names only, and the diff to the three coordinator
-// checks is names, FIX-1872's two named shape entries, and listed fence lines.
+// checks (and the reruns FIX-1872's V9 names) is names, FIX-1872's two named
+// shape entries, and listed fence lines.
 // Every changed hunk is explained, or the check fails and prints it.
 //
 //   node specs/issues/FIX-1887/poc/rename-map/check.mjs                   # base..HEAD
@@ -35,6 +36,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** The epic spec's merge commit (#3109): "the diff since this spec merged". */
 const BASE = opt("--base", "f1ae352110a5e1ede28d9268161732e8bd1b14d7");
 const HEAD = opt("--head", "HEAD");
+/**
+ * FIX-1872 V9's reruns change for reasons outside the epic before it lands, so
+ * they are judged from the control commit (the main commit before FIX-1875's
+ * first PR merged), passed by the closure runner. Not given: not judged, said so.
+ */
+const RERUN_BASE = opt("--rerun-base", undefined);
 
 const REGRESSION = [
   "goals/hand-offs/ask-survives-a-restart/",
@@ -45,6 +52,14 @@ const COORDINATOR = [
   "goals/coordinators/hands-each-post-to-its-delegates/",
   "goals/coordinators/files-tasks-down-the-owners-chain/",
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/",
+];
+/** FIX-1872 V9: these reruns' diffs pass this script too, judged as coordinator checks (declaration moves, listed fence lines). */
+const RERUNS = [
+  "goals/projects/a-shared-project-has-one-owner-per-workstream/",
+  "goals/workforce-privacy/two-users-share-a-project-and-nothing-else/",
+  "goals/workers/files-and-splits-down-the-chain/",
+  "goals/pentest-lab/",
+  "apps/kitchen-sink/lib/landing-control.ts",
 ];
 
 /**
@@ -163,11 +178,28 @@ function pairOk(o, n, i, oldT, newT, group, hunkText) {
   return undefined;
 }
 
-/** A hunk: explained (with its reasons) or not (with the first offending pair). */
-function judge(removed, added, group, fences) {
+/**
+ * A hunk: explained (with its reasons) or not (with the first offending pair).
+ * A fence entry `{ path, removed, added, why }` exempts exactly one removed line
+ * and the one added line that replaces it, in that path and a coordinator check
+ * only; the rest of the hunk is judged as usual (CR-14).
+ */
+function judge(removed, added, group, fences, path) {
+  const fenced = [];
+  if (group === "coordinator") {
+    removed = [...removed];
+    added = [...added];
+    for (const f of fences) {
+      if (f.path !== path) continue;
+      const r = removed.findIndex((l) => l.includes(f.removed));
+      const a = added.findIndex((l) => l.includes(f.added));
+      if (r === -1 || a === -1) continue;
+      removed.splice(r, 1);
+      added.splice(a, 1);
+      fenced.push(`fence line (listed: ${f.why})`);
+    }
+  }
   const hunkText = removed.join("\n");
-  const fence = group === "coordinator" ? fences.find((f) => removed.some((l) => l.includes(f.removed))) : undefined;
-  if (fence !== undefined) return { ok: true, reasons: [`fence line (listed: ${fence.why})`] };
   let oldT = SHAPES.handedOffEnding(tokenize(hunkText));
   if (group === "coordinator") oldT = SHAPES.handOffCall(oldT);
   const newT = tokenize(added.join("\n"));
@@ -179,7 +211,7 @@ function judge(removed, added, group, fences) {
     if (r === undefined) return { ok: false, why: `\`${oldT[i]}\` → \`${newT[i]}\` is not in the map` };
     reasons.add(r);
   }
-  return { ok: true, reasons: [...reasons] };
+  return { ok: true, reasons: [...fenced, ...reasons] };
 }
 
 /** `git diff -U0` → [{ path, removed[], added[] }]. */
@@ -206,9 +238,12 @@ function run(base, head) {
   const fences = loadFences();
   let bad = 0;
   let good = 0;
-  for (const [group, dirs] of [["regression", REGRESSION], ["coordinator", COORDINATOR]]) {
-    for (const h of hunks(base, head, dirs)) {
-      const v = judge(h.removed, h.added, group, fences);
+  const groups = [["regression", REGRESSION, base], ["coordinator", COORDINATOR, base]];
+  if (RERUN_BASE !== undefined) groups.push(["coordinator", RERUNS, RERUN_BASE]);
+  else console.log("  (FIX-1872 V9's reruns not judged: pass --rerun-base <control commit>)");
+  for (const [group, dirs, from] of groups) {
+    for (const h of hunks(from, head, dirs)) {
+      const v = judge(h.removed, h.added, group, fences, h.path);
       if (v.ok) {
         good++;
         console.log(`  ok    ${h.path}  (${v.reasons.join(", ")})`);
@@ -229,15 +264,28 @@ if (args.includes("--sources")) {
   const read = (id) => readFileSync(`specs/issues/${id}/PLAN.md`, "utf8");
   const plan1875 = read("FIX-1875");
   const plan1876 = read("FIX-1876");
-  const section1875 = plan1875.slice(plan1875.indexOf("**The rename map**"), plan1875.indexOf("\n\n", plan1875.indexOf("**The rename map**")));
-  const s = plan1876.indexOf("## Pinned names");
-  const section1876 = plan1876.slice(s, plan1876.indexOf("\n## ", s + 5));
+  // The tables are found by their headings. A heading that moved stops the run:
+  // fix the extraction, never hand-edit MAP to make a diff pass (PLAN guardrails).
+  const cut = (text, id, start, end) => {
+    const s = text.indexOf(start);
+    if (s === -1) {
+      console.log(`sources: ${id}'s PLAN.md has no "${start}"; fix the extraction, don't edit MAP`);
+      process.exit(3);
+    }
+    const e = text.indexOf(end, s + start.length);
+    return text.slice(s, e === -1 ? undefined : e);
+  };
+  const section1875 = cut(plan1875, "FIX-1875", "**The rename map**", "\n\n");
+  const section1876 = cut(plan1876, "FIX-1876", "## Pinned names", "\n## ");
   const src = { "FIX-1875": section1875, "FIX-1876": section1876 };
+  /** Every whole backticked name in a table, split on ` · `: a name matches only as a complete entry. */
+  const names = (t) => new Set([...t.matchAll(/`([^`]+)`/g)].flatMap((m) => m[1].split(/\s*·\s*/)));
   let bad = 0;
   for (const [o, n, from] of MAP) {
     if (!(from in src)) continue; // #3153 entries are prose in the epic SPEC, checked by eye
     const t = src[from];
-    const has = (x) => t.includes(x) || (x === "ask" && t.includes("Task.ask")) || (x === "wait" && t.includes("Task.wait")) || (x === "handed" && t.includes('"handed-off"'));
+    const whole = names(t);
+    const has = (x) => whole.has(x) || (x === "ask" && whole.has("Task.ask")) || (x === "wait" && whole.has("Task.wait")) || (x === "asked" && whole.has("asked: true")) || (x === "waitedOn" && whole.has("waitedOn: true")) || (x === "handedOff" && whole.has("handedOff: true")) || (x === "handed" && whole.has('"handed-off"')) || (x === "dispatched" && (whole.has('"dispatched"') || whole.has("dispatched: true")));
     // Two rows elide their names: FIX-1875's `MIN_…`, `MAX_…` → `…_WAIT_TIMEOUT_MS`, and
     // FIX-1876's "`hasAskSweeper` and the engine's other `*Ask*` internals → the same with `Wait`".
     const elided =
@@ -270,6 +318,11 @@ if (args.includes("--control")) {
   const line = (path, re) => execFileSync("git", ["show", `${BASE}:${path}`], { encoding: "utf8" }).split("\n").find((l) => re.test(l));
   const filed = line("goals/coordinators/task-session-stays-open/run.mts", /const filed = await act\("coordinator", conv, "addTask_tasks"/);
   const parked = line("goals/coordinators/task-session-stays-open/run.mts", /const parked = await waitFor/);
+  // A synthetic fence entry, shaped as FIX-1872's implementer writes one.
+  const FENCE_PATH = "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts";
+  const LEDGER_READ = '  const delivered = ledger.filter((d) => d.outcome === "delivered");';
+  const ROW_READ = '  const delivered = rows.filter((r) => r.status === "completed" && r.post === true);';
+  const CONTROL_FENCES = [{ path: FENCE_PATH, removed: "ledger.filter(", added: "rows.filter(", why: "control: a ledger read becomes a row read" }];
   const cases = [
     ["pure rename passes", [filed], [filed.replace("addTask_tasks", "dispatchTask_tasks")], "regression", true],
     ["re-wrapped rename passes", [filed], filed.replace("addTask_tasks", "dispatchTask_tasks").replace(", {", ",\n    {").split("\n"), "regression", true],
@@ -278,10 +331,15 @@ if (args.includes("--control")) {
     ["a shape entry in a regression check FAILS", ['toolName: "handOff", args: { worker: id }'], ['toolName: "dispatchTask", args: { post: true, assignee: id }'], "regression", false],
     ["the same shape entry in a coordinator check passes", ['toolName: "handOff", args: { worker: id }'], ['toolName: "dispatchTask", args: { post: true, assignee: id }'], "coordinator", true],
     ["a dropped leg FAILS", [filed, parked], [filed.replace("addTask_tasks", "dispatchTask_tasks")], "regression", false],
+    // CR-14: a listed fence line is exempt alone, in its own path, and nothing beside it is.
+    ["a listed fence line passes", [LEDGER_READ], [ROW_READ], "coordinator", true, FENCE_PATH],
+    ["a fence line beside a loosened timeout FAILS", [LEDGER_READ, parked], [ROW_READ, parked.replace("120_000", "240_000")], "coordinator", false, FENCE_PATH],
+    ["a fence entry in another path admits nothing", [LEDGER_READ], [ROW_READ], "coordinator", false, "goals/coordinators/files-tasks-down-the-owners-chain/run.mts"],
+    ["a fence line in a regression check FAILS", [LEDGER_READ], [ROW_READ], "regression", false, FENCE_PATH],
   ];
   let wrong = 0;
-  for (const [name, removed, added, group, want] of cases) {
-    const v = judge(removed, added, group, []);
+  for (const [name, removed, added, group, want, path] of cases) {
+    const v = judge(removed, added, group, CONTROL_FENCES, path);
     const right = v.ok === want;
     if (!right) wrong++;
     console.log(`${right ? "ok  " : "WRONG"} ${name}: ${v.ok ? "explained" : v.why}`);

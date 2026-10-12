@@ -13,7 +13,7 @@ shipped code or a child's `goal.md` says otherwise, those win and the report say
 |---|---|---|
 | S1 | `goals/dispatching-work/runs-on-dispatch-task-alone/goal.md` | From [SPEC's goal](SPEC.md#the-goal-and-how-well-know-its-met), in the `goals/README.md` format, on-demand posture (CR-5) |
 | S2 | `…/run.mts` | The thin runner, shaped like FIX-1820's: refuses a dirty tree, records `HEAD`, re-checks it before each part, runs each check as its own process with its own `GOAL_CONTROL`, grades a control on its exact red set, prints each verdict with the SHA, stops at the first check that can't start |
-| S3 | `…/rename-map.mjs`, `…/fence-lines.json` | [`poc/rename-map/check.mjs`](poc/rename-map/check.mjs) moved in, unchanged in rule. The fence file lists each ledger read FIX-1872 turned into a row read: path, the removed text, the reason |
+| S3 | `…/rename-map.mjs`, `…/fence-lines.json` | [`poc/rename-map/check.mjs`](poc/rename-map/check.mjs) moved in, unchanged in rule. The fence file lists each ledger read FIX-1872 turned into a row read: path, the removed text, its replacement, the reason |
 | S4 | `…/surface-sweep.mjs` | [`poc/surface-sweep/sweep.mjs`](poc/surface-sweep/sweep.mjs) moved in, unchanged in rule. It reads source only; the runtime refusals are the children's checks, cited in the report (CR-17) |
 | S5 | The closure PR | Only after a clean run: S1 to S4, with the report as its body |
 
@@ -41,7 +41,7 @@ model calls. Checks run one after another: real model, shared keys, readable out
 | P1.r | FIX-1820's runner, `goals/hand-offs/survives-a-restart-and-runs-once/run.mts` | Its own verdict: FIX-1816's and FIX-1817's checks plain and under their controls, FIX-1794's check, FIX-1791's two checks, J4 and `fresh-store`, each as its `goal.md` documents |
 | P1.k | `goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts` (FIX-1610), then under each control its `goal.md` lists | Plain PASS; each control red at its documented legs only (`no-context` at **context** only, as FIX-1872's V9 also requires) |
 | P1.c | The controls of FIX-1791's and FIX-1794's checks that P1.r runs plain | Each red at its documented tags only (`unpartitioned`, `no-follow-up`, and `hands-each-post-to-its-delegates`'s `controls/patches.mts`) |
-| P1.m | `rename-map.mjs --sources`, `--control`, then the diff `f1ae352..HEAD` | `--sources` exits 0; `--control` exits 2 (every plant caught); the diff exits 0 with each fence line printed |
+| P1.m | `rename-map.mjs --sources`, `--control`, then the diff `f1ae352..HEAD` with `--rerun-base <control commit>` | `--sources` exits 0; `--control` exits 2 (every plant caught); the diff exits 0 with each fence line printed, FIX-1872 V9's reruns included |
 | P1.s | `surface-sweep.mjs --assert` at `HEAD`, then `--assert --at <control commit>`, then `--control` | 0 live lines at `HEAD`; exit 1 at the control commit; `--control` exits 2 |
 
 **The control commit** is the first parent of the merge commit of FIX-1875's first PR (#3168
@@ -109,7 +109,7 @@ control's red set, and Linear showing no open finding.
 |---|---|
 | `goals/dispatching-work/runs-on-dispatch-task-alone/` | The epic's closure check, beside FIX-1875's, named for the goal |
 | `map:`, `sweep:` | The two signals the report and the children cite |
-| `fence-lines.json` and its `{ path, removed, why }` entries | FIX-1872's implementer adds its fence lines there, and the report prints them |
+| `fence-lines.json` and its `{ path, removed, added, why }` entries | FIX-1872's implementer adds its fence lines there, and the report prints them |
 | `retired-name-refusal` | The one marker all three children use for a deliberate old name |
 
 ## Guardrails
@@ -143,11 +143,14 @@ node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --control   # exit 2: eve
 **Showed (2026-10-12, `main` at `9825241`).** The sweep fails today's `main` at 165 live lines in
 six of its seven rules; `post-to-mailbox` already passes. `--sources` agrees with both tables, and a name
 planted in FIX-1876's table fails it (exit 3). `--control` catches a loosened timeout, a dropped
-leg, a widened assertion and a shape entry in a regression check, and passes a pure and a
+leg, a widened assertion, a shape entry in a regression check and a fence line beside a loosened
+timeout or in the wrong path, and passes a pure and a
 re-wrapped rename. On FIX-1875's open first PR (#3168, head `46773de`), every hunk in the three
 regression checks is a name (one by article agreement in `goal.md`), and **six hunks in FIX-1794's
 `files-tasks-down-the-owners-chain` fail**: each widens a filter to accept `addTask` or
-`dispatchTask`, and one accepts `wait` or `waitForResponse`. That is D2's case, found before the
+`dispatchTask`, and one accepts `wait` or `waitForResponse`. Judged as FIX-1872 V9's reruns from
+the PR's merge base, leg e of `files-and-splits-down-the-chain` fails three more hunks of the same
+kind. That is D2's case, found before the
 closure ran.
 
 ## At implement time
@@ -163,5 +166,25 @@ closure ran.
 
 ## Follow-ups
 
-- None filed. The six widened hunks above are for FIX-1875's PR review; if they merge as they
+- None filed. The nine widened hunks above are for FIX-1875's PR review; if they merge as they
   are, the closure files them (CR-18).
+
+## Notes from review
+
+Recorded for the closure worker; none changes the approach.
+
+- **The sweep and FIX-1876's sweep both name retired words** (#3178 review). FIX-1876's
+  `one-word-per-thing` owns the vocabulary across the tree and runs here as P3.c; this sweep keeps
+  only the names the epic's signal lists, at one commit with a control commit. Whether this sweep
+  should read FIX-1876's `rules.mjs` instead is left to the coordinator; the overlap costs a
+  duplicate hit, never a missed one.
+- **A script for the docs promise map** (part 4): kept a read. Each sample is checked by name and
+  shape against a composed check's call; if that read misses in practice, the script is the fix.
+- **The sweep's scope** stays what a person reads or imports. Tests, `docs/architecture/**` and
+  `*.spec.*` are FIX-1876's sweep's to read.
+- **Part 2's teams table** stays: it is the epic's own table, and each row points at a check part 1
+  or 3 already runs, so it adds no run.
+- **One `git grep` per rule** is fast enough on demand; merge them only if a run is slow.
+- **`handedOff` has two map pairs** (`dispatchers`, `dispatched`), as FIX-1876's table has; both
+  are names, so the pair set admits either.
+- **The control commit** is FIX-1875's P1 merge's first parent: P1 is its first PR.

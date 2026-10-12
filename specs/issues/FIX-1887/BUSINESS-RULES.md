@@ -25,7 +25,7 @@ shows the rule held.
 | CR-7 | A composed check documents controls | Each runs, and goes red at exactly its documented tags plus its documented co-failures. One that passes, fails at setup, or reddens another tag is a finding against the control | Each verdict line |
 | CR-8 | A model step misses | The composed check's own attempt cap applies (`GOAL_ATTEMPTS`). Every attempt is in the report | Report |
 | CR-9 | The sweep runs | At the commit and at the control commit: the first parent of the merge of FIX-1875's first PR | Both SHAs in the report |
-| CR-10 | The rename-map script runs | Over the six checks, from `f1ae352` to the commit, after `--sources` agrees with the children's tables and `--control` catches every plant | Its three outputs in the report |
+| CR-10 | The rename-map script runs | Over the six checks, from `f1ae352` to the commit, and over FIX-1872 V9's reruns from the control commit, after `--sources` agrees with the children's tables and `--control` catches every plant | Its three outputs in the report |
 
 ## What counts as only names
 
@@ -34,7 +34,7 @@ shows the rule held.
 | CR-11 | A hunk in any of the six checks changes | Both sides are cut into tokens, whitespace ignored. Every differing token pair is a map pair, the *Ask* → *Wait* family FIX-1876's table names, or an article agreeing with its renamed noun. Otherwise the hunk fails ([D2](DECISIONS.md#d2)) | `map:` |
 | CR-12 | A hunk adds or drops a token | It fails, unless a shape entry or a listed fence line below explains it | `map:` |
 | CR-13 | A coordinator check moves the post entry from `internal` to `task`, or turns `handOff({ worker })` into `dispatchTask({ post: true, assignee })` | Admitted as #3153's two named entries. In the three regression checks the same change fails ([ER-11](../../epics/FIX-1870/BUSINESS-RULES.md#what-no-child-may-do)) | `map:` |
-| CR-14 | A coordinator check replaces a ledger read with a row read | Admitted only when listed in the script's fence file with the reason, and only in a coordinator check. The report prints each one. An outcome line (what the person sees) never changes | The fence list in the report |
+| CR-14 | A coordinator check replaces a ledger read with a row read | Admitted only when listed in the script's fence file with its path, its replacement and the reason, and only in a coordinator check. Only that line and its replacement are exempt; the rest of the hunk is judged by CR-11. The report prints each one. An outcome line (what the person sees) never changes | The fence list in the report |
 | CR-15 | A child's pinned table and the script's map disagree, either way | `--sources` fails, and the run stops before the diff is judged | `--sources` |
 
 ## What counts as gone

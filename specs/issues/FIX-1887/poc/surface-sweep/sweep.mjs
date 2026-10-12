@@ -56,8 +56,10 @@ const RULES = [
   { id: "wait-flag", what: "`waitForResponse` (addTask's wait flag)", re: String.raw`\bwaitForResponse\b` },
   {
     id: "addtask-timeout",
-    what: "`timeoutMs` on `addTask`: both named on one line (a call, a schema line, a docs row)",
+    what: "`timeoutMs` on `addTask`: both on one line, or inside one `addTask({ … })` call across lines",
     re: String.raw`(\baddTask\b.*\btimeoutMs\b|\btimeoutMs\b.*\baddTask\b)`,
+    // A call wrapped over lines: read each file that names both, whole.
+    span: { words: ["addTask", "timeoutMs"], re: /\baddTask\s*\(\s*\{[^{}]*?\btimeoutMs\b/g },
   },
   {
     id: "ask-exports",
@@ -97,6 +99,53 @@ function grep(re) {
   }
 }
 
+/** A rule's `span`: matches that cross lines, in files naming every word; each reported at its last line. */
+function spanHits(span) {
+  let files;
+  try {
+    const flags = span.words.flatMap((w) => ["-e", w]);
+    files = execFileSync("git", ["grep", "-l", "-I", "--all-match", ...flags, sha, "--", ...SCOPE], { encoding: "utf8" })
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => l.slice(sha.length + 1));
+  } catch (e) {
+    if (e.status === 1) return [];
+    throw e;
+  }
+  const out = [];
+  for (const path of files) {
+    const text = execFileSync("git", ["show", `${sha}:${path}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const lines = text.split("\n");
+    for (const m of text.matchAll(span.re)) {
+      const line = text.slice(0, m.index + m[0].length).split("\n").length;
+      out.push(`${sha}:${path}:${line}:${lines[line - 1]}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * A sweep that scanned nothing passes. Each place SCOPE reads must hold at
+ * least one file at the commit, or the run stops: a moved tree is a finding
+ * against the sweep, not a pass.
+ */
+function assertScopeReads() {
+  const excludes = SCOPE.filter((g) => g.startsWith(":(exclude)"));
+  for (const glob of SCOPE.filter((g) => !g.startsWith(":(exclude)"))) {
+    let n = 0;
+    try {
+      n = execFileSync("git", ["grep", "-l", "-I", "-e", "", sha, "--", glob, ...excludes], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").filter(Boolean).length;
+    } catch (e) {
+      if (e.status !== 1) throw e;
+    }
+    console.log(`  scope ${glob}: ${n} file(s)`);
+    if (n === 0) {
+      console.log(`FAIL · scope \`${glob}\` reads no file at ${sha.slice(0, 12)}: the sweep would pass on nothing`);
+      process.exit(3);
+    }
+  }
+}
+
 /** `<sha>:<path>:<line>:<text>` → a live hit, or undefined when marked. */
 function parse(hit) {
   const rest = hit.slice(sha.length + 1);
@@ -112,6 +161,7 @@ if (args.includes("--control")) {
   const planted = {
     "wait-flag": 'addTask({ goal, waitForResponse: true })',
     "addtask-timeout": 'addTask({ goal, assignee: "ops", timeoutMs: 120000 })',
+    "addtask-timeout:span": 'await addTask({\n  goal,\n  timeoutMs: 120000,\n});',
     "ask-exports": "import { AskEndedError } from '@flow-state-dev/core'",
     "handoff-tool": [
       'export const HAND_OFF = "handOff";',
@@ -133,14 +183,26 @@ if (args.includes("--control")) {
       console.log(`${caught && cleared ? "ok  " : "MISS"} ${r.id}: ${line}`);
       if (!caught || !cleared) bad++;
     }
+    if (r.span !== undefined) {
+      const line = planted[`${r.id}:span`];
+      const caught = [...line.matchAll(r.span.re)].length === 1;
+      console.log(`${caught ? "ok  " : "MISS"} ${r.id} (across lines): ${line.replace(/\n\s*/g, " ")}`);
+      if (!caught) bad++;
+    }
   }
   process.exit(bad === 0 ? 2 : 3); // 2 = every plant caught (the control FAILS the sweep, as it must)
 }
 
 let live = 0;
 console.log(`surface sweep at ${sha}`);
+assertScopeReads();
 for (const r of RULES) {
-  const hits = grep(r.re).map(parse).filter(Boolean);
+  const raw = grep(r.re);
+  if (r.span !== undefined) {
+    const seen = new Set(raw.map((h) => h.split(":").slice(1, 3).join(":")));
+    for (const h of spanHits(r.span)) if (!seen.has(h.split(":").slice(1, 3).join(":"))) raw.push(h);
+  }
+  const hits = raw.map(parse).filter(Boolean);
   live += hits.length;
   const files = [...new Set(hits.map((h) => h.path))];
   console.log(`\n${hits.length === 0 ? "PASS" : "FAIL"} ${r.id} · ${r.what}: ${hits.length} line(s) in ${files.length} file(s)`);
