@@ -188,7 +188,7 @@ export function seams(base: string): SeamRow[] {
         .filter((l) => l.startsWith("+") && !l.startsWith("+++"));
       // Type-cased `Project`/`Workstream` (a lowercase `project` is a projection function here), and any CoS or admin-seat name.
       // A capital `Project` followed by an article is the verb opening a sentence ("Project a stored session"), not the noun.
-      const contentHits = addedLines.filter((l) => /\b(Project|Workstream)s?\b(?!\s+(a|an|the)\b)/.test(l) || /chief.?of.?staff|admin.?seat/i.test(l));
+      const contentHits = addedLines.filter((l) => /\bProjects?\b(?!\s+(a|an|the)\b)|\bWorkstreams?\b/.test(l) || /chief.?of.?staff|admin.?seat/i.test(l));
       if (pathHit || contentHits.length > 0) naming.push(`${status} ${file}: ${pathHit ? "path names it; " : ""}${contentHits.slice(0, 3).map((l) => l.trim().slice(0, 120)).join(" | ")}`);
     }
     out.push(`$ git diff ${base.slice(0, 9)}..HEAD packages/core packages/engine: ${changed.length} file(s) changed; naming a Project, Workstream, CoS or admin seat: ${naming.length}`);
