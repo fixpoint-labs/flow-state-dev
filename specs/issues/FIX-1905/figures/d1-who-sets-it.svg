@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, who turns on a project&#x27;s MCP servers. Chosen: any member, from the names the server offers, at create or later. Instead of: only the operator&#x27;s profile, at create. It comes down to the first row, a project made in the app: with the chosen option it can get Linear; with the operator-only option it never can. Second row, the price: any member can make every run on the project act in Linear as the key&#x27;s owner, where operator-only keeps that with the operator. Third row, a tie: no address or key on the row either way. Locks in: members wield the host&#x27;s key through approved names. Flips if a host&#x27;s key carries more than members should wield."
+<svg viewBox="0 0 940 422" role="img" aria-label="D1, who turns on a project&#x27;s MCP servers. Chosen: any member, from the names the Lab offers, at create or later. Instead of: only the operator&#x27;s profile, at create. It comes down to the first row, a project made in the app: it can get Linear, against never. Second row, the price: one member decides for every run on the project, each run acting as its own requester, against the operator alone. Third row, a tie: names only on the row either way. Locks in members choosing, each run acting as its requester. Flips if a server should be reachable by only some members."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -31,7 +31,7 @@
     .c-lost { fill:var(--ink-2); }
     .c-acc  { fill:var(--accent); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
@@ -48,7 +48,7 @@
     <text class="t-h c-lost" x="592" y="112">Only the operator&#x27;s profile</text>
   </g>
 
-  <g id="row-decides">
+  <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-lbl" x="32" y="156">A PROJECT MADE</text>
@@ -56,45 +56,45 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Can get Linear</text>
-    <text class="t-s" x="248" y="179">at create, or later with setMcpServers</text>
+    <text class="t-s" x="248" y="179">at create, or later by setMcpServers</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Never gets it</text>
-    <text class="t-s" x="612" y="179">and nor does a store made before this</text>
+    <text class="t-b" x="612" y="161">Never gets Linear</text>
+    <text class="t-s" x="612" y="179">nor a store opened before this</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">WHO WIELDS THE KEY</text>
+    <text class="t-lbl" x="32" y="222">WHAT IT COSTS</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Every member of the project</text>
-    <text class="t-s" x="248" y="241">runs act in Linear as the key&#x27;s owner</text>
+    <text class="t-b" x="248" y="223">One member decides for all runs</text>
+    <text class="t-s" x="248" y="241">each run acts as its own requester</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">The operator alone</text>
-    <text class="t-s" x="612" y="241">by editing the profile</text>
-    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+    <text class="t-b" x="612" y="223">The operator decides alone</text>
+    <text class="t-s" x="612" y="241">members can&#x27;t change it</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">THE ROW</text>
+    <text class="t-lbl" x="32" y="280">ON THE ROW</text>
     <text class="mark tie" x="228" y="282">=</text>
     <text class="t-b" x="248" y="281">Names only</text>
-    <text class="t-s" x="248" y="299">no address, variable or key</text>
+    <text class="t-s" x="248" y="299">no address or key</text>
     <text class="mark tie" x="592" y="282">=</text>
     <text class="t-b" x="612" y="281">Names only</text>
-    <text class="t-s" x="612" y="299">the same</text>
-    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+    <text class="t-s" x="612" y="299">no address or key</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
   </g>
 
   <g id="locks-in">
-    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Members wield the host&#x27;s key</text>
-    <text class="t-s" x="32" y="389">through names the host approved</text>
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">Members choose; each run acts as its requester</text>
+    <text class="t-s" x="32" y="391">a name the Lab drops is skipped, aloud</text>
   </g>
 
   <g id="flips-if">
-    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A host&#x27;s key reaches more than members should</text>
-    <text class="t-s" x="494" y="389">then a name gets an operator-only mark</text>
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">A server some members shouldn&#x27;t reach</text>
+    <text class="t-s" x="494" y="391">then an operator-only mark on that name</text>
   </g>
 </svg>

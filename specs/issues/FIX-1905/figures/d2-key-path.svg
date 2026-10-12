@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, how the Linear key reaches the run&#x27;s MCP connection. Chosen: in Claude Code&#x27;s own MCP config. Instead of: an FSD relay that holds the key in the server process. It comes down to the first row, what an unsandboxed run can reach: with the chosen option the key is in the Claude Code process&#x27;s arguments; with the relay it is still in the server process&#x27;s environment, which the same user can read, so both reach it. Second row, the price: one MCP client, Claude Code&#x27;s, against a second client and relay path plus streaming input. Third row, a tie: the key is not in the run&#x27;s environment, logs or session either way. Locks in the promise: not handed to the run, not unreachable. Flips if coding runs go sandboxed."
+<svg viewBox="0 0 940 480" role="img" aria-label="D2, who holds the MCP connection and the key for a coding run. Chosen: FSD holds it, and the run gets tools only. Instead of: Claude Code&#x27;s own MCP config. It comes down to the first row, who controls the connection: FSD, for any harness, observing, closing and swapping it per run, against the harness, configured per run. Second row, where the key is handed: nowhere in the run, against the run&#x27;s own command line. Third row, the price: one in-process hop per tool call, against nothing extra. Fourth row, a tie: an unsandboxed shell can read the Lab&#x27;s store either way. Locks in: never handed to the run, not unreachable. Flips if a harness takes no in-process tools."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -31,70 +31,83 @@
     .c-lost { fill:var(--ink-2); }
     .c-acc  { fill:var(--accent); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <rect class="bg" x="0" y="0" width="940" height="480"/>
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">How does the Linear key reach the run&#x27;s MCP connection?</text>
+    <text class="t-q" x="32" y="52">Who holds the MCP connection and the key for a coding run?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Claude Code&#x27;s own MCP config</text>
+    <text class="t-h c-code" x="228" y="112">FSD holds it; the run gets tools</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">An FSD relay holding the key</text>
+    <text class="t-h c-lost" x="592" y="112">Claude Code&#x27;s own MCP config</text>
   </g>
 
-  <g id="row-decides">
+  <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT AN UNSANDBOXED</text>
-    <text class="t-lbl" x="32" y="169">RUN CAN REACH</text>
+    <text class="t-lbl" x="32" y="156">WHO CONTROLS</text>
+    <text class="t-lbl" x="32" y="169">THE CONNECTION</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
-    <text class="mark tie" x="228" y="162">=</text>
-    <text class="t-b" x="248" y="161">The key, in process arguments</text>
-    <text class="t-s" x="248" y="179">the Claude Code process, same user</text>
-    <text class="mark tie" x="592" y="162">=</text>
-    <text class="t-b" x="612" y="161">The key, in process environment</text>
-    <text class="t-s" x="612" y="179">the server process, same user</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">FSD, for any harness</text>
+    <text class="t-s" x="248" y="179">observes, closes, swaps it per run</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The harness, configured per run</text>
+    <text class="t-s" x="612" y="179">FSD hands it over and lets go</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">WHAT IT COSTS</text>
+    <text class="t-lbl" x="32" y="222">WHERE THE KEY</text>
+    <text class="t-lbl" x="32" y="235">IS HANDED</text>
     <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">One MCP client</text>
-    <text class="t-s" x="248" y="241">Claude Code connects; FSD adds none</text>
+    <text class="t-b" x="248" y="223">Nowhere in the run</text>
+    <text class="t-s" x="248" y="241">not argv, env, MCP config, session</text>
     <text class="mark minus" x="592" y="224">−</text>
-    <text class="t-b" x="612" y="223">A second client and a relay</text>
-    <text class="t-s" x="612" y="241">plus the SDK&#x27;s streaming-input mode</text>
-    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+    <text class="t-b" x="612" y="223">The run&#x27;s own command line</text>
+    <text class="t-s" x="612" y="241">--mcp-config, which a shell can list</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">ENV, LOGS, SESSION</text>
+    <text class="t-lbl" x="32" y="280">WHAT IT COSTS</text>
     <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">Not there, but on the command line</text>
-    <text class="t-s" x="248" y="299">a shell can list it</text>
+    <text class="t-b" x="248" y="281">One in-process hop per tool call</text>
+    <text class="t-s" x="248" y="299">and FSD&#x27;s client in the run&#x27;s path</text>
     <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">Not there, nor on the command line</text>
-    <text class="t-s" x="612" y="299">still in the server&#x27;s environment</text>
-    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+    <text class="t-b" x="612" y="281">Nothing extra</text>
+    <text class="t-s" x="612" y="299">Claude Code connects itself</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="338">AN UNSANDBOXED</text>
+    <text class="t-lbl" x="32" y="351">SHELL</text>
+    <text class="mark tie" x="228" y="340">=</text>
+    <text class="t-b" x="248" y="339">Can read the Lab&#x27;s store</text>
+    <text class="t-s" x="248" y="357">same OS user as the Lab</text>
+    <text class="mark tie" x="592" y="340">=</text>
+    <text class="t-b" x="612" y="339">Can read the Lab&#x27;s store</text>
+    <text class="t-s" x="612" y="357">and the argv as well</text>
+    <line class="row" x1="16" y1="374" x2="924" y2="374"/>
   </g>
 
   <g id="locks-in">
-    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Not handed to the run, not unreachable</text>
-    <text class="t-s" x="32" y="389">the docs say exactly that</text>
+    <rect class="foot" x="16" y="390" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="411">LOCKS IN</text>
+    <text class="t-b" x="32" y="431">Never handed to the run, not unreachable</text>
+    <text class="t-s" x="32" y="449">the docs say exactly that</text>
   </g>
 
   <g id="flips-if">
-    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Coding runs go sandboxed</text>
-    <text class="t-s" x="494" y="389">then only the relay keeps the key out</text>
+    <rect class="foot" x="478" y="390" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="411">FLIPS IF</text>
+    <text class="t-b" x="494" y="431">A harness takes no in-process tools</text>
+    <text class="t-s" x="494" y="449">then it gets no servers, not the key</text>
   </g>
 </svg>

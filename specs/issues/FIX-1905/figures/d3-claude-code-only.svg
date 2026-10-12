@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, which harnesses get a project&#x27;s MCP servers. Chosen: Claude Code, with the host wiring the resolver into it. Instead of: a fourth feed on the harness slot that every harness receives. It comes down to the first row, what a harness must honour: only the one that opts in, against every harness, Codex included, which has no option to receive it. Second row, the price: Linear for Codex and Cursor runs waits on their packages, against all harnesses at once. Third row, a tie: the same project read either way. Locks in Claude Code only, for now. Flips if a second harness needs project servers for a goal."
+<svg viewBox="0 0 940 422" role="img" aria-label="D3, which harnesses get a project&#x27;s servers in this issue. Chosen: Claude Code only. Instead of: every harness at once. It comes down to the first row, what each harness needs: Claude Code an in-process server, which it takes today, against Codex a local MCP endpoint FSD would have to serve. Second row, the price: Cursor and Codex runs wait and say so, against all at once. Third row, a tie: the FSD half, key, connection, tool list and call, is harness-neutral either way. Locks in Claude Code first, Cursor a small follow-up through its in-process custom tools. Flips if a goal needs Linear on Cursor or Codex."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -31,70 +31,70 @@
     .c-lost { fill:var(--ink-2); }
     .c-acc  { fill:var(--accent); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Which harnesses get a project&#x27;s MCP servers?</text>
+    <text class="t-q" x="32" y="52">Which harnesses get a project&#x27;s servers in this issue?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Claude Code, wired by the host</text>
+    <text class="t-h c-code" x="228" y="112">Claude Code only</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">A fourth feed every harness gets</text>
+    <text class="t-h c-lost" x="592" y="112">Every harness at once</text>
   </g>
 
-  <g id="row-decides">
+  <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT A HARNESS</text>
-    <text class="t-lbl" x="32" y="169">MUST HONOUR</text>
+    <text class="t-lbl" x="32" y="156">WHAT EACH</text>
+    <text class="t-lbl" x="32" y="169">HARNESS NEEDS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Only the one that opts in</text>
-    <text class="t-s" x="248" y="179">Claude Code takes one generic option</text>
+    <text class="t-b" x="248" y="161">An in-process server</text>
+    <text class="t-s" x="248" y="179">Claude Code takes it today</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Every one, Codex included</text>
-    <text class="t-s" x="612" y="179">which has no MCP option to take it</text>
+    <text class="t-b" x="612" y="161">Codex: a local MCP endpoint</text>
+    <text class="t-s" x="612" y="179">FSD would serve one per run</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">CODEX AND CURSOR RUNS</text>
+    <text class="t-lbl" x="32" y="222">WHAT IT COSTS</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">No Linear yet</text>
-    <text class="t-s" x="248" y="241">until their packages add an option</text>
+    <text class="t-b" x="248" y="223">Cursor and Codex runs wait</text>
+    <text class="t-s" x="248" y="241">and say so in their session</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Linear at once</text>
-    <text class="t-s" x="612" y="241">where a package can take it</text>
-    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+    <text class="t-b" x="612" y="223">Every harness at once</text>
+    <text class="t-s" x="612" y="241">one design for three</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">WHERE THE PROJECT IS READ</text>
+    <text class="t-lbl" x="32" y="280">THE FSD HALF</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">The same lookup</text>
-    <text class="t-s" x="248" y="299">the one that finds the repository</text>
+    <text class="t-b" x="248" y="281">Key, connection, list, call</text>
+    <text class="t-s" x="248" y="299">harness-neutral</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">The same lookup</text>
-    <text class="t-s" x="612" y="299">the same</text>
-    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+    <text class="t-b" x="612" y="281">Key, connection, list, call</text>
+    <text class="t-s" x="612" y="299">harness-neutral</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
   </g>
 
   <g id="locks-in">
-    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Claude Code only, for now</text>
-    <text class="t-s" x="32" y="389">the host says so at start for other harnesses</text>
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">Claude Code first</text>
+    <text class="t-s" x="32" y="391">Cursor a small follow-up via customTools</text>
   </g>
 
   <g id="flips-if">
-    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A second harness needs servers for a goal</text>
-    <text class="t-s" x="494" y="389">then the feed moves into harness-manager</text>
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">A goal needs Linear on Cursor or Codex</text>
+    <text class="t-s" x="494" y="391">Cursor first: one option, same resolver</text>
   </g>
 </svg>
