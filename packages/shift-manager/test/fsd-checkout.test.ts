@@ -75,9 +75,10 @@ beforeAll(async () => {
       return { ...host, openLab: (options: OpenLabOptions) => host.openLab((handed = options)) };
     });
     const mod = (await import("../teams/devteam/fsd.fsdev.config.mts")) as { lab: Lab };
+    const repositories = (mod.lab.projects ?? []).map((p) => String(p.project.repository));
     await mod.lab.dispose();
     const workspace = handed?.workspace as LabWorkspaceHost;
-    profile = { workspace, checkouts: workspace.checkouts ?? [], repositories: (mod.lab.projects ?? []).map((p) => String(p.project.repository)) };
+    profile = { workspace, checkouts: workspace.checkouts ?? [], repositories };
   } finally {
     vi.doUnmock("../teams/devteam/host.mts");
     for (const [k, v] of Object.entries(before)) {
