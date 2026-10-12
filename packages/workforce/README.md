@@ -1739,7 +1739,11 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   when it was refused at the cap on open rounds), and `fit`: why best fit handed the post to the
   fallback or the judgment turn (`reason`: `coordinator`, `below-floor`, `no-confidence`,
   `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the
-  `minConfidence` where there are some). Render it apart from the conversation's lines.
+  `minConfidence` where there are some). Render it apart from the conversation's lines. App code
+  reads the records with `createSessionClient(...).listSessionRequests(sessionId, { includeItems: true })`,
+  keeping each request's `items` whose `type` is `"component"` and `component` is
+  `COORDINATOR_ROUTE`; the record is the item's `data`. Without `includeItems: true` there are no
+  `items` to read.
 
 `hireWorkforce` refuses a broken standard coordinator at load, naming the problem: a `rounds:`
 above 3 (`rounds can be at most 3`), a `routing:` outside the four, a `fallback:` that isn't one
