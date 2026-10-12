@@ -515,9 +515,14 @@ async function openPage(page: Page, origin: string, path: string) {
 /** A project's path in Shift Manager, at a tab. */
 const projectPath = (held: Held, tab: string) => `/p/${held.visibility === "private" ? "private/" : ""}${encodeURIComponent(held.row.id)}/${tab}`;
 
-/** No tab shows a project gap: no `project-*-empty` state, and no copy saying projects arrive later. */
+/**
+ * No tab shows a project gap: no tab-level `project-<tab>-empty` state, and no copy saying projects
+ * arrive later. A Stream's conversation with no line yet (`project-stream-conversation-empty`) is
+ * the conversation drawn, not a gap.
+ */
 async function gapReached(page: Page): Promise<string | undefined> {
-  if ((await page.locator("[data-testid^=project-][data-testid$=-empty]").count()) > 0) return "a project-*-empty state is drawn";
+  const gaps = ["brief", "workstreams", "board", "stream"].map((tab) => `[data-testid=project-${tab}-empty]`).join(", ");
+  if ((await page.locator(gaps).count()) > 0) return "a project-*-empty state is drawn";
   const text = (await page.locator("main").textContent()) ?? "";
   return text.includes("FIX-1650") ? "copy naming FIX-1650 is drawn" : undefined;
 }
