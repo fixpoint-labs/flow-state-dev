@@ -497,8 +497,8 @@ for.
 
 A system prompt is the standing instruction the agent reads before your request. Leave
 `systemPrompt` out and the run starts from Claude Code's own, the same one the `claude` command
-uses. That prompt is what tells the agent to keep a to-do list as it works, among much else, so
-a run started this way behaves like the agent you know from the terminal.
+uses, so a run started this way gets the same standing instructions as the agent you know from
+the terminal.
 
 To add your own instructions on top, append them:
 
@@ -513,9 +513,8 @@ claudeCodeAgent({
 ```
 
 A plain string replaces Claude Code's prompt entirely. The agent then knows only what your string
-says. It will still have its tools, but nothing tells it to keep a to-do list, so with
-`recordWork` on the plan record usually stays empty. Use a string when you want that narrow
-agent; use `append` when you want to add a line.
+says, though it still has its tools. Use a string when you want that narrow agent; use `append`
+when you want to add a line.
 
 `""` starts the run with no system prompt at all. The value is forwarded to the Agent SDK as
 given, so any shape the SDK accepts works here, and the SDK rejects one it doesn't.
@@ -586,9 +585,11 @@ nothing applied. `null` means the row was written before the field existed.
 The plan record reads the same way, from `observed-plan`. A to-do item's status
 is the harness's own word for it, and stays empty until the harness reports one.
 
-The plan record fills only when the agent keeps a to-do list. It does when the run starts from
-Claude Code's own prompt, with or without `append`. A run given its own prompt string usually
-writes its plan as prose instead, and the record stays empty. That is the honest answer, not a
+The plan record fills only when the agent keeps a to-do list with Claude Code's to-do tools,
+`TaskCreate` and `TaskUpdate`. That takes two things. The run has to be offered the tools: on
+newer models Claude Code switches them off unless you name them in `allowedTools`. And the agent
+has to choose to use them, which it often doesn't on a short job, whatever prompt the run
+started from. When it doesn't, the record stays empty. That is the honest answer, not a
 recording failure, and nothing appears in `observed-gaps` for it.
 
 ### What the file record is, and what it isn't

@@ -120,14 +120,16 @@ export interface ClaudeCodeAgentOptions {
    * The system prompt the run starts from, forwarded to the SDK as given.
    *
    * - **Omitted:** Claude Code's own prompt, the one the `claude` CLI uses.
-   *   It is what tells the agent to keep a to-do list as it works, so it is
-   *   what fills `recordWork`'s plan half.
    * - **A string:** replaces Claude Code's prompt entirely. The agent knows
-   *   only what the string says, and usually keeps no to-do list.
+   *   only what the string says.
    * - **`""`:** no system prompt at all.
    * - **`{ type: "preset", preset: "claude_code", append }`:** Claude Code's
-   *   prompt with your text added after it. The way to add instructions
-   *   without losing the to-do guidance.
+   *   prompt with your text added after it.
+   *
+   * None of these makes the agent keep a to-do list. `recordWork`'s plan half
+   * fills only when the run is offered the to-do tools and the agent chooses to
+   * use them; on newer models Claude Code offers them only when they are named
+   * in `allowedTools`.
    *
    * Any other shape the SDK accepts is forwarded too, and the SDK rejects one
    * it doesn't.
@@ -951,7 +953,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // The one place the default is decided, so every path that reaches the
         // SDK (in-session, detached, resumed, through a capability) gets it.
         // Left absent, the SDK sends an EMPTY custom prompt rather than Claude
-        // Code's own, and the agent never learns to keep its to-do list.
+        // Code's own, so the run would not start the way the CLI starts it.
         // `undefined` only: `""` is a host asking for that blank start.
         systemPrompt: systemPrompt ?? { type: "preset", preset: "claude_code" },
         allowedTools,

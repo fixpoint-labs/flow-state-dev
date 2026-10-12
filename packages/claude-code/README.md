@@ -357,12 +357,17 @@ resource collections and writes into them as it goes:
 claudeCodeAgent({ detached: true, recordWork: true });
 ```
 
-The plan half fills when the agent keeps a to-do list, which it does when the run
-starts from Claude Code's own system prompt. That is the default when
-`systemPrompt` is left out. To add instructions, use
+Leave `systemPrompt` out and the run starts from Claude Code's own system prompt,
+the same one the `claude` CLI uses. To add instructions to it, use
 `systemPrompt: { type: "preset", preset: "claude_code", append: "…" }`. A plain
-string replaces Claude Code's prompt and usually leaves `observed-plan` empty;
-`""` starts the run with no system prompt.
+string replaces it, and `""` starts the run with no system prompt.
+
+The plan half fills only when the run is offered Claude Code's to-do tools
+(`TaskCreate`, `TaskUpdate`) and the agent chooses to use them. Neither the
+default prompt nor `recordWork` makes it. On newer models Claude Code switches
+those tools off unless they are named in `allowedTools`, and even when they are
+offered the agent often works without a list. An empty `observed-plan` means the
+run kept no list; it is not a recording failure.
 
 Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
 and a request that runs the agent more than once — both answer per run.
