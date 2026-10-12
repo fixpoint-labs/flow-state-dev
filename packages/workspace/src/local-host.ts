@@ -16,10 +16,15 @@
  *     workspace/   the kept files as the working directory (a run with no repository)
  *
  * <root>/<place…>/                  a repository the operator named in
- *                                   `localRepositories`: the place IS the checkout,
- * <root>/<place…>.provisioning      with its marker and lock beside it, and the
- * <root>/<place…>.place.lock        branch kept in that repository, never cloned
+ *                                   `localRepositories`, with no kept files: the
+ * <root>/<place…>.provisioning      place IS the checkout, with its marker and lock
+ * <root>/<place…>.place.lock        beside it, and the branch kept in that
+ *                                   repository, never cloned
  * ```
+ *
+ * A repository the operator named, answered WITH kept files, is laid out like
+ * a remote run's place: its worktree in `checkout/` and the files in
+ * `project/` beside it, the branch still kept in that repository.
  *
  * Three rules shape it, and each is enforced here rather than trusted to the
  * caller:
@@ -142,8 +147,9 @@ export interface LocalWorkspaceHostOptions {
    * Repositories on this machine that runs are cut from directly, as their
    * absolute paths. A source answering one of these paths as its `repo` gets a
    * worktree of that repository itself: no clone, no fetch, and the run's
-   * branch kept in it. The place's directory is the checkout, and a source may
-   * not name kept files beside it.
+   * branch kept in it. When the source names no kept files, the place's
+   * directory is the checkout; when it names them, the worktree is the
+   * place's `checkout/` and the files are in `project/` beside it.
    *
    * Any other bare path is still refused. Listing a path is the operator's
    * allowance, judged before any git process, the same as `remotes.allow`.
@@ -669,41 +675,52 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /**
-   * A worktree of a repository the operator named, with the place itself as
-   * the checkout. No clone and no fetch: the base is read in the repository
-   * as it stands, and the run's branch stays in it.
+   * A worktree of a repository the operator named, at `checkout`: the place
+   * itself when the run keeps no files, `<place>/checkout` when it does. No
+   * clone and no fetch: the base is read in the repository as it stands, and
+   * the run's branch stays in it. No lock over the repository: each run has
+   * its own place and branch, and git keeps concurrent worktrees apart. Called
+   * holding the place's lock.
    */
   async function provisionLocalCheckout(
     repo: string,
     baseRef: string | undefined,
-    dir: string,
+    checkout: string,
+    marker: string,
     branch: string,
     ignored: IgnoredDirectory | undefined,
     deadline: number,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
-    mkdirSync(root, { recursive: true });
-    return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, async () => {
-      const base = baseRef ?? "HEAD";
-      const worktree = await provisionWorktree({
-        repo,
-        repoLabel: repo,
-        checkout: dir,
-        marker: `${dir}${LOCAL_MARKER_SUFFIX}`,
-        root,
-        branch,
-        deadline,
-        now,
-        ...(ignored !== undefined ? { ignored } : {}),
-        base: async () => ({ ref: base, commitish: base }),
-      });
-      return {
-        remote: repo,
-        clone: repo,
-        branch,
-        created: worktree.created,
-        ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
-      };
+    const base = baseRef ?? "HEAD";
+    const worktree = await provisionWorktree({
+      repo,
+      repoLabel: repo,
+      checkout,
+      marker,
+      root,
+      branch,
+      deadline,
+      now,
+      ...(ignored !== undefined ? { ignored } : {}),
+      // Read before anything is made, so a ref the repository doesn't have
+      // fails naming it and leaves no marker, tree or branch behind.
+      base: async (left) => {
+        try {
+          await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
+        } catch (error) {
+          if (!gitAnsweredNo(error)) throw error;
+          throw new Error(`${repo} has no "${base}" to cut the run's branch from.`);
+        }
+        return { ref: base, commitish: base };
+      },
     });
+    return {
+      remote: repo,
+      clone: repo,
+      branch,
+      created: worktree.created,
+      ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
+    };
   }
 
   /** The repository a source's `repo` names, when the operator listed it as local. */
@@ -716,7 +733,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   function locate(answer: RunSourceAnswer, request: Pick<PlaceRequest, "place">): { dir: string; cwd: string } {
     const dir = placeDir(request.place);
     if (answer.kind === "files") return { dir, cwd: join(dir, WORKSPACE_DIR) };
-    if (answer.kind === "repo" && localRepository(answer.repo) !== undefined) return { dir, cwd: dir };
+    // A local repository is its own place only when no kept files sit beside it.
+    if (answer.kind === "repo" && localRepository(answer.repo) !== undefined && answer.files === undefined) {
+      return { dir, cwd: dir };
+    }
     return { dir, cwd: join(dir, CHECKOUT_DIR) };
   }
 
@@ -752,14 +772,40 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // A repository the operator named on this machine, used as it stands.
     const local = localRepository(answer.repo);
     if (local !== undefined) {
-      if (answer.files !== undefined) {
-        throw new Error(
-          `a repository on this machine (${local}) is its own place, so it takes no kept ` +
-            `files beside it. Name a remote to keep files in project/, or none.`,
+      if (answer.projectId === undefined || answer.files === undefined) {
+        // No kept files: the place is the checkout, with its marker and lock
+        // beside it, exactly as places already on disk were made.
+        mkdirSync(root, { recursive: true });
+        const repo = await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, () =>
+          provisionLocalCheckout(local, answer.baseRef, dir, `${dir}${LOCAL_MARKER_SUFFIX}`, branch, request.ignored, deadline),
         );
+        return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
       }
-      const repo = await provisionLocalCheckout(local, answer.baseRef, dir, branch, request.ignored, deadline);
-      return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+      // Kept files: laid out like a remote run's place, the worktree in
+      // checkout/ and the files in project/ beside it, never inside it.
+      const { projectId, files } = answer;
+      return await locked(join(dir, LOCK_SUFFIX), deadline, async () => {
+        const repo = await provisionLocalCheckout(
+          local,
+          answer.baseRef,
+          join(dir, CHECKOUT_DIR),
+          join(dir, PROVISIONING_MARKER),
+          branch,
+          request.ignored,
+          deadline,
+        );
+        const filesDir = join(dir, PROJECT_DIR);
+        await provisionFiles(dir, PROJECT_DIR, projectId, files);
+        return {
+          kind: "repo",
+          dir,
+          cwd: join(dir, CHECKOUT_DIR),
+          filesDir,
+          holder: hold(filesDir),
+          repo,
+          origin: repo.created ? "new" : "live",
+        } satisfies WorkspacePlace;
+      });
     }
 
     // Judged before anything is created or spawned.

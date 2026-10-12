@@ -7,7 +7,7 @@
  * always pointed runs at one working repository keep its branches where they
  * were. Every git process is counted, as in the remote suite.
  */
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
@@ -40,6 +40,14 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
+
+/** The worktrees git lists for `repository`, by path: git's own view, not what a provision returned. */
+function worktreesOf(repository: string): string[] {
+  return git(repository, "worktree", "list", "--porcelain")
+    .split("\n")
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => line.slice("worktree ".length));
+}
 
 function host(localRepositories: string[] = [repo]) {
   return localWorkspaceHost({ root, remotes: { allow: [] }, localRepositories, source: noSource });
@@ -106,15 +114,78 @@ describe("a repository the operator names on this machine", () => {
     expect(spawned).not.toHaveBeenCalled();
   });
 
-  it("refuses kept files beside a local repository: its place is the checkout", async () => {
-    const files = createFakeCollection("project-files/**");
-    const attempt = host().provision(
-      { kind: "repo", repo, projectId: "p1", files: { collection: files, collectionId: "files" } },
-      { place: ["run-1"], branch: "fsd/run-1" },
-    );
+});
 
-    await expect(attempt).rejects.toThrow(/kept files/);
-    expect(spawned).not.toHaveBeenCalled();
+describe("a repository on this machine with kept files beside it", () => {
+  function withFiles(seed: Record<string, string> = {}) {
+    const collection = createFakeCollection("project-files/**", seed);
+    return {
+      collection,
+      answer: { kind: "repo" as const, repo, projectId: "p1", files: { collection, collectionId: "project-files" } },
+    };
+  }
+
+  it("lays the place out like a remote run's: the worktree in checkout/, the files in project/ (BR-8)", async () => {
+    const { answer } = withFiles({ "p1/plan.md": "the plan" });
+    const place = await host().provision(answer, { place: ["run-1"], branch: "fsd/run-1" });
+
+    const dir = join(root, "run-1");
+    expect(place.dir).toBe(dir);
+    expect(place.cwd).toBe(join(dir, "checkout"));
+    expect(place.filesDir).toBe(join(dir, "project"));
+    expect(readFileSync(join(dir, "project", "plan.md"), "utf8")).toBe("the plan");
+    // Git's own view, in the operator's repository: the run's worktree is
+    // checkout/, on its own branch, and nothing was cloned.
+    expect(worktreesOf(repo)).toContain(join(dir, "checkout"));
+    expect(git(place.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(existsSync(join(root, ".clones"))).toBe(false);
+    expect(place.repo).toMatchObject({ remote: repo, clone: repo, created: true });
+  });
+
+  it("locates the same place before provisioning it", async () => {
+    const { answer } = withFiles();
+    const located = host().locate(answer, { place: ["a", "run-1"] });
+    const place = await host().provision(answer, { place: ["a", "run-1"], branch: "fsd/run-1" });
+
+    expect(located).toEqual({ dir: place.dir, cwd: place.cwd });
+  });
+
+  it("saves a note in project/ to the project's files, and git never sees it (BR-11)", async () => {
+    const { collection, answer } = withFiles();
+    const h = host();
+    const place = await h.provision(answer, { place: ["run-1"], branch: "fsd/run-1" });
+
+    writeFileSync(join(place.filesDir!, "note.md"), "remember this");
+    const report = await h.save(place);
+
+    expect(report.conflicts).toEqual([]);
+    expect(collection.contents()["p1/note.md"]).toBe("remember this");
+    expect(git(place.cwd, "status", "--porcelain", "--untracked-files=all")).toBe("");
+  });
+
+  it("hands a later turn the same worktree, branch, work and files", async () => {
+    const { answer } = withFiles();
+    const h = host();
+    const first = await h.provision(answer, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(first.cwd, "wip.txt"), "half done");
+    writeFileSync(join(first.filesDir!, "note.md"), "kept");
+    await h.save(first);
+    await h.release(first);
+
+    const again = await h.provision(answer, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(again.cwd).toBe(first.cwd);
+    expect(again.repo?.created).toBe(false);
+    expect(readFileSync(join(again.cwd, "wip.txt"), "utf8")).toBe("half done");
+    expect(readFileSync(join(again.filesDir!, "note.md"), "utf8")).toBe("kept");
+  });
+
+  it("keeps a place with no kept files exactly as before: the place is the checkout (BR-12)", async () => {
+    const place = await host().provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(place.cwd).toBe(join(root, "run-1"));
+    expect(place.filesDir).toBeUndefined();
+    expect(existsSync(join(root, "run-1", "checkout"))).toBe(false);
   });
 });
 
