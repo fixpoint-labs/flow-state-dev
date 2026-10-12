@@ -24,7 +24,7 @@ shows the rule held.
 | CR-6 | Any composed check runs | As its own process, with its own setup, store and `GOAL_CONTROL`, exactly as its `goal.md` says. The runner edits none of them | The runner's command list |
 | CR-7 | A composed check documents controls | Each runs, and goes red at exactly its documented tags plus its documented co-failures. One that passes, fails at setup, or reddens another tag is a finding against the control | Each verdict line |
 | CR-8 | A model step misses | The composed check's own attempt cap applies (`GOAL_ATTEMPTS`). Every attempt is in the report | Report |
-| CR-9 | The sweep runs | Its static half at the commit and at the control commit: the first parent of the merge of FIX-1875's first PR. Its runtime half at the commit, on the built packages | Both SHAs in the report |
+| CR-9 | The sweep runs | At the commit and at the control commit: the first parent of the merge of FIX-1875's first PR | Both SHAs in the report |
 | CR-10 | The rename-map script runs | Over the six checks, from `f1ae352` to the commit, after `--sources` agrees with the children's tables and `--control` catches every plant | Its three outputs in the report |
 
 ## What counts as only names
@@ -42,7 +42,7 @@ shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | CR-16 | A retired name appears in package source, a package README, a published page, a team's worker file or the reference app | A live hit, unless the line carries `retired-name-refusal` (a refusal of the old name, or a legacy reader) | `sweep:` |
-| CR-17 | The built packages' tool lists or exports name `waitForResponse` (or `timeoutMs` on `addTask`), `handOff`, or a public ask name FIX-1875 retires | A live hit | `sweep:` runtime half |
+| CR-17 | An exported symbol or a tool name names `waitForResponse`, `timeoutMs` on `addTask`, `handOff`, or a public ask name FIX-1875 retires | A live hit, read from source: a tool's name is a string literal, a key constant or a worker file's `tools:` line, and an export names its symbol. What the built packages refuse is the children's: FIX-1875 V6 (`waitForResponse`, `timeoutMs`), FIX-1872 BR-18 and its V7 (`handOff`), FIX-1872 leg b (no ledger) | `sweep:`, and those checks cited |
 
 ## What happens to a finding
 

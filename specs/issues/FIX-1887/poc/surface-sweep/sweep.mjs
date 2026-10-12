@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// FIX-1887 surface sweep, static half. Retained spec evidence, not production code.
+// FIX-1887 surface sweep. Retained spec evidence, not production code.
 //
 // The epic's (FIX-1870) sweep: the retired ways of giving another worker work
 // are gone from what a person reads or imports. It reads ONE commit, through
@@ -14,8 +14,11 @@
 // The epic's control: `--assert --at <the main commit before FIX-1875's first
 // PR merged>` must exit 1. After the last child merges, `--assert` at HEAD must exit 0.
 //
-// The runtime half (the tool lists and the exported symbols, read from the
-// built packages) is PLAN.md's S4, built at implement time.
+// Exported symbols and tool names are read from source: a tool reaches a
+// list only by a name declared as a string literal, a key constant, or a
+// worker file's `tools:` line, and a symbol is exported only by a line that
+// names it. The runtime refusals are the children's own checks (FIX-1875 V6,
+// FIX-1872 BR-18 and its V7), cited by the report, not rechecked here.
 //
 // A line that names a retired name on purpose (a refusal of the old name, a
 // legacy reader) carries `retired-name-refusal` and is not a live use; the
@@ -52,14 +55,19 @@ const SCOPE = [
 const RULES = [
   { id: "wait-flag", what: "`waitForResponse` (addTask's wait flag)", re: String.raw`\bwaitForResponse\b` },
   {
+    id: "addtask-timeout",
+    what: "`timeoutMs` on `addTask`: both named on one line (a call, a schema line, a docs row)",
+    re: String.raw`(\baddTask\b.*\btimeoutMs\b|\btimeoutMs\b.*\baddTask\b)`,
+  },
+  {
     id: "ask-exports",
     what: "the public ask names FIX-1875 renames",
     re: String.raw`\b(addTaskAndWait|AddTaskAndWaitOptions|WaitForResponseResult|canHoldAsk|AskEndedError|AskStoppedError|(DEFAULT|MIN|MAX)_ASK_TIMEOUT_MS)\b`,
   },
   {
     id: "handoff-tool",
-    what: "the coordinator's `handOff` tool: its name as a string, its key, or `handOff` in backticks in a page",
-    re: String.raw`(["'\`]handOff["'\`]|\bHAND_OFF\b)`,
+    what: "the coordinator's `handOff` tool: its name as a string, its key, an exported `handOff`, a worker file's `tools:` line, or `handOff` in backticks in a page",
+    re: String.raw`(["'\`]handOff["'\`]|\bHAND_OFF\b|\bexport\b.*\bhandOff\b|^tools:.*\bhandOff\b)`,
   },
   { id: "post-to-mailbox", what: "`post-to-mailbox`", re: String.raw`post-to-mailbox` },
   {
@@ -103,20 +111,28 @@ if (args.includes("--control")) {
   // marker must clear it. A rule that can't fail is not a check.
   const planted = {
     "wait-flag": 'addTask({ goal, waitForResponse: true })',
+    "addtask-timeout": 'addTask({ goal, assignee: "ops", timeoutMs: 120000 })',
     "ask-exports": "import { AskEndedError } from '@flow-state-dev/core'",
-    "handoff-tool": 'export const HAND_OFF = "handOff";',
+    "handoff-tool": [
+      'export const HAND_OFF = "handOff";',
+      "export function handOff(post) {",
+      "tools: [listDelegates, handOff]",
+    ],
     "post-to-mailbox": "uses: [post-to-mailbox]",
     ledger: "state[DELIVERIES_STATE]",
     "ledger-entries": "[DELEGATE_ANSWER_ACTION]: { block: delegateAnswer }",
   };
   let bad = 0;
   for (const r of RULES) {
-    const re = new RegExp(r.re);
-    const caught = re.test(planted[r.id]);
-    // The same line, marked, through the real hit parser: it must be dropped.
-    const cleared = parse(`${sha}:scratch/planted.ts:1:${planted[r.id]} // ${MARKER}`) === undefined;
-    console.log(`${caught && cleared ? "ok  " : "MISS"} ${r.id}: ${planted[r.id]}`);
-    if (!caught || !cleared) bad++;
+    // `m`: a `^` alternative anchors at a line start, as git grep reads it.
+    const re = new RegExp(r.re, "m");
+    for (const line of [planted[r.id]].flat()) {
+      const caught = re.test(line);
+      // The same line, marked, through the real hit parser: it must be dropped.
+      const cleared = parse(`${sha}:scratch/planted.ts:1:${line} // ${MARKER}`) === undefined;
+      console.log(`${caught && cleared ? "ok  " : "MISS"} ${r.id}: ${line}`);
+      if (!caught || !cleared) bad++;
+    }
   }
   process.exit(bad === 0 ? 2 : 3); // 2 = every plant caught (the control FAILS the sweep, as it must)
 }

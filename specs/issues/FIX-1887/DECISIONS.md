@@ -53,9 +53,10 @@ fails it again at the closure commit, where only `dispatchTask` starts work.
   WR-19 and FIX-1875's VR each check "the epic's rename-map script", and none of them owned it.
   They are retained under [`poc/`](poc/) and move to the goal directory in the closure PR.
 - **The sweep reads one commit through `git grep`, so its control runs from the same checkout.**
-  The static half runs at both commits. The runtime half (the tool lists with every option on,
-  and each package's exports, read from the built packages) runs at `HEAD` only, with a planted
-  control: building the control commit's packages buys nothing the static half doesn't show.
+  It runs at both commits. Exported symbols and tool names are read from source, where each is
+  declared by name; building the packages to list them again would recheck what FIX-1875 V6 and
+  FIX-1872 BR-18 already refuse at run time. `timeoutMs` on `addTask` is caught when both are
+  named on one line; one left in `addTask`'s schema is V6's to refuse.
 - **"Workers that use only `dispatchTask`" is proven by absence plus refusal, not by grading tool
   calls in each store.** At the commit, `waitForResponse` is refused by name (FIX-1875 BR-21,
   its V6), `handOff` is refused at load (FIX-1872 BR-18) and the sweep finds neither live. A
@@ -85,3 +86,7 @@ fails it again at the closure commit, where only `dispatchTask` starts work.
   part. Built both scripts the children's plans already cite, and ran them: the sweep fails
   today's `main` at 163 live lines, and the rename-map script passes the three regression checks
   on FIX-1875's first PR and fails six widened hunks in FIX-1794's check (D2).
+- **Restraint** (2026-10-12) — cut the sweep's runtime half (building and importing the packages
+  to list their tools and exports): the static rules already read those names, and FIX-1875 V6 and
+  FIX-1872 BR-18 refuse them at run time. Added a rule for `timeoutMs` on `addTask` and widened the
+  `handOff` rule to exports and worker `tools:` lines; 165 live lines on the same `main`.

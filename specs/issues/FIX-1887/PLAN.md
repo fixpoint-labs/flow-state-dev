@@ -14,7 +14,7 @@ shipped code or a child's `goal.md` says otherwise, those win and the report say
 | S1 | `goals/dispatching-work/runs-on-dispatch-task-alone/goal.md` | From [SPEC's goal](SPEC.md#the-goal-and-how-well-know-its-met), in the `goals/README.md` format, on-demand posture (CR-5) |
 | S2 | `…/run.mts` | The thin runner, shaped like FIX-1820's: refuses a dirty tree, records `HEAD`, re-checks it before each part, runs each check as its own process with its own `GOAL_CONTROL`, grades a control on its exact red set, prints each verdict with the SHA, stops at the first check that can't start |
 | S3 | `…/rename-map.mjs`, `…/fence-lines.json` | [`poc/rename-map/check.mjs`](poc/rename-map/check.mjs) moved in, unchanged in rule. The fence file lists each ledger read FIX-1872 turned into a row read: path, the removed text, the reason |
-| S4 | `…/surface-sweep.mjs` | [`poc/surface-sweep/sweep.mjs`](poc/surface-sweep/sweep.mjs) moved in, plus its runtime half: import the built `orchestration`, `workforce` and `core`; list the task tools with every option on (`buildTaskToolsList`), the coordinator's tools, and each package's exports; fail on CR-17's names. Its control plants one such tool in the list it reads |
+| S4 | `…/surface-sweep.mjs` | [`poc/surface-sweep/sweep.mjs`](poc/surface-sweep/sweep.mjs) moved in, unchanged in rule. It reads source only; the runtime refusals are the children's checks, cited in the report (CR-17) |
 | S5 | The closure PR | Only after a clean run: S1 to S4, with the report as its body |
 
 Removed: nothing. No composed check, Lab, fixture or `goal.md` is edited (D1, CR-6).
@@ -42,7 +42,7 @@ model calls. Checks run one after another: real model, shared keys, readable out
 | P1.k | `goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts` (FIX-1610), then under each control its `goal.md` lists | Plain PASS; each control red at its documented legs only (`no-context` at **context** only, as FIX-1872's V9 also requires) |
 | P1.c | The controls of FIX-1791's and FIX-1794's checks that P1.r runs plain | Each red at its documented tags only (`unpartitioned`, `no-follow-up`, and `hands-each-post-to-its-delegates`'s `controls/patches.mts`) |
 | P1.m | `rename-map.mjs --sources`, `--control`, then the diff `f1ae352..HEAD` | `--sources` exits 0; `--control` exits 2 (every plant caught); the diff exits 0 with each fence line printed |
-| P1.s | `surface-sweep.mjs --assert` at `HEAD`, then `--assert --at <control commit>`, then its runtime half and `--control` | 0 live lines at `HEAD`; exit 1 at the control commit; runtime half clean; `--control` exits 2 |
+| P1.s | `surface-sweep.mjs --assert` at `HEAD`, then `--assert --at <control commit>`, then `--control` | 0 live lines at `HEAD`; exit 1 at the control commit; `--control` exits 2 |
 
 **The control commit** is the first parent of the merge commit of FIX-1875's first PR (#3168
 today). The runner finds it from `git log --first-parent --merges` and prints it.
@@ -140,8 +140,8 @@ node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --assert    # exit 1 on t
 node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --control   # exit 2: every rule catches its plant
 ```
 
-**Showed (2026-10-12, `main` at `9825241`).** The sweep fails today's `main` at 163 live lines in
-five rules; `post-to-mailbox` already passes. `--sources` agrees with both tables, and a name
+**Showed (2026-10-12, `main` at `9825241`).** The sweep fails today's `main` at 165 live lines in
+six of its seven rules; `post-to-mailbox` already passes. `--sources` agrees with both tables, and a name
 planted in FIX-1876's table fails it (exit 3). `--control` catches a loosened timeout, a dropped
 leg, a widened assertion and a shape entry in a regression check, and passes a pure and a
 re-wrapped rename. On FIX-1875's open first PR (#3168, head `46773de`), every hunk in the three
@@ -157,8 +157,8 @@ closure ran.
 - Read FIX-1872's merged diff to the coordinator checks and write `fence-lines.json` from it, one
   entry per ledger read, each with its reason. A fence line that changes an outcome line is a
   finding, not an entry.
-- Find FIX-1875's V2 and V6 tests and FIX-1816's timeout and stop tests, and name them in the
-  report.
+- Find FIX-1875's V2 and V6 tests, FIX-1872's BR-18 test (its V7) and FIX-1816's timeout and stop
+  tests, and name them in the report.
 - Re-run `--sources`: a child's amended table since this spec is read, not assumed.
 
 ## Follow-ups

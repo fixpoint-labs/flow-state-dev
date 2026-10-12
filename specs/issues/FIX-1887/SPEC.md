@@ -46,10 +46,10 @@ but names; the sweep proves the old ways are gone. Each control breaks exactly w
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/dispatching-work/runs-on-dispatch-task-alone/`: a thin runner over the commit. It runs FIX-1820's closure runner (FIX-1816, FIX-1817 and FIX-1820 with their controls, plus FIX-1791's and FIX-1794's checks), FIX-1610's check, every child's own check, the rename-map script and the sweep. On demand, not a CI gate. Committed by the closure PR, whose body is the report |
-| **Signal** | Each composed check's own tags, plain PASS, each control red at exactly its documented tags. `map:` every hunk in the six checks since `f1ae352` explained. `sweep:` 0 live lines at `HEAD` across six rules, and the built packages' tool lists and exports hold no retired name |
+| **Signal** | Each composed check's own tags, plain PASS, each control red at exactly its documented tags. `map:` every hunk in the six checks since `f1ae352` explained. `sweep:` 0 live lines at `HEAD` across seven rules, exported symbols and tool names included |
 | **Input** | Real workers on `openai/gpt-5.4-mini`, SQLite, each check's held-out words. The six checks as they stood when the epic spec merged (`f1ae352`) |
 | **Anti-game** | No edit to any composed check by this issue. No assertion on a child's unit tests. The map is read off the children's pinned tables, and `--sources` fails if they disagree. A fence line is admitted only in a coordinator check, only when listed with its reason, and the report prints each one |
-| **Control that must fail** | The sweep at the `main` commit before FIX-1875's first PR merged must FAIL (163 live lines on `9825241`, 2026-10-12). The script's `--control` must catch a loosened timeout, a dropped leg and an assertion widened to the old name (it does). Each composed check's own controls must FAIL as documented |
+| **Control that must fail** | The sweep at the `main` commit before FIX-1875's first PR merged must FAIL (165 live lines on `9825241`, 2026-10-12). The script's `--control` must catch a loosened timeout, a dropped leg and an assertion widened to the old name (it does). Each composed check's own controls must FAIL as documented |
 
 ## What changes
 
