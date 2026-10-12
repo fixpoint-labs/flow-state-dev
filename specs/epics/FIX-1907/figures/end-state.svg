@@ -1,0 +1,72 @@
+<svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box: a harness picker with four modes, Flow State, Claude Code, Codex and Cursor, and an unavailable state with its reason; one harness session flow that binds a session to one harness conversation through resume and onSession, shows items while the run works, stops a run, and uses one workspace resolver; and one plan record in core that each coding harness writes and Kitchen Sink only reads. Unchanged beside it: the three harness blocks and their handle, and the framework's own flows under Flow State mode. Replaced in one line: the support desk as the front page becomes the picker, the plan record moves from the Claude Code package to core, and Codex's to-do list stops being only a tool item. Not built, below a fence: orchestration across harnesses, driving a harness from a task board or harness-manager, a task list that hands a harness work, importing sessions started outside Kitchen Sink, and harness modes on a deployed host.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="392"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="232" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; A FRONT DOOR AND ONE SESSION FLOW</text>
+    <rect class="held" x="32" y="56" width="528" height="56" rx="4"/>
+    <text class="t-b" x="44" y="78">the picker &#183; Flow State &#183; Claude Code &#183; Codex &#183; Cursor</text>
+    <text class="t-s" x="44" y="98">a rail per mode &#183; a mode this host can't run says why</text>
+    <rect class="held" x="32" y="122" width="300" height="120" rx="4"/>
+    <text class="t-b" x="44" y="144">one harness session flow</text>
+    <text class="t-s" x="44" y="164">a session &#8596; one harness conversation</text>
+    <text class="t-s" x="44" y="180">written by onSession &#183; read by resume</text>
+    <text class="t-s" x="44" y="196">items while the run works &#183; stop</text>
+    <text class="t-s" x="44" y="212">one workspace resolver</text>
+    <text class="t-s" x="44" y="228">a harness differs only by options</text>
+    <rect class="held" x="344" y="122" width="216" height="120" rx="4"/>
+    <text class="t-b" x="356" y="144">one plan record, in core</text>
+    <text class="t-s" x="356" y="164">each harness writes its own</text>
+    <text class="t-s" x="356" y="180">Kitchen Sink only reads it</text>
+    <text class="t-s" x="356" y="196">none reported &#8594; says so</text>
+    <text class="t-s" x="356" y="212">never board work</text>
+  </g>
+
+  <g id="unchanged">
+    <rect class="comp" x="592" y="24" width="332" height="110" rx="5"/>
+    <text class="t-lbl" x="608" y="44">UNCHANGED BESIDE IT</text>
+    <text class="t-b" x="608" y="66">the three harness blocks</text>
+    <text class="t-s" x="608" y="84">their handle, resume and onSession</text>
+    <text class="t-b" x="608" y="106">the framework's own flows</text>
+    <text class="t-s" x="608" y="124">under Flow State mode (open question)</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="repl" x="592" y="146" width="332" height="110" rx="5"/>
+    <text class="t-lbl" x="608" y="166">REPLACED IN ONE LINE</text>
+    <text class="t-s" x="608" y="188">support desk front page &#8594; the picker</text>
+    <text class="t-s" x="608" y="206">observed-plan in claude-code &#8594; core</text>
+    <text class="t-s" x="608" y="224">Codex todo_list item &#8594; also a plan record</text>
+    <text class="t-s" x="608" y="242">Cursor task notes &#8594; a plan, or "none"</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="276" width="908" height="96" rx="5"/>
+    <text class="t-non" x="32" y="296">NOT BUILT &#8212; KITCHEN SINK STAYS A PASS-THROUGH</text>
+    <text class="t-s" x="32" y="318">no orchestration across harnesses &#183; no harness-manager or task board driving a harness (Shift Manager's)</text>
+    <text class="t-s" x="32" y="336">no task list that hands a harness work &#183; no import of sessions started outside Kitchen Sink</text>
+    <text class="t-s" x="32" y="354">no harness modes on a deployed host</text>
+  </g>
+</svg>
