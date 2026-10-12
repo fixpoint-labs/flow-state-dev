@@ -1,6 +1,8 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a support team with a coordinator in front, and shows it in a shell whose navigator is imported from `@flow-state-dev/react` and whose roster is read through Workforce's client.
+Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it and say "not built yet" until each one lands.
+
+Kitchen Sink sets up a session and keeps it in step with the harness. It doesn't plan work for a harness or move work between harnesses; that is [Shift Manager](../../packages/shift-manager/README.md).
 
 Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
 
@@ -25,6 +27,17 @@ PORT=3001 pnpm --filter @flow-state-dev/kitchen-sink dev
 
 The `curl` examples in this README use `localhost:3000`. Change the port to match.
 
+The front page is the picker. Pick **Flow State** for the assistant and the support desk, at [http://localhost:3000/flow-state](http://localhost:3000/flow-state). A mode this machine can't run is listed with the reason, and opening it does nothing.
+
+Coding harness modes work on a git repository. With `pnpm dev`, that is the checkout the server runs from, and you set nothing. To use another checkout, or to run them on a production server, name its top level:
+
+```bash
+# apps/kitchen-sink/.env.local
+KITCHEN_SINK_HARNESS_WORKSPACE=/Users/me/code/flow-state-dev
+```
+
+The path has to be the top level of an existing git checkout; anything else turns the modes off and says why. Each session gets its own worktree and branch of that repository, so it never edits your checkout or another session's work. A production server without the setting keeps the harness modes off, and so does Vercel, even with it, because Kitchen Sink has no sign-in and anyone who can reach it acts as the same user. Restart the server after changing the setting; the picker reads it once, at start.
+
 The `pnpm fsdev` commands below run from `apps/kitchen-sink`, where `fsdev.config.ts` gives the CLI the same flows, models and stores the app has.
 
 ### Without a model key
@@ -40,7 +53,7 @@ The specialists and the assistant all answer with the same placeholder, `Test mo
 ## What to read first
 
 - `workforce/`: the support team, four specialists and the coordinator that sends each post to one of them. This is the authoring path, and the shortest route to understanding the app.
-- `app/page.tsx`: the shell, with one navigator on the left, the stream in the middle, and the roster on the right.
+- `app/page.tsx`: the picker. `app/flow-state/page.tsx`: the Flow State shell, with one navigator on the left, the stream in the middle, and the roster on the right.
 - `flows/`: the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
 The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The app uses one pattern, the response auditor, which annotates an answer after it's produced.
@@ -170,7 +183,8 @@ Restart the app and ask the worker something. The reload runs at startup, before
 
 ## The page (`app/`)
 
-- **Layout**: three columns. A `FlowNavigator` rail over your conversations with the coordinator, with workers, and with the assistant; the stream; and a standing panel with the roster (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
+- **Front page**: the picker. Each mode has its own address: `/flow-state`, `/claude-code`, `/codex`, `/cursor`. Every mode's rail opens with the mode's name and a link back here.
+- **Layout** (Flow State): three columns. A `FlowNavigator` rail over your conversations with the coordinator, with workers, and with the assistant; the stream; and a standing panel with the roster (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
 - **Coordinators**: Open `support.help` in the rail to read your conversation with it and post. Your post calls the coordinator flow's `run` action, the same one the [HTTP call above](#posting-to-the-coordinator-over-http) reaches, and appears as `devuser`, the one user this app runs as. Answers appear while the view is open, and the view shows which specialist is working.
 - **Workers**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
 - **Roster**: The team panel's roster lists workers [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no workers have been hired in this organization yet, while the rail lists the four specialists.
@@ -231,6 +245,7 @@ Most are optional. These are the ones you're likely to set:
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway key. Required for real answers: every model the app uses goes through the gateway. |
 | `OPENAI_API_KEY` | Optional. Enables voice. |
 | `KITCHEN_SINK_TEST_MODE` | `1` runs every model as a script and needs no key. See [Without a model key](#without-a-model-key). |
+| `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, outside the checkout. Unset: the server's own checkout in local development, off otherwise. Ignored on Vercel, where they're always off. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
 | `STORE_TYPE` | `filesystem` keeps sessions and hired workers in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
@@ -288,7 +303,8 @@ pnpm --filter @flow-state-dev/kitchen-sink build
 apps/kitchen-sink/
   fsdev.config.ts            The FlowState: flows, stores, principal resolver (source of truth)
   app/                       Next.js App Router
-    page.tsx                 The shell: navigator rail, stream, standing panel
+    page.tsx                 The picker: four modes, each with its availability
+    flow-state/page.tsx      The Flow State shell: navigator rail, stream, standing panel
     layout.tsx               Root layout with Inter font
     api/flows/               Flow API routes (SSE streaming)
   flows/

@@ -54,6 +54,8 @@ import { SuggestionRow } from "@/components/suggestion-row";
 import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ModeRailHeader } from "@/components/mode-rail-header";
+import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
@@ -712,7 +714,7 @@ function AssistantLeafToolbar({
   );
 }
 
-/** The rail: one navigator over every section, and the app's links underneath it. */
+/** The rail: the mode's header row, one navigator over every section, and the app's links underneath it. */
 function Rail({
   slots,
   sessionSource,
@@ -729,6 +731,7 @@ function Rail({
 }) {
   return (
     <>
+      <ModeRailHeader label={modeById("flow-state").label} />
       <div className="min-h-0 flex-1 py-1" style={RAIL_THEME}>
         {/* Dispatch runs too: a specialist's session for a coordinator's post is
             a run the coordinator started, and is listed only when they are

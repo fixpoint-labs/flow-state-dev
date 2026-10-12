@@ -1,0 +1,175 @@
+// @vitest-environment happy-dom
+/**
+ * The picker, a harness mode's address, and a harness mode's frame, as drawn
+ * (`specs/issues/FIX-1914/PLAN.md` V5, V6; BUSINESS-RULES BR-1, BR-14, BR-19,
+ * BR-21 to BR-23).
+ *
+ * V5 renders the server components on the real gate, with the host set
+ * through the environment, so what is asserted is the page and not the
+ * availability function. V6 mounts the frame on a stubbed server holding two
+ * harness flow kinds, so "lists only its own kind" can fail.
+ *
+ * Red states produced before these were trusted:
+ *   - render the frame whatever the availability: the unavailable-address case fails (a rail is drawn).
+ *   - list the mode's section with no `kinds` filter: the only-its-own-kind case fails (the other kind's row shows).
+ *   - create the new session on the first listed flow, not the mode's: the New-session case fails.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
+
+import PickerPage from "@/app/page";
+import { HarnessFrame } from "@/components/harness-frame";
+import { HarnessModePage } from "@/components/harness-mode-page";
+import { resetModeAvailabilityForTests } from "@/lib/harness-gate";
+import { COORDINATOR_FLOWS, SHELL_FLOW, WORKER_FLOWS } from "@/lib/workforce-shell";
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+  resetModeAvailabilityForTests();
+});
+
+/** The harness flow kinds the spec pins, one per harness mode. */
+const HARNESS_KINDS = ["claude-code-session", "codex-session", "cursor-session"];
+
+describe("V5 · the picker at /", () => {
+  it("BR-1: four modes, in order; Flow State available; each unavailable one with its reason", async () => {
+    vi.stubEnv("VERCEL", "1");
+    render(await PickerPage());
+    const cards = [...document.querySelectorAll<HTMLElement>("[data-mode-id]")];
+    expect(cards.map((card) => card.dataset.modeId)).toEqual(["flow-state", "claude-code", "codex", "cursor"]);
+    expect(cards.map((card) => within(card).getByText(/^(Flow State|Claude Code|Codex|Cursor)$/).textContent)).toEqual([
+      "Flow State",
+      "Claude Code",
+      "Codex",
+      "Cursor",
+    ]);
+    const [flowState, ...harnesses] = cards;
+    expect(flowState!.dataset.available).toBe("true");
+    expect(within(flowState!).getByRole("link").getAttribute("href")).toBe("/flow-state");
+    for (const card of harnesses) {
+      expect(card.dataset.available).toBe("false");
+      expect(within(card).queryByRole("link")).toBeNull();
+      expect(within(card).getByTestId("mode-reason").textContent).toMatch(/local machine/);
+    }
+  });
+
+  it("BR-9: with a repository, the harness modes say not built yet", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_WORKSPACE", "");
+    render(await PickerPage());
+    const reasons = [...document.querySelectorAll('[data-available="false"] [data-testid="mode-reason"]')].map(
+      (reason) => reason.textContent,
+    );
+    expect(reasons).toEqual(["Not built yet.", "Not built yet.", "Not built yet."]);
+  });
+});
+
+describe("V5 · BR-14 · an unavailable mode by its address", () => {
+  it("shows the picker's reason and the way back, and draws no rail, no navigator, no composer", async () => {
+    vi.stubEnv("VERCEL", "1");
+    render(await HarnessModePage({ id: "codex" }));
+    expect(screen.getByTestId("mode-reason").textContent).toMatch(/local machine/);
+    expect(screen.getByRole("link", { name: "Back to the modes" }).getAttribute("href")).toBe("/");
+    expect(screen.queryByTestId("rail")).toBeNull();
+    expect(document.querySelector("nav[data-fsd-flow-navigator]")).toBeNull();
+    expect(screen.queryByTestId("new-session")).toBeNull();
+    expect(screen.queryByTestId("message-input")).toBeNull();
+  });
+});
+
+const entry = (kind: string): FlowListEntry => ({ id: kind, kind, cardinality: "singleton", requireUser: false, actions: [] });
+
+/** A server holding two harness flow kinds and the sessions on each, newest first. */
+function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
+  const created: Array<{ flowKind: string; userId: string }> = [];
+  return {
+    created,
+    flowSource: { listFlows: vi.fn(async () => [entry("codex-session"), entry("claude-code-session")]) },
+    sessionSource: {
+      listSessions: vi.fn(async (options?: { flowKind?: string; flowId?: string }) =>
+        rows
+          .filter((row) => row.kind === (options?.flowId ?? options?.flowKind))
+          .map((row) => ({ id: row.id, flowKind: row.kind, title: row.title }) as unknown as SessionSummary),
+      ),
+      createSession: vi.fn(async (options: { flowKind: string; userId: string }) => {
+        created.push({ flowKind: options.flowKind, userId: options.userId });
+        const row = { id: `new-${created.length}`, kind: options.flowKind, title: "fresh" };
+        rows.unshift(row);
+        return { id: row.id, flowKind: row.kind } as never;
+      }),
+    },
+  };
+}
+
+function mount(server: ReturnType<typeof fakeServer>) {
+  return render(
+    <HarnessFrame
+      label="Codex"
+      flowKind="codex-session"
+      flowSource={server.flowSource}
+      sessionSource={server.sessionSource as never}
+      stream={(sessionId) => <p data-testid="opened">{sessionId}</p>}
+    />,
+  );
+}
+
+async function openKind(kind: string) {
+  const row = await waitFor(() => {
+    const found = document.querySelector<HTMLButtonElement>(`[data-kind="${kind}"]`);
+    if (found === null) throw new Error(`no row for ${kind}`);
+    return found;
+  });
+  if (row.getAttribute("aria-expanded") !== "true") fireEvent.click(row);
+}
+
+describe("V6 · a harness mode's frame", () => {
+  it("BR-21: the mode's name and the way back head the rail, which lists only its own kind's sessions", async () => {
+    const server = fakeServer([
+      { id: "c1", kind: "codex-session", title: "codex one" },
+      { id: "k1", kind: "claude-code-session", title: "claude one" },
+    ]);
+    mount(server);
+    const rail = screen.getByTestId("rail");
+    expect(within(rail).getByTestId("mode-name").textContent).toBe("Codex");
+    expect(within(rail).getByRole("link", { name: "Back to the modes" }).getAttribute("href")).toBe("/");
+    await openKind("codex-session");
+    await waitFor(() => expect(within(rail).getByText("codex one")).toBeTruthy());
+    expect(rail.querySelector('[data-kind="claude-code-session"]')).toBeNull();
+    expect(within(rail).queryByText("claude one")).toBeNull();
+  });
+
+  it("BR-22: New session creates a session on the mode's flow and opens it in the stream; the other kind is untouched", async () => {
+    const server = fakeServer([{ id: "k1", kind: "claude-code-session", title: "claude one" }]);
+    mount(server);
+    await openKind("codex-session");
+    fireEvent.click(screen.getByTestId("new-session"));
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("new-1"));
+    expect(server.created).toEqual([{ flowKind: "codex-session", userId: "devuser" }]);
+    await waitFor(() => expect(within(screen.getByTestId("rail")).getByText("fresh")).toBeTruthy());
+    expect(within(screen.getByTestId("rail")).queryByText("claude one")).toBeNull();
+  });
+
+  it("BR-23: with no sessions, the rail says so and offers New session", async () => {
+    const server = fakeServer([]);
+    mount(server);
+    await openKind("codex-session");
+    // The navigator's own empty line, inside the mode's open leaf.
+    const leaf = await waitFor(() => {
+      const found = screen.getByTestId("rail").querySelector('ul[data-leaf="codex-session"]');
+      if (found === null) throw new Error("the leaf did not open");
+      return found as HTMLElement;
+    });
+    await waitFor(() => expect(within(leaf).getByText("No sessions yet")).toBeTruthy());
+    expect(screen.getByTestId("new-session").textContent).toContain("New session");
+  });
+});
+
+describe("V6 · BR-19 · Flow State's rail", () => {
+  it("lists no harness mode's sessions", () => {
+    const listed = [...COORDINATOR_FLOWS, ...WORKER_FLOWS, SHELL_FLOW];
+    expect(listed.filter((kind) => HARNESS_KINDS.includes(kind))).toEqual([]);
+  });
+});
