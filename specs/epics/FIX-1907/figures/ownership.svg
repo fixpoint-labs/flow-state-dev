@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 460" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: nine rules by six issues and Shift Manager. FIX-1914 owns the picker with its unavailable state, and Flow State mode keeping its own tasks. FIX-1915 owns one session per harness conversation, items from the harness emitter only, one session flow with options only, and the plan record in core. FIX-1916 and FIX-1917 own no rule and consume FIX-1915's. FIX-1185 owns Claude Code's plan filling on the SDK path. The closure owns the proof. Shift Manager, outside the epic, owns driving a harness from a task board and across harnesses; every child here stays out of it.">
+     aria-label="Who owns what: nine rules by six issues and Shift Manager. FIX-1914 owns the picker with its unavailable state, and Flow State mode keeping its own tasks. FIX-1915 owns one session per harness conversation, items from the harness emitter only, one session flow factory with a flow kind per harness, and the plan record in core. FIX-1916 and FIX-1917 own no rule and consume FIX-1915's. FIX-1185 owns Claude Code's plan filling on the SDK path. The closure owns the proof. Shift Manager, outside the epic, owns driving a harness from a task board and across harnesses; every child here stays out of it.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
@@ -77,7 +77,7 @@
     <rect class="none" x="824" y="178" width="92" height="32" rx="3"/>
   </g>
   <g id="r5">
-    <text class="t-row" x="16" y="239">ER-6 one flow, options only</text>
+    <text class="t-row" x="16" y="239">ER-6 one factory, kind per harness</text>
     <rect class="use" x="236" y="218" width="92" height="32" rx="3"/><text class="t-use" x="244" y="238">consumes</text>
     <rect class="own" x="334" y="218" width="92" height="32" rx="3"/><text class="t-own" x="342" y="238">OWNS</text>
     <rect class="use" x="432" y="218" width="92" height="32" rx="3"/><text class="t-use" x="440" y="238">consumes</text>
@@ -126,5 +126,5 @@
     <rect class="own" x="726" y="378" width="92" height="32" rx="3"/><text class="t-own" x="734" y="398">OWNS</text>
     <rect class="none" x="824" y="378" width="92" height="32" rx="3"/>
   </g>
-  <text class="t-use" x="16" y="446">A dotted cell has no stake. FIX-1916 and FIX-1917 own nothing: each consumes FIX-1915's rules, which is the point of one flow.</text>
+  <text class="t-use" x="16" y="446">A dotted cell has no stake. FIX-1916 and FIX-1917 own nothing: each consumes FIX-1915's rules, which is the point of one factory.</text>
 </svg>

@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **builds on one of our coding harnesses** (Claude Code, Codex, Cursor) | Reads a contract page and unit tests. Codex has run on a real model only from a goal script; Cursor never has | Works that harness in a real app: turns continue one conversation, the run shows while it works, its plan is beside it |
-| **maintains the harness packages** | Finds a gap when a Shift Manager closure trips on it ([FIX-1735](https://linear.app/fixpoint-labs/issue/FIX-1735), [FIX-1692](https://linear.app/fixpoint-labs/issue/FIX-1692)) | Has one app where each harness runs directly, on the same session flow, so a gap shows in one mode against the others |
+| **maintains the harness packages** | Finds a gap when a Shift Manager closure trips on it ([FIX-1735](https://linear.app/fixpoint-labs/issue/FIX-1735), [FIX-1692](https://linear.app/fixpoint-labs/issue/FIX-1692)) | Has one app where each harness runs directly, on flows from the same session flow factory, so a gap shows in one mode against the others |
 | **wants to know what a run planned** | Claude Code's plan record is proved by unit tests only, because its SDK path never calls the plan tools ([FIX-1185](https://linear.app/fixpoint-labs/issue/FIX-1185)). Codex and Cursor record no plan | Reads each harness's own to-do list beside its session, or a plain "this harness reports none" |
 | **learns the framework from Kitchen Sink** | Lands on the support desk and the assistant | Picks **Flow State** and finds the framework's own flows there ([open question](DECISIONS.md#open)) |
 | **runs Shift Manager** | Owns orchestration across harnesses | Still does. Kitchen Sink takes none of it |
@@ -62,9 +62,9 @@ harness on the real path. It touches no other subsystem Goal 1 covers.
 
 ## What's in the box
 
-![In the box: a harness picker with four modes and an honest unavailable state; one harness session flow binding a session to a harness conversation through resume and onSession, with live items, stop and one workspace resolver; one plan record in core that each coding harness writes and Kitchen Sink only reads. Unchanged beside it: the three harness blocks and their handle, and the framework's own flows under Flow State mode. Replaced in one line: the support desk as the front page, the plan record living in the Claude Code package, Codex's to-do list as a bare tool item. Not built, below a fence: orchestration across harnesses, driving a harness from a task board, a task list that hands a harness work, importing outside sessions, harness modes on a deployed host](figures/end-state.svg)
+![In the box: a harness picker with four modes and an honest unavailable state; one harness session flow factory, a flow kind per harness, binding a session to a harness conversation through resume and onSession, with live items, stop and one workspace resolver; one plan record in core that each coding harness writes and Kitchen Sink only reads. Unchanged beside it: the three harness blocks and their handle, and the framework's own flows under Flow State mode. Replaced in one line: the support desk as the front page, the plan record living in the Claude Code package, Codex's to-do list as a bare tool item. Not built, below a fence: orchestration across harnesses, driving a harness from a task board, a task list that hands a harness work, importing outside sessions, harness modes on a deployed host](figures/end-state.svg)
 
-The box is a front door and one session flow; the harnesses do the rest. The fence keeps Kitchen
+The box is a front door and one session flow factory; the harnesses do the rest. The fence keeps Kitchen
 Sink a pass-through: anything that plans or dispatches work across harnesses is Shift Manager's
 ([D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)).
 
@@ -75,9 +75,9 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1914](https://linear.app/fixpoint-labs/issue/FIX-1914) · the picker | Four modes, a rail scoped to the picked mode, an honest unavailable state, Flow State mode holding the framework's own flows | The front door. Its spec waits on the [open question](DECISIONS.md#open) | Backlog · spec route |
-| [FIX-1915](https://linear.app/fixpoint-labs/issue/FIX-1915) · Claude Code mode | The one harness session flow (binding, live items, stop, workspace), and the plan record moved into core | The shared path the other two plug into ([D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)) | Backlog · spec route · blocked by FIX-1914 |
-| [FIX-1916](https://linear.app/fixpoint-labs/issue/FIX-1916) · Codex mode | Codex on that flow; Codex writes its to-do list to the plan record | Codex's first in-app real-path run | Backlog · spec route · blocked by FIX-1915 |
-| [FIX-1917](https://linear.app/fixpoint-labs/issue/FIX-1917) · Cursor mode | Cursor on that flow; its plan recorded, or shown as not reported | Cursor's first real-path run of any kind | Backlog · spec route · blocked by FIX-1915 |
+| [FIX-1915](https://linear.app/fixpoint-labs/issue/FIX-1915) · Claude Code mode | The one harness session flow factory, a flow kind per harness (binding, live items, stop, workspace), and the plan record moved into core | The shared path the other two plug into ([D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)) | Backlog · spec route · blocked by FIX-1914 |
+| [FIX-1916](https://linear.app/fixpoint-labs/issue/FIX-1916) · Codex mode | Codex on its own flow kind from that factory; Codex writes its to-do list to the plan record | Codex's first in-app real-path run | Backlog · spec route · blocked by FIX-1915 |
+| [FIX-1917](https://linear.app/fixpoint-labs/issue/FIX-1917) · Cursor mode | Cursor on its own flow kind from that factory; its plan recorded, or shown as not reported | Cursor's first real-path run of any kind | Backlog · spec route · blocked by FIX-1915 |
 | [FIX-1185](https://linear.app/fixpoint-labs/issue/FIX-1185) · Claude plan tools | Why the in-process SDK never calls `TaskCreate` / `TaskUpdate`, and a fix or a written finding | Without it Claude Code's plan panel stays empty. Adopted: no parent, no label (spec route by default) | Backlog |
 | [FIX-1918](https://linear.app/fixpoint-labs/issue/FIX-1918) · closure · **required** | The QA plan and its run on one `main` commit | Proves the whole ([ER-17](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1914, FIX-1915, FIX-1916, FIX-1917, FIX-1185 |
 
@@ -92,8 +92,8 @@ flowchart LR
   I1["FIX-1735 · live Claude items · done"] -.->|"items while it runs"| B
   I2["FIX-1701 · one item-scope reader · done"] -.->|"taskId and owner on items"| B
   A["FIX-1914 · the picker"] -->|"a mode slot in the picker and rail"| B["FIX-1915 · Claude Code mode"]
-  B -->|"the session flow · the plan record in core"| C["FIX-1916 · Codex mode"]
-  B -->|"the session flow · the plan record in core"| D["FIX-1917 · Cursor mode"]
+  B -->|"the session flow factory · the plan record in core"| C["FIX-1916 · Codex mode"]
+  B -->|"the session flow factory · the plan record in core"| D["FIX-1917 · Cursor mode"]
   E["FIX-1185 · Claude plan tools"] -->|"a plan that fills"| Z["FIX-1918 · closure · required"]
   A --> Z
   B --> Z
@@ -104,7 +104,7 @@ flowchart LR
 ```
 
 An edge is what one issue hands the next; dashed edges are inputs from other epics, both shipped.
-FIX-1185 can run at any time; Codex and Cursor run side by side once the session flow lands.
+FIX-1185 can run at any time; Codex and Cursor run side by side once the session flow factory lands.
 
 ## What stays as it is
 
