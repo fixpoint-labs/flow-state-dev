@@ -13,4 +13,4 @@ On such a board, `addTask` and `assignTask` record work and don't start it. `add
 
 Renamed, with no alias: `addTaskAndWait` → `dispatchAndWait`, `AddTaskAndWaitOptions` → `DispatchAndWaitOptions`, `WaitForResponseResult` → `DispatchAndWaitResult`, `canHoldAsk` → `canHoldWait`, `AskEndedError` → `WaitEndedError`, `AskStoppedError` → `WaitStoppedError`, and `DEFAULT_ASK_TIMEOUT_MS`, `MIN_ASK_TIMEOUT_MS`, `MAX_ASK_TIMEOUT_MS` → `DEFAULT_WAIT_TIMEOUT_MS`, `MIN_WAIT_TIMEOUT_MS`, `MAX_WAIT_TIMEOUT_MS`.
 
-The DevTool's Tasks tab offers a board's `dispatchTask` action on a row, so a recorded task can be started from it.
+The DevTool's Tasks tab offers a board's `dispatchTask` action on a row, so a recorded task can be started from it (FIX-1875).

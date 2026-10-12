@@ -244,7 +244,7 @@ function gradeA(o: any, store: string): LegResult {
     heardSub.length !== 1
   ) {
     r.failures.push(
-      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's dispatchTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its addTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
+      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's dispatchTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its dispatchTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
     );
   } else {
     r.notes.push(`desk.sub split its task: one piece for desk.alpha, completed, then its task; the app's ${show(S.app)}`);
