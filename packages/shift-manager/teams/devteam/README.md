@@ -138,22 +138,23 @@ const lab = await openLab({
 This tree is served as two Shift Manager profiles, each a config beside this file
 that opens it through `openLab`; `fsdev dev --config` takes either file:
 
-- `fsd.fsdev.config.mts` is the `fsd` profile, what `pnpm shift-manager:dev` opens: the
-  same tree with two projects on this repository, FSD and Shift Manager, and Claude Code as
-  its coder.
-- `fsdev.config.mts` is DevTeam's, which the checks run against.
+- `fsdev.config.mts` is the `devteam` profile, which the checks run against. It is what
+  `pnpm shift-manager:dev` opens: DevTeam's demo.
+- `fsd.fsdev.config.mts` is the `fsd` profile: the same tree with two projects on this
+  repository, FSD and Shift Manager, and Claude Code as its coder. It opens with
+  `pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`.
 
 `DEVFORCE_LAB_HARNESS` picks what runs an approved row (`harness.mts`). Unset, each profile
 uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 
 | Value | What runs |
 |---|---|
-| `stub` | The scripted run, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
-| `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the stub. |
+| `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
+| `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the scripted coder (`stub`). |
 
-The first line the Lab prints names the coder it started with.
+A `Coder:` line at start names the coder it started with.
 
-The scripted run pauses 2 s before each of its five steps so you can watch them arrive.
+The scripted coder (`stub`) pauses 2 s before each of its five steps so you can watch them arrive.
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.
 
 ```bash

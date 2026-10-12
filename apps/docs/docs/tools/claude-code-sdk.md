@@ -672,7 +672,7 @@ that work will plug into.
 
 ## Checking for a credential before you start
 
-A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It opens Claude Code without sending it a message, so no model turn starts, and takes about half a second.
+A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It sends no message, so it costs no model turn, and takes about half a second.
 
 ```ts
 import { harnessEnv } from "@flow-state-dev/core";
@@ -688,7 +688,7 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 | `status` | When | Also carries |
 |----------|------|--------------|
 | `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them |
-| `"none"` | No credential, no answer within `timeoutMs` (default 10 000), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
+| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
 | `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
 
 It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.

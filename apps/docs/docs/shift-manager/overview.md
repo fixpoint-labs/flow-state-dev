@@ -45,29 +45,31 @@ If the Lab fails to start after a save, the error prints and Shift Manager waits
 
 ### Working on Shift Manager itself
 
-In this repository, `pnpm shift-manager:dev` opens the `fsd` profile: a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. Inbox is empty until a worker asks you something.
+In this repository, `pnpm shift-manager:dev` opens DevTeam's demo, the `devteam` profile below. The `fsd` profile opens with its config, a path from the repository root:
+`pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`.
+
+The `fsd` profile is a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. Inbox is empty until a worker asks you something.
 
 The profile reaches no git remote. A coding run that would have to clone a project's repository is refused, naming the repository, and nothing is fetched.
 
-The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. The first lines Shift Manager prints say which coder it started with. The chief of staff answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
+The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The chief of staff answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
 
 The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/fsd.sqlite`, or wherever `FSD_STORE` points. Delete the file to start fresh.
 
-`--dev` serves Shift Manager's pages from source, so a change to a screen shows as you save it. `start` runs the same profile on the built pages, and builds them first when they're older than their source. To open the `devteam` profile instead, pass its config:
-`pnpm --filter @flow-state-dev/shift-manager dev --config teams/devteam/fsdev.config.mts`.
+`pnpm shift-manager:dev` runs with `--dev`, which serves Shift Manager's pages from source, so a change to a screen shows as you save it. `pnpm --filter @flow-state-dev/shift-manager start` runs the same profile on the built pages, and builds them first when they're older than their source.
 
 To open another Lab from a checkout, pass its config:
 `pnpm --filter @flow-state-dev/shift-manager dev --config ../my-lab/fsdev.config.mts`.
 
 ### The `devteam` profile
 
-`devteam` is the profile this repository's checks run against. Open it with `--config`, as above.
+`devteam` is the profile `pnpm shift-manager:dev` opens, and the one this repository's checks run against.
 
 It's at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs. It's a software team: an EM worker files features as rows on the team's board, and a coder worker runs each row as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Three projects exist from the start: Storefront, with two workstreams, and Platform and Sandbox, with none.
 
 Its [chief of staff](../workforce/chief-of-staff.md) is a coordinator with the EM and the coder as delegates. Ask it for feature work with a line like `cart-badge: show a badge on the cart`, in the form `<issue-slug>: <what the feature is>`, and its instructions have it hand the post to the EM. The EM files that feature as a row on the board, or answers that it filed nothing because the post names no feature.
 
-Rows run on a scripted harness with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead; the Lab then checks for a Claude Code sign-in or `ANTHROPIC_API_KEY` at start, as the `fsd` profile does. The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points. Delete the file to start fresh.
+Rows run on the scripted coder (`stub`), with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead; the Lab then checks for a Claude Code sign-in or `ANTHROPIC_API_KEY` at start, as the `fsd` profile does. The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points. Delete the file to start fresh.
 
 The chief of staff has [memory](../workforce/chief-of-staff.md#giving-it-memory): working memory within a conversation, a rolling digest across conversations, and the `memory/recall` tool to search it. By default it records nothing, so that memory stays empty; ask it to remember something for later and it says it can't keep it. Start Shift Manager with `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into its memory after each answer, at the cost of extra model calls every turn. Its memory is kept per user, apart from your other flows. Workers it hires onto the built-in `agent` flow get none.
 

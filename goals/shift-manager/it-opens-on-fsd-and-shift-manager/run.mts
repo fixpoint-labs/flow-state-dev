@@ -1,9 +1,9 @@
 /**
- * Goal check: `pnpm shift-manager:dev` with no flags opens on FSD and Shift
+ * Goal check: the checkout's script opens the `fsd` profile on FSD and Shift
  * Manager, and with no Claude credential it refuses to start, naming what to set.
  *
  * Each leg starts the checkout's own script (`packages/shift-manager/scripts/checkout.mts`)
- * with no `--config`, as `start` runs it, on pages built once into scratch
+ * with `--config` naming the `fsd` profile, as `start` runs it, on pages built once into scratch
  * (`--assets`, so the script doesn't rebuild the checkout's). The only thing a
  * leg sets is the store location (a temp file), and in c it takes credentials away.
  *
@@ -21,7 +21,8 @@
  *      non-zero before it listens, and its output names `ANTHROPIC_API_KEY`
  *      and `DEVFORCE_LAB_HARNESS=stub`.
  *
- * `GOAL_LEG=a,c` runs only those legs (default: all three).
+ * `GOAL_LEG=a,c` runs only those legs (default: all three). An empty or
+ * unknown selection is refused, so no run passes by checking nothing.
  *
  * Controls:
  *   GOAL_CONTROL=silent-stub  `harness.mts` patched, in the process under test only,
@@ -38,9 +39,13 @@ import { goalTmpDir, intentFreeEnv, modulePatchEnv, assertPatched, describePatch
 import { buildShiftManagerPages, labApi, servedAddresses } from "../../lib/shift-manager.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const LEGS = new Set((process.env.GOAL_LEG ?? "a,b,c").split(",").map((l) => l.trim()));
+const ALL_LEGS = ["a", "b", "c"] as const;
+const LEGS = new Set((process.env.GOAL_LEG ?? ALL_LEGS.join(",")).split(",").map((l) => l.trim()).filter(Boolean));
+if (LEGS.size === 0) throw new Error(`GOAL_LEG="${process.env.GOAL_LEG}" names no leg; use a comma-separated subset of ${ALL_LEGS.join(", ")}`);
+for (const l of LEGS) if (!(ALL_LEGS as readonly string[]).includes(l)) throw new Error(`unknown leg "${l}" in GOAL_LEG; use a comma-separated subset of ${ALL_LEGS.join(", ")}`);
 const SCRATCH = goalTmpDir("it-opens-on-fsd-and-shift-manager");
 const SCRIPT = repoPath("packages", "shift-manager", "scripts", "checkout.mts");
+const FSD_PROFILE = repoPath("packages", "shift-manager", "teams", "devteam", "fsd.fsdev.config.mts");
 const TSX = repoPath("node_modules", ".bin", "tsx");
 const REPOSITORY = "https://github.com/fixpoint-labs/flow-state-dev.git";
 
@@ -58,13 +63,13 @@ if (CONTROL !== "" && CONTROL !== "silent-stub") throw new Error(`unknown GOAL_C
 type Started = { log: () => string; exited: Promise<number | null>; origin?: string; stop: () => Promise<void> };
 
 /**
- * Start the checkout's script with no `--config` and wait until it serves or exits.
+ * Start the checkout's script on the `fsd` profile and wait until it serves or exits.
  * Resolves with the origin once its banner prints, or with none if it exits first.
  */
 async function startScript(env: Record<string, string>, form: "start" | "dev" = "start", timeoutMs = 120_000): Promise<Started> {
   const cwd = mkdtempSync(join(SCRATCH, "cwd-"));
   const pagesArgs = form === "dev" ? ["--dev"] : ["--assets", pages!];
-  const child = spawn(TSX, [SCRIPT, "--port", "0", "--no-open", ...pagesArgs], {
+  const child = spawn(TSX, [SCRIPT, "--config", FSD_PROFILE, "--port", "0", "--no-open", ...pagesArgs], {
     cwd,
     env: { ...env, INIT_CWD: cwd },
     stdio: ["ignore", "pipe", "pipe"],
