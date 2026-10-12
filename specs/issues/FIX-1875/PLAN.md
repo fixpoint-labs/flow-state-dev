@@ -8,7 +8,7 @@ adds `dispatchTask`, teaches every start test to read the mark, renames the expo
 moves every caller onto `dispatchTask`, while nothing writes the mark yet, so it changes no
 behaviour; **P2** makes `addTask` and `assignTask` write the mark and refuses `waitForResponse`.
 Readers ship before writers, so in a rolling deploy no process that ignores the mark is still
-running when a recorded row exists. P2's diff is the behaviour switch and little else.
+running when a recorded row exists. P2's diff is the behaviour switch and its docs.
 
 | The mark in… | Who writes it | Who reads it | Can production see `dispatchTask({ taskId })` start a row? |
 |---|---|---|---|
@@ -28,7 +28,7 @@ running when a recorded row exists. P2's diff is the behaviour switch and little
 | S7 | P2 | `orchestration` · `addTask` and `assignTask` | On a board that dispatches, `addTask` writes the mark and `assignTask` keeps it. `addTask`'s result says `status: "recorded"`. Descriptions say they record and point at `dispatchTask`. `waitForResponse` and `timeoutMs` refused by name, in the tool and the action, read before the schema; `addTask`'s wait branch and its description **removed** | ER-2 · BR-1 to BR-4, BR-21, BR-23, BR-27 |
 | S8 | P1 | `orchestration`, `core` · exports | **Rename** the exported names per the [map](#pinned-names), no alias. A rename only: no behaviour moves with it | BR-22 |
 | S9 | P2 | Goal check | `goals/dispatching-work/a-recorded-task-waits-for-dispatch/` on the FIX-1817 lab, with `GOAL_CONTROL=add-starts` | the goal |
-| S10 | P1 + P2 | Docs | [DOCS.md](DOCS.md): P1 publishes `dispatchTask`; P2 publishes "records, doesn't start" and retires the `waitForResponse` text. One changeset per PR for `orchestration`, `workforce`, `core` | ER-17 |
+| S10 | P2 | Docs | [DOCS.md](DOCS.md), all of it: `dispatchTask`, "records, doesn't start", the README renames and the `waitForResponse` removals. One changeset for `orchestration`, `workforce`, `core`, in P2 only. P1 publishes nothing user-facing: its behaviour is unchanged, so a P1 page saying `addTask` doesn't start work would be false, and a P1 changeset could release a state where two tools start work | ER-17 |
 
 ## Sequence
 
@@ -43,14 +43,13 @@ flowchart TD
   S8 --> S5["S5 · callers move · P1 ends"]
   S5 --> S7["S7 · addTask records only"]
   S7 --> S9["S9 · goal check and reruns"]
-  S5 --> S10["S10 · docs"]
-  S7 --> S10
+  S7 --> S10["S10 · docs and changeset"]
 ```
 
 | Sub-PR | Delivers | depends_on |
 |---|---|---|
-| P1 | S1 to S6, S8, S10's `dispatchTask` docs | — |
-| P2 | S7, S9, S10's switch-off docs | P1 |
+| P1 | S1 to S6, S8. No docs, no changeset | — |
+| P2 | S7, S9, S10 (every doc and the changeset) | P1 |
 
 ## Checks
 
@@ -77,7 +76,7 @@ start a recorded row).
 | Where | Name | Why pinned |
 |---|---|---|
 | Tool / action | `dispatchTask` / `dispatchTask_<suffix>` | Public; a model and a script type it |
-| Fields | `wait`, `timeoutMs`, `taskId` (with `addTask`'s own); `post` reserved for FIX-1872 | Public (D2) |
+| Fields | `wait`, `timeoutMs`, `taskId` (with `addTask`'s own); `post: true` reserved for FIX-1872 as the post form's one discriminator, with no `goal` | Public (D2) |
 | Result | `status: "recorded"` on `addTask` where the board dispatches | Public (BR-27) |
 | Error | `assignee_required` | Public (BR-24) |
 | Persisted | `undispatched` on a task row | Stored; absent means ready (BP-030). Not `awaitingDispatch`: FIX-1876 keeps *wait* for a parked turn. Not `held`: `heldTask()` already means "the row this request holds" |
@@ -107,9 +106,10 @@ falls](DECISIONS.md#decided-not-asked)).
 
 ## Docs
 
-Reconcile [DOCS.md](DOCS.md) against shipped behaviour and publish it with each PR: P1 the
-`dispatchTask` section and the README entry; P2 the "records, doesn't start" lines and the
-removal of every `waitForResponse` row. No new page.
+Reconcile [DOCS.md](DOCS.md) against shipped behaviour and publish all of it, with the one
+changeset, in P2. P1 publishes nothing user-facing: until P2, `addTask` still starts work, so
+P1's half of the story would be false, and two changeset rounds could release a state where two
+tools start work. P1's export renames are recorded in P2's changeset. No new page.
 
 ## The sketch and the POC
 
@@ -131,7 +131,7 @@ isStartable(task):  pending · assigned · not undispatched  (the one predicate)
 base: every tracked file that carries a retired name, and every file that relies on `addTask` or
 `assignTask` starting work (the actions, scripted model calls such as `toolName: "addTask"`, and
 `` `addTask` `` in a worker file), each in exactly one bucket. On `main` (2026-10-12): 38 files
-carry a retired name; 67 rely on the start (29 goal-check files across 17 checks, 4 in two
+carry a retired name; 67 rely on the start (29 goal-check files: 26 across 14 checks plus 3 shared lab helpers; 4 in two
 regression checks, 3 worker files, 2 published pages, 1 README, 3 package sources, 25 tests).
 Prose that names the tool without backticks outside a worker file is not caught; read those by
 eye. A line that refuses a retired name on purpose (BR-21's handler and its test) carries the
@@ -175,8 +175,7 @@ From this PR's review, round 1 (#3140):
 - "Consider wiring `--assert` into CI at P2 so a new `addTask_tasks`-to-start caller fails the
   build after the switch, not just at implement time." — second look
 - "The *docs/API* for `taskId` could be labeled P2-primary to avoid implying app-visible
-  behavior mid-rollout." — Cursor (the P1/P2 table above answers the behaviour; the docs label
-  is the implementer's)
+  behavior mid-rollout." — Cursor (the P1/P2 table above answers the behaviour; the docs now publish only in P2)
 - "Goal `rec:waits`: prefer store-grade assertions + light touches so the harness doesn't
   multiply full `list()` work on a growing board." — Cursor (now `rec:not-started`)
 

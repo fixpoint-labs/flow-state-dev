@@ -45,7 +45,7 @@ ran once. The reruns prove nothing else moved.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/dispatching-work/a-recorded-task-waits-for-dispatch/` · the FIX-1817 lab and its model · run by the implementer at completion · verdict in the implementation PR. Plus reruns of `goals/hand-offs/ask-survives-a-restart/`, `goals/coordinators/task-session-stays-open/` and `goals/hand-offs/survives-a-restart-and-runs-once/`, and leg e of `goals/workers/files-and-splits-down-the-chain/`, where a real model hands work over without waiting and must now pick `dispatchTask` |
-| **Signal** | `rec:not-started` a row `addTask_tasks` recorded for a delegate has no run after 30 s of board touches · `disp:ref-runs` `dispatchTask_tasks` on that row runs it once, with one completed notice · `disp:new-runs` a new row dispatched the same way runs once · `lineage:refused` the same dispatch from Alice's other conversation answers `task_not_found` and the row is unchanged · `old:refused` `addTask_tasks` with `waitForResponse` is refused, naming `dispatchTask`, and files nothing. The three reruns and leg e PASS |
+| **Signal** | `rec:not-started` a row `addTask_tasks` recorded for a delegate has no run after 30 s of board touches · `disp:ref-runs` `dispatchTask_tasks` on that row runs it once, with one completed notice · `disp:new-runs` a new row dispatched the same way runs once · `lineage:refused` the same dispatch from Alice's other conversation answers `task_not_found` and the row is unchanged. The three reruns and leg e PASS. (`waitForResponse` refused by name is CI's, V6, and the epic closure's sweep) |
 | **Input** | Held-out goal words and a delegate picked at run time. Another delegate, or a row recorded unassigned and given its assignee by the dispatch, must pass too |
 | **Anti-game** | Don't assert on the tool's return value or a unit stub: grade the store. The rerun diffs are checked against the rename map in [PLAN.md](PLAN.md#pinned-names); no assertion loosened, no leg dropped |
 | **Control that must fail** | `GOAL_CONTROL=add-starts` (the task tools don't mark a recorded row as not dispatched) must FAIL `rec:not-started`. Today's `main` must FAIL `disp:new-runs` and `rec:not-started` |
@@ -111,13 +111,14 @@ and board tools that never do. If wrong: either we ship a second starting tool a
 still picks, or we break app code that relied on `addTask_tasks` starting work for no gain.
 
 1. **[D1](DECISIONS.md#d1) · On a conversation's board, `addTask` and `assignTask` stop starting
-   work; a recorded task doesn't start until `dispatchTask`.** About 17 goal checks, three
+   work; a recorded task doesn't start until `dispatchTask`.** 14 goal checks (26 files), three
    worker files and an app's `addTask_tasks` calls move to `dispatchTask` with it. If wrong: an
    app that upgrades without reading the changeset files tasks that never run. Nothing errors,
    but every `addTask` result now says `status: "recorded"`, so a script that logs it sees why.
 2. **[D2](DECISIONS.md#d2) · `dispatchTask` takes `addTask`'s fields plus `wait` and
    `timeoutMs`, flat, with `taskId` for a recorded row and `post: true` for the post a
-   coordinator is routing (FIX-1872).** If wrong: the model mixes the three, which is refused
+   coordinator is routing (FIX-1872).** `post: true` is the one thing that marks the post form; it
+   carries no `goal`. If wrong: the model mixes the three, which is refused
    at run time rather than by the schema.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).

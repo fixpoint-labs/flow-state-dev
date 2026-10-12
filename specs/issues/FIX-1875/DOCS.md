@@ -4,8 +4,9 @@
 
 The shared story ("Giving another worker work") is the epic's
 [DOCS.md](../../epics/FIX-1870/DOCS.md); this issue publishes it with its names fixed, plus the
-specifics below. Unchanged pages are not copied. P1 publishes the `dispatchTask` material; P2 the
-"records, doesn't start" lines and every removal.
+specifics below. Unchanged pages are not copied. **Everything here publishes in P2**, with the one changeset. P1
+publishes nothing user-facing: until P2, `addTask` still starts work, so any part of this page
+would be false on P1.
 
 ## UPDATE · `apps/docs/docs/orchestration/task-board.md` · replaces "Asking, and waiting for the answer"
 
@@ -132,14 +133,14 @@ them, and `parkOnAsk` itself, stay until FIX-1876.
 
 ## Changesets
 
-`@flow-state-dev/orchestration`, `@flow-state-dev/workforce`, `@flow-state-dev/core`, `minor`:
+One changeset, in P2 only (P1 has none). `@flow-state-dev/orchestration`, `@flow-state-dev/workforce`, `@flow-state-dev/core`, `minor`:
 the rename map in [PLAN.md](PLAN.md#pinned-names), and one line for app authors: *a task filed
 through `addTask_tasks` on a conversation's board no longer starts; send `dispatchTask_tasks`.*
 
 ## Ownership
 
-| Material | Publisher |
-|---|---|
-| Everything above | FIX-1875 |
-| The glossary rows, and "ask" or "hand-off" used for delivering work anywhere else | FIX-1876 |
-| The coordinator's `handOff` and the ledger on `coordinators.md` and `packages/workforce/README.md` | FIX-1872 |
+| Material | Publisher | PR |
+|---|---|---|
+| Every section above, `task-board.md` to the core and engine READMEs, and the changeset | FIX-1875 | P2. P1 publishes none of it |
+| The glossary rows, and "ask" or "hand-off" used for delivering work anywhere else | FIX-1876 | — |
+| The coordinator's `handOff` and the ledger on `coordinators.md` and `packages/workforce/README.md` | FIX-1872 | — |
