@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box: the dev profile that shift-manager:dev opens, with two shared projects, FSD and Shift Manager, on this repository, a real coding agent and Linear on both; the host mapping a named project's remote to this machine's checkout, with worktrees and branches cut from it and the project's files beside each worktree; MCP servers as a project setting, a host-approved alias read when a coding run starts, with the endpoint and credential in host config, never on the row. Unchanged beside it: the DevTeam profile, served by --config; a project's repository as a remote; dispatchTask and the hand-over tools. Replaced in one line: the default config of shift-manager:dev, from DevTeam to the dev profile; the scripted coder, by a real agent in the dev profile. Not built, below a fence: a Linear issue picker, push and pull request from a run, per-person Linear sign-in, MCP for workers that don't code, any Layer 1 change, a migration.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="212" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE PROFILE, TWO SETTINGS A HOST ACTS ON</text>
+    <rect class="held" x="32" y="56" width="528" height="70" rx="4"/>
+    <text class="t-b" x="44" y="78">the dev profile &#183; pnpm shift-manager:dev</text>
+    <text class="t-s" x="44" y="96">FSD &#183; Shift Manager &#8212; shared, this repository, a brief each</text>
+    <text class="t-s" x="44" y="112">a real coding agent (Q1) &#183; Linear on both projects</text>
+    <rect class="held" x="32" y="136" width="256" height="86" rx="4"/>
+    <text class="t-b" x="44" y="158">your checkout</text>
+    <text class="t-s" x="44" y="176">the host maps remote &#8594; checkout</text>
+    <text class="t-s" x="44" y="192">worktree and branch cut there</text>
+    <text class="t-s" x="44" y="208">project files beside, not in</text>
+    <rect class="held" x="300" y="136" width="260" height="86" rx="4"/>
+    <text class="t-b" x="312" y="158">a project's MCP servers</text>
+    <text class="t-s" x="312" y="176">read when a coding run starts</text>
+    <text class="t-s" x="312" y="192">from the run's own task row</text>
+    <text class="t-s" x="312" y="208">by host alias: no URL, no secret</text>
+  </g>
+
+  <g id="unchanged">
+    <rect class="comp" x="592" y="24" width="332" height="100" rx="5"/>
+    <text class="t-lbl" x="608" y="44">UNCHANGED BESIDE IT</text>
+    <text class="t-b" x="608" y="66">DevTeam &#183; the goal Lab</text>
+    <text class="t-s" x="608" y="84">served with --config</text>
+    <text class="t-s" x="608" y="100">a project's repository: a remote</text>
+    <text class="t-s" x="608" y="116">dispatchTask, handOff: untouched</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="repl" x="592" y="136" width="332" height="100" rx="5"/>
+    <text class="t-lbl" x="608" y="156">REPLACED IN ONE LINE</text>
+    <text class="t-s" x="608" y="178">dev default: DevTeam &#8594; dev profile</text>
+    <text class="t-s" x="608" y="196">scripted coder &#8594; a real agent</text>
+    <text class="t-s" x="608" y="214">(in the dev profile only)</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="256" width="908" height="96" rx="5"/>
+    <text class="t-non" x="32" y="276">NOT BUILT &#8212; A DEV SETUP, NOT AN INTEGRATION PRODUCT</text>
+    <text class="t-s" x="32" y="298">no Linear issue picker &#183; no push or pull request from a run &#183; no per-person Linear sign-in</text>
+    <text class="t-s" x="32" y="316">no MCP for workers that don't code &#183; nothing in Layer 1</text>
+    <text class="t-s" x="32" y="334">no migration of stored projects</text>
+  </g>
+</svg>
