@@ -751,7 +751,8 @@ five come from [questions](#when-a-task-stops-on-a-question) and
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
-string. Every other code is followed by `: ` and a sentence of guidance for the
+string, except that `task_not_found` carries a sentence when a follow-up names a task
+that isn't on the board. Every other code is followed by `: ` and a sentence of guidance for the
 model, so `error === "illegal_status_transition"` never matches. Use
 `error.startsWith("illegal_status_transition")`. There is no separate structured
 `code` field.
