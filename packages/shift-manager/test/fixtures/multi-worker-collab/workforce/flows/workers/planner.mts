@@ -17,7 +17,7 @@
 
 import { defineFlow } from "@flow-state-dev/core";
 import { defineSessionBoard, workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
-import { hearingDoor } from "../../../../hearing-door.mts";
+import { hearingDoor } from "../../../../run-lab/hearing-door.mts";
 
 /** The flow the planner's `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
 export const PLANNER_FLOW = "planner";

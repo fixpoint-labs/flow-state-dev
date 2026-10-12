@@ -21,6 +21,9 @@ export const COORDINATOR_ROUTE = "coordinator-route";
 /** The judgment turn's generator block, which a scripted model resolves by name. */
 export const COORDINATOR_JUDGMENT = "coordinator-judgment";
 
+/** Best fit's generator when the evaluator call on a model id fails. A scripted model resolves it by name. */
+export const COORDINATOR_ROUTE_ASK = "coordinator-route-ask";
+
 /** The coordinator's tool that hands the post it is reading to one delegate. */
 export const HAND_OFF = "handOff";
 

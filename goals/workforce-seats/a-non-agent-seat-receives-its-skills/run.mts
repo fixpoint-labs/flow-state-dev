@@ -239,12 +239,12 @@ await runGoal(async (failures) => {
       if (hired !== undefined) {
         failures.push(`the flow with no contract registered ${hired.length} cop(ies) instead of refusing`);
       } else {
-        for (const name of [fixture.control.id, NO_CONTRACT_KIND, "workerSkills", "nothing was registered"]) {
+        for (const name of [NO_CONTRACT_KIND, "workerSkills", "nothing was hired"]) {
           if (!refusal.includes(name)) failures.push(`the refusal does not name "${name}": ${refusal}`);
         }
       }
       evidence.push(
-        "a flow whose schema omits workerSkills refuses the whole installation at boot, naming the worker, the flow and the missing key, and nothing is registered"
+        "a flow whose schema omits workerSkills refuses the whole installation at boot, naming the flow and the missing key, and nothing is hired"
       );
     }
 

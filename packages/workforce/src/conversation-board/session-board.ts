@@ -56,6 +56,13 @@ import {
   taskSettledEntry
 } from "./task-settled";
 
+/**
+ * The session-state fields this kit's delegate list and board write, and only
+ * they: what a flow declares as `session.serverOwned`. `installation.session()`
+ * declares the same set, so every worker flow refuses them on a caller's create.
+ */
+export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED];
+
 /** What a session board is built from. */
 export interface SessionBoardOptions {
   /** The worker installation the flow's workers, and their delegates, belong to. */
@@ -114,7 +121,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The session state the delegates and the board keep, for `installation.session(...)`. */
     sessionStateShape: { ...delegateStateShape, ...conversationBoardStateShape },
     /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
-    serverOwned: [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED] as readonly string[],
+    serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow: a run of the board,
      * the notice of a task the session filed, and a split task's settle and

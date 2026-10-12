@@ -39,7 +39,7 @@ has a repository, so a list that leaked it would make leg one ambiguous.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| `no-project-list` | the chief of staff without `listProjects`, in its catalog and its `tools:` | `one:read-the-projects` and `one:files-naming-storefront` (and, on the runs so far, `two:asks-naming-both`) |
+| `no-project-list` | the chief of staff without `listProjects`, in its catalog and its `tools:` | `one:read-the-projects`, always. Usually also `one:files-naming-storefront` and `two:asks-naming-both`, but the model can guess storefront without the list, so those two are not required |
 
 **Model:** `openai/gpt-5.4-mini` for every turn, through the AI Gateway. Each leg is one turn,
 graded once: nothing is retried. Reports `blocked` when no key serves it. The coder's harness is the lab's stub, and what a filed task does

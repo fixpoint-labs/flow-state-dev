@@ -280,6 +280,7 @@ const FILE_CLASS = {
   "packages/shift-manager/test/devteam-chief-of-staff-memory.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
   ".agents/skills/concept-doc/example/CONCEPT.md": "E · S12 · the concept-doc skill's worked example names removed exports; P4 edits it or `--after` fails on it",
   ".omp/extensions/mailbox.ts": "U · — · the agent-mailbox tool's command, not Workforce",
+  "scripts/check-retired-terms.mjs": "U · — · FIX-1796's retired-terms guard; it names the retired words on purpose, to keep them out",
   "apps/docs/docs/client/react.md": "E · S12 · an example opens a session on flowKind \"mailbox\"",
   "apps/docs/docs/devtool/overview.md": "E · S12 · the inventory view's registered-mailboxes row",
   "apps/docs/docs/glossary.md": "W · — · the glossary is FIX-1796's",

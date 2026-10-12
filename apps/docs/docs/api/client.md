@@ -25,7 +25,8 @@ const client = createClient({
   // such as "http://localhost:3000", plus any base path. See /docs/configuration/client#choosing-baseurl
 });
 
-const { requestId } = await client.sendAction("chat", { message: "Hello!" });
+const { request } = await client.sendAction("chat", { message: "Hello!" });
+const requestId = request.id;
 // `flowKind` here is the flow instance the client is bound to. The returned
 // request carries `flowId`, the instance that owns it, which is the address
 // a retry or continuation goes back through.

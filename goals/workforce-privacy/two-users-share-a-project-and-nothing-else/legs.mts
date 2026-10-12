@@ -540,7 +540,11 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const row = rows.find((t) => t.id === c.task);
       if (row === undefined) continue;
       if (!row.partition.startsWith(c.id)) r.fail("b4", `task \`${row.id}\` from \`${c.id}\` sits in partition \`${row.partition}\`, not that conversation's`);
-      if (row.status !== "completed") r.fail("b4", `task \`${row.id}\` ended \`${row.status}\`${row.error === undefined ? "" : `: ${row.error}`}`);
+      // b4 grades partitioning, not coding: a scripted run can't write the code
+      // word, so the coder's judge may refuse it. That refusal is the task's own
+      // outcome; any other error (a run that broke) still fails.
+      const judgeRefused = row.status === "errored" && (row.error ?? "").startsWith("the judge found the task not done");
+      if (row.status !== "completed" && !judgeRefused) r.fail("b4", `task \`${row.id}\` ended \`${row.status}\`${row.error === undefined ? "" : `: ${row.error}`}`);
       const session = sessionRows(o.store).find((s) => s.id === row.run?.sessionId || s.id.endsWith(`:${row.run?.sessionId}`));
       if (session === undefined || session.userId !== A.userId || before.has(session.id)) r.fail("b4", `task \`${row.id}\` ran in ${session === undefined ? "no stored session" : `\`${session.id}\` (${session.userId}${before.has(session.id) ? ", not new" : ""})`}`);
       else runsIn.set(row.id, session.id);

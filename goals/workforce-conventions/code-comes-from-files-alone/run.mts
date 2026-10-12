@@ -6,10 +6,11 @@
  * a `workforce.gen.ts` that `fsdev gen` wrote, and through nothing else.
  *
  *   a  the APP'S BUILD. A block file named with a fresh token is planted in
- *      kitchen-sink's `workforce/blocks/`; the app's own `fsdev gen` and `next
- *      build` run, and the token must be in compiled chunks under `.next`,
- *      beside the hand-wired flows as the probe's positive control. The plant
- *      and every file the build rewrites are restored when the leg ends.
+ *      kitchen-sink's `workforce/blocks/`; the app's own `fsdev gen`, the
+ *      workspace packages' build and `next build` run, and the token must be
+ *      in compiled chunks under `.next`, beside the hand-wired flows as the
+ *      probe's positive control. The plant and every file the build rewrites
+ *      are restored when the leg ends.
  *
  *   d  the KIND, on the fixture host. Two workers sit on ONE custom kind,
  *      `desk-clerk`, and differ only in the `desk:` their own `WORKER.md`
@@ -231,6 +232,12 @@ await runGoal(async (failures) => {
         .join("\n");
       writeFileSync(APP_GEN, gen);
     }
+    // The packages first, as the app's own deploy build and CI do. Next's
+    // TypeScript pass reads each package's types from its `dist`, and where a
+    // `dist` is missing it falls through to the package's source and checks it
+    // under the app's stricter config, which fails in code this leg never
+    // touched. Turbo's cache makes this a no-op when the builds are current.
+    execFileSync("pnpm", ["packages:build"], { cwd: REPO_ROOT, stdio: "pipe" });
     // Built here rather than assumed, so the leg cannot pass against a `.next`
     // left by an earlier build.
     execFileSync("pnpm", ["exec", "next", "build"], { cwd: KITCHEN_SINK, stdio: "pipe" });
@@ -246,8 +253,11 @@ await runGoal(async (failures) => {
       evidence.push(`kitchen-sink's own build, compiled chunks naming each: ${[...control, ["planted block", count] as const].map(([name, n]) => `${name}=${n}`).join(", ")}`);
     }
   } catch (err) {
-    const e = err as { stderr?: Buffer; message?: string };
-    fail("a:build", `the app's build did not complete: ${String(e.stderr ?? e.message ?? err).slice(-400)}`);
+    const e = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
+    // Both streams, and enough of them to carry the failing file's path: Next
+    // prints it above the code frame, and turbo prints its errors on stdout.
+    const output = `${e.stdout ?? ""}${e.stderr ?? ""}`.trim() || String(e.message ?? err);
+    fail("a:build", `the app's build did not complete: ${output.slice(-2000)}`);
   } finally {
     restoreApp();
   }

@@ -179,7 +179,8 @@ export function Conversation({
       >
         {failure !== undefined ? (
           <SectionFailure what="The conversation" failure={failure} onRetry={reread} testId={`${testId}-conversation-failure`} />
-        ) : sessionId === null ? (
+        ) : sessionId === null || read?.items.length === 0 ? (
+          // A session the view opened before a first line (a project's Stream) reads empty: say so, never draw nothing.
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
             {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
           </p>
