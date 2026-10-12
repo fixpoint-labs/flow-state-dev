@@ -9,4 +9,6 @@
 | The coding-skill lab's binding: the stored id is removed when a turn asks to resume it, and written back only on confirmation; source [`labs/fsd-coding-skill/src/flow.ts`](../../../labs/fsd-coding-skill/src/flow.ts) (`consumeStateId`) | **Retained** in the lab; **not followed** in Kitchen Sink | A test bed must show a refused continuation on every turn, not move past it (epic ER-2) | [D2](DECISIONS.md#d2), PLAN S6 | The lab is unchanged |
 | Epic FIX-1907 D2, D3, ER-2 to ER-6; source [`../../epics/FIX-1907/DECISIONS.md`](../../epics/FIX-1907/DECISIONS.md) | **Retained**, implemented for Claude Code and as the shared parts | — | This spec | — |
 
+Aligned with FIX-1917's merged spec: `cursor-session` is now settled there, and a list `replacePlanList` can't store in full ends the turn *incomplete* without failing the run, as FIX-1917 BR-15b relies on.
+
 Re-check each source against current code before PR-A moves the record.

@@ -71,6 +71,8 @@ the goal check, on real Claude Code in a real browser.
 Nothing in this mode is fatal to the app. A run that fails, is stopped or is refused ends its
 turn with the harness's own error and leaves the recorded id in place, so the next turn retries
 it. A plan the recorder could not write is Claude Code's gap record, not a Kitchen Sink error.
+A list `replacePlanList` cannot store in full marks the turn's list *incomplete* and returns;
+the run carries on (BR-22d).
 Nothing retries on its own: a retry is the person's next turn.
 
 ## Acceptance criteria this issue owns

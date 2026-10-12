@@ -76,7 +76,7 @@ covers only a first turn proves none of them.
 
 | Where | Name | Why pinned |
 |---|---|---|
-| Flow kinds | `claude-code-session`, and `codex-session`, `cursor-session` for the siblings | FIX-1914's rail lists a mode's sessions by kind. Confirm with FIX-1914's spec at implement time |
+| Flow kinds | `claude-code-session`, and `codex-session`, `cursor-session` for the siblings | FIX-1914's rail lists a mode's sessions by kind. `cursor-session` is settled by FIX-1917's merged spec; confirm the rest with FIX-1914's spec at implement time |
 | Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE`, now naming the repository | FIX-1914's, the one setting every harness mode is gated on. A person types it |
 | Worktree root | `${XDG_STATE_HOME:-~/.local/state}/flow-state-dev/kitchen-sink-harness/<repository name>-<hash of its path>/`, hash = first 12 hex of the SHA-256 of the repository's real path | Derived, not set, outside the checkout. A person looks there for a session's work |
 | Session branch | `kitchen-sink/<flow kind>/<session>`, segments encoded | A person takes a session's work from it; goal **w** reads it |
