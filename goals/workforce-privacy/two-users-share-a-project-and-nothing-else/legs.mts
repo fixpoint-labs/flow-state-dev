@@ -307,7 +307,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const turn = await talk(r, "a4", alice, { id: convId, flowKind: COORDINATOR }, "run", facts.ask);
       let mine: Delivery[] = [];
       let answer: { session: string; text: string } | undefined;
-      for (const until = Date.now() + 180_000; Date.now() < until; await sleep(1_500)) {
+      const waited = Date.now();
+      for (const until = waited + 180_000; Date.now() < until; await sleep(1_500)) {
         mine = conversationRecord(o.store, A.userId, convId).ledger.filter((d) => d.postId === turn.requestId);
         const to = mine.find((d) => d.delegate.worker === facts.fork && d.status === "delivered" && d.sessionId !== undefined);
         if (to !== undefined) {
@@ -318,7 +319,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
             break;
           }
         }
-        if (mine.length === 0 && Date.now() - Date.now() > 30_000) break;
+        if (mine.length === 0 && Date.now() - waited > 30_000) break;
       }
       if (mine.length !== 1 || mine[0]!.delegate.worker !== facts.fork || mine[0]!.status !== "delivered") r.fail("a4", `wanted one delivery of the post, to the fork \`${facts.fork}\`; the ledger holds ${mine.length === 0 ? "none" : show(mine)}`);
       else r.saw("a4", `one delivery, to \`${facts.fork}\`, into \`${mine[0]!.sessionId}\``);
