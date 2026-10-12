@@ -7,7 +7,7 @@
  *
  * Every door used here is one a person or an app already has — the session
  * route to open each worker's session, and the action route on the planner's
- * conversation to file (`addTask_tasks`), answer (`answerTask_tasks`) and
+ * conversation to file (`dispatchTask_tasks`), answer (`answerTask_tasks`) and
  * reassign (`assignTask_tasks`). What the board holds is read off the
  * server's SQLite file, read-only: the session route sends a browser only a
  * row's board fields, and the checks grade a row's input and answer too.
@@ -306,10 +306,11 @@ export class Scenario {
   }
 
   /**
-   * File one piece on the planner's conversation's board, through its own
-   * `addTask_tasks`, for the delegate the app's map routes the piece's desk
-   * to. A piece with no desk is filed for nobody. A piece that follows
-   * another waits on it.
+   * File one piece on the planner's conversation's board, for the delegate
+   * the app's map routes the piece's desk to, through its own
+   * `dispatchTask_tasks`, so it starts now. A piece with no desk is recorded
+   * for nobody through `addTask_tasks`, and starts nowhere. A piece that
+   * follows another waits on it.
    */
   file(piece: Piece): Promise<ActResult> {
     const input: PieceInput = {
@@ -317,7 +318,7 @@ export class Scenario {
       ...(piece.asks === undefined ? {} : { asks: piece.asks }),
       ...(piece.follows === undefined ? {} : { follows: piece.follows }),
     };
-    return this.onConversation("addTask_tasks", {
+    return this.onConversation(piece.desk === undefined ? "addTask_tasks" : "dispatchTask_tasks", {
       goal: piece.goal,
       ...(piece.desk === undefined ? {} : { assignee: this.routes[piece.desk] }),
       ...(piece.follows === undefined ? {} : { deps: [piece.follows] }),

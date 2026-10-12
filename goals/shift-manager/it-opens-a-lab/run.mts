@@ -476,15 +476,15 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const status = await act(api, EM_FLOW, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, userId);
       if (status !== "completed") throw new Error(`${name}: the filing ended ${status}`);
       if (!(await waitForRow(api, () => true, userId))) throw new Error(`${name}: the filing put no row on a board`);
-      // A second piece that waits on the first, through the board's own task door: the board
-      // hands a row on as soon as it can start, so only a row with an unfinished dependency
-      // stays queued, and Tasks needs one to hide.
+      // A second piece that waits on the first, dispatched through the board's own task door:
+      // the board hands a dispatched row on as soon as it can start, so only one with an
+      // unfinished dependency stays queued, and Tasks needs one to hide.
       const first = Object.values((await readStore(api, userId)).rows).flat()[0]!;
       const followUp = await act(
         api,
         EM_FLOW,
         session,
-        "addTask_tasks",
+        "dispatchTask_tasks",
         {
           goal: fixture.devteam.followUp.text,
           assignee: first.assignee ?? undefined,

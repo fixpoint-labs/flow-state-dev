@@ -5,7 +5,8 @@
  * offers exactly what the flow exposes. The signal is the input: an action
  * whose input requires a string `taskId` acts on one task. That covers the
  * framework's task tools and an app's own actions (an `answer` for a parked
- * row) alike.
+ * row) alike. A board's generated `dispatchTask`, whose `taskId` is optional,
+ * is offered too: on a row it starts that row.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
  * are offered only on that board's rows; so is any action whose name ends with
@@ -25,11 +26,18 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-function takesTaskId(schema: ActionInputSchema | undefined): boolean {
+function takesTaskId(schema: ActionInputSchema | undefined, optional = false): boolean {
   if (schema === undefined || schema.type !== "object") return false;
   const field = schema.fields.taskId;
-  return field !== undefined && field.type === "string" && field.required;
+  return field !== undefined && field.type === "string" && (field.required || optional);
 }
+
+/**
+ * The generated tool that starts a recorded row, `dispatchTask_<suffix>`. Its
+ * `taskId` is optional, since a goal files a new task instead, so the required
+ * `taskId` rule alone would never offer it; on a row it starts that row.
+ */
+const DISPATCH_PREFIX = "dispatchTask_";
 
 /**
  * Eight of the task tools `taskToolActions` generates for a board, always
@@ -90,8 +98,10 @@ export function taskActionsFor(
 ): string[] {
   const own = taskToolSuffix(collectionId);
   const suffixes = [...new Set([...[collectionId, ...boardIds].map(taskToolSuffix), ...generatedSuffixes(actions)])];
+  const generated = new Set(generatedSuffixes(actions));
   return actions.filter((name) => {
-    if (!takesTaskId(schemas?.[name])) return false;
+    const dispatches = name.startsWith(DISPATCH_PREFIX) && generated.has(name.slice(DISPATCH_PREFIX.length));
+    if (!takesTaskId(schemas?.[name], dispatches)) return false;
     const owner = suffixes
       .filter((suffix) => name.endsWith(`_${suffix}`))
       .reduce<string | undefined>((best, suffix) => (best === undefined || suffix.length > best.length ? suffix : best), undefined);

@@ -96,7 +96,7 @@ const plain = (asked: string) => asked.replace(/\[(?:file|split|fan):[^\]]*\]|\[
  * - `[try-file]` files the ask with no assignee;
  * - `[tools]` says which tools the turn was handed.
  *
- * Every filing is a call of the turn's own `addTask` tool. After the calls,
+ * Every filing is a call of the turn's own task tools: `dispatchTask` for a piece with an owner, `addTask` for an unassigned one, which waits. After the calls,
  * the turn says what they answered.
  */
 const scripted = {
