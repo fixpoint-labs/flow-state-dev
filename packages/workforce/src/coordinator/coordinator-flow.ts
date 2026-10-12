@@ -1027,36 +1027,42 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * would, with no confidence. A `routeModel` that is an evaluation model
    * instance has no language model to ask, so its failure stands.
    */
-  const routeAsked = generator({
-    name: COORDINATOR_ROUTE_ASK,
-    model: typeof options.routeModel === "string" ? options.routeModel : "",
-    inputSchema: bestFitCaseSchema,
-    outputSchema: z.object({ worker: z.string() }),
-    itemVisibility: { client: false, history: false },
-    prompt: (bestFit: BestFitCaseValue) =>
-      [
-        ROUTE_QUESTION,
-        "Answer with the key of exactly one option below, as `worker`.",
-        "",
-        "Options:",
-        ...Object.entries(bestFit.ladder.options).map(([key, pickBy]) => `- ${key}: ${pickBy}`)
-      ].join("\n"),
-    user: (bestFit: BestFitCaseValue) =>
-      [
-        ...bestFit.recent.map((line) => `${line.from}: ${line.text}`),
-        `The post, from ${bestFit.post.from}: ${bestFit.post.text}`
-      ].join("\n")
-  })
-    .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
-    .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
+  const routeModelId = typeof options.routeModel === "string" ? options.routeModel : undefined;
+  const routeAsked = (model: string) =>
+    generator({
+      name: COORDINATOR_ROUTE_ASK,
+      model,
+      inputSchema: bestFitCaseSchema,
+      outputSchema: z.object({ worker: z.string() }),
+      itemVisibility: { client: false, history: false },
+      prompt: (bestFit: BestFitCaseValue) =>
+        [
+          ROUTE_QUESTION,
+          "Answer with the key of exactly one option below, as `worker`.",
+          "",
+          "Options:",
+          ...Object.entries(bestFit.ladder.options).map(([key, pickBy]) => `- ${key}: ${pickBy}`)
+        ].join("\n"),
+      user: (bestFit: BestFitCaseValue) =>
+        [
+          ...bestFit.recent.map((line) => `${line.from}: ${line.text}`),
+          `The post, from ${bestFit.post.from}: ${bestFit.post.text}`
+        ].join("\n")
+    })
+      .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
+      .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
 
   /** Best fit's one call: the evaluator, then, when it fails on a model string, the same question as a language model. */
-  const askRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema })
-    .step(routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }]))
-    .stepIf(
-      (asked: unknown) => typeof options.routeModel === "string" && failedEvaluationSchema.safeParse(asked).success,
-      routeAsked.rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
-    );
+  const evaluateRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema }).step(
+    routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
+  );
+  const askRoute =
+    routeModelId === undefined
+      ? evaluateRoute
+      : evaluateRoute.stepIf(
+          (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success,
+          routeAsked(routeModelId).rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
+        );
 
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
   const placedSchema = z.union([
