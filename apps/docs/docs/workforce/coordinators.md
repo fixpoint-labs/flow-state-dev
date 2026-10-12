@@ -334,6 +334,29 @@ export function SupportDesk({ children }: { children: ReactNode }) {
 
 Import names from `@flow-state-dev/workforce/browser` in a client component; the package root is server code. A type-only import from the root, as above, is fine.
 
+### Reading it from your app
+
+Outside a renderer, read the records from the conversation's requests. Continuing the [example above](#talking-to-it):
+
+```ts
+import { createSessionClient } from "@flow-state-dev/client";
+import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
+import type { CoordinatorRouteRecord } from "@flow-state-dev/workforce";
+
+const sessions = createSessionClient({ baseUrl });
+const requests = await sessions.listSessionRequests(session.id, { includeItems: true });
+
+const records = requests
+  .flatMap((request) => request.items ?? [])
+  .flatMap((item) =>
+    item.type === "component" && item.component === COORDINATOR_ROUTE
+      ? [item.data as CoordinatorRouteRecord]
+      : [],
+  );
+```
+
+Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first; `postId` and `round` say which post and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`sessions.listSessionRequests`](../api/client.md#sessionslistsessionrequestssessionid-options) for its other options.
+
 ## Handing out tasks
 
 A post gets an answer. When work has to be done instead, a coordinator can file a **task** on its conversation's board, for one of its delegates that takes tasks. Filing works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
