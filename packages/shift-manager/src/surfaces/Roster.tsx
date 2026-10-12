@@ -1,7 +1,7 @@
 /**
- * Roster: every worker the person has, grouped on shift, on call and off
+ * Roster: every worker the user has, grouped on shift, on call and off
  * shift, for all teams or one (`/roster[?team=]`). The workers are the
- * person's roster, read through Workforce's client: their own workers and the
+ * user's roster, read through Workforce's client: their own workers and the
  * standard ones, each on the flow it names. A standard worker's row is the
  * worker inventory's. The roster is read again with every snapshot, so a worker
  * hired or fired on a turn shows on the next read.
@@ -39,7 +39,7 @@ const GROUP_SUB: Record<ShiftStatus, string> = {
 
 /**
  * One ON CALL FOR entry (v2:716-718): a 66px tag, then what and when on two
- * lines. Everything listed here waits on the person, so its tag is WAITING on
+ * lines. Everything listed here waits on the user, so its tag is WAITING on
  * the highlighter.
  */
 function WaitEntry({ kind, id, what, when }: { kind: "task" | "ask"; id: string; what: string; when: string }) {
@@ -173,7 +173,7 @@ export function RosterView({
   const ownIds = new Set(own.map((worker) => worker.id));
   const team = pickedTeam(workers, asked);
   const states = workerStates(withOwn);
-  // The chief of staff first: the coordinator the person's work goes through.
+  // The chief of staff first: the coordinator the user's work goes through.
   const cos = chiefOfStaffOf(workers);
   const first = cos.kind === "one" ? cos.worker.id : undefined;
   const shown = [...states.workers.values()]

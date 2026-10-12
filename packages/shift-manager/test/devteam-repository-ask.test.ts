@@ -1,6 +1,6 @@
 /**
  * The DevForce Lab's chief of staff and a project's repository: whichever way
- * it writes one, at create or later, it waits for a person in Inbox first.
+ * it writes one, at create or later, it waits for a user in Inbox first.
  * Approve writes it; Deny writes nothing.
  *
  * The Lab is opened the way DevTeam's config opens it, with its default
@@ -127,7 +127,7 @@ async function projects(lab: Lab): Promise<Record<string, { repository?: string 
   );
 }
 
-describe("the chief of staff's repository writes wait for a person", () => {
+describe("the chief of staff's repository writes wait for a user", () => {
   it("setRepository: nothing changes while it waits or on Deny; Approve writes it", async () => {
     const lab = await open();
     const call = { toolName: "setRepository", args: { project: { visibility: "shared", id: "storefront" }, repository: ASKED } };
@@ -161,7 +161,7 @@ describe("the chief of staff's repository writes wait for a person", () => {
     expect((await projects(lab)).notes).toMatchObject({ repository: null });
   }, 120_000);
 
-  it("shows a person the remote without a password it carries", async () => {
+  it("shows a user the remote without a password it carries", async () => {
     const lab = await open();
     const asked = await ask(
       lab,
@@ -175,13 +175,13 @@ describe("the chief of staff's repository writes wait for a person", () => {
 });
 
 describe("the chief of staff's roster writes", () => {
-  /** The person's own workers, by id, as their roster holds them. */
+  /** The user's own workers, by id, as their roster holds them. */
   async function roster(lab: Lab): Promise<string[]> {
     const rows = await lab.stored("user", "workforce/workers/");
     return Object.keys(rows).map((key) => key.slice("workforce/workers/".length)).sort();
   }
 
-  it("hires a worker of the person's own at once; a fire waits for them, Deny keeps it, Approve removes it", async () => {
+  it("hires a worker of the user's own at once; a fire waits for them, Deny keeps it, Approve removes it", async () => {
     const lab = await open();
     const hired = await run(lab, { toolName: "hire", args: { id: "helper", flow: "agent" } }, "hire me a helper");
     expect(hired.error).toBeUndefined();

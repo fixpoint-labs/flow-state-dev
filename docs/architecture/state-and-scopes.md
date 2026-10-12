@@ -702,8 +702,8 @@ Every creator goes through one function, `birthSession`
 (`context/session-birth.ts`). It parses the session's initial state through the
 flow's session `stateSchema` (on a flow that binds its sessions, with a
 `.readonly()` field or a `createCheck`, a state the schema refuses is refused;
-any other flow keeps it as sent, because the workforce mailbox creates
-sessions half-filled on purpose), runs the `serverOwned` refusal for caller-seeded state and the
+any other flow keeps it as sent, so a flow can create sessions half-filled
+on purpose), runs the `serverOwned` refusal for caller-seeded state and the
 flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
 mints the lineage id unless the caller derives one, and writes `"absent"`. The
 caller describes the record it wants and chooses only what a lost race means:

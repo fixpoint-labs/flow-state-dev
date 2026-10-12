@@ -58,7 +58,7 @@ export type DelegateDefaults = { delegates: readonly string[]; fallback?: string
 /** The conversation's delegates and fallback, seeded from the defaults when never set. */
 export type DelegateList = { delegates: DelegateRecord[]; fallback: DeliveryDelegate | null };
 
-/** How a record reads to a person and to the evaluator: its worker, with its target when it has one. */
+/** How a record reads to a user and to the evaluator: its worker, with its target when it has one. */
 export function delegateLabel(delegate: DeliveryDelegate): string {
   return delegate.target === undefined ? delegate.worker : `${delegate.worker} (${delegate.target})`;
 }

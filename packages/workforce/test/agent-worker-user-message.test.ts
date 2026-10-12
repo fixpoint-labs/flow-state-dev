@@ -2,7 +2,7 @@
  * A message to an agent worker is kept as the caller's turn.
  *
  * A worker is a direct conversation with that agent, so its session has to hold
- * both sides: what the person said and what the worker answered. Before this,
+ * both sides: what the user said and what the worker answered. Before this,
  * `run` recorded only the reply, and a page reloading a worker's conversation
  * showed answers to questions nobody could see.
  *

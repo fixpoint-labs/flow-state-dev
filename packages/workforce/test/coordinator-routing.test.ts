@@ -1,5 +1,5 @@
 /**
- * How a coordinator routes a person's post, at `rounds: 0`: best fit's
+ * How a coordinator routes a user's post, at `rounds: 0`: best fit's
  * ladder, the judgment turn, delivery into each delegate's own session, the
  * answer claimed once, and the record every decision leaves.
  *
@@ -9,7 +9,7 @@
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1791/BUSINESS-RULES.md`, V3, V4, V6, V7):
  *   BR-13  one evaluator call picks one delegate, by its note or else its description; one with neither isn't a choice;
- *   BR-14  the person's next post goes to the delegate still on the last one, with no call; a removed holder holds nothing;
+ *   BR-14  the user's next post goes to the delegate still on the last one, with no call; a removed holder holds nothing;
  *   BR-15  a failed call, or a pick that isn't a delegate, goes to the fallback;
  *   BR-16  with no fallback, best fit's miss goes to the judgment turn, recorded `by: judgment`;
  *   BR-16a when that turn fails too, the post is unplaced, recorded and said in the conversation;
@@ -66,7 +66,7 @@ describe("best fit (V3)", () => {
 
     await post(host, id, "check the licenses [route:licenses]");
     expect(host.route.calls).toHaveLength(1);
-    const options = (host.route.calls[0]!.questions as any).member.criteria;
+    const options = (host.route.calls[0]!.questions as any).worker.criteria;
     expect(options).toEqual({
       "eng.em": "Plans and staffs engineering work.",
       "eng.coder": "Writes code.",
@@ -173,7 +173,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     await post(host, id, "who works here? [route:desk] [conf:0.31]");
     expect(host.route.calls).toHaveLength(1);
     expect(judgment.calls).toHaveLength(1);
-    // The turn reads the person's post as it was sent.
+    // The turn reads the user's post as it was sent.
     expect(JSON.stringify(judgment.calls[0]!.input)).toContain("who works here? [route:desk] [conf:0.31]");
     expect(host.heard).toEqual([]);
     const { records, messages } = await host.items(id);
@@ -196,7 +196,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const judgment = answersItself();
     const host = bootHost({ judgment });
     const id = await host.conversation("alice", "desk");
-    // `[fail]` keeps eng.coder from answering, so it holds the person's next post...
+    // `[fail]` keeps eng.coder from answering, so it holds the user's next post...
     await post(host, id, "the build is red [route:eng.coder] [fail]");
     expect((await host.sessionState(id)).bestFitHold).toMatchObject({ delegate: { worker: "eng.coder" } });
     // ...until it is removed, and the call gives the next post to the coordinator.
@@ -279,7 +279,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const host = bootHost({ standard: standardWorkers({ desk: { description: undefined } }) });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "file this [route:eng.em]");
-    expect(Object.keys((host.route.calls[0]!.questions as any).member.criteria)).toEqual(["eng.em", "eng.coder", "support.general"]);
+    expect(Object.keys((host.route.calls[0]!.questions as any).worker.criteria)).toEqual(["eng.em", "eng.coder", "support.general"]);
 
     // Only `silent`, with nothing to pick it by: no call, and today's miss.
     const bare = bootHost({ standard: standardWorkers({ desk: { delegates: ["silent"], fallback: "silent" } }) });
@@ -295,7 +295,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const id = await host.conversation("alice", "desk");
     await post(host, id, "file this [route:eng.em]");
     expect(host.route.calls).toHaveLength(1);
-    expect((host.route.calls[0]!.questions as any).member.criteria).toEqual({
+    expect((host.route.calls[0]!.questions as any).worker.criteria).toEqual({
       "eng.em": "Plans and staffs engineering work.",
       desk: "Ask the team anything."
     });
@@ -305,7 +305,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const host = bootHost({ standard: standardWorkers({ desk: { delegates: ["eng.em", "desk"], fallback: undefined } }) });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "file this [route:eng.em]");
-    expect(Object.keys((host.route.calls[0]!.questions as any).member.criteria)).toEqual(["eng.em", "desk"]);
+    expect(Object.keys((host.route.calls[0]!.questions as any).worker.criteria)).toEqual(["eng.em", "desk"]);
   });
 
   it("holds a post for the delegate still on the last one with no call, even one meant for the coordinator (BR-13)", async () => {

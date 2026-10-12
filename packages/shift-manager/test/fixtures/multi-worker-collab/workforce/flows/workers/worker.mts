@@ -23,7 +23,7 @@
  * ## The park condition is the one line that is not free
  *
  * A row parked on its worker's question goes back in the queue with the
- * person's answer on it (`answerTask`), and its next attempt runs in the same
+ * user's answer on it (`answerTask`), and its next attempt runs in the same
  * task session. The row still says what it asks, so a body that decides to
  * park by looking at *what it was asked* parks again forever. What changed is
  * that the row is **answered** — so the body parks only while it is not.
@@ -181,7 +181,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
         const line: WorkLine = { event: "parked", ...base };
         appendFileSync(outbox, `${JSON.stringify(line)}\n`, "utf8");
         // The worker that holds the row parks it, on its question. Nobody
-        // answers on the person's behalf; the person answers through the
+        // answers on the user's behalf; the user answers through the
         // planner's conversation.
         const parked = await ledger.awaitReview(taskId, control === "silent-park" ? undefined : piece.asks, {
           claim: currentWorkerClaim(),

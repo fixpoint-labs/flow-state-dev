@@ -29,7 +29,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /**
  * Tasks' summary line (v2:1384): the rows in flight (open and not queued), the
- * asks waiting on the person, who is on shift and on call, and how many
+ * asks waiting on the user, who is on shift and on call, and how many
  * streams (the conversations holding their boards) the rows in flight run in.
  */
 export function tasksSummary(snapshot: LoadedSnapshot): string {
@@ -57,7 +57,7 @@ export function runningSessions(rows: readonly BoardRow[]): number {
   return linked.size + running.filter((row) => row.run == null).length;
 }
 
-/** What Inbox says when nothing waits on the person (v2:1354): the sessions still running, and who is on call. */
+/** What Inbox says when nothing waits on the user (v2:1354): the sessions still running, and who is on call. */
 export function emptyInboxSentence(snapshot: LoadedSnapshot): string {
   const running = runningSessions(openRows(snapshot));
   const onCall = shiftCounts(workerStates(snapshot))["on call"];

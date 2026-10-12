@@ -35,7 +35,7 @@ export type DeliveryDelegate = z.infer<typeof deliveryDelegateSchema>;
 export const deliveryRecordSchema = z.object({
   /** The post delivered. */
   postId: z.string().min(1),
-  /** The round it was delivered in: 0 for a person's post. */
+  /** The round it was delivered in: 0 for a user's post. */
   round: z.number().int().min(0),
   delegate: deliveryDelegateSchema,
   /** What the answer hands back. Unguessable, one per delivery. */

@@ -3,17 +3,17 @@
  * project setup.
  *
  * **What a project view reads** (BR-18): the project's row and its workstream
- * entries by one prefix, through the person's own session on the roster flow,
+ * entries by one prefix, through the user's own session on the roster flow,
  * which declares both. Never a Lab read. Progress is worked out from the
  * entries here, by Workforce's own `projectProgress`, so the view and the
  * project coordinator count the same way; nothing is stored.
  *
  * **The project setup.** Which flow writes workstreams, and the standard
- * worker each person talks to a project through, their project coordinator.
+ * worker each user talks to a project through, their project coordinator.
  * Shift Manager doesn't name it: the Lab's projects flow answers
  * `projectSetup` with it, read once per connection.
  *
- * Shift Manager opens no workstream itself. The person asks their project
+ * Shift Manager opens no workstream itself. The user asks their project
  * coordinator for the work, and the coordinator opens one with a lead from
  * their roster (BR-38).
  */
@@ -65,7 +65,7 @@ export type ProjectRead = {
 export type ProjectSetup = {
   /** The flow `openWorkstream`, `updateWorkstream` and `projectSetup` are actions of. */
   flow: string;
-  /** The standard worker each person's project coordinator runs as, or `null`. */
+  /** The standard worker each user's project coordinator runs as, or `null`. */
   projectCoordinator: string | null;
 };
 
@@ -76,7 +76,7 @@ export const PROJECT_SETUP_ACTION = "projectSetup";
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50;
 
-/** The person's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
+/** The user's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
 export function projectReaderOf(sessions: readonly SessionSummary[]): string | null {
   return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
 }
@@ -113,8 +113,8 @@ const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "pri
 
 /**
  * Read a project as its view opens: its row, and its entries by the
- * project's one prefix, through the person's reader session. `null` when the
- * person can't read a row at that address: none there, or another person's
+ * project's one prefix, through the user's reader session. `null` when the
+ * user can't read a row at that address: none there, or another user's
  * private project.
  */
 export async function readProject(clients: LabClients, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {

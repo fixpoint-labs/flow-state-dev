@@ -1,5 +1,5 @@
 /**
- * The door a fixture worker flow takes a person's line through.
+ * The door a fixture worker flow takes a user's line through.
  *
  * Every worker flow has one door: the public action that declares
  * `userMessage` and takes `{ message }`. A fixture whose point is its board or
@@ -30,6 +30,6 @@ export const hearingDoor = {
     block: hear,
     inputSchema: messageInput,
     userMessage: (input: { message: string }) => input.message,
-    description: "A person's line into this worker's session.",
+    description: "A user's line into this worker's session.",
   },
 };

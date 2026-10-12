@@ -6,13 +6,13 @@
  * the workstream entries too, so the same session reads the projects its user
  * may, private ones included, and a project's entries by its prefix. It
  * declares the organization's worker inventory (`inventory/workers/*`), so the
- * same session reads who the organization's workers are without a mailbox
+ * same session reads who the organization's workers are without a coordinator
  * session to read it through.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session
  * names no worker. The cost is one roster session per user per organization;
- * an app that lists every flow's sessions filters this kind out.
+ * an app that lists every flow's sessions filters this flow kind out.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import type { ActionConfig } from "@flow-state-dev/core/types";

@@ -1,6 +1,6 @@
 /**
  * The mark's sundial: where the dot sits on its arc for the time of day, and
- * what the mark tells a person it will do on a click.
+ * what the mark tells a user it will do on a click.
  */
 import { describe, expect, it } from "vitest";
 import { describeMark, sundial } from "../src/components/ShiftManagerMark";

@@ -190,7 +190,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
   type Held = { host: BoardHost; conv: string; replyId: string };
 
   /**
-   * A person's message, sent through the host as an app sends it, whose reply
+   * A user's message, sent through the host as an app sends it, whose reply
    * files the task and is then held open (after its model call, so `addTask`
    * has run) until the task's notice has been dispatched to the conversation,
    * for a further half second in which the notice could land, and then for as
@@ -242,7 +242,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     }
   });
 
-  it("never makes the person's own next message wait: it starts mid-reply, and the notice waits for both", async () => {
+  it("never makes the user's own next message wait: it starts mid-reply, and the notice waits for both", async () => {
     const judgment = script({
       when: (input) => JSON.stringify(input).includes("and our workers"),
       then: { text: "Forty workers." }

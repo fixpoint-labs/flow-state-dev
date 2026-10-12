@@ -1,14 +1,14 @@
 /**
- * The rail's session reads: the coordinator flow's sessions are the person's
+ * The rail's session reads: the coordinator flow's sessions are the user's
  * conversations with the coordinators the tree declares, one each, found or
  * started by the coordinator's id; every other flow's are listed as the store
  * has them.
  *
- * A coordinator is a worker, so a person's conversation with `support.help` is
+ * A coordinator is a worker, so a user's conversation with `support.help` is
  * a session on the `coordinator` flow that names it, found the way any
  * worker's is (`ensureWorkerSession({ worker })`, which matches on the
  * criteria's keys and so never returns a delegate's session). Each row reads
- * as the coordinator's id, the name the person knows it by.
+ * as the coordinator's id, the name the user knows it by.
  */
 import type { SessionClient, SessionSummary } from "@flow-state-dev/client";
 import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
@@ -19,7 +19,7 @@ import { isCoordinatorFlow, SHELL_COORDINATORS } from "./workforce-shell";
  * The session source the rail's navigator reads through.
  *
  * @param client The page's session client; a stable reference, so the navigator's reads stay fenced on it.
- * @param workforce The person's workforce client, which finds or starts their conversation with a coordinator.
+ * @param workforce The user's workforce client, which finds or starts their conversation with a coordinator.
  * @returns A source whose coordinator-flow listing is one conversation per declared coordinator.
  */
 export function railSessions(

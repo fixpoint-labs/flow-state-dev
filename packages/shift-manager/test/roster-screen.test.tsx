@@ -12,7 +12,7 @@ import type { LabClients } from "../src/lib/connection";
 import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
-/** What the person's roster read answers: their own workers and the standard ones. */
+/** What the user's roster read answers: their own workers and the standard ones. */
 let rosterRead: () => Promise<Array<{ id: string; flow: string; standard: boolean; description: string | null }>> = async () => [];
 
 vi.mock("../src/lib/workforce", () => ({
@@ -101,14 +101,14 @@ describe("Roster (V3)", () => {
       ["eng.coder", "on shift"],
       ["eng.reviewer", "on call"],
       ["ops.asker", "on call"],
-      // The chief of staff first in its group: the coordinator the person's work goes through (FIX-1791 BR-33).
+      // The chief of staff first in its group: the coordinator the user's work goes through (FIX-1791 BR-33).
       ["chief-of-staff", "off shift"],
       ["ops.idle", "off shift"],
     ]);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call · 2 off shift · 3 waiting on you/);
   });
 
-  it("draws the person's own workers from their roster, marked as theirs, beside the inventory's (S12)", async () => {
+  it("draws the user's own workers from their roster, marked as theirs, beside the inventory's (S12)", async () => {
     rosterRead = async () => [
       { id: "amber-1f2e", flow: "coder", standard: false, description: "Alice's own" },
       { id: "eng.coder", flow: "coder", standard: true, description: null },
@@ -136,7 +136,7 @@ describe("Roster (V3)", () => {
     expect(within(page).getByTestId("roster-inventory-failure").textContent).toContain("inventory offline");
   });
 
-  it("says so when the person's own workers didn't load, and still draws the inventory's", async () => {
+  it("says so when the user's own workers didn't load, and still draws the inventory's", async () => {
     rosterRead = async () => {
       throw new Error("roster offline");
     };
@@ -357,7 +357,7 @@ describe("the sidebar (V4)", () => {
       ["eng.coder", "on shift", "coder · on shift"],
       ["eng.reviewer", "on call", "reviewer · on call"],
     ]);
-    expect(screen.queryByTestId("worker-kind")).toBeNull();
+    expect(screen.queryByTestId("worker-flow")).toBeNull();
   });
 
   it("a TEAMS row opens Roster for that team, and is marked current", async () => {
@@ -368,7 +368,7 @@ describe("the sidebar (V4)", () => {
     expect(screen.getAllByTestId("team")[2]!.getAttribute("aria-current")).toBe("page");
   });
 
-  it("TEAMS lists the person's own workers from their roster, under the team their id names, as Roster does", async () => {
+  it("TEAMS lists the user's own workers from their roster, under the team their id names, as Roster does", async () => {
     rosterRead = async () => [
       { id: "amber-1f2e", flow: "coder", standard: false, description: null },
       { id: "eng.mine", flow: "coder", standard: false, description: null },
@@ -394,7 +394,7 @@ describe("the sidebar (V4)", () => {
     expect(teams.getByTestId("teams-failure").textContent).toContain("inventory offline");
   });
 
-  it("says so under TEAMS when the person's own workers didn't load, and still lists the inventory's teams", async () => {
+  it("says so under TEAMS when the user's own workers didn't load, and still lists the inventory's teams", async () => {
     rosterRead = async () => {
       throw new Error("roster offline");
     };

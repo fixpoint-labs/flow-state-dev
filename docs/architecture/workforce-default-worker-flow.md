@@ -111,7 +111,7 @@ loader and at the hire, from the shared constants in `manifest.ts` that every do
 than re-spelling. Those five are both; `instructions` is the one key that is imposed and authored all
 the same — as the file's body.
 
-`workerId` is the worker's logical id, the one a mailbox's `members:` lists (FIX-1589). A file
+`workerId` is the worker's logical id, the one a worker file's `delegates:` lists (FIX-1589). A file
 record's `id` is that id; a runtime-hired record's `id` is its org-qualified address, so the roster
 row carries the logical id on the record's `workerId` field and the hire stamps that. It exists because a worker that files or posts must
 name itself, and a block cannot see which worker it runs in: core keeps the flow's id off the block
@@ -257,7 +257,7 @@ refusal** — that is the loud-fail obligation the epic assigned here.
 
 A roster is N workers on one worker flow, and `defineFlow` defaults to `singleton`
 (`normalizeCardinality`, `packages/core/src/flow/defineFlow.ts:200` — `undefined` returns
-`"singleton"`). A singleton's id is its kind. So a replacement written the plain way —
+`"singleton"`). A singleton's id is its flow kind. So a replacement written the plain way —
 `defineFlow({ kind: "agent", configSchema, actions })` — hires without complaint and is then
 refused worker by worker at **registration**, not at the mint:
 
@@ -364,10 +364,10 @@ maintained, so it is **not edited** — the correction lives here.
 ## C4 — Memory attaches to existing scopes, and per-worker memory works
 
 `session`, `user`, `org`, plus per-instance isolation where a resource wants it. **Identity and
-durable per-member memory are not on the worker object.**
+durable per-worker memory are not on the worker object.**
 
-**Corrected by FIX-1364 — "member" here has always meant *worker*** (one worker on the
-roster), not a person identity outliving workers and not a separate member graph. Read that way,
+**Corrected by FIX-1364 — the word here has always meant *worker*** (one worker on the
+roster), not a user identity outliving workers and not a separate graph of them. Read that way,
 the gap this contract named is a **default, not a missing primitive**: user-scoped resources are
 shared per end user unless something isolates them (BP-027), and
 `defineFlow({ isolateUserState: true })` isolates them on the flow copy's id — which a worker has.
@@ -446,7 +446,7 @@ solely the generator's own `tools:` mapping (C1).
   or mirrors them — equally, nothing here waits on their deletion (FIX-1344 / PR #1713 owns
   that kill).
 - Workers run on worker flows. There is no `worker.ts` worker door.
-- No Mailbox or MessageBoard types follow from this contract.
+- No coordinator or message-board types follow from this contract.
 
 ### And one thing that must not be *copied*
 
@@ -466,7 +466,7 @@ snapshot would go stale before either issue lands. Note what a markdown-only gre
 `docs/atlas/workforce.html` is a rendered page (drift note §2f).
 
 **One published line was FIX-1363's, not FIX-1366's** — landed. `workers-on-disk` taught, as
-current behaviour, that a record is refused when it *"declares no `flow`, so there is no kind to
+current behaviour, that a record is refused when it *"declares no `flow`, so there is no flow to
 hire it into"*: the page's paraphrase of the refusal C2 removed. It needed naming because it sat
 outside every issue's declared scope — FIX-1366's scoping grep (drift note §2f) searches
 `defineAgent|materializeAgent|AgentRegistry|createAgentRegistry`, and that page contains none of
@@ -499,7 +499,7 @@ Each criterion belongs to the issue whose own build makes it true: **1–3 to FI
 thin proof; **4 to FIX-1363**, which builds the built-in and the merge-underneath; **5 and 6 to
 FIX-1362**, which builds the instance-specific seeding path C3 requires; and **7 to a grep**, riding
 with either building issue. FIX-1365 stays thin by the epic's fence — *a thin hire of the OOTB
-worker kind, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
+worker flow, nothing more* — so 4–6 land on their builders as one tracer-bullet behaviour each,
 rather than deferring to a single downstream check. Every assignment is also recorded on its own
 Linear issue, which is where an owner picks it up.
 
@@ -511,7 +511,7 @@ compose memory into its own worker flow is FIX-1364's and is not stated here.
 | Case | Expected |
 |---|---|
 | Worker file names a worker flow that isn't registered | Refuse by name, list the worker flows passed. Never fall back to the default — that is the typo risk the epic traded for this rule |
-| App registers a flow under `agent` whose own kind is something else | Refuse, via the existing mismatched-kind check (`hire.ts`, the `factory.kind !== kind` check). The built-in's presence must not create an exemption |
+| App registers a flow under `agent` whose own flow kind is something else | Refuse, via the existing mismatch check (`hire.ts`, the `factory.kind !== kind` check). The built-in's presence must not create an exemption |
 | App registers `agent` without `cardinality: "collection"` | Workers mint, then registration refuses each by name — see C2, which carries the rule and the error |
 | App registers `agent` *and* a worker says `flow: agent` | The app's flow. One resolution path, whether the name was implicit or written |
 | Worker file carries a body **and** an `instructions:` key | Already refused today (two sources, no precedence rule). Unchanged |

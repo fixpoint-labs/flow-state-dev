@@ -3,7 +3,7 @@
  *
  * Every assertion is on what the Lab's own routes return: the ask-lab is an
  * ordinary Lab config whose workers suspend on a stock approval, woken the way a
- * real Lab wakes them, by a person's post to a coordinator, which delivers it
+ * real Lab wakes them, by a user's post to a coordinator, which delivers it
  * to each delegate.
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -49,7 +49,7 @@ function loaded(snapshot: LabSnapshot): LoadedSnapshot {
   return snapshot;
 }
 
-/** Post a line into the person's conversation with a coordinator, through the coordinator's own door. */
+/** Post a line into the user's conversation with a coordinator, through the coordinator's own door. */
 async function post(clients: ReturnType<typeof createLabClients>, coordinatorId: string, message: string) {
   await clients.actions(COORDINATOR_FLOW).sendAction("run", { message }, { sessionId: coordinatorId });
 }
@@ -58,7 +58,7 @@ async function post(clients: ReturnType<typeof createLabClients>, coordinatorId:
 const delivered = (coordinatorId: string, message: string) => `${ASK_LAB_USER_ID}, through ${coordinatorId}: ${message}`;
 
 /**
- * A person asks a worker directly, through its public `ask` action, in the
+ * A user asks a worker directly, through its public `ask` action, in the
  * worker's own session (`s_<worker id>`, the session the Lab's EM ask lives in),
  * opened naming the worker's worker on the asker flow's one copy.
  */
@@ -72,7 +72,7 @@ async function ask(clients: ReturnType<typeof createLabClients>, workerId: strin
   await clients.actions(ASKER_FLOW).sendAction("ask", { what }, { sessionId });
 }
 
-/** The person hires a worker of their own on the asker worker flow, through the roster flow's `hire`. */
+/** The user hires a worker of their own on the asker worker flow, through the roster flow's `hire`. */
 async function hire(clients: ReturnType<typeof createLabClients>, id: string) {
   const roster = await clients.sessions.createSession({ flowKind: ROSTER_FLOW, userId: clients.userId });
   await clients.actions(ROSTER_FLOW).sendAction("hire", { id, flow: ASKER_FLOW }, { sessionId: roster.id });
@@ -126,9 +126,9 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.inventory.ok).toBe(true);
   });
 
-  it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
+  it("refuses a Lab that names no organization for the user, and reads nothing from the tree", async () => {
     // The Lab opens nothing at boot and serves no reader flow to open one on,
-    // so the person holds no session and nothing the Lab serves says which
+    // so the user holds no session and nothing the Lab serves says which
     // organization they are in.
     const { baseUrl } = await lab({ conversations: false });
     const seen: string[] = [];
@@ -147,10 +147,10 @@ describe("the refusal (V2, BR-3)", () => {
     expect(seen.slice(2).every((s) => s === "GET /api/flows/sessions")).toBe(true);
   });
 
-  // FIX-1752: projects are org-wide, so a person the Lab verifies reaches them on a first
+  // FIX-1752: projects are org-wide, so a user the Lab verifies reaches them on a first
   // visit. Their reading sessions are opened first, and the Lab stamps them with their organization.
-  it("reads the organization off a reading session it opens for a person who holds none", async () => {
-    // The Lab opens nothing at boot; its verified principal puts the person in `org_first_visit`.
+  it("reads the organization off a reading session it opens for a user who holds none", async () => {
+    // The Lab opens nothing at boot; its verified principal puts the user in `org_first_visit`.
     const { baseUrl } = await lab({ conversations: false, bearer: "ask-lab-secret", orgId: "org_first_visit" });
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
     expect(await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).toEqual([]);
@@ -160,8 +160,8 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["workforce-roster"]);
   });
 
-  // Two reads of a first visit can overlap: StrictMode replays the boot, or the person opens
-  // two tabs. Either way the person ends up with one reading session on each flow, never two.
+  // Two reads of a first visit can overlap: StrictMode replays the boot, or the user opens
+  // two tabs. Either way the user ends up with one reading session on each flow, never two.
   it("opens one reading session per flow for overlapping first-visit reads, on one page and across two", async () => {
     const { baseUrl } = await lab({ conversations: false });
     const page = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
@@ -174,7 +174,7 @@ describe("the refusal (V2, BR-3)", () => {
     expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
   });
 
-  // Session ids aren't scoped by organization. A person whose reading id is already held in
+  // Session ids aren't scoped by organization. A user whose reading id is already held in
   // another of their organizations must still reach this one, not be locked out of it.
   it("opens the reading session under a fresh id when its one id is held where this organization can't list it", async () => {
     const { baseUrl } = await lab({ conversations: false });
@@ -198,7 +198,7 @@ describe("the refusal (V2, BR-3)", () => {
     expect(readers[0]!.id).not.toBe(readerSessionId(ASK_LAB_USER_ID, ROSTER_FLOW));
   });
 
-  it("a person with no session whose reading sessions are refused gets the Lab's refusal, and nothing else is read", async () => {
+  it("a user with no session whose reading sessions are refused gets the Lab's refusal, and nothing else is read", async () => {
     const { baseUrl } = await lab({ conversations: false });
     const seen: string[] = [];
     const real = globalThis.fetch;
@@ -215,7 +215,7 @@ describe("the refusal (V2, BR-3)", () => {
     expect(seen.slice(2).every((s) => s === "GET /api/flows/sessions")).toBe(true);
   });
 
-  it("refuses when the person's session carries no organization", async () => {
+  it("refuses when the user's session carries no organization", async () => {
     const { baseUrl } = await lab();
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -256,21 +256,21 @@ describe("the refusal (V2, BR-3)", () => {
 });
 
 describe("one read per resource (V3, BR-11)", () => {
-  it("lists once, reads each flow's manifest once, and the person's conversation boards once per refresh", async () => {
+  it("lists once, reads each flow's manifest once, and the user's conversation boards once per refresh", async () => {
     const { baseUrl } = await lab();
     const reader = createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID }));
-    // The first read opens the person's roster session, so its flow's manifest is first read on the second.
+    // The first read opens the user's roster session, so its flow's manifest is first read on the second.
     await reader.read();
     await reader.read();
     const seen = countRequests();
     const snapshot = loaded(await reader.read());
 
-    // One listing, and no reading session to open: the person holds their roster session already.
+    // One listing, and no reading session to open: the user holds their roster session already.
     expect(seen.filter((line) => line.startsWith("POST ") && line.endsWith("/sessions"))).toEqual([]);
     expect(seen.filter((line) => line === "GET /api/flows/sessions")).toHaveLength(1);
     // Manifests are cached by flow kind across refreshes.
     expect(seen.filter((line) => line.endsWith("/manifest"))).toEqual([]);
-    // Both of the person's coordinator conversations keep a board, in one
+    // Both of the user's coordinator conversations keep a board, in one
     // ledger: it is read once, through one of them. Nothing filed on either.
     const boardReads = seen.filter((line) => line.endsWith("/resources/tasks"));
     expect(boardReads).toHaveLength(1);
@@ -298,7 +298,7 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.asks.ok).toBe(true);
   });
 
-  it("reads the worker inventory once, through one of the person's own sessions whose flow declares it", async () => {
+  it("reads the worker inventory once, through one of the user's own sessions whose flow declares it", async () => {
     const { baseUrl } = await lab();
     const seen = countRequests();
     const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
@@ -309,7 +309,7 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(await workerReads(baseUrl, snapshot, seen)).toHaveLength(1);
   });
 
-  it("reads it for a person who holds only a worker's session, through a session of theirs that declares it", async () => {
+  it("reads it for a user who holds only a worker's session, through a session of theirs that declares it", async () => {
     const { baseUrl } = await lab();
     const other = createLabClients({ baseUrl, userId: "u_other" });
     await other.sessions.createSession({ flowKind: ASKER_FLOW, userId: "u_other", sessionId: "s_other_asker", state: { workerId: "ops.asker" } });
@@ -333,7 +333,7 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
   });
 
-  it("a Lab whose flows declare no inventory still reads the organization off the person's sessions", async () => {
+  it("a Lab whose flows declare no inventory still reads the organization off the user's sessions", async () => {
     const { baseUrl } = await lab({ inventoryDeclared: false });
     const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     if (snapshot.inventory.ok) throw new Error("the inventory loaded");
@@ -409,7 +409,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect([...REOPENED_SOURCES].sort()).toEqual([...PUBLIC_REENTRY_SOURCES].sort());
   });
 
-  it("a person's ask whose request records no source is unanswerable, not offered (fail-closed)", async () => {
+  it("a user's ask whose request records no source is unanswerable, not offered (fail-closed)", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     await ask(clients, "ops.loner", "no source");
@@ -447,10 +447,10 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.asks.value[0]!.workerId).toBe("ops.loner");
   });
 
-  it("an ask from the person's own worker is in Inbox, and that worker reads as on call", async () => {
+  it("an ask from the user's own worker is in Inbox, and that worker reads as on call", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    // A worker of the person's own: on their roster, never in the inventory.
+    // A worker of the user's own: on their roster, never in the inventory.
     await hire(clients, "ops.mine");
     await ask(clients, "ops.mine", "ship it");
     const snapshot = await eventually(async () => {
@@ -467,7 +467,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(states.workers.get("ops.mine")?.status).toBe("on call");
   });
 
-  it("a roster that fails to load fails Inbox's asks by name, not by dropping the person's own workers", async () => {
+  it("a roster that fails to load fails Inbox's asks by name, not by dropping the user's own workers", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     await ask(clients, "ops.asker", "deploy");
@@ -488,7 +488,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     await ask(clients, "ops.asker", "deploy");
-    // A person who holds only a worker's session, through which the inventory is read.
+    // A user who holds only a worker's session, through which the inventory is read.
     const noRoster = createLabClients({ baseUrl, userId: "u_no_roster" });
     await noRoster.sessions.createSession({ flowKind: ASKER_FLOW, userId: "u_no_roster", state: { workerId: "ops.asker" } });
     const real = globalThis.fetch;
@@ -514,7 +514,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.asks).toEqual({ ok: true, value: [] });
   });
 
-  it("a session on another flow that names the person's own worker is not that worker's", async () => {
+  it("a session on another flow that names the user's own worker is not that worker's", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     await hire(clients, "ops.mine");
@@ -538,14 +538,14 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.asks).toEqual({ ok: true, value: [] });
   });
 
-  it("another person's own worker's ask is in their Inbox, never in this person's", async () => {
+  it("another user's own worker's ask is in their Inbox, never in this user's", async () => {
     const { baseUrl } = await lab();
     const mine = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     const theirs = createLabClients({ baseUrl, userId: "u_other" });
     await hire(theirs, "ops.theirs");
     await ask(theirs, "ops.theirs", "their thing");
     await ask(mine, "ops.asker", "deploy");
-    // The control: the ask is there to be read, by the person whose worker it is.
+    // The control: the ask is there to be read, by the user whose worker it is.
     const theirAsks = await eventually(async () => {
       const s = loaded(await createLabReader(theirs).read());
       return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
@@ -560,7 +560,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     const reader = createLabReader(clients);
-    // Asks in the delegates' own sessions, started by a person.
+    // Asks in the delegates' own sessions, started by a user.
     await ask(clients, "ops.asker", "deploy");
     await ask(clients, "ops.helper", "rollback");
     const before = await eventually(async () => {

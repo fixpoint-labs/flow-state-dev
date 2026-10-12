@@ -44,7 +44,7 @@ const REQUEST_PAGES = 20;
 
 /**
  * Run one action on a session of flow `flow` (or, with no session, on a new
- * one the Lab creates for this person) and return what it answered, with the
+ * one the Lab creates for this user) and return what it answered, with the
  * session it ran in.
  */
 export async function runAction(

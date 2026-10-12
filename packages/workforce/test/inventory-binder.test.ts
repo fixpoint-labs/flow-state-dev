@@ -128,7 +128,7 @@ async function host(adapter: unknown = inMemoryStores()) {
   }): Promise<unknown> => {
     const flow = byFlow[request.flowKind];
     if (flow === undefined) {
-      throw new Error(`no flow registered under kind "${request.flowKind}"`);
+      throw new Error(`no flow registered under flow kind "${request.flowKind}"`);
     }
     const result: any = await runAction({
       flow,

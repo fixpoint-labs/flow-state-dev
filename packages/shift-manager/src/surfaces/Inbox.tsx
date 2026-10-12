@@ -1,14 +1,14 @@
 /**
  * Inbox (S10): every pending approval and question in the worker sessions the
- * Lab lists for this person, dispatch runs included, oldest first (BR-24).
+ * Lab lists for this user, dispatch runs included, oldest first (BR-24).
  * A list and a detail pane; the detail draws the ask with the same card Chief
  * of Staff uses, and answers it through the same resume (BR-25).
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
- * highlighter square (each one waits on the person), and a detail on the
+ * highlighter square (each one waits on the user), and a detail on the
  * inspector surface headed by the question at 26px. Under it, *From the
  * session* lists the worker's last tool calls before it asked, and the
- * person's own lines sent into that session follow (BR-18), both read from
+ * user's own lines sent into that session follow (BR-18), both read from
  * the ask's session.
  *
  * Under the detail, a reply box sends a line into the session the ask sits in,
@@ -106,7 +106,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                       isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
                     )}
                   >
-                    {/* The highlighter: every ask waits on the person. */}
+                    {/* The highlighter: every ask waits on the user. */}
                     <StateSquare state="needs" className="mt-1" />
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex">
@@ -181,7 +181,7 @@ type AskSessionRead =
   | { ok: false; failure: Failure };
 
 /**
- * *From the session* and the person's replies, read from the ask's session
+ * *From the session* and the user's replies, read from the ask's session
  * (BR-18). Read when the ask opens and again after each reply is delivered
  * (`reread`), so the reply shows once the session holds it; a Lab refresh for
  * anything else doesn't re-read the session. The component is keyed by the

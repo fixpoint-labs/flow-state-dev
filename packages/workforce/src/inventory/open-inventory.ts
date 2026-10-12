@@ -238,7 +238,7 @@ export async function openInventory(
       `openInventory was given ${workers.length} worker${workers.length === 1 ? "" : "s"} and no ` +
         `\`workerWriter\`. A worker has no session, so its row has to be written from inside some ` +
         `flow, and there is nothing in the roster that says which. Pass ` +
-        `\`workerWriter: { flowKind }\` naming a kind whose \`internal.actions\` spread ` +
+        `\`workerWriter: { flowKind }\` naming a flow kind whose \`internal.actions\` spread ` +
         `\`inventoryWriterActions()\`.`
     );
   }

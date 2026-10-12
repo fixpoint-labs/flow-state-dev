@@ -7,7 +7,7 @@
  * are unchanged; their own suite is `conversation-board-notices.test.ts`).
  *
  * Nothing here calls the waker: the task session's notice, or a later touch
- * of the board by the person, is what resumes the turn.
+ * of the board by the user, is what resumes the turn.
  */
 import { describe, expect, it } from "vitest";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
@@ -110,7 +110,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
     }
   });
 
-  it("a notice lost after the ending is paid by the person's next touch of the board, once (BR-11)", async () => {
+  it("a notice lost after the ending is paid by the user's next touch of the board, once (BR-11)", async () => {
     const judgment = askingJudgment("Count workers", (results) =>
       results.includes("eng.tasker did: Count workers") ? "Forty workers." : `unexpected: ${results}`
     );
@@ -127,7 +127,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
       expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
       lost.restore();
 
-      // The person looks at the conversation's task list: a touch of the board.
+      // The user looks at the conversation's task list: a touch of the board.
       expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
       expect(await until(async () => (await statusOf(host, asked.requestId!)) === "completed")).toBe(true);
       await host.settled();
@@ -147,7 +147,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
     ["throws", (): Promise<never> => Promise.reject(new Error("the store blinked"))],
     ["is turned away as busy", () => Promise.resolve({ ok: false as const, refused: "busy" as const, detail: "another resume holds the turn" })]
   ] as const) {
-    it(`a resume that ${label} on the notice is retried by the person's next touch, once (BR-11)`, async () => {
+    it(`a resume that ${label} on the notice is retried by the user's next touch, once (BR-11)`, async () => {
       const judgment = askingJudgment("Count desks", (results) =>
         results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
       );
@@ -167,7 +167,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
         expect(await statusOf(host, asked.requestId!)).toBe("suspended");
         expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
 
-        // The person looks at the task list: a touch of the board, never a turn.
+        // The user looks at the task list: a touch of the board, never a turn.
         expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
         expect(await until(async () => (await statusOf(host, asked.requestId!)) === "completed")).toBe(true);
         await host.settled();

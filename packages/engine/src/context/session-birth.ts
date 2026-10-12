@@ -246,8 +246,7 @@ function bindsSessions(flow: Pick<BirthFlow, "session">): boolean {
  * A state the schema refuses is refused on a flow that binds its sessions
  * ({@link bindsSessions}). Any other flow keeps it as sent, and its actions
  * validate it when they run: some create sessions half-filled on purpose and
- * complete them later (the workforce mailbox reads the missing fields as
- * "not yet opened").
+ * complete them later.
  *
  * @throws SessionCreateRefusedError (400, naming the first failing field) when
  *   a bound flow's schema refuses the state.

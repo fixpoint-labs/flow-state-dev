@@ -4,7 +4,7 @@
  * The lab's org id was `org_devforce_lab`; it is `devforce-lab` now, because a
  * hired worker's address starts with the org and an address segment is
  * lowercase and hyphenated. A default store from before the change still holds
- * the mailbox's session, the ask's session and the org's rows under the old
+ * a worker's session, the ask's session and the org's rows under the old
  * id, and a boot that reuses them fails on the org binding. The store is a
  * lab's dev store, and the old id never had a hired worker (no address could be
  * built for one), so boot sets the old file aside, says so, and starts fresh.
@@ -36,16 +36,16 @@ describe("DevTeam over a store written under the old org id", () => {
     store = join(dir, "devteam.sqlite");
     const old = createSQLiteStores({ filename: store });
     const now = Date.now();
-    // What the earlier version opened: the feature mailbox's session, bound to the old org.
+    // What the earlier version opened: a worker's session, bound to the old org.
     await old.session.set(
       "eng.feature",
       {
         id: "eng.feature",
-        flowKind: "mailbox",
-        flowId: "mailbox",
+        flowKind: "agent",
+        flowId: "agent",
         userId: LAB_USER_ID,
         orgId: OLD_ORG,
-        state: { members: ["eng.em"], instructions: "old" },
+        state: { instructions: "old" },
         lineageId: "lin_eng.feature",
         version: 0,
         createdAt: now,

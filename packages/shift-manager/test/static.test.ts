@@ -125,7 +125,7 @@ describe("V8", () => {
     expect(literalColours(join(src, "styles.css"), `:root {\n  --background: hsl(0 0% 100%);\n}`)).toHaveLength(1);
   });
 
-  it("sends a person's line only through the one send path, to the door the inventory names (V7, ER-15)", () => {
+  it("sends a user's line only through the one send path, to the door the inventory names (V7, ER-15)", () => {
     const code = sources.filter((f) => /\.tsx?$/.test(f) && !relative(src, f).startsWith("components/flow-state/"));
     // An action is the only way Shift Manager can put an item in a session (the
     // client has no item write), so the sites that send one are the list.

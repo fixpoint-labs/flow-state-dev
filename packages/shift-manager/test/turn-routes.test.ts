@@ -1,5 +1,5 @@
 /**
- * Where a person's line can go (V6; BR-18): the door a session's own flow
+ * Where a user's line can go (V6; BR-18): the door a session's own flow
  * publishes. A pure read of the snapshot, so each case is staged exactly.
  */
 import { describe, expect, it } from "vitest";

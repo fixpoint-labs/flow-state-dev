@@ -87,7 +87,7 @@ why; your app reads it the way it reads any failed request.
 
 ## Who can reach a worker
 
-Only its owner. A worker belongs to one user in one organization: another member can't list it,
+Only its owner. A worker belongs to one user in one organization: another user can't list it,
 open its sessions, send it a message or create a session with it. Asking for another user's
 worker gets the same answer as asking for one that doesn't exist. A user who belongs to two
 organizations has a separate roster in each.
@@ -98,7 +98,7 @@ Each worker the user hires or forks is one row in their user scope at `workforce
 A standard worker isn't stored: it is read from your files each time, so a deploy that changes a
 file changes it for everyone. On the built-in `agent` flow, each worker has its own skills, and
 its own working memory in each conversation. Long-term memory, if your app adds it, is kept per
-person: one person's workers on `agent` share it, and another person's workers can't read it. On a
+user: one user's workers on `agent` share it, and another user's workers can't read it. On a
 flow you write, that is up to you: see
 [Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
 

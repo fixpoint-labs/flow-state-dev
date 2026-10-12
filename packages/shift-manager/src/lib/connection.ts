@@ -27,7 +27,7 @@ import { createWorkforceClient, type WorkforceClient } from "@flow-state-dev/wor
 
 /** What a connection is made from. */
 export type Connection = {
-  /** The person the Lab's routes are read as. */
+  /** The user the Lab's routes are read as. */
   userId: string;
   /** The Lab's bearer token, when its config declares one. */
   bearerToken?: string;

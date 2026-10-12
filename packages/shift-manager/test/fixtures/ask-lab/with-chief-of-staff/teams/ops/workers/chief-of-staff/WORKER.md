@@ -1,5 +1,5 @@
 ---
-description: The person's one point of contact, for the Chief of Staff view's tests.
+description: The user's one point of contact, for the Chief of Staff view's tests.
 flow: asker
 ---
 

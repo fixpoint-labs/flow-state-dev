@@ -139,8 +139,8 @@ const SESSION_BOARD_COLLECTION = "tasks";
 export const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
- * The standard worker every person's project coordinator runs as: the
- * installation names it, and each person's coordinator for a project is a
+ * The standard worker every user's project coordinator runs as: the
+ * installation names it, and each user's coordinator for a project is a
  * session of it (`org/workers/project-coordinator/`).
  */
 export const PROJECT_COORDINATOR = "project-coordinator";
@@ -173,10 +173,10 @@ const LAB_PRINCIPAL_SECRET = "devforce-lab-verified-principal";
 /**
  * The three named people this lab's door knows, each by a secret of their
  * own, all in the lab's organization: the owner (who the lab runs as, and who
- * the page is handed), a second member of the default projects, and an
+ * the page is handed), a second project member of the default projects, and an
  * outsider who is in the organization and on no project. The two others exist
- * so a check can act in a project as a member who did not create it, and be
- * refused as someone who is not a member.
+ * so a check can act in a project as a project member who did not create it,
+ * and be refused as someone who is not one.
  */
 export const LAB_USERS = {
   owner: { userId: LAB_USER_ID, bearer: LAB_PRINCIPAL_SECRET },
@@ -186,7 +186,7 @@ export const LAB_USERS = {
 
 /**
  * More members of the default projects, each with a secret of their own. With
- * the member above they are eight people whose writes to one project can
+ * the project member above they are eight people whose writes to one project can
  * race: the engine's own retries absorb a race between two or three writers,
  * so a check that the projects' own retry is load-bearing needs more of them.
  */
@@ -203,7 +203,7 @@ const labBearers = [...Object.values(LAB_USERS), ...LAB_CROWD].map((user) =>
 );
 
 /**
- * One secret per person. Each resolver refuses a bearer that is not its own,
+ * One secret per user. Each resolver refuses a bearer that is not its own,
  * so the first that recognises the token answers; a token none recognises,
  * and a request with none, is refused.
  */
@@ -276,7 +276,7 @@ const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: 
 /** The chief of staff's project tools, by the names its `tools:` line spells. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "openWorkstream", "listProjects"];
 
-/** The person's projects, with what a coder's task that names no project does next. */
+/** The user's projects, with what a coder's task that names no project does next. */
 const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
 
 /**
@@ -298,8 +298,8 @@ const forCoding = handler({
       coded.length === 1 && only !== undefined
         ? `One project has a repository: ${named(only)}. File a coder's task that names no project for it now, with addTask, without asking.`
         : coded.length === 0
-          ? "No project has a repository. Ask which project the person means."
-          : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the person means, naming each.`;
+          ? "No project has a repository. Ask which project the user means."
+          : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the user means, naming each.`;
     return { ...listed, forCoding: next };
   },
 });
@@ -314,18 +314,18 @@ const forCoding = handler({
  * `listProjects`, adds `forCoding`.
  *
  * `listProjects` is how the chief of staff knows which project a coder's task
- * works in: the projects the person is a member of, read when asked, never
+ * works in: the projects the user is a member of, read when asked, never
  * guessed.
  *
- * `openWorkstream` names its lead: a worker on the person's roster that can
+ * `openWorkstream` names its lead: a worker on the user's roster that can
  * lead. The project coordinator opens workstreams through the same block.
  *
  * The owner is the session's user, so a project the chief of staff creates
- * belongs to the person talking to it, who is always a member; `members` adds
+ * belongs to the user talking to it, who is always a project member; `members` adds
  * whoever they name.
  *
- * **A repository waits for the person.** Which remote a project's code is
- * cloned from is the person's to say, so `setRepository`, and `createProject`
+ * **A repository waits for the user.** Which remote a project's code is
+ * cloned from is the user's to say, so `setRepository`, and `createProject`
  * with a `repository`, pause on a stock `human_approval` before the write.
  * Approve writes it; Deny throws out of the tool before the write runs, and
  * nothing changes. Without durable execution the tool refuses rather than
@@ -336,7 +336,7 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     listProjects: sequencer({
       name: "listProjects",
       description:
-        "List the projects the person you are talking to is a member of: each one's address " +
+        "List the projects the user you are talking to is a member of: each one's address " +
         "(`visibility` and `id`), its title, and its `repository` (null when it has none), and " +
         "`forCoding`, what to do with a coder's task that names no project. Answer which projects " +
         "they have, and pick the project a task works in, from this, never from memory.",
@@ -348,16 +348,16 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
       description:
-        "Open a workstream for the person you are talking to, in a project, by the project's address " +
+        "Open a workstream for the user you are talking to, in a project, by the project's address " +
         "(`visibility` and `id`): a short lowercase `id`, its `title`, and its `lead`, a worker on their " +
         "roster that leads it. They own it, and nobody else can change it. On a shared project, members only.",
     }),
     createProject: sequencer({
       name: "createProject",
       description:
-        "Create a project for the person you are talking to. They own it and are always a member. " +
+        "Create a project for the user you are talking to. They own it and are always a project member. " +
         "`id` is a short lowercase slug; `members` adds the user ids they name; `repository` is the git " +
-        "remote its code lives in, if they named one. With a repository, the person approves it first.",
+        "remote its code lives in, if they named one. With a repository, the user approves it first.",
       inputSchema: createProjectInputSchema,
       outputSchema: createProjectOutputSchema,
     })
@@ -366,8 +366,8 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     setRepository: sequencer({
       name: "setRepository",
       description:
-        "Set, change or clear (null) the git remote a project's code lives in. Only the project's " +
-        "members may, and the person approves it first.",
+        "Set, change or clear (null) the git remote a project's code lives in. " +
+        "Only project members may, and the user approves it first.",
       inputSchema: setRepositoryInputSchema,
       outputSchema: setRepositoryOutputSchema,
     })
@@ -379,11 +379,11 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
 /**
  * Hire and fire as the chief of staff's tools, under the names its `tools:`
  * line spells: Workforce's hire blocks, each a write to the roster of the
- * person talking to it. A catalog key must be the tool's own name, so `hire`
+ * user talking to it. A catalog key must be the tool's own name, so `hire`
  * is the block under `.as()`; `fire` is a sequencer, because it waits for an
  * approval first.
  *
- * **A fire waits for the person.** It pauses on a stock `human_approval`
+ * **A fire waits for the user.** It pauses on a stock `human_approval`
  * naming the worker before the write; Deny throws out of the tool before the
  * write runs, and nothing changes. Without durable execution the tool refuses
  * rather than firing unasked.
@@ -394,13 +394,13 @@ export function chiefOfStaffRosterTools(installation: WorkerInstallation) {
     hire: blocks.hire.as({
       name: "hire",
       description:
-        "Hire a worker of the person's own: `id` is a short lowercase slug, `flow` the flow it runs on " +
+        "Hire a worker of the user's own: `id` is a short lowercase slug, `flow` the flow it runs on " +
         "(`agent` when omitted), and `settings` the keys its file would declare. It lands at once.",
     }),
     fire: sequencer({
       name: "fire",
       description:
-        "Fire one of the person's own workers, by its id, once the person approves it. A worker the files declare can't be fired.",
+        "Fire one of the user's own workers, by its id, once the user approves it. A worker the files declare can't be fired.",
       inputSchema: blocks.fire.inputSchema,
       outputSchema: blocks.fire.outputSchema,
     })
@@ -417,7 +417,7 @@ const askFire = handler({
   execute: async (input: { id: string }, ctx: BlockContext) => {
     if (ctx.suspend === undefined) {
       throw new Error(
-        `firing "${input.id}" waits for a person's approval here, and this app can't ask for one: it runs ` +
+        `firing "${input.id}" waits for a user's approval here, and this app can't ask for one: it runs ` +
           `without durable execution. Nothing was changed.`,
       );
     }
@@ -453,7 +453,7 @@ function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchem
       const project = projectOf(input) ?? "";
       if (ctx.suspend === undefined) {
         throw new Error(
-          `the repository of project "${project}" waits for a person's approval here, and this app ` +
+          `the repository of project "${project}" waits for a user's approval here, and this app ` +
             `can't ask for one: it runs without durable execution. Nothing was changed.`,
         );
       }
@@ -569,7 +569,7 @@ export interface OpenLabOptions {
 
   /**
    * The asking door files its row before it suspends. The red state of
-   * "nothing is filed until a person approves".
+   * "nothing is filed until a user approves".
    */
   fileBeforeAsking?: boolean;
 
@@ -598,12 +598,12 @@ export interface OpenLabOptions {
   mutateSkills?: (workerId: string, skills: WorkerSkill[]) => WorkerSkill[];
   /**
    * Build the phase so its prompt builder ignores the task the manager hands
-   * it. The red state of "a run is handed the work a person approved".
+   * it. The red state of "a run is handed the work a user approved".
    */
   dropTask?: boolean;
   /**
    * Leave the chief of staff's `listProjects` out: not in the catalog, and not
-   * in its `tools:`, so it can't read which projects the person has. The red
+   * in its `tools:`, so it can't read which projects the user has. The red
    * state of "the chief of staff names the project a coder's task works in
    * without asking".
    */
@@ -723,7 +723,7 @@ export interface Lab {
   /**
    * Run one of the project and workstream writes (`createProject`,
    * `setRepository`, `openWorkstream`, `updateWorkstream`) as the lab's owner,
-   * or as another of the {@link LAB_USERS}, in that person's projects
+   * or as another of the {@link LAB_USERS}, in that user's projects
    * session. Absent when `projects` was not asked for.
    */
   projectAct?(
@@ -742,7 +742,7 @@ export interface Lab {
    */
   state: FlowState;
   /**
-   * Send one request through the lab's HTTP door, as a person's client would.
+   * Send one request through the lab's HTTP door, as a user's client would.
    *
    * `path` is everything after `/api/flows/`, query string included. The lab's
    * verified bearer is sent unless `bearer` is `false`, which is how a check
@@ -817,7 +817,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     standardWorkers: workers,
     workerFlows: () => builtFlows,
     documents: resources as never,
-    // Each person's coordinator for a project, when the tree declares it.
+    // Each user's coordinator for a project, when the tree declares it.
     ...(workers.some((worker) => worker.id === PROJECT_COORDINATOR) ? { projectCoordinator: PROJECT_COORDINATOR } : {}),
   });
   // The workstream writes. A workstream's lead runs on the built-in `agent`
@@ -889,9 +889,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // chief-of-staff/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
   // its `tools:`, and in this tree only the chief of staff does. Hire and fire
-  // write the roster of the person talking to it: a worker of their own, which
-  // runs on that person's turns only. A fire, and a project's repository, wait
-  // for a person's Approve in Inbox, which needs durable execution (on
+  // write the roster of the user talking to it: a worker of their own, which
+  // runs on that user's turns only. A fire, and a project's repository, wait
+  // for a user's Approve in Inbox, which needs durable execution (on
   // whenever a worker holds a tool that asks first).
   const rosterTools = chiefOfStaffRosterTools(installation);
   const asksFirst = new Set(["fire", ...(options.withoutProjectTools === true ? [] : ["createProject", "setRepository"])]);
@@ -978,7 +978,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       [PROJECT_SETUP_ACTION]: {
         block: projectSetup(installation),
         description:
-          "Name this Lab's project setup: the worker each person's project coordinator runs as.",
+          "Name this Lab's project setup: the worker each user's project coordinator runs as.",
       },
     },
   } as never)();
@@ -1012,7 +1012,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resolvePrincipal: resolveLabPrincipal,
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // When something can wait for a person: the EM's ask, or a worker holding
+    // When something can wait for a user: the EM's ask, or a worker holding
     // a tool that asks first. Trees with neither run without it.
     ...(options.ask === undefined && !asksBeforeChanging ? {} : { durable: true }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
@@ -1052,7 +1052,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       if (result?.error !== undefined) throw new Error(messageOf(result.error));
       return result;
     };
-    // The standard workers, the ones every member has. A person's own workers
+    // The standard workers, the ones every user has. A user's own workers
     // are theirs, on their roster, and not listed here.
     const opened = await openInventory(
       { workers: inventoryWorkers(installation) },
@@ -1088,12 +1088,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
   }
 
-  /** The session a person's own project and workstream writes run in. */
+  /** The session a user's own project and workstream writes run in. */
   const projectsSessionOf = (as: keyof typeof LAB_USERS): string =>
     as === "owner" ? PROJECTS_SESSION : `${PROJECTS_SESSION}-${as}`;
 
   // The workstreams, once their projects exist: one `openWorkstream` each, as
-  // the person it names, in their projects session. One already open comes
+  // the user it names, in their projects session. One already open comes
   // back unchanged.
   let workstreams: OpenWorkstreamOutput[] | undefined;
   if (options.workstreams !== undefined) {

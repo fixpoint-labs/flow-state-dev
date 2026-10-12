@@ -1,5 +1,5 @@
 ---
-description: Asks a person before it does anything.
+description: Asks a user before it does anything.
 flow: asker
 ---
 

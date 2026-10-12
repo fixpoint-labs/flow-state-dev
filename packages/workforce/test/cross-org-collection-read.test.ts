@@ -197,10 +197,10 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
 
   for (const org of INV_ORGS) {
     // Opened over the real session route, as the org's own principal.
-    for (const kind of [WRITER_KIND, PLAIN_KIND]) {
+    for (const flowKind of [WRITER_KIND, PLAIN_KIND]) {
       const created = await h.post(
-        [kind, "sessions"],
-        { userId: INV_USER, sessionId: `${readerSession(org)}${kind === PLAIN_KIND ? "-plain" : ""}` },
+        [flowKind, "sessions"],
+        { userId: INV_USER, sessionId: `${readerSession(org)}${flowKind === PLAIN_KIND ? "-plain" : ""}` },
         { "x-verified-org": org }
       );
       if (created.status >= 400) throw new Error(`create ${created.status}: ${JSON.stringify(created.json)}`);

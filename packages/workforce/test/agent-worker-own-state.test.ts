@@ -3,7 +3,7 @@
  * V6: BR-9, BR-17, BR-18).
  *
  * Org scope is shared with every member of an org, so whatever a flow writes
- * there, every member's runs can read. The built-in `agent`'s own working
+ * there, every user's runs can read. The built-in `agent`'s own working
  * state, its skills drawer, belongs to the user the worker runs for. Graded on
  * the store after a real run, not on the flow's declaration: every write the
  * run makes is recorded with the scope it landed in.

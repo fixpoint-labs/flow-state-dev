@@ -96,17 +96,17 @@ A replacement declares `kind: "agent"`, like any other flow passed under its own
 
 A worker on this flow takes tasks with no setup. When a [coordinator](./coordinators.md), a worker that hands work to other workers called its delegates, files a task for it, the worker runs the task as one turn in a task session of its own. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails.
 
-A task goes only to a worker on the filing person's roster, one your files declare or one of their own. Another user's worker is refused the way a worker nobody holds is. Filing a task, retries, and what the filing conversation hears are in [Handing out tasks](./coordinators.md#handing-out-tasks).
+A task goes only to a worker on the filing user's roster, one your files declare or one of their own. Another user's worker is refused the way a worker nobody holds is. Filing a task, retries, and what the filing conversation hears are in [Handing out tasks](./coordinators.md#handing-out-tasks).
 
 ## What a worker keeps
 
-A conversation keeps its recent turns, each worker keeps its own skills for each person, and long-term memory, once you add it, is kept per person and shared by that person's workers.
+A conversation keeps its recent turns, each worker keeps its own skills for each user, and long-term memory, once you add it, is kept per user and shared by that user's workers.
 
-![A conversation holds recent turns, a worker's skills are kept per person, and memory is kept per person](./built-in-worker-memory.svg)
+![A conversation holds recent turns, a worker's skills are kept per user, and memory is kept per user](./built-in-worker-memory.svg)
 
 ## Skills
 
-A worker's skills are that worker's, kept in the scope of the person it runs for: two people never share one worker's copy. Send `userId` with the input. The skills read are the ones stored for that user.
+A worker's skills are that worker's, kept in the scope of the user it runs for: two people never share one worker's copy. Send `userId` with the input. The skills read are the ones stored for that user.
 
 Which skills a worker gets is decided by where the folders sit. Three places feed a worker on a team:
 
@@ -156,7 +156,7 @@ You write regression tests for reported bugs.
 ```
 
 - **`active`** lists the skills that are in context on every turn. Use it for the handful a worker should never be without — a house style, a format it always follows. Naming a skill it does not hold is refused, listing what it does hold.
-- **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a person typed — a model emitting the same text does not trigger it.
+- **A slash message.** Someone typing `/write-regression fix the flake` activates that skill for the turn. This always works, needs no setting, and only responds to what a user typed — a model emitting the same text does not trigger it.
 - **`activateTool`** lets the model pull a skill in partway through a turn, once it knows what it is dealing with. Off by default, because turning it on puts a listing of everything the worker holds into every prompt.
 
 The fourth is off by default. `skills.enableLlmClassifier` adds a small model call that decides whether a skill applies. It catches cases a slash and an always-on list miss. A slash match settles the turn before it runs, so it costs a provider round trip on every message that isn't one.
@@ -222,7 +222,7 @@ const remembers = defineAgentWorkerFlow({
 const flows = hireWorkforce(installation);
 ```
 
-Tell a worker something in one conversation and it knows it in the next. Memory is kept per person, and every worker on `agent` shares one copy, so one person's workers on it share what it remembers. It never reaches another person.
+Tell a worker something in one conversation and it knows it in the next. Memory is kept per user, and every worker on `agent` shares one copy, so one user's workers on it share what it remembers. It never reaches another user.
 
 ### The parts that are easy to get wrong
 
@@ -269,20 +269,20 @@ tools: [memory/recall]
 
 Every worker on `agent` runs on one shared copy, so what a worker remembers depends on the tier:
 
-- **Long-term memory** (episodic, semantic and digest) is kept per person, in their user scope in
-  the organization they're signed in to. One person's workers on `agent` share it: tell one of
-  them something and another may recall it. It never crosses people: another person's workers
+- **Long-term memory** (episodic, semantic and digest) is kept per user, in their user scope in
+  the organization they're signed in to. One user's workers on `agent` share it: tell one of
+  them something and another may recall it. It never crosses people: another user's workers
   can't read it. That is at the tiers' default `user` scope; a tier you set to `org` scope is
   shared with the whole organization.
 - **Working memory** is kept per conversation. A conversation runs one worker for its whole life,
   so it is that worker's own.
-- **Skills** are kept per worker, for each person, by the built-in itself.
+- **Skills** are kept per worker, for each user, by the built-in itself.
 
 `isolateUserState: true` keeps the `agent` flow's user-scoped storage apart from every other
 flow's. It doesn't separate workers on `agent`: they share the one copy it keys on.
 
 A memory tier can override that with its own `flowIsolation`, set on `episodic` or `semantic` in
-`system()`. The `agent` flow can, for example, keep its episodes apart from the person's other
+`system()`. The `agent` flow can, for example, keep its episodes apart from the user's other
 flows while sharing semantic facts with them. Per-tier isolation doesn't separate workers on
 `agent` from each other either. See
 [Sharing a tier across flows](../memory/configuration.md#sharing-a-tier-across-flows).

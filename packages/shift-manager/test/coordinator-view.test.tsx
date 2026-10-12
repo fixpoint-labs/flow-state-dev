@@ -5,7 +5,7 @@
  * delegate's answer labelled with the delegate's name.
  *
  * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`): BR-33's panel (list,
- * add from the person's roster, remove; a refused add shows its reason and
+ * add from the user's roster, remove; a refused add shows its reason and
  * changes nothing), BR-29 (a `coordinator-route` record is never drawn as a
  * line), and BR-20's "under the delegate's name".
  */
@@ -78,7 +78,7 @@ describe("the delegates panel (BR-33)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("lists the conversation's delegates, and offers the person's roster minus the coordinator and those listed", async () => {
+  it("lists the conversation's delegates, and offers the user's roster minus the coordinator and those listed", async () => {
     render(<DelegatesPanel worker={cos} sessionId="s1" />);
     await settle();
     expect(calls).toEqual(["list coordinator s1"]);

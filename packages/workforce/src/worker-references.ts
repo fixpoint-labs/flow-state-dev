@@ -42,7 +42,7 @@ import { validateSegment, type SegmentLabel } from "./loader/segments";
 /**
  * The key a worker's file names its references under.
  *
- * Public: a person types it, and it matches the `references/` folder the
+ * Public: a user types it, and it matches the `references/` folder the
  * documents come from. Read from here by every door, never spelled as a
  * literal — a renamed key with a literal left behind is an access grant that
  * silently does not apply.
@@ -231,7 +231,7 @@ export function placeOfWorker(workerId: string): TreePlace | undefined {
  * - the worker's own worker folder — under its team, or under `org/workers/` for
  *   an org worker.
  *
- * Everything else is no, and the two that matter are the ones a person expects
+ * Everything else is no, and the two that matter are the ones a user expects
  * to be yes and should not be: **another team's folder**, and **a sibling
  * worker's folder on the same team**. The walk inherits downward only — a
  * sibling's folder is not above anyone.

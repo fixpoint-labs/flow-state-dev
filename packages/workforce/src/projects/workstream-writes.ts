@@ -610,7 +610,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   const listLeadsTool = handler({
     name: "listLeads",
     description:
-      "List the workers on the person's roster that can lead a workstream: each one's id and what it does. " +
+      "List the workers on the user's roster that can lead a workstream: each one's id and what it does. " +
       "Pick a workstream's lead from this, by the work its description says it does, never from memory.",
     inputSchema: z.object({}).strict(),
     outputSchema: listLeadsOutputSchema,

@@ -478,14 +478,14 @@ describe("who it files for, and which board (V2)", () => {
         ...callOnce("plan the launch", { toolName: "handOff", args: { worker: "ana" } }, "Handed on."),
         { when: () => true, then: { text: "OK." } }
       ],
-      agentScript: fileScript("plan the launch", "Book the room", "eng.tasker")
+      agentScript: fileScript("plan the launch", "Book the venue", "eng.tasker")
     });
     try {
       const conv = await h.conversation("alice", "chief");
       expect((await h.act("alice", conv, "run", { message: "plan the launch" })).error).toBeUndefined();
       await h.settled();
       const rows = await h.rows("alice");
-      expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Book the room", "eng.tasker", "completed"]]);
+      expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Book the venue", "eng.tasker", "completed"]]);
       // On ana's delegate session's board, not the conversation's.
       const chiefFiling = await h.filingOf("alice", conv);
       expect(rows[0]!.partition).not.toBe(encodeUserSegment(chiefFiling));

@@ -10,7 +10,7 @@
  *
  * **The task decides the run, never the board it came from.** A task naming
  * an `issue` and a `phase` is feature work: the implement manager runs it, and
- * it needs a commit. A task naming neither is a person's ask: the answer
+ * it needs a commit. A task naming neither is a user's ask: the answer
  * manager runs it, and it needs an answer (D2). A task naming only one of the
  * two goes to the implement manager, which refuses it inside the run, after
  * the claim, so the task ends `errored` with one notice and never runs as an
@@ -32,7 +32,7 @@
  * detached: the claim gate refuses an entry that authors session state
  * beneath it, and this flow refuses to build otherwise, naming the entry.
  *
- * **One message door** covers both managers: a person's message into a
+ * **One message door** covers both managers: a user's message into a
  * running coding run, on the run's own session, found on the board of the
  * session its task was filed from.
  *
@@ -146,7 +146,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
   } as never) as TaskWorker;
 
-  // A person's ask: a task naming neither.
+  // A user's ask: a task naming neither.
   const answer = harnessManager({
     name: ANSWER_MANAGER,
     ledgers: conversationLedgers,
@@ -212,7 +212,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         block: readOwnFacts,
         description: "Read what this worker can see of its own configuration. Writes nothing.",
       },
-      // A person's message into one of this worker's running coding runs,
+      // A user's message into one of this worker's running coding runs,
       // which stops and continues the same coding session with it.
       message,
     },

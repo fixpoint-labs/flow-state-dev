@@ -1,6 +1,6 @@
 # workforce-seats › it answers from a worker file alone
 
-**Issue:** FIX-1365 (the thin proof; acceptance criteria 1–3 of `docs/architecture/workforce-default-worker-kind.md`)
+**Issue:** FIX-1365 (the thin proof; acceptance criteria 1–3 of `docs/architecture/workforce-default-worker-flow.md`)
 
 **Outcome:** Someone describes two workers in Markdown — a description and some instructions, nothing else, no `flow:` and no `model:` — points the app at the folder, and has two working workers. Each answers a question in the voice its own file gave it, and neither answers in its neighbour's. A worker file naming a kind nobody registered takes the whole roster down with it rather than hiring around the problem.
 

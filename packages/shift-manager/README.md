@@ -50,7 +50,7 @@ To open another Lab from a checkout, pass its config:
 
 `devteam` is the team profile in this repository, at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs.
 
-It's a software team. An EM worker leads workstreams and files the coder's tasks on each one's board, a coder worker runs each task as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with three shared projects you own: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, which hold none yet. Its standard workers include the project coordinator each person talks to a project through, which opens a workstream when you ask it for new work. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their workstreams and your conversations survive a restart. Delete the file to start fresh.
+It's a software team. An EM worker leads workstreams and files the coder's tasks on each one's board, a coder worker runs each task as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with three shared projects you own: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, which hold none yet. Its standard workers include the project coordinator each user talks to a project through, which opens a workstream when you ask it for new work. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their workstreams and your conversations survive a restart. Delete the file to start fresh.
 
 Its chief of staff has memory from `@flow-state-dev/memory` (working memory, a rolling digest across conversations, and the `memory/recall` tool). By default it reads memory but records nothing, so its memory stays empty. Set `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into it after each answer, which adds model calls every turn. A request best fit sends straight to a delegate runs no chief-of-staff turn, so it isn't recorded on its own; it can still show up as earlier context when a later answer of the chief of staff's is recorded.
 
@@ -117,7 +117,7 @@ const state = createFlowState({
 
 A Lab with no resolver runs in the framework's development organization, `DEFAULT_ORG_ID` from `@flow-state-dev/core`, and Shift Manager shows that id. Anything the boot writes under an organization, such as the inventory below, has to use the same one.
 
-**Who can open it.** Shift Manager reads the organization off the person's sessions. Someone the Lab holds no session for yet, such as a project's second member on their first visit, gets one opened on Workforce's roster flow, and the Lab records in it the organization its resolver puts them in. So anyone your resolver verifies can open Shift Manager, see the organization's shared projects, and open workstreams in the ones they're a member of. A Lab that holds no session for the person and serves no roster flow to open one on shows a screen saying it names no organization, in place of the Lab.
+**Who can open it.** Shift Manager reads the organization off the user's sessions. Someone the Lab holds no session for yet, such as a second project member on their first visit, gets one opened on Workforce's roster flow, and the Lab records in it the organization its resolver puts them in. So anyone your resolver verifies can open Shift Manager, see the organization's shared projects, and open workstreams in the ones they're a member of. A Lab that holds no session for the user and serves no roster flow to open one on shows a screen saying it names no organization, in place of the Lab.
 
 **An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its workers. TEAMS, Roster and Inbox read it to find the Lab's workers. It takes two steps:
 
@@ -143,7 +143,7 @@ import type { InventoryActionRequest } from "@flow-state-dev/workforce";
 const runtime = await state.getRuntime();
 const run = async (request: InventoryActionRequest) => {
   const result = await runAction({
-    flow: flowsByKind[request.flowKind], // the writer flow, by kind
+    flow: flowsByKind[request.flowKind], // the writer flow, by flow kind
     actionName: request.action,
     input: request.input,
     userId: request.userId,
@@ -175,11 +175,11 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
-**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the worker named `chief-of-staff`. Declare it as an org worker, under `org/workers/` beside `teams/`, on the built-in `agent` worker flow, with instructions that say what it should do for the person running the Lab:
+**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the worker named `chief-of-staff`. Declare it as an org worker, under `org/workers/` beside `teams/`, on the built-in `agent` worker flow, with instructions that say what it should do for the user running the Lab:
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
-description: The person's one point of contact.
+description: The user's one point of contact.
 flow: agent
 model: openai/gpt-5.4-mini
 ---
@@ -194,7 +194,7 @@ To have it hand work to other workers, run it on Workforce's `coordinator` flow 
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
-description: The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.
+description: The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.
 flow: coordinator
 routing: best-fit
 minConfidence: 0.7
@@ -256,7 +256,7 @@ Below it is your conversation with the Lab's chief-of-staff worker: your newest 
 
 Above the message box sit suggested lines you can click to fill the box: `Who's on call?`, and `What's blocking #<workstream>?`. The workstream named is one with an ask waiting on you, or, if none has one, one with a task running. Nothing goes out until you send it.
 
-The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
+The panel on the right lists each workstream with its running tasks and the asks its project's members have raised, and the workers on call, as Roster counts them.
 
 A Lab with no chief-of-staff worker still opens here. You get the summary, and in place of the conversation a line saying how to add one. Declaring the worker is covered under [What a Lab's config provides](#what-a-labs-config-provides).
 
@@ -317,7 +317,7 @@ A board that hands work off keeps a running task on the worker it was given to, 
 
 ## Roster
 
-Roster shows the signed-in person's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).roster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of three groups:
+Roster shows the signed-in user's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).roster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of three groups:
 
 - **On shift**: it holds a task that is running.
 - **On call**: nothing of its is running, but it is waiting on you, either on a task it parked for you or on an ask in Inbox.

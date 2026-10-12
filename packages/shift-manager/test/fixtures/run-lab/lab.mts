@@ -24,7 +24,7 @@
  * - two **short** tasks for the other worker on the shared flow, which run
  *   two steps each and finish;
  * - with `asking`, one **asking** task for the worker on a flow of its own,
- *   whose run opens and then waits on a person's approval. With `holdAsk`, it
+ *   whose run opens and then waits on a user's approval. With `holdAsk`, it
  *   asks only once `releaseAsk()` is called, so a screen can be open first;
  * - one **waiting** task, filed last, which depends on the first held task,
  *   so nothing claims it while that task holds.
@@ -77,7 +77,7 @@ import { hearingDoor } from "../hearing-door.mts";
 
 /** The tree this Lab reads. */
 const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
-/** The one person this Lab runs as. */
+/** The one user this Lab runs as. */
 export const RUN_LAB_USER_ID = "u_run_lab";
 /** The conversation with the lead the tasks are filed on. */
 const RUN_LAB_LEAD_SESSION = "s_run_lab_lead";
@@ -95,12 +95,12 @@ const STEP_MS = 1_000;
 const PROGRESS_COMPONENT = "run-lab-progress";
 const PROGRESS_KEY = "progress";
 
-/** What an asking run asks a person to approve. */
+/** What an asking run asks a user to approve. */
 export const RUN_LAB_ASK = "Write the audit note?";
 
 /**
  * What a task asks its scripted run to do, filed as the task's `input`; `ask`:
- * suspend on a person's approval of this, after the opening; `holdAsk`: only
+ * suspend on a user's approval of this, after the opening; `holdAsk`: only
  * once the Lab's `releaseAsk()` is called.
  */
 export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean };
@@ -305,7 +305,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     flows,
     stores: { default: { primary: inMemoryStores() } },
     devtool: { userId: RUN_LAB_USER_ID },
-    // An asking run suspends until a person answers, which needs durable execution.
+    // An asking run suspends until a user answers, which needs durable execution.
     ...(options.asking === true ? { durable: true } : {}),
   } as never);
 
@@ -376,7 +376,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     filed.push({ taskId: await file(worker, `${worker.name}: hold until stopped`, {}), workerId: worker.id, kind: "held" });
   }
   if (options.asking === true) {
-    // One more task for the worker on a flow of its own, whose run stops to ask a person.
+    // One more task for the worker on a flow of its own, whose run stops to ask a user.
     if (ownWorker === undefined) throw new Error("asking needs one of the lead's delegates on a flow of its own");
     filed.push({
       taskId: await file(ownWorker, `${ownWorker.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }),
@@ -396,7 +396,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     kind: "waiting",
   });
 
-  /** Every row of the person's conversation boards, read from the store. */
+  /** Every row of the user's conversation boards, read from the store. */
   const storedRows = async (): Promise<Task[]> =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", `${RUN_LAB_USER_ID}:~org:${orgId}`, "tasks/")).map(
       (value) => value.state as unknown as Task,

@@ -1,12 +1,12 @@
 /**
  * DELEGATES, at Shift Coordinator: who the coordinator hands this
  * conversation's work to. Lists the conversation's delegates, adds one from
- * the person's roster, and removes one, through the coordinator's own actions
+ * the user's roster, and removes one, through the coordinator's own actions
  * on the conversation's session (`lib/delegates.ts`). What it shows is what
  * the coordinator answered, never a guess: a refused add shows its reason and
  * leaves the list as it was.
  *
- * The delegates belong to a conversation, so until the person has one there
+ * The delegates belong to a conversation, so until the user has one there
  * is nothing to list: the panel says so.
  */
 import { useEffect, useState } from "react";

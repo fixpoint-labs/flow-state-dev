@@ -1,6 +1,6 @@
 /**
  * What Inbox and Tasks derive for design v2's content: the
- * ask session's last tool calls before the ask (BR-18) and the person's
+ * ask session's last tool calls before the ask (BR-18) and the user's
  * replies after it, the empty Inbox's sentence (BR-19), and Tasks' TIME,
  * queued count and summary line (BR-14).
  *
@@ -24,7 +24,7 @@ const tool = (name: string, args: Record<string, unknown>, output: unknown) => i
 const user = (text: string) => item({ type: "message", role: "user", content: [{ type: "output_text", text }] });
 
 describe("FROM THE SESSION and the replies (BR-18, I17, I18)", () => {
-  it("lists the last three tool calls before the ask, oldest first, and the person's lines after it", () => {
+  it("lists the last three tool calls before the ask, oldest first, and the user's lines after it", () => {
     const early = tool("Read", { path: "a.ts" }, "12 lines");
     const calls = [tool("Bash", { command: "pnpm test" }, "31 passed"), tool("Edit", { path: "b.ts" }, { ok: true }), tool("Write", { path: "c.ts" }, "")];
     const before = user("before the ask");

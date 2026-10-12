@@ -48,9 +48,8 @@ function ctxWith(collections: Record<string, unknown[]>, orgId?: string): never 
 function sourcesOf(
   roster: DeclaredWorkforce,
   inventory: { workers?: string },
-  hiredRoster?: string,
 ) {
-  const built = workforceManifestSources({ roster, inventory, hiredRoster });
+  const built = workforceManifestSources({ roster, inventory });
   return Object.fromEntries(built.map((source) => [source.domain, source]));
 }
 

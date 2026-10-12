@@ -60,7 +60,7 @@ import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
 
 /**
- * The feature the EM worker asks a person to approve when the server opens, from
+ * The feature the EM worker asks a user to approve when the server opens, from
  * `ask.json` beside this file. Data, not code: the lab's asking check refuses a
  * lab module that spells a feature, and brings its own held-out one. Its
  * `issue` keys the ask's claim in the store, so changing it raises a new ask.
@@ -79,7 +79,7 @@ const storefrontRemote = createBareRemote("devteam-storefront", { at: join(dirna
 
 /**
  * The Lab's three default projects, created at start as the Lab's owner with
- * the second user as a member, unless the store already holds them.
+ * the second user as a project member, unless the store already holds them.
  *
  * A project belongs to the organization, not a team: `storefront` names its
  * repository, and its workstreams are opened below. The other two hold none
@@ -120,7 +120,7 @@ if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" na
 /**
  * Storefront's two workstreams, `feature` and `release`, each led by the EM.
  * Opened as the Lab's second user, not its owner: a workstream belongs to the
- * person who opens it, and the owner opens her own from the app.
+ * user who opens it, and the owner opens her own from the app.
  */
 const DEFAULT_WORKSTREAMS = [
   { id: "feature", title: "Feature", objectives: ["Build the storefront feature"] },

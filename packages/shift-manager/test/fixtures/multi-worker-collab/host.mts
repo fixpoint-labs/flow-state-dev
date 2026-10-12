@@ -45,7 +45,7 @@ import { WORKER_FLOW, defineWorkerFlow, type WorkerControl } from "./workforce/f
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** Who the lab runs as — one person, one principal. */
+/** Who the lab runs as — one user, one principal. */
 export const LAB_USER_ID = "u_multi_worker_collab";
 
 /** The served database, relative to the server's working directory. */

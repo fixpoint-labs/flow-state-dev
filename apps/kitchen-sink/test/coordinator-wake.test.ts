@@ -1,6 +1,6 @@
 /**
  * A post to `support.help` runs the specialist best fit picked once, on this
- * app's own wiring: the real config, the hired roster, and the scripted model
+ * app's own wiring: the real config, the roster, and the scripted model
  * and best-fit evaluation.
  *
  * What is graded is always the specialists' own conversations, read back
@@ -28,9 +28,7 @@
  *         lands in a request of its own.
  *
  * A post that claims an author is refused at the door: the coordinator takes
- * the post alone, so there is no author to claim. BR-11 and BR-12 (a worker in
- * two mailboxes, a refused wake) left with the mailbox's wake; the
- * coordinator's own suite in `packages/workforce` holds a delegate's session
+ * the post alone, so there is no author to claim. The coordinator's own suite in `packages/workforce` holds a delegate's session
  * per conversation and a delivery that fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
