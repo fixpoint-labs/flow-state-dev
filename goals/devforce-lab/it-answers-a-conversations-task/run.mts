@@ -84,7 +84,8 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 /** The worker a coordinator files the coder's tasks for, and the chief of staff. */
 const CODER = "eng.coder";
 const CHIEF = "chief-of-staff";
-const WORKSTREAM_COORDINATOR = "workstream-coordinator";
+/** A worker of the person's own on `agent`, hired to lead workstreams: it files the coder's tasks. */
+const WORKSTREAM_LEAD = "workstream-lead";
 /** The flows a conversation runs on: the chief of staff's, and a workstream lead's. */
 const COORDINATOR_FLOW = "coordinator";
 const AGENT_FLOW = "agent";
@@ -474,12 +475,18 @@ await runGoal(async (failures) => {
       if (LEGS.has("b")) {
         const before = failures.length;
         const roster = await http.open("workforce-roster", {});
-        /** Open a workstream in `project`, led by a fork of the workstream coordinator, as Shift Manager does; its session. */
+        // One lead of the person's own, on `agent`, whose delegate takes the coder's tasks. It leads
+        // both workstreams below, one session each.
+        const hired = await http.act("workforce-roster", roster, "hire", {
+          id: WORKSTREAM_LEAD,
+          flow: AGENT_FLOW,
+          description: "Leads a workstream: files its work as tasks for the coder.",
+          settings: { delegates: [CODER] },
+        });
+        if (hired.error !== undefined) throw new Error(`hiring ${WORKSTREAM_LEAD} was refused — ${hired.error}`);
+        /** Open a workstream in `project`, led by the hired lead, over HTTP; its session. */
         const openWorkstream = async (project: string, id: string, title: string) => {
-          const lead = `ws:shared:${project}:${id}`;
-          const forked = await http.act("workforce-roster", roster, "fork", { from: WORKSTREAM_COORDINATOR, id: lead });
-          if (forked.error !== undefined) throw new Error(`forking ${lead} was refused — ${forked.error}`);
-          const opened = await lab.projectAct!("openWorkstream", { project: { visibility: "shared", id: project }, id, title, lead });
+          const opened = await lab.projectAct!("openWorkstream", { project: { visibility: "shared", id: project }, id, title, lead: WORKSTREAM_LEAD });
           if (opened.error !== undefined) throw new Error(`openWorkstream ${project}/${id} was refused — ${opened.error}`);
           return (opened.output as { workstream: { sessionId: string } }).workstream.sessionId;
         };

@@ -1,5 +1,5 @@
 /**
- * The project level (BR-12, BR-18, BR-22 to BR-28, BR-35 to BR-37): one
+ * The project level (BR-12, BR-18, BR-22 to BR-28, BR-38): one
  * project the user reads, shared or their own private one, in four tabs.
  *
  * - **Stream** is the user's conversation with their project coordinator:
@@ -12,8 +12,9 @@
  *   user's workstream sessions, and the Lab-wide inventory of boards, are
  *   never read here.
  * - **Workstreams** lists the project's workstreams as their entries say,
- *   with the progress worked out from them (BR-18, BR-19), and opens a new
- *   one led by a coordinator of its own (D2, `openWorkstreamWithCoordinator`).
+ *   with the progress worked out from them (BR-18, BR-19). It opens none: a
+ *   workstream opens when the user asks their project coordinator in
+ *   Stream for the work, and it names the lead (BR-38).
  *   An entry opens on its own view: its owner talks with its lead in its
  *   workstream session; anyone else reads the entry (BR-12).
  * - **Brief** is the row's brief, under the repository its code lives in, or
@@ -27,16 +28,14 @@
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
  * workers are on shift and on call.
  */
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../components/Conversation";
 import { TasksPanel } from "../components/TasksPanel";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
-import { ActionRefused } from "../lib/action";
 import { projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import {
-  openWorkstreamWithCoordinator,
   projectReaderOf,
   readEntryReport,
   readProject,
@@ -280,7 +279,7 @@ function ProjectBody({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
           <Progress read={read.value} />
           <EntryList entries={entries} route={route} />
-          <OpenWorkstream address={address} setup={setup} readerSessionId={reader!} entries={entries} onOpened={reread} route={route} />
+          <OpenHint route={route} setup={setup} />
         </div>
       );
     }
@@ -605,95 +604,28 @@ function OwnBoards({
   );
 }
 
-/** A workstream id from its title: lower case, words joined by `-`. */
-function idOf(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
-
 /**
- * Open a workstream in the project, led by a coordinator of its own (D2,
- * BR-35, BR-36). The view offers no choice of lead.
+ * Where a workstream comes from: the user asks their project coordinator, in
+ * Stream. A Lab that names no project coordinator says it opens none; while
+ * its setup is read, or when the read failed (Stream shows that), nothing.
  */
-function OpenWorkstream({
-  address,
-  setup,
-  readerSessionId,
-  entries,
-  onOpened,
-  route,
-}: {
-  address: ProjectAddress;
-  setup: Read<ProjectSetup | null>;
-  readerSessionId: string;
-  entries: readonly WorkstreamEntry[];
-  onOpened: () => void;
-  route: ProjectRoute;
-}) {
-  const { clients } = useLab();
-  const workforce = useWorkforce();
-  const [title, setTitle] = useState("");
-  const [state, setState] = useState<{ running: true } | { refused: string } | undefined>(undefined);
-  const value = setup !== undefined && "value" in setup ? setup.value : undefined;
-  if (value === undefined) return null;
-  if (value === null || value.workstreamCoordinator === null) {
+function OpenHint({ route, setup }: { route: ProjectRoute; setup: Read<ProjectSetup | null> }) {
+  if (setup === undefined || "failure" in setup) return null;
+  if (setup.value?.projectCoordinator == null) {
     return (
-      <p className="text-xs text-muted-foreground" data-testid="project-open-none">
-        This Lab names no workstream coordinator, so a workstream can't be opened here.
+      <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-none">
+        This Lab has no project coordinator, so workstreams can't be opened here.
       </p>
     );
   }
-  const id = idOf(title);
-  const own = entries.some((entry) => entry.owner === clients.userId && entry.id === id);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (id === "" || state !== undefined && "running" in state) return;
-    setState({ running: true });
-    try {
-      await openWorkstreamWithCoordinator(clients, workforce, value, readerSessionId, { project: address, id, title: title.trim() });
-      setState(undefined);
-      setTitle("");
-      onOpened();
-      navigate(at(route, "workstreams", { owner: clients.userId, id }));
-    } catch (error) {
-      setState({ refused: error instanceof ActionRefused ? error.message : describeFailure(error).message });
-    }
-  };
   return (
-    <form className="flex flex-col gap-1.5 border-t border-foreground/15 pt-3" data-testid="project-open" onSubmit={(event) => void submit(event)}>
-      <label className="text-[11px] font-semibold tracking-wider text-muted-foreground" htmlFor="project-open-title">
-        OPEN A WORKSTREAM
-      </label>
-      <div className="flex gap-2">
-        <input
-          id="project-open-title"
-          className="min-w-0 flex-1 border bg-background px-2 py-1 text-sm"
-          placeholder="What it's for"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          data-testid="project-open-title"
-        />
-        <button
-          type="submit"
-          className="border px-3 py-1 text-sm disabled:opacity-50"
-          disabled={id === "" || (state !== undefined && "running" in state)}
-          data-testid="project-open-submit"
-        >
-          {state !== undefined && "running" in state ? "Opening…" : own ? "Open again" : "Open"}
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {id === "" ? "Its id comes from its title." : <>Its id is <span className="font-mono">{id}</span>. A coordinator of its own leads it.</>}
-      </p>
-      {state !== undefined && "refused" in state ? (
-        <p role="alert" className="text-xs text-destructive" data-testid="project-open-refused">
-          {state.refused}
-        </p>
-      ) : null}
-    </form>
+    <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-hint">
+      To open a workstream, ask your project coordinator for the work in{" "}
+      <button type="button" className="underline" onClick={() => navigate(at(route, "stream"))}>
+        Stream
+      </button>
+      . It picks the lead from your workers.
+    </p>
   );
 }
 

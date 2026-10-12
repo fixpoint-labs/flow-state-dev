@@ -80,6 +80,10 @@ describe("PROJECTS (BR-22, D3)", () => {
     expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toContain("empty");
     // The ask-lab's flows answer no `projectSetup`: it names no project coordinator, and the Stream says so.
     await screen.findByTestId("project-stream-no-coordinator", undefined, { timeout: 10_000 });
+    // Workstreams says none can be opened here, rather than sending them to a Stream with nobody in it.
+    act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
+    await screen.findByTestId("project-open-none", undefined, { timeout: 10_000 });
+    expect(screen.queryByTestId("project-open-hint")).toBeNull();
   });
 
   it("a failed projects read shows its failed-read state with Retry, and Retry reads it again (BR-30)", async () => {

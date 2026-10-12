@@ -303,6 +303,34 @@ describe("Tasks (BR-14)", () => {
     expect(cell("E-2", "task-row-time")).toBe("—");
   });
 
+  it("groups by stream one group per workstream, not per lead, when one worker leads two (BR-40)", async () => {
+    const snapshot = lab();
+    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the fixture loads");
+    const session = (id: string, state: Record<string, unknown>) => ({ id, state }) as unknown as (typeof snapshot.sessions)[number];
+    snapshot.sessions = [
+      session("s_checkout", { workerId: "eng.em", workstreamId: "shared/apollo/checkout" }),
+      session("s_search", { workerId: "eng.em", workstreamId: "shared/apollo/search" }),
+      session("s_eng", { workerId: "eng.em" }),
+    ];
+    const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
+    snapshot.boards = {
+      s_checkout: ok([row("s_checkout", "C-1", "in_progress", "coder")]),
+      s_search: ok([row("s_search", "S-1", "in_progress", "coder")]),
+      s_eng: ok([row("s_eng", "E-1", "in_progress", "coder")]),
+    };
+    await open("/tasks?by=stream", snapshot);
+    await screen.findByTestId("tasks-table");
+    const groups = screen.getAllByTestId("tasks-group");
+    expect(groups.map((g) => [g.getAttribute("data-group"), attrs(within(g).getAllByTestId("task-row"), "data-task-id")])).toEqual([
+      // The EM's conversation outside any workstream still reads as the EM.
+      ["@eng.em", ["E-1"]],
+      ["shared/apollo/checkout", ["C-1"]],
+      ["shared/apollo/search", ["S-1"]],
+    ]);
+    const cell = (id: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId("task-row-stream").textContent;
+    expect([cell("C-1"), cell("S-1"), cell("E-1")]).toEqual(["#shared/apollo/checkout", "#shared/apollo/search", "@eng.em"]);
+  });
+
   it("sums up what is in flight, what waits on you, the shift and the streams", async () => {
     await open("/tasks");
     expect((await screen.findByTestId("tasks-summary")).textContent).toBe("3 in flight · 1 needs you · 1 on shift · 2 on call · 1 stream");

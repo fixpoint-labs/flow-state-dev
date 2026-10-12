@@ -13,6 +13,7 @@ import {
   type Section,
   type Worker,
   workerOf,
+  workstreamOf,
 } from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
@@ -24,12 +25,17 @@ export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
 }
 
 /**
- * What a row's board is called on a screen: the worker the conversation that
- * holds it is with (`@<worker>`), else the conversation's id.
+ * What a row's board is called on a screen: the workstream the conversation
+ * that holds it leads (its `workstreamId`), so one worker's two workstreams
+ * are two boards (BR-40); else the worker the conversation is with
+ * (`@<worker>`); else the conversation's id.
  */
 export function holderOf(snapshot: LoadedSnapshot, row: BoardRow): string {
   const session = snapshot.sessions.find((s) => s.id === row.holderSessionId);
-  const worker = session === undefined ? null : workerOf(session);
+  if (session === undefined) return row.holderSessionId;
+  const workstream = workstreamOf(session);
+  if (workstream !== null) return workstream;
+  const worker = workerOf(session);
   return worker === null ? row.holderSessionId : `@${worker}`;
 }
 

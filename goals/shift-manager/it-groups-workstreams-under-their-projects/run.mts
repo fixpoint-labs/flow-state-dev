@@ -21,11 +21,13 @@
  *            project, Workstreams its entries with their progress, Board the
  *            owner's own workstream sessions in it, Brief its brief. No gap
  *            copy is reached.
- *   entries  Chromium, as the owner and the member, each in their own page.
- *            Each opens a workstream in a shared project from its Workstreams
- *            tab. The store then holds one entry per opener, each led by a
- *            worker on its opener's own roster, and both pages list both
- *            entries with progress counting them; each Board draws only its
+ *   entries  Chromium, as the owner and the member, each in their own page,
+ *            on a real model. Each asks their project coordinator for work in
+ *            a shared project's Stream; Workstreams draws no form. The store
+ *            then holds one entry per asker, led by the tree's one lead (the
+ *            EM), with the ask in its session and nothing added to the
+ *            asker's roster, and both pages list both entries with progress
+ *            counting them; each Board draws only its
  *            viewer's own; each Stream is its viewer's own coordinator; the
  *            member's PROJECTS leaves out the owner's private project. Over
  *            HTTP, the outsider reads the entries and its own open is refused.
@@ -48,8 +50,10 @@
  * store writes held up to WRITE_LATENCY_MS (`packages/shift-manager/teams/devteam/write-latency.mts`)
  * and releases each burst from a barrier, so the bursts really race.
  *
- * Legs: `GOAL_LEG=model-free` runs screens, entries, race and restart,
- * `GOAL_LEG=cos` runs cos; unset runs all five.
+ * Legs: `GOAL_LEG=model-free` runs screens, the outsider, race and restart,
+ * `GOAL_LEG=cos` runs cos; unset runs them all, entries included: a
+ * workstream opens when its owner asks their project coordinator, whose turn
+ * runs on its own model.
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
@@ -365,8 +369,12 @@ type Entry = {
   openedAt: string;
   updatedAt: string;
 };
-/** The Lab's project setup, as its projects flow answers `projectSetup`. */
-type Setup = { projectCoordinator: string; workstreamCoordinator: string; coordinatorFlow: string };
+/**
+ * The Lab's project setup, as its projects flow answers `projectSetup`, and the
+ * one worker the tree declares that can lead a workstream: on a lead flow
+ * (`agent` or `em`), listing delegates.
+ */
+type Setup = { projectCoordinator: string; coordinatorFlow: string; lead: string };
 
 /** The flow a standard worker runs on, as its file names it. */
 async function flowOf(worker: string): Promise<string> {
@@ -376,15 +384,25 @@ async function flowOf(worker: string): Promise<string> {
   return flow;
 }
 
-/** The Lab's project setup: the two standard workers behind a project, as the Lab names them. */
+/** The one worker the tree declares that can lead a workstream: on `agent` or `em`, listing delegates. */
+async function leadOf(): Promise<string> {
+  const roster = await readDeclaredRoster(TREE);
+  const leads = roster.workers.filter(
+    (w) => ["agent", "em"].includes(String(w.declared.flow)) && Array.isArray(w.declared.delegates) && w.declared.delegates.length > 0,
+  );
+  if (leads.length !== 1) throw new Error(`the tree declares ${leads.length} workers that can lead a workstream (${leads.map((w) => w.id).join(", ")}), not one`);
+  return leads[0]!.id;
+}
+
+/** The Lab's project setup: the standard worker behind a project, as the Lab names it, and the tree's lead. */
 async function readSetup(owner: LabApi): Promise<Setup> {
   const session = await owner.createSession(PROJECTS_FLOW);
   const answered = await owner.act(PROJECTS_FLOW, session, "projectSetup", {});
-  const { projectCoordinator, workstreamCoordinator } = (answered.output ?? {}) as { projectCoordinator?: unknown; workstreamCoordinator?: unknown };
-  if (answered.status !== "completed" || typeof projectCoordinator !== "string" || typeof workstreamCoordinator !== "string") {
+  const { projectCoordinator } = (answered.output ?? {}) as { projectCoordinator?: unknown };
+  if (answered.status !== "completed" || typeof projectCoordinator !== "string") {
     throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.output ?? answered.error)}`);
   }
-  return { projectCoordinator, workstreamCoordinator, coordinatorFlow: await flowOf(projectCoordinator) };
+  return { projectCoordinator, coordinatorFlow: await flowOf(projectCoordinator), lead: await leadOf() };
 }
 
 /** The collection ref a session's manifest publishes for a key pattern at a scope. */
@@ -681,26 +699,56 @@ async function screens(browser: Browser, origin: string, setup: Setup, owner: La
   }
 }
 
-/** Open a workstream from a project's Workstreams tab, as a person does: its title, then Open. */
-async function openFromPage(view: View, origin: string, held: Held, title: string, fail: (leg: string, why: string) => void, leg: string): Promise<void> {
+/**
+ * Open a workstream as a person does: ask their project coordinator for the
+ * work in the project's Stream. Its turn opens one and hands the ask in;
+ * answers the entry it opened, or `undefined` with the failure noted.
+ */
+async function askFromPage(view: View, origin: string, held: Held, title: string, fail: (leg: string, why: string) => void, leg: string): Promise<Entry | undefined> {
+  const before = new Set((await entriesOf(view.api, at(held))).map((e) => e.key));
   await openPage(view.page, origin, projectPath(held, "workstreams"));
-  if (!(await visible(view.page, "project-open-title", 15_000))) {
-    fail(leg, `${view.who}'s ${held.row.id} Workstreams offers no way to open a workstream`);
-    return;
+  if (!(await visible(view.page, "project-open-hint", 15_000))) fail(leg, `${view.who}'s ${held.row.id} Workstreams doesn't say a workstream opens by asking the project coordinator`);
+  if ((await view.page.getByTestId("project-open-title").count()) > 0) fail(leg, `${view.who}'s ${held.row.id} Workstreams still draws a form that opens a workstream`);
+  await openPage(view.page, origin, projectPath(held, "stream"));
+  const input = view.page.getByTestId("project-stream-composer-input");
+  if (!(await visible(view.page, "project-stream-composer-input", 15_000))) {
+    fail(leg, `${view.who}'s ${held.row.id} Stream draws no composer to ask in`);
+    return undefined;
   }
-  await view.page.getByTestId("project-open-title").fill(title);
-  await view.page.getByTestId("project-open-submit").click();
-  const opened = view.page.locator("[data-testid=project-entry-own]");
-  const refused = view.page.getByTestId("project-open-refused");
-  await Promise.race([opened.first().waitFor({ timeout: 60_000 }), refused.first().waitFor({ timeout: 60_000 })]).catch(() => undefined);
-  if ((await refused.count()) > 0) fail(leg, `${view.who}'s open of "${title}" was refused: ${((await refused.first().textContent()) ?? "").trim()}`);
-  else if ((await opened.count()) === 0) fail(leg, `${view.who}'s open of "${title}" drew neither its workstream nor a refusal within 60 s`);
+  await input.fill(`Please open a workstream titled "${title}" for this and get it started: ${title}.`);
+  await view.page.getByTestId("project-stream-composer-send").click();
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    const opened = (await entriesOf(view.api, at(held))).filter((e) => !before.has(e.key) && e.owner === view.api.user.userId);
+    if (opened.length > 0 && opened.every((e) => e.sessionId !== null)) {
+      if (opened.length > 1) fail(leg, `${view.who}'s one ask opened ${opened.length} workstreams: ${opened.map((e) => e.id).join(", ")}`);
+      return opened[0];
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  fail(leg, `${view.who}'s ask in ${held.row.id}'s Stream opened no workstream within 120 s`);
+  return undefined;
+}
+
+/**
+ * Whether a session's stored items carry `word` within 60 s, read as its
+ * owner. The hand-off is the coordinator's next step after the open, so it
+ * lands a moment after the entry names the session.
+ */
+async function sessionHolds(api: LabApi, sessionId: string, word: string): Promise<boolean> {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const { status, body } = await api.call("GET", `/sessions/${encodeURIComponent(sessionId)}/state?include_items=true&limit=200`);
+    if (status === 200 && JSON.stringify(body).includes(word)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  return false;
 }
 
 /**
  * The owner and the member each open a workstream in a shared project they
- * are both on, from their own page; both read both, each Board and Stream is
- * its viewer's own, and the outsider reads them and can't open one.
+ * are both on, by asking their project coordinator in their own page's
+ * Stream; both read both, and each Board and Stream is its viewer's own.
  */
 async function entries(browser: Browser, origin: string, setup: Setup, apis: { owner: LabApi; member: LabApi; outsider: LabApi }, fail: (leg: string, why: string) => void, evidence: string[]) {
   const leg = "entries opened through the app show for both members";
@@ -717,25 +765,19 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
       owner: { who: "the owner", page: ownerSide.page, api: owner },
       member: { who: "the member", page: memberSide.page, api: member },
     };
-    await openFromPage(views.owner, origin, held, titles.owner, fail, leg);
-    await openFromPage(views.member, origin, held, titles.member, fail, leg);
-
-    // The store: one entry per opener, theirs, led by a worker on their own roster, with its session.
-    const stored = await entriesOf(owner, at(held));
+    // The store: one new entry per asker, theirs, led by the tree's lead, with its session, which the ask reached.
+    // Nothing is added to the asker's roster.
     const found: Record<"owner" | "member", Entry | undefined> = { owner: undefined, member: undefined };
     for (const who of ["owner", "member"] as const) {
       const api = apis[who];
-      const mine = stored.filter((e) => e.title === titles[who]);
-      if (mine.length !== 1) {
-        fail(leg, `the store holds ${mine.length} entries titled "${titles[who]}" in ${held.row.id}`);
-        continue;
-      }
-      const entry = mine[0]!;
+      const workersBefore = await ownWorkers(api);
+      const entry = await askFromPage(views[who], origin, held, titles[who], fail, leg);
+      if (entry === undefined) continue;
       found[who] = entry;
-      if (entry.owner !== api.user.userId) fail(leg, `${who}'s "${titles[who]}" is owned by ${entry.owner}`);
-      if (entry.sessionId === null) fail(leg, `${who}'s "${titles[who]}" names no workstream session`);
-      else if (!(await api.sessions()).some((s) => s.id === entry.sessionId)) fail(leg, `${who}'s "${titles[who]}" names session ${entry.sessionId}, not one of theirs`);
-      if (!(await ownWorkers(api)).includes(entry.lead)) fail(leg, `${who}'s "${titles[who]}" is led by ${entry.lead}, which is not on their own roster`);
+      if (entry.lead !== setup.lead) fail(leg, `${who}'s workstream "${entry.id}" is led by ${entry.lead}, not ${setup.lead}`);
+      if (!(await api.sessions()).some((s) => s.id === entry.sessionId)) fail(leg, `${who}'s "${entry.id}" names session ${entry.sessionId}, not one of theirs`);
+      else if (!(await sessionHolds(api, entry.sessionId!, RUN_STAMP))) fail(leg, `${who}'s ask never reached the workstream session ${entry.sessionId}`);
+      if (!same(await ownWorkers(api), workersBefore)) fail(leg, `${who}'s roster changed when the workstream opened: ${diff(workersBefore, await ownWorkers(api))}`);
     }
 
     // Both pages: PROJECTS, both entries, the progress counting them, each Board its own, each Stream its own.
@@ -767,8 +809,15 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
     await ownerSide.context.close();
     await memberSide.context.close();
   }
+  evidence.push(`entries: in ${held.row.id} the owner and the member each asked their project coordinator in their page's Stream, each got one workstream led by ${setup.lead} with the ask in its session, both read both, each Board and Stream its viewer's own`);
+}
 
-  // ---- the outsider reads the entries, and its open is refused ---------------
+/** The outsider reads a shared project's entries as its members do, and its open is refused. */
+async function outsiderRefused(setup: Setup, apis: { owner: LabApi; member: LabApi; outsider: LabApi }, fail: (leg: string, why: string) => void, evidence: string[]) {
+  const { owner, member, outsider } = apis;
+  const shared = (await projectsOf(owner)).filter((h) => h.visibility === "shared");
+  const held = shared.find((h) => h.row.members.includes(member.user.userId) && !h.row.members.includes(outsider.user.userId)) ?? shared.find((h) => h.row.members.includes(member.user.userId));
+  if (held === undefined) throw new Error(`no shared project lists ${member.user.userId} as a member`);
   const outLeg = "the outsider's open is refused";
   const read = await entriesOf(outsider, at(held));
   const want = await entriesOf(owner, at(held));
@@ -778,13 +827,13 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
     project: { visibility: "shared", id: held.row.id },
     id: fixture.race.id,
     title: fixture.race.title,
-    lead: setup.workstreamCoordinator,
+    lead: setup.lead,
   });
   if (open.status === "completed") fail(outLeg, `the outsider opened a workstream in ${held.row.id}, of which it is no member`);
   const leaked = (await entriesOf(owner, at(held))).filter((e) => e.owner === outsider.user.userId);
   if (leaked.length > 0) fail(outLeg, `${held.row.id} holds ${leaked.length} entry(ies) of the outsider's`);
   evidence.push(
-    `entries: in ${held.row.id} the owner and the member each opened one from their page, both read ${want.length} entries, each Board and Stream its viewer's own; the outsider read ${read.length} and its open ended ${open.status}${open.error === undefined ? "" : ` (${open.error.slice(0, 120)})`}`,
+    `outsider: read ${read.length} of ${held.row.id}'s ${want.length} entries and its open ended ${open.status}${open.error === undefined ? "" : ` (${open.error.slice(0, 120)})`}`,
   );
 }
 
@@ -804,7 +853,7 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
     return;
   }
   const project = { visibility: "shared" as const, id: held.row.id };
-  const input = { project, id: fixture.race.id, title: fixture.race.title, lead: setup.workstreamCoordinator };
+  const input = { project, id: fixture.race.id, title: fixture.race.title, lead: setup.lead };
 
   // The opens. The barrier: every session exists before any open is sent, and all are sent in one go.
   const windows = await Promise.all(racers.map((r) => Promise.all(Array.from({ length: fixture.race.opens }, () => r.createSession(PROJECTS_FLOW)))));
@@ -1035,10 +1084,12 @@ await runGoal(async (failures) => {
       const browser = await launchChromium();
       try {
         await screens(browser, served.origin, setup, apis.owner, fail, evidence);
-        await entries(browser, served.origin, setup, apis, fail, evidence);
+        // A workstream opens by asking the project coordinator, whose turn runs on its own model.
+        if (COS_LEG) await entries(browser, served.origin, setup, apis, fail, evidence);
       } finally {
         await browser.close();
       }
+      await outsiderRefused(setup, apis, fail, evidence);
       await race(setup, apis, fail, evidence);
 
       // Stop the Lab and start it again on the same store.

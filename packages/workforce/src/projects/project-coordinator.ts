@@ -18,6 +18,9 @@
  *   user's coordinator session, which adds or removes the one record
  *   ({@link workstreamDelegateEntry}). That entry is internal, and the public
  *   delegate actions take no target, so nothing else writes a record with one.
+ *   An open made in the coordinator's own turn, with its `openWorkstream`
+ *   tool, writes the record in that turn instead
+ *   ({@link changeWorkstreamRecordHere}), so the hand-off that follows finds it.
  *
  * A post reads its delegates from the session's state only, never from the
  * entries. A delivery to a record goes into the workstream's own session: the
@@ -34,6 +37,7 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { DelegateChecker } from "../delegates/delegate-check";
+import { DELEGATES_STATE } from "../delegates/delegate-keys";
 import {
   changeDelegates,
   currentDelegates,
@@ -43,6 +47,7 @@ import {
   type DelegateRecord
 } from "../delegates/delegate-list";
 import { PROJECT_STATE_KEY } from "../workers/keys";
+import { workerConfigOf } from "../workers/verified-worker";
 import type { ProjectAddress } from "./collections";
 import { PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { DONE_STATUS } from "./project-progress";
@@ -175,16 +180,61 @@ export function workstreamDelegateEntry(options: {
         const checked = await options.check(ctx as never, record.worker, "add");
         if (!checked.ok) throw new Error(checked.message);
       }
-      const defaults = await options.defaults(ctx as never);
-      const outcome = await changeDelegates(ctx.session, defaults, input.change === "add" ? { add: record } : { remove: record });
-      if (outcome.ok) return { changed: true };
-      // Already there, or already gone: the list is as this change wants it.
-      const listed = currentDelegates(ctx.session.state, defaults).delegates.some((held) => sameDelegate(held, record));
-      if (listed === (input.change === "add")) return { changed: false };
-      throw new Error(outcome.message);
+      return { changed: await applyWorkstreamRecord(ctx.session, await options.defaults(ctx as never), input.change, record) };
     }
   });
   return { inputSchema: workstreamDelegateChangeSchema, block };
+}
+
+/**
+ * Add or remove one workstream's record on a coordinator session's list, as
+ * one versioned write. A record already there, or already gone, changes
+ * nothing; any other refusal (the cap) throws.
+ *
+ * @returns Whether the list changed.
+ */
+async function applyWorkstreamRecord(
+  session: Parameters<typeof changeDelegates>[0] & { readonly state: Readonly<Record<string, unknown>> },
+  defaults: DelegateDefaults,
+  change: WorkstreamDelegateChange["change"],
+  record: DelegateRecord
+): Promise<boolean> {
+  const outcome = await changeDelegates(session, defaults, change === "add" ? { add: record } : { remove: record });
+  if (outcome.ok) return true;
+  // Already there, or already gone: the list is as this change wants it.
+  const listed = currentDelegates(session.state, defaults).delegates.some((held) => sameDelegate(held, record));
+  if (listed === (change === "add")) return false;
+  throw new Error(outcome.message);
+}
+
+/**
+ * Change one workstream's record on this session, the owner's project
+ * coordinator, in this turn (BR-38): an open made from the coordinator's own
+ * turn hands the ask to the workstream next, in the same turn, and a dispatch
+ * into this session would land only after the turn ends. The same mutation
+ * the internal entry runs, with the defaults of the worker this turn loaded;
+ * the open already checked that the lead is on the user's roster and can lead.
+ *
+ * @param ctx A block's context in the coordinator's turn, declaring the workstream entries.
+ */
+export async function changeWorkstreamRecordHere(
+  ctx: CoordinatorContext & { readonly session: Parameters<typeof changeDelegates>[0] },
+  change: WorkstreamDelegateChange
+): Promise<void> {
+  const config = workerConfigOf(ctx) as { delegates?: unknown; fallback?: unknown };
+  const state = ctx.session.state as Readonly<Record<string, unknown>>;
+  const records = state[DELEGATES_STATE] == null ? await workstreamDelegateSeed(ctx) : undefined;
+  const defaults: DelegateDefaults = {
+    delegates: Array.isArray(config.delegates) ? (config.delegates as string[]) : [],
+    ...(typeof config.fallback === "string" ? { fallback: config.fallback } : {}),
+    ...(records === undefined ? {} : { records })
+  };
+  await applyWorkstreamRecord(
+    ctx.session as Parameters<typeof applyWorkstreamRecord>[0],
+    defaults,
+    change.change,
+    { worker: change.worker, target: change.target }
+  );
 }
 
 /**

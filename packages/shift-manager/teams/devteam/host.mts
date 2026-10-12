@@ -145,12 +145,6 @@ export const INVENTORY_WRITER_FLOW = "inventory-writer";
  */
 export const PROJECT_COORDINATOR = "project-coordinator";
 
-/**
- * The standard worker Shift Manager forks to lead each workstream a user
- * opens from a project (`org/workers/workstream-coordinator/`).
- */
-export const WORKSTREAM_COORDINATOR = "workstream-coordinator";
-
 /** Who the lab runs as, and the org every document read is bound to. */
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
@@ -254,24 +248,20 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
 
 /**
  * The projects flow's action that names this Lab's project setup, for Shift
- * Manager: it names neither coordinator itself, and reads them here.
+ * Manager: it doesn't name the project coordinator itself, and reads it here.
  */
 export const PROJECT_SETUP_ACTION = "projectSetup";
 
 /**
  * The project setup as the projects flow answers it: the installation's
- * project coordinator, and the standard workstream coordinator when the tree
- * declares it. `null` for one the tree doesn't declare.
+ * project coordinator, or `null` when the tree doesn't declare one.
  */
 function projectSetup(installation: WorkerInstallation) {
   return handler({
     name: "devforce-project-setup",
     inputSchema: z.object({}).strict(),
-    outputSchema: z.object({ projectCoordinator: z.string().nullable(), workstreamCoordinator: z.string().nullable() }),
-    execute: () => ({
-      projectCoordinator: installation.projectCoordinator()?.worker ?? null,
-      workstreamCoordinator: installation.standardWorker(WORKSTREAM_COORDINATOR) === undefined ? null : WORKSTREAM_COORDINATOR,
-    }),
+    outputSchema: z.object({ projectCoordinator: z.string().nullable() }),
+    execute: () => ({ projectCoordinator: installation.projectCoordinator()?.worker ?? null }),
   });
 }
 
@@ -327,9 +317,8 @@ const forCoding = handler({
  * works in: the projects the user is a member of, read when asked, never
  * guessed.
  *
- * `openWorkstream` names its lead: the user's own worker. Shift Manager's
- * open forks a coordinator of the workstream's own instead; giving this tool
- * the same default is a follow-up (FIX-1793 PLAN).
+ * `openWorkstream` names its lead: a worker on the user's roster that can
+ * lead. The project coordinator opens workstreams through the same block.
  *
  * The owner is the session's user, so a project the chief of staff creates
  * belongs to the user talking to it, who is always a project member; `members` adds
@@ -915,12 +904,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
     // The worker flow carries them, and only the chief of staff's line names them; a
-    // project coordinator's line names `readProject`, and a workstream's
-    // lead's `updateWorkstream`.
+    // project coordinator's line names `readProject`, `listLeads` and
+    // `openWorkstream`, and a workstream's lead's `updateWorkstream`.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
       ...rosterTools,
       ...projectCoordinatorTools,
+      listLeads: workstreamBlocks.listLeadsTool,
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
     },
     uses: [
@@ -977,8 +967,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
   // The flow projects and workstreams are written through: the project and
   // workstream writes, as an app installs them. A project is created through
-  // it at open, and Shift Manager opens a user's workstreams through it.
-  // The chief of staff calls the same writes as tools.
+  // it at open, and Shift Manager reads the project setup from it. The chief
+  // of staff and the project coordinator open workstreams with the same
+  // writes as tools.
   const projectsFlow = defineFlow({
     kind: PROJECTS_FLOW,
     actions: {
@@ -987,8 +978,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       [PROJECT_SETUP_ACTION]: {
         block: projectSetup(installation),
         description:
-          "Name this Lab's project setup: the worker each user's project coordinator runs as, and the " +
-          "worker each workstream opened in Shift Manager forks its own coordinator from.",
+          "Name this Lab's project setup: the worker each user's project coordinator runs as.",
       },
     },
   } as never)();

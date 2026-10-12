@@ -1319,8 +1319,9 @@ lives in (`repository`, or `null`). A **shared** project is a row of the organiz
 `projects` collection, which everyone in the org lists and reads. A **private** project is the same
 row in its creator's own user scope, which nobody else lists or reads, with its creator alone in its
 `members`. A project's address is `{ visibility, id }`, and every read and write after the create takes
-one; another user's private project is refused as `no-such-project`. The roster flow `hireWorkforce`
-returns, the coordinator flow, the project blocks and `openWorkstream` declare both collections; a
+one (`openWorkstream` can leave it out in a conversation that belongs to a project); another user's
+private project is refused as `no-such-project`. The roster flow `hireWorkforce` returns, the
+coordinator flow, the project blocks and `openWorkstream` declare both collections; a
 flow of your own that works on project rows without them puts `defineProjectsCollection()` and
 `definePrivateProjectsCollection()` in its `resources` under `PROJECTS_RESOURCE` and
 `PRIVATE_PROJECTS_RESOURCE`. The guide is the docs site's Workforce → Projects page, under
@@ -1341,12 +1342,17 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   naming anyone else in `members` (`private-has-members`) are each refused, and nothing is written. The same
   owner re-sending an id gets the row back (`created: false`). A project's workstreams are the
   entries `openWorkstream` writes, not a list on its row.
-- **`openWorkstream { project, id, title, lead, due?, objectives? }`** opens a workstream the caller
-  owns: an entry at `workstreams/<projectId>/<~owner>/<id>`, and the lead's workstream session,
-  owned by the caller, whose id the entry records. The lead is a worker on the caller's roster, on
-  one of `leadFlows`. Returns `{ workstream, opened }`; opening it again hands the entry back
-  (`opened: false`). Refused: `not-a-member` on a shared project, `no-such-worker`, `cannot-lead`,
-  `lead-differs`, `invalid-workstream-id`, and `too-many-workstreams` past 25 open workstreams per
+- **`openWorkstream { project?, id, title, lead, due?, objectives? }`** opens a workstream the caller
+  owns. Left out, `project` is the project the calling conversation belongs to (a project
+  coordinator's conversation belongs to its project; a user's own coordinator belongs to none);
+  in a conversation that belongs to no project it is refused `no-such-project`. A conversation that
+  belongs to a project opens only there: naming another is refused `other-project`, and nothing is
+  written. The open makes an entry at `workstreams/<projectId>/<~owner>/<id>`, and the lead's
+  workstream session, owned by the caller, whose id the entry records. The lead is a worker on the caller's roster, on
+  one of `leadFlows`, that lists delegates (`delegates:`), since a lead runs its workstream through
+  them. Returns `{ workstream, opened }`; opening it again hands the entry back
+  (`opened: false`). Refused: `not-a-member` on a shared project, `no-such-worker`, `cannot-lead`
+  (a lead off `leadFlows`, or one that lists no delegates), `lead-differs`, `invalid-workstream-id`, and `too-many-workstreams` past 25 open workstreams per
   owner per project when the installation names a project coordinator.
 - **`updateWorkstream { project, owner?, id, title?, status?, due?, objectives?, report? }`** changes
   an entry and returns `{ workstream }`. `status` is a label of up to 80 characters; `"done"` marks
@@ -1356,6 +1362,10 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   sends it. Nothing deletes an entry. **`updateWorkstreamTool`** is the same write as the lead's tool,
   named `updateWorkstream`: it takes only the changes and writes the workstream its session leads
   (`not-a-workstream-session` elsewhere).
+- **`listLeadsTool`** is a tool named `listLeads` for whoever picks a lead. It takes no input and
+  returns `{ leads: [{ id, description }] }` (`listLeadsOutputSchema`; `description` is a string or
+  `null`): every worker on the caller's roster, their own and the standard ones, that can lead a
+  workstream, as the roster stands when the tool runs.
 - **`readProject { project }`** returns `{ project, visibility, workstreams, progress }`: every entry,
   oldest first, without reports, and the progress worked out from them at read (`projectProgress`),
   never stored. A browser reads the same entries through the resource routes and parses each with
@@ -1410,6 +1420,14 @@ time it's read; `openWorkstream` adds one; `updateWorkstream` removes it when th
 `"done"` and adds it back when it leaves `"done"`; and a hand-off to one is delivered into the
 session the user's entry names, looked up at delivery, so the post lands in that workstream's
 session.
+
+To let the coordinator open workstreams, add `listLeads: workstreams.listLeadsTool` and
+`openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" })` to its catalog and name
+both in its `tools:`. Asked for work none of the user's workstreams covers, it lists the leads,
+opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
+coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
+built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
+take the hand-off as soon as `openWorkstream` returns.
 
 ## Workers as data
 
@@ -1755,6 +1773,7 @@ the root exports, and reaches no Node built-in.
 | `workforceManifestSources({ roster, inventory })` | The `workers` source on its own, for an app assembling its own manifest registry. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, workerBlocks?, packageBlocks?, documents?, references?, skills?, packages?, projectCoordinator? })` | The worker model's one module (see [Workers as data](#workers-as-data)). `projectCoordinator` names the standard worker on the `coordinator` flow every user's project coordinator runs as (see [Projects](#projects)); any other worker throws. Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
+| `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's nine task tools, present only while the session has a delegate that takes tasks), `actions` (the nine as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `entries(turn)` for `internal: { actions }`, and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
@@ -1809,7 +1828,7 @@ the root exports, and reaches no Node built-in.
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
 | `defineProjectBlocks()` | Returns `{ createProject, setRepository, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
-| `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. |

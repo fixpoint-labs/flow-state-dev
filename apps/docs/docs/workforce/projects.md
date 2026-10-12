@@ -25,7 +25,7 @@ A **private** project lives with you. Nobody else can list, open or read it, its
 
 Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
 
-A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exception is `openWorkstream` from a project coordinator, covered in [Opening one](#opening-one). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
@@ -161,7 +161,7 @@ A worker calls them only when its own `tools:` names them. The owner is the user
 A workstream is one area of a project with one owner. It's two things:
 
 - An **entry** on the project: its title, owner, lead, status, due date, objectives and latest report.
-- Its **workstream session**: a lasting session of the lead worker, owned by the workstream's owner. The lead is usually a worker with delegates it files tasks for, and the session's board holds the workstream's tasks.
+- Its **workstream session**: a lasting session of the lead worker, owned by the workstream's owner. The lead runs the workstream through its delegates, filing tasks for them on the session's board, so a lead must list delegates in its configuration.
 
 `defineWorkstreamBlocks` builds the workstream writes from your [worker installation](./workers-on-disk.md) and the worker flows a lead can run on:
 
@@ -186,13 +186,15 @@ export const projectsFlow = defineFlow({
 });
 ```
 
-It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, and `updateWorkstreamTool` for a lead.
+It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, `updateWorkstreamTool` for a lead, and `listLeadsTool` for whoever picks a lead (see [Opening workstreams from the coordinator](#opening-workstreams-from-the-coordinator)).
 
 A lead flow must declare the internal entry `workstreamOpenedEntry()` returns, under `internal.actions[WORKSTREAM_OPENED_ENTRY]`. The built-in `agent` flow declares it, and a worker flow of your own spreads it in to let its workers lead. `leadFlows` reads only each flow's `kind` and that entry, so you can pass the flow itself or describe it, as above. A lead flow without the entry is refused when the blocks are built.
 
 ### Opening one
 
-Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives:
+Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives.
+
+`project` is optional. Leave it out and the workstream opens in the project the calling conversation belongs to: a project coordinator's conversation belongs to its project; a user's own coordinator belongs to none. A conversation that belongs to a project opens workstreams only there, so naming a different project from it is refused.
 
 ```ts
 const apollo = { visibility: "shared", id: "apollo" } as const;
@@ -237,11 +239,12 @@ A workstream id is unique within a project for each owner, so Alice's `checkout`
 
 | `reason` | When |
 |----------|------|
-| `no-such-project` | The address names no project you can read |
+| `no-such-project` | The address names no project you can read, or you left `project` out in a conversation that belongs to no project |
+| `other-project` | The conversation belongs to one project and you named another |
 | `not-a-member` | On a shared project, you aren't one of its members |
 | `invalid-workstream-id` | The id is empty or holds a `/` |
 | `no-such-worker` | The lead isn't a worker on your roster. Another user's worker is refused the same way |
-| `cannot-lead` | The lead runs on a flow that isn't in `leadFlows` |
+| `cannot-lead` | The lead runs on a flow that isn't in `leadFlows`, or lists no `delegates:` |
 | `lead-differs` | You already have this workstream open, with another lead. A workstream's lead doesn't change |
 | `too-many-workstreams` | You already have 25 open workstreams in the project. Mark one done first. Applies when your installation names a [project coordinator](#talking-to-a-project) |
 
@@ -383,6 +386,47 @@ You never add or remove a project coordinator's workstream delegates yourself. T
 - **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the hand-off fails with that reason.
 
 A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
+
+### Opening workstreams from the coordinator
+
+Your coordinator can open a workstream for you when you ask for work none of your workstreams in the project covers. Add these tools from `defineWorkstreamBlocks` to its catalog:
+
+- `listLeadsTool`, a tool named `listLeads`. It takes no input and returns `{ leads: [{ id, description }] }`: every worker on your roster, your own and the standard ones, that can lead a workstream, as the roster stands when the tool runs. `description` is `null` for a worker without one.
+- `openWorkstream`, the same block as the action, named for the catalog with `.as()`. Called without `project`, it opens the workstream in the coordinator's own project. Naming another project is refused with `other-project`, so tell the coordinator to leave `project` out, as the file below does.
+
+```ts
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    catalog: {
+      ...projectCoordinatorTools,
+      listLeads: workstreams.listLeadsTool,
+      openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" }),
+    },
+  },
+});
+```
+
+List both in the worker's `tools:` and tell it when to use them:
+
+```md title="workforce/org/workers/project-coordinator/WORKER.md"
+---
+description: Your coordinator for one project. Says how its workstreams are going, opens a workstream for new work, and hands your asks to the workstreams you own there.
+flow: coordinator
+routing: judgment
+tools: [readProject, listLeads, openWorkstream]
+---
+
+When the user asks for work none of their workstreams here holds, call
+`listLeads` and pick the worker whose description fits. Open a workstream
+with `openWorkstream`, that worker as `lead` and no `project`, then hand the
+ask to it, targeting `<project.visibility>/<project.id>/<id>` from the
+workstream it returns. When nobody fits, say so and open nothing.
+```
+
+When `openWorkstream` runs in your own coordinator's turn, the new workstream is already one of the coordinator's delegates when the open returns, so the coordinator can hand your ask to it in the same turn. The delegate's target is `<project.visibility>/<project.id>/<id>`, read from the `workstream` the open returns, for example `shared/apollo/checkout`. One worker can lead several of your workstreams, each with its own session and board.
 
 ## A project's code and files
 

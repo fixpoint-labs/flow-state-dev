@@ -41,9 +41,6 @@
     },
     "project-coordinator": {
       "kind": "coordinator"
-    },
-    "workstream-coordinator": {
-      "kind": "agent"
     }
   },
   "teamCoordinators": {

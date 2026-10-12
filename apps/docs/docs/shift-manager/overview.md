@@ -76,7 +76,9 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 
 The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
 
-**Opening a workstream.** On a project's Workstreams tab, give a workstream a title and Shift Manager opens it with a coordinator of its own: a new worker on your roster, forked from the Lab's standard workstream coordinator, that leads it. Each workstream gets its own, so changing one coordinator's instructions or delegates changes only that workstream, and nobody else sees it on their roster. A refused open leaves your roster as it was. In your own app, `openWorkstream` takes whichever lead you name; see [Workstreams](../workforce/projects.md#workstreams).
+**Opening a workstream.** Ask your project coordinator, in the project's Stream tab, for work none of your workstreams there covers. The coordinator opens a workstream for that work, led by the worker on your roster whose description fits, such as your engineering manager for a feature, and hands your ask to the new workstream. The ask stays in the workstream's conversation as its brief. One worker can lead several of your workstreams, with a separate conversation and board for each. When nobody on your roster does the work, the coordinator says so; ask your chief of staff to hire someone.
+
+In your own app, `openWorkstream` takes whichever lead you name. See [Projects](../workforce/projects.md#workstreams).
 
 Shift Coordinator, a workstream and a task also have a panel on the right. The sidebar and the right panel each collapse from their own toggle or from the keyboard: `[` for the sidebar, which shrinks to a column of icons, and `]` for the right panel, which shrinks to a strip. Each one's state is kept in the browser for the signed-in user. On a window narrower than 1180px, the right panel starts collapsed and opens over the center.
 
