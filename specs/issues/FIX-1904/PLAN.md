@@ -4,7 +4,8 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n), [DECISIONS.md](DECISIONS.md) (D-n) and the epic's rules (ER-n). `tdd`. **One PR, opened
-from `main` after FIX-1906 merges.** No Layer 1 change (ER-9): every surface is in
+from `main` after FIX-1906 merges.** No Layer 1 change (ER-9): `@flow-state-dev/claude-code` is an
+integration package, not Layer 1, and gains one export (S1). Every other surface is in
 `packages/shift-manager` (repository-only files and its README), `goals/` and `apps/docs`.
 
 ## What FIX-1906 provides, and what this issue adds
@@ -23,14 +24,14 @@ Named from FIX-1906's design brief and [epic D3](../../epics/FIX-1903/DECISIONS.
 
 | ID | Package · file or role | Change | Rules |
 |---|---|---|---|
-| S1 | `shift-manager` · `teams/devteam/harness.mts` | `selectHarness` takes the profile's default choice; DevTeam passes `stub` (today's), `fsd` passes `claude-code`. Add the coder check (D1): when the choice is Claude Code, resolve the SDK through `@flow-state-dev/claude-code/sdk`'s exported resolver, ask it for the account without a prompt, and refuse on none or on a load failure. A start line names the coder | BR-6 to BR-12 |
+| S1 | `claude-code` · `src/sdk/`, exported from `@flow-state-dev/claude-code/sdk` · then `shift-manager` · `teams/devteam/harness.mts` | **The shared probe** (D1, with FIX-1915; whichever lands first builds it): `probeClaudeAccount({ env, timeoutMs })` resolves `account` (an `apiKeySource` or `tokenSource` came back), `none` (neither, or no answer within `timeoutMs`, with that reason) or `sdk-missing`. One streaming-input `query()` that never sends a message, closed after `accountInfo()`, as in V1. The caller passes the run's environment (`CLAUDE_CODE_PASS`), so probe and run see one account. Then in `harness.mts`: `selectHarness` takes the profile's default choice; DevTeam passes `stub` (today's), `fsd` passes `claude-code`; on Claude Code it calls the probe and refuses on `none` or `sdk-missing`. A start line names the coder | BR-6 to BR-12 |
 | S2 | `shift-manager` · `teams/devteam/host.mts` · the lab's workspace options | `LabWorkspaceHost` gains the checkout mapping as one optional field. `openLab` passes it to `projectWorkspace()` and the checkout path to `localRepositories`, on **both** `labWorkspaceHost` and `answerWorkspaceHost`. Absent means today, so DevTeam is unchanged | BR-13 to BR-15 · ER-10 |
 | S3 | `shift-manager` · new `teams/devteam/fsd.fsdev.config.mts` | The `fsd` profile: the same tree through `openLab`; SQLite at `FSD_STORE` or `.fsdev/fsd.sqlite`; the two projects with their briefs and members as DevTeam sets them; `inventory` and `devtool` on; no `ask`, no `workstreams` (D2); `remotes: { allow: [] }` (D3); the S2 mapping with the checkout worked out from the file's own location; the S1 harness with default `claude-code` | BR-1 to BR-5 · BR-16 |
 | S4 | `shift-manager` · `scripts/checkout.mts` | The default `--config` becomes S3's file. Header updated | BR-1 · BR-4 |
 | S5 | `shift-manager` · `package.json` | `@anthropic-ai/claude-agent-sdk` as a devDependency, if S1's probe can't reach it through `claude-code`'s resolver under pnpm's strict layout. Check before adding | BR-8 |
 | S6 | `shift-manager` · tests | The S3 config under `goal-labs.test.ts` beside DevTeam, run with `DEVFORCE_LAB_HARNESS=stub`; S1's cases with a scripted probe | BR-2 to BR-12 |
-| S7 | `goals/shift-manager/it-opens-on-fsd-and-shift-manager/` | `goal.md` from SPEC's goal; `run.mts` with legs a to d and the controls `silent-stub` and `no-checkout` (each a seam in S1 and S3 the check flips, never in production code paths a person runs) | The goal |
-| S8 | Docs | Publish [DOCS.md](DOCS.md): `apps/docs/docs/shift-manager/overview.md`, `packages/shift-manager/README.md`, `teams/devteam/README.md`. No changeset: nothing in the published files changes but the README | ER-21 |
+| S7 | `goals/shift-manager/it-opens-on-fsd-and-shift-manager/` | `goal.md` from SPEC's goal; `run.mts` with legs a to d and the controls `silent-stub` and `no-checkout`, read by one `GOAL_CONTROL` interpreter in the goal folder. The shipped `fsd.fsdev.config.mts` carries no control branch: `no-checkout` is a `run.mts` override, and only `silent-stub` needs a seam in S1 | The goal |
+| S8 | Docs | Publish [DOCS.md](DOCS.md): `apps/docs/docs/shift-manager/overview.md`, `packages/shift-manager/README.md`, `teams/devteam/README.md`. A changeset for `@flow-state-dev/claude-code` if this PR builds the probe (none if FIX-1915 did); nothing else published changes but the README | ER-21 |
 
 Removed: nothing. DevTeam's config and files stay as they are.
 
@@ -49,13 +50,13 @@ flowchart TD
   S7 --> S8["S8 · docs"]
 ```
 
-V1 runs first: if it fails, D1 is reopened on the PR before S1 is built.
+V1's open row (a signed-in home) runs first: if it fails, D1 is amended before S1 is built.
 
 ## Checks
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | before S1 | On Linux, the SDK reports an account for a signed-in home and for `ANTHROPIC_API_KEY`, and none for an empty home with no variable, with no model turn spent and in under ~5 s. Record the times in the PR |
+| V1 | spec phase; one row at S1 | Run on this spec ([D1](DECISIONS.md#d1)): a source for `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`, none for an empty home, no message emitted, under 0.8 s. Left: a signed-in Linux home names a source. If not, stop and amend D1 |
 | V2 | S1 | BR-6 to BR-12 with a scripted probe. BR-12's red state: a probe that returns "none" never yields the script |
 | V3 | S2 | DevTeam's hosts are built exactly as before with the field absent; with it present, both hosts get the mapping. Red state: drop it from `answerWorkspaceHost`, and a conversation task's run is refused |
 | V4 | S3, S6 | BR-1 to BR-3 and BR-5 on a temp store, script coder |
@@ -103,8 +104,18 @@ paragraph later; leave them out.
 - `--dev` serves the pages through Vite from `packages/shift-manager`, and the runs root sits in
   `.fsdev/` under it. Check that a run's file writes and its `pnpm install` don't reload the page or
   exhaust the watcher. If they do, keep the runs root out of what Vite watches.
-- The probe's spawn uses the same environment the run gets (`CLAUDE_CODE_PASS` in `harness.mts`),
-  so the check and the run agree on the account.
+- Branch names: two `localWorkspaceHost` roots can sit over this one checkout (this Lab, and
+  FIX-1915's Kitchen Sink mode). This Lab's branches start `conductor/`, Kitchen Sink's
+  `kitchen-sink/`, under separate worktree roots; keep it so.
+
+## Notes from review
+
+Verbatim from the spec PR's reviewers, for the implementer to judge against the code.
+
+- **Cursor, on S1:** "Consider pulling D1's probe into a named `assertClaudeAccountAtStart()` (or similar) that fsd config calls explicitly, with DevTeam still `selectHarness("stub")` — keeps "empty env = stub" true for every other caller of `selectHarness()` and makes the expensive path obvious in code review."
+- **Cursor, on S3:** "Second full config file is epic-correct; the duplication smell is the **`openLab({...})` blob**. A shared builder for store path + roster discovery + harness wiring would keep S3 to ~deltas (projects, remotes `[]`, mapping, no ask/workstreams) without changing any BR."
+- **Cursor, on S7:** "require `GOAL_LEG` / split legs like `it-hands-a-run-the-work-it-approved` and `it-groups-workstreams-under-their-projects`, and state whether leg b's two projects run sequentially (likely) so implementers do not accidentally rerun the whole goal for each control."
+- **Cursor, review body:** "Document that **every `loadFsdevConfig` of `fsd`** likely pays the probe unless `stub` is set — tests/tools should default stub for fsd loads (S6 already points that way)." And: "If V1 passes but cold start feels rough in practice, **process-lifetime cache** of a successful probe is an implementation detail worth mentioning in PLAN (still one probe per `shift-manager:dev` invocation)."
 
 ## Follow-ups
 

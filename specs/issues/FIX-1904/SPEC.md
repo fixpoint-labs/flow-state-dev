@@ -98,4 +98,4 @@ If wrong: we ship a sidebar change while every run is still a script, or one tha
 **Open: none.** D1 is the one to weigh. Reasoning: [DECISIONS.md](DECISIONS.md). Cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `shift-manager` (repository-only files, README) + `apps/docs` · small–medium · 1 PR, after FIX-1906 merges · epic [FIX-1903](../../epics/FIX-1903/SPEC.md)
+Feature · `shift-manager` (repository-only files, README) + one `claude-code` export + `apps/docs` · small–medium · 1 PR, after FIX-1906 merges · epic [FIX-1903](../../epics/FIX-1903/SPEC.md)

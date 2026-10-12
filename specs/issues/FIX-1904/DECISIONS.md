@@ -27,16 +27,31 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Refusing unless `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` is set |
-| **Because** | Most Claude Code users are signed in, and a sign-in is not a variable: a file under the home folder on Linux, the keychain on macOS. A variable check refuses them. The Agent SDK reports the account it would use (`accountInfo()`; `apiKeySource` is `'none'` with none), so the Lab asks once before it listens, spending no model turn. A failed check only refuses: a run is never the script unasked ([ER-2](../../epics/FIX-1903/BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont)) |
-| **Locks in** | Every start spawns Claude Code once, a second or two. "Signed in is enough" becomes a docs promise. DevTeam, still on the script, skips the check |
+| **Because** | Most Claude Code users are signed in, and a sign-in is not a variable: a file under the home folder on Linux, the keychain on macOS. A variable check refuses them. The Agent SDK reports where its credential would come from (`accountInfo()` names an `apiKeySource` or a `tokenSource`, and neither when there is none), so the Lab asks once before it listens, spending no model turn. A failed check only refuses: a run is never the script unasked ([ER-2](../../epics/FIX-1903/BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont)) |
+| **Locks in** | Every start spawns Claude Code once, under a second. "Signed in is enough" becomes a docs promise. A credential that is set but rejected passes the check and fails the first run. DevTeam, still on the script, skips the check |
+| **Shared with** | [FIX-1915](https://linear.app/fixpoint-labs/issue/FIX-1915) (Kitchen Sink's Claude Code mode check, #3165). One probe, `probeClaudeAccount()` in `@flow-state-dev/claude-code` ([PLAN](PLAN.md#surfaces) S1); both call it, whichever lands first builds it, and the other imports it. V1 below is the evidence both cite |
 
 ![D1: how the Lab knows there is no Claude credential. Chosen: ask Claude Code at start. Instead of: check two variables. It comes down to the first row, a person signed in to Claude Code with no variable set: they start, against refused. Second row, the price: one Claude Code spawn per start, against none. Third row, a tie: a person with nothing is refused either way, with the variable named. Locks in signed in is enough, as a docs promise. Flips if the SDK can't report the account without a model turn](figures/d1-ask-claude-code.svg)
 
 It comes down to the signed-in person: two variables refuse them, and they are most of the people.
 
 **What would change my mind:** the SDK can't say "no account" without spending a model turn, or
-takes more than a few seconds. That is [PLAN](PLAN.md#checks) V1, run first. If it fails, this
-card is reopened on the PR, not replaced by a guess at files.
+takes more than a few seconds.
+
+**V1, run on this spec (2026-10-12, Linux, Agent SDK 0.3.296, [`poc/account-probe/`](poc/account-probe/run.mjs)).**
+A `query()` whose input never yields, asked `accountInfo()`, then closed. Two runs per case; no
+case emitted a message, so no turn started (the fake key would have failed one).
+
+| Home and variables | What came back | Time |
+|---|---|---|
+| Empty home, no variable | Neither `apiKeySource` nor `tokenSource` (only `apiProvider`, `subscriptionType`) | 0.62–0.77 s |
+| Empty home, `ANTHROPIC_API_KEY` (fake) | `apiKeySource: "ANTHROPIC_API_KEY"` | 0.40–0.46 s |
+| Empty home, `CLAUDE_CODE_OAUTH_TOKEN` (fake) | `tokenSource: "CLAUDE_CODE_OAUTH_TOKEN"` | 0.43–0.46 s |
+| A home signed in to Claude Code | **Not run**: this machine has no sign-in | — |
+
+The premise holds, with one correction: no account reads as *no source field*, not
+`apiKeySource: "none"`. The signed-in row is S1's first step at implement time; if it names no
+source, stop and amend this card on a new spec PR before S1 is built.
 
 <a name="d2"></a>
 ## D2 · The profile opens clean: two projects, no demo ask, no workstreams, its own store
@@ -96,5 +111,7 @@ It comes down to where a missed run's branch goes: refused is visible, and a hid
 - **Draft (2026-10-12)** — framed as the epic's dev profile minus Linear. FIX-1906's thread
   refined the mapping into a `projectWorkspace()` option with `baseRef`; this spec fills it in for
   two projects and keeps the profile's hosts off every remote.
+- **Round 1 (2026-10-12)** — the probe moved into `@flow-state-dev/claude-code`, shared with
+  FIX-1915, and V1 ran in the spec phase rather than after implementation began.
 
 **Open: none.**
