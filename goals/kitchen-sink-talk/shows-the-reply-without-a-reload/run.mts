@@ -96,7 +96,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Load the page, with the control's query, and wait until it can be used. */
 async function openPage(page: Page, origin: string): Promise<void> {
-  await page.goto(`${origin}/${PAGE_QUERY}`);
+  await page.goto(`${origin}/flow-state${PAGE_QUERY}`);
   await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
 }
 

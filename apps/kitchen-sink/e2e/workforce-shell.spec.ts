@@ -68,7 +68,7 @@ async function seedWorkerSession(page: Page, title?: string): Promise<string> {
 }
 
 async function openShell(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/flow-state");
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
 }
 
@@ -600,7 +600,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   // Kitchen-sink's own rail, at its 256px.
   const openShellRail = async (p: Page) => {
     await withLongWorker(p);
-    await p.goto("/");
+    await p.goto("/flow-state");
     await expect(p.locator('[data-testid="message-input"]:visible')).toBeEnabled();
     return rail(p).locator("nav[data-fsd-flow-navigator]");
   };
@@ -609,13 +609,13 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   expect(await rail(page).evaluate((el) => el.getBoundingClientRect().width)).toBe(256);
   // Every level indents inside ONE scroll container: nested scrollbars in 256px are the failure.
   expect((await measureRows(shellNav)).scrollers).toBe(1);
-  await checkRail(page, shellNav, "/", {
+  await checkRail(page, shellNav, "/flow-state", {
     hoverRow: `[data-kind="${SHELL_FLOW}"]`,
     quietRow: '[data-kind="coordinator"]',
     container: rail(page),
     file: "rail-kitchen-sink.png",
   });
-  await checkTouch(browser, openShellRail, "/");
+  await checkTouch(browser, openShellRail, "/flow-state");
 
   // The developer tool's rail, narrowed to the same 256px.
   const openToolRail = async (p: Page) => {

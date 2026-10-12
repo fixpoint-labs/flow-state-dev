@@ -116,7 +116,7 @@ export const panel = (page: Page): Locator => page.locator('[data-testid="picked
 
 /** Load the page and wait until it can be used. */
 export async function openShell(page: Page, origin: string): Promise<void> {
-  await page.goto(`${origin}/`);
+  await page.goto(`${origin}/flow-state`);
   await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
 }
 
