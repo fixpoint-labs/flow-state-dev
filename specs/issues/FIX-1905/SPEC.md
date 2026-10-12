@@ -45,8 +45,9 @@ itself. Under the control the same run must fail, or the pass proves nothing.
 | **Goal check** | `goals/shift-manager/a-projects-coding-run-reads-its-linear/` · real Claude Code, real Linear · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | The run's final answer contains the issue's title, as the check reads it from Linear's API, and the run's session holds at least one `mcp__linear__` tool call |
 | **Input** | A held-out Linear issue picked at run time, named by id only, that the repository never mentions (`git grep` of the id on the run's base finds nothing), so the checkout can't supply the title. Any other such issue must pass too |
-| **Anti-game** | No title in the prompt. No assertion on the resolver's output or a stub. The server machine's own Claude Code MCP settings must not count ([BR-9](BUSINESS-RULES.md#what-a-run-reaches)) |
+| **Anti-game** | No title in the prompt. No assertion on the resolver's output or a stub. The server machine's own Claude Code MCP settings, and its account's claude.ai connectors, must not count ([BR-9](BUSINESS-RULES.md#what-a-run-reaches)) |
 | **Control that must fail** | `GOAL_CONTROL=no-linear`: FSD's servers cleared with `setMcpServers` before filing. Must FAIL on *the title*. Today's `main` must FAIL too: no row can name Linear |
+| **Which check is canonical** | This one, for *the project's servers reach the run*. [FIX-1919](https://linear.app/fixpoint-labs/issue/FIX-1919)'s leg a proves the epic's whole journey in a browser and re-runs this check among every child's own ([FIX-1903 PLAN](../../epics/FIX-1903/PLAN.md#what-each-issue-entails)); a failure here is found before the closure, not by it |
 
 ## What changes
 

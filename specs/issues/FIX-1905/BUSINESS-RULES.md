@@ -23,10 +23,10 @@ this issue's to build; these rows are how.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-8 | A coding run starts on a project naming `linear`, on any of the three paths (its workstream, the project its conversation belongs to, the project its task names) | Claude Code is handed `linear` with the host's address and the key's value, read from the project the run's own session and task row name, never from a hand-over's payload | CI, model-free, one case per path · the goal check, on the task path |
-| BR-9 | A run's project names no servers | The run reaches no MCP server, including any in the server machine's own Claude Code settings | CI, on the options handed to the SDK · the goal check's control |
+| BR-9 | A run's project names no servers | The run reaches no MCP server, including any in the server machine's own Claude Code settings and any claude.ai account connector its sign-in carries. If one still connects, the run's session says so (BR-16) | CI, on the options handed to the SDK · the goal check's control · one real run signed in to an account with a connector |
 | BR-10 | A run's project lookup refuses (no project, not a member) | The run is refused by its source as today, before any server is read | Existing suite |
 | BR-11 | The project's list changes between two attempts of one row | The second attempt gets the new list | CI |
-| BR-12 | A handed server's tools are called | They are allowed without asking; `disallowedTools` still blocks a named one | CI, on the allowed-tools list |
+| BR-12 | A handed server's tools are called | They are allowed without asking (`mcp__<name>__*`); `disallowedTools` still blocks a named one | CI, on the allowed-tools list · the goal check's Linear call |
 | BR-13 | DevTeam's Lab, or any host not given server config, runs Claude Code | Its runs get the same options as today: no MCP config, no strict flag | CI, options compared with `main`'s |
 
 ## When a server can't be had
@@ -35,7 +35,7 @@ this issue's to build; these rows are how.
 |---|---|---|---|
 | BR-14 | The Lab starts with a server whose variable is unset | One line at start names the server and the variable, and that runs go on without it ([ER-7](../../epics/FIX-1903/BUSINESS-RULES.md#what-a-person-gets-and-what-they-dont)) | CI, on the start output |
 | BR-15 | A run's project names a server whose variable is unset, or that the host no longer offers | The run gets its other servers, its session carries one notice naming what it is missing and why, and the run runs. A degraded run, not a pass | CI · the goal check run with the variable unset must FAIL its title |
-| BR-16 | Claude Code reports a handed server as failed or needing sign-in when it starts | The run's session carries a notice naming the server and its status | CI, on a scripted init message |
+| BR-16 | Claude Code reports a handed server as failed or needing sign-in when it starts, or lists a server it wasn't handed | The run's session carries a notice naming the server and its status | CI, on a scripted init message |
 | BR-17 | The dev profile runs the scripted coder | The start line says the scripted coder uses no MCP servers | CI |
 
 ## Where the key goes
@@ -52,7 +52,7 @@ this issue's to build; these rows are how.
 | BR-20 | `claudeCodeAgent` is built without `mcpServers` | The SDK call is the same as today, key for key | CI |
 | BR-21 | `mcpServers` is a value | Every run gets it | CI |
 | BR-22 | `mcpServers` is a resolver | It is called once per run, before the SDK call, with the run's context only | CI |
-| BR-23 | The resolver answers `{}` | No server, and still none from settings files (BR-9) | CI |
+| BR-23 | The resolver answers `{}` | No server, and still none from settings files or the account (BR-9) | CI |
 
 ## Failure taxonomy
 

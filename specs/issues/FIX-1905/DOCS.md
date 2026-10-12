@@ -43,7 +43,8 @@ said the agent's shell never sees the key. It can, in Claude Code's own process 
 > you'd let every project member use.
 >
 > A project that names no servers gets none: its runs don't pick up MCP servers from the
-> server machine's own Claude Code settings either. A list changed while work is running applies
+> server machine's own Claude Code settings, or the connectors of the Claude account it's signed
+> in with, either. A list changed while work is running applies
 > from the next attempt.
 >
 > If a server's variable isn't set, the server says so once when it starts, and each run that
@@ -110,8 +111,8 @@ Add `mcpServers` to the example's options, after `sandbox`:
 and a paragraph after the one on `env`:
 
 > **`mcpServers` is the run's whole MCP set.** Set it, even to `{}`, and the run uses those
-> servers and none from settings files, so a server in your own `~/.claude.json` doesn't leak
-> into a run you configured. Each server's tools are allowed without asking; name one in
+> servers and none from settings files or your claude.ai connectors, so a server in your own
+> `~/.claude.json` doesn't leak into a run you configured. Each server's tools are allowed without asking; name one in
 > `disallowedTools` to keep it out. A resolver is handed the run's context only, like `cwd`, so
 > a server can't be chosen by whatever the caller sent. The config goes to the Claude Code
 > process as its own MCP config, outside the run's `env`; a run with a shell can still read that
@@ -124,7 +125,7 @@ Add `mcpServers` to the example after `sandbox`, as in the README, and this afte
 
 > `mcpServers` gives the run MCP servers: tools outside its checkout, such as an issue tracker.
 > It takes the same shape the Agent SDK does, keyed by the name the tools are prefixed with
-> (`mcp__tracker__…`). Set, it is the run's complete set: settings files add none. A coding run
+> (`mcp__tracker__…`). Set, it is the run's complete set: settings files and claude.ai connectors add none. A coding run
 > on a Workforce project can take its project's servers this way; see
 > [Tools a project's coding work gets](../workforce/projects.md#tools-a-projects-coding-work-gets).
 

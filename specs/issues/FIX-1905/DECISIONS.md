@@ -74,9 +74,9 @@ moves into harness-manager's slot, still not into core.
 ## Decided, not asked
 
 - **Setting `mcpServers` means exactly those servers.** The run loads no MCP server from settings
-  files ([BR-9](BUSINESS-RULES.md#what-a-run-reaches)), so a project naming none reaches none, as
+  files or the signed-in account's claude.ai connectors ([BR-9](BUSINESS-RULES.md#what-a-run-reaches)), so a project naming none reaches none, as
   ER-5 says, and the goal check's control can't pass on the operator's own settings. Unset is today.
-- **A handed server's tools are allowed** (`mcp__<name>` joins the run's allowed tools). A server
+- **A handed server's tools are allowed** (`mcp__<name>__*` joins the run's allowed tools). A server
   handed to a run it may not call is a silent no. `disallowedTools` still narrows.
 - **Read fresh on every attempt.** The repository is pinned to an attempt's record; servers are not,
   since a retry should see a key set after the first attempt failed.
@@ -108,8 +108,15 @@ gives MCP tools to FSD generators, not to a coding agent. Searched: `mcp`, `mcpS
 ## Settled
 
 - **The Agent SDK puts a run's MCP config on the Claude Code process's command line** — **CONFIRMED**
-  in `@anthropic-ai/claude-agent-sdk` 0.3.296 (`sdk.mjs`: non-SDK servers become
-  `--mcp-config <json>`; `strictMcpConfig` becomes `--strict-mcp-config`). D2's *Locks in* rests on it.
+  in `@anthropic-ai/claude-agent-sdk` 0.3.234, the version the lockfile pins (`sdk.mjs`: non-SDK
+  servers become `--mcp-config <json>`; `strictMcpConfig` becomes `--strict-mcp-config`). D2's
+  *Locks in* rests on it.
+- **`strictMcpConfig` alone does not keep out claude.ai account connectors** — **CONFIRMED** from
+  0.3.234's types: strict covers `.mcp.json`, user settings, plugins and agent frontmatter, and
+  names no connectors; a separate `disableClaudeAiConnectors` setting stops them, honoured from
+  `--settings`. Upstream [#190](https://github.com/anthropics/claude-agent-sdk-typescript/issues/190)
+  reports connectors joining configured servers. So S5 sets both, and BR-9 is held by a real run
+  on a signed-in account plus a session notice for any unhanded server, not by the flags alone.
 - **LAB-138's decision 3 does not forbid this option** — **CONFIRMED** against its retained spec.
   See [EVOLUTION.md](EVOLUTION.md).
 
@@ -118,5 +125,7 @@ gives MCP tools to FSD generators, not to a coding agent. Searched: `mcp`, `mcpS
 - **Draft** — framed as the epic's D4 made concrete: a row names hosts' server names, the run joins
   them to host config at start through `projectWorkspace`'s own lookup, and Claude Code takes a
   generic per-run `mcpServers`; one PR after FIX-1904.
+- **Review round 1** — "exactly the project's servers" now also turns off claude.ai account
+  connectors and watches for any that still connect, because strict MCP config doesn't cover them.
 
 **Open: none.**
