@@ -64,6 +64,7 @@ export interface WorkforceClient {
    * criteria's keys: a session that carries a criteria key the call doesn't
    * name is not returned. With `workstreamId`, the one session the user's
    * entry for that workstream names, or `undefined` while it names none.
+   * Throws when the worker isn't on the user's roster.
    */
   findWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary | undefined>;
   /**
@@ -76,7 +77,8 @@ export interface WorkforceClient {
    * session is opened when its conversation's board hands it over, and until
    * then this throws. Nor with `filingSessionId`: a conversation's delegate
    * session is opened when the conversation hands it a post or a task, and
-   * until then this throws.
+   * until then this throws. Throws, too, when the worker isn't on the
+   * user's roster.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
 }

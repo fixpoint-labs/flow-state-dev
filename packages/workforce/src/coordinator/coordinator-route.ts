@@ -14,7 +14,7 @@
  * - `everyone`: each delegate that can be reached got it.
  * - `unplaced`: nobody took it. `none` says why.
  *
- * A `fallback` or `judgment` record from best fit carries `fit`: why best fit
+ * A `fallback`, `judgment` or `unplaced` record from best fit carries `fit`: why best fit
  * didn't deliver to its pick (it picked the coordinator itself, or its pick
  * was below the floor, had no confidence, failed, wasn't a choice, or there
  * was nobody to pick), with the pick, its confidence and the floor where
@@ -84,7 +84,7 @@ export const coordinatorRouteRecordSchema = z.object({
   delegates: z.array(routedDelegateSchema),
   /** Why nobody was delivered to, when nobody was. */
   none: z.string().optional(),
-  /** On a `fallback` or `judgment` record from best fit: why best fit didn't deliver to its pick. */
+  /** On a `fallback`, `judgment` or `unplaced` record from best fit: why best fit didn't deliver to its pick. */
   fit: bestFitWhySchema.optional(),
   /**
    * What else this decision means for the post: that its answers go no

@@ -361,8 +361,8 @@ export interface HireOptions {
   references?: DeclaredResources;
 }
 
-/** A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere. */
-type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
+/** The type arguments every `FlowOf` shares: any actions, scopes and resources. */
+type WideFlowType<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
   Record<string, ActionConfig>,
   SessionConfig | undefined,
   RequestConfig | undefined,
@@ -371,6 +371,26 @@ type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
   Record<string, DeclaredResourceEntry>,
   TConfigSchema
 >;
+
+/**
+ * A flow whose settings schema is `TConfigSchema`, whatever it declares elsewhere.
+ *
+ * `FlowType`'s properties as they are, and its call signature re-declared as a
+ * method, so it is checked bivariantly. Under `strictFunctionTypes` (any app on
+ * `strict: true`) the call's `options` are checked contravariantly, and a flow
+ * that declares a session — every worker flow does — takes narrower options than
+ * the wide ones, so `defineFlow(...)` itself would not be accepted.
+ *
+ * `Omit<…, never>` keeps the properties and drops the original call signature;
+ * intersecting `WideFlowType` itself would keep it, and the strict check with it.
+ * `bivariantCall` is a type-only name: nothing calls it.
+ */
+type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = Omit<WideFlowType<TConfigSchema>, never> &
+  {
+    bivariantCall(
+      options?: Parameters<WideFlowType<TConfigSchema>>[0]
+    ): ReturnType<WideFlowType<TConfigSchema>>;
+  }["bivariantCall"];
 
 /**
  * A flow of either shape: one that declares settings, and one that declares

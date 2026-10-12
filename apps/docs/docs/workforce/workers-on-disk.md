@@ -757,7 +757,8 @@ const session = await workforce.ensureWorkerSession({ worker: "researcher" })
 if there isn't one. It looks up the worker's flow for you. Two calls at once get the same
 session, not two. If you move a worker to another flow, the next call starts a new session
 there. When you only want to check, `findWorkerSession` takes the same argument and returns the
-session or nothing.
+session or nothing. Both throw `No worker "<id>" on your roster.` for a worker that isn't on
+the user's roster.
 
 Both are built on the session client, which you can call directly. Use it to start a second
 conversation with the same worker:
