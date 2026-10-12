@@ -1,12 +1,12 @@
 /**
  * The checkout's `start` and `dev` scripts: the `shift-manager` command over
- * this repository's DevTeam profile (`teams/devteam/fsdev.config.mts`) unless
- * `--config` names another Lab, the `fsd` profile
- * (`teams/devteam/fsd.fsdev.config.mts`) among them.
+ * this repository's `fsd` profile (`teams/devteam/fsd.fsdev.config.mts`)
+ * unless `--config` names another Lab, DevTeam's
+ * (`teams/devteam/fsdev.config.mts`) among them.
  *
  *     pnpm --filter @flow-state-dev/shift-manager start   # the built pages, rebuilt first when stale
  *     pnpm --filter @flow-state-dev/shift-manager dev     # --dev: pages from source through Vite
- *     pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsd.fsdev.config.mts   # the fsd profile, from the repository root
+ *     pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts   # DevTeam, from the repository root
  *
  * Without `--dev` or `--assets`, the built pages are checked against the
  * source files they record (`scripts/build-inputs.mjs`) and rebuilt when any
@@ -48,7 +48,7 @@ function configArg(): string | undefined {
 }
 const given = configArg();
 // Resolved as the command resolves it: from where it was typed.
-const config = given === undefined ? DEVTEAM : isAbsolute(given) ? given : resolve(process.env.INIT_CWD ?? process.cwd(), given);
+const config = given === undefined ? FSD : isAbsolute(given) ? given : resolve(process.env.INIT_CWD ?? process.cwd(), given);
 
 if (!has("--dev") && !has("--assets")) {
   const stale = existsSync(join(PAGES, "index.html")) ? staleBuildInputs(PAGES, REPO) : "they aren't built";
@@ -79,5 +79,5 @@ if (has("--dev") && process.env[WATCH_CHILD_ENV] === undefined && coder !== unde
 }
 
 // `--dev` re-runs this file with the same arguments, so the config is pinned in them.
-if (!has("--config")) process.argv.push("--config", DEVTEAM);
+if (!has("--config")) process.argv.push("--config", FSD);
 await import("../cli/bin.ts");

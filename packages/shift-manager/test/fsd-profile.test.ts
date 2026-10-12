@@ -1,16 +1,20 @@
 /**
  * The `fsd` profile (`teams/devteam/fsd.fsdev.config.mts`), opened the way the
  * `shift-manager` command opens it, on a temp store and the scripted coder
- * (V4; BR-1 to BR-3, BR-5, BR-14).
+ * (V4; BR-1 to BR-3, BR-5, BR-14, BR-15). Where a mapped run works is
+ * `fsd-checkout.test.ts`.
  *
  * What it holds is read from the Lab's own stores and routes after the open,
  * never from the profile's source.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LAB_ORG_ID, type Lab } from "../teams/devteam/host.mts";
+import { fileURLToPath } from "node:url";
+import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
+import { LAB_ORG_ID, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 import { createLabClients } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
 import { serveLab } from "./helpers/serve-lab";
@@ -128,16 +132,42 @@ describe("the fsd profile", () => {
     expect(Object.keys(await projectRows(devteam)).sort()).toEqual(["platform", "sandbox", "storefront"]);
   }, 120_000);
 
-  // Until the profile maps these projects to this checkout, a coding run on
-  // either is refused by name, and nothing is cloned from GitHub (D3, BR-14).
-  it.each(["fsd", "shift-manager"])("BR-14: a coding run on %s is refused by its remote, and nothing is cloned", async (id) => {
-    const store = tempStore(`br14-${id}`);
+  it("hands openLab its checkout mapping, and allows no remote", async () => {
+    // What the profile handed `openLab`, read by wrapping it: the mapping's
+    // own shape and where its runs work is fsd-checkout.test.ts.
+    let handed: OpenLabOptions | undefined;
+    vi.doMock("../teams/devteam/host.mts", async (original) => {
+      const host = (await original()) as typeof import("../teams/devteam/host.mts");
+      return { ...host, openLab: (options: OpenLabOptions) => host.openLab((handed = options)) };
+    });
+    try {
+      await openProfile("fsd.fsdev.config.mts", tempStore("handed"));
+    } finally {
+      vi.doUnmock("../teams/devteam/host.mts");
+    }
+    const workspace = handed?.workspace as { remotes?: unknown; checkouts?: unknown } | undefined;
+    expect({ remotes: workspace?.remotes, checkouts: workspace?.checkouts }).toEqual({ remotes: { allow: [] }, checkouts: CHECKOUTS });
+  }, 120_000);
+
+  // The profile maps only its two shared projects to this checkout, and
+  // allows no remote: a run the mapping misses is refused by name, with no
+  // worktree of this checkout, and nothing is cloned from GitHub (D3).
+  it.each([
+    ["BR-14: a shared project a user made on this repository's remote", { id: "mine", title: "Mine", repository: REMOTE }, "shared"],
+    ["BR-15: a private project with id fsd on this repository's remote", { id: "fsd", title: "My FSD", repository: REMOTE, visibility: "private" }, "private"],
+  ] as const)("%s is refused by its remote, with no worktree and nothing cloned", async (_, project, visibility) => {
+    const store = tempStore(`unmapped-${project.id}-${visibility}`);
     const gatewayKey = process.env.AI_GATEWAY_API_KEY;
     delete process.env.AI_GATEWAY_API_KEY;
+    const checkout = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: fileURLToPath(new URL(".", import.meta.url)), encoding: "utf8" }).trim();
+    const worktrees = () => execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: checkout, encoding: "utf8" });
     try {
       const lab = await openProfile("fsd.fsdev.config.mts", store);
-      const issue = `refused-${id}`;
-      const filed = await lab.file("eng.em", { issue, goal: "Add a line to the README.", maxAttempts: 1, project: { visibility: "shared", id } });
+      const made = await lab.projectAct!("createProject", project);
+      expect(made.error).toBeUndefined();
+      const before = worktrees();
+      const issue = `refused-${project.id}-${visibility}`;
+      const filed = await lab.file("eng.em", { issue, goal: "Add a line to the README.", maxAttempts: 1, project: { visibility, id: project.id } });
       expect(filed.error).toBeUndefined();
       let row = await lab.featureRow(issue);
       for (let i = 0; i < 50 && (row === undefined || row.status === "pending" || row.status === "in_progress"); i += 1) {
@@ -149,9 +179,9 @@ describe("the fsd profile", () => {
       expect(said).toContain("remote-not-allowed");
       expect(said).toContain("github.com");
       expect(said).toContain("/fixpoint-labs/flow-state-dev");
+      expect(worktrees()).toBe(before);
       const clones = join(store, "..", "fsd-runs", ".clones");
       expect(existsSync(clones) ? readdirSync(clones) : []).toEqual([]);
-      expect(existsSync(join(store, "..", "fsd-runs", "answers", ".clones")) ? readdirSync(join(store, "..", "fsd-runs", "answers", ".clones")) : []).toEqual([]);
     } finally {
       if (gatewayKey !== undefined) process.env.AI_GATEWAY_API_KEY = gatewayKey;
     }

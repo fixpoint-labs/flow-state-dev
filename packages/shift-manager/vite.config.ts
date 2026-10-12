@@ -22,4 +22,7 @@ export default defineConfig({
   // The registry copies import `@/components/…` and `@/lib/utils`, as `components.json` names them.
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: { outDir: "dist-client" },
+  // `.fsdev/` holds the Lab's store and its runs' places, worktrees of the
+  // whole checkout among them: nothing a page imports, and too many files to watch.
+  server: { watch: { ignored: ["**/.fsdev/**"] } },
 });
