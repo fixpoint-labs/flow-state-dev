@@ -171,8 +171,8 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   calls.push("createSession(coordinator)");
   const filingSessionId = (await alice.act("coordinator", conv, "listDelegates", {})).output?.filingSessionId as string | undefined;
   calls.push("listDelegates");
-  const filed = await alice.act("coordinator", conv, "addTask_tasks", { goal: o.brief, assignee: "desk.ops" });
-  calls.push("addTask_tasks");
+  const filed = await alice.act("coordinator", conv, "dispatchTask_tasks", { goal: o.brief, assignee: "desk.ops" });
+  calls.push("dispatchTask_tasks");
   const filedAt = Date.now();
   const taskId = filed.output?.taskId as string | undefined;
   say(`${o.label}: filed ${taskId} for desk.ops; waiting for it to park`);

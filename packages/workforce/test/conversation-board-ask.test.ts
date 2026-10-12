@@ -44,7 +44,7 @@ function askingJudgment(goal: string, reply: (results: string) => string) {
       const results = toolResults(options.messages);
       if (results === "") {
         return {
-          toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal, assignee: "eng.tasker", waitForResponse: true } }],
+          toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal, assignee: "eng.tasker", wait: true } }],
           finishReason: "tool-calls"
         };
       }
@@ -202,7 +202,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
 
       // A second task, filed without waiting, whose notice is lost on the way: it is owed only on its row.
       const lost = await host.loseDispatches("onTaskSettled");
-      const filed = await host.act("alice", conv, "addTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
+      const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       const tables = (filed.output as { taskId: string }).taskId;
       expect(await until(async () => (await host.rows("alice")).find((r) => r.id === tables)?.status === "completed")).toBe(true);
@@ -239,7 +239,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
   it("a task filed without waiting still wakes the judgment turn when it ends", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Nine laptops." } }
       ]

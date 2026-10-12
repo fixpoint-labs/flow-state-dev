@@ -507,7 +507,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   if (runs("b4")) {
     o.say("b4: two of Alice's conversations with the chief of staff each add a task");
     r.via("b4", "action");
-    r.saw("b4", "surface: the app's `addTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
+    r.saw("b4", "surface: the app's `dispatchTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
     const delegate = "eng.coder";
     const before = sessionIds(o.store);
     const convs: Array<{ id: string; task?: string; word: string }> = [];
@@ -525,7 +525,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const t0 = Date.now();
     await Promise.all(
       convs.map(async (c) => {
-        const filed = await act(alice, COORDINATOR, c.id, "addTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
+        const filed = await act(alice, COORDINATOR, c.id, "dispatchTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
         c.task = (filed.output as any)?.taskId ?? (filed.output as any)?.task?.id;
         if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `addTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
       }),
@@ -649,7 +649,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       else r.saw("b6", `the turn offered ${offered.size === 0 ? "(unread)" : show([...offered])} and called ${show(called)}: none of the eight task tools`);
       r.via("b6", "action");
       const tasksBefore = taskRows(o.store).length;
-      const refused = await act(alice, COORDINATOR, s.id, "addTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
+      const refused = await act(alice, COORDINATOR, s.id, "dispatchTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
       const declined = (refused.output as { ok?: boolean } | undefined)?.ok === false;
       if (refused.status === "completed" && declined) r.saw("b6", `the app's addTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
       else if (refused.status === "completed") r.fail("b6", `the app's addTask on \`${s.id}\` was accepted: ${show(refused.output)}`);

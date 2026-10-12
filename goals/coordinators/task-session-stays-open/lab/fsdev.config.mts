@@ -5,7 +5,7 @@
  * signs in with a verified bearer (`people.mts`).
  *
  * - `desk.lead`, the coordinator, files nothing itself: the check files
- *   through the app's `addTask_tasks`. Its judgment turn, which a task's
+ *   through the app's `dispatchTask_tasks`. Its judgment turn, which a task's
  *   notice wakes, is scripted to note the notice and do nothing.
  * - `desk.ops` runs on `vercel/openai/gpt-5.4-mini` through the AI Gateway,
  *   with one goal-local tool, `drawTicket`: each call draws a fresh random

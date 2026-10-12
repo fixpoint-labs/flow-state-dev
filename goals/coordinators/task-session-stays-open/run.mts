@@ -150,7 +150,7 @@ async function drive(origin: string, store: string) {
   const filingSessionId = (await act("coordinator", conv, "listDelegates", {})).output?.filingSessionId as string | undefined;
 
   // Leg a: file, wait for the park, answer, wait for the ending.
-  const filed = await act("coordinator", conv, "addTask_tasks", { goal: BRIEF, assignee: "desk.ops" });
+  const filed = await act("coordinator", conv, "dispatchTask_tasks", { goal: BRIEF, assignee: "desk.ops" });
   const taskId = filed.output?.taskId as string | undefined;
   const parked = await waitFor(() => row(taskId)?.status === "parked", 120_000);
   const parkedRow = row(taskId);
@@ -167,7 +167,7 @@ async function drive(origin: string, store: string) {
   await quiet();
 
   // Leg c: a follow-up task naming the finished one.
-  const follow = taskId === undefined ? null : await act("coordinator", conv, "addTask_tasks", { goal: followUp, followUpOf: taskId });
+  const follow = taskId === undefined ? null : await act("coordinator", conv, "dispatchTask_tasks", { goal: followUp, followUpOf: taskId });
   const followId = follow?.output?.taskId as string | undefined;
   await waitFor(() => ["completed", "errored", "cancelled"].includes(row(followId)?.status ?? ""), 120_000);
   await quiet();

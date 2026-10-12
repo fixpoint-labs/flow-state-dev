@@ -42,7 +42,8 @@ const STATUS_SET = ["pending", "in_progress", "blocked", "parked", "completed", 
 
 /**
  * Orchestration's task tools, written out: what the manager's turn must hold,
- * each once. Nine since FIX-1817 added `answerTask` to the eight.
+ * each once. Nine since FIX-1817 added `answerTask` to the eight, and ten on a
+ * conversation's board since FIX-1875 added `dispatchTask`.
  */
 const TASK_TOOLS = [
   "addTask",
@@ -54,6 +55,7 @@ const TASK_TOOLS = [
   "updateTask",
   "listTasks",
   "answerTask",
+  "dispatchTask",
 ];
 
 /** Frontmatter keys that would declare a board or grant the task tools. None may appear. */
@@ -83,7 +85,7 @@ async function turnTools(options: OpenLabOptions): Promise<{ tools: string[]; fi
     const said = await lab.say("Anything new?");
     if (said.error !== undefined) throw new Error(said.error);
     await lab.settled();
-    const filing = await lab.act("addTask_tasks", { goal: "probe", assignee: lab.builderIds[0] });
+    const filing = await lab.act("dispatchTask_tasks", { goal: "probe", assignee: lab.builderIds[0] });
     return { tools: lab.judgmentCalls[0]?.tools ?? [], filing: filing.output ?? filing.error };
   });
 }
@@ -163,7 +165,7 @@ await runGoal(async (failures) => {
 
     // ---- d. the board's filing check, both arms ------------------------------
     const stranger = "eng.nobody";
-    const refused = await lab.act("addTask_tasks", { goal: "filed for a stranger", assignee: stranger });
+    const refused = await lab.act("dispatchTask_tasks", { goal: "filed for a stranger", assignee: stranger });
     const refusal = String(refused.output?.error ?? refused.error ?? "");
     if (refused.output?.ok !== false || !refusal.startsWith("unknown_assignee") || !refusal.includes(stranger)) {
       note(`a filing for ${stranger} was not refused unknown_assignee naming it: ${JSON.stringify(refused)}`);
@@ -187,10 +189,10 @@ await runGoal(async (failures) => {
     const blockedId = String(blockedRow.output?.taskId ?? "");
     const blocked = await lab.act("blockTask_tasks", { taskId: blockedId, reason: blockedReason });
     if (blocked.output?.ok !== true) note(`could not block a row: ${JSON.stringify(blocked)}`);
-    await lab.act("addTask_tasks", { goal: "a piece that finishes", assignee: lab.builderIds[2] });
+    await lab.act("dispatchTask_tasks", { goal: "a piece that finishes", assignee: lab.builderIds[2] });
     await lab.settled();
     lab.hold();
-    const running = await lab.act("addTask_tasks", { goal: "a piece still running", assignee: lab.builderIds[0] });
+    const running = await lab.act("dispatchTask_tasks", { goal: "a piece still running", assignee: lab.builderIds[0] });
     const runningId = String(running.output?.taskId ?? "");
     for (let i = 0; i < 250 && lab.heldTurns() < 1; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
 

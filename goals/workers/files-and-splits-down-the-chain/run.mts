@@ -175,7 +175,7 @@ function chainUnder(all: StoredSession[], root: string): StoredSession[] {
 function addTasks(store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
   if (sessionId == null) return [];
   return items(store, sessionId, "tool_output")
-    .filter((i) => i.toolCall?.name === "addTask" && (requestId === undefined || i.requestId === requestId))
+    .filter((i) => (i.toolCall?.name === "addTask" || i.toolCall?.name === "dispatchTask") && (requestId === undefined || i.requestId === requestId))
     .map(toolOutput);
 }
 
@@ -374,7 +374,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
-  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "addTask");
+  const calls = tools.filter((i) => i.requestId === E.turn.requestId && (i.toolCall?.name === "addTask" || i.toolCall?.name === "dispatchTask"));
   const ids = calls.map(toolOutput).filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const filed = rows.filter((x) => ids.includes(x.id) && (x.assignee === "crew.one" || x.assignee === "crew.two") && x.partition.startsWith(`${E.conv}~`));
   if (filed.length === 0) {
@@ -386,7 +386,8 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     calls
       .filter((i) => {
         try {
-          return (JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown }).waitForResponse === true;
+          const args = JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown; wait?: unknown };
+          return args.wait === true || args.waitForResponse === true;
         } catch {
           return false;
         }

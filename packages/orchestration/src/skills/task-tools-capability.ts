@@ -1199,7 +1199,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     }
     const id = await ctx.runOnce(
       `fsd.dispatch.plan:${call.logicalId}`,
-      async () => init.id ?? `task_${crypto.randomUUID()}`,
+      // The board's own id shape: twenty hex characters, unique across processes.
+      async () => init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
     );
     if (collection.get(id)?.dispatchCall === call.logicalId) return { ok: true as const, taskId: id };
     const task = await collection.addTask({ ...init, id, dispatchCall: call.logicalId });

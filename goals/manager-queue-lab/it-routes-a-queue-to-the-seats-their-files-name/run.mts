@@ -36,7 +36,7 @@
  *   which builder each piece is for and files with its `addTask` tool, which
  *   it holds because its delegates take tasks. Needs a model credential.
  * - **`scripted` — NOT the gate.** The four rows are filed through the
- *   conversation's `addTask_tasks` action, spread across the manager's
+ *   conversation's `dispatchTask_tasks` action, spread across the manager's
  *   delegates, and every other leg runs unchanged. The manager's turn, woken by
  *   each task's notice, runs on a quiet stub that files nothing. It proves the
  *   routing half and nothing about a model choosing; its evidence line says so.
@@ -153,7 +153,7 @@ await runGoal(async (failures) => {
               { goal: WORK[3], assignee: three },
             ];
       for (const filed of filings) {
-        const result = await lab.act("addTask_tasks", filed);
+        const result = await lab.act("dispatchTask_tasks", filed);
         if (result.error !== undefined || result.output?.ok !== true) {
           note(`could not file ${JSON.stringify(filed.goal)}: ${result.error ?? result.output?.error}`);
         }
@@ -173,11 +173,11 @@ await runGoal(async (failures) => {
       note(`${elsewhere.length} row(s) are stored outside the manager's conversation's board`);
     }
     if (FILER === "model") {
-      // Filed by the turn's own tool: the check sent no `addTask_tasks`, and
+      // Filed by the turn's own tool: the check sent no `dispatchTask_tasks`, and
       // the turn was handed the tool.
       const actions = (await lab.requestsOf(lab.conversation)).map((request) => String(request.actionName));
-      if (actions.includes("addTask_tasks")) note(`something filed through the action, not the manager's turn`);
-      if (!lab.judgmentCalls.some((call) => call.tools.includes("addTask"))) {
+      if (actions.includes("dispatchTask_tasks") || actions.includes("addTask_tasks")) note(`something filed through the action, not the manager's turn`);
+      if (!lab.judgmentCalls.some((call) => call.tools.includes("dispatchTask"))) {
         note(`the manager's turn was never handed addTask`);
       }
     }
@@ -283,7 +283,7 @@ await runGoal(async (failures) => {
 
     // ---- f. a row for nobody on the team, and a row for nobody --------------
     const stranger = "eng.nobody";
-    const refused = await lab.act("addTask_tasks", { goal: "a piece for a stranger", assignee: stranger });
+    const refused = await lab.act("dispatchTask_tasks", { goal: "a piece for a stranger", assignee: stranger });
     const refusal = String(refused.output?.error ?? refused.error ?? "");
     if (refused.output?.ok !== false || !refusal.startsWith("unknown_assignee") || !refusal.includes(stranger)) {
       note(`a filing for ${stranger} was not refused unknown_assignee by name: ${JSON.stringify(refused)}`);
@@ -338,7 +338,7 @@ await runGoal(async (failures) => {
         ? `The manager, whose own file says \`tools: []\`, decided who got what and filed ${rowsAfter.length} rows ` +
           `for ${WORK.length} pieces with its own addTask tool, which it holds because its delegates take tasks.`
         : `**NOT THE GATE — GOAL_FILER=scripted.** No model chose: the ${rowsAfter.length} rows were filed ` +
-          `through the conversation's addTask_tasks action, spread across the manager's delegates. What follows ` +
+          `through the conversation's dispatchTask_tasks action, spread across the manager's delegates. What follows ` +
           `is the routing half, and says nothing about a manager choosing.`;
     evidence =
       `one tree at ${LAB_TREE}${FILER === "model" ? `, on ${model}` : ""}: ${filedBy} Every row is stored on ` +

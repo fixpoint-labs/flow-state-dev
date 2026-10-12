@@ -10,7 +10,7 @@
 
 - **a** (the task asks, the app answers): `a:parked` the task parks with one `parked` notice; `a:answered` `answerTask_tasks` with `Use <region>.` answers `{ ok: true }`; `a:completed-90s` the task is `completed` within 90 s of the answer; `a:same-session` it ended in the session that parked; `a:names-ticket` its output names the ticket `drawTicket` drew before the question; `a:names-region` it names the answered region; `a:one-completed` one `completed` notice; `a:unspent` one attempt charged (`attempts - turnReentries - abandonments` is 1), so the answer spent none.
 - **b** (ask the finished session): `b:names-ticket` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the task's own, and its `run` door answers "Which ticket did you draw?" with the ticket.
-- **c** (a follow-up task): `c:completed` an `addTask_tasks` naming the finished task in `followUpOf` completes; `c:same-session` it ran in the task's session; `c:names-ticket` its output names the ticket; `c:one-draw` `drawTicket` ran once in total; `c:one-completed` one `completed` notice for it.
+- **c** (a follow-up task): `c:completed` a `dispatchTask_tasks` naming the finished task in `followUpOf` completes; `c:same-session` it ran in the task's session; `c:names-ticket` its output names the ticket; `c:one-draw` `drawTicket` ran once in total; `c:one-completed` one `completed` notice for it.
 
 **Anti-game:** no row, notice or session is written by the check: every change is an action Alice sends, or what the system does with it. The ticket appears in no prompt the check sends. Every grade reads the store file the run wrote (`../files-tasks-down-the-owners-chain/store.mts`), except what an action answered.
 

@@ -15,7 +15,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "addTask_tasks", input);
+  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -298,7 +298,7 @@ describe("a task session files its pieces (BR-7, as FIX-1802 S6 replaces it)", (
           "listTasks"
         ]);
       }
-      const byAction = await host.act("alice", taskSession!.id, "addTask_tasks", { goal: "another piece", assignee: "eng.tasker" });
+      const byAction = await host.act("alice", taskSession!.id, "dispatchTask_tasks", { goal: "another piece", assignee: "eng.tasker" });
       expect(byAction.output).toMatchObject({ ok: true });
       await host.settled();
       // The piece is on the task session's own board, not the conversation's.

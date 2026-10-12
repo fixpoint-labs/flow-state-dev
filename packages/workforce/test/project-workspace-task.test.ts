@@ -147,7 +147,7 @@ async function boot() {
   };
   /** File a task for the taker from `session`, and wait for its run. */
   const file = async (user: string, session: string, input: Record<string, unknown> = {}, flow = COORDINATOR_FLOW) => {
-    const filed = (await h.ok(user, flow, session, "addTask_tasks", { goal: "Look at the repo", assignee: "eng.taker", ...input })) as any;
+    const filed = (await h.ok(user, flow, session, "dispatchTask_tasks", { goal: "Look at the repo", assignee: "eng.taker", ...input })) as any;
     expect(filed).toMatchObject({ ok: true });
     await settled();
     expect(asked).toHaveLength(1);
