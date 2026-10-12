@@ -12,12 +12,12 @@ in that epic's own `DECISIONS.md`.
 **Binds** the Plan/Task series, FIX-930, FIX-939, FIX-980, FIX-1870, and every later epic that
 stores or moves work.
 
-A pattern does not invent its own task storage, status vocabulary or lifecycle. It is a
-configuration of the task board: a dispatcher, a worker and a loop over one collection. Task state
+A board-based pattern does not invent its own task storage, status vocabulary or lifecycle. It
+is a configuration of the task board: a dispatcher, a worker and a loop over one collection. Task state
 persists through the ordinary scope mechanism. Rejected: per-pattern task stores, and a separate
 task-persistence layer.
 
-**Costs** every pattern pays the board's shape, including ones that would be simpler bespoke.
+**Costs** every board-based pattern pays the board's shape, including ones that would be simpler bespoke.
 Accepted. The Plan/Task series reshaped Plan & Execute, Supervisor, Coordinator and the
 queue-shaped patterns onto it (FIX-447, FIX-448), and the substrate epics since have hardened one
 store rather than several.
@@ -79,7 +79,8 @@ It comes down to a post that expects an answer: today's message needs a second o
 | How does a flow reply to whoever dispatched it? | `session: { from: true }`, stamped by the seam, not supplied by the caller | FIX-1312 / FIX-1171 |
 | How is a flow addressed when several instances of one kind run? | By its global instance id; a bare kind no longer means the first one registered | FIX-1320 |
 | Can a task outlive the request that created it? | **Yes**, as a detached task under a lease | FIX-939 |
-| Do True Plan Mode and the pattern catalog stay in this project? | **No.** FIX-312 and FIX-449 moved to Human-in-the-Loop; FIX-451, the architecture page and catalog, to Multi-Agent Patterns | Product owner, Oct 11 |
+| Do True Plan Mode and the pattern catalog stay in this project? | **No.** FIX-312 and FIX-449 moved to Human-in-the-Loop; FIX-451, the architecture page and catalog, to Multi-Agent Patterns. Their milestones, v3 and v5, were deleted Oct 12 | Product owner, Oct 11 |
+| Does the outcome cover every multi-agent pattern, or only those on the task board? | **Only board-based patterns.** A pattern that runs its own loop off the board, today `roundRobin` and `debate`, is outside the outcome; FIX-922 still decides whether those stay patterns. The work unit and the answer-once fence are what this project hardens, and a pattern that never touches the board gains nothing from either | Product owner, Oct 12 |
 | What carries a post that expects an answer, and what carries one that doesn't? | **A task** through `dispatchTask`, claimed once; a tell is a plain message with no once-only check ([PD-3](#pd-3--anything-that-expects-an-answer-is-a-task-a-tell-is-a-plain-message)) | Product owner, Oct 11; amends FIX-1816 D3 |
 
 ## Open

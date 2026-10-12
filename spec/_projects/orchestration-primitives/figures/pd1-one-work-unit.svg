@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="PD-1, where a pattern keeps its work, its status and its lifecycle. Chosen: one task board, a Task row in a TaskCollection, durable through scope. Instead of: per-pattern task stores, and a separate task-persistence layer. It comes down to the first row, hardening the work substrate: with one board every epic hardens the same store, while per-pattern stores are each hardened on their own and a separate layer is a second store to harden. The second row is the price: a pattern that would be simpler bespoke pays the board&#x27;s shape, a dispatcher, a worker and a loop, where a per-pattern store keeps its own shape and a separate layer imposes its own shape instead. The third row is persistence: the board persists through the ordinary scope mechanism, per-pattern stores each persist their own way, and a separate layer is a second mechanism beside scope. Locks in: every pattern is a configuration of the board, with one status vocabulary and one lifecycle. Flips if: a pattern&#x27;s work cannot be expressed as a dispatcher, a worker and a loop over one collection."
+<svg viewBox="0 0 940 420" role="img" aria-label="PD-1, where a pattern keeps its work, its status and its lifecycle. Chosen: one task board, a Task row in a TaskCollection, durable through scope. Instead of: per-pattern task stores, and a separate task-persistence layer. It comes down to the first row, hardening the work substrate: with one board every epic hardens the same store, while per-pattern stores are each hardened on their own and a separate layer is a second store to harden. The second row is the price: a pattern that would be simpler bespoke pays the board&#x27;s shape, a dispatcher, a worker and a loop, where a per-pattern store keeps its own shape and a separate layer imposes its own shape instead. The third row is persistence: the board persists through the ordinary scope mechanism, per-pattern stores each persist their own way, and a separate layer is a second mechanism beside scope. Locks in: every board-based pattern is a configuration of the board, with one status vocabulary and one lifecycle. Flips if: a pattern&#x27;s work cannot be expressed as a dispatcher, a worker and a loop over one collection."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -101,7 +101,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Every pattern is a configuration of the board</text>
+    <text class="t-b" x="32" y="371">Every board-based pattern is a board configuration</text>
     <text class="t-s" x="32" y="389">one status vocabulary, one lifecycle, one collection</text>
   </g>
 

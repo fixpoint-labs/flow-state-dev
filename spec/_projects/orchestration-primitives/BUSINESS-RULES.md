@@ -6,11 +6,11 @@ Each rule has one owner: the epic that implements and proves it. The others inhe
 
 | | Rule | Owner | Checked where |
 |---|---|---|---|
-| **PR-1** | When one worker gives another work, then that work is a Task row on a board, never a payload on a side channel | FIX-1870 · *proposed* | FIX-1875's goal check, once its spec lands |
-| **PR-2** | When a post between workers expects an answer, then it is a task through `dispatchTask`, claimed once and ended done or failed to the caller, with the claim ticket the only once-only check; when it expects none, it is a plain message with no row, deadline or check | FIX-1870 · *proposed* | FIX-1872's goal check, once its spec lands |
+| **PR-1** | When one worker gives another work, then that work is a Task row on a board, never a payload on a side channel | FIX-1870 | FIX-1875's goal check, once its spec lands |
+| **PR-2** | When a post between workers expects an answer, then it is a task through `dispatchTask`, claimed once and ended done or failed to the caller, with the claim ticket the only once-only check; when it expects none, it is a plain message with no row, deadline or check | FIX-1870 | FIX-1872's goal check, once its spec lands |
 
-Both are *proposed* until FIX-1870 passes its objective gate, because the checks that prove them
-belong to children not yet specced. The board and its claim ticket shipped under the Plan/Task
+FIX-1870 passed its objective gate on Oct 12; the checks that prove both rules belong to its
+children, still in spec review. The board and its claim ticket shipped under the Plan/Task
 series and FIX-939; FIX-1870 owns both rules because it removes the exceptions, the coordinator's
 `handOff` and its delivery ledger.
 

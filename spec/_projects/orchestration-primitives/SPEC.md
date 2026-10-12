@@ -2,17 +2,18 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-FSD's multi-agent patterns run on one work unit: a **Task** row in a **TaskCollection**,
+FSD's board-based patterns run on one work unit: a **Task** row in a **TaskCollection**,
 worked by a board that binds a dispatcher, a worker and a loop. This project owns that unit and
-the ways work moves between workers on it.
+the ways work moves between workers on it. Patterns that run their own loop off the board are
+outside it.
 
 ## The outcome
 
 | | |
 |---|---|
-| **Winning when** | Every multi-agent pattern stores its work as Task rows, and work one worker gives another is answered once, whichever path delivers it. One dispatch tool over the board (FIX-1870) is the current bet for getting there |
-| **The read** | Parallel paths for the same job. Today: **3** worker-to-worker dispatch paths (`addTask({ waitForResponse })`, the board hand-over, the coordinator's `handOff`; `post-to-mailbox` went with mailboxes in FIX-1792) and **2** answer-once fences (the board claim ticket, the coordinator delivery ledger). The conversation board's notice marker (FIX-1794) also tracks delivery, but as a debt that makes sure an ending is told, not a fence that refuses a second telling. Done is 1 path and 1 fence, the claim ticket: a post that expects an answer is a task, and a tell is a plain message with no fence ([Decisions](DECISIONS.md) → PD-3). Two patterns, `roundRobin` and `debate`, still run their roster in their own loop rather than on the board; FIX-922 decides whether they stay patterns |
-| **Now** | 5 epics done (the Plan/Task series counted as one) · 1 in flight · 1 filed, spec being written. The task store, durable execution and flow addressing have landed. dispatchTask (FIX-1870) consolidates the dispatch paths |
+| **Winning when** | Every pattern that runs on the task board stores its work as Task rows, and work one worker gives another is answered once, whichever path delivers it. One dispatch tool over the board (FIX-1870) is the current bet for getting there |
+| **The read** | Parallel paths for the same job. Today: **3** worker-to-worker dispatch paths (`addTask({ waitForResponse })`, the board hand-over, the coordinator's `handOff`; `post-to-mailbox` went with mailboxes in FIX-1792) and **2** answer-once fences (the board claim ticket, the coordinator delivery ledger). The conversation board's notice marker (FIX-1794) also tracks delivery, but as a debt that makes sure an ending is told, not a fence that refuses a second telling. Done is 1 path and 1 fence, the claim ticket: a post that expects an answer is a task, and a tell is a plain message with no fence ([Decisions](DECISIONS.md) → PD-3). Patterns that run their roster in their own loop, today `roundRobin` and `debate`, are outside this outcome by the owner's call ([Decisions](DECISIONS.md) → *decided once*); FIX-922 still decides whether they stay patterns |
+| **Now** | 5 epics done (the Plan/Task series counted as one) · 2 in flight. The task store, durable execution and flow addressing have landed. dispatchTask (FIX-1870) consolidates the dispatch paths; its objective was approved Oct 12 and its children are in spec review |
 | **Kill line** | If dispatchTask's regression gate shows the dispatch paths differ in behaviour, not only in name, one tool is the wrong bet. Then the job becomes naming the kinds clearly; answered-once still holds as the finish line, and the remaining epics change with it |
 
 ![The territory](figures/territory.svg)
@@ -20,7 +21,7 @@ the ways work moves between workers on it.
 Above the fence is the work unit and how it moves between workers. Below it is substrate this
 project assembles but other projects own, and the bottom band is what no epic here builds.
 
-## The epics — derived live 2026-10-11
+## The epics — derived live 2026-10-12
 
 | Epic | What it owns | State | Surface |
 |---|---|---|---|
@@ -30,9 +31,9 @@ project assembles but other projects own, and the bottom band is what no epic he
 | [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) · **honest task substrate** | Versioned task writes, park and unpark, honest settle | **done** · Oct 10 | [PR #983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) |
 | [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) · **flow instances** | Address a flow instance by global id; isolation follows the instance | **done** · Oct 6 | [PR #1617](https://github.com/fixpoint-labs/flow-state-dev/pull/1617) |
 | [FIX-1312](https://linear.app/fixpoint-labs/issue/FIX-1312) · **dispatch protocol** | Reply to whoever dispatched me (`session: { from: true }`) | **in flight** · see note | [PR #1587](https://github.com/fixpoint-labs/flow-state-dev/pull/1587) |
-| [FIX-1870](https://linear.app/fixpoint-labs/issue/FIX-1870) · **dispatchTask** | One tool for dispatching work to another worker; the answer-once fences | *filed* · spec being written | — |
+| [FIX-1870](https://linear.app/fixpoint-labs/issue/FIX-1870) · **dispatchTask** | One tool for dispatching work to another worker; the answer-once fences | **in flight** · objective approved Oct 12; children in spec review | [PR #3110](https://github.com/fixpoint-labs/flow-state-dev/pull/3110) |
 
-5 done · 1 in flight · 1 filed. Canceled, and kept here because the cancel is the decision:
+5 done · 2 in flight. Canceled, and kept here because the cancel is the decision:
 [FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197) Relay and
 [FIX-1169](https://linear.app/fixpoint-labs/issue/FIX-1169) Strands
 ([Decisions](DECISIONS.md) → *decided once*).
@@ -65,6 +66,9 @@ consolidates. FIX-1816's D3 kept two fences; PD-3 amends it to one.
 
 ## What this project is not
 
+- **Not every multi-agent pattern.** A pattern that runs its own loop rather than on the task
+  board, such as `roundRobin` and `debate`, is outside the outcome. Whether those stay patterns is
+  FIX-922's call ([Decisions](DECISIONS.md) → *decided once*).
 - **Not a way to ask a person something.** Approvals, Shift Manager's AskCard and the harness
   question inbox are questions to a human, and they stay outside.
 - **Not a message layer.** Work moves as task rows. A second channel beside the board was tried
