@@ -186,6 +186,12 @@ export type HostOptions = {
   /** How long a round waits for its answers. */
   roundDeadlineMs?: number;
   /**
+   * Route by best fit on a language model: the evaluator call is refused the
+   * way the gateway refuses one (`... is a language model, not a decision
+   * model`), and this script answers best fit's question instead.
+   */
+  languageRoute?: MockGeneratorInstance;
+  /**
    * Whether `helper` reports a cancelled run (`delegatedPostOnFinished` as its
    * request `onFinished`). Off, a cancelled delegate says nothing, as one whose
    * process stopped would. On by default.
@@ -230,14 +236,26 @@ export function bootHost(options: HostOptions = {}) {
     allround: allround() as unknown as FlowInstance,
     roster: rosterFlow() as unknown as FlowInstance
   };
-  const route = scriptedRoute();
+  const route =
+    options.languageRoute === undefined
+      ? scriptedRoute()
+      : mockEvaluationModel({
+          answers: () => {
+            throw new Error(
+              "Model 'openai/gpt-5.4-mini' is a language model, not a decision model. Use the language generation API instead."
+            );
+          }
+        });
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({
       evaluators: { [COORDINATOR_ROUTE]: route },
-      generators: { "coordinator-judgment": judgment }
+      generators: {
+        "coordinator-judgment": judgment,
+        ...(options.languageRoute === undefined ? {} : { "coordinator-route-ask": options.languageRoute })
+      }
     }),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");

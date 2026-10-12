@@ -108,6 +108,36 @@ describe("best fit (V3)", () => {
     expect(heardBy(host)).toEqual(["eng.coder", "eng.em"]);
   });
 
+  it("routes by best fit when its route model is a language model: the gateway refuses the evaluator, and the model answers the same question", async () => {
+    const languageRoute = mockGenerator({ script: [{ structuredOutput: { worker: "eng.em" } }] });
+    const host = bootHost({ languageRoute });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "who plans the release?");
+    expect(languageRoute.calls).toHaveLength(1);
+    // It is asked over the same options the evaluator is, the coordinator among them.
+    const asked = JSON.stringify(languageRoute.calls[0]!.input);
+    expect(asked).toContain("eng.em");
+    expect(asked).toContain("Ask the team anything.");
+    expect(asked).toContain("who plans the release?");
+    expect(heardBy(host)).toEqual(["eng.em"]);
+    expect((await host.items(id)).records).toEqual([
+      expect.objectContaining({ policy: "best-fit", by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] })
+    ]);
+  });
+
+  it("sends a language model's pick that isn't an option, or its failure, down the ladder", async () => {
+    const languageRoute = mockGenerator({ script: [{ structuredOutput: { worker: "nobody.here" } }, { text: "" }] });
+    const host = bootHost({ languageRoute });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "first");
+    await post(host, id, "second");
+    expect(heardBy(host)).toEqual(["support.general", "support.general"]);
+    expect((await host.items(id)).records.map((record: any) => [record.by, record.fit])).toEqual([
+      ["fallback", { reason: "not-a-choice", choice: "nobody.here" }],
+      ["fallback", { reason: "failed" }]
+    ]);
+  });
+
   it("sends a failed call, and a pick that isn't a delegate, to the fallback (BR-15)", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");

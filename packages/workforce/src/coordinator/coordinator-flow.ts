@@ -19,7 +19,8 @@
  *   delegates with its `handOff` tool, or answers itself. It reads its
  *   delegates with its `listDelegates` tool; the list is never in its prompt.
  * - `best-fit`: best fit's ladder (`best-fit.ts`): the delegate still on the
- *   user's last post, else one evaluator call, else the fallback delegate,
+ *   user's last post, else one evaluator call (asked again as a language model when it
+ *   fails on a model string), else the fallback delegate,
  *   else the coordinator's own judgment turn. Only when that turn fails is the
  *   post unplaced, recorded and said in the conversation.
  * - `round-robin`: the next delegate in list order after the one the
@@ -77,6 +78,7 @@ import {
   defineFlow,
   dispatcher,
   evaluator,
+  generator,
   handler,
   router,
   sequencer
@@ -86,6 +88,7 @@ import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state
 import { z } from "zod";
 import {
   bestFitEvaluationFailed,
+  failedEvaluationSchema,
   needsBestFitCall,
   placeBestFit,
   type BestFitCase,
@@ -154,6 +157,7 @@ import {
   COORDINATOR_JUDGMENT,
   COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
+  COORDINATOR_ROUTE_ASK,
   DELEGATE_ANSWER_ACTION,
   DELEGATE_MISSED_ACTION,
   DELIVERIES_STATE,
@@ -1015,6 +1019,45 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     questions: (bestFit: BestFitCaseValue) => ({ worker: choice(ROUTE_QUESTION, bestFit.ladder.options) })
   });
 
+  /**
+   * Best fit's question put to a language model, when the evaluator call
+   * fails on a `routeModel` string: a gateway serves most model ids as
+   * language models only, and refuses them as evaluation models. Same
+   * options, same state, and its pick reaches the ladder as the evaluator's
+   * would, with no confidence. A `routeModel` that is an evaluation model
+   * instance has no language model to ask, so its failure stands.
+   */
+  const routeAsked = generator({
+    name: COORDINATOR_ROUTE_ASK,
+    model: typeof options.routeModel === "string" ? options.routeModel : "",
+    inputSchema: bestFitCaseSchema,
+    outputSchema: z.object({ worker: z.string() }),
+    itemVisibility: { client: false, history: false },
+    prompt: (bestFit: BestFitCaseValue) =>
+      [
+        ROUTE_QUESTION,
+        "Answer with the key of exactly one option below, as `worker`.",
+        "",
+        "Options:",
+        ...Object.entries(bestFit.ladder.options).map(([key, pickBy]) => `- ${key}: ${pickBy}`)
+      ].join("\n"),
+    user: (bestFit: BestFitCaseValue) =>
+      [
+        ...bestFit.recent.map((line) => `${line.from}: ${line.text}`),
+        `The post, from ${bestFit.post.from}: ${bestFit.post.text}`
+      ].join("\n")
+  })
+    .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
+    .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
+
+  /** Best fit's one call: the evaluator, then, when it fails on a model string, the same question as a language model. */
+  const askRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema })
+    .step(routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }]))
+    .stepIf(
+      (asked: unknown) => typeof options.routeModel === "string" && failedEvaluationSchema.safeParse(asked).success,
+      routeAsked.rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
+    );
+
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
   const placedSchema = z.union([
     z.object({
@@ -1075,7 +1118,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const decideBestFit = sequencer({ name: "coordinator-best-fit-decide", inputSchema: bestFitCaseSchema })
     .stepIf(
       (bestFit: BestFitCaseValue) => needsBestFitCall(bestFit.ladder as BestFitCase),
-      routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
+      askRoute
     )
     .step(placeBestFitPost);
 
