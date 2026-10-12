@@ -21,6 +21,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   acquireCheckout,
   encodeSegment,
@@ -201,9 +202,10 @@ describe("the manager — the verdict at each exit", () => {
     // row records the one it was given.
     expect(seen.cwds[0]).toBe(row.run?.workspacePath);
     expect(row.run?.workspacePath).toContain(harnessTaskId(ISSUE, PHASE));
-    // Principal- and epic-namespaced: two users, or two epics, never share a ref.
+    // Principal- and epic-namespaced: two users, two organizations, or two
+    // epics, never share a ref.
     expect(row.run?.branch).toBe(
-      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${harnessTaskId(ISSUE, PHASE)}`,
+      `conductor/t0/${encodeSegment(DEFAULT_ORG_ID)}/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${harnessTaskId(ISSUE, PHASE)}`,
     );
   });
 

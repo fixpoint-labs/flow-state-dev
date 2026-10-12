@@ -340,7 +340,7 @@ await runGoal(async (failures) => {
     // pass. `conductorFlow` returns the value; the first version derived a
     // plausible one instead of asking for the real one.
     const snapshotBranch = branchFor({
-      principal: { userId: USER_ID },
+      principal: { userId: USER_ID, orgId: DEFAULT_ORG_ID },
       epic: built.collectionId,
       issue: fixture.issue,
       phase: fixture.phase,

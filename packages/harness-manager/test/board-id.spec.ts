@@ -8,7 +8,9 @@
  *    dot derives byte for byte the checkout and branch it did then. The
  *    comparison is against `derivation-snapshot.json`, which was written by the
  *    code as it stood before the grammar widened — not re-derived here, which
- *    would only prove the function agrees with itself.
+ *    would only prove the function agrees with itself. Those were derived
+ *    before the organization was part of the place, so they are compared as
+ *    a run already under way then is derived: without it (`orgless`).
  * 2. **A dotted board id is used as is.** `eng.feature.work` is accepted, and
  *    because nothing is translated it never shares a checkout or a branch with
  *    `eng-feature-work`, a name a board may already have. Ids that differ only
@@ -34,7 +36,7 @@ import { seedRepo } from "./fixtures";
 
 interface SnapshotRow {
   epic: string;
-  principal: RunLocation["principal"];
+  principal: Omit<RunLocation["principal"], "orgId">;
   checkout: string;
   branch: string;
 }
@@ -44,10 +46,16 @@ const snapshot = JSON.parse(
   readFileSync(join(HERE, "derivation-snapshot.json"), "utf8"),
 ) as SnapshotRow[];
 const CONFIG = { root: "/ws", sourceRepo: "/src", baseRef: "main" };
-const ALICE = { userId: "u_devforce_lab" };
+const ALICE = { orgId: "org_devforce_lab", userId: "u_devforce_lab" };
 
-function derive(epic: string, principal: RunLocation["principal"] = ALICE) {
-  const location: RunLocation = { principal, epic, issue: "FIX-1", phase: "implement" };
+function derive(epic: string, principal: RunLocation["principal"] = ALICE, orgless?: true) {
+  const location: RunLocation = {
+    principal,
+    epic,
+    issue: "FIX-1",
+    phase: "implement",
+    ...(orgless !== undefined ? { orgless } : {}),
+  };
   return { checkout: checkoutPathFor(CONFIG, location), branch: branchFor(location) };
 }
 
@@ -70,7 +78,7 @@ describe("every board id accepted before derives what it did", () => {
 
   it("derives the recorded checkout and branch for each, byte for byte", () => {
     for (const row of snapshot) {
-      expect(derive(row.epic, row.principal), row.epic).toEqual({
+      expect(derive(row.epic, { ...row.principal, orgId: "any-org" }, true), row.epic).toEqual({
         checkout: row.checkout,
         branch: row.branch,
       });

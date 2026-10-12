@@ -18,6 +18,7 @@ import {
   branchFor,
   checkoutPathFor,
   harnessTaskId,
+  locationFor,
   provisionCheckout,
   type RunLocation,
   type RunPrincipal,
@@ -35,7 +36,7 @@ afterEach(() => {
 });
 
 /** The principal every existing behaviour runs as, unless it says otherwise. */
-const ALICE: RunPrincipal = { userId: "alice" };
+const ALICE: RunPrincipal = { orgId: "org_a", userId: "alice" };
 /** The epic every existing behaviour runs under, unless it says otherwise. */
 const EPIC = "conductor-tasks-test-epic";
 
@@ -117,9 +118,9 @@ describe("provisioning", () => {
     expect(head).toBe(
       // The principal segment is DERIVED, not spelled: it is a digest, and a
       // literal here would only pin how the digest happens to be computed
-      // today. What this asserts is the SHAPE — untenanted tag, principal,
+      // today. What this asserts is the SHAPE — untenanted tag, organization, user,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
+      `conductor/t0/${encodeSegment("org_a")}/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
     );
   });
 
@@ -929,8 +930,8 @@ describe("one job's state is isolated per principal", () => {
   // gives for nothing. Both derivations are asserted, because separate trees
   // pushing one ref is not isolation either.
   const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
-  const alice: RunPrincipal = { userId: "alice" };
-  const bob: RunPrincipal = { userId: "bob" };
+  const alice: RunPrincipal = { orgId: "org_a", userId: "alice" };
+  const bob: RunPrincipal = { orgId: "org_a", userId: "bob" };
 
   it("gives two users different checkouts for the same issue-phase", () => {
     // Without this, user B's agent opens a tree holding user A's commits and
@@ -950,12 +951,35 @@ describe("one job's state is isolated per principal", () => {
   });
 
   it("gives two tenants different checkouts and branches", () => {
-    const a: RunPrincipal = { userId: "u", tenantId: "acme" };
-    const b: RunPrincipal = { userId: "u", tenantId: "globex" };
+    const a: RunPrincipal = { orgId: "org_a", userId: "u", tenantId: "acme" };
+    const b: RunPrincipal = { orgId: "org_a", userId: "u", tenantId: "globex" };
     expect(checkoutPathFor(config, at("FIX-1", "implement", { principal: a }))).not.toBe(
       checkoutPathFor(config, at("FIX-1", "implement", { principal: b })),
     );
     expect(branchFor(at("FIX-1", "implement", { principal: a }))).not.toBe(branchFor(at("FIX-1", "implement", { principal: b })));
+  });
+
+  it("gives one user in two organizations different checkouts and branches, with no tenant", () => {
+    // The tenant is optional and comes from a header, so it cannot be what
+    // keeps two organizations apart. Same user, same board, same issue-phase,
+    // no tenant: only the organization differs, and it alone must separate
+    // them, or one organization's run opens a tree holding the other's work.
+    const inA: RunPrincipal = { orgId: "org_a", userId: "u" };
+    const inB: RunPrincipal = { orgId: "org_b", userId: "u" };
+    expect(checkoutPathFor(config, at("FIX-1", "implement", { principal: inA }))).not.toBe(
+      checkoutPathFor(config, at("FIX-1", "implement", { principal: inB })),
+    );
+    expect(branchFor(at("FIX-1", "implement", { principal: inA }))).not.toBe(
+      branchFor(at("FIX-1", "implement", { principal: inB })),
+    );
+  });
+
+  it("does not let an organization and a user run together into one path", () => {
+    // Each is its own encoded segment, so swapping the two ids is a different
+    // path rather than the same characters regrouped.
+    expect(
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "x", userId: "y" } })),
+    ).not.toBe(checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "y", userId: "x" } })));
   });
 
   it("keeps one principal's own derivation stable across calls", () => {
@@ -973,9 +997,9 @@ describe("one job's state is isolated per principal", () => {
     // Encoding is injective, so `a` + `b/c` and `a/b` + `c` cannot collapse —
     // impossible rather than merely forbidden.
     expect(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: "b/c", tenantId: "a" } })),
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "b/c", tenantId: "a" } })),
     ).not.toBe(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: "c", tenantId: "a/b" } })),
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "c", tenantId: "a/b" } })),
     );
   });
 
@@ -985,7 +1009,7 @@ describe("one job's state is isolated per principal", () => {
     // cannot fix.
     for (const id of ["auth0|abc", "alice@example.com", "CON", "acme.", "a/b", "ünïcode"]) {
       expect(() =>
-        checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: id } })),
+        checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: id } })),
       ).not.toThrow();
     }
   });
@@ -1003,7 +1027,7 @@ describe("one job's state is isolated per principal", () => {
     const huge = "a".repeat(4_000);
     for (const segment of checkoutPathFor(
       { root: "/w", sourceRepo: "/r", baseRef: "main" },
-      at("FIX-1219", "implement", { principal: { userId: huge, tenantId: huge } }),
+      at("FIX-1219", "implement", { principal: { orgId: "org_a", userId: huge, tenantId: huge } }),
     ).split("/")) {
       expect(Buffer.byteLength(segment, "utf8")).toBeLessThanOrEqual(255);
     }
@@ -1020,11 +1044,11 @@ describe("one job's state is isolated per principal", () => {
     // Presence is tagged separately from value, so these can never collide —
     // the alias a `?? "single-tenant"` fallback would have created.
     expect(
-      checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: "u" } })),
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: "u" } })),
     ).not.toBe(
       checkoutPathFor(
         config,
-        at("FIX-1", "i", { principal: { userId: "u", tenantId: "single-tenant" } }),
+        at("FIX-1", "i", { principal: { orgId: "org_a", userId: "u", tenantId: "single-tenant" } }),
       ),
     );
   });
@@ -1033,10 +1057,30 @@ describe("one job's state is isolated per principal", () => {
     // Encoding, not rejecting: these are all legal identifiers somewhere, and
     // none of them can express a separator or a traversal once encoded.
     for (const bad of ["../escape", "..", "", "with space", "/abs", "CON", "a."]) {
-      const dir = checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: bad } }));
+      const dir = checkoutPathFor(config, at("FIX-1", "i", { principal: { orgId: "org_a", userId: bad } }));
       expect(dir.startsWith(`${config.root}/`)).toBe(true);
       expect(dir.split("/")).not.toContain("..");
     }
+  });
+});
+
+describe("a run opened before the organization was part of its place", () => {
+  // Such a run's record names the branch derived without the organization.
+  // It keeps that branch and its tree, so the change does not strand the
+  // commits and uncommitted work a retry is meant to continue from.
+  const base = { principal: { orgId: "org_a", userId: "u" }, epic: EPIC, issue: "FIX-1", phase: "implement" };
+  const before = branchFor({ ...base, orgless: true });
+
+  it("keeps the branch and checkout its record names", () => {
+    const location = locationFor(base, before);
+    expect(branchFor(location)).toBe(before);
+    expect(branchFor(location)).not.toBe(branchFor(base));
+  });
+
+  it("derives with the organization for a run with no record, or one on the new branch", () => {
+    expect(locationFor(base, null)).toEqual(base);
+    expect(locationFor(base, undefined)).toEqual(base);
+    expect(locationFor(base, branchFor(base))).toEqual(base);
   });
 });
 
@@ -1467,10 +1511,10 @@ describe("the identity rule — the digest cannot be made to collide on purpose"
     // do not land on one tree, one branch, or one lock.
     const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
     const paths = HOSTILE.map((userId) =>
-      checkoutPathFor(config, at("FIX-1", "implement", { principal: { userId } })),
+      checkoutPathFor(config, at("FIX-1", "implement", { principal: { orgId: "org_a", userId } })),
     );
     const branches = HOSTILE.map((userId) =>
-      branchFor(at("FIX-1", "implement", { principal: { userId } })),
+      branchFor(at("FIX-1", "implement", { principal: { orgId: "org_a", userId } })),
     );
     expect(new Set(paths).size).toBe(HOSTILE.length);
     expect(new Set(branches).size).toBe(HOSTILE.length);
@@ -1606,12 +1650,12 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     // The opaque half: these are never rejected — they are encoded — so every
     // one of them must come out ref-clean.
     const principals: RunPrincipal[] = [
-      { userId: "alice" },
-      { userId: "auth0|abc" },
-      { userId: "alice@example.com" },
-      { userId: "a.", tenantId: "acme.lock" },
-      { userId: "../escape", tenantId: "with space" },
-      { userId: "", tenantId: "" },
+      { orgId: "org_a", userId: "alice" },
+      { orgId: "org_a", userId: "auth0|abc" },
+      { orgId: "org_a", userId: "alice@example.com" },
+      { orgId: "org_a", userId: "a.", tenantId: "acme.lock" },
+      { orgId: "org_a", userId: "../escape", tenantId: "with space" },
+      { orgId: "org_a", userId: "", tenantId: "" },
     ];
     for (const principal of principals) {
       const branch = branchFor(at("FIX-1219", "implement", { principal }));

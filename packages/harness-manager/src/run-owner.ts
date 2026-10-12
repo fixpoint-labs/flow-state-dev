@@ -60,7 +60,12 @@ export function runOwnerOf(row: { metadata?: Record<string, unknown> } | undefin
   return parsed.success ? parsed.data : null;
 }
 
-/** The record for a principal, with no `tenantId` key when there is none. */
+/**
+ * The record for a principal, with no `tenantId` key when there is none.
+ *
+ * No organization: the record lives on a row of one organization's board, so
+ * the owner's organization is the board's.
+ */
 export function runOwnerFor(principal: RunPrincipal): RunOwner {
   return {
     userId: principal.userId,
@@ -96,6 +101,7 @@ export function foreignRunMessage(taskId: string, owner: RunOwner): string {
  */
 export interface RequestIdentityContext {
   user?: { identity?: unknown } | undefined;
+  request?: { identity?: unknown } | undefined;
 }
 
 /**
@@ -120,8 +126,18 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
         "isolated to one. Refusing rather than sharing a checkout across principals.",
     );
   }
+  // The organization is on the REQUEST identity, the one the request was
+  // admitted under; the user-scope identity does not carry it.
+  const orgId = (ctx.request?.identity as { orgId?: unknown } | undefined)?.orgId;
+  if (typeof orgId !== "string" || orgId === "") {
+    throw new Error(
+      "[harness-manager] this request has no resolved organization, so a run cannot be " +
+        "isolated to one. Refusing rather than sharing a checkout across organizations.",
+    );
+  }
   return {
     userId,
+    orgId,
     ...(typeof identity?.tenantId === "string" && identity.tenantId !== ""
       ? { tenantId: identity.tenantId }
       : {}),
