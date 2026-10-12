@@ -47,7 +47,7 @@ The shared story once, and who publishes each specific. The prose is proposed re
 | `coordinators.md` and `chief-of-staff.md`: the `handOff` tool replaced by `dispatchTask` | FIX-1872 | Its `DOCS.md` |
 | `packages/orchestration/README.md`: the `waitForResponse` / `timeoutMs` section replaced by `dispatchTask` | FIX-1875 | Its `DOCS.md` |
 | `packages/workforce/README.md`: the coordinator `handOff` section and the delivery ledger replaced by rows | FIX-1872 | Its `DOCS.md` |
-| `coordinators.md`: one answer per delegate per post, fenced by the task row | FIX-1872 | Its `DOCS.md` |
+| `coordinators.md`: a post that needs an answer is a task per delegate, fenced by the task row, one answer per delegate per post; a tell is a plain message | FIX-1872 | Its `DOCS.md` |
 | The glossary rows above; every remaining use of "ask" or "hand-off" for delivering work, across `apps/docs` | FIX-1876 | This document, then its `DOCS.md` |
 
 Publish each specific with its implementation. No unchanged page is copied here.
