@@ -552,8 +552,12 @@ separate count is worth having: it says how many of a path's touches actually
 landed. Read `0` and `null` differently. `0` means the run touched the path and
 nothing applied. `null` means the row was written before the field existed.
 
-The plan record reads the same way, from `observed-plan`. A to-do item's status
-is the harness's own word for it, and stays empty until the harness reports one.
+The plan record reads the same way, from `observed-plan`. Its shape is the one
+every harness shares, described in [the run's plan](./coding-agents.md#the-runs-plan);
+importing `observedPlanCollection` from this package or from `@flow-state-dev/core`
+gives the same object. A to-do item's status is the harness's own word for it, and
+stays empty until the harness reports one. Plan entries reach an open page as they
+change, rather than when the request ends.
 
 ### What the file record is, and what it isn't
 

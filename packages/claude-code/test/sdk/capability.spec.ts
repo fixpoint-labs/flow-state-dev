@@ -192,6 +192,7 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
       "observed-file-ops",
       "observed-gaps",
       "observed-plan",
+      "observed-plan-list",
     ]);
   });
 

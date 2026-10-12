@@ -44,6 +44,7 @@ import {
   OBSERVED_FILE_OPS,
   OBSERVED_GAPS,
   OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
   workRecorderResources,
 } from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
@@ -52,7 +53,7 @@ import {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
 } from "./session";
-import { ClaudeAgentRunError } from "./errors";
+import { ClaudeAgentRunError, isUnknownConversationFailure } from "./errors";
 import type { ClaudeAgentSettingSource } from "./types";
 import {
   CLAUDE_SDK_SOURCE,
@@ -636,6 +637,7 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
   const files = upsertable(OBSERVED_FILE_OPS);
   const plan = upsertable(OBSERVED_PLAN);
   const gaps = upsertable(OBSERVED_GAPS);
+  const planList = upsertable(OBSERVED_PLAN_LIST);
   if (files === undefined || plan === undefined) {
     ctx.emit.status(
       `Claude Code agent is not recording this run's work: the "${OBSERVED_FILE_OPS}" and ` +
@@ -648,6 +650,7 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
     runId: runNamespace(ctx),
     files,
     plan,
+    ...(planList !== undefined ? { planList } : {}),
     ...(gaps !== undefined ? { gaps } : {}),
     // The second half of the working directory. Absent when no resolver is
     // configured, which keys against this process's directory exactly as before.
@@ -1224,10 +1227,18 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // The SDK's own exit errors carry the process's stderr only when the
           // SDK spawned it; this block does, so it carries the tail instead.
           const stderrTail = agentProcess.stderrTail();
+          // The one failure a host has to tell from every other: the
+          // conversation this run asked to continue is unknown to Claude Code.
+          // Classified here, in core's vocabulary, so a host never reads the
+          // vendor's message.
+          const askedToResume = resumeSessionId || session.sdkSessionId || "";
           const wrapped = new ClaudeAgentRunError(
             `Claude Code agent run failed: ${(err as Error).message}` +
               (stderrTail === "" ? "" : `\n${stderrTail}`),
             { cause: (err as Error).message },
+            isUnknownConversationFailure(askedToResume, (err as Error).message ?? "", stderrTail)
+              ? "unknown-conversation"
+              : null,
           );
           await emitTranslatedEvent(
             { kind: "error", message: wrapped.message, code: wrapped.code },

@@ -3,6 +3,7 @@
  * `code` so hosts and the orchestrator can branch on the failure class without
  * string-matching messages, mirroring the CLI path's error-class style.
  */
+import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/types";
 
 /**
  * The optional `@anthropic-ai/claude-agent-sdk` peer dependency is not
@@ -24,10 +25,47 @@ export class ClaudeAgentSdkNotInstalledError extends Error {
  * caller sees a stable class while the original message is preserved on
  * `detail.cause`. The agent block emits an error item and rethrows this.
  */
-export class ClaudeAgentRunError extends Error {
+export class ClaudeAgentRunError extends Error implements ClassifiedHarnessError {
   readonly code = "CLAUDE_AGENT_RUN_FAILED";
-  constructor(message: string, readonly detail?: { cause?: string }) {
+  /**
+   * The failure in core's neutral vocabulary, read with core's
+   * `harnessFailureKind`. `"unknown-conversation"` when Claude Code refused to
+   * continue the conversation the run asked to resume; `null` for every other
+   * failure. See {@link isUnknownConversationFailure}.
+   */
+  readonly harnessFailure: HarnessFailureKind | null;
+  constructor(
+    message: string,
+    readonly detail?: { cause?: string },
+    harnessFailure: HarnessFailureKind | null = null,
+  ) {
     super(message);
     this.name = "ClaudeAgentRunError";
+    this.harnessFailure = harnessFailure;
   }
+}
+
+/**
+ * Whether a failed run was Claude Code refusing to continue `resumeId`.
+ *
+ * Measured against Claude Code 2.1.296 and `@anthropic-ai/claude-agent-sdk`
+ * 0.3.234, resuming an id it has no transcript for: the process emits one
+ * `result` message (`subtype: "error_during_execution"`, `is_error: true`,
+ * `errors: ["No conversation found with session ID: <id>"]`, and the
+ * **requested** id as its `session_id`), exits 1, and the SDK throws
+ * `Claude Code returned an error result: No conversation found with session ID: <id>`.
+ * Older SDKs throw a bare exit error and leave the sentence on stderr, so both
+ * are checked.
+ *
+ * Matched on the requested id, not the sentence alone, so a run that resumed
+ * one conversation and then failed over another is not called a refusal.
+ */
+export function isUnknownConversationFailure(
+  resumeId: string,
+  message: string,
+  stderrTail: string,
+): boolean {
+  if (resumeId === "") return false;
+  const sentence = `No conversation found with session ID: ${resumeId}`;
+  return message.includes(sentence) || stderrTail.includes(sentence);
 }

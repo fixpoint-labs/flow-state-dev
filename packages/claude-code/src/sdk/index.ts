@@ -54,9 +54,11 @@ export {
 export {
   OBSERVED_FILE_OPS,
   OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
   OBSERVED_GAPS,
   observedFileOpsCollection,
   observedPlanCollection,
+  observedPlanListCollection,
   observedGapsCollection,
   observedFileOpStateSchema,
   observedPlanItemStateSchema,

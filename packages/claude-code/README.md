@@ -344,14 +344,20 @@ Full behaviour, including what an empty or symlinked directory does, is on the
 ### Recording what a run did
 
 `recordWork: true` records the run's file operations and its own to-do list as
-state you can read afterwards. Off by default; on, the agent declares three
+state you can read afterwards. Off by default; on, the agent declares four
 resource collections and writes into them as it goes:
 
 | Accessor | One entry per |
 |----------|---------------|
 | `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`, `appliedCount`. Paths, never contents |
 | `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
+| `observed-plan-list` | run whose plan could not be written in full — `status: "incomplete"` and the `reason`. Written only when a plan entry fails to write |
 | `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
+
+The `observed-plan` shape and its `observed-plan-list` marker are defined in
+`@flow-state-dev/core` and re-exported here, so either import gives the same
+object. Their entries stream to an open page as they change. See
+[the run's plan](https://flow-state.dev/docs/tools/coding-agents#the-runs-plan).
 
 ```ts
 claudeCodeAgent({ detached: true, recordWork: true });
@@ -359,7 +365,7 @@ claudeCodeAgent({ detached: true, recordWork: true });
 
 Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
 and a request that runs the agent more than once — both answer per run.
-All three declare client state reads, so
+All four declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
 route pages.
