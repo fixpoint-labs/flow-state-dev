@@ -22,7 +22,7 @@ import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, write
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { modulePatchEnv } from "../../../lib/module-patch.mts";
+import { assertPatched, describePatches, modulePatchEnv, type ModulePatch as Rewrite } from "../../../lib/module-patch.mts";
 
 /** The DevTeam profile inside a checkout. */
 export const profileOf = (root: string) => join(root, "packages", "shift-manager", "teams", "devteam");
@@ -94,6 +94,8 @@ export interface ModulePatch {
   env: Record<string, string>;
   /** `diff -u` from the module as committed to the module as served. */
   diff: string;
+  /** After the run: throws when the patched module never loaded in the served process. */
+  reached?(): void;
 }
 
 /** Every `.ts` file under `dir`. */
@@ -159,3 +161,34 @@ export function probeOrgScopedWorkers(root: string, patch: ModulePatch, tsx: str
   const line = output.split("\n").find((l) => l.startsWith("__PROBE__"));
   return { scope: line === undefined ? undefined : (JSON.parse(line.slice("__PROBE__".length)) as { scope?: string }).scope, output: output.slice(-1500) };
 }
+
+/** A control as rewrites of workforce modules, each found by what it matches, with the proof it loaded. */
+function codeControl(root: string, scratch: string, name: string, rewrites: Rewrite[]): ModulePatch {
+  const mark = join(scratch, `${name}.loaded`);
+  rmSync(mark, { force: true });
+  return { name, env: modulePatchEnv(rewrites, root, mark), diff: describePatches(rewrites, root), reached: () => assertPatched(rewrites, root, mark) };
+}
+
+const BOARD = "packages/workforce/src/conversation-board";
+
+/** `unpartitioned`: every conversation's board reads and writes one shared partition (b4 must fail). */
+export const unpartitioned = (root: string, scratch: string) =>
+  codeControl(root, scratch, "unpartitioned", [{ module: `${BOARD}/ledger.ts`, from: "partition,(\\s*)immutableAssignee", to: 'partition: "unpartitioned",$1immutableAssignee' }]);
+
+/** `no-follow-up`: a settled task owes its notice but none is ever sent (b5 must fail). */
+export const noFollowUp = (root: string, scratch: string) =>
+  codeControl(root, scratch, "no-follow-up", [{ module: `${BOARD}/notice-delivery.ts`, from: "let sent = 0;(\\s*)for \\(const notice of owedNotices", to: "return 0;\n  let sent = 0;$1for (const notice of owedNotices" }]);
+
+/** `no-delegate-check`: a conversation files tasks whether or not a delegate takes them (b6 must fail). */
+export const noDelegateCheck = (root: string, scratch: string) =>
+  codeControl(root, scratch, "no-delegate-check", [{ module: `${BOARD}/board.ts`, from: "\\(await options\\.delegates\\(ctx\\)\\)\\.available\\.size > 0;", to: "true;" }]);
+
+/** `no-roster-check`: a worker not on the caller's roster passes the delegate check as a stand-in agent worker (c4 must fail). */
+export const noRosterCheck = (root: string, scratch: string) =>
+  codeControl(root, scratch, "no-roster-check", [
+    {
+      module: "packages/workforce/src/delegates/delegate-check.ts",
+      from: "if \\(worker === undefined\\) return \\{ ok: false,",
+      to: 'if (worker === undefined) return { ok: true, worker: { id: workerId, standard: false, flow: "agent", description: null, delegates: [] }, takesPost: true };\n    if (worker === undefined) return { ok: false,',
+    },
+  ]);
