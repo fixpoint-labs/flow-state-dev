@@ -235,12 +235,9 @@ export function bootHost(options: HostOptions = {}) {
   const route =
     options.languageRoute === undefined
       ? scriptedRoute()
-      : mockEvaluationModel({
-          answers: () => {
-            throw new Error(
-              "Model 'openai/gpt-5.4-mini' is a language model, not a decision model. Use the language generation API instead."
-            );
-          }
+      : // The gateway's refusal of a language model, whatever `routeModel` names.
+        mockEvaluationModel({
+          error: new Error("Model is a language model, not a decision model. Use the language generation API instead.")
         });
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const state = createFlowState({
