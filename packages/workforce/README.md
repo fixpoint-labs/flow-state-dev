@@ -1534,7 +1534,8 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   import { createClient } from "@flow-state-dev/client";
   import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-  const workforce = createWorkforceClient({ userId, baseUrl });
+  // fetcher: wraps fetch to add the caller's credential, as described above
+  const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 
   const roster = await workforce.roster();
   // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
@@ -1543,7 +1544,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
 
-  const research = createClient({ flowKind: session.flowKind, userId, baseUrl });
+  const research = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
   const { status, request } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
     sessionId: session.id,
   });

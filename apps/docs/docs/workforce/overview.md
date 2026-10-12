@@ -141,6 +141,7 @@ import { serve } from "@flow-state-dev/node";
 import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 
 const flowState = createFlowState({
+  // flows = hireWorkforce(installation), from "Hire a roster" above
   flows: mergeWorkerFlows({ /* your own flows, by id */ }, flows),
   stores, // your stores
   resolvePrincipal: async ({ request }) => {
