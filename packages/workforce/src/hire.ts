@@ -28,7 +28,6 @@ import type {
   BlockDefinition,
   DeclaredResourceEntry,
   FlowInstance,
-  FlowInstanceOptions,
   FlowType,
   OrgConfig,
   RequestConfig,
@@ -382,28 +381,9 @@ type WideFlowType<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
  * that declares a session — every worker flow does — takes narrower options than
  * the wide ones, so `defineFlow(...)` itself would not be accepted.
  */
-type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = Omit<WideFlowType<TConfigSchema>, never> &
-  {
-    mint(
-      options?: FlowInstanceOptions<
-        Record<string, ActionConfig>,
-        SessionConfig | undefined,
-        RequestConfig | undefined,
-        UserConfig | undefined,
-        OrgConfig | undefined,
-        Record<string, DeclaredResourceEntry>,
-        TConfigSchema
-      >
-    ): FlowInstance<
-      Record<string, ActionConfig>,
-      SessionConfig | undefined,
-      RequestConfig | undefined,
-      UserConfig | undefined,
-      OrgConfig | undefined,
-      Record<string, DeclaredResourceEntry>,
-      TConfigSchema
-    >;
-  }["mint"];
+type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = Omit<WideFlowType<TConfigSchema>, never> & {
+  mint(...args: Parameters<WideFlowType<TConfigSchema>>): ReturnType<WideFlowType<TConfigSchema>>;
+}["mint"];
 
 /**
  * A flow of either shape: one that declares settings, and one that declares
