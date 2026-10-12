@@ -77,7 +77,8 @@ export interface WorkforceClient {
    * session is opened when its conversation's board hands it over, and until
    * then this throws. Nor with `filingSessionId`: a conversation's delegate
    * session is opened when the conversation hands it a post or a task, and
-   * until then this throws.
+   * until then this throws. Throws, too, when the worker isn't on the
+   * user's roster.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
 }

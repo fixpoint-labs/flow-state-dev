@@ -28,7 +28,6 @@ import type {
   BlockDefinition,
   DeclaredResourceEntry,
   FlowInstance,
-  FlowInstanceOptions,
   FlowType,
   OrgConfig,
   RequestConfig,
@@ -381,29 +380,17 @@ type WideFlowType<TConfigSchema extends ZodTypeAny | undefined> = FlowType<
  * `strict: true`) the call's `options` are checked contravariantly, and a flow
  * that declares a session — every worker flow does — takes narrower options than
  * the wide ones, so `defineFlow(...)` itself would not be accepted.
+ *
+ * `Omit<…, never>` keeps the properties and drops the original call signature;
+ * intersecting `WideFlowType` itself would keep it, and the strict check with it.
+ * `bivariantCall` is a type-only name: nothing calls it.
  */
 type FlowOf<TConfigSchema extends ZodTypeAny | undefined> = Omit<WideFlowType<TConfigSchema>, never> &
   {
-    mint(
-      options?: FlowInstanceOptions<
-        Record<string, ActionConfig>,
-        SessionConfig | undefined,
-        RequestConfig | undefined,
-        UserConfig | undefined,
-        OrgConfig | undefined,
-        Record<string, DeclaredResourceEntry>,
-        TConfigSchema
-      >
-    ): FlowInstance<
-      Record<string, ActionConfig>,
-      SessionConfig | undefined,
-      RequestConfig | undefined,
-      UserConfig | undefined,
-      OrgConfig | undefined,
-      Record<string, DeclaredResourceEntry>,
-      TConfigSchema
-    >;
-  }["mint"];
+    bivariantCall(
+      options?: Parameters<WideFlowType<TConfigSchema>>[0]
+    ): ReturnType<WideFlowType<TConfigSchema>>;
+  }["bivariantCall"];
 
 /**
  * A flow of either shape: one that declares settings, and one that declares
