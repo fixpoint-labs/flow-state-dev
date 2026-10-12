@@ -74,6 +74,18 @@ describe("classifying a refused continuation", () => {
     expect(harnessFailureKind(error)).toBeNull();
   });
 
+  it("does not classify a refusal of a conversation whose id merely starts with the one asked for", async () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: refusesToResume("sess_10"),
+      detached: true,
+      resume: () => "sess_1",
+    });
+    const { error } = await testBlock(block, { input: { prompt: "go on" } });
+
+    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(harnessFailureKind(error)).toBeNull();
+  });
+
   it("does not classify a failure of a run that asked to resume nothing", async () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: refusesToResume("sess_gone") });
     const { error } = await testBlock(block, { input: { prompt: "start" } });

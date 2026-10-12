@@ -117,7 +117,7 @@ export const observedPlanListStateSchema = z.object({
   /** Where the run's plan write stands. See {@link ObservedPlanListStatus}. */
   status: z.enum(["writing", "complete", "incomplete"]).nullable().default(null),
   /** How many places the plan holds. A reader shows only places below it. */
-  count: z.number().nullable().default(null),
+  count: z.number().int().nonnegative().nullable().default(null),
   /** Why the plan is incomplete. */
   reason: z.string().nullable().default(null),
 });
@@ -215,8 +215,11 @@ export async function replacePlanList(
   const count = items.length;
   try {
     const before = await marker.getOptional(namespace);
+    // Another writer may have stored a count the trim loop cannot walk; read
+    // it as no previous list. Rows it leaves sit past the new count, unshown.
+    const storedCount = before?.state.count;
     const previousCount =
-      typeof before?.state.count === "number" ? before.state.count : 0;
+      Number.isSafeInteger(storedCount) && (storedCount as number) > 0 ? (storedCount as number) : 0;
     await marker.upsert(namespace, { status: "writing", count, reason: null });
 
     for (const [place, item] of items.entries()) {

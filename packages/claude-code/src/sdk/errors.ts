@@ -66,6 +66,15 @@ export function isUnknownConversationFailure(
   stderrTail: string,
 ): boolean {
   if (resumeId === "") return false;
-  const sentence = `No conversation found with session ID: ${resumeId}`;
-  return message.includes(sentence) || stderrTail.includes(sentence);
+  return namesRefusal(message, resumeId) || namesRefusal(stderrTail, resumeId);
+}
+
+/** Whether `text` holds the refusal sentence for exactly `id`, not an id it prefixes. */
+function namesRefusal(text: string, id: string): boolean {
+  const sentence = `No conversation found with session ID: ${id}`;
+  for (let at = text.indexOf(sentence); at !== -1; at = text.indexOf(sentence, at + 1)) {
+    const next = text[at + sentence.length];
+    if (next === undefined || !/[\w-]/.test(next)) return true;
+  }
+  return false;
 }

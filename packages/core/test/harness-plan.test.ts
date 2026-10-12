@@ -152,6 +152,26 @@ describe("replacePlanList", () => {
     expect(plan.calls.list + plan.calls.count + marker.calls.list + marker.calls.count).toBe(0);
   });
 
+  it("ignores a stored count that is not a place count, so a bad marker can never stall a write", async () => {
+    // Markers are a shared, persisted resource another harness can write. A
+    // count the trim loop cannot walk (Infinity would never end) is read as no
+    // previous list; any row it leaves sits past the new count, which a
+    // reader never shows.
+    for (const bad of [Number.POSITIVE_INFINITY, -1, 1.5, Number.NaN]) {
+      const plan = fakeCollection();
+      const marker = fakeCollection();
+      marker.rows.set(RUN, { status: "complete", count: bad, reason: null });
+
+      const result = await replacePlanList(plan, marker, RUN, [item("A", "pending")]);
+
+      expect(result).toEqual({ status: "complete" });
+      expect(marker.rows.get(RUN)).toEqual({ status: "complete", count: 1, reason: null });
+    }
+    expect(observedPlanListStateSchema.safeParse({ count: Number.POSITIVE_INFINITY }).success).toBe(false);
+    expect(observedPlanListStateSchema.safeParse({ count: -1 }).success).toBe(false);
+    expect(observedPlanListStateSchema.safeParse({ count: 1.5 }).success).toBe(false);
+  });
+
   it("keeps runs apart: one run's list never touches another's", async () => {
     const plan = fakeCollection();
     const marker = fakeCollection();
