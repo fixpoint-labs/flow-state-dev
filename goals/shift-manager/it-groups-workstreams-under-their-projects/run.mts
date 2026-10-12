@@ -1013,6 +1013,41 @@ async function whatIsHeld(owner: LabApi): Promise<Kept[]> {
   return kept;
 }
 
+/** The request states a turn is still running in. */
+const RUNNING_STATES = ["pending", "queued", "in_progress", "running"];
+
+/** Whether any of `apis`' own sessions, dispatch runs included, holds a request still running. */
+async function anyTurnRunning(apis: LabApi[]): Promise<boolean> {
+  for (const api of apis) {
+    for (const session of await api.sessions()) {
+      const listed = await api.get(`/sessions/${encodeURIComponent(session.id)}/requests?limit=200`);
+      if (((listed.requests ?? []) as Array<{ status?: string }>).some((r) => RUNNING_STATES.includes(String(r.status)))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * What the owner holds once nothing is still writing it: no turn of `writers`
+ * running, then two reads, three seconds apart, that agree. A workstream's lead
+ * the entries leg woke may still be finishing its entry; that write is work,
+ * not one the restart lost.
+ */
+async function whatIsHeldQuiet(owner: LabApi, writers: LabApi[]): Promise<Kept[]> {
+  const show = (kept: Kept[]) => JSON.stringify(kept.map((k) => [rowKey(k.held.row), k.entries.map(entryKey).sort()]));
+  let last: Kept[] | undefined;
+  for (const until = Date.now() + 180_000; Date.now() < until; await new Promise((resolve) => setTimeout(resolve, 3_000))) {
+    if (await anyTurnRunning(writers)) {
+      last = undefined;
+      continue;
+    }
+    const now = await whatIsHeld(owner);
+    if (last !== undefined && show(now) === show(last)) return now;
+    last = now;
+  }
+  throw new Error("turns were still running, or the projects' entries still changing, three minutes after the last leg, so a restart can't be graded against them");
+}
+
 /** After the Lab restarts on the same store: every project row, shared and private, and every entry is as it was. */
 async function restarted(before: Kept[], owner: LabApi, fail: (leg: string, why: string) => void, evidence: string[]) {
   const leg = "a restart keeps the projects and their entries";
@@ -1093,7 +1128,7 @@ await runGoal(async (failures) => {
       await race(setup, apis, fail, evidence);
 
       // Stop the Lab and start it again on the same store.
-      const before = await whatIsHeld(apis.owner);
+      const before = await whatIsHeldQuiet(apis.owner, [apis.owner, apis.member]);
       served.child.kill("SIGTERM");
       await served.exited;
       served = await startLab(pages, fired, store);
