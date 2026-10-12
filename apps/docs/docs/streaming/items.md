@@ -11,7 +11,7 @@ Items stream to clients over SSE as blocks execute. Every event has a sequence n
 When a client invokes an action, the server starts executing blocks and streaming results immediately:
 
 ```
-POST /api/flows/:kind/actions/:action  -->  202 { status, request: { id }, session }
+POST /api/flows/:kind/actions/:action  -->  202 { status, request: { id }, session? }
 GET  /api/flows/:kind/requests/:requestId/stream  -->  SSE events
 ```
 
