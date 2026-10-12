@@ -33,8 +33,9 @@ none describes what `/` shows.
 > KITCHEN_SINK_HARNESS_WORKSPACE=/Users/me/scratch/harness-playground
 > ```
 >
-> The directory has to exist; Kitchen Sink doesn't create it. Point it at a scratch checkout, not
-> work you care about: a coding harness edits files there. Harness modes stay off on a deployed
+> The directory has to exist; Kitchen Sink doesn't create it. Each session works in its own
+> subdirectory under it, so point it at a scratch folder, not work you care about: a coding
+> harness edits files there. Harness modes stay off on a deployed
 > copy, even with the setting, because Kitchen Sink has no sign-in and anyone who can reach it
 > acts as the same user. Restart the server after changing the setting; the picker reads it once,
 > at start.
@@ -54,7 +55,7 @@ The rest of the bullet is unchanged.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "Environment variables", new row after `KITCHEN_SINK_TEST_MODE`
 
-> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The directory the coding harness modes work in. Unset, they're off. Ignored on Vercel, where they're always off. |
+> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The folder the coding harness modes work in, one subdirectory per session. Unset, they're off. Ignored on Vercel, where they're always off. |
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "Architecture" tree
 

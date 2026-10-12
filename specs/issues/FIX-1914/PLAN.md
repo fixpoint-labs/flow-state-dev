@@ -133,10 +133,11 @@ negative controls fail as they should. The premise held: the move is an address 
 
 ## At implement time
 
-- **The workspace setting is one setting.** FIX-1915's draft names a workspace root
-  `KITCHEN_SINK_HARNESS_ROOT` with a default under the user's home, which D2's opt-in forbids. If
-  FIX-1915 merged first under another name, use that name here and in the docs, without a
-  default; never ship two.
+- **The workspace setting is one setting.** FIX-1915 reads this same
+  `KITCHEN_SINK_HARNESS_WORKSPACE`, with one subdirectory per session under it, and registers only
+  through S3. If either spec's name changes before merge, use the merged one; never ship two.
+- **The mode's own check is FIX-1915's sign-in probe** (its BR-23). Keep the slot's name and shape
+  stable once S2 lands; the sibling modes fill it the same way.
 - Re-run the entry-points check; a browser check added since this spec must be in the table.
 - Open PR #2973 edits `talk-from-page.spec.ts` near its `/` open. Rebase onto it if it lands first.
 - Compare [Evolution](EVOLUTION.md)'s predecessor claims with the current shell and README.
