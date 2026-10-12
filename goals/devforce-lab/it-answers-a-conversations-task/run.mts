@@ -172,7 +172,13 @@ function scriptedResolver(): ModelResolver {
       };
     },
   };
-  return Object.assign((_id: string, block?: string) => (block?.startsWith("agent") ? agent : coordinator), {
+  // Best fit's question goes unanswered (the judge above has no route either), so the post
+  // reaches the chief of staff's own turn, which makes the scripted call.
+  const resolve = (_id: string, block?: string): GeneratorModel => {
+    if (block === "coordinator-route-ask") throw new Error("no route model in this check");
+    return block?.startsWith("agent") ? agent : coordinator;
+  };
+  return Object.assign(resolve, {
     resolveId: (id: string) => id,
     resolveEvaluationModel: () => judge,
   }) as unknown as ModelResolver;
