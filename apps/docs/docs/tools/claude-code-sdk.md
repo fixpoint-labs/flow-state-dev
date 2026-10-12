@@ -67,7 +67,11 @@ the block directly:
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 
 const agent = claudeCodeAgent({
-  systemPrompt: "You are a careful refactoring assistant.",
+  systemPrompt: {
+    type: "preset",
+    preset: "claude_code",
+    append: "You are a careful refactoring assistant.",
+  },
   allowedTools: ["Read", "Grep", "Edit"],
 });
 // seq.step(agent) with input { prompt: "Tidy the imports in src/." }
@@ -489,6 +493,32 @@ contribute resources, state and tools but never lifecycle hooks, so this is the
 only way to reach one. Releasing something the run was holding is what it is
 for.
 
+### The prompt the run starts from
+
+A system prompt is the standing instruction the agent reads before your request. Leave
+`systemPrompt` out and the run starts from Claude Code's own, the same one the `claude` command
+uses, so a run started this way gets the same standing instructions as the agent you know from
+the terminal.
+
+To add your own instructions on top, append them:
+
+```ts
+claudeCodeAgent({
+  systemPrompt: {
+    type: "preset",
+    preset: "claude_code",
+    append: "Commit your work with git before you finish.",
+  },
+});
+```
+
+A plain string replaces Claude Code's prompt entirely. The agent then knows only what your string
+says, though it still has its tools. Use a string when you want that narrow agent; use `append`
+when you want to add a line.
+
+`""` starts the run with no system prompt at all. The value is forwarded to the Agent SDK as
+given, so any shape the SDK accepts works here, and the SDK rejects one it doesn't.
+
 ## Recording what the run did
 
 The item stream tells you what the agent said. `recordWork: true` also records
@@ -558,6 +588,13 @@ importing `observedPlanCollection` from this package or from `@flow-state-dev/co
 gives the same object. A to-do item's status is the harness's own word for it, and
 stays empty until the harness reports one. Plan entries reach an open page as they
 change, rather than when the request ends.
+
+The plan record fills only when the agent keeps a to-do list with Claude Code's to-do tools,
+`TaskCreate` and `TaskUpdate`. That takes two things. The run has to be offered the tools: on
+newer models Claude Code switches them off unless you name them in `allowedTools`. And the agent
+has to choose to use them, which it often doesn't on a short job, whatever prompt the run
+started from. When it doesn't, the record stays empty. That is the honest answer, not a
+recording failure, and nothing appears in `observed-gaps` for it.
 
 ### What the file record is, and what it isn't
 

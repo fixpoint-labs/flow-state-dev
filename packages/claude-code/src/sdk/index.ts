@@ -53,6 +53,7 @@ export {
   type ClaudeAgentQuery,
   type ClaudeAgentQueryOptions,
   type ClaudeAgentSettingSource,
+  type ClaudeAgentSystemPrompt,
   type ToolApprovalRequest,
   type ToolApprovalDecision,
 } from "./types";

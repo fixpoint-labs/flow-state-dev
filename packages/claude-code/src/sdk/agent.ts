@@ -53,8 +53,9 @@ import {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
 } from "./session";
+
 import { ClaudeAgentRunError, isUnknownConversationFailure } from "./errors";
-import type { ClaudeAgentSettingSource } from "./types";
+import type { ClaudeAgentSettingSource, ClaudeAgentSystemPrompt } from "./types";
 import {
   CLAUDE_SDK_SOURCE,
   outcomeFromResultSubtype,
@@ -117,8 +118,17 @@ export interface ClaudeCodeAgentOptions {
   prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
   /** Model id forwarded to the SDK. */
   model?: string;
-  /** System prompt forwarded to the SDK. */
-  systemPrompt?: string;
+  /**
+   * The system prompt the run starts from, forwarded to the SDK as given; the
+   * shapes are on {@link ClaudeAgentSystemPrompt}. Omitted, the run starts from
+   * Claude Code's own prompt, the one the `claude` CLI uses.
+   *
+   * No prompt makes the agent keep a to-do list. `recordWork`'s plan half fills
+   * only when the run is offered the to-do tools and the agent chooses to use
+   * them; on newer models Claude Code offers them only when they are named in
+   * `allowedTools`.
+   */
+  systemPrompt?: ClaudeAgentSystemPrompt;
   /** Allowed tool names forwarded to the SDK. */
   allowedTools?: string[];
   /** Disallowed tool names forwarded to the SDK. */
@@ -936,7 +946,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const queryOptions: ClaudeAgentQueryOptions = {
         model,
-        systemPrompt,
+        // The one place the default is decided, so every path that reaches the
+        // SDK (in-session, detached, resumed, through a capability) gets it.
+        // Left absent, the SDK sends an EMPTY custom prompt rather than Claude
+        // Code's own, so the run would not start the way the CLI starts it.
+        // `undefined` only: `""` is a host asking for that blank start.
+        systemPrompt: systemPrompt ?? { type: "preset", preset: "claude_code" },
         allowedTools,
         disallowedTools,
         permissionMode,
