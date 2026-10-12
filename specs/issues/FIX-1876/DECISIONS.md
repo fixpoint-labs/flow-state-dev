@@ -84,13 +84,10 @@ It comes down to what a reviewer can read: one rename map per PR.
   The exception would be *wait* or *dispatch* used in another meaning; P1 renames such a name
   ([WR-22](BUSINESS-RULES.md#the-sweep)). None is known: FIX-1875's row mark shipped as
   `undispatched`.
-- **`undispatched` and the `"dispatched"` ending are two things, not one.** FIX-1875's
-  `undispatched` marks a task on a conversation's board that was recorded and not yet started with
-  `dispatchTask`. The `"dispatched"` ending is how a drain-run board's drain ends when every
-  outstanding task is running in a dispatch run. A pending task on a drain-run board has no
-  `undispatched` mark and hasn't been dispatched either, so neither name is the other's opposite,
-  and no page or doc comment says so. This issue doesn't rename or describe the mark; FIX-1875 owns
-  it.
+- **`undispatched` and the `"dispatched"` ending are not opposites.** FIX-1875's mark is a task on a
+  conversation's board recorded and not yet started; the ending is a drain-run board's drain finishing
+  with every outstanding task in a dispatch run. No page or doc comment pairs them. FIX-1875 owns the
+  mark ([its decisions](../FIX-1875/DECISIONS.md)).
 - **The board's `onIdle: "wait"` keeps its name.** It means the board stays alive when idle and
   leaves the exit to `shouldExit`. That is a different sense of *wait* (the board waits for work,
   nobody is parked on a row), and renaming the option is a behavioural API change this issue

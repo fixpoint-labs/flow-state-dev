@@ -97,9 +97,9 @@ A name FIX-1875 or FIX-1872 already renamed keeps their choice (WR-22).
   regression (WR-10). Find every caller with the sweep, not by memory ([tenet 5](../../../docs/philosophy.md#5-fix-at-the-owning-layer)).
 - **G2 · Names only.** *Because* the epic's proof is that nothing changed but names; an edit to an
   assertion, a branch or a default is a finding, not a fix (ER-8, ER-11).
-- **G3 · Mark every legacy reader with `retired-name-refusal` and the rule it serves.** *Because* the sweep
+- **G3 · Mark every deliberate retired-name line, a legacy reader or a refusal, with `retired-name-refusal` and the rule it serves.** *Because* the sweep
   counts them, and a later cleanup finds them by the marker. It is FIX-1875's marker, so the
-  repository has one spelling for a deliberate old name, whether it reads one or refuses one (WR-25).
+  repository has one spelling for a deliberate old name, whether it reads one or refuses one (WR-25a).
 - **G4 · A writer never writes an old name of a renamed mark.** *Because* reading both is only safe
   if new records are unambiguous (WR-15). The kept wire values are written as today.
 

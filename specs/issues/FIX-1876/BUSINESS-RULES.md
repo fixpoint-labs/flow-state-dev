@@ -52,7 +52,8 @@ spelling, so a record written before the upgrade is simply the same record.
 | WR-21 | A keep-list entry or exclusion has no reason | It is refused in review; every entry says why | Review |
 | WR-22 | FIX-1875 or FIX-1872 already renamed a name on the list | The sweep stops finding it, and the upstream name stands, unless it uses *wait* or *dispatch* in another meaning. Then P1 renames it, reading both if it is stored | The sweep on the merged commit · review |
 | WR-24 | A pull request adds a use of a retired word | CI's Process guards fail on it, from P3 on | The sweep and its `--control` in CI |
-| WR-25 | A line names a retired name on purpose: a legacy reader (WR-8, WR-9, WR-14) or FIX-1872's refusal of a worker file that names `handOff` (its message and its test) | It carries `retired-name-refusal` on that line and is counted, not failed. A published page can't carry the marker, so the chief of staff page's sentence "A file that still names `handOff` is refused" has a keep-list entry instead. P2 adds the marker to any FIX-1872 refusal line that lacks it | The sweep on the merged commit · review |
+| WR-25a | A line in code or a test names a retired name on purpose: a legacy reader (WR-8, WR-9, WR-14) or FIX-1872's refusal of a worker file that names `handOff` (its message and its test) | It carries `retired-name-refusal` on that line and is counted, not failed. P2 adds the marker to any FIX-1872 refusal line that lacks it | The sweep on the merged commit · review |
+| WR-25b | A published page names a retired name on purpose: the chief of staff page's sentence "A file that still names `handOff` is refused" (FIX-1872's) | A page can't carry the marker, so that one sentence has a keep-list entry instead. Any other `handOff` on the same page is open | The sweep on the merged commit · review |
 
 ## Failure taxonomy
 

@@ -11,7 +11,8 @@
 /** The roots the sweep owns. Every tracked file under one is scanned or excluded by name. */
 export const ROOTS = ["packages", "apps", "docs/architecture", ".changeset", "goals"];
 
-export const LEGACY_MARKER = "retired-name-refusal";
+/** FIX-1875's marker, under FIX-1875's name, so the two sweeps share one spelling. */
+export const REFUSAL_MARKER = "retired-name-refusal";
 
 const CODE = /^(packages|apps)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
 const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
@@ -104,9 +105,10 @@ export const KEEP = [
   },
   {
     path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
-    line: /`handOff`.*\brefused\b|\brefused\b.*`handOff`/,
+    // FIX-1872's exact sentence, and only on a line naming `handOff` once: a stale mention beside it stays open.
+    line: /^(?!.*`handOff`.*`handOff`).*A file that still names `handOff` is refused\b/,
     rules: ["handoff-symbol-in-docs", "handoff-prose"],
-    why: "WR-25: FIX-1872's sentence that a worker file still naming handOff is refused; a page can't carry the marker"
+    why: "WR-25b: FIX-1872's sentence that a worker file still naming handOff is refused; a page can't carry the marker"
   },
   {
     path: /^(packages\/shift-manager\/|apps\/docs\/docs\/shift-manager\/)/,

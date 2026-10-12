@@ -39,9 +39,8 @@ The heading keeps its old anchor, so links from elsewhere still land:
 > a drain runs doesn't offer: the drain decides when each task runs. For a worker that wants
 > another worker to start now, see [Giving another worker work](#giving-another-worker-work).
 
-The last paragraph links FIX-1875's section rather than repeating it (that section says which
-boards have `dispatchTask`), so the two pages can't drift apart. It goes after the example, before
-the subsections.
+The link lands on FIX-1875's "Giving another worker work", which replaces "Asking, and waiting for
+the answer" on this page. The paragraph goes after the example, before the subsections.
 
 In the same page:
 
