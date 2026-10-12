@@ -6,8 +6,8 @@ What was considered, what was chosen, why, and what each choice locks in. The ep
 decided that worktrees come from your checkout, that the row keeps naming a remote, and that the
 mapping is the operator's and bound to project ids ([FIX-1903 D3](../../epics/FIX-1903/DECISIONS.md#d3),
 [ER-13](../../epics/FIX-1903/BUSINESS-RULES.md#what-no-child-may-do)). These three are what that
-costs on the real code. All three are engineering calls; D1 refines the epic's wording and goes to
-the epic coordinator ([ER-17](../../epics/FIX-1903/BUSINESS-RULES.md#how-the-set-is-run)).
+costs on the real code. All three are engineering calls; D1 refines the epic's wording; the epic
+coordinator accepted it as a stricter reading of ER-13, with no epic amendment needed ([ER-17](../../epics/FIX-1903/BUSINESS-RULES.md#how-the-set-is-run)).
 
 ## The tree
 
@@ -116,6 +116,6 @@ It comes down to continuation: a detached worktree is refused, so the run's next
 
 - **Draft (2026-10-12)** — built on the FIX-1906 thread's spike. D1 moved the mapping from the
   host to the run source after reading what the host can see; raised to the epic coordinator as a
-  refinement of epic D3. The shared turbo cache found while re-running the spike.
+  refinement of epic D3, and accepted there with no epic amendment. The shared turbo cache found while re-running the spike.
 
 **Open: none.**

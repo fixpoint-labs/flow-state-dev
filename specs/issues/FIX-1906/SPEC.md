@@ -110,7 +110,7 @@ dev profile points at a checkout the agent can't build in, or exposes it to any 
 
 1. **[D1](DECISIONS.md#d1) · The mapping is an option of `projectWorkspace()`, bound to project
    addresses, not the workspace host's.** If wrong: a custom run source has to map paths itself.
-   Raised to the epic coordinator: it refines epic D3's wording.
+   It refines epic D3's wording; the epic coordinator accepted it.
 2. **[D2](DECISIONS.md#d2) · A fresh worktree installs from the machine's shared pnpm store, run
    by the coding agent.** If wrong: an agent that skips the install fails its first build.
 3. **[D3](DECISIONS.md#d3) · A settled run's branch stays checked out in its worktree.** If

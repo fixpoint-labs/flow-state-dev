@@ -107,6 +107,6 @@ premise held; it chose D2 and dropped a repository lock.
 ## Follow-ups
 
 - **Epic wording**: epic D3 and ER-9 say the workspace host gains the mapping. D1 puts it in
-  `projectWorkspace()`. Raised to the epic coordinator (ER-17); a follow-up PR from `main` amends
-  the epic if they agree.
+  `projectWorkspace()`. Raised to the epic coordinator (ER-17) and accepted as a stricter reading of
+  ER-13; no epic amendment.
 - If coding agents skip the install in practice, the host runs it through one generic option (D2's flip).
