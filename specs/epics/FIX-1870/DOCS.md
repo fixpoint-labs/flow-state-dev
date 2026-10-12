@@ -35,7 +35,7 @@ The shared story once, and who publishes each specific. The prose is proposed re
 
 ## UPDATE · `apps/docs/docs/glossary.md` · the *Hand-off* row, and a new *Dispatch a task* row
 
-> | **Dispatch a task** | orchestration | Start a task on another worker now, in a session of its own. How a recorded task starts depends on the board. On a conversation's board, a worker dispatches with `dispatchTask`, and a task recorded without it doesn't start until it is dispatched. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
+> | **Dispatch a task** | orchestration | Start a task on another worker now. How a recorded task starts depends on the board. On a conversation's board, a worker dispatches with `dispatchTask`, and a task recorded without it doesn't start until it is dispatched. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
 > | **Hand-off** | orchestration | A session that was doing the work passes it to another session, mid-work. Delivering new work isn't a hand-off; it's dispatching a task. | Dispatch a task |
 
 ## Ownership
