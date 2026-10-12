@@ -63,7 +63,7 @@ the goal check, on real Claude Code in a real browser.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-23 | Harness modes are on for this host (FIX-1914), but it lacks the Claude Code SDK, runs as root, has no sandbox, or is not signed in to Claude Code, or the repository's worktree root can't be created | The mode reports itself unavailable with that reason through FIX-1914's mode check, and opens no session (epic ER-1) | CI |
-| BR-23a | `KITCHEN_SINK_HARNESS_WORKSPACE` is unset and the server runs in local development from inside a git checkout | The repository is that checkout's top level, and the worktrees live under `<repository>/.kitchen-sink/harness/`, which the repository ignores | CI · goal **w** |
+| BR-23a | `KITCHEN_SINK_HARNESS_WORKSPACE` is unset and the server runs in local development from inside a git checkout | The repository is that checkout's top level, and the worktrees live outside it, under the derived root in [PLAN → Pinned names](PLAN.md#pinned-names) | CI · goal **w** |
 | BR-24 | Harness modes are off for this host: on Vercel; `KITCHEN_SINK_HARNESS_WORKSPACE` names something that isn't the top level of a git checkout; or it is unset and the server runs in production or outside a checkout (FIX-1914 BR-6, BR-7, as amended in its round 2) | No Claude Code flow is registered. Opening `/claude-code` creates no session, and its flow's API is not found (FIX-1914 BR-14, BR-15) | FIX-1914's goal check, extended here |
 
 ## Failure taxonomy

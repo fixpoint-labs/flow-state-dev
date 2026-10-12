@@ -95,8 +95,8 @@ a new field. Then keep it internal until all three harnesses have written it.
   marker below. An earlier turn's plan is never shown as the current one.
 - **The plan record streams live** (`client.live: true`); today it refreshes when the request ends.
 - **One setting, `KITCHEN_SINK_HARNESS_WORKSPACE`, now names the repository**, and the root
-  the worktrees live under is derived from it, never set: `<repository>/.kitchen-sink/harness/`,
-  which PR-B adds to `.gitignore`. The name stays, since a person already types it from FIX-1914.
+  the worktrees live under is derived from it, never set: `${XDG_STATE_HOME:-~/.local/state}/flow-state-dev/kitchen-sink-harness/<repository name>-<hash of its path>/`,
+  outside the checkout. The name stays, since a person already types it from FIX-1914.
   One function reads it, and FIX-1914's gate and this spec's resolver both call it:
   - on Vercel → off;
   - set → it must be the top level of an existing git checkout, else off with that reason;
@@ -106,8 +106,11 @@ a new field. Then keep it internal until all three harnesses have written it.
     host names it.
 
   Off means the mode is hidden and the Claude Code flow is not registered at all (FIX-1914
-  BR-15). The root is derived rather than a second setting because nothing needs it elsewhere,
-  and inside the repository it is ignored and found by anyone looking for a session's work.
+  BR-15). The root is derived rather than a second setting because nothing needs it elsewhere.
+- **The worktree root is outside the checkout**, in the person's state directory, keyed by the
+  repository, as harness-manager's hosts keep their checkouts under a root apart from the source
+  repository: inside it, the main checkout's test and lint globs, typecheck and file watchers
+  would walk into full copies of the repository.
 - **A session's work stays uncommitted, on its branch.** The run edits files in its worktree but
   can't commit: its index and the repository's objects live under `.git`, which the sandbox
   doesn't open, because a run that can write there can plant a hook that runs outside the sandbox
@@ -134,7 +137,7 @@ a new field. Then keep it internal until all three harnesses have written it.
   by item, so it has no empty list to report and writes no *complete* marker; a plan row it fails
   to write marks the turn *incomplete*, besides the gap row it writes today, so the panel reads
   one signal for every harness.
-- **Sign-in is probed** (epic ER-1), with the one probe FIX-1904 picked ([below](#shared-with-other-specs)).
+- **Sign-in is probed** (epic ER-1), with the sign-in probe FIX-1904 D1 settles (#3175) ([below](#shared-with-other-specs)).
   A host where Claude Code is not signed in shows the mode unavailable with that reason and
   opens no session. A sign-in that lapses later fails that turn with Claude Code's own error.
 - **One flow kind per harness**, from one factory: each rail lists its own sessions, and a
@@ -146,8 +149,8 @@ a new field. Then keep it internal until all three harnesses have written it.
 |---|---|---|
 | FIX-1914 (the gate) | The setting | One function reads `KITCHEN_SINK_HARNESS_WORKSPACE`, as above; FIX-1914's gate and this spec's worktree both call it |
 | FIX-1916, FIX-1917 (Codex, Cursor) | The plan writer and the session's worktree | They call `replacePlanList` and write the list marker rather than each keeping a copy; their sessions get worktrees through the same factory, on `kitchen-sink/<flow kind>/<session>` |
-| FIX-1904 (another epic, Shift Manager's start check) | The sign-in probe | **One probe, in `@flow-state-dev/claude-code`**, the one FIX-1904 D1 picked: the Agent SDK's `accountInfo()`, asked once with no model turn, where `apiKeySource: "none"` means no account. Kitchen Sink's mode check and Shift Manager's start check both call it. Whichever lands first builds it; the other imports it |
-| Shift Manager (harness-manager) | Worktrees of the same checkout | Its branches start `conductor/`; this mode's start `kitchen-sink/`, scoped by flow kind and session. Neither prefix is a prefix of the other, so no branch, and no worktree under `.kitchen-sink/harness/`, collides |
+| FIX-1904 (another epic, Shift Manager's start check) | The sign-in probe | **One probe, in `@flow-state-dev/claude-code`**: the sign-in probe FIX-1904 D1 settles (#3175). How it detects sign-in is #3175's to settle, not this spec's. Kitchen Sink's mode check and Shift Manager's start check both call it. Whichever lands first builds it; the other imports it |
+| Shift Manager (harness-manager) | Worktrees of the same checkout | Its branches start `conductor/`; this mode's start `kitchen-sink/`, scoped by flow kind and session. Neither prefix is a prefix of the other, and this mode's worktree root is its own, so no branch and no worktree collides |
 
 ## Considered and dropped
 

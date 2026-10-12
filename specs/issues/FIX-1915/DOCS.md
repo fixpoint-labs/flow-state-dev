@@ -93,7 +93,8 @@ Replaces the epic's draft of the same section.
 > **Where it works.** Claude Code works on this repository. Each session gets its own git
 > worktree, cut from your checkout's `HEAD` on a branch named
 > `kitchen-sink/claude-code-session/<session>`, and every turn of that session works there.
-> Worktrees live under `.kitchen-sink/harness/` in the repository, which git ignores. Your own
+> Worktrees live outside the repository, under `~/.local/state/flow-state-dev/kitchen-sink-harness/`
+> (or `$XDG_STATE_HOME` if you set it), in a folder named for the repository. Your own
 > checkout is never touched, and two sessions never share a worktree.
 >
 > Claude Code runs without asking for approval, inside its sandbox: it can write only in the
@@ -121,7 +122,7 @@ Replaces the epic's draft of the same section.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "Environment variables" table, the `KITCHEN_SINK_HARNESS_WORKSPACE` row FIX-1914 adds
 
-> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, under `.kitchen-sink/harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
+> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 
 The opening paragraph's "in a directory you choose" (epic draft, published by FIX-1914) no
 longer reads right: FIX-1914 changes it to "on a repository you choose" in the same round. No other page changes. The sentence "Claude Code doesn't
