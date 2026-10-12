@@ -11,7 +11,7 @@ One lane, no bar yet. The arc becomes a figure when a second epic gives it an or
 
 | Lane | Consumes | Releases |
 |---|---|---|
-| **harness mode** · FIX-1907 | The four harness integrations as they stand; FIX-1701's shared task-scope reader where it has landed; FIX-1735's Claude Code item streaming (Done) | Kitchen Sink as a harness picker, with sessions and task sync per harness, and the gaps it finds in each integration |
+| **harness mode** · FIX-1907 ([its plan](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1907/PLAN.md)) | The four harness integrations as they stand; FIX-1701's shared task-scope reader where it has landed; FIX-1735's Claude Code item streaming (Done) | Kitchen Sink as a harness picker, with sessions and task sync per harness, and the gaps it finds in each integration |
 
 ## What is deliberately not next
 

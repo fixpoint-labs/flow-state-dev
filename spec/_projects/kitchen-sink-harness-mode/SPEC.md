@@ -14,7 +14,7 @@ integrations are tight.
 |---|---|
 | **Winning when** | A person opens Kitchen Sink, picks any of the four harnesses, and works in that harness's sessions, with Kitchen Sink's sessions and tasks staying in step with what the harness is doing |
 | **The read** | Harnesses usable this way in Kitchen Sink, with session sync and task sync both shown working. 0 of 4 today; 4 of 4 is done |
-| **Now** | 0 done · 0 in flight · 1 not started. FIX-1907 is in Backlog; its epic spec is being written, with no PR yet |
+| **Now** | 0 done · 1 in flight · 0 not started. FIX-1907's epic spec is approved and on `main`; its six children are filed, none built yet |
 | **Kill line** | If running a harness directly in Kitchen Sink tells us nothing its own package tests don't already, the test bed is not earning its place: stop at the harnesses that found something |
 
 ![The territory](figures/territory.svg)
@@ -27,9 +27,9 @@ Manager's.
 
 | Epic | What it owns | State | Surface |
 |---|---|---|---|
-| [FIX-1907](https://linear.app/fixpoint-labs/issue/FIX-1907) · **harness mode** | The harness picker, sessions per harness, and session and task sync for each of the four | *not started* (Linear: Backlog). Epic spec being authored on `epic/kitchen-sink-harness-mode`, no PR yet | — |
+| [FIX-1907](https://linear.app/fixpoint-labs/issue/FIX-1907) · **harness mode** | The harness picker, sessions per harness, and session and task sync for each of the four | *in flight* (Linear: Spec Approved). Children: FIX-1914 picker, FIX-1915 Claude Code mode (both In Spec Dev); FIX-1916 Codex, FIX-1917 Cursor, adopted FIX-1185 plan tools, closure FIX-1918 (Backlog) | [`specs/epics/FIX-1907/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1907) on `main` (#3162) |
 
-0 done · 0 in flight · 1 not started. Epics are filed as the project reaches them; an unfiled one
+0 done · 1 in flight · 0 not started. Epics are filed as the project reaches them; an unfiled one
 is a `FIX-XXX · working title` placeholder that keeps its title when the real id arrives.
 
 ```mermaid
@@ -37,9 +37,9 @@ flowchart LR
   R["FIX-1701 · shared task-scope reader"] -.->|"one reader for task scope"| E["FIX-1907 · harness mode"]
 ```
 
-One epic so far. FIX-1701 is an issue outside this project (no project, In Spec Review) that the
-three external harnesses' task sync reads through; it is an input, drawn dashed, not part of the
-set.
+One epic so far. FIX-1701 is an issue outside this project that the three external harnesses'
+task sync reads through; it is an input, drawn dashed, not part of the set. Its status disagrees
+with itself: Linear still shows In Spec Review, but its PR #2569 merged on 2026-10-01.
 
 ## What this project is not
 
