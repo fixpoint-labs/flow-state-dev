@@ -170,6 +170,24 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
     }
   });
 
+  it("never hands out a top-level session naming a conversation, as one a caller made before such creates were refused", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const filing = await host.filingOf("alice", conv);
+      const created = await host.create("alice", "tasker", { state: { workerId: "eng.tasker" } });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const id = (created.body as { session: { id: string } }).session.id;
+      // Written straight to the store: the record an earlier create could leave.
+      const runtime = await host.state.getRuntime();
+      const record = (await runtime.stores.session.get(id))!;
+      await runtime.stores.session.set(id, { ...record, state: { ...(record.state as object), filingSessionId: filing } } as never, "any" as never);
+      expect(await host.client("alice").findWorkerSession({ worker: "eng.tasker", filingSessionId: filing })).toBeUndefined();
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("refuses the delegate and board fields by name on a worker flow that has none of them", async () => {
     const host = bootBoardHost();
     try {
