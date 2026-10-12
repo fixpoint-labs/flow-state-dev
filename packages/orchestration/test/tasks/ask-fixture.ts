@@ -1,6 +1,6 @@
 /**
  * The asking flow the FIX-1816 board tests share: a generator turn whose tool
- * asks through `addTaskAndWait`, and the requests that stand in for the
+ * asks through `dispatchAndWait`, and the requests that stand in for the
  * colleague and for a touch of the board.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -19,7 +19,7 @@ import {
   resolveResourceCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
-import { addTaskAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
+import { dispatchAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
 
 export const USER = "u_asker";
 export const SESSION = "s_conversation";
@@ -144,7 +144,7 @@ export function askFlow(
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.any(),
     execute: async (input, ctx) =>
-      addTaskAndWait(ctx, await askBoard(ctx), {
+      dispatchAndWait(ctx, await askBoard(ctx), {
         goal: input.question,
         assignee: "researcher",
         ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {})

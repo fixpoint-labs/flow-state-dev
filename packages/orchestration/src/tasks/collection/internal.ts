@@ -23,6 +23,7 @@ import { applyEndingRecorder, endingOf, type TaskEndingRecorder } from "./ending
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
+  TaskDispatchOptions,
   TaskHandle,
   TaskTransitionOptions,
   TaskWriteDeclineReason,
@@ -100,6 +101,8 @@ export function buildInitialTask<TInput, TOutput>(
     metadata: init.metadata,
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
     ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
+    ...(init.undispatched === true ? { undispatched: true } : {}),
+    ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
     updatedAt: now,
@@ -187,6 +190,38 @@ export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDe
   if (task.answered === true && task.status !== "in_progress") return "awaiting-answer";
   if (task.followUpOf !== undefined) return "follow-up";
   return undefined;
+}
+
+/**
+ * The one rule for readying a recorded row (`TaskCollectionRef.dispatch`,
+ * FIX-1875), decided on the freshest committed row, inside the write. Both
+ * backings run it, so they refuse identically. Terminal rows are refused by
+ * the caller's `declineOnTerminal` before this runs.
+ *
+ * @returns The patch to write, `undefined` for the same call replayed (its
+ *   own write already landed), or the reason it is refused.
+ */
+export function dispatchWrite(
+  task: Task,
+  options: TaskDispatchOptions,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  if (task.undispatched !== true) {
+    return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
+  }
+  if (task.status !== "pending") return { decline: "disallowed" };
+  if (options.ask !== undefined && task.ask != null) return { decline: "disallowed" };
+  if (options.assignee !== undefined) {
+    const refused = assigneeChangeDecline(task, options.assignee);
+    if (refused !== undefined) return { decline: refused };
+  }
+  return {
+    patch: {
+      undispatched: undefined,
+      dispatchCall: options.call,
+      ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
+      ...(options.ask !== undefined ? { ask: { gateId: options.ask.gateId, deadline: options.ask.deadline } } : {}),
+    },
+  };
 }
 
 /**

@@ -404,6 +404,29 @@ export const taskSchema = z.object({
    */
   cancelOwed: z.boolean().optional(),
 
+  /**
+   * The row is recorded but not dispatched (FIX-1875): written down, with its
+   * owner, and not to start until something dispatches it. A board that
+   * starts work at once reads it in its one start test and leaves such a row
+   * alone. Cleared only by `TaskCollectionRef.dispatch`.
+   *
+   * Present only when true. **Absent means ready** (BP-030), so every row
+   * stored before this mark existed starts as it did. Top level and
+   * server-written for `abandonments`' reason (BP-031): it decides whether a
+   * row starts, so no caller-patchable surface reaches it.
+   */
+  undispatched: z.boolean().optional(),
+
+  /**
+   * The call that dispatched this row: the logical id of the tool call or
+   * action (FIX-1875). Written by `dispatch` in the same write that clears
+   * `undispatched`, or with the row when a dispatch files it ready, so the
+   * same call replayed after a crash finds its own write and answers as the
+   * first call did. **Absent** on every row no dispatch filed or readied
+   * (BP-030).
+   */
+  dispatchCall: z.string().optional(),
+
   createdAt: z.number(),
   updatedAt: z.number(),
   startedAt: z.number().optional(),

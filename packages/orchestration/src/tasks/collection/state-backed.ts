@@ -56,6 +56,7 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
+  dispatchWrite,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -865,6 +866,26 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
+      );
+    },
+
+    async dispatch(id, dispatchOptions) {
+      // The decision and the write are one CAS write: a claim or another
+      // dispatch that lands first is read here, never raced.
+      return patchOne(
+        id,
+        "dispatched",
+        (task) => {
+          const decided = dispatchWrite(task as Task, dispatchOptions);
+          return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        {
+          declineOnTerminal: true,
+          decline: (task) => {
+            const decided = dispatchWrite(task as Task, dispatchOptions);
+            return decided !== undefined && "decline" in decided ? decided.decline : undefined;
+          },
+        }
       );
     },
 

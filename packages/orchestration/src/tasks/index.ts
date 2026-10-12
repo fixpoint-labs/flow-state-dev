@@ -78,6 +78,7 @@ export type {
   FailOptions,
   TaskWriteOutcome,
   TaskWriteDeclineReason,
+  TaskDispatchOptions,
 } from "./collection/types";
 export { createStateBackedTaskCollection } from "./collection/state-backed";
 export type { StateBackedOptions } from "./collection/state-backed";

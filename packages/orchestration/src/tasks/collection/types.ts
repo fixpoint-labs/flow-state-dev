@@ -96,7 +96,13 @@ export type TaskWriteDeclineReason =
    * An assignee change on a follow-up (FIX-1817): it runs in the session of
    * the task it follows, with that task's worker, so it keeps its assignee.
    */
-  | "follow-up";
+  | "follow-up"
+  /**
+   * A dispatch of a row that is already ready (FIX-1875): it was never
+   * recorded, or another call dispatched it. Only the call that readied it is
+   * answered `unchanged` instead (`Task.dispatchCall`).
+   */
+  | "already-dispatched";
 
 /**
  * What a write actually did (FIX-976).
@@ -139,6 +145,19 @@ export type TaskWriteOutcome =
       /** The status the task was in when the write was refused. */
       status: TaskStatus;
     };
+
+/** What {@link TaskCollectionRef.dispatch} writes with the ready row (FIX-1875). */
+export interface TaskDispatchOptions {
+  /**
+   * The call dispatching it: a tool call's or action's logical id, the same on
+   * every replay of that call. Stored as `Task.dispatchCall`.
+   */
+  call: string;
+  /** The owner, set in the same write. Omitted, the row keeps its own. */
+  assignee?: string;
+  /** Mark the row waited-on in the same write (see `Task.ask`). */
+  ask?: { gateId: string; deadline: number };
+}
 
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
@@ -824,6 +843,21 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * On a ref without it, a failed cancel leaves the row open, as before.
    */
   markCancelOwed?(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * Ready a recorded row (FIX-1875): clear `Task.undispatched` in one
+   * conditional write, recording the call that made it (`Task.dispatchCall`),
+   * and with `assignee` and `ask` set in the same write.
+   *
+   * Declines `terminal` on an ended row, `disallowed` on one that is not
+   * `pending` (claimed, running, parked, blocked), `already-dispatched` on a
+   * row that is ready already, and an assignee `setAssignee` would refuse
+   * (`follow-up`, `awaiting-answer`) for the same reason. The same call
+   * replayed is answered `unchanged`, never `already-dispatched`.
+   *
+   * Optional: both built-in backings implement it. A ref without it has no
+   * recorded rows to ready.
+   */
+  dispatch?(id: string, options: TaskDispatchOptions): Promise<TaskWriteOutcome>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;
