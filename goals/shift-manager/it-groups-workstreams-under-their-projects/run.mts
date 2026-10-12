@@ -81,7 +81,7 @@
  * Control:  GOAL_CONTROL=no-gate <the same>
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -731,6 +731,42 @@ async function askFromPage(view: View, origin: string, held: Held, title: string
 }
 
 /**
+ * What the person's project coordinator did with their ask, read from the
+ * Stream's conversation: each request's status, every tool call its turn
+ * made with what it answered, and what it said. Said with a miss, so a red
+ * names its cause: no `handOff`, a refused one, or a turn that failed.
+ */
+async function whatTheTurnDid(view: View): Promise<string> {
+  const sessionId = await view.page
+    .locator("[data-testid=project-stream-conversation]")
+    .getAttribute("data-session-id")
+    .catch(() => null);
+  if (sessionId === null) return "the Stream names no coordinator session to read the turn from";
+  let requests: any;
+  const items: Array<Record<string, any>> = [];
+  try {
+    requests = await view.api.get(`/sessions/${encodeURIComponent(sessionId)}/requests?limit=200`);
+    for (let offset = 0; offset < 5_000; offset += 200) {
+      const page = await view.api.get(`/sessions/${encodeURIComponent(sessionId)}/state?include_items=true&offset=${offset}&limit=200`);
+      items.push(...((page.items ?? []) as Array<Record<string, any>>));
+      if (page.pagination?.hasMore !== true) break;
+    }
+  } catch (error) {
+    return `coordinator session ${sessionId}, whose turn could not be read: ${(error as Error).message}`;
+  }
+  const calls = items
+    .filter((item) => item.type === "tool_output")
+    .map((item) => `${item.toolCall?.name ?? item.blockName}(${item.toolCall?.arguments ?? ""}) → ${JSON.stringify(item.output ?? item.error ?? null).slice(0, 300)}`);
+  const statuses = ((requests?.requests ?? []) as Array<Record<string, any>>).map((r) => `${r.actionName ?? r.action ?? "?"}:${r.status}`);
+  const said = items
+    .filter((item) => item.type === "message" && item.role === "assistant")
+    .flatMap((item) => ((item.content ?? []) as Array<{ text?: string }>).map((part) => part.text ?? ""))
+    .join(" ")
+    .slice(0, 300);
+  return `coordinator session ${sessionId}, requests [${statuses.join(", ")}], its turn's tool calls: ${calls.length === 0 ? "none" : calls.join(" | ")}; it said: ${said || "nothing"}`;
+}
+
+/**
  * Whether a session's stored items carry `word` within 60 s, read as its
  * owner. The hand-off is the coordinator's next step after the open, so it
  * lands a moment after the entry names the session.
@@ -776,7 +812,9 @@ async function entries(browser: Browser, origin: string, setup: Setup, apis: { o
       found[who] = entry;
       if (entry.lead !== setup.lead) fail(leg, `${who}'s workstream "${entry.id}" is led by ${entry.lead}, not ${setup.lead}`);
       if (!(await api.sessions()).some((s) => s.id === entry.sessionId)) fail(leg, `${who}'s "${entry.id}" names session ${entry.sessionId}, not one of theirs`);
-      else if (!(await sessionHolds(api, entry.sessionId!, RUN_STAMP))) fail(leg, `${who}'s ask never reached the workstream session ${entry.sessionId}`);
+      else if (!(await sessionHolds(api, entry.sessionId!, RUN_STAMP))) {
+        fail(leg, `${who}'s ask never reached the workstream session ${entry.sessionId}; ${await whatTheTurnDid(views[who])}`);
+      }
       if (!same(await ownWorkers(api), workersBefore)) fail(leg, `${who}'s roster changed when the workstream opened: ${diff(workersBefore, await ownWorkers(api))}`);
     }
 
@@ -1094,6 +1132,10 @@ await runGoal(async (failures) => {
   mkdirSync(join(SCRATCH, "stores"), { recursive: true });
   const store = join(mkdtempSync(join(SCRATCH, "stores", "devteam-")), "devteam.sqlite");
   let served = await startLab(pages, fired, store);
+  // Each Lab's log, kept when the run fails so a red can be read after the scratch store is gone.
+  const logs = [served.log];
+  // Set as the last step: a leg that throws leaves it false, and runGoal records the throw only after this returns.
+  let finished = false;
   try {
     const apis = {
       owner: labApi(served.origin, LAB_USERS.owner),
@@ -1132,15 +1174,22 @@ await runGoal(async (failures) => {
       served.child.kill("SIGTERM");
       await served.exited;
       served = await startLab(pages, fired, store);
+      logs.push(served.log);
       await restarted(before, labApi(served.origin, LAB_USERS.owner), fail, evidence);
     }
     // Last, on the Lab as it now runs: its rows are the member's.
     if (COS_LEG) {
       await cos({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, fail, evidence);
     }
+    finished = true;
   } finally {
     served.child.kill("SIGTERM");
     await served.exited;
+    if (!finished || failures.length > 0) {
+      const kept = join(SCRATCH, `lab-${RUN_STAMP}.log`);
+      writeFileSync(kept, logs.map((log, i) => `===== Lab ${i + 1} =====\n${log()}`).join("\n"));
+      console.error(`the Lab's log is kept at ${kept}`);
+    }
   }
   if (fired !== undefined && (!existsSync(fired) || readFileSync(fired, "utf8").trim().length === 0)) {
     throw new Error(`control ${CONTROL}: the Lab never imported ${swap!.target}, so nothing was swapped`);
