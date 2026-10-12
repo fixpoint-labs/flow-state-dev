@@ -296,6 +296,7 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 | `delegates` | Each delegate the decision touched: `worker`, `outcome` (`delivered`, `skipped` or `failed`), and `reason` when it wasn't delivered. |
 | `none` | Why nobody was delivered to, when nobody was. |
 | `fit` | Why best fit sent the post to the fallback or the coordinator's own turn: `reason` is `coordinator` (the call picked the coordinator), `below-floor`, `no-confidence`, `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the `minConfidence` in force where there are some. |
+| `evaluationFailed` | Best fit's evaluator error, when that call failed and best fit asked again as a language model. `by` and `fit` say what the second ask came to. |
 | `note` | Why this round's answers go no further: the conversation already had 50 rounds open. |
 
 A post best fit gave to the coordinator's own turn because its pick was below the floor reads like this:

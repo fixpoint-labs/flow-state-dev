@@ -1719,7 +1719,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   when it was refused at the cap on open rounds), and `fit`: why best fit handed the post to the
   fallback or the judgment turn (`reason`: `coordinator`, `below-floor`, `no-confidence`,
   `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the
-  `minConfidence` where there are some). Render it apart from the conversation's lines.
+  `minConfidence` where there are some). When best fit's evaluator call failed and it asked again
+  as a language model, `evaluationFailed` carries the evaluator's error. Render it apart from the
+  conversation's lines.
 
 `hireWorkforce` refuses a broken standard coordinator at load, naming the problem: a `rounds:`
 above 3 (`rounds can be at most 3`), a `routing:` outside the four, a `fallback:` that isn't one
