@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Left to right: a project row naming the server linear; the coding run starting and reading its project once, from its workstream, the project its conversation belongs to, or the project its task names; that one read gives the workspace host the repository, as today, and gives the host config the server names; the host config maps linear to Linear's address and the variable LINEAR_MCP_API_KEY; Claude Code receives exactly those servers with the key's value and connects to Linear itself. Below a dashed fence: never on the row, an address, a credential variable or a key; not involved, a coordinator's hand-over or dispatchTask."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .n-out { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr-n { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .head-n{ fill:var(--code); }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-e   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-gs  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="row">
+    <rect class="n-new" x="16" y="40" width="190" height="86" rx="5"/>
+    <text class="t-lbl" x="30" y="60">THE PROJECT ROW</text>
+    <text class="t-b" x="30" y="82">fsd</text>
+    <text class="t-s" x="30" y="102">mcpServers: ["linear"]</text>
+    <text class="t-s" x="30" y="116">a member sets it</text>
+  </g>
+
+  <g id="read">
+    <rect class="n-box" x="250" y="40" width="210" height="86" rx="5"/>
+    <text class="t-lbl" x="264" y="60">RUN START · ONE READ</text>
+    <text class="t-b" x="264" y="82">the run's own project</text>
+    <text class="t-s" x="264" y="102">workstream → filing project</text>
+    <text class="t-s" x="264" y="116">→ the task's input.project</text>
+  </g>
+
+  <g id="host">
+    <rect class="n-in" x="504" y="40" width="200" height="86" rx="5"/>
+    <text class="t-lbl" x="518" y="60">HOST CONFIG</text>
+    <text class="t-b" x="518" y="82">linear</text>
+    <text class="t-s" x="518" y="102">mcp.linear.app/mcp</text>
+    <text class="t-s" x="518" y="116">LINEAR_MCP_API_KEY</text>
+  </g>
+
+  <g id="claude">
+    <rect class="n-new" x="748" y="40" width="176" height="86" rx="5"/>
+    <text class="t-lbl" x="762" y="60">CLAUDE CODE</text>
+    <text class="t-b" x="762" y="82">mcpServers, exactly</text>
+    <text class="t-s" x="762" y="102">connects to Linear</text>
+    <text class="t-s" x="762" y="116">mcp__linear__* allowed</text>
+  </g>
+
+  <g id="checkout">
+    <rect class="n-out" x="250" y="166" width="210" height="56" rx="5"/>
+    <text class="t-lbl" x="264" y="186">WORKSPACE HOST · TODAY</text>
+    <text class="t-b" x="264" y="207">the repository's checkout</text>
+  </g>
+
+  <g id="arrows">
+    <path class="arr-n" d="M206 83 H242"/><path class="head-n" d="M242 78 L250 83 L242 88 Z"/>
+    <path class="arr-n" d="M460 83 H496"/><path class="head-n" d="M496 78 L504 83 L496 88 Z"/>
+    <text class="t-e" x="463" y="76">names</text>
+    <path class="arr-n" d="M704 83 H740"/><path class="head-n" d="M740 78 L748 83 L740 88 Z"/>
+    <text class="t-e" x="708" y="76">+ value</text>
+    <path class="arr" d="M355 126 V158"/><path class="head" d="M350 158 L355 166 L360 158 Z"/>
+    <text class="t-e" x="362" y="148">repository, as today</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="246" x2="924" y2="246"/>
+    <text class="t-g" x="16" y="274">NEVER ON THE ROW</text>
+    <text class="t-gs" x="160" y="274">an address · a credential variable · a key</text>
+    <text class="t-g" x="16" y="302">NOT INVOLVED</text>
+    <text class="t-gs" x="160" y="302">a coordinator's hand-over · dispatchTask · core, engine, orchestration, workspace</text>
+  </g>
+</svg>
