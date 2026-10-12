@@ -43,7 +43,7 @@ The block, `resume` and `onSession`, and the handle: nothing else.
 |---|---|
 | **Instead of** | Driving them through harness-manager on a task board · or Claude Code's own in-session resume, which stores its id in session state |
 | **Because** | What we are testing is what the three packages share. harness-manager adds a board row, a checkout per task and a verdict: orchestration, and Shift Manager's. Claude Code's in-session resume exists for one harness only, so a gap in the other two would hide behind it. `labs/fsd-coding-skill` already runs all three this way |
-| **Locks in** | Claude Code runs `detached: true` with resolvers in Kitchen Sink. Its in-session path is left to its own tests. A coding harness differs only by its block's options ([ER-6](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | Claude Code runs `detached: true` with resolvers in Kitchen Sink. Its in-session path is left to its own tests. One session flow factory builds one flow kind per harness, and a coding harness differs only by its block's options and its kind ([ER-6](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 **What would change my mind:** app authors using Claude Code's in-session path far more than the
 contract. Then Kitchen Sink should exercise that path too, as a fifth leg.
@@ -100,7 +100,7 @@ It comes down to the dependents: keeping it costs nothing, and moving it is a mi
 
 ## Who owns what
 
-![Who owns what: nine rules by six issues and Shift Manager. FIX-1914 owns the picker and Flow State mode's tasks. FIX-1915 owns the session binding, items from the emitter only, one session flow and the plan record. FIX-1185 owns a plan that fills on Claude Code's SDK path. The closure owns the proof. Shift Manager, outside the epic, owns driving a harness from a task board and across harnesses; every child here only stays out of it](figures/ownership.svg)
+![Who owns what: nine rules by six issues and Shift Manager. FIX-1914 owns the picker and Flow State mode's tasks. FIX-1915 owns the session binding, items from the emitter only, one session flow factory with a flow kind per harness, and the plan record. FIX-1185 owns a plan that fills on Claude Code's SDK path. The closure owns the proof. Shift Manager, outside the epic, owns driving a harness from a task board and across harnesses; every child here only stays out of it](figures/ownership.svg)
 
 Every rule has one owner. FIX-1916 and FIX-1917 own no rule: they consume all of FIX-1915's,
 which is the point. The Shift Manager column is the boundary: a cell that says *stays out* is a
@@ -128,5 +128,9 @@ the shape D2 assumes, shipped, so no POC was needed to show the division holds.
 
 - **Drafted (Oct 12)**: four new issues under one outcome, FIX-1185 adopted, the closure filed;
   one product question left open.
+- **Amended (Oct 12)**: ER-6's "one session flow serves all three harnesses" became "one session flow
+  factory, one flow kind per harness", because FIX-1915 (#3165) settled on a shared factory building
+  `claude-code-session`, `codex-session` and `cursor-session`, and FIX-1914 (#3167) scopes each mode's
+  rail by flow kind. One shared contract and no harness-specific flow logic stand unchanged.
 
 **Open: 1.**

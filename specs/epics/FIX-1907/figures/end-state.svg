@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box: a harness picker with four modes, Flow State, Claude Code, Codex and Cursor, and an unavailable state with its reason; one harness session flow that binds a session to one harness conversation through resume and onSession, shows items while the run works, stops a run, and uses one workspace resolver; and one plan record in core that each coding harness writes and Kitchen Sink only reads. Unchanged beside it: the three harness blocks and their handle, and the framework's own flows under Flow State mode. Replaced in one line: the support desk as the front page becomes the picker, the plan record moves from the Claude Code package to core, and Codex's to-do list stops being only a tool item. Not built, below a fence: orchestration across harnesses, driving a harness from a task board or harness-manager, a task list that hands a harness work, importing sessions started outside Kitchen Sink, and harness modes on a deployed host.">
+     aria-label="What's in the box. In the box: a harness picker with four modes, Flow State, Claude Code, Codex and Cursor, and an unavailable state with its reason; one harness session flow factory, one flow kind per harness, that binds a session to one harness conversation through resume and onSession, shows items while the run works, stops a run, and uses one workspace resolver; and one plan record in core that each coding harness writes and Kitchen Sink only reads. Unchanged beside it: the three harness blocks and their handle, and the framework's own flows under Flow State mode. Replaced in one line: the support desk as the front page becomes the picker, the plan record moves from the Claude Code package to core, and Codex's to-do list stops being only a tool item. Not built, below a fence: orchestration across harnesses, driving a harness from a task board or harness-manager, a task list that hands a harness work, importing sessions started outside Kitchen Sink, and harness modes on a deployed host.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -25,17 +25,17 @@
 
   <g id="in-the-box">
     <rect class="box" x="16" y="24" width="560" height="232" rx="5"/>
-    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; A FRONT DOOR AND ONE SESSION FLOW</text>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; A FRONT DOOR AND ONE SESSION FLOW FACTORY</text>
     <rect class="held" x="32" y="56" width="528" height="56" rx="4"/>
     <text class="t-b" x="44" y="78">the picker &#183; Flow State &#183; Claude Code &#183; Codex &#183; Cursor</text>
     <text class="t-s" x="44" y="98">a rail per mode &#183; a mode this host can't run says why</text>
     <rect class="held" x="32" y="122" width="300" height="120" rx="4"/>
-    <text class="t-b" x="44" y="144">one harness session flow</text>
+    <text class="t-b" x="44" y="144">one session flow factory</text>
     <text class="t-s" x="44" y="164">a session &#8596; one harness conversation</text>
     <text class="t-s" x="44" y="180">written by onSession &#183; read by resume</text>
     <text class="t-s" x="44" y="196">items while the run works &#183; stop</text>
     <text class="t-s" x="44" y="212">one workspace resolver</text>
-    <text class="t-s" x="44" y="228">a harness differs only by options</text>
+    <text class="t-s" x="44" y="228">a flow kind per harness · options only</text>
     <rect class="held" x="344" y="122" width="216" height="120" rx="4"/>
     <text class="t-b" x="356" y="144">one plan record, in core</text>
     <text class="t-s" x="356" y="164">each harness writes its own</text>

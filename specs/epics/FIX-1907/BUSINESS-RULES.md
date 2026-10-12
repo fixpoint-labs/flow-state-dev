@@ -15,7 +15,7 @@ it and where it's checked.
 | ER-3 | A run's items reach the session while it works, from the harness emitter only | FIX-1915 | The closure's live-item leg |
 | ER-4 | Stopping a turn cancels the harness run, and the session can still be continued | FIX-1915 | FIX-1915's goal check · each mode's gap sweep |
 | ER-5 | **The plan.** Each coding harness's own to-do list is mirrored, read-only, into one plan record whose shape lives in `@flow-state-dev/core`. A harness that reports no plan is shown as reporting none | FIX-1915 defines ([D3](DECISIONS.md#d3)) · FIX-1916, FIX-1917 write theirs | The closure's plan leg and its control |
-| ER-6 | One session flow and one workspace resolver serve the three coding harnesses. A harness differs only by its block's options | FIX-1915 ([D2](DECISIONS.md#d2)) · FIX-1916, FIX-1917 consume | FIX-1916's and FIX-1917's spec review |
+| ER-6 | **One session flow factory, one flow kind per harness**: `claude-code-session`, `codex-session`, `cursor-session`, each with its own rail, from one factory and one workspace resolver. The three harnesses share one contract, and no harness-specific flow logic forks: a harness differs only by its block's options and its flow kind | FIX-1915 ([D2](DECISIONS.md#d2)) · FIX-1916, FIX-1917 consume | FIX-1916's and FIX-1917's spec review |
 | ER-7 | Claude Code's plan record fills on the in-process SDK path, or a written finding names why, and the panel says so | FIX-1185 | FIX-1185's verification · the closure |
 | ER-8 | Flow State mode's sessions and tasks are its flows' own, including their task boards. Nothing new is built for them | FIX-1914 | FIX-1914's spec review |
 
