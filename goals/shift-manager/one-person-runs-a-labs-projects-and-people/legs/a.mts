@@ -141,10 +141,14 @@ export async function readBack(world: World, state: LegA, restarted: boolean): P
   const coordinator = await projectCoordinatorOf(world);
   if ("error" in coordinator) r.fail(tabs, `the Stream's coordinator can't be graded: ${coordinator.error}`);
   for (const row of [row1, row2]) {
+    // A tab-level gap only: a Stream whose conversation has no line yet draws `project-stream-conversation-empty`.
+    const noGap = async (name: string) => {
+      if ((await world.page.locator(`[data-testid=project-${name}-empty]`).count()) > 0) r.fail(tabs, `${row.id}'s ${name} draws a project-${name}-empty gap state`);
+    };
     const tab = async (name: string) => {
       await world.open(`/p/${encodeURIComponent(row.id)}/${name}`);
       await world.page.locator(`[role=tab][data-tab=${name}][aria-selected=true]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
-      if ((await world.page.locator("[data-testid^=project-][data-testid$=-empty]").count()) > 0) r.fail(tabs, `${row.id}'s ${name} draws a project-*-empty gap state`);
+      await noGap(name);
       const text = (await world.page.locator("main").textContent().catch(() => "")) ?? "";
       if (/FIX-1650|arrives? with FIX-17(18|19)|once org seats ship/.test(text)) r.fail(tabs, `${row.id}'s ${name} draws gap copy`);
     };
@@ -165,6 +169,8 @@ export async function readBack(world: World, state: LegA, restarted: boolean): P
     // The Stream is the person's own project coordinator for this project, and after a restart the same one.
     if (!("error" in coordinator)) {
       const drawn = await streamCoordinator(world.page, world.routes.owner, coordinator, row.id);
+      // The Stream opens its session after the tab is selected, so its gap is read again once it is drawn.
+      await noGap("stream");
       if ("why" in drawn) r.fail(tabs, `${row.id}'s Stream: ${drawn.why}`);
       else if (restarted && state.streams[row.id] !== undefined && state.streams[row.id] !== drawn.session) {
         r.fail(tabs, `${row.id}'s Stream draws coordinator session ${drawn.session} after the restart, ${state.streams[row.id]} before`);
