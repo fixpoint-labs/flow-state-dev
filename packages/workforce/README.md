@@ -1614,10 +1614,10 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
   user's last post, else makes one evaluator call over each delegate's note or description and
   the coordinator's own description, reading the post with the conversation's recent lines. When
-  that call fails and `routeModel` is a model string, best fit asks the same question once more as
-  a language model (generator block `coordinator-route-ask`), whose pick carries no confidence, so
-  a model id the resolver can only serve for generation still routes. A
-  pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
+  that call fails and `routeModel` is a model string, best fit asks once more as a language model
+  (`coordinator-route-ask`). The pick has no confidence. An id the resolver can only generate
+  with still routes.
+  A pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
   fails, answers with something that isn't a choice, has no one to pick, or picks a delegate
   below `minConfidence:` (or with no confidence, or one outside 0 to 1, while it is set). That post goes to the
   fallback, else the judgment turn. If that turn fails too, nobody takes the post, and the
