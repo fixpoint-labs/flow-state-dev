@@ -1,0 +1,98 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="D3, the task board cannot yet hand a post row to the delegate&#39;s post entry in an existing session. Chosen: add two board seams in a prerequisite PR. Instead of: workstream posts in a fresh session, or workstream posts kept off the board. It comes down to the first row, the signed design: chosen holds D1, ER-5 and ER-10 as signed; fresh sessions break ER-5, since a workstream post starts cold; off-board posts break ER-10 with a second fence. Second row, the price: chosen needs a framework PR first, with two public options and a changeset; the other two stay in workforce. Locks in a task board that routes each row to an entry and an existing session. Flips if the product accepts a workstream post starting fresh."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">The board can&#39;t yet do what D1 and ER-5 ask: add the seams, or change the design?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Board seams, first PR</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">Fresh workstream session</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">Workstream off the board</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE SIGNED</text>
+    <text class="t-lbl" x="32" y="169">DESIGN</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">Holds as signed</text>
+    <text class="t-s" x="244" y="179">D1, ER-5, ER-10 unchanged</text>
+    <text class="mark minus" x="466" y="162">−</text>
+    <text class="t-b" x="484" y="161">Breaks ER-5</text>
+    <text class="t-s" x="484" y="179">the lead answers cold</text>
+    <text class="mark minus" x="706" y="162">−</text>
+    <text class="t-b" x="724" y="161">Breaks ER-10</text>
+    <text class="t-s" x="724" y="179">a second fence ships</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">WHAT IT</text>
+    <text class="t-lbl" x="32" y="235">COSTS</text>
+    <text class="mark minus" x="226" y="224">−</text>
+    <text class="t-b" x="244" y="223">A framework PR first</text>
+    <text class="t-s" x="244" y="241">two public options, changeset</text>
+    <text class="mark plus" x="466" y="224">+</text>
+    <text class="t-b" x="484" y="223">Workforce only</text>
+    <text class="t-s" x="484" y="241">one PR, no new option</text>
+    <text class="mark plus" x="706" y="224">+</text>
+    <text class="t-b" x="724" y="223">Workforce only</text>
+    <text class="t-s" x="724" y="241">one PR, no new option</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="270" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="291">LOCKS IN</text>
+    <text class="t-b" x="32" y="311">A board picks each row&#39;s entry and session</text>
+    <text class="t-s" x="32" y="329">among declared entries; P2 waits on P1</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="270" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="291">FLIPS IF</text>
+    <text class="t-b" x="494" y="311">A workstream post may start fresh</text>
+    <text class="t-s" x="494" y="329">then the fresh session, workforce only</text>
+  </g>
+</svg>
