@@ -117,22 +117,14 @@ export interface ClaudeCodeAgentOptions {
   /** Model id forwarded to the SDK. */
   model?: string;
   /**
-   * The system prompt the run starts from, forwarded to the SDK as given.
+   * The system prompt the run starts from, forwarded to the SDK as given; the
+   * shapes are on {@link ClaudeAgentSystemPrompt}. Omitted, the run starts from
+   * Claude Code's own prompt, the one the `claude` CLI uses.
    *
-   * - **Omitted:** Claude Code's own prompt, the one the `claude` CLI uses.
-   * - **A string:** replaces Claude Code's prompt entirely. The agent knows
-   *   only what the string says.
-   * - **`""`:** no system prompt at all.
-   * - **`{ type: "preset", preset: "claude_code", append }`:** Claude Code's
-   *   prompt with your text added after it.
-   *
-   * None of these makes the agent keep a to-do list. `recordWork`'s plan half
-   * fills only when the run is offered the to-do tools and the agent chooses to
-   * use them; on newer models Claude Code offers them only when they are named
-   * in `allowedTools`.
-   *
-   * Any other shape the SDK accepts is forwarded too, and the SDK rejects one
-   * it doesn't.
+   * No prompt makes the agent keep a to-do list. `recordWork`'s plan half fills
+   * only when the run is offered the to-do tools and the agent chooses to use
+   * them; on newer models Claude Code offers them only when they are named in
+   * `allowedTools`.
    */
   systemPrompt?: ClaudeAgentSystemPrompt;
   /** Allowed tool names forwarded to the SDK. */
