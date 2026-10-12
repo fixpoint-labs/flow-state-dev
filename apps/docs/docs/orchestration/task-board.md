@@ -815,10 +815,12 @@ task's result, it can file the task and wait for it instead. That is an **ask**.
 `addTask` takes a `waitForResponse` option when the board can wake a waiting turn and the server
 has durable execution and runs the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). A conversation's
-board in Workforce can wake one. For a board of your own, pass `{ resumesAsks: true }` to
-`createTaskToolsCapability` only when whatever runs it calls `resumeOwedAsks`, which resumes
-turns whose asked task has ended, each time it touches the board outside a turn. Where the server can't hold an ask, the option isn't in
-`addTask`'s schema at all, and `addTask` files without waiting.
+board in Workforce can wake one. For a board of your own, pass `{ resumesAsks: true }` as the
+third argument to `createTaskToolsCapability(resolver, roster, options)`, and only when whatever
+runs the board calls `resumeOwedAsks(ctx, collection)` each time it touches the board outside a
+turn. That call resumes each waiting turn whose asked task has ended, and cancels any asked task
+whose own cancel failed when its wait timed out or was stopped. Where the board or server can't
+hold an ask, the option isn't in `addTask`'s schema at all, and `addTask` files without waiting.
 
 With the option set, the task is filed as usual, on the same board a plain `addTask` writes to.
 Then the turn that filed it parks until the task ends, and the tool returns the task's output as its
@@ -835,6 +837,10 @@ One wait per step, where a step is one model call and the tool calls it makes: a
 | `waitForResponse` | `true` to wait for the answer. Everything else is as for `addTask`, and an assignee it would refuse is refused the same way, with nothing parked |
 | `timeoutMs` | How long to wait, from 30 000 (30 seconds) to 3 600 000 (an hour). Defaults to five minutes. Only with `waitForResponse`. Fires at the deadline on a long-lived server; where the sweep is an external cron, not sooner than its next run |
 
+On failure the result is `{ ok: false, error, taskId? }`. `error` is the code, then `: ` and a
+sentence for the model, so match it with `error.startsWith("wait_timed_out")`, not `===`.
+`taskId` is there when the task was filed.
+
 | Error | When |
 |---|---|
 | `wait_timed_out` | The task did not end within its time limit. It is cancelled |
@@ -843,7 +849,7 @@ One wait per step, where a step is one model call and the tool calls it makes: a
 | `wait_task_failed` | The task failed for good |
 | `wait_task_cancelled` | The task was cancelled by someone else |
 | `wait_already_pending` | This step is already waiting on a task. Nothing is filed |
-| `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
+| `wait_unavailable` | The turn is itself working a task, so it can't wait, or the board can't hold an ask. Nothing is filed |
 
 Stopping the conversation while its turn waits ends the turn and cancels the task. The turn
 doesn't see an error, because it doesn't run again.
@@ -859,13 +865,22 @@ task and let the turn end.
 
 A worker that can't go on without an answer calls `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. The task waits until someone answers it with `answerTask`, then picks up again. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
 
-`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can write the board can call it:
+`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
 
 ```ts
 await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
-It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked for a person's turn or waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. Either way, nothing is written.
+It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked for a person's turn or waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. Either way, nothing is written. What comes back:
+
+| Returned | When |
+|---|---|
+| `{ ok: true }` | The task was parked on its worker's question, and now holds the answer |
+| `{ ok: false, error: "not_parked_on_question: …" }` | Any other unfinished task, or a late answer |
+| `{ ok: false, error: "terminal_task_write_declined: …" }` | The task has finished |
+| `{ ok: false, error: "task_not_found" }` | The board holds no task with that id |
+
+Until the answered task runs again, `assignTask` and `updateTask` refuse to give it another worker (`task_awaiting_answer: …`), so the answer reaches the session that asked.
 
 ## Collection backing
 

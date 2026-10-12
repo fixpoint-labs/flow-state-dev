@@ -744,10 +744,11 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
-`session_has_unfinished_task`, and `task_awaiting_answer` — a coordinator
-rule like "when a tool returns `ok: false`, re-plan" covers all of them. The last
-five come from [questions](#when-a-task-stops-on-a-question) and
-[follow-ups](#following-up-on-a-finished-task), below.
+`session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`, plus the
+`wait_*` codes when `addTask` [waits](#asking-a-task-and-waiting-for-the-answer). A
+coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+`not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
+and [follow-ups](#following-up-on-a-finished-task), below.
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
@@ -823,13 +824,18 @@ Two functions sit under the option, for a layer that builds its own board surfac
   tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
   on the same subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in
   one step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
-  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too.
-- `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
+  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too. It resolves to
+  `{ ok: true, taskId, answer }`, or `{ ok: false, error, taskId?, message? }` where `error`
+  is a bare `wait_*` code and `message` explains it. `wait_stopped` means the person stopped
+  the turn: the task is cancelled and the request is stopped.
+- `resumeOwedAsks(ctx, collection)`, from `@flow-state-dev/orchestration`, resumes each
+  waiting turn whose asked task has ended. Call
   it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
   answer whose resume was lost to a crash is still delivered. It returns at once when nothing
   is owed. It also cancels each task whose ask was stopped or timed out while the ask's own
   cancel failed (`Task.cancelOwed`). Until something touches the board, that task's worker may
-  keep running.
+  keep running. It resolves to `{ resumed, stillOwed }`, task ids; a task still owed is retried
+  on the next call.
 
 #### When a task stops on a question
 
@@ -841,8 +847,9 @@ answers it. Anyone who can call `answerTask` on the board can answer.
 task that wasn't filed with `waitForResponse`.
 
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
-the task goes back to `pending` with the answer, its next attempt gets it as
-`input.answer`, and the claim that follows isn't charged against `maxAttempts`.
+the task goes back to `pending` with the answer, its worker picks it up again in the
+same session, the next attempt gets the answer as `input.answer`, and the claim that
+follows isn't charged against `maxAttempts`.
 It takes only a task its worker parked with `parkOnQuestion`, for the question it
 is waiting on now. It declines any other task (including one parked for a person's
 turn or waiting on its own sub-tasks), a late answer to a question the task has
@@ -860,7 +867,10 @@ keeps that worker: `assignTask` and `updateTask` won't move it
 (`follow_up_takes_no_assignee`). `addTask` refuses an `assignee` beside it
 (`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
 (`follow_up_of_unfinished`), and a session that still has an unfinished task
-(`session_has_unfinished_task`), all before anything is filed.
+(`session_has_unfinished_task`), all before anything is filed. The finished task
+itself never changes. If another follow-up of the same task takes the id at the same
+moment, `addTask` answers `session_has_unfinished_task` (follow up once that one
+finishes) or `task_id_taken` (file it again).
 
 ### skillsManifestSource
 

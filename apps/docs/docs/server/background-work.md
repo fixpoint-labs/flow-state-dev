@@ -203,9 +203,10 @@ still a disagreement: ownership is by instance, not by kind. A `task` dispatcher
 ### Waiting for the answer
 
 A dispatch returns before the work it started has run. That suits a job that outlives the turn.
-When the turn's next step needs the result instead, a worker can file a task on its board with
+When the turn's next step needs the result instead, the turn can file a task on its board with
 `addTask` and wait for it to end. That is an **ask**. The turn parks without holding the request
-open, survives a server restart, and continues with the task's output as the tool's result.
+open, survives a server restart, and continues with the task's output as the tool's result. A
+turn that is itself working a task can't ask.
 
 Asks need durable execution, and the durability sweeper times them out (see
 [Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). The option,
