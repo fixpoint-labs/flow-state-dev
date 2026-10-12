@@ -1670,6 +1670,8 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `{ refused }`. A session create can't set them: one whose `state` carries `delegates`
   is refused with a 400,
   `Session state field "delegates" is written only by flow "coordinator"; a caller cannot set it.`
+  Every worker flow built on `installation.session()` refuses `delegates`, `fallback`,
+  `taskNotices` and `splitParent` the same way, including a flow that has no such field.
 - **Who can be a delegate.** A worker on the conversation's user's own roster, one of theirs or a
   standard one, whose flow takes a delegated post or a task. A conversation holds at most 25. A
   standard coordinator's defaults can name only standard workers; `createWorkerInstallation`
@@ -1694,7 +1696,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
-  naming only `{ worker }` never returns a delegate's session.
+  naming only `{ worker }` never returns a delegate's session. Only the delivery opens one:
+  `ensureWorkerSession({ worker, filingSessionId })` returns it but never creates it, and a session
+  create whose `state` carries `filingSessionId` is refused with a 400.
 - **The record.** Every routing decision leaves one `coordinator-route` component item:
   `postId`, `round`, `policy`, `by` (`judgment`, `held`, `evaluated`, `fallback`,
   `round-robin`, `everyone` or `unplaced`), `delegates` (each with `worker`, `outcome` of

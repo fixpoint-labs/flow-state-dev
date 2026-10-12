@@ -223,6 +223,14 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
             `when the task is handed over, never by ensureWorkerSession.`
         );
       }
+      if (criteria.filingSessionId !== undefined) {
+        // Only the coordinator's delivery opens a conversation's delegate
+        // session; one started here would be a decoy lookups could return.
+        throw new Error(
+          `Conversation "${criteria.filingSessionId}" has no session with "${criteria.worker}" yet: a conversation's ` +
+            `delegate session is opened when the conversation hands it a post or a task, never by ensureWorkerSession.`
+        );
+      }
       if (criteria.workstreamId !== undefined) {
         // Only a workstream's open starts its lead's session and names it on
         // the entry; one started here would be a second session nobody names.
