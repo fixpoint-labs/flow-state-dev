@@ -20,6 +20,10 @@
  * was nobody to pick), with the pick, its confidence and the floor where
  * there are some.
  *
+ * A record from best fit whose evaluator call failed, and which asked once
+ * more as a language model, carries `evaluationFailed`: the evaluator's
+ * error. `by` and `fit` then say what the second ask came to.
+ *
  * Each delegate the decision touched is listed: delivered, skipped with why
  * (fired, its flow can't take a post, already handed this post), or failed
  * with why (the dispatch was refused).
@@ -86,6 +90,8 @@ export const coordinatorRouteRecordSchema = z.object({
   none: z.string().optional(),
   /** On a `fallback`, `judgment` or `unplaced` record from best fit: why best fit didn't deliver to its pick. */
   fit: bestFitWhySchema.optional(),
+  /** From best fit, when its evaluator call failed and it asked once more as a language model: the evaluator's error. */
+  evaluationFailed: z.string().optional(),
   /**
    * What else this decision means for the post: that its answers go no
    * further, when the conversation already had the most rounds open.

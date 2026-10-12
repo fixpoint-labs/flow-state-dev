@@ -1739,7 +1739,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   when it was refused at the cap on open rounds), and `fit`: why best fit handed the post to the
   fallback or the judgment turn (`reason`: `coordinator`, `below-floor`, `no-confidence`,
   `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the
-  `minConfidence` where there are some). Render it apart from the conversation's lines. App code
+  `minConfidence` where there are some). When best fit's evaluator call failed and it asked again
+  as a language model, `evaluationFailed` carries the evaluator's error. Render it apart from the
+  conversation's lines. App code
   reads the records with `createSessionClient(...).listSessionRequests(sessionId, { includeItems: true })`,
   keeping each request's `items` whose `type` is `"component"` and `component` is
   `COORDINATOR_ROUTE`; the record is the item's `data`. Without `includeItems: true` there are no

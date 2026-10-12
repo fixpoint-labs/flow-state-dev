@@ -159,7 +159,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/contracts": "workspace:*",
-    "ai": "^7.0.103",
+    "ai": "^7.0.133",
     "cron-parser": "^5.0.0",
     "gray-matter": "^4.0.3",
     "jsonrepair": "^3.14.0",
