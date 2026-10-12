@@ -786,6 +786,12 @@ export function isReady(
  * would make an ordinary task unrecoverable after its first attempt — the
  * feature off by default unless every caller opted into retries.
  *
+ * A row recorded but not dispatched (`Task.undispatched`, FIX-1875) is never
+ * admitted, whichever board or dispatcher drains the collection: the mark
+ * decides whether a row may start, so it is read here, where every claimer
+ * reads, and not only on the board that writes it. Absent on every row filed
+ * before the mark existed, so those rows are admitted as before (BP-030).
+ *
  * `now` is a parameter rather than a captured clock because the wake probe has
  * none of its own.
  */
@@ -794,6 +800,7 @@ export function isClaimable(
   lookup: (id: string) => Task | undefined,
   now: number
 ): boolean {
+  if (task.undispatched === true) return false;
   if (task.status !== "pending" && !leaseLapsed(task, now)) return false;
   return depsSatisfied(task, lookup);
 }

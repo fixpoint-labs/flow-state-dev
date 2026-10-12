@@ -406,9 +406,10 @@ export const taskSchema = z.object({
 
   /**
    * The row is recorded but not dispatched (FIX-1875): written down, with its
-   * owner, and not to start until something dispatches it. A board that
-   * starts work at once reads it in its one start test and leaves such a row
-   * alone. Cleared only by `TaskCollectionRef.dispatch`.
+   * owner, and not to start until something dispatches it. The substrate's
+   * claim admission refuses such a row, so no board, dispatcher or row action
+   * claims it, whichever drains the collection. Cleared only by
+   * `TaskCollectionRef.dispatch`.
    *
    * Present only when true. **Absent means ready** (BP-030), so every row
    * stored before this mark existed starts as it did. Top level and

@@ -16,6 +16,7 @@ import {
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { dispatchWrite } from "../../src/tasks/collection/internal";
 import { createCapturedChanges, createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 async function sequencerBacking(): Promise<TaskCollectionRef> {
@@ -50,6 +51,17 @@ describe("the not-dispatched mark on the stored shape", () => {
       dispatchCall: "c1",
     });
     expect(taskSchema.parse(base).undispatched).toBeUndefined();
+  });
+});
+
+describe("the dispatch rule on a row no public write produces", () => {
+  it("refuses a running row that still carries the mark, rather than readying it", () => {
+    // Claim never admits a marked row; a row stored this way by another writer
+    // must still not be readied mid-run.
+    const row = taskSchema.parse({
+      id: "t", goal: "g", status: "in_progress", attempts: 1, createdAt: 1, updatedAt: 1, undispatched: true,
+    }) as Task;
+    expect(dispatchWrite(row, { call: "c" })).toEqual({ decline: "disallowed" });
   });
 });
 
@@ -105,18 +117,17 @@ describe.each(BACKINGS)("dispatching a recorded row (%s)", (_name, makeBacking) 
 
   it("refuses a claimed or running row, and an ended one, writing nothing", async () => {
     const tasks = await makeBacking();
-    // A row flow code filed ready, claimed by its worker, then marked by hand
-    // to stand for a recorded row that something claimed anyway.
-    await tasks.addTask({ id: "run", goal: "g", assignee: "ops", undispatched: true });
+    // Claim never admits a recorded row, so a running row is one filed ready
+    // and claimed by its worker: there is nothing left to dispatch.
+    await tasks.addTask({ id: "run", goal: "g", assignee: "ops" });
     await tasks.addTask({ id: "end", goal: "g", assignee: "ops", undispatched: true });
     await tasks.cancel("end", "no longer needed");
-    // Claim ignores the mark at this layer: the board's start test reads it.
     const claimed = await tasks.claim("w", { leaseDurationMs: 10_000, eligibility: (t) => t.id === "run" });
     expect(claimed?.id).toBe("run");
     const runBefore = tasks.get("run")!.revision;
     expect(await tasks.dispatch!("run", { call: "c" })).toEqual({
       outcome: "declined",
-      reason: "disallowed",
+      reason: "already-dispatched",
       status: "in_progress",
     });
     expect(tasks.get("run")!.revision).toBe(runBefore);
@@ -162,5 +173,27 @@ describe.each(BACKINGS)("dispatching a recorded row (%s)", (_name, makeBacking) 
     await dispatchFirst.setAssignee("t", "writer");
     expect(dispatchFirst.get("t")).toMatchObject({ assignee: "writer", status: "pending" });
     expect(dispatchFirst.get("t")!.undispatched).toBeUndefined();
+  });
+});
+
+// The mark gates every claimer of the collection, not only the board that
+// writes it: a plain drain, a hand-off or a row action claims through the
+// substrate's admission, and one that took a recorded row would start work
+// nobody dispatched.
+describe.each(BACKINGS)("a claimer with no start test of its own (%s)", (_name, makeBacking) => {
+  it("never claims a recorded row, and claims it once it is dispatched", async () => {
+    const tasks = await makeBacking();
+    await tasks.addTask({ id: "t", goal: "g", assignee: "ops", undispatched: true });
+    expect(await tasks.claim("w", { leaseDurationMs: 10_000 })).toBeNull();
+    expect(tasks.get("t")!.status).toBe("pending");
+
+    await tasks.dispatch!("t", { call: "call-1" });
+    expect((await tasks.claim("w", { leaseDurationMs: 10_000 }))?.id).toBe("t");
+  });
+
+  it("claims a row filed without the mark, as every row was before it (BP-030)", async () => {
+    const tasks = await makeBacking();
+    await tasks.addTask({ id: "legacy", goal: "g", assignee: "ops" });
+    expect((await tasks.claim("w", { leaseDurationMs: 10_000 }))?.id).toBe("legacy");
   });
 });

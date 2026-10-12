@@ -1189,7 +1189,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   /**
    * File a new row ready, once per call: its id is recorded with the call, and
    * the row carries the call (`dispatchCall`), so a replay after a crash finds
-   * its own row instead of filing a second (BR-15).
+   * its own row instead of filing a second (BR-15). Where the turn carries no
+   * tool call or no `runOnce`, it is the unguarded path: a plain `addTask`,
+   * with no replay protection.
    */
   async function fileReady(ctx: BlockContext, collection: TaskCollectionRef, init: TaskInit) {
     const call = toolCallOf(ctx);

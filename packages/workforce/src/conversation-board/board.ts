@@ -169,7 +169,9 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
  * start path reads it: the claim, the drain's exit, and the wakes after a
  * filing, an assign, an answer and a touch. A path that tests the assignee
  * alone starts a recorded row. Claimability (status, deps, lease) is the
- * substrate's, read beside it.
+ * substrate's, read beside it; the substrate's admission refuses the mark too,
+ * so another claimer of the same collection never starts a recorded row. This
+ * test still reads it because the filing's wake reads no claimability.
  */
 export function isStartable(task: Pick<Task, "assignee" | "undispatched">): boolean {
   return task.assignee !== undefined && task.undispatched !== true;
