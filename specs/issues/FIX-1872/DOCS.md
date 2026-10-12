@@ -9,7 +9,7 @@ calls below are reconciled against that merge before publishing.
 
 ## UPDATE · `apps/docs/docs/workforce/coordinators.md` · "Choosing how it routes", the `judgment` row
 
-> | `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on by calling `dispatchTask` with a delegate as `assignee` and no `goal`, as many times as it likes, or answers itself. The delegate gets the post as you wrote it; the coordinator chooses who, not what they read. |
+> | `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on by calling `dispatchTask` with `post: true` and a delegate as `assignee`, as many times as it likes, or answers itself. The delegate gets the post as you wrote it; the coordinator chooses who, not what they read. |
 
 ## UPDATE · `coordinators.md` · "Who can be a delegate", the paragraph after the table
 
@@ -76,7 +76,7 @@ And replace the sentence on cancelled runs:
 
 > When they ask who your delegates are, call `listDelegates` and answer from
 > what it returns. When they ask for work a delegate does, call `dispatchTask` with
-> that delegate as `assignee` and no `goal`. Its answer lands in this conversation under its name, so
+> `post: true` and that delegate as `assignee`. Its answer lands in this conversation under its name, so
 > don't answer for it. When no delegate does the work, hire a worker for it,
 > add it with `addDelegate`, and hand it on.
 

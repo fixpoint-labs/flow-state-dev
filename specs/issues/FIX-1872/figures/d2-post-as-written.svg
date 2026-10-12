@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="235">SHAPE</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">A post form on coordinator turns</text>
-    <text class="t-s" x="248" y="241">the model sends assignee and target, no goal</text>
+    <text class="t-s" x="248" y="241">post: true, with assignee and target only</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One shape everywhere</text>
     <text class="t-s" x="612" y="241">the same as any dispatched task</text>

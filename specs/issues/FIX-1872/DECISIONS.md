@@ -45,7 +45,7 @@ post entry retires.
 |---|---|
 | **Instead of** | Under judgment, the model writes the task with `dispatchTask` like any other task: its own goal and title, which the delegate reads |
 | **Because** | A delegate today reads `<who wrote it>, through <coordinator>: <the post>`, with the conversation's recent lines, and answers that. A paraphrase changes what it answers, and the FIX-1791 check grades a held-out word arriving intact. The post's identity also has to come from the server, so a second hand-off of the same post to the same delegate in one round is skipped rather than filed twice (BR-2) |
-| **Locks in** | On a coordinator turn that is routing a post, `dispatchTask` takes the post being routed as its task, filled from the server; the model chooses `assignee` and, for a workstream, `target`, and nothing else. The call tells the two forms apart by `goal`: with no `goal` on a routing turn it hands on the post being routed; with a `goal` it files an ordinary task in the coordinator's own words, a separate row and a separate answer. Off a routing turn, a call with no `goal` is refused as FIX-1875 refuses it. This sits on FIX-1875's run-time "`goal` or `taskId`, exactly one" check, so its schema must reserve it (raised on #3140) |
+| **Locks in** | On a coordinator turn that is routing a post, `dispatchTask` takes the post being routed as its task, filled from the server; the model chooses `assignee` and, for a workstream, `target`, and nothing else. The call tells the two forms apart by an explicit field, `post: true`, which FIX-1875 D2 defines as the third of "`goal`, `taskId` or `post`, exactly one": with `post: true` on a routing turn it hands on the post being routed and carries no `goal`; with a `goal` it files an ordinary task in the coordinator's own words, a separate row and a separate answer. Off a routing turn, `post` isn't in the schema (FIX-1875 BR-26). The recipient is `assignee` in both forms |
 
 ![D2, what the delegate reads when the judgment turn hands on a post. Chosen: the post as the person wrote it, with who wrote it and the recent lines. Instead of: the task the model writes, as for any dispatched task. It comes down to the first row, what the delegate answers: chosen, the person's own words, as today; instead, the model's paraphrase, which can drop a detail. Second row, the price: chosen gives dispatchTask a post form on a coordinator turn, a shape only coordinators see; instead, one shape everywhere. Third row, a tie: the routing record names who either way. Locks in the model names who and target, nothing else, on a post. Flips if the product wants coordinators to brief delegates in their own words](figures/d2-post-as-written.svg)
 
@@ -62,8 +62,10 @@ only context.
   path is built. The one plain message that remains is the round-deadline wake (BR-12), which
   carries no answer and decides nothing.
 - **The row is worked in the session the post goes to today:** the delegate's own session for
-  this conversation, or for a workstream the session its entry names. Existing sessions are
-  reused, with their history. Never a task session (FIX-1794's review round 2 rule).
+  this conversation, or for a workstream the session its entry names. That session is resolved
+  when the post is filed, as today, and written on the row, server-side, so the board's hand-over
+  has one rule: a post row goes to its session (BR-16, BR-17). Existing sessions are reused, with
+  their history. Never a task session (FIX-1794's review round 2 rule).
 - **A post row's ending is the coordinator's, not the generic task notice's:** it lands the
   delegate's reply as its line, feeds the round, and wakes no turn. A failed or cancelled post row
   writes no line, as a failed post writes none today (BR-9).
@@ -83,7 +85,7 @@ only context.
   deliveries lives in its state.
 - **Post rows are ordinary rows on the board**, listed and cancellable like any. Hiding them
   would be the special kind of task epic ER-9 rules out.
-- **Row cost is accepted** (epic D2). It is bounded and measured, not avoided (BR-22).
+- **Row cost is accepted** (epic D2): one row per delegate per round, bounded by the round limit.
 - **A delivery in flight at the upgrade loses its answer.** The entry it would answer on is gone;
   its round closes at its deadline (BR-19). Keeping the old entry for a drain period would ship
   two fences (epic ER-10).
@@ -110,7 +112,7 @@ Two entries did the job the same way; this issue folds the first into the second
 |---|---|
 | Keep the post entry as an internal entry and pass the claim ticket in the post | The ticket would travel through another flow's input and back, and only a `task` entry's claim gate renews the lease while the delegate works. A fence carried in a payload is the token again |
 | Keep a list of the round's rows in the coordinator's state, as bookkeeping | It never refuses anything, but it is a per-delivery record beside the board, the ledger shrunk. Close reads the board by the row's round instead (BR-13), one filtered read per close (BP-033) |
-| A distinct tool for the post form, or routing turns that can only post | A second tool name is the two-shapes problem epic D2 removed. Post-only routing turns would take away the ordinary task a coordinator files today. `goal` already marks an ordinary task |
+| A distinct tool for the post form, or routing turns that can only post | A second tool name is the two-shapes problem epic D2 removed. Post-only routing turns would take away the ordinary task a coordinator files today. `post: true` on the one tool marks the post form (FIX-1875 D2) |
 | A tell path for some posts | No post is a tell (the sort) |
 | Hide post rows from the board | A task shown differently, which epic ER-9 defers |
 
@@ -129,7 +131,11 @@ Two entries did the job the same way; this issue folds the first into the second
 - **Review round 1** — D1's reason restated: the coordinator's pick already decides who gets a
   post, so the entry is kept for the post's message and the delegate's own session. Rounds close
   by reading the board, not a list in coordinator state, because that list was the ledger shrunk.
-  D2 names how `dispatchTask` tells a post from a task (`goal`) and uses `assignee`, FIX-1786 D7's
+  D2 names how `dispatchTask` tells a post from a task and uses `assignee`, FIX-1786 D7's
   name. The post entry's move to `task` is now certain, from the code.
+- **Restraint pass (coordinator)** — the row-cost bench cut (epic D2 accepts the cost; the round
+  limit bounds it). The goal check keeps only the fence and deadline legs; the reruns prove lines,
+  rounds, routing and workstreams. A workstream's session is resolved at filing and written on the
+  row. The post form is marked by FIX-1875's explicit `post: true`, not by a missing `goal`.
 
 **Open: none.**

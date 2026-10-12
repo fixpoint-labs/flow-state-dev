@@ -6,25 +6,25 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 (BR-n) and [DECISIONS.md](DECISIONS.md) (D-n); epic rules are ER-n. `tdd`. **One PR**: the
 ledger, its two entries and `handOff` go in the same change as the row path (epic ER-10), so no
 build carries two fences. **Gate:** starts only after FIX-1875 merges with `dispatchTask`'s shape
-reserving the post form (no `goal` on a routing turn, BR-5), not just `target`. If it merged
+reserving the post form (`post: true` on a routing turn, FIX-1875 D2 and BR-26; here BR-5), not just `target`. If it merged
 without that, stop and return a blocker; don't add the post form here silently.
 
 ## Surfaces
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the conversation board's hand-over | A post row goes to the delegate's post entry, in its session for this conversation (today's per-delegate key) or the session its `target` resolves to; every other row keeps going to `work` in a task session. The claim gate is the same one | BR-1 BR-16 BR-17 BR-20 · D1 |
+| S1 | `workforce` · the conversation board's hand-over | One rule for a post row: it goes to the delegate's post entry, in the session written on the row (S3); every other row keeps going to `work` in a task session. The claim gate is the same one. A session that isn't the row's refuses it | BR-1 BR-16 BR-17 BR-20 · D1 |
 | S2 | `workforce` · the post entry (`delegatedPostEntry`, `delegatedPostOnFinished`) | Behind the claim gate: read the post off the row, run the turn as today, settle the row with the reply; an empty reply, a failure or a cancel fails it. At the deadline, send the conversation the wake (S6) instead of a miss. Declared under `task.actions`, so `defineFlow` puts the claim gate and its lease renewal on it; refuse it under `internal` | BR-6 BR-9 BR-11 BR-12 BR-23 · D1 |
-| S3 | `workforce` · the row's post fields | Top-level, server-written fields for a post (post id, round, delegate record, from, coordinator, recent lines, deadline), set only by the post path. Row id derived from post, round and delegate record. The round is filterable, for S7 | BR-2 BR-4 BR-13 |
+| S3 | `workforce` · the row's post fields | Top-level, server-written fields for a post (post id, round, delegate record, session, from, coordinator, recent lines, deadline), set only by the post path. The session is resolved when the post is filed: today's per-delegate key for this conversation, or for a workstream the session its `target` resolves to. Row id derived from post, round and delegate record. The round is filterable, for S7 | BR-2 BR-4 BR-13 |
 | S4 | `workforce` · the coordinator's delivery | Every pick (fixed policies, route-on rounds, judgment) files a post row through FIX-1875's dispatch path. The routing record reads filing outcomes. **Remove** the open/dispatch/settle sequencer, both post dispatchers and the router | BR-1 BR-3 BR-7 |
-| S5 | `workforce` · the coordinator's judgment tools | **Remove** `handOff`. On a turn routing a post, `dispatchTask` with no `goal` takes the post from request state; the model sends `assignee` and `target` only. With a `goal` it is the ordinary call. Carry `handOff`'s refusal wording (the delegates that take posts) and its measured sentence "a new message is a new post, even when it repeats an earlier ask" onto that call | BR-5 BR-7 · D2 |
+| S5 | `workforce` · the coordinator's judgment tools | **Remove** `handOff`. On a turn routing a post, `dispatchTask` with `post: true` takes the post from request state; the model sends `assignee` and `target` only. With a `goal` it is the ordinary call. Carry `handOff`'s refusal wording (the delegates that take posts) and its measured sentence "a new message is a new post, even when it repeats an earlier ask" onto that call | BR-5 BR-7 · D2 |
 | S6 | `workforce` · the coordinator's ending entry | A post row's ending (via `onTaskSettled`) lands the reply as the delegate's line, keeps it in its round, releases the hold, closes rounds and sends answers on; a failed one only ends its part. A small internal wake entry closes overdue rounds. **Remove** `DELEGATE_ANSWER_ACTION` and `DELEGATE_MISSED_ACTION` | BR-8 BR-9 BR-10 BR-12 BR-19 |
 | S7 | `workforce` · rounds | The coordinator keeps each round's deadline and open flag only. Close reads the board's rows for that round (one filtered read) and checks every one has ended. **Remove** `delivery-ledger.ts`, its test and the session state key; tolerate a saved value | BR-13 BR-14 BR-18 |
-| S8 | `workforce` · workstream records | Lift "a workstream takes posts, not tasks" for post rows only; ordinary tasks keep the refusal. Target resolution moves from the coordinator's delivery to the hand-over, same check | BR-15 BR-16 BR-17 |
+| S8 | `workforce` · workstream records | Lift "a workstream takes posts, not tasks" for post rows only; ordinary tasks keep the refusal. Target resolution stays where it is today, when the post is filed, with the same check; the resolved session is written on the row (S3). None yet files no row and records `failed` | BR-15 BR-16 BR-17 |
 | S9 | `workforce` · worker loading | A coordinator worker file naming `handOff` is refused at load, naming `dispatchTask` | BR-18 |
-| S10 | `shift-manager` · DevTeam's chief of staff and project coordinator `WORKER.md` | `handOff` → `dispatchTask` in their instructions; the EM's post entry moves if S2 moved it | — |
-| S11 | `goals/` · the checks that read the ledger | `hands-each-post-to-its-delegates` (`devteam.mts`, `leg-e.mts`, `goal.md`), `a-shared-project-has-one-owner-per-workstream`, `two-users-share-a-project-and-nothing-else`: ledger reads become row reads, listed in the PR as fence lines; tool names renamed | ER-11 |
-| S12 | `goals/coordinators/one-fence-answers-each-post-once/` | **New** goal check, per `SPEC.md` | — |
+| S10 | `shift-manager` · DevTeam's chief of staff and project coordinator `WORKER.md` | `handOff` → `dispatchTask` in their instructions; the EM's post entry moves to `task` entries (S2) | — |
+| S11 | `goals/` · the checks that read the ledger | `hands-each-post-to-its-delegates` (`devteam.mts`, `leg-e.mts`, `goal.md`), `a-shared-project-has-one-owner-per-workstream`, `two-users-share-a-project-and-nothing-else`: ledger reads become row reads, listed in the PR as fence lines; tool names renamed. These row reads are the proof that posts are rows (ER-6) | ER-6 ER-11 |
+| S12 | `goals/coordinators/one-fence-answers-each-post-once/` | **New** goal check, per `SPEC.md`: leg b (the fence: replayed endings, a double hand-off, a stale settle after cancel) and leg d (the deadline wake). Both controls run against leg b | — |
 | S13 | Docs | Publish [DOCS.md](DOCS.md) | — |
 | S14 | `specs/` · predecessors on `main` | Dated amendment notes: FIX-1816 D3 and its change log (two answer-once checks become one, by epic FIX-1870 D2, carried out here), and a superseded note on FIX-1791's ledger rules (BR-20 to BR-22, BR-27). In the implementation PR, so `main` says superseded when the behaviour changes | — |
 
@@ -56,24 +56,22 @@ the same PR.
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 S3 | A post row runs in the delegate's existing session for the conversation, never a task session; a non-post row still runs in a task session; a session made before the change is reused (BR-1 BR-17 BR-20) |
+| V1 | S1 S3 | A post row runs in the session written on it, the delegate's existing session for the conversation, never a task session; a session that isn't the row's refuses it; a non-post row still runs in a task session; a session made before the change is reused (BR-1 BR-17 BR-20) |
 | V2 | S2 | The turn sees today's message and lines (BR-6); an empty reply, a failure and a cancel each fail the row (BR-9); a second settle is refused (BR-11); a delegate turn longer than the lease still lands one line, and the row is not handed out again (BR-23) |
 | V3 | S4 S5 | Every policy and every round files one row per pick; a repeat is `skipped` (BR-2); records match today's for the same scripted run (BR-3); the model's extra task fields are refused (BR-5) |
 | V4 | S6 | A completed post row lands one line and wakes no turn; an ending replayed five times lands one (BR-8 BR-10); a failed one lands none (BR-9) |
 | V5 | S7 | Today's `coordinator-rounds` and `coordinator-followup-context` cases pass with ledger reads replaced; close reads the board by round, and the coordinator's state holds no row list; a saved ledger is ignored then dropped (BR-13 BR-14 BR-18) |
-| V6 | S8 | A workstream post runs in the entry's session; none yet fails the row; an ordinary task to it is refused (BR-15 to BR-17) |
+| V6 | S8 | A workstream post's row carries the entry's session and runs there; none yet files no row and records `failed`; an ordinary task to it is refused (BR-15 to BR-17) |
 | V7 | S9 | A file naming `handOff` fails to load with the `dispatchTask` hint; no tool list on any flow carries `handOff` (BR-18) |
-| V8 | S4 | BR-22's bench: tenth post within 2× the first and under 2 s on SQLite; growth printed in the PR |
 | V9 | S11 | The FIX-1791, FIX-1794 and FIX-1610 checks and the two project goals pass; each diff passes the epic's rename-map script with its fence lines listed |
-| VG | S12 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES after `GOAL_CONTROL=no-ending-dedupe` FAILED `b:one-line` and the `main` run FAILED `a:no-ledger` |
-| VI | all | `node specs/issues/FIX-1872/poc/inventory/check.mjs` updated to the after-state: no file names a retired surface outside `other` and `history` |
+| VG | S12 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES after `GOAL_CONTROL=no-ending-dedupe` FAILED `b:one-line` and the `main` run FAILED `b:no-ledger` |
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
 | `dispatchTask` | `target` | Epic ER-1 and ER-5 name it |
-| `dispatchTask` | `assignee` for the recipient, on a post too; no `goal` marks the post form | FIX-1786 D7 (no alias) and FIX-1875 D2; one tool, one field name |
+| `dispatchTask` | `post: true` marks the post form; `assignee` for the recipient, on a post too | FIX-1875 D2 (one of `goal`, `taskId`, `post`) and FIX-1786 D7 (no alias); one tool, one field name |
 | Goal check | `goals/coordinators/one-fence-answers-each-post-once/`, `GOAL_CONTROL=no-ending-dedupe` | `SPEC.md` and the closure cite them |
 | Routing record | `delivered`, `skipped`, `failed`, and every reason string | People and checks read them; unchanged |
 | Exports | `delegatedPostEntry`, `delegatedPostOnFinished`, `delegatedPostHistory`, `DELEGATED_POST_ENTRY` | Apps declare them (D1) |
@@ -108,10 +106,12 @@ routing a post (any policy, any round):
             id      ← derived from (post, round, delegate record)   ← a repeat files nothing
             post    ← the post as written, from, lines, deadline    ← server-written
             target  ← the record's, if any
+            session ← this conversation's for the delegate, or the one target resolves to now
+                      (none yet → nothing filed, record failed)
         record: delivered | skipped | failed
 
 the board hands a post row over:
-    session ← this conversation's session for the delegate, or the one target resolves to
+    session ← the one written on the row; any other refuses it
     entry   ← the delegate's post entry, behind the claim gate
 
 the coordinator hears an ending:
@@ -134,20 +134,21 @@ surface, which S10 and S11 come from. The premise held; nothing changed.
 
 - FIX-1876 renames the internal ask names and the remaining "hand-off" wording for delivering
   work, including any this PR leaves in comments.
-- FIX-1887's rename map must carry the delegate-entry declaration move, if S2 makes one.
+- FIX-1887's rename map must carry the delegate-entry declaration move (S2). Its sweep, not this
+  PR, owns "no file names a retired surface"; the retained POC is not updated here (BP-037).
 
 ## Notes from review
 
 Recorded verbatim for the implementer from review round 1 on #3142. None changes the approach.
 
 - **Second look, note 1 (answered in the spec):** "Open question the plan defers: whether the engine's task dispatch can reach `internal.actions`. [...] A one-hour check against the engine before the implementing agent starts would remove the largest unknown in S2." *Answered from the code: a `task` dispatch resolves only `task.actions` (`core/src/flow/resolve-entry.ts`), so S2 moves the entry.*
-- **Second look, note 2:** "Row growth: BR-22 measures time, but 1,000 rows per ten posts on one board also lands in every board listing and in the devtool. Consider stating a retention or collapse expectation for ended post rows, even if the answer is "none, accepted"."
+- **Second look, note 2:** "Row growth: BR-22 measures time, but 1,000 rows per ten posts on one board also lands in every board listing and in the devtool. Consider stating a retention or collapse expectation for ended post rows, even if the answer is "none, accepted"." *Answered in the restraint pass: none, accepted (epic D2); the round limit bounds it, and BR-22's bench was cut.*
 - **Second look, note 3:** "BR-19 drops in-flight answers at upgrade. That is fine for a deadline-bound round, but a long `rounds: 3` conversation could lose a whole round once. One line in the release note would cover it."
 - **Second look, note 4:** "Architecture: this is a good opportunity because it removes a duplicate (ledger vs. claim ticket). Do not widen it. `delivery-ledger.ts` is 193 lines, but `coordinator-flow.ts` is 1,735, and S4 deletes the open/dispatch/settle sequencer and two dispatchers from it. Make sure the PR doesn't leave the flow file's remaining structure half-migrated. If the deleted pieces leave the file with an obvious split (policy picking vs. round/ending handling), note it as a follow-up rather than doing it here."
 - **Architect, optional 1:** "Add a restart-during-an-open-round case under the BP-035 guardrail, since the deadline timer at `delegated-post.ts:280` lives in memory."
 - **Architect, optional 2:** "#3141's `handOff` sweep will need an allowlist entry for this PR's load-time refusal message (BR-18)."
 - **Cursor, `SPEC.md` Signal:** "Consider shortening to one line per leg + “proved by BR-n / goal check” and keeping the full criterion text only in `BUSINESS-RULES.md` or `PLAN.md` §Checks — less drift when a leg tweaks."
 - **Cursor, `PLAN.md` Surfaces:** "Before the S1–S13 table, a 3-bucket fold — (1) file post rows on the single dispatch path, (2) board hand-over → `delegatedPostEntry` + claim gate, (3) endings → delegate lines + rounds without ledger — would help implementers hold the whole PR in working memory."
-- **Cursor, `poc/inventory/check.mjs`:** "F4’s static `CLASSIFIED` map is ~half the script and will need a full rewrite at after-state (PLAN VI). FIX-1792’s inventory uses `--after` on the same checker; alternatively externalize this table to a manifest file F4 loads. F1–F3 are the high-signal “no tell” proof — consider not coupling them to F4’s maintenance burden long term."
+- **Cursor, `poc/inventory/check.mjs`:** "F4’s static `CLASSIFIED` map is ~half the script and will need a full rewrite at after-state (PLAN VI). FIX-1792’s inventory uses `--after` on the same checker; alternatively externalize this table to a manifest file F4 loads. F1–F3 are the high-signal “no tell” proof — consider not coupling them to F4’s maintenance burden long term." *Moot: VI was cut; the retained POC isn't updated after the fact (BP-037), and FIX-1887's sweep owns "no retired surface".*
 - **Cursor, `DECISIONS.md` upgrade loss:** "“Delivery in flight at upgrade loses its answer” is a sharp edge — intentional per ER-10 (no drain period). Worth calling out in DOCS or BR-19 as *expected* upgrade behavior so support doesn’t treat it as a bug."
-- **Cursor, `PLAN.md` V8:** "V8 (BR-22 SQLite bench) is separate from VI (`check.mjs` inventory). One explicit cross-reference would avoid implementers assuming the POC script proves perf."
+- **Cursor, `PLAN.md` V8:** "V8 (BR-22 SQLite bench) is separate from VI (`check.mjs` inventory). One explicit cross-reference would avoid implementers assuming the POC script proves perf." *Moot: V8 and VI were cut in the restraint pass.*
