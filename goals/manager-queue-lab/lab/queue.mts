@@ -14,7 +14,9 @@
  *
  * - **Queued is not `pending`.** It is the substrate's own admission predicate,
  *   `isClaimable`, which also admits an `in_progress` row whose lease has run
- *   out — a row whose worker died.
+ *   out — a row whose worker died. And a row recorded but not dispatched
+ *   (`undispatched`), which no claim admits until `dispatchTask` readies it,
+ *   is queued too: it waits on the board for its start.
  * - **Running is not `in_progress`.** It is `in_progress` *and* a live claim.
  *
  * ## The column set is checked, not assumed
@@ -47,7 +49,7 @@ export interface QueueRow {
 
 /** The whole view: four columns, and whatever fell outside them. */
 export interface QueueView {
-  /** Claimable now — `pending`, or `in_progress` with a lapsed lease. */
+  /** Claimable now (`pending`, or `in_progress` with a lapsed lease), or recorded and waiting for its dispatch. */
   queued: QueueRow[];
   /** `in_progress` with a live claim. */
   running: QueueRow[];
@@ -119,7 +121,7 @@ export function queueView(rows: readonly Task[], now: number = Date.now()): Queu
     // Order matters once: claimability is asked FIRST, because a lapsed-lease
     // row is `in_progress` and would otherwise be read as running by a check
     // on status alone — which is the reading this column exists to correct.
-    if (isClaimable(row, lookup, now)) view.queued.push(project(row));
+    if (isClaimable(row, lookup, now) || (row.status === "pending" && row.undispatched === true)) view.queued.push(project(row));
     else if (liveClaim(row, now)) view.running.push(project(row));
     else if (WAITING.has(row.status)) view.waitingOnYou.push(project(row));
     else if (TERMINAL.has(row.status)) view.done.push(project(row));
