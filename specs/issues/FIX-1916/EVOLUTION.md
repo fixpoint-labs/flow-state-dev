@@ -10,8 +10,6 @@
 | LAB-153's Codex package: `resume` / `onSession`, and "a refused resume never reaches `onSession`"; source [`packages/codex/src/agent.ts`](../../../packages/codex/src/agent.ts) and [the Codex page → Continuing a thread](../../../apps/docs/docs/tools/codex.md#continuing-a-thread) | **Retained**; the refusal claim is now shown on the real CLI (POC leg C) | — | — | The package is unchanged |
 | The same package's mapping of a Codex to-do list to a settled `tool_output`; source [`packages/codex/src/translate.ts`](../../../packages/codex/src/translate.ts) | **Retained**, unexercised: the pinned Codex sends no list | The SDK's own notes say a list starts, updates and completes, where the translator expects it settled. Moot until a list arrives | [PLAN → Follow-ups](PLAN.md#follow-ups) | — |
 
-Amended after merge by the cross-spec check (2026-10-12): FIX-1915 is merged, so this spec consumes its worktree and fence (BR-13b) and drops its own repository-check option.
-
-Amended again (2026-10-12): the Codex package gains one error mapping to FIX-1915 S13's unknown-conversation classification; the rest of "no change to the Codex package" stands.
+Amended by the cross-spec check (2026-10-12); see [the epic's Evolution](../../epics/FIX-1907/EVOLUTION.md).
 
 Re-check FIX-1915's rows against its merged spec before implementing.

@@ -21,7 +21,7 @@ Solid edges are what you're signing. The question is answered as recommended.
 <a name="open"></a>
 ## Answered · Does today's Kitchen Sink become the Flow State mode, or move out?
 
-**Carried from the [epic](../../epics/FIX-1907/DECISIONS.md#open), and answered: it becomes Flow
+**Carried from the [epic](../../epics/FIX-1907/DECISIONS.md#flow-state-mode), and answered: it becomes Flow
 State mode, unchanged.** The owner decided it by merging this spec (#3167) on 2026-10-12, as the
 epic records. The ask is kept below as it was put.
 

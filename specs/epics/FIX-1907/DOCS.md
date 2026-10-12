@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 The shared story is written once here; each child publishes its own specifics with its
-implementation. The Flow State paragraph follows the owner's [answer](DECISIONS.md#open): today's app,
+implementation. The Flow State paragraph follows the owner's [answer](DECISIONS.md#flow-state-mode): today's app,
 unchanged.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · opening, replacing the first paragraph
@@ -26,10 +26,8 @@ unchanged.
 > A deployed copy of Kitchen Sink offers Flow State only.
 
 For example, in Codex mode, start a session and ask it to add a test for a function. Each step
-shows as Codex takes it, and the plan panel says Codex reports no plan, which is true of the Codex
-version Kitchen Sink runs. Ask a follow-up in the same session and Codex continues the same
-thread, so it already knows which function you meant. (The plan sentence waits on FIX-1916's open
-decision on the Codex plan panel, and changes with it.)
+shows as Codex takes it. Ask a follow-up in the same session and Codex continues the same
+thread, so it already knows which function you meant.
 
 ## CREATE · `apps/docs/docs/tools/coding-agents.md` · section "The run's plan", after "The handle"
 

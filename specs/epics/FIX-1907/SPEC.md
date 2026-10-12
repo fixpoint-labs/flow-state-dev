@@ -9,7 +9,7 @@
 | **builds on one of our coding harnesses** (Claude Code, Codex, Cursor) | Reads a contract page and unit tests. Codex has run on a real model only from a goal script; Cursor never has | Works that harness in a real app: turns continue one conversation, the run shows while it works, its plan is beside it |
 | **maintains the harness packages** | Finds a gap when a Shift Manager closure trips on it ([FIX-1735](https://linear.app/fixpoint-labs/issue/FIX-1735), [FIX-1692](https://linear.app/fixpoint-labs/issue/FIX-1692)) | Has one app where each harness runs directly, on flows from the same session flow factory, so a gap shows in one mode against the others |
 | **wants to know what a run planned** | Claude Code's plan record is proved by unit tests only, because its SDK path never calls the plan tools ([FIX-1185](https://linear.app/fixpoint-labs/issue/FIX-1185)). Codex and Cursor record no plan | Reads each harness's own to-do list beside its session, or a plain line saying there is none |
-| **learns the framework from Kitchen Sink** | Lands on the support desk and the assistant | Picks **Flow State** and finds the framework's own flows there ([answered](DECISIONS.md#open)) |
+| **learns the framework from Kitchen Sink** | Lands on the support desk and the assistant | Picks **Flow State** and finds the framework's own flows there ([answered](DECISIONS.md#flow-state-mode)) |
 | **runs Shift Manager** | Owns orchestration across harnesses | Still does. Kitchen Sink takes none of it |
 
 **Why now.** Three harness packages ship one contract: the handle, `resume`, and `onSession`
@@ -74,7 +74,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1914](https://linear.app/fixpoint-labs/issue/FIX-1914) · the picker | Four modes, a rail scoped to the picked mode, an honest unavailable state, Flow State mode holding the framework's own flows | The front door. Its spec follows the [Flow State answer](DECISIONS.md#open) | Backlog · spec route |
+| [FIX-1914](https://linear.app/fixpoint-labs/issue/FIX-1914) · the picker | Four modes, a rail scoped to the picked mode, an honest unavailable state, Flow State mode holding the framework's own flows | The front door. Its spec follows the [Flow State answer](DECISIONS.md#flow-state-mode) | Backlog · spec route |
 | [FIX-1915](https://linear.app/fixpoint-labs/issue/FIX-1915) · Claude Code mode | The one harness session flow factory, a flow kind per harness (binding, live items, stop, workspace), and the plan record moved into core | The shared path the other two plug into ([D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)) | Backlog · spec route · blocked by FIX-1914 |
 | [FIX-1916](https://linear.app/fixpoint-labs/issue/FIX-1916) · Codex mode | Codex on its own flow kind from that factory; Codex writes its to-do list to the plan record | Codex's first in-app real-path run | Backlog · spec route · blocked by FIX-1915 |
 | [FIX-1917](https://linear.app/fixpoint-labs/issue/FIX-1917) · Cursor mode | Cursor on its own flow kind from that factory; Cursor writes its own confirmed to-do list to the plan record | Cursor's first real-path run of any kind | Backlog · spec route · blocked by FIX-1915 |
@@ -129,7 +129,7 @@ carry a plan leg nobody reads.
    record shape in core.** If wrong: someone wants to hand a harness work from Kitchen Sink, and that
    is a Shift Manager epic.
 
-**Open: 0.** [Does today's Kitchen Sink become the Flow State mode, or move out?](DECISIONS.md#open)
+**Open: 0.** [Does today's Kitchen Sink become the Flow State mode, or move out?](DECISIONS.md#flow-state-mode)
 Answered: it becomes the Flow State mode, unchanged, decided by the owner merging #3167 on
 2026-10-12. Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
