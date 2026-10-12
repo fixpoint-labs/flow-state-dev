@@ -775,7 +775,7 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
     ["c1", () => legC(page, t, spec?.how === "network", fail, evidence)],
   ];
   try {
-    await page.goto(`${server.origin}/${spec?.how === "page" ? `?goalControl=${control}` : ""}`);
+    await page.goto(`${server.origin}/flow-state${spec?.how === "page" ? `?goalControl=${control}` : ""}`);
     await ready(page);
     for (const [leg, walk] of legs) {
       try {
@@ -783,7 +783,7 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
       } catch (error) {
         // A leg that cannot be walked is red at `<leg>:setup`, never at one of its signals.
         fail(`${leg}:setup`, `could not be walked: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
-        await page.goto(`${server.origin}/${spec?.how === "page" ? `?goalControl=${control}` : ""}`).catch(() => {});
+        await page.goto(`${server.origin}/flow-state${spec?.how === "page" ? `?goalControl=${control}` : ""}`).catch(() => {});
         await ready(page).catch(() => {});
       }
     }
@@ -872,7 +872,7 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
   const posts = fixture.smoke.posts.map((p, i) => ({ ...p, mark: `(ref smoke-token-${i}${run})` }));
   const answeredBy: Array<Line | undefined> = [];
   try {
-    await page.goto(`${server.origin}/`);
+    await page.goto(`${server.origin}/flow-state`);
     await ready(page);
     await showHelpDesk(page);
     const within = `${fixture.smoke.withinMs / 1000}s`;

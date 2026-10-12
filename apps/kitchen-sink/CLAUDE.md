@@ -46,8 +46,11 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
 - `components/background-work-panel.tsx` — the child-session panel (see "Background work" below).
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
-- `components/` (top level) — shared app UI (team panel, mode selector, etc.). The rail is `FlowNavigator` from `@flow-state-dev/react`, mounted in `app/page.tsx`; the names it and the team panel share with the flow live in `lib/workforce-shell.ts`.
-- `app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index.
+- `components/` (top level) — shared app UI (team panel, mode selector, etc.). The Flow State rail is `FlowNavigator` from `@flow-state-dev/react`, mounted in `app/flow-state/page.tsx`; the names it and the team panel share with the flow live in `lib/workforce-shell.ts`.
+- `app/page.tsx` — the picker: Kitchen Sink's four modes (`lib/modes.ts`), each available or unavailable with its reason. A server component rendered per request, reading `modeAvailability()`.
+- `app/flow-state/page.tsx` — the Flow State shell (today's app): the assistant, the support desk, the roster. Its rail's first row is `components/mode-rail-header.tsx`, the way back to the picker.
+- `app/claude-code/`, `app/codex/`, `app/cursor/` — the coding harness modes' addresses, each `components/harness-mode-page.tsx`: the reason page when the mode is unavailable, else `components/harness-frame.tsx` (a rail of the mode's own flow kind's sessions with New session, and a stream slot the mode's issue fills).
+- `lib/harness-gate.ts` — whether each mode can run on this host, decided once per server start (memoized on `globalThis`) and read by the picker, the harness addresses and the flow list alike. Order: host (`lib/harness-workspace.ts`, the one reader of `KITCHEN_SINK_HARNESS_WORKSPACE`), then "not built yet" (no `flowKind` in `lib/modes.ts`), then the mode's own check (`MODE_CHECKS`). A harness mode registers its flow in `fsdev.config.ts` only through `availableHarnessFlows`, so an unavailable mode's `/api/flows/<kind>/…` is not found. Goal control `gate-open` skips the host and each mode's own check in a test-mode build.
 - `lib/flowstate.ts` — re-exports the FlowState from `fsdev.config.ts` (which holds the `createFlowState` runtime assembly: flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API, now shared with the `fsdev` CLI via the root config.
 
 To add a new flow: drop it under `flows/<name>/`, register it in `fsdev.config.ts`, and mount it from `app/<name>/page.tsx`.

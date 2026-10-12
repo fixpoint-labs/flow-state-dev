@@ -19,6 +19,7 @@ import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
+import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -30,6 +31,7 @@ import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
+import { availableHarnessFlows } from "@/lib/harness-gate";
 import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
@@ -83,6 +85,13 @@ for (const failedPath of workforce.errors) {
   console.error(`[workforce] could not read ${failedPath}`);
 }
 
+// Each coding harness mode's session flow, registered only while that mode is
+// available on this host (`lib/harness-gate.ts`): on a host that can't run a
+// mode, `/api/flows/<its flow>/…` is not found, so the picker is not the only
+// fence. Decided once per server start, the same answer the picker reads.
+// A mode's issue adds its flow here, by mode id; none is built yet.
+const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({});
+
 // The workforce's copies are addressed by their flow's name (`agent`,
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a
 // worker is a session on its flow's copy, created naming the worker: a
@@ -95,6 +104,7 @@ const flowstate = createFlowState({
       chatAgent: chatAgentFlow,
       richTextComponent: richTextComponentFlow,
       weeklyDigest: weeklyDigestFlow,
+      ...harnessFlows,
     },
     workforce.copies
   ),

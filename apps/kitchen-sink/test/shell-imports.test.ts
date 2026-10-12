@@ -37,11 +37,11 @@ function importedFrom(source: string, specifier: string): string[] {
 }
 
 /** The app modules the shell's rail and panel are made of. */
-const REGION_MODULES = ["app/page.tsx", "components/team-panel.tsx"];
+const REGION_MODULES = ["app/flow-state/page.tsx", "components/team-panel.tsx"];
 
 describe("V9 · the shell's rail and panel are package components", () => {
   it("draws the rail with the package's navigator", () => {
-    const page = read("app/page.tsx");
+    const page = read("app/flow-state/page.tsx");
     expect(importedFrom(page, "@flow-state-dev/react")).toContain("FlowNavigator");
     expect(page).toContain("<FlowNavigator");
     expect(page).not.toMatch(/components\/session-sidebar/);

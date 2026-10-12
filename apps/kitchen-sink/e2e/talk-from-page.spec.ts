@@ -71,7 +71,7 @@ const row = (page: Page, name: string) => rail(page).getByRole("button", { name,
 const picked = (page: Page) => page.locator('[data-testid="picked-session"]:visible');
 
 async function openShell(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/flow-state");
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
 }
 

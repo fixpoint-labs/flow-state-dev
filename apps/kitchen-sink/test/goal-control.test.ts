@@ -91,6 +91,16 @@ describe("V4 · every control is read through the gate, and only in this app (BR
     ["no-route", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
     ["answers-go-on", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
     ["no-delivery", async () => ({ swapped: (await import("@/lib/coordinator-control")).delegateFlowsUnderControl(flows) !== flows })],
+    [
+      "gate-open",
+      async () => {
+        // The host is off, so only the control can let a built mode through.
+        const { decideAvailability } = await import("@/lib/harness-gate");
+        const modes = [{ id: "codex", label: "Codex", href: "/codex", flowKind: "codex-session" }] as const;
+        const decided = await decideAvailability({ workspace: { ok: false, reason: "off" }, modes, checks: {} });
+        return { swapped: decided.codex.available };
+      },
+    ],
   ];
 
   it.each(controls)("%s: inert outside test mode, and swapped in under it", async (name, apply) => {
