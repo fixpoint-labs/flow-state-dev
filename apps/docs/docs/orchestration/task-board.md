@@ -816,10 +816,11 @@ task's result, it can file the task and wait for it instead. That is an **ask**.
 has durable execution and runs the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). A conversation's
 board in Workforce can wake one. For a board of your own, pass `{ resumesAsks: true }` as the
-third argument to `createTaskToolsCapability(resolver, roster, options)`, and only when whatever
-runs the board calls `resumeOwedAsks(ctx, collection)` each time it touches the board outside a
-turn. That call resumes each waiting turn whose asked task has ended, and cancels any asked task
-whose own cancel failed when its wait timed out or was stopped. Where the board or server can't
+third argument to `createTaskToolsCapability(resolver, roster, options)`, and only if your code
+calls `resumeOwedAsks(ctx, collection)` whenever it works the board outside a turn, for example
+when it runs the board or handles a task's notice. That call wakes each waiting turn whose task
+has ended. If you skip it, a waiting turn isn't woken when its task ends and sits out its whole
+`timeoutMs`, and a task whose wait was stopped or timed out can stay open. Where the board or server can't
 hold an ask, the option isn't in `addTask`'s schema at all, and `addTask` files without waiting.
 
 With the option set, the task is filed as usual, on the same board a plain `addTask` writes to.
@@ -851,8 +852,9 @@ sentence for the model, so match it with `error.startsWith("wait_timed_out")`, n
 | `wait_already_pending` | This step is already waiting on a task. Nothing is filed |
 | `wait_unavailable` | The turn is itself working a task, so it can't wait, or the board can't hold an ask. Nothing is filed |
 
-Stopping the conversation while its turn waits ends the turn and cancels the task. The turn
-doesn't see an error, because it doesn't run again.
+Stopping the conversation while its turn waits ends the turn and cancels the task. The model
+doesn't see an error from `addTask`, because the turn doesn't run again. (Code that calls
+`addTaskAndWait` directly gets `wait_stopped`; see the package README.)
 
 An asked task is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's
 limits apply to it. When an asked task ends, the waiting turn continues with the answer. The conversation gets no
@@ -871,7 +873,9 @@ A worker that can't go on without an answer calls `parkOnQuestion({ question })`
 await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
-It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked for a person's turn or waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. Either way, nothing is written. What comes back:
+It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.
+
+`answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked with `awaitReview`, one parked while a person talks to its worker, or one waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. A declined answer writes nothing. What comes back:
 
 | Returned | When |
 |---|---|

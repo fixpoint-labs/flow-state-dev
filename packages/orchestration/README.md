@@ -822,12 +822,13 @@ Two functions sit under the option, for a layer that builds its own board surfac
   `@flow-state-dev/orchestration/task-board`, files `init` as an ask from inside a generator's
   tool call and waits for its answer. Call it from your own tool when you don't use the task
   tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
-  on the same subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in
-  one step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
+  on the same subpath, is false), an out-of-range `timeoutMs`, a call from a task turn, or a
+  second wait in the same step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
   `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too. It resolves to
   `{ ok: true, taskId, answer }`, or `{ ok: false, error, taskId?, message? }` where `error`
-  is a bare `wait_*` code and `message` explains it. `wait_stopped` means the person stopped
-  the turn: the task is cancelled and the request is stopped.
+  is a bare `wait_*` code and `message` explains it. Only a direct caller sees `wait_stopped`:
+  the person stopped the turn, the task is cancelled and the request is stopped. Through the
+  task tools' `addTask` the turn ends there, so the model never reads it.
 - `resumeOwedAsks(ctx, collection)`, from `@flow-state-dev/orchestration`, resumes each
   waiting turn whose asked task has ended. Call
   it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
@@ -851,8 +852,8 @@ the task goes back to `pending` with the answer, its worker picks it up again in
 same session, the next attempt gets the answer as `input.answer`, and the claim that
 follows isn't charged against `maxAttempts`.
 It takes only a task its worker parked with `parkOnQuestion`, for the question it
-is waiting on now. It declines any other task (including one parked for a person's
-turn or waiting on its own sub-tasks), a late answer to a question the task has
+is waiting on now. It declines any other task (including one parked with `awaitReview`,
+one parked while a person talks to its worker, or one waiting on its own sub-tasks), a late answer to a question the task has
 moved past (`not_parked_on_question: …`), and a finished task
 (`terminal_task_write_declined: …`). It doesn't drain the board: on a Workforce conversation's board the task starts on
 its own; on your own board, drain it afterwards. Until the answered task runs again, `assignTask`
@@ -868,8 +869,8 @@ keeps that worker: `assignTask` and `updateTask` won't move it
 (`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
 (`follow_up_of_unfinished`), and a session that still has an unfinished task
 (`session_has_unfinished_task`), all before anything is filed. The finished task
-itself never changes. If another follow-up of the same task takes the id at the same
-moment, `addTask` answers `session_has_unfinished_task` (follow up once that one
+itself never changes. If two follow-ups of the same task are filed at once, the second
+gets `session_has_unfinished_task` (follow up once that one
 finishes) or `task_id_taken` (file it again).
 
 ### skillsManifestSource
