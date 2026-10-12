@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 316" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 12 October 2026. An input lane: FIX-1762, a project's repository, done. This epic spec in review at the now line. Once it merges, all three specs and the closure's QA plan start side by side. FIX-1906 the local checkout builds first. FIX-1904 the dev profile builds after FIX-1906 merges. FIX-1905 builds its first PR, the mechanism, beside FIX-1906; its second PR, Linear in the profile, waits on FIX-1904. The closure run comes last. The critical path runs through this spec, FIX-1906, FIX-1904, FIX-1905's second PR and the closure run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .in     { fill:var(--prose); stroke:none; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .now    { stroke:var(--gone); stroke-width:1.4; }
+    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-in   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="316"/>
+
+  <text class="t-lbl" x="16" y="18">THE PATH &#8212; A SHORT CHAIN WITH ONE PARALLEL BUILD, AS OF 12 OCT 2026</text>
+  <path class="axis" d="M220 40 L924 40"/>
+  <text class="t-s" x="226" y="32">done</text>
+  <text class="t-now" x="318" y="32">now</text>
+  <text class="t-s" x="520" y="32">ahead &#183; not scheduled</text>
+  <path class="now" d="M314 40 L314 266"/>
+
+  <g id="input">
+    <text class="t-in" x="16" y="70">FIX-1762 &#183; input</text>
+    <rect class="in" x="226" y="56" width="80" height="22" rx="3"/>
+    <text class="t-w" x="236" y="71">done</text>
+  </g>
+  <g id="epic-spec">
+    <text class="t-ln" x="16" y="106">FIX-1903 &#183; this spec</text>
+    <rect class="flight" x="280" y="92" width="80" height="22" rx="3"/>
+    <text class="t-s" x="286" y="107">in review</text>
+  </g>
+  <g id="checkout">
+    <text class="t-ln" x="16" y="142">FIX-1906 &#183; local checkout</text>
+    <rect class="todo" x="368" y="128" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="143">spec</text>
+    <rect class="todo" x="472" y="128" width="130" height="22" rx="3"/>
+    <text class="t-s" x="480" y="143">impl</text>
+  </g>
+  <g id="profile">
+    <text class="t-ln" x="16" y="178">FIX-1904 &#183; dev profile</text>
+    <rect class="todo" x="368" y="164" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="179">spec</text>
+    <rect class="todo" x="610" y="164" width="110" height="22" rx="3"/>
+    <text class="t-s" x="618" y="179">impl</text>
+  </g>
+  <g id="mcp">
+    <text class="t-ln" x="16" y="214">FIX-1905 &#183; project MCP</text>
+    <rect class="todo" x="368" y="200" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="215">spec</text>
+    <rect class="todo" x="472" y="200" width="130" height="22" rx="3"/>
+    <text class="t-s" x="480" y="215">PR 1 &#183; mechanism</text>
+    <rect class="todo" x="728" y="200" width="88" height="22" rx="3"/>
+    <text class="t-s" x="736" y="215">PR 2 &#183; Linear</text>
+  </g>
+  <g id="closure">
+    <text class="t-ln" x="16" y="250">FIX-1919 &#183; closure</text>
+    <rect class="todo" x="368" y="236" width="96" height="22" rx="3"/>
+    <text class="t-s" x="376" y="251">QA plan</text>
+    <rect class="todo" x="824" y="236" width="92" height="22" rx="3"/>
+    <text class="t-s" x="832" y="251">run on main</text>
+  </g>
+  <path class="crit" d="M360 103 L368 139 M602 139 L610 175 M720 175 L728 211 M816 211 L824 247"/>
+  <text class="t-g" x="16" y="288">Critical path: this spec &#8594; FIX-1906 &#8594; FIX-1904 &#8594; FIX-1905's PR 2 &#8594; the closure run.</text>
+  <text class="t-s" x="16" y="304">Specs run side by side. FIX-1905's mechanism builds beside FIX-1906; only its Linear PR waits on the profile.</text>
+</svg>
