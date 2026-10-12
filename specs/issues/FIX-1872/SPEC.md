@@ -67,7 +67,7 @@ the row, by the board, not in the coordinator's state.
 ```diff
   When they ask for work a delegate does,
 - call `handOff` with that delegate's id.
-+ call `dispatchTask` with that delegate as `to`.
++ call `dispatchTask` with that delegate as `assignee` and no `goal`.
   Its answer lands in this conversation under its name, so don't answer for it.
 ```
 
@@ -75,7 +75,7 @@ the row, by the board, not in the coordinator's state.
   defineFlow({
     kind: "research",
 -   internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } },
-+   task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // only if the engine can't reach it where it is
++   task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // a task dispatch reaches only `task` entries
   })
 ```
 
@@ -108,7 +108,11 @@ person sees. If wrong: two fences survive under new names, or a person's lines q
    into ordinary tasks.** If wrong: we keep a second kind of entry nobody needs, and apps declare
    it for nothing.
 2. **[D2](DECISIONS.md#d2) · On a post, the coordinator's model names who; the post goes as
-   written.** If wrong: delegates never get the coordinator's framing of the work.
+   written.** A routing turn's `dispatchTask` with no `goal` hands on the post; with a `goal` it
+   files an ordinary task. If wrong: delegates never get the coordinator's framing of the work.
+
+**Gate on a sibling:** this builds only once FIX-1875 merges with `dispatchTask`'s shape reserving
+the post form (no `goal` on a routing turn), not just `target`. Raised on #3140.
 
 **Open: none.** D1 is the one to weigh. Reasoning: [DECISIONS.md](DECISIONS.md). Cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a post&#39;s row is worked. Chosen: on the delegate&#39;s own post entry. Instead of: on the ordinary task entry, retiring the post entry. It comes down to the first row, who can be handed a post: chosen, only a delegate that takes posts, as today; instead, any task-taking worker, so a coder can get a feature request meant for the EM. Second row, the price: chosen keeps two entries and may move one declaration line per app; instead has one entry. Third row, a tie: the answer is fenced once by the claim ticket either way. Locks in delegatedPostEntry kept, one possible line move per app. Flips if the product wants any task-taking worker to receive posts."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a post&#39;s row is worked. Chosen: on the delegate&#39;s own post entry. Instead of: on the ordinary task entry, retiring the post entry. It comes down to the first row, what the delegate answers and where: chosen, the post as written, in the delegate&#39;s own session for this conversation, with its history; instead, a task in a fresh session keyed by the task, so each post starts cold. Second row, the price: chosen keeps two entries and moves one declaration line per app; instead has one entry. Third row, a tie: the answer is fenced once by the claim ticket either way. Locks in delegatedPostEntry kept, declared under task. Flips if the product accepts delegates answering each post fresh."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -51,22 +51,22 @@
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHO CAN BE</text>
-    <text class="t-lbl" x="32" y="169">HANDED A POST</text>
+    <text class="t-lbl" x="32" y="156">WHAT THE</text>
+    <text class="t-lbl" x="32" y="169">DELEGATE ANSWERS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Only delegates that take posts</text>
-    <text class="t-s" x="248" y="179">the EM gets the feature request, as today</text>
+    <text class="t-b" x="248" y="161">The post, in its own session</text>
+    <text class="t-s" x="248" y="179">with its history, which the next post reuses</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Any worker that takes tasks</text>
-    <text class="t-s" x="612" y="179">a coder can be handed the EM&#39;s request</text>
+    <text class="t-b" x="612" y="161">A task, in a fresh task session</text>
+    <text class="t-s" x="612" y="179">each post starts cold, read as a task</text>
   </g>
 
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">WHAT AN APP</text>
     <text class="t-lbl" x="32" y="235">DECLARES</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Two entries; one line may move</text>
+    <text class="t-b" x="248" y="223">Two entries; one line moves</text>
     <text class="t-s" x="248" y="241">each app with its own delegate flow edits it</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One entry for all work</text>
@@ -89,14 +89,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">delegatedPostEntry kept; posts reach only its flows</text>
+    <text class="t-b" x="32" y="371">delegatedPostEntry kept, declared under task</text>
     <text class="t-s" x="32" y="389">a declaration move goes in the closure&#39;s rename map</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The product wants posts to reach any task-taker</text>
-    <text class="t-s" x="494" y="389">then fold, and listDelegates&#39; takes loses a value</text>
+    <text class="t-b" x="494" y="371">Delegates may answer each post fresh</text>
+    <text class="t-s" x="494" y="389">then fold, and the post entry retires</text>
   </g>
 </svg>
