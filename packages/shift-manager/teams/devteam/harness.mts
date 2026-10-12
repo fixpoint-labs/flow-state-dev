@@ -29,7 +29,7 @@ import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
-import { commitAll } from "./scratch-repo.mts";
+import { commitAll, hasChanges } from "./scratch-repo.mts";
 
 /** The environment variable that picks the harness. */
 export const HARNESS_ENV = "DEVFORCE_LAB_HARNESS";
@@ -120,10 +120,18 @@ function rowLine(prompt: string): string {
  * What the scripted run does where it works: one file, committed when that is
  * a checkout. A project with no repository runs in its files (`workspace/`,
  * no git), where the file itself is the work and the manager saves it back.
+ *
+ * A retry runs in the checkout its first attempt left, where that attempt
+ * already committed this same file. With nothing new to commit, `git commit`
+ * fails, and that failure would replace why the first attempt was sent back
+ * (most often the judge's verdict). The commit is skipped instead: the
+ * attempt's work is already on the row's branch.
+ *
+ * @param run The attempt, as the stub hands it to `duringRun`.
  */
-function commitScriptedWork(run: StubRun): void {
+export function commitScriptedWork(run: StubRun): void {
   writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
-  if (existsSync(join(run.cwd, ".git"))) commitAll(run.cwd, "scripted run: note the row");
+  if (existsSync(join(run.cwd, ".git")) && hasChanges(run.cwd)) commitAll(run.cwd, "scripted run: note the row");
 }
 
 /**

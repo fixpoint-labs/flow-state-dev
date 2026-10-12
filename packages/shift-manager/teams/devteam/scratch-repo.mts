@@ -276,10 +276,21 @@ export function cloneRef(repo: string, ref: string, dest: string): void {
  *
  * Used by the gate's scripted harness. `-A` rather than named paths: what a run
  * wrote is the run's business, and the gate grades the commit, not the diff.
+ *
+ * The identity rides on the commit command (`-c`) and is never written to the
+ * checkout's config. A run's checkout is a worktree, and every worktree of a
+ * clone shares that clone's `.git/config`: two runs writing it at once take
+ * the same lock, and one fails with `could not lock config file`.
  */
 export function commitAll(checkout: string, message: string): void {
-  git(checkout, "config", "user.email", "devforce-lab@example.test");
-  git(checkout, "config", "user.name", "DevForce Lab");
   git(checkout, "add", "-A");
-  git(checkout, "commit", "-m", message);
+  git(checkout, "-c", "user.email=devforce-lab@example.test", "-c", "user.name=DevForce Lab", "commit", "-m", message);
+}
+
+/**
+ * Whether a checkout has anything to commit: a change, staged or not, or a
+ * file git doesn't track yet.
+ */
+export function hasChanges(checkout: string): boolean {
+  return git(checkout, "status", "--porcelain").trim() !== "";
 }
