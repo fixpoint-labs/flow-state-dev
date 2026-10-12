@@ -1,7 +1,7 @@
 /**
  * `RequestHost.hasAskSweeper` (FIX-1816 BR-5): a turn is told an ask is
  * bounded only when this process runs a durability sweeper that times asks
- * out, so `addTask` offers `waitForResponse` only where no ask can wait
+ * out, so `dispatchTask` offers `wait` only where no ask can wait
  * forever. The resume verb is unaffected by it.
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";

@@ -32,7 +32,7 @@
  *
  * {@link decideNotice} is the one choice: a retried attempt runs the board
  * again with no turn; an asked row's ending resumes the turn parked on it
- * (`waitForResponse`) and wakes none; any other ending wakes the coordinator's
+ * (`dispatchTask` with `wait`) and wakes none; any other ending wakes the coordinator's
  * judgment turn, or lands as a line under a fixed routing policy. The
  * receiving entry only acts on the value. {@link noticeKey} is the dedupe key,
  * task and attempt and ending, so a notice sent twice (a replay racing the
@@ -62,7 +62,7 @@ export interface TaskNotice {
   readonly output?: unknown;
   readonly error?: string;
   readonly question?: string;
-  /** The row is asked (`waitForResponse`): a turn is parked on its ending. */
+  /** The row is asked (`dispatchTask` with `wait`): a turn is parked on its ending. */
   readonly asked?: true;
 }
 

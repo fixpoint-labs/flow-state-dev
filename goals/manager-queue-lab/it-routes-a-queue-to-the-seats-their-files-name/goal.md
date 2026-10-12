@@ -12,7 +12,7 @@
 
 **Signal:** six legs over a real `createFlowState` host, acted on through its HTTP router as the lab's verified user, with the rows read from the store. **Every control also grades itself**: a control that goes red at a leg other than the one it names has demonstrated a different check.
 
-(a) **The rows are filed, on the manager's own board.** On the gate's path the manager's judgment turn decides which builder each piece is for and files with its `addTask` tool: the check sends no `addTask_tasks`, and the turn was handed `addTask`. Every row is stored in the manager's conversation's partition.
+(a) **The rows are filed, on the manager's own board.** On the gate's path the manager's judgment turn decides which builder each piece is for and files with its `dispatchTask` tool: the check sends no `dispatchTask_tasks`, and the turn was handed `dispatchTask`. Every row is stored in the manager's conversation's partition.
 
 (b) **Every piece reaches the board in its own words, one distinct row per piece**, both directions (exactly one row carries each piece, and each row carries exactly one piece), every row naming one of the manager's delegates, and one builder given two pieces, or leg (e) grades nothing.
 
@@ -33,7 +33,7 @@
 **The filer is a slot, and only one of its two values is the gate.**
 
 - `GOAL_FILER=model` (default) — **the gate.** The manager chooses and files with its own tool. Needs a model credential.
-- `GOAL_FILER=scripted` — **not the gate.** The same four pieces are filed through the conversation's `addTask_tasks` action, spread across the manager's delegates (two for the first), and legs (b) to (f) run unchanged. The manager's turn, woken by each task's notice, runs on a quiet stub that files nothing. A scripted run says so in its own evidence line.
+- `GOAL_FILER=scripted` — **not the gate.** The same four pieces are filed through the conversation's `dispatchTask_tasks` action, spread across the manager's delegates (two for the first), and legs (b) to (f) run unchanged. The manager's turn, woken by each task's notice, runs on a quiet stub that files nothing. A scripted run says so in its own evidence line.
 
 **Anti-game:** A hollow pass would file four rows and assert the board reported four completions, true even when a task ran as the wrong worker or nothing ran at all. So the check MUST prove execution by a **side effect outside the board** (the outbox file); MUST grade the file a worker ran with against **the tree's file for the row's assignee**, read at run time, never against the session's own label alone, since the board's hand-over agrees with itself; MUST require one builder to get two pieces, or leg (e) grades nothing; MUST match pieces to rows **one to one in both directions**; and MUST read the rows from the store, not from the board's own listing.
 

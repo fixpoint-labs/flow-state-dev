@@ -6,7 +6,7 @@
  * outbox sends: a notice is acted on only while its row still owes it, and
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
  * attempt runs the board again with no turn; an asked row's ending resumes
- * the turn parked on it (`waitForResponse`), with no line and no turn woken;
+ * the turn parked on it (`dispatchTask` with `wait`), with no line and no turn woken;
  * any other ending lands as a line under the delegate's name and, when its
  * coordinator has a turn of its own (judgment or best-fit routing), wakes
  * that turn to read it and decide what to do.

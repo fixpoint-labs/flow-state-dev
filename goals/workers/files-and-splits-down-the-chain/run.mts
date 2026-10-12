@@ -378,7 +378,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const ids = calls.map(toolOutput).filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const filed = rows.filter((x) => ids.includes(x.id) && (x.assignee === "crew.one" || x.assignee === "crew.two") && x.partition.startsWith(`${E.conv}~`));
   if (filed.length === 0) {
-    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with addTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its addTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with dispatchTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its dispatchTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   // A filing that waited for its answer hears the ending as the tool's result; any other hears it as one notice.

@@ -54,6 +54,20 @@ const REGRESSION = [
   "goals/hand-offs/survives-a-restart-and-runs-once/",
 ];
 
+/**
+ * A line that names a retired name and is not one of: a refusal on purpose,
+ * Playwright's own `page.waitForResponse(...)` (a method of the browser API,
+ * not ours), or a dated row of a goal's verdict log (history, like a
+ * changelog).
+ */
+function isLiveRetired(p, line) {
+  if (!RETIRED_RE.test(line) || line.includes(REFUSAL_MARKER)) return false;
+  const rest = line.replace(/\.waitForResponse\(/g, "");
+  if (!RETIRED_RE.test(rest)) return false;
+  if (p.startsWith("goals/") && p.endsWith(".md") && /^\| \d{4}-\d{2}-\d{2} /.test(line)) return false;
+  return true;
+}
+
 /** History may remember a name; it is never live. */
 const isHistory = (p) =>
   p.startsWith("specs/") || p.startsWith(".changeset/") || p.endsWith("CHANGELOG.md") || p.startsWith("docs/internal/");
@@ -93,7 +107,7 @@ const retired = new Map();
 const starts = new Map();
 const unclassified = [];
 for (const [p, text] of contents) {
-  const r = text.split("\n").some((line) => RETIRED_RE.test(line) && !line.includes(REFUSAL_MARKER));
+  const r = text.split("\n").some((line) => isLiveRetired(p, line));
   const s =
     ACTION_RE.test(text) || TOOL_CALL_RE.test(text) || (p.endsWith("/WORKER.md") && WORKER_STARTS_RE.test(text));
   if (!r && !s) continue;
