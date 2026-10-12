@@ -25,7 +25,7 @@ it and where it's checked.
 | ER-8 | Change what a waited-on or dispatched task does | Not doing. The proof is that nothing changed but names |
 | ER-9 | Add waiting on several tasks at once, a row-less question tool for workers, a question kind of task, or channels | Not doing. A question kind of task waits until something needs it |
 | ER-10 | Add a second answer-once fence, or a path for a post that expects an answer that isn't a row, including between two children's merges | D2. A row-less path needs its own fence |
-| ER-11 | Edit the FIX-1816, FIX-1817 or FIX-1820 goal checks beyond names (and the two named shape entries the [anti-game](SPEC.md) map admits) | The kill line. A check that had to change is the finding, not a fix |
+| ER-11 | Edit the FIX-1816, FIX-1817 or FIX-1820 goal checks beyond names | The kill line. A check that had to change is the finding, not a fix |
 | ER-12 | Retire `dispatcher()` or FIX-1312's `session: { from: true }` | They are flow-code transport, not a model tool |
 
 ## How the set is run
