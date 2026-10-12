@@ -186,7 +186,7 @@ Original epic review: [#2795](https://github.com/fixpoint-labs/flow-state-dev/pu
 **How it was checked.** Every public entry point of `contracts`, `core`, `engine` and
 `orchestration` (each `exports` path in its `package.json`) was read with the TypeScript checker
 at the pre-epic baseline `cad4e278` and after every first-parent merge on `main` up to `f1ae3521`
-that touched Layer 1 source, and each merge's added and removed names were diffed. The fence's
+that touched Layer 1 source, and each merge's added and removed names were diffed. The walk compares names, so a member added to a type that already existed (an option, a field) is listed from the merge's diff where it carries one of the changes below; rows that say "options on existing types" are those. The fence's
 own PR list left out three children that changed Layer 1, FIX-1828, FIX-1834 and FIX-1836; this
 walk doesn't depend on that list. `endingOf` and `applyEndingRecorder`, which the fence's grep
 found, are on no entry point, so they aren't public.
@@ -205,7 +205,7 @@ four additions to existing surfaces. The rest D3 already counts; this table name
 | [#2866](https://github.com/fixpoint-labs/flow-state-dev/pull/2866) | FIX-1788's P4 | `core`, `core/types`: `ResourceVisibility`, `ResourceVisibilityRule`, `ResourceVisibilityTarget` | (7) |
 | [#2970](https://github.com/fixpoint-labs/flow-state-dev/pull/2970) | FIX-1834 | `core`: `ConcurrencyPolicyName` gains `hold` and `defer` · `engine`: `ConcurrencyDeferLimitError` | **(8), new** |
 | [#2990](https://github.com/fixpoint-labs/flow-state-dev/pull/2990) | FIX-1836 | `engine`: `DEFER_PATIENCE_MS`, `DeferWaitStep`, `LeaseTurn`, `planDeferWait` | **(8), new** |
-| [#2935](https://github.com/fixpoint-labs/flow-state-dev/pull/2935) | FIX-1794's P2 | `orchestration`, `orchestration/tasks`: `TaskEnding`, `TaskEndingRecorder` | **(9), new** |
+| [#2935](https://github.com/fixpoint-labs/flow-state-dev/pull/2935) | FIX-1794's P2 | `orchestration`, `orchestration/tasks`: `TaskEnding`, `TaskEndingRecorder`; `recordEnding` on `DefineTaskCollectionOptions`, `DefinedTaskCollection` and `ResourceBackedOptions`; `quiet` on `AwaitReviewOptions` | **(9), new** |
 | [#2847](https://github.com/fixpoint-labs/flow-state-dev/pull/2847) | FIX-1789 | `core`: `FlowConfigRefusalError`, `FlowConfigIssue`, `FlowConfigPath` | **Addition, new** |
 | [#2955](https://github.com/fixpoint-labs/flow-state-dev/pull/2955) | FIX-1828 | `core`: `SessionItem` gains `role` | **Addition, new** |
 | [#3050](https://github.com/fixpoint-labs/flow-state-dev/pull/3050) | FIX-1866's P1 | `orchestration`, `orchestration/tasks`: `FailOptions`, with `noRetry` | **Addition, new** |
