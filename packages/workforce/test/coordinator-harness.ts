@@ -185,6 +185,8 @@ export type HostOptions = {
   agent?: CoordinatorFlowOptions["agent"];
   /** How long a round waits for its answers. */
   roundDeadlineMs?: number;
+  /** When set, the evaluator throws and this generator answers best fit's question. */
+  languageRoute?: MockGeneratorInstance;
   /**
    * Whether `helper` reports a cancelled run (`delegatedPostOnFinished` as its
    * request `onFinished`). Off, a cancelled delegate says nothing, as one whose
@@ -230,14 +232,23 @@ export function bootHost(options: HostOptions = {}) {
     allround: allround() as unknown as FlowInstance,
     roster: rosterFlow() as unknown as FlowInstance
   };
-  const route = scriptedRoute();
+  const route =
+    options.languageRoute === undefined
+      ? scriptedRoute()
+      : // The gateway's refusal of a language model, whatever `routeModel` names.
+        mockEvaluationModel({
+          error: new Error("Model is a language model, not a decision model. Use the language generation API instead.")
+        });
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({
       evaluators: { [COORDINATOR_ROUTE]: route },
-      generators: { "coordinator-judgment": judgment }
+      generators: {
+        "coordinator-judgment": judgment,
+        ...(options.languageRoute === undefined ? {} : { "coordinator-route-ask": options.languageRoute })
+      }
     }),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
