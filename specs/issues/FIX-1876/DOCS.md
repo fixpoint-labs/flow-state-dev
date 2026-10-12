@@ -12,7 +12,7 @@ page the sweep lists. Unchanged pages are not copied. Voice to watch: no em-dash
 
 Replace the *Hand-off* row; add *Dispatch a task* and *Wait* after *Dispatcher*:
 
-> | **Dispatch a task** | orchestration | Start a task on another worker now, in a session of its own. How a recorded task starts depends on the board. On a conversation's board, a worker dispatches with `dispatchTask`, and a task recorded without it doesn't start until it is dispatched. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
+> | **Dispatch a task** | orchestration | Start a task on another worker now. How a recorded task starts depends on the board. On a conversation's board, a worker dispatches with `dispatchTask`, and a task recorded without it doesn't start until it is dispatched. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
 > | **Wait** | orchestration | What a caller does on a task it dispatched when its next step needs the result: its turn pauses until the task ends, then carries on with the task's output. A wait has a time limit, and nothing holds a request open while it lasts. A board's `onIdle: "wait"` is a different setting: the board stays alive when it has nothing to do. | Dispatch a task |
 > | **Hand-off** | orchestration | A session that was doing the work passes it to another session, mid-work. Giving another worker new work isn't a hand-off; it's dispatching a task. | Dispatch a task |
 
