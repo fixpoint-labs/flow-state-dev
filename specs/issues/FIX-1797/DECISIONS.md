@@ -190,3 +190,10 @@ anything rests on.
   holds, so it opens nothing (BR-39). The rest of b5 is unchanged: it is graded at the EM's
   workstream session, with each result coming back once and the EM updating the workstream entry.
   FIX-1883, which carries FIX-1877, blocks this closure and is named in QR-1.
+- **Amended after merge (FIX-1888, 2026-10-12)**: b4 no longer needs its two tasks to complete.
+  The first closure run showed why it can't: the scripted run never writes the code word, so the
+  coder's judge refuses every attempt, and a judge refusal is the task's real outcome. b4 tests
+  that two conversations' boards stay apart and run side by side, not coding. A task the judge
+  refuses settles b4; any other error still fails it. Serving the closure without the judge was
+  rejected, because the served install has no switch for it and adding one is product surface for
+  a test.

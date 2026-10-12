@@ -1522,13 +1522,20 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
     replacing each field given;
   - `fire({ id })` returns `{ id }` and deletes the row.
 - **From an app.** `createWorkforceClient`, from `@flow-state-dev/workforce/browser`, takes the
-  transport options `createSessionClient` takes:
+  transport options `createSessionClient` takes: `baseUrl`, `apiPath`, and `fetcher`, a
+  `(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>` used for every request. Wrap
+  `fetch` to add the caller's credential, such as an `Authorization` header, and pass the same
+  `fetcher` to `createClient`. The server decides who the caller is with `resolvePrincipal` on
+  `createFlowState`. See [Authentication](https://flow-state.dev/docs/server/authentication),
+  [Host adapters](https://flow-state.dev/docs/server/host-adapters) for serving it, and
+  [Serving it to your users](https://flow-state.dev/docs/workforce/overview#serving-it-to-your-users).
 
   ```ts
   import { createClient } from "@flow-state-dev/client";
   import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-  const workforce = createWorkforceClient({ userId, baseUrl });
+  // fetcher: wraps fetch to add the caller's credential, as described above
+  const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 
   const roster = await workforce.roster();
   // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
@@ -1537,10 +1544,11 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
 
-  const research = createClient({ flowKind: session.flowKind, userId, baseUrl });
-  const { requestId } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
+  const research = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
+  const { status, request } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
     sessionId: session.id,
   });
+  // status: "in_progress" | "completed" | "failed" | "incomplete"; use request.id to connect to its stream
   ```
 
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
@@ -1613,8 +1621,11 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 - **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
   `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
   user's last post, else makes one evaluator call over each delegate's note or description and
-  the coordinator's own description, reading the post with the conversation's recent lines. A
-  pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
+  the coordinator's own description, reading the post with the conversation's recent lines. When
+  that call fails and `routeModel` is a model string, best fit asks once more as a language model
+  (`coordinator-route-ask`). The pick has no confidence. An id the resolver can only generate
+  with still routes.
+  A pick of the coordinator runs its judgment turn. Best fit can't place a post when the call
   fails, answers with something that isn't a choice, has no one to pick, or picks a delegate
   below `minConfidence:` (or with no confidence, or one outside 0 to 1, while it is set). That post goes to the
   fallback, else the judgment turn. If that turn fails too, nobody takes the post, and the
@@ -1670,6 +1681,8 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `{ refused }`. A session create can't set them: one whose `state` carries `delegates`
   is refused with a 400,
   `Session state field "delegates" is written only by flow "coordinator"; a caller cannot set it.`
+  Every worker flow built on `installation.session()` refuses `delegates`, `fallback`,
+  `taskNotices` and `splitParent` the same way, including a flow that has no such field.
 - **Who can be a delegate.** A worker on the conversation's user's own roster, one of theirs or a
   standard one, whose flow takes a delegated post or a task. A conversation holds at most 25. A
   standard coordinator's defaults can name only standard workers; `createWorkerInstallation`
@@ -1694,7 +1707,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
-  naming only `{ worker }` never returns a delegate's session.
+  naming only `{ worker }` never returns a delegate's session. Only the delivery opens one:
+  `ensureWorkerSession({ worker, filingSessionId })` returns it but never creates it, and a session
+  create whose `state` carries `filingSessionId` is refused with a 400.
 - **The record.** Every routing decision leaves one `coordinator-route` component item:
   `postId`, `round`, `policy`, `by` (`judgment`, `held`, `evaluated`, `fallback`,
   `round-robin`, `everyone` or `unplaced`), `delegates` (each with `worker`, `outcome` of

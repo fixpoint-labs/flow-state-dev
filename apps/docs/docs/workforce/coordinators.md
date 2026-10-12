@@ -85,7 +85,7 @@ flowRegistry.registerMany(hireWorkforce(installation));
 | --- | --- |
 | `installation` | The installation the coordinator and its delegates belong to. Required. |
 | `delegateFlows` | The flows a post can be delivered to. Each must declare the delegated-post entry: the built-in `agent` does, and a flow of your own does once you [add it](#making-your-own-flow-a-delegate). A flow without it throws here. Required. |
-| `routeModel` | The model behind `best-fit`'s evaluator call: a model id your resolver knows, or an evaluation model. One value for the flow, shared by every coordinator on it. Required, even when none of them routes by best fit; then it is never called, so any model id your resolver knows will do. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; the other evaluation models don't. |
+| `routeModel` | The model behind `best-fit`'s call: a model id your resolver knows, or an evaluation model. Best fit asks it as an evaluation model first, and, when that call fails on a model id, once more as a language model, which is how `openai/gpt-5.4-mini` still routes through a gateway that serves it only as a language model. One value for the flow, shared by every coordinator on it. Required, even when none of them routes by best fit; then it is never called. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; a language model and the other evaluation models don't, so under a floor their delegate picks are never used. A pick of the coordinator itself is used at any confidence. |
 | `agent` | What the coordinator's own turn is built with: the options you'd give `defineAgentWorkerFlow`, such as `catalog` and `uses`. A coordinator's `tools:` line is read against this catalog. Left out, the built-in's defaults. |
 | `roundDeadlineMs` | How long a round waits for its answers. Five minutes by default. A value that isn't a positive whole number of milliseconds throws. |
 
@@ -221,7 +221,7 @@ Each action's output is the conversation's list as it stands after the call. `se
 ]
 ```
 
-`filingSessionId` identifies this conversation to its delegates. Each delegate works this conversation's posts in a session of its own, and `workforce.findWorkerSession({ worker, filingSessionId })` returns it. A lookup that names only the worker never does.
+`filingSessionId` identifies this conversation to its delegates. Each delegate works this conversation's posts in a session of its own, and `workforce.findWorkerSession({ worker, filingSessionId })` returns it. A lookup that names only the worker never does. Only the conversation opens a delegate's session: `ensureWorkerSession` with a `filingSessionId` finds it but never creates it, and a session create whose `state` carries `filingSessionId` is refused with a 400.
 
 A refused change writes nothing. Its request fails, and the refusal is in `result.error.message`.
 
@@ -268,7 +268,7 @@ A round closes when every delivery in it has been answered or has failed, or at 
 
 A conversation keeps at most 50 rounds open. A post past that is still delivered, but its round isn't opened: its answers land and go no further, and its routing record carries a `note` saying so.
 
-**What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one evaluator call per round, plus a coordinator turn for each post it picks the coordinator for, and for each it can't place when no fallback takes it.
+**What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one model call per round, or two when the evaluator call fails and it asks again as a language model, plus a coordinator turn for each post it picks the coordinator for, and for each it can't place when no fallback takes it.
 
 ## What it records
 

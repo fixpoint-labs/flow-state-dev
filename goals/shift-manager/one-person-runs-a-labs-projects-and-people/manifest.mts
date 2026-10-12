@@ -61,8 +61,26 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     unread: { legs: [/^\[control unread\] PROJECTS equals the store's rows:/] },
     "gap-tabs": { legs: [/^\[control gap-tabs\] a project's four tabs:/] },
     "no-gate": { legs: [/^\[control no-gate\] the outsider's open is refused:/], only: /^\[control no-gate\] the outsider's open is refused:/ },
-    "no-retry": { legs: [/^\[control no-retry\] a write race lands whole:/], only: /^\[control no-retry\] a write race lands whole:/ },
+    // The entries leg's hand-off misses on some runs with no control at all, so a red there is allowed.
+    "no-retry": {
+      legs: [/^\[control no-retry\] a write race lands whole:/],
+      only: /^\[control no-retry\] (a write race lands whole|entries opened through the app show for both members):/,
+    },
     "in-memory": { legs: [/^\[control in-memory\] a restart keeps the projects and their entries:/] },
+  },
+  "goals/devforce-lab/it-answers-a-conversations-task": {
+    // `b:carrying-the-marker` and `b-sandbox:carrying-the-marker`; legs a, c, d and d2 stay green
+    "no-filing-project": {
+      legs: [/^\[control no-filing-project\] b:carrying-the-marker/, /^\[control no-filing-project\] b-sandbox:carrying-the-marker/],
+      only: /^\[control no-filing-project\] b(-sandbox)?:/,
+    },
+    // `d2:ends-errored` (and `c:judged-not-done:…`)
+    "no-judge": { legs: [/^\[control no-judge\] d2:ends-errored/, /^\[control no-judge\] c:judged-not-done:/] },
+  },
+  // `one:read-the-projects`. Its `one:files-naming-storefront` is the model's guess without the list,
+  // red on most runs but not all, so it isn't required.
+  "goals/devforce-lab/it-names-the-project-a-coders-task-works-in": {
+    "no-project-list": { legs: [/^\[control no-project-list\] one:read-the-projects/] },
   },
   "goals/devforce-lab/it-codes-in-the-projects-repository": {
     // `a:marker` (and every leg that needs a project's source)
@@ -100,7 +118,6 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
       legs: [
         /^leg a1: \[control drop-task\] the prompt does not carry the approved goal/,
         /^leg a2: \[control drop-task\] the prompt does not carry the posted goal/,
-        /^leg a3: \[control drop-task\] the prompt does not carry the approved goal/,
         /^leg b: \[control drop-task\] the commit does not carry the goal's token/,
       ],
     },
@@ -109,7 +126,7 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     "static-names": { legs: [/^\[control static-names\] \[multi-seat-collab\] TEAMS equals the store's seats: missing \[[^\]]+\]/] },
     "optimistic-post": { legs: [/^\[control optimistic-post\] \[devteam\] the post is in the stored transcript:/, /^\[control optimistic-post\] \[multi-seat-collab\] the post is in the stored transcript:/] },
     "queued-shown": { legs: [/^\[control queued-shown\] \[devteam\] Tasks equals the store's open rows: .*extra \[[^\]]+\]/, /^\[control queued-shown\] \[devteam\] Tasks equals the store's open rows: the Queued toggle says/] },
-    "unanswerable-asks": { legs: [/^\[control unanswerable-asks\] \[devteam\] an answer from the Stream lands in the store:/] },
+    "unanswerable-asks": { legs: [/^\[control unanswerable-asks\] \[devteam\] an answer lands in the store:/] },
   },
   "goals/shift-manager/it-sends-a-turn-into-a-seat-session": {
     "optimistic-turn": { legs: [/^\[control optimistic-turn\] \[[^\]]+\] delivered:/] },

@@ -42,6 +42,7 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
+import { SESSION_BOARD_SERVER_OWNED } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
@@ -250,13 +251,17 @@ export interface WorkerInstallation extends WorkerGrants {
   readonly createCheck: SessionCreateCheck;
   /**
    * A worker flow's `session` declaration: {@link sessionStateShape} plus
-   * `extraShape` as its `stateSchema`, and {@link createCheck}.
+   * `extraShape` as its `stateSchema`, {@link createCheck}, and as
+   * `serverOwned` the delegate and board fields only the server writes
+   * ({@link SESSION_BOARD_SERVER_OWNED}). A flow without those fields still refuses a
+   * create that seeds one, by name, rather than dropping it.
    */
   session<TShape extends z.ZodRawShape = Record<never, never>>(
     extraShape?: TShape
   ): {
     stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
+    serverOwned: readonly string[];
   };
   /**
    * The worker this turn runs as, loaded now: the session's worker read from
@@ -584,6 +589,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         };
       }
     }
+    // A conversation's delegate session is opened only by the coordinator's
+    // delivery, a dispatch into a child of the conversation. A caller naming
+    // a conversation would make a decoy that lookups by it can return.
+    if (input.state[FILING_SESSION_STATE_KEY] !== undefined && input.via !== "dispatch") {
+      return {
+        ok: false,
+        status: 400,
+        message: `"${FILING_SESSION_STATE_KEY}" is set only when a conversation opens the session; a caller cannot set it.`
+      };
+    }
 
     // A derived id names its owner. Recomputed for this caller, so a create at
     // another user's derived id is refused before that user's first ensure.
@@ -860,7 +875,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     session(extraShape) {
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
-        createCheck
+        createCheck,
+        serverOwned: SESSION_BOARD_SERVER_OWNED
       };
     },
     resolveWorker,

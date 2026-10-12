@@ -43,7 +43,7 @@ export function extraFlow(flow: string): Patch {
         anchor,
         [
           `  // extra-flow: one more worker flow, ${k}, on this installation.`,
-          `  kinds[${k}] = defineFlow({`,
+          `  builtFlows[${k}] = defineFlow({`,
           `    kind: ${k},`,
           `    configSchema: scratchWorkerConfigSchema(),`,
           `    session: installation.session(),`,

@@ -142,6 +142,68 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
     }
   });
 
+  it("can't be seeded with a conversation: a create naming a filingSessionId is refused with a 400, on every worker flow", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const filing = await host.filingOf("alice", conv);
+      const decoys = [
+        { flow: "tasker", workerId: "eng.tasker" },
+        { flow: "agent", workerId: "otto" },
+        { flow: "coordinator", workerId: "lead" }
+      ];
+      for (const { flow, workerId } of decoys) {
+        const created = await host.create("alice", flow, { state: { workerId, filingSessionId: filing } });
+        expect(created.status, `${flow}: ${JSON.stringify(created.body)}`).toBe(400);
+        expect(JSON.stringify(created.body)).toContain("filingSessionId");
+      }
+      // Nothing was written, and the client won't start one either, so no lookup finds a decoy.
+      const app = host.client("alice");
+      await expect(app.ensureWorkerSession({ worker: "eng.tasker", filingSessionId: filing })).rejects.toThrow(
+        /delegate session is opened when the conversation hands it a post or a task/
+      );
+      expect(await app.findWorkerSession({ worker: "eng.tasker", filingSessionId: filing })).toBeUndefined();
+      const sessions = await (await host.state.getRuntime()).stores.session.list({ flowKind: "tasker" });
+      expect(sessions).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("never hands out a top-level session naming a conversation, as one a caller made before such creates were refused", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const filing = await host.filingOf("alice", conv);
+      const created = await host.create("alice", "tasker", { state: { workerId: "eng.tasker" } });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const id = (created.body as { session: { id: string } }).session.id;
+      // Written straight to the store: the record an earlier create could leave.
+      const runtime = await host.state.getRuntime();
+      const record = (await runtime.stores.session.get(id))!;
+      await runtime.stores.session.set(id, { ...record, state: { ...(record.state as object), filingSessionId: filing } } as never, "any" as never);
+      expect(await host.client("alice").findWorkerSession({ worker: "eng.tasker", filingSessionId: filing })).toBeUndefined();
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("refuses the delegate and board fields by name on a worker flow that has none of them", async () => {
+    const host = bootBoardHost();
+    try {
+      // `tasker` is built on `installation.session()` alone: without the refusal, its schema drops these and the create succeeds.
+      for (const field of ["delegates", "fallback", "taskNotices", "splitParent"]) {
+        const created = await host.create("alice", "tasker", { state: { workerId: "eng.tasker", [field]: [] } });
+        expect(created.status, `${field}: ${JSON.stringify(created.body)}`).toBe(400);
+        expect(created.body).toMatchObject({ field });
+      }
+      const plain = await host.create("alice", "tasker", { state: { workerId: "eng.tasker" } });
+      expect(plain.status, JSON.stringify(plain.body)).toBe(201);
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("is never opened by ensureWorkerSession: a task's session comes from its hand-over (BR-20)", async () => {
     const host = bootBoardHost();
     try {

@@ -1,0 +1,116 @@
+<svg viewBox="0 0 940 448" role="img" aria-label="D2: what a coordinator&#39;s post becomes, three options side by side. Chosen: a post that needs an answer is a task, one per delegate, and a tell that expects no reply is a plain message. Instead of: a task for every post, tells included, or today&#39;s post fenced by the delivery ledger. It comes down to the first row, what is tracked to an ending: the chosen split tracks exactly what expects an answer; a task for every post gives a tell a deadline and a missed answer it never needed; today&#39;s ledger keeps a second answer-once fence. Second row, the price: the chosen split files one row per delegate for each post that needs an answer, and FIX-1872 must first sort today&#39;s posts into tells and answers; a task for every post files a row for every post; the ledger files none. Third row, a tie: each delegate&#39;s own line, rounds and routing hold in all three. Locks in the delivery ledger removed, a tell as a dispatcher() message with no row, and no model-facing tell tool. Flips if a post&#39;s own lines, rounds or routing can&#39;t run as rows."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="448"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When a coordinator passes a message to its delegates, is it a task or a message?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="224" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="224" y="112">Answers are tasks, tells not</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="464" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="464" y="112">A task for every post</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="704" y="93">INSTEAD OF · TODAY</text>
+    <text class="t-h c-lost" x="704" y="112">A post with its ledger</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT IS TRACKED</text>
+    <text class="t-lbl" x="32" y="169">TO AN ENDING</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="224" y="162">+</text>
+    <text class="t-b" x="242" y="161">What expects an answer</text>
+    <text class="t-s" x="242" y="179">by the claim ticket, alone</text>
+    <text class="mark minus" x="464" y="162">−</text>
+    <text class="t-b" x="482" y="161">Tells too</text>
+    <text class="t-s" x="482" y="179">a deadline nobody needed</text>
+    <text class="mark minus" x="704" y="162">−</text>
+    <text class="t-b" x="722" y="161">By a second fence</text>
+    <text class="t-s" x="722" y="179">two disagree at the edges</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">THE PRICE</text>
+    <text class="mark minus" x="224" y="226">−</text>
+    <text class="t-b" x="242" y="225">A row per delegate</text>
+    <text class="t-s" x="242" y="243">per answer; FIX-1872 sorts</text>
+    <text class="t-s" x="242" y="258">today's posts first</text>
+    <text class="mark minus" x="464" y="226">−</text>
+    <text class="t-b" x="482" y="225">A row per delegate</text>
+    <text class="t-s" x="482" y="243">for every post, tells too</text>
+    <text class="mark plus" x="704" y="226">+</text>
+    <text class="t-b" x="722" y="225">No rows</text>
+    <text class="t-s" x="722" y="243">a ledger record instead</text>
+    <line class="row" x1="16" y1="272" x2="924" y2="272"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="300">WHAT THE</text>
+    <text class="t-lbl" x="32" y="313">PERSON SEES</text>
+    <text class="mark tie" x="224" y="302">=</text>
+    <text class="t-b" x="242" y="301">Holds</text>
+    <text class="t-s" x="242" y="319">own lines, rounds, routing</text>
+    <text class="mark tie" x="464" y="302">=</text>
+    <text class="t-b" x="482" y="301">Holds</text>
+    <text class="t-s" x="482" y="319">own lines, rounds, routing</text>
+    <text class="mark tie" x="704" y="302">=</text>
+    <text class="t-b" x="722" y="301">Holds</text>
+    <text class="t-s" x="722" y="319">as it ships today</text>
+    <line class="row" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="350" width="446" height="82" rx="5"/>
+    <text class="t-lbl" x="32" y="371">LOCKS IN</text>
+    <text class="t-b" x="32" y="391">The delivery ledger is removed</text>
+    <text class="t-s" x="32" y="409">a tell is a dispatcher() message, no row</text>
+    <text class="t-s" x="32" y="424">no model-facing tell tool</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="350" width="446" height="82" rx="5"/>
+    <text class="t-lbl" x="494" y="371">FLIPS IF</text>
+    <text class="t-b" x="494" y="391">A post's own lines can't run as rows</text>
+    <text class="t-s" x="494" y="409">then D2 narrows to task endings</text>
+    <text class="t-s" x="494" y="424">raised to this epic, not fixed locally</text>
+  </g>
+</svg>

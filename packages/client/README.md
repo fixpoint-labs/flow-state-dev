@@ -27,8 +27,9 @@ const client = createClient({ flowKind: "my-app", userId: "user_1" });
 // member's own id). Sessions it starts are recorded as that instance's, and
 // returned records carry `flowId`, the owner a retry or continuation re-enters.
 
-// Send an action and get back a request ID
-const { requestId } = await client.sendAction("chat", { message: "Hello" });
+// Send an action and get back the request it started
+const { request } = await client.sendAction("chat", { message: "Hello" });
+const requestId = request.id;
 
 // Or use a typed client for compile-time action safety
 const typed = createTypedClient({ flow: myFlowDefinition, userId: "user_1" });

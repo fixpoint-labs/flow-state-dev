@@ -28,6 +28,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages } from "../../lib/shift-manager.mts";
 import { noDelegateCheck, noFollowUp, noRosterCheck, orgScopedWorkers, probeOrgScopedWorkers, unpartitioned, type ModulePatch, profileOf, scratchProfile, secondOrg, SECOND_ORG } from "./controls/patches.mts";
 import { checkoutFor, Install, storesDir, type Checkout } from "./install.mts";
+import { baselineLegs } from "./baseline.mts";
 import { legC, legsAB, type LegControl, type LegOptions } from "./legs.mts";
 import { milestone, type MilestoneControl } from "./milestone.mts";
 import { loadShipped, type Person } from "./people.mts";
@@ -78,7 +79,7 @@ await runGoal(async (failures) => {
   let chromium = "not launched";
   let model = "the install's default";
   try {
-    const shipped = await loadShipped(checkout.root);
+    const shipped = await loadShipped(checkout.root, { tolerateMissing: ONLY.includes("baseline") });
     const host = (await import(pathToFileURL(join(profileOf(checkout.root), "host.mts")).href)) as { LAB_USERS?: Record<string, { userId: string; bearer: string }> };
     const users = host.LAB_USERS;
     if (users?.owner === undefined || users.member === undefined) throw new Error("setup: the DevTeam host exports no LAB_USERS owner and member");
@@ -210,12 +211,23 @@ await runGoal(async (failures) => {
       if (ONLY.includes("org-scoped-workers-c")) await control("org-scoped-workers", () => orgScopedWorkers(checkout.root), [legC], "c2", ["c2"]);
       if (ONLY.includes("baseline")) {
         say(`the pre-epic baseline on ${checkout.describe}`);
-        const run = await runLegs("baseline", [legsAB, legC], null, undefined, ["a1", "a2", "b1", "b2", "c2"]);
+        const record = new RunRecord("baseline", SHOTS);
+        const store = join(storesDir(SCRATCH, "baseline"), "devteam.sqlite");
+        const install = new Install(browser, shipped, checkout, { pages, scratch: SCRATCH, store, record });
+        const run: StepsRun = { label: "baseline", record, patches: [], stores: [{ file: store.slice(SCRATCH.length + 1), steps: "a1, a2, b1, b2, c2" }], ms: 0 };
+        const t = Date.now();
+        try {
+          await baselineLegs({ install, browser, record, people, config: shippedConfig, say });
+        } catch (error) {
+          record.fail("reach", (error as Error).stack?.slice(0, 1500) ?? String(error));
+          await install.stop().catch(() => undefined);
+        }
+        run.ms = Date.now() - t;
+        runs.push(run);
         const want = { a: ["a1", "a2"], b: ["b1", "b2"], c: ["c2"] };
         for (const [leg, steps] of Object.entries(want)) {
-          const failed = steps.filter((s) => run.record.verdict(s) === "FAIL");
-          const ok = failed.length > 0;
-          const line = `leg ${leg}: ${steps.map((s) => `${s} ${run.record.verdict(s) ?? "missing"}`).join(", ")}${ok ? "" : "; none failed on its merits"}`;
+          const ok = steps.some((s) => record.verdict(s) === "FAIL") && (leg !== "c" || record.verdict("c-setup") !== "FAIL");
+          const line = `leg ${leg}: ${steps.map((s) => `${s} ${record.verdict(s) ?? "missing"}: ${(record.steps.get(s)?.notes ?? []).join(" / ").slice(0, 300)}`).join("; ")}${leg === "c" && record.verdict("c-setup") === "FAIL" ? ` (failed at setup: ${(record.steps.get("c-setup")?.notes ?? []).join(" / ")})` : ""}`;
           controls.push({ control: `baseline leg ${leg}`, ok, line });
           if (!ok) failures.push(`baseline ${line}`);
         }

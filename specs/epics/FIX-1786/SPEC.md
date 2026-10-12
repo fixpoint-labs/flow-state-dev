@@ -69,17 +69,17 @@ makes leg c's PASS mean something.
 | **Anti-game** | No asserting on a child's own tests. No worker, project or delegate seeded by a fixture: the users make each one through the app. No run with one user, and no request of Bob's sent under Alice's identity |
 | **Control that must fail** | The worker collection at org scope, which puts a worker itself where every member reads it: leg c must FAIL. Today's `main`: all three legs FAIL |
 | **Milestone** | Leg c's worker steps and the control run early, on the commit FIX-1788 merges on, so the privacy fix is proved before the coordinator builds on it rather than last ([ER-30](BUSINESS-RULES.md#the-closure)) |
-| **Kill line** | Confirmed by the product owner on 2026-10-07. If the [FIX-1805](https://linear.app/fixpoint-labs/issue/FIX-1805) milestone shows that a worker's own state can't be kept per user on shared singleton flows without a Layer 1 change beyond [D3](DECISIONS.md#d3)'s seven, finishing the epic as designed is the wrong call. Go back to the objective gate rather than add the change. [ER-22](BUSINESS-RULES.md#what-no-child-may-do) sends any Layer 1 change outside D3 to this epic; the kill line is the case where that change is needed to deliver the outcome itself |
+| **Kill line** | Confirmed by the product owner on 2026-10-07. If the [FIX-1805](https://linear.app/fixpoint-labs/issue/FIX-1805) milestone shows that a worker's own state can't be kept per user on shared singleton flows without a Layer 1 change beyond [D3](DECISIONS.md#d3)'s nine, finishing the epic as designed is the wrong call. Go back to the objective gate rather than add the change. [ER-22](BUSINESS-RULES.md#what-no-child-may-do) sends any Layer 1 change outside D3 to this epic; the kill line is the case where that change is needed to deliver the outcome itself |
 
 ## What's in the box
 
 ![What's in the box: workers, coordinators and projects, each private to one user; composed from what ships; the app's own standard install and users; below a fence, what is not built, from channels to a session shared between users](figures/end-state.svg)
 
-Everything in the box composes what ships, plus seven Layer 1 mechanism changes, two public
-renames and two public removals ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
+Everything in the box composes what ships, plus nine Layer 1 mechanism changes, two public
+renames, two public removals and four additions to existing surfaces ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
 call, built by FIX-1794 (amended) ([D8](DECISIONS.md#d8)); the sixth is the skills library taking
 its key per run, built by FIX-1788; the seventh is a per-turn rule in core for which of a shared copy's
-resources the model reaches, so a worker's document grants hold through every tool, built by FIX-1788. The removals are discovery's `mailboxes` domain, FIX-1792's, and skill sub-agents, FIX-1814's ([D10](DECISIONS.md#d10)). The fence is the PRD's out-of-scope list and the locks the Architect
+resources the model reaches, so a worker's document grants hold through every tool, built by FIX-1788. The eighth is a concurrency policy that holds a conversation, so a task's notice waits for the reply it is in, built by FIX-1834 and FIX-1836; the ninth is a task ledger's ending recorder, so what a task's ending owes is written with it, built by FIX-1794. The removals are discovery's `mailboxes` domain, FIX-1792's, and skill sub-agents, FIX-1814's ([D10](DECISIONS.md#d10)). The fence is the PRD's out-of-scope list and the locks the Architect
 carried: what would turn a privacy refactor into a collaboration product. The library in the
 box builds after the MVP.
 

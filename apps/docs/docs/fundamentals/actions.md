@@ -81,7 +81,7 @@ Client                        Server
   |-- POST /actions/chat ------>|
   |   { input, userId }        |-- validate input
   |                             |-- resolve/create session
-  |<-- 202 { requestId } ------|
+  |<-- 202 { request: { id } }-|
   |                             |-- execute block (async)
   |-- GET /requests/:id/stream->|
   |<-- SSE events --------------|  item.added, content.delta, ...

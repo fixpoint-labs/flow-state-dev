@@ -224,6 +224,23 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(onAgent.status).toBe(400);
   });
 
+  it("refuses a coder session seeded with server-only fields, naming the field, as the coordinator and the EM do", async () => {
+    const lab = await open();
+    // The coder's session has no delegate or board fields: without the refusal, the create answers 201 and drops them.
+    for (const field of ["delegates", "fallback", "taskNotices", "splitParent"]) {
+      const created = await lab.door("POST", `coder/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: "eng.coder", [field]: [] } } });
+      expect(created.status, `${field}: ${JSON.stringify(created.body)}`).toBe(400);
+      expect(created.body).toMatchObject({ field });
+    }
+    const seeded = await lab.door("POST", `coder/sessions`, {
+      body: { userId: LAB_USER_ID, state: { workerId: "eng.coder", filingSessionId: "someone-else~1" } },
+    });
+    expect(seeded.status).toBe(400);
+    expect(JSON.stringify(seeded.body)).toContain("filingSessionId");
+    const plain = await lab.door("POST", `coder/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: "eng.coder" } } });
+    expect(plain.status).toBe(201);
+  });
+
   it("hires a worker, adds it, and hands it the post, whose answer lands under its name (BR-34's mechanism, BR-20)", async () => {
     const lab = await open();
     const id = await conversation(lab);

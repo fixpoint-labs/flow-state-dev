@@ -5,6 +5,11 @@
  * `userMessage` and takes `{ message }`. A fixture whose point is its board or
  * its runs, not conversation, answers a line by saying it heard it, so a test
  * driving its composer sees the line read and answered.
+ *
+ * It lives in the run-lab's folder because that Lab is also the held-out Lab
+ * `goals/shift-manager/it-runs-from-an-install` copies into an empty project,
+ * so the Lab may import nothing outside its folder. Other fixtures import it
+ * from here.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";

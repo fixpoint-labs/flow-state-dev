@@ -43,7 +43,13 @@ function scripted(call: { toolName: string; args: Record<string, unknown> }): Mo
       return { toolCalls: [{ toolCallId: "t1", ...call }], finishReason: "tool-calls" };
     },
   };
-  return Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
+  // Best fit's question goes unanswered (the evaluator, too, has no model here),
+  // so the post reaches the chief of staff's own turn, which makes the call.
+  const resolve = (_id: string, blockName?: string): GeneratorModel => {
+    if (blockName === "coordinator-route-ask") throw new Error("no route model in this test");
+    return model;
+  };
+  return Object.assign(resolve, { resolveId: (id: string) => id }) as unknown as ModelResolver;
 }
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
