@@ -25,7 +25,7 @@ ER-5 to ER-7 to the same profile.
 | BR-6 | `DEVFORCE_LAB_HARNESS` is unset or empty, and Claude Code reports an account | The coder is Claude Code. The start output says so in one line | Goal leg b · CI with a scripted probe |
 | BR-7 | It is unset or empty, and Claude Code reports no account | The Lab exits non-zero before it listens. The message says to sign in to Claude Code or set `ANTHROPIC_API_KEY`, or to set `DEVFORCE_LAB_HARNESS=stub` for the scripted coder (ER-2, D1) | Goal leg c, and its control |
 | BR-8 | The Agent SDK can't be loaded | Refused the same way, before it listens, saying the SDK is missing | CI with a failing loader |
-| BR-9 | It is `stub` | The scripted coder, with no credential check. The start output says the coder is the script | Goal leg d · CI |
+| BR-9 | It is `stub` | The scripted coder, with no credential check. The start output says the coder is the script | CI (V2) |
 | BR-10 | It is `claude-code` | The same as unset: Claude Code, with the check | CI |
 | BR-11 | It names anything else | Refused at start, naming the two choices, as today | Existing CI |
 | BR-12 | Any start, any choice | A run never uses the script unless `stub` was asked for. Nothing falls back at start or at run time | Goal control `silent-stub` · CI |
@@ -48,7 +48,7 @@ the provider's error, as today. Nothing retries, and nothing degrades to the scr
 
 ## Acceptance criteria this issue owns
 
-[The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to d pass on one commit, after
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to c pass on one commit, after
 `GOAL_CONTROL=silent-stub` failed leg c and `GOAL_CONTROL=no-checkout` failed leg b. DevTeam's
 goal checks still pass. The [DOCS.md](DOCS.md) operations are published, with the overview's
 stale project list fixed. The epic's closure ([ER-20](../../epics/FIX-1903/BUSINESS-RULES.md#the-closure))

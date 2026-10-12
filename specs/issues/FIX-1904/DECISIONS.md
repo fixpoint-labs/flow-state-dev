@@ -50,8 +50,8 @@ case emitted a message, so no turn started (the fake key would have failed one).
 | A home signed in to Claude Code | **Not run**: this machine has no sign-in | — |
 
 The premise holds, with one correction: no account reads as *no source field*, not
-`apiKeySource: "none"`. The signed-in row is S1's first step at implement time; if it names no
-source, stop and amend this card on a new spec PR before S1 is built.
+`apiKeySource: "none"`. The signed-in row, with a run on the same environment, is S1's first step
+([PLAN](PLAN.md#checks) V1); if it fails, stop and amend this card on a new spec PR before S1 is built.
 
 <a name="d2"></a>
 ## D2 · The profile opens clean: two projects, no demo ask, no workstreams, its own store

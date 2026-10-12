@@ -38,13 +38,15 @@ flowchart LR
 
 The check reads what a person reads: the project list through the Lab's routes, `git worktree list`
 in the checkout, and the start output. Under the control the Lab starts on the script silently.
+Leg a stays a leg: it is the open leg b needs anyway, spends no model, and is the only leg that
+runs the script with no flags (CI loads the profile file directly).
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/it-opens-on-fsd-and-shift-manager/` · real model (the chief of staff and Claude Code) · run by the implementer at completion, on Linux · verdict in the implementation PR |
-| **Signal** | a: the owner's projects are exactly `fsd` and `shift-manager`, shared, naming this repository's remote, briefs naming their focus. b: both rows settle `completed`; `git worktree list` in the checkout names both places; each branch descends from `main` and commits the file the item asked for, and no `SCRIPTED-RUN.md`. c: exit before listening; output names `ANTHROPIC_API_KEY` and `DEVFORCE_LAB_HARNESS=stub`. d: with `stub` and no credential it listens and names the script |
+| **Signal** | a: the owner's projects are exactly `fsd` and `shift-manager`, shared, naming this repository's remote, briefs naming their focus. b: both rows settle `completed`; `git worktree list` in the checkout names both places; each branch descends from `main` and commits the file the item asked for, and no `SCRIPTED-RUN.md`. c: exit before listening; output names `ANTHROPIC_API_KEY` and `DEVFORCE_LAB_HARNESS=stub`. `stub` with no credential is CI's (BR-9) |
 | **Input** | A fresh store; a stamp picked at run time in each item's text. The checkout on a branch other than `main`, so b can tell `main` from HEAD |
-| **Anti-game** | No assertion on the profile file or a mocked harness. The check sets only the store location (a temp file), and in c and d takes credentials away |
+| **Anti-game** | No assertion on the profile file or a mocked harness. The check sets only the store location (a temp file), and in c takes credentials away |
 | **Control that must fail** | `GOAL_CONTROL=silent-stub`: leg c must FAIL on *exit before listening*. `GOAL_CONTROL=no-checkout`: leg b must FAIL on *`git worktree list` names both places*, with the run refused by name and nothing cloned. Today's `main`: leg a must FAIL on *exactly `fsd` and `shift-manager`* |
 
 ## What changes

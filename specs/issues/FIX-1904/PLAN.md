@@ -28,9 +28,9 @@ Named from FIX-1906's design brief and [epic D3](../../epics/FIX-1903/DECISIONS.
 | S2 | `shift-manager` · `teams/devteam/host.mts` · the lab's workspace options | `LabWorkspaceHost` gains the checkout mapping as one optional field. `openLab` passes it to `projectWorkspace()` and the checkout path to `localRepositories`, on **both** `labWorkspaceHost` and `answerWorkspaceHost`. Absent means today, so DevTeam is unchanged | BR-13 to BR-15 · ER-10 |
 | S3 | `shift-manager` · new `teams/devteam/fsd.fsdev.config.mts` | The `fsd` profile: the same tree through `openLab`; SQLite at `FSD_STORE` or `.fsdev/fsd.sqlite`; the two projects with their briefs and members as DevTeam sets them; `inventory` and `devtool` on; no `ask`, no `workstreams` (D2); `remotes: { allow: [] }` (D3); the S2 mapping with the checkout worked out from the file's own location; the S1 harness with default `claude-code` | BR-1 to BR-5 · BR-16 |
 | S4 | `shift-manager` · `scripts/checkout.mts` | The default `--config` becomes S3's file. Header updated | BR-1 · BR-4 |
-| S5 | `shift-manager` · `package.json` | `@anthropic-ai/claude-agent-sdk` as a devDependency, if S1's probe can't reach it through `claude-code`'s resolver under pnpm's strict layout. Check before adding | BR-8 |
+| S5 | `shift-manager` · `package.json` | `@anthropic-ai/claude-agent-sdk` as a devDependency. Expected: it is only an optional peer of `claude-code`, so pnpm's strict layout won't resolve it from `shift-manager` without it | BR-8 |
 | S6 | `shift-manager` · tests | The S3 config under `goal-labs.test.ts` beside DevTeam, run with `DEVFORCE_LAB_HARNESS=stub`; S1's cases with a scripted probe | BR-2 to BR-12 |
-| S7 | `goals/shift-manager/it-opens-on-fsd-and-shift-manager/` | `goal.md` from SPEC's goal; `run.mts` with legs a to d and the controls `silent-stub` and `no-checkout`, read by one `GOAL_CONTROL` interpreter in the goal folder. The shipped `fsd.fsdev.config.mts` carries no control branch: `no-checkout` is a `run.mts` override, and only `silent-stub` needs a seam in S1 | The goal |
+| S7 | `goals/shift-manager/it-opens-on-fsd-and-shift-manager/` | `goal.md` from SPEC's goal; `run.mts` with legs a to c and the controls `silent-stub` and `no-checkout`, read by one `GOAL_CONTROL` interpreter in the goal folder. The shipped `fsd.fsdev.config.mts` carries no control branch: `no-checkout` is a `run.mts` override, and only `silent-stub` needs a seam in S1 | The goal |
 | S8 | Docs | Publish [DOCS.md](DOCS.md): `apps/docs/docs/shift-manager/overview.md`, `packages/shift-manager/README.md`, `teams/devteam/README.md`. A changeset for `@flow-state-dev/claude-code` if this PR builds the probe (none if FIX-1915 did); nothing else published changes but the README | ER-21 |
 
 Removed: nothing. DevTeam's config and files stay as they are.
@@ -56,12 +56,12 @@ V1's open row (a signed-in home) runs first: if it fails, D1 is amended before S
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | spec phase; one row at S1 | Run on this spec ([D1](DECISIONS.md#d1)): a source for `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`, none for an empty home, no message emitted, under 0.8 s. Left: a signed-in Linux home names a source. If not, stop and amend D1 |
-| V2 | S1 | BR-6 to BR-12 with a scripted probe. BR-12's red state: a probe that returns "none" never yields the script |
+| V1 | spec phase; one row at S1 | Run on this spec ([D1](DECISIONS.md#d1)): a source for `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`, none for an empty home, no message emitted, under 0.8 s. Left, S1's first step: with only a signed-in `HOME` and the run's `CLAUDE_CODE_PASS` environment, the probe says `account` and a Claude Code run on that environment succeeds. If not, stop and amend D1 |
+| V2 | S1 | BR-6 to BR-12 with a scripted probe, BR-9 (`stub`, no credential, listens, names the script) among them. BR-12's red state: a probe that returns "none" never yields the script |
 | V3 | S2 | DevTeam's hosts are built exactly as before with the field absent; with it present, both hosts get the mapping. Red state: drop it from `answerWorkspaceHost`, and a conversation task's run is refused |
 | V4 | S3, S6 | BR-1 to BR-3 and BR-5 on a temp store, script coder |
 | V5 | S2, S4 | Every model-free goal check that imports DevTeam's `host.mts` or serves its config (`rg -l "teams/devteam" goals`, about twenty, among them `goals/devforce-lab/*` and `goals/shift-manager/it-groups-workstreams-under-their-projects`) passes unchanged. The model-backed ones are rerun where a key is at hand, and the rest named in the PR (BR-4, ER-10) |
-| VG | S7 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to d PASS, after `GOAL_CONTROL=silent-stub` FAILED leg c and `GOAL_CONTROL=no-checkout` FAILED leg b, and today's `main` FAILED leg a. The implementation PR shows the three FAILs before the PASS |
+| VG | S7 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to c PASS, after `GOAL_CONTROL=silent-stub` FAILED leg c and `GOAL_CONTROL=no-checkout` FAILED leg b, and today's `main` FAILED leg a. The implementation PR shows the three FAILs before the PASS |
 | V6 | S8 | `rg -n "seat"` over the changed prose prints nothing (ER-16); `rg` for a machine path in the S3 file prints nothing (BR-16) |
 
 Second path (BP-035): a second open on a kept store (BR-3); a conversation task, not only a board row (V3); the checkout on a branch other than `main` (VG input).
@@ -72,7 +72,7 @@ Second path (BP-035): a second open on a kept store (BR-3); a conversation task,
 |---|---|---|
 | Profile | `fsd`, at `teams/devteam/fsd.fsdev.config.mts` | Docs and the default point at it |
 | Project ids · titles | `fsd` · FSD, `shift-manager` · Shift Manager | Rows a person sees; FIX-1905 adds Linear to them; the mapping names them |
-| Repository | `https://github.com/fixpoint-labs/flow-state-dev.git` | The row's remote, and the mapping's `remote`, must match exactly |
+| Repository | `https://github.com/fixpoint-labs/flow-state-dev.git`, one `const` in the S3 file | It feeds both the rows' `repository` and the mapping's `remote`; a drift is a silent miss and a refusal by name (BR-14) |
 | Store | `packages/shift-manager/.fsdev/fsd.sqlite`, or `FSD_STORE` | Docs tell a person to delete it for a fresh start |
 | Coder variable | `DEVFORCE_LAB_HARNESS` with `stub` and `claude-code` | Existing; the refusal names it |
 | Goal check | `goals/shift-manager/it-opens-on-fsd-and-shift-manager/` | Cited by the epic's closure |

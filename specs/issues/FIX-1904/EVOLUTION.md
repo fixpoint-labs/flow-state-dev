@@ -12,4 +12,7 @@ profile and the no-silent-fallback rule. This page adds only what this issue's o
 | A served Lab's coder is the script unless `DEVFORCE_LAB_HARNESS=claude-code`; `packages/shift-manager/teams/devteam/harness.mts`, `selectHarness` | **Amended**: the default is per profile; the refusal of an unknown name and the no-fallback rule are retained | Epic Q1, accepted at merge | PLAN S1, D1 | DevTeam's default stays `stub` |
 | A served Lab's workspace host reaches remotes only, with no local checkout; `host.mts`, `labWorkspaceHost` and `answerWorkspaceHost` | **Amended**: an optional checkout mapping, absent by default | Epic D3, with the mapping as FIX-1906's `projectWorkspace()` option | PLAN S2 | Absent means today's hosts |
 
+Known debt, not changed here: `host.mts` and `harness.mts` under `teams/devteam/` now serve two
+profiles, so shared plumbing lives under a DevTeam name. Move it when a third profile exists.
+
 Re-check these against current code before implementing; FIX-1906 is not merged when this is written.
