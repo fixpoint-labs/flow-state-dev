@@ -384,7 +384,10 @@ export function part4(base: string, report: Report): void {
   const reads = stripComments(readFileSync(join(src, "lib", "reads.ts"), "utf8"));
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
-  if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*kind\b/.test(args)) || !/\bconst kind = PROJECT_READER_FLOW;/.test(reads)) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kind");
+  // The reader kind's local name is read off the file, so renaming it doesn't fail the check.
+  const readerName = /\bconst (\w+) = PROJECT_READER_FLOW;/.exec(reads)?.[1];
+  const onReader = (args: string) => readerName !== undefined && new RegExp(`\\bflowKind:\\s*${readerName}\\b`).test(args);
+  if (createCount !== creates.length || creates.some((args) => !onReader(args))) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than its reader kind");
   // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
   // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
   const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));

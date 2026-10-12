@@ -73,7 +73,28 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { hearingDoor } from "../hearing-door.mts";
+
+// The door every worker flow takes a user's line through. It lives here, not
+// in the fixtures' shared `hearing-door.mts`, because this Lab is also the
+// held-out Lab `goals/shift-manager/it-runs-from-an-install` copies into an
+// empty project: it may import nothing outside its own folder.
+const hearingDoorInput = z.object({ message: z.string() });
+const hearingDoor = {
+  message: {
+    block: handler({
+      name: "fixture-hear",
+      inputSchema: hearingDoorInput,
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+    inputSchema: hearingDoorInput,
+    userMessage: (input: { message: string }) => input.message,
+    description: "A user's line into this worker's session.",
+  },
+};
 
 /** The tree this Lab reads. */
 const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
