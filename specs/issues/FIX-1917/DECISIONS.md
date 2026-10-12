@@ -4,9 +4,13 @@
 
 What was chosen, what lost, and what each locks in. The epic decided the route (every harness
 through the shared contract, plan sync one-way and read-only, one shape in core:
-[FIX-1907 D2, D3](../../epics/FIX-1907/DECISIONS.md#d2)). FIX-1915 decided the shared parts: a
-directory per session, a refused continuation shown and never replaced, the plan shape public in
-core. This spec consumes all of it. The two calls left are about Cursor's plan.
+[FIX-1907 D2, D3](../../epics/FIX-1907/DECISIONS.md#d2)). FIX-1915 decided the shared parts: each
+session's own git worktree and branch of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names
+(here `kitchen-sink/cursor-session/<session>`, under a derived root outside the checkout, as
+FIX-1915 defines it, provisioned through `@flow-state-dev/workspace`), a refused continuation
+shown and never replaced, the plan shape public in core, and one whole-list writer in core,
+`replacePlanList`, with its `observed-plan-list` marker ([FIX-1915 → Shared with other
+specs](../FIX-1915/DECISIONS.md)). This spec consumes all of it. The two calls left are about Cursor's plan.
 
 ## The tree
 
@@ -28,7 +32,7 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Recording each update as Cursor sends it · or treating Cursor as a harness that reports no plan, the fallback the issue allowed |
 | **Because** | Cursor has a to-do list, so "reports none" would be false. The update it sends can change only part of the list, and the SDK drops the item ids that would say which part. The call's result carries the whole list after the update. Only that list can make the panel equal Cursor's own ([POC](poc/sdk-wire/README.md) F1, F1b, F1c) |
-| **Locks in** | Two panel states in Cursor mode: rows, or "no plan recorded for this turn". A row appears when Cursor confirms the update, not when it sends it. A failed update changes nothing |
+| **Locks in** | Four of the panel's five states in Cursor mode: rows, "this turn's plan is empty", "no plan recorded for this turn", and rows marked "may be incomplete" when a write fails partway (FIX-1915 BR-22c, BR-22d). Never "this harness reports no plan" while recording is on. A row appears when Cursor confirms the update, not when it sends it. An update Cursor rejects changes nothing |
 
 ![D1: what goes in the plan record? Chosen: the whole list Cursor confirms. Instead of: the update as sent. It comes down to a partial update, which without ids cannot be placed. The price: a row appears when the update settles. Flips if Cursor never updates its list](figures/d1-confirmed-list.svg)
 
@@ -45,7 +49,7 @@ is for Claude Code, and keep the record.
 |---|---|
 | **Instead of** | Knowing an item by its wording · or waiting for Cursor to pass its ids before recording anything |
 | **Because** | Cursor's runtime gives every item an id, and the SDK at the version we pin removes it ([POC](poc/sdk-wire/README.md) F1, F1b). Wording breaks when Cursor rewords an item, which is common as a plan firms up: a new row starts and the old one is left behind. Two items with the same wording would become one row. Place breaks only on a reorder or an insert, which a to-do list rarely does |
-| **Locks in** | Cursor's rows in the shared record are keyed by place. Reworded in place, a row keeps its place and clears its previous status. A list that shrinks drops its rows past the end. A reader cannot follow one Cursor item through a reorder |
+| **Locks in** | Cursor's list goes through core's `replacePlanList`, which keys rows by place: reworded in place, a row keeps its place and clears its previous status; a list that shrinks drops its rows past the end (FIX-1915 BR-22a). A reader cannot follow one Cursor item through a reorder |
 
 ![D2: which row is which item? Chosen: its place in the list. Instead of: its wording. It comes down to rewording, which by wording strands a row. The price: a reorder moves rows to other items. Flips if Cursor's SDK passes its ids](figures/d2-place-in-list.svg)
 
@@ -59,7 +63,8 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
 - **Recording is opt-in on the Cursor block, off by default**, like Claude Code's `recordWork`.
   Off, the block declares no session state, which task boards rely on
   ([the Cursor page](../../../apps/docs/docs/tools/cursor.md#continuing-an-agent)).
-- **The plan writer lives in the Cursor package**, never in Kitchen Sink (epic ER-11).
+- **The Cursor package turns Cursor's result into items and calls core's `replacePlanList`**,
+  never Kitchen Sink (epic ER-11). It keeps no writer of its own.
 - **The to-do step stays in the stream.** The record is in addition, so the goal check can
   compare the two.
 - **Statuses are Cursor's own words**, and an unknown word records as itself. `lastOutcome` is
@@ -68,12 +73,15 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
   Neither is a to-do list, and Kitchen Sink runs `mode: "agent"`.
 - **Kitchen Sink's Cursor options**: `composer-2.5` (the coding-skill lab's default), agent mode,
   the sandbox on, recording on. No model setting until someone needs a second model.
+- **Cursor's sandbox fences writes to the session's worktree only**: not the main checkout,
+  another session's worktree, or the repository's `.git` (FIX-1915 BR-13). The run edits files
+  and leaves them uncommitted. A sandbox that can't hold that fence makes the mode unavailable.
 - **Sign-in is probed** (epic ER-1), as FIX-1915 does: the pinned SDK is installed, and a Cursor
   key is in the environment or the SDK reports a stored login. No run is started. A rejected key
   fails that turn with Cursor's own error.
 - **The Cursor flow is registered only when the mode is available**, decided once per server
-  start through FIX-1914's per-mode check, and works under `KITCHEN_SINK_HARNESS_WORKSPACE` through
-  FIX-1915's workspace resolver.
+  start through FIX-1914's per-mode check, and gets each session's worktree through FIX-1915's
+  factory, the one every harness mode uses.
 - **The turn's notice is FIX-1915's.** Cursor confirms the agent when it opens it, before the
   prompt, so only a refused resume reads as refused. Stop is the block's own abort and reads as
   stopped; a command Cursor started can outlive it, and the README says so.
@@ -84,16 +92,16 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
 |---|---|
 | Write Cursor's rows from Kitchen Sink, reading the to-do steps | Epic ER-11: a gap fixed in the app is a gap every other host keeps |
 | Turn recording on by default | Adds a session collection to every Cursor host, including task boards that rely on there being none |
-| One shared "list without ids → rows" helper in core | Codex's list also has no ids, so it may be needed twice. That is a cross-spec call with FIX-1916, raised to the epic, not settled here |
+| A place-keyed writer of Cursor's own | FIX-1915 put one in core, `replacePlanList`, for every whole-list harness (Codex too), with the marker that tells an empty list from none and a half-written one from the plan. A copy here would be a second writer of the same record |
 | Record Cursor's summaries as the plan | A summary describes the past. The panel shows what the run planned |
 | Probe the key by starting a run | Costs a run per server start. The SDK's login status and the environment answer the same question for free |
 
 ## What already does these jobs
 
 The job is *record a coding run's own to-do list*. Searched `packages/` for `observed-plan`,
-`OBSERVED_PLAN`, `todo` and `updateTodos`. One writer exists, the closest entry: Claude Code's
-work recorder, keyed by the harness's own item ids. Cursor hands over a whole list with no ids, a
-different input, so the Cursor package gets its own small writer onto core's shape.
+`OBSERVED_PLAN`, `todo` and `updateTodos`. One writer exists today: Claude Code's work recorder,
+keyed by the harness's own item ids. Cursor hands over a whole list with no ids, a different
+input, which FIX-1915's `replacePlanList` takes. The Cursor package adds only the translation.
 
 ## What the POC showed
 
@@ -113,5 +121,9 @@ plan?" to D1, and from "key by item id" to D2.
   does report a to-do list, partial on the way in and whole on the way back, without ids; so the
   record takes the confirmed list, keyed by place, written by the Cursor package behind an opt-in
   option; two PRs.
+- **Review round 1** — aligned with FIX-1915: the write is core's `replacePlanList` and its list
+  marker, not a Cursor writer, so an empty list and a half-written one each read as what they are;
+  each session gets FIX-1915's worktree and branch; the off conditions follow FIX-1914's amended
+  gate; one empty-state string; the changeset is a patch.
 
 **Open: none.**

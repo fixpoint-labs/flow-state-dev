@@ -33,7 +33,9 @@ placeholder until the cross-spec pass aligns it with Codex's.
 > The record always holds the whole list as Cursor last confirmed it. An update Cursor sends can
 > change only part of the list, so the block writes nothing until Cursor answers with the list as
 > it now stands. An update Cursor rejects changes nothing. You still see every update as a tool
-> call in the stream.
+> call in the stream. The block writes through core's `replacePlanList`, the same helper every
+> harness whose plan arrives as a whole list uses, so the run's list marker
+> (`observed-plan-list`) says whether that list was saved in full.
 >
 > Cursor doesn't tell the SDK which item is which, so a row is an item's place in the list. If
 > Cursor changes an item's status, its row keeps the old one as `previousStatus`. If Cursor
@@ -41,7 +43,10 @@ placeholder until the cross-spec pass aligns it with Codex's.
 > the list gets shorter, the rows past its end are removed. If Cursor reorders its list, rows after
 > that point describe different items, so don't follow one item across a reorder.
 >
-> A run that never updates its list records nothing, which reads as "no plan this run". Cursor's
+> A run that never updates its list records nothing: no rows and no marker, which a plan panel
+> shows as "no plan recorded for this turn". A list Cursor empties is different: the marker says
+> the list is complete with nothing in it. If a write fails partway, the marker says the list is
+> incomplete, with the error, so a reader never shows a half-written list as the plan. Cursor's
 > plan-mode document, the one `mode: "plan"` produces, is not recorded.
 >
 > `recordPlan` is off by default. Off, the block declares no session state, exactly as before,
@@ -67,9 +72,11 @@ placeholder until the cross-spec pass aligns it with Codex's.
 > SDK's login. The mode uses Cursor's `composer-2.5` model. A host without the SDK, or without a
 > key or a login, shows the mode as unavailable, with the reason.
 >
-> **Where it works.** Like every harness mode, each session gets its own directory under
-> `KITCHEN_SINK_HARNESS_WORKSPACE`, and every turn of that session works there. Cursor runs with
-> its sandbox on. A command Cursor started can keep running briefly after you stop a turn.
+> **Where it works.** Like every harness mode, each session gets its own git worktree and branch
+> of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, on `kitchen-sink/cursor-session/<session>`,
+> and every turn of that session works there. Cursor runs with its sandbox on, which lets it edit
+> files in that worktree and nowhere else, `.git` included, so its work waits uncommitted for you
+> to review. A command Cursor started can keep running briefly after you stop a turn.
 >
 > **Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same
 > agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn
@@ -78,7 +85,8 @@ placeholder until the cross-spec pass aligns it with Codex's.
 >
 > **The plan panel** shows Cursor's to-do list for the session's latest turn, as Cursor last
 > confirmed it, read-only. A turn where Cursor kept no list says "no plan recorded for this
-> turn". When Cursor reorders its list, the rows follow their places, not the items. Nothing in
+> turn"; one where Cursor emptied its list says "this turn's plan is empty". If the list couldn't
+> be saved in full, its rows are marked "may be incomplete". When Cursor reorders its list, the rows follow their places, not the items. Nothing in
 > the panel starts work.
 
 The opening paragraph (the epic's draft, published by FIX-1914) names Cursor only once this
