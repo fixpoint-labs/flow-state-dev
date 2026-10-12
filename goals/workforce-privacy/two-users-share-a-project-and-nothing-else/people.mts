@@ -46,13 +46,21 @@ export interface Shipped {
 /**
  * Load the shipped clients from the checkout at `root`.
  *
- * @throws Naming the export the commit doesn't have.
+ * @param options.tolerateMissing For the pre-epic baseline: a missing workforce
+ *   client export becomes one whose every call throws, naming it.
+ * @throws Naming the export the commit doesn't have, unless tolerated.
  */
-export async function loadShipped(root: string): Promise<Shipped> {
+export async function loadShipped(root: string, options: { tolerateMissing?: boolean } = {}): Promise<Shipped> {
   const client = (await import(pathToFileURL(join(root, "packages", "client", "src", "index.ts")).href)) as Shipped["client"];
   const workforce = (await import(pathToFileURL(join(root, "packages", "workforce", "src", "browser.ts")).href)) as Shipped["workforce"];
   for (const name of ["createWorkforceClient", "deriveWorkerSessionId"] as const) {
-    if (workforce[name] === undefined) throw new Error(`the commit's @flow-state-dev/workforce/browser exports no ${name}`);
+    if (workforce[name] !== undefined) continue;
+    if (!options.tolerateMissing) throw new Error(`the commit's @flow-state-dev/workforce/browser exports no ${name}`);
+    // The pre-epic baseline predates the client: every call through it is refused, naming what's missing.
+    const missing = () => {
+      throw new Error(`the commit's @flow-state-dev/workforce/browser exports no ${name}`);
+    };
+    (workforce as Record<string, unknown>)[name] = name === "createWorkforceClient" ? () => ({ roster: missing, ensureWorkerSession: missing }) : missing;
   }
   return { client, workforce };
 }
