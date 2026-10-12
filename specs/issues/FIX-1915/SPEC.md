@@ -52,7 +52,7 @@ carried.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/kitchen-sink-harness/claude-code-continues-its-conversation/` · real Claude Code on a signed-in host, in a real browser · run by the implementer at completion, handed to `fsd-qa` over the mailbox if no signed-in browser host is available · verdict in the implementation PR |
-| **Signal** | **c** turn 2 names turn 1's held-out token, and the recorded id is unchanged · **l** at least one of Claude Code's items shows before the turn completes · **s** after stop, turn 3 names the token under the same id · **r** after a reload, the same · **w** a file turn 1 was asked to write exists in the session's worktree, on branch `kitchen-sink/claude-code-session/<session>`, and the main checkout's `git status` is unchanged · **p** the panel shows what the record holds for the turn: its rows, or "no plan recorded for this turn", never "this harness reports no plan" |
+| **Signal** | **c** turn 2 names turn 1's held-out token, and the recorded id is unchanged · **l** at least one of Claude Code's items shows before the turn completes · **s** after stop, turn 3 names the token under the same id · **r** after a reload, the same · **w** a file turn 1 was asked to write exists in the session's worktree, on branch `kitchen-sink/claude-code-session/<session>`, and the main checkout's `git status` is unchanged · **p** the panel shows what the record holds for the turn: its rows, or "no plan recorded for this turn", never "Claude Code reports no plan" |
 | **Input** | A fresh random token per run, and a job long enough to stop. Any other token or job must pass. Durable store (`STORE_TYPE=filesystem`). `KITCHEN_SINK_HARNESS_WORKSPACE` unset, in local development, so the default is what's checked |
 | **Anti-game** | Assert on what the page shows and on the id in session state. Never on the scripted SDK, never on a prompt Kitchen Sink built from earlier turns |
 | **Control that must fail** | `GOAL_CONTROL=no-resume`: **c** and **s** FAIL. `GOAL_CONTROL=no-record`: **p** FAILS (the panel says "reports no plan"). `GOAL_CONTROL=main-checkout`, which hands the run the repository itself: **w** FAILS. Today's `main`: every leg FAILS, as there is no Claude Code mode |
@@ -83,7 +83,7 @@ helper for the two whose plans arrive as a whole list.
 + import { observedPlanCollection, replacePlanList } from "@flow-state-dev/core";
 ```
 
-A harness whose plan arrives as the whole list (Codex, Cursor) passes it to `replacePlanList`,
+A harness whose plan arrives as the whole list (Cursor, or an outside harness) passes it to `replacePlanList`,
 which also marks each turn's list *complete* or *incomplete*, so an empty plan and a half-written
 one each read as what they are. Claude Code's rows carry ids; it marks a turn *incomplete* when a
 plan row fails to write.

@@ -6,7 +6,7 @@ The route was decided above this issue: every harness through the shared contrac
 flow, plan sync one-way into one record in core ([epic D2, D3](../../epics/FIX-1907/DECISIONS.md#d2)),
 and FIX-1915's choices for the session itself: where each session works, a refused conversation
 shown and never replaced, the plan shape in core
-([FIX-1915 D1 to D3](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1915/specs/issues/FIX-1915/DECISIONS.md)).
+([FIX-1915 D1 to D3](../FIX-1915/DECISIONS.md)).
 Codex mode inherits all of them. One question is left, and the POC is why it exists.
 
 ## The tree
@@ -52,17 +52,16 @@ maintain and can't verify.
 It comes down to a real run: the writer-now panel says "none this turn" when Codex can't plan at all.
 
 **For the epic coordinator, not decided here (ER-15):** taking the recommendation amends epic
-D3's *Codex and Cursor write it*, and fires epic D1's collapse trigger, as FIX-1916 becomes a few
-lines of options and no plan work.
+D3's *Codex and Cursor write it*. Epic D1's collapse trigger is not met today: it needs both
+FIX-1916 and FIX-1917 to be a few lines of options and no plan work, and FIX-1917 writes Cursor's
+list.
 
 <a name="decided-not-asked"></a>
 ## Decided, not asked
 
-- **Codex runs headless in the session's working directory as FIX-1915 defines it,** in its own
-  sandbox (`workspace-write`) with no approval prompts, as FIX-1915 runs Claude Code. Codex
-  refuses to run outside a git repository by default: if FIX-1915's directory is one (or a
-  worktree), the check stays on; if not, a block option turns it off. Never code in the shared
-  resolver.
+- **Codex runs headless in the session's own git worktree, from FIX-1915's factory,** in its own
+  sandbox (`workspace-write`) with no approval prompts, as FIX-1915 runs Claude Code. The
+  worktree is a git repository, so Codex's repository check stays on and nothing turns it off.
 - **The run sees an allowlisted environment** (`harnessEnv`), as FIX-1915 passes Claude Code.
   Left unset, Codex's process inherits every secret the server holds. The list carries `HOME`
   (or `CODEX_HOME`), because Codex keeps its sign-in and its threads there.
@@ -72,8 +71,11 @@ lines of options and no plan work.
   environment.** Measured: `login status` exits 1 with only an environment key, though a run
   works with one. Either alone would mark a working host unavailable.
 - **Codex's default model.** The cost estimate is then absent, as the Codex page documents.
-- **No change to the Codex package.** Its thread lifecycle already matches FIX-1915's binding
-  (the POC, legs A to E), and the epic forbids changing the contract here (ER-13).
+- **No change to the Codex package, except one error mapping.** Its thread lifecycle already
+  matches FIX-1915's binding (the POC, legs A to E), and the epic forbids changing the contract
+  here (ER-13). The exception: the package classifies Codex's `no rollout found for thread id`
+  failure as an unknown conversation (FIX-1915 S13), so the shared flow can tell a refusal from
+  any other early failure without a Codex branch.
 
 ## Which methods already do this job
 
@@ -89,7 +91,7 @@ FIX-1915 D2 deliberately doesn't follow. Nothing to fold.
 |---|---|
 | Reach Codex's plan through its app-server protocol, which streams plan updates | A second door into Codex in `@flow-state-dev/codex`: its own issue, and epic ER-13's spirit |
 | Map Codex's *goal* tools (`create_goal`, `update_goal`), which the pinned version does offer, into the plan record | A goal is one objective with a budget, not a to-do list. Recording it as one invents a plan (epic ER-11) |
-| Initialise a git repository in each session directory so Codex's check passes | Codex-specific code in the shared workspace resolver (FIX-1915's guardrail) |
+| Initialise a git repository in each session directory so Codex's check passes | Moot: each session is already a git worktree (FIX-1915 D1). It was also Codex-specific code in the shared workspace resolver (FIX-1915's guardrail) |
 | Bump the pinned SDK to get the plan tool | The newest release, 0.162.1, behaves the same (POC leg D) |
 
 ## Settled
@@ -108,5 +110,9 @@ new run.
   POC confirmed Codex's thread lifecycle fits the per-turn binding unchanged, and found Codex
   emits no to-do list at the pinned version, so the plan writer became the open question and the
   build shrank to options and one availability check; one PR.
+- **Amended after merge (Oct 12, cross-spec check)**: Codex consumes FIX-1915's worktree, so
+  the repository-check option is gone; the `.git` fence is required (FIX-1915 BR-13b); only
+  Codex refusing a known thread is a refusal; a lapsed sign-in is an error, not a refusal.
+  The Codex package maps that one error to FIX-1915's unknown-conversation classification.
 
 **Open: 1.**

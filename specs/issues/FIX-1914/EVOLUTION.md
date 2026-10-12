@@ -9,5 +9,8 @@
 | `apps/kitchen-sink/CLAUDE.md` → Layout: "`app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index" | **Superseded**: it becomes a mode index, not a flow index | Modes, not flows, are what a person picks (epic D1) | S4, S5 | The internal line is rewritten in S11 |
 | The `workforce-admin` flow is registered only when its setting is present; source [`apps/kitchen-sink/README.md` → Hiring while the app runs](../../../apps/kitchen-sink/README.md#hiring-while-the-app-runs) | **Retained**, followed as precedent on a production server | The same posture for a capability nobody should reach by default; a dev server uses its own checkout instead (D2) | [D2](DECISIONS.md#d2), BR-7, BR-15 | None |
 
+Amended after merge by the cross-spec check (2026-10-12): the open question is answered as
+recommended (#3167), so the first two rows hold as written and "move it out" no longer applies.
+
 Before implementing, re-check each row against the current shell, README and the epic set; an
 amendment to the epic after this spec merged wins.

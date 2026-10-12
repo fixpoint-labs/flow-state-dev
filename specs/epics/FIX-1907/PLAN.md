@@ -8,7 +8,7 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path as of 12 October 2026. Inputs: FIX-1735 and FIX-1701, both done. This epic spec in review at the now line. FIX-1914 the picker: spec after the open question is answered, then implementation. FIX-1915 Claude Code mode: spec beside FIX-1914's, implementation after FIX-1914 merges. FIX-1916 Codex and FIX-1917 Cursor: specs beside, implementations side by side after FIX-1915 merges. FIX-1185 Claude plan tools: one bar that can run at any time. The closure FIX-1918: QA plan written early, run after all merge. The critical path runs from this spec through FIX-1914, FIX-1915, the Codex and Cursor implementations, then the closure run](figures/path.svg)
+![The path as of 12 October 2026. Inputs: FIX-1735 and FIX-1701, both done. This epic spec in review at the now line. FIX-1914 the picker: spec, then implementation; the Flow State question is settled (keep, from Jake's merge of #3167). FIX-1915 Claude Code mode: spec beside FIX-1914's, implementation after FIX-1914 merges. FIX-1916 Codex and FIX-1917 Cursor: specs beside, implementations side by side after FIX-1915 merges. FIX-1185 Claude plan tools: one bar that can run at any time. The closure FIX-1918: QA plan written early, run after all merge. The critical path runs from this spec through FIX-1914, FIX-1915, the Codex and Cursor implementations, then the closure run](figures/path.svg)
 
 A chain with one fork. The picker and the session flow factory are serial, because the flow needs a mode
 slot to live in. Codex and Cursor are the one parallel window, and FIX-1185 is a diagnosis that can
@@ -19,10 +19,10 @@ this adds time.
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1914** the picker | spec → impl PR | The open question's answer · today's shell (`app/page.tsx`, `FlowNavigator`) | Four modes, a rail per mode, the unavailable state, Flow State mode | FIX-1915 | Medium |
+| **FIX-1914** the picker | spec → impl PR | The Flow State answer, settled: keep ([D](DECISIONS.md#flow-state-mode), Jake's merge of #3167) · today's shell (`app/page.tsx`, `FlowNavigator`) | Four modes, a rail per mode, the unavailable state, Flow State mode | FIX-1915 | Medium |
 | **FIX-1915** Claude Code mode | spec → impl PR | A mode slot · FIX-1735's live items · FIX-1701's `itemScope` · D2, D3 | The harness session flow factory and the `claude-code-session` kind, the workspace resolver, stop, the plan record in core, the plan panel | FIX-1916 · FIX-1917 | Large |
 | **FIX-1916** Codex mode | spec → impl PR | The session flow factory · the plan record (ER-5, ER-6) | The `codex-session` kind and Codex options · Codex writes its to-do list | The closure | Small |
-| **FIX-1917** Cursor mode | spec → impl PR | The session flow factory · the plan record | The `cursor-session` kind and Cursor options · Cursor's plan written, or "reports none" | The closure | Small |
+| **FIX-1917** Cursor mode | spec → impl PR | The session flow factory · the plan record | The `cursor-session` kind and Cursor options · Cursor's plan written, or "reports none" · the Cursor package's `env` option, which fences the runtime's environment (ER-11) | The closure | Small |
 | **FIX-1185** Claude plan tools | spec (no Kind label) → impl PR or written finding | The SDK driver in `@flow-state-dev/claude-code` | Plan tools that fire through the SDK, or the reason they don't | The closure | Small, uncertain |
 | **FIX-1918** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The committed browser check under `goals/`, a QA report, a bug child per failure | The epic's wrap | Medium, repeats per retest |
 
@@ -34,8 +34,9 @@ FIX-1701 (#2569).
 
 ## What unblocks what, from here
 
-1. **This spec merges, with the open question answered** → FIX-1914's spec starts; FIX-1915,
-   FIX-1916, FIX-1917 and FIX-1185 can be specced at once, and the closure's QA plan written.
+1. **This spec merges** (the Flow State question is settled: keep, from Jake's merge of #3167) →
+   FIX-1914's spec starts; FIX-1915, FIX-1916, FIX-1917 and FIX-1185 can be specced at once, and
+   the closure's QA plan written.
 2. **FIX-1914 merges** → FIX-1915 implements.
 3. **FIX-1915 merges** → FIX-1916 and FIX-1917 implement side by side.
 4. **All of them and FIX-1185 merge** → the closure's first run. Each finding is a child that blocks

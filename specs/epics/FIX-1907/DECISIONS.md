@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls that sit above any single issue: what was chosen, what lost, why, and what each locks
-in for the children. Three are signed; one is open and needs the product owner.
+in for the children. Three are signed, and the one product question is answered.
 
 ## The tree
 
@@ -15,7 +15,7 @@ flowchart TD
   D2 -.->|"rejected"| X2["harness-manager · Claude in-session resume"]
   E --> D3["D3 · plan sync one-way, one record in core"]
   D3 -.->|"rejected"| X3["two-way task sync · a record per package"]
-  E --> Q1["Open · where today's app goes"]
+  E --> Q1["Answered · today's app is Flow State mode"]
 ```
 
 <a name="d1"></a>
@@ -59,7 +59,7 @@ It comes down to what is shared: harness-manager tests a board, and in-session r
 |---|---|
 | **Instead of** | Two-way sync, where a person or Kitchen Sink adds a task the harness picks up · or each package keeping its own plan record and Kitchen Sink drawing one panel per harness |
 | **Because** | Handing a harness work from a list is what harness-manager and Shift Manager do, and the ask puts it out of scope. The Claude Code docs already say [the plan is not a work queue](../../../apps/docs/docs/tools/claude-code-sdk.md#the-plan-is-not-a-work-queue). Per-package copies drift: FIX-1701 lifted `itemScope` into core because a missing copy hid a task's steps ([FIX-1692](https://linear.app/fixpoint-labs/issue/FIX-1692)) |
-| **Locks in** | The `observed-plan` shape moves into `@flow-state-dev/core` (FIX-1915). Codex and Cursor write it. A harness that reports no plan says so. FIX-1185 is a child, because without it Claude Code's record stays empty |
+| **Locks in** | The `observed-plan` shape moves into `@flow-state-dev/core` (FIX-1915). Codex and Cursor write it. A harness that reports no plan says so. FIX-1185 is a child, because without it Claude Code's record stays empty. A harness that reports its plan as the whole list writes it through core's `replacePlanList`, which also keeps the per-turn `observed-plan-list` marker (FIX-1915 S1, BR-22a to BR-22d); no harness keeps a writer of its own |
 
 **What would change my mind:** the product wanting Kitchen Sink to hand a harness work from a list.
 That is a second epic, with Shift Manager, not a widening of this one.
@@ -68,8 +68,15 @@ That is a second epic, with Shift Manager, not a widening of this one.
 
 It comes down to who puts work on a harness: two-way sync makes Kitchen Sink an orchestrator.
 
-<a name="open"></a>
-## Open · Does today's Kitchen Sink become the Flow State mode, or move out?
+<a name="flow-state-mode"></a>
+## Answered · Does today's Kitchen Sink become the Flow State mode, or move out?
+
+**Settled: keep, from Jake's merge of #3167.** The archived ask follows.
+
+**Answered: it becomes the Flow State mode, unchanged.** The owner decided it on 2026-10-12 by
+merging FIX-1914's spec (#3167), which said it would not merge until this was answered, and it
+matches their earlier note on the project mailbox: "keep today's Kitchen Sink unchanged as Flow
+State mode". The ask is kept below as it was put.
 
 **In plain terms.** Kitchen Sink's front page today is a support desk run by a team of AI workers,
 next to an assistant with many settings, background tasks, a scheduled weekly digest and voice.
@@ -92,9 +99,9 @@ support desk under Flow State muddies the comparison.
 
 **What being wrong costs.** Keeping it is cheap to reverse: moving it out later is the same work
 then as now. Moving it out now is expensive to undo and puts a migration in front of the harness
-work. It gates FIX-1914's spec only; the other children don't wait.
+work. It gated FIX-1914's spec only; the other children didn't wait.
 
-![Open: where does today's Kitchen Sink go? Recommended: it becomes the Flow State mode, unchanged. Instead of: moving it to other example apps so Flow State mode is one assistant. It comes down to cost against a clean comparison: 29 goals, 9 browser tests and 9 docs pages keep working, and the four modes are not like for like. Locks in the support desk in Flow State mode's rail. Flips if the product wants Kitchen Sink read first as a harness test bed](figures/open-showcase.svg)
+![Settled: today's Kitchen Sink stays as the Flow State mode, unchanged (decided by merging #3167). The ask as put: where does today's Kitchen Sink go? Recommended: it becomes the Flow State mode, unchanged. Instead of: moving it to other example apps so Flow State mode is one assistant. It comes down to cost against a clean comparison: 29 goals, 9 browser tests and 9 docs pages keep working, and the four modes are not like for like. Locks in the support desk in Flow State mode's rail. Flips if the product wants Kitchen Sink read first as a harness test bed](figures/open-showcase.svg)
 
 It comes down to the dependents: keeping it costs nothing, and moving it is a migration of its own.
 
@@ -132,5 +139,9 @@ the shape D2 assumes, shipped, so no POC was needed to show the division holds.
   factory, one flow kind per harness", because FIX-1915 (#3165) settled on a shared factory building
   `claude-code-session`, `codex-session` and `cursor-session`, and FIX-1914 (#3167) scopes each mode's
   rail by flow kind. One shared contract and no harness-specific flow logic stand unchanged.
+- **Amended after the cross-spec check (Oct 12)**: the Flow State question recorded as answered;
+  the README draft says "on a repository you choose" and no longer promises a Codex to-do list;
+  FIX-1917's row says Cursor writes its own list; FIX-1185 publishes its own docs edits; a note
+  under D3 names `replacePlanList` and the list marker as the whole-list write path.
 
-**Open: 1.**
+**Open: 0.** FIX-1916 carries one open question of its own, the Codex plan panel.

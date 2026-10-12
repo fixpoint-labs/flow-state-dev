@@ -8,9 +8,7 @@ plan row on the Codex page and Kitchen Sink's Codex section. All of it ships wit
 implementation PR, after the goal check. The drafts assume [the open question](DECISIONS.md#open)
 takes the recommendation; if it doesn't, the plan sentences change and nothing else does.
 
-**For the epic, not edited here:** the epic draft's example, "Codex's to-do list appears beside
-the session as it plans", is not true at the pinned version. Whoever publishes the README opening
-(FIX-1914) should use a Claude Code example, or drop the to-do list from the Codex one.
+The epic draft's Codex example no longer promises a to-do list; the epic's follow-up PR fixed it.
 
 ## UPDATE · `apps/docs/docs/tools/codex.md` · "What it emits", the paragraph after the table
 
@@ -40,9 +38,10 @@ what the run did."
 > A host where Codex isn't signed in, or where Codex's sandbox can't run, shows the mode as
 > unavailable with the reason.
 >
-> **Where it works.** Codex works in the session's directory, the same way Claude Code mode
-> does (see [Claude Code mode](#claude-code-mode)). It runs without asking for approval, inside
-> its own sandbox, which lets it write only there. It sees only the environment variables
+> **Where it works.** Codex works in the session's own worktree and branch, the same way Claude
+> Code mode does (see [Claude Code mode](#claude-code-mode)). It runs without asking for approval,
+> inside its own sandbox, which lets it write only in that worktree and not in its git data, so
+> its work waits uncommitted for you. It sees only the environment variables
 > Kitchen Sink passes it, not the server's whole environment.
 >
 > **Continuing.** A session is one Codex thread. Stop a turn and the next one continues the

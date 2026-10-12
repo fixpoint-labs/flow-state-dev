@@ -100,7 +100,7 @@ fault or the picker's, never both.
 | Availability is decided on the server, once per start; no `NEXT_PUBLIC_` value carries it | One build serves a laptop and a deployed copy (BR-13). An inlined answer is the hollow pass the goal's one-build input exists to catch |
 | The picker and the three harness addresses render dynamically, never prerendered at build | They read only `process.env` and the filesystem, so Next would prerender them and bake the build host's answer into every host |
 | The picker and the flow list read one availability result (tenet 5) | Two evaluations drift: a directory or sign-in that changes after start, or a mode's own check failing, and the page says off while the API runs an agent (BR-15) |
-| Today's page is moved, not edited, beyond the rail header row | "Unchanged" is the open question's recommended answer, and the move is what lets the suite prove it (V3) |
+| Today's page is moved, not edited, beyond the rail header row | "Unchanged" is the owner's answer to the Flow State question, and the move is what lets the suite prove it (V3) |
 | No browser check is deleted or skipped to get green | A check that stops running reports nothing, and that is how `main` goes green by checking less. V4 and the entry-points table are the inventory |
 | Nothing harness-specific in S7 beyond a flow kind | ER-6 and ER-11: a harness that needs more has found a gap in its package |
 
@@ -148,9 +148,8 @@ negative controls fail as they should. The premise held: the move is an address 
 
 ## Follow-ups
 
-- None filed. The open question is answered before this spec merges. If the answer is "move it
-  out", this spec is re-drafted on its review PR and the support-desk migration is filed under
-  FIX-1907.
+- None filed. The Flow State question is answered: today's app stays, unchanged, so no
+  support-desk migration is filed.
 
 ## Notes from review
 
