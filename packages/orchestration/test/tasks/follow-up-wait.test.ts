@@ -1,5 +1,5 @@
 /**
- * A follow-up filed with `waitForResponse` keeps the follow-up's own id
+ * A follow-up dispatched with `wait` keeps the follow-up's own id
  * (FIX-1817 BR-25 with FIX-1816's ask): the id a follow-up takes is what makes
  * "one unfinished task per session" one atomic write, so the ask path must
  * not replace it with one of its own. Two follow-ups of one task filed at
@@ -30,7 +30,7 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 /** A turn holding the task tools over a durable board, and a `seed` that files the finished root task. */
 function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
   // The asks this flow files are its board's to resume, so it opts in.
-  const tools = createTaskToolsCapability(boardOf, undefined, { resumesAsks: true });
+  const tools = createTaskToolsCapability(boardOf, undefined, { resumesAsks: true, dispatches: true });
   const seed = handler({
     name: "seed",
     inputSchema: z.object({}).passthrough(),
@@ -67,8 +67,8 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
 
 const followUp = (id: string, wait: boolean) => ({
   toolCallId: id,
-  toolName: "addTask",
-  args: { goal: `follow-up ${id}`, followUpOf: "root", ...(wait ? { waitForResponse: true } : {}) }
+  toolName: "dispatchTask",
+  args: { goal: `follow-up ${id}`, followUpOf: "root", ...(wait ? { wait: true } : {}) }
 });
 const calls =
   (...list: Array<ReturnType<typeof followUp>>): StepFn =>

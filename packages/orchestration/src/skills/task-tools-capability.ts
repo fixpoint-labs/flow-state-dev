@@ -18,10 +18,15 @@
  * a conversation's board), a tenth tool, `dispatchTask`, starts work now: a
  * new row (`goal`, with `addTask`'s fields and checks, through the same code),
  * or a row recorded earlier (`taskId`), readied by the collection's one
- * conditional `dispatch` write. With `wait`, the turn parks on it, as
- * `addTask`'s `waitForResponse` does. Exactly one of `goal` and `taskId`, and
- * no owner it can resolve is refused (`assignee_required`), each before
- * anything is written.
+ * conditional `dispatch` write. With `wait`, the turn parks on it until the
+ * task ends. Exactly one of `goal` and `taskId`, and no owner it can resolve is
+ * refused (`assignee_required`), each before anything is written.
+ *
+ * On such a board `addTask` **records** a row and doesn't start it: the row is
+ * filed with `Task.undispatched`, which the board's start test and the
+ * substrate's claim admission both read, and its result says
+ * `status: "recorded"`. `assignTask` only changes the owner, so a recorded row
+ * stays recorded. Nothing but `dispatchTask` readies it.
  *
  * Board resolution goes through an injectable resolver (FIX-918). The default
  * reads the host generator's own-state board via `ctx.parent` (each handler
@@ -52,13 +57,13 @@
  *
  * ## Waiting for the answer (FIX-1816)
  *
- * On a turn whose host can hold an ask (durable execution, and a durability
- * sweeper that times asks out: `RequestHost.hasAskSweeper`), the capability's
- * `addTask` takes two more flat fields: `waitForResponse`, which files the task
- * and parks the turn until it ends, returning its output as `answer`; and
- * `timeoutMs`, the ask's bound. Anywhere else the fields are not in the schema
- * and `addTask` is exactly as before. It adds no tool. The `addTask_<board>`
- * action never waits.
+ * On a turn whose host can hold a wait (durable execution, and a durability
+ * sweeper that times waits out: `RequestHost.hasAskSweeper`), `dispatchTask`
+ * takes two more flat fields: `wait`, which parks the turn until the task
+ * ends, returning its output as `answer`; and `timeoutMs`, the wait's bound.
+ * Anywhere else the fields are not in the schema. The `dispatchTask_<board>`
+ * action never waits. `addTask` never waits: it refuses the fields it used to
+ * take for it by name, rather than letting the schema drop them.
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
@@ -801,14 +806,15 @@ interface BuildTaskToolsOptions {
    */
   readonly claimless?: boolean;
   /**
-   * Offer the wait: `addTask`'s `waitForResponse` and `dispatchTask`'s `wait`,
-   * each with `timeoutMs`. Only the capability's per-turn tool list sets it,
-   * on a host that can hold a wait ({@link canHoldWait}).
+   * Offer the wait: `dispatchTask`'s `wait`, with `timeoutMs`. Only the
+   * capability's per-turn tool list sets it, on a host that can hold a wait
+   * ({@link canHoldWait}).
    */
   readonly wait?: boolean;
   /**
    * Add `dispatchTask` (FIX-1875): the board starts a ready row at once, so a
-   * dispatch means work starts now ({@link TaskToolsOptions.dispatches}).
+   * dispatch means work starts now ({@link TaskToolsOptions.dispatches}). And
+   * `addTask` records: it files the row not dispatched.
    */
   readonly dispatches?: boolean;
 }
@@ -934,14 +940,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "not run it. The board may bound how many tasks wait at once and how many it may hold " +
     "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
     "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.";
-  const waitDescription =
-    " Set waitForResponse to true when your next step needs the task's result: the task is " +
-    "filed as usual, then you wait until it ends and get its output back as answer. Only one " +
-    "waiting addTask per step. timeoutMs bounds the wait, from 30000 (30 seconds) to 3600000 " +
-    "(an hour), five minutes when unset, and is only valid with waitForResponse. Errors: " +
-    "wait_timed_out (it didn't end in time; it is cancelled), wait_task_failed, " +
-    "wait_task_cancelled, wait_already_pending, wait_unavailable (you are working a task " +
-    "yourself, so you can't wait), wait_timeout_out_of_range.";
+  // FIX-1875 BR-23: on a board that dispatches, recording is all addTask does.
+  const addTaskRecordsDescription =
+    " On this board the task stays recorded and doesn't start, even with an assignee, until " +
+    "you dispatch it: call dispatchTask with its taskId. To start work now, call dispatchTask " +
+    "instead of addTask.";
   const addTaskFields = {
     goal: z.string(),
     assignee: z.string().optional(),
@@ -960,23 +963,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           "with its worker, so leave assignee unset.",
       ),
   };
-  const waitFields = {
-    waitForResponse: z
-      .boolean()
-      .optional()
-      .describe("Wait for the task to end and return its output as answer."),
-    timeoutMs: z
-      .number()
-      .optional()
-      .describe(
-        `How long to wait, in ms: ${MIN_WAIT_TIMEOUT_MS} to ${MAX_WAIT_TIMEOUT_MS}. Five minutes when unset. Only with waitForResponse.`,
-      ),
-  };
   type NewTaskInput = z.infer<z.ZodObject<typeof addTaskFields>>;
-  type AddTaskInput = NewTaskInput & {
-    waitForResponse?: boolean;
-    timeoutMs?: number;
-  };
+  /**
+   * The fields `addTask` took to wait (FIX-1816), refused by name since the
+   * wait moved to `dispatchTask` (FIX-1875 BR-21). Read from the call's input
+   * before anything else: the schema doesn't name them, so a plain parse
+   * would drop them and file a task the caller thinks it waits on.
+   */
+  const RETIRED_WAIT_FIELDS = ["waitForResponse", "timeoutMs"] as const; // retired-name-refusal
   type FollowUp = { root: string; assignee: string | undefined; id: string };
 
   /**
@@ -1095,30 +1089,38 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(result.taskId !== undefined ? { taskId: result.taskId } : {}),
         };
 
+  /** What a recorded row's result says, so a caller that skipped the description sees it (BR-27). */
+  const recordedNote = (taskId: string) =>
+    `Recorded, not started. Call dispatchTask with taskId "${taskId}" when it should start.`;
+
   const addTask = defineTool({
     name: named("addTask"),
-    description: wait ? addTaskDescription + waitDescription : addTaskDescription,
-    inputSchema: wait ? z.object({ ...addTaskFields, ...waitFields }) : z.object(addTaskFields),
-    outputSchema: wait
-      ? z.union([
-          z.object({ ok: z.literal(true), taskId: z.string(), answer: z.unknown().optional() }),
-          z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-        ])
-      : z.union([
-          z.object({ ok: z.literal(true), taskId: z.string() }),
-          z.object({ ok: z.literal(false), error: z.string() }),
-        ]),
+    description: dispatches ? addTaskDescription + addTaskRecordsDescription : addTaskDescription,
+    // Passthrough, so a retired wait field reaches `execute` to be refused by
+    // name rather than stripped by the parse (BR-21).
+    inputSchema: z.object(addTaskFields).passthrough(),
+    outputSchema: z.union([
+      z.object({
+        ok: z.literal(true),
+        taskId: z.string(),
+        status: z.literal("recorded").optional(),
+        note: z.string().optional(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
     parentStateSchema,
     execute: async (raw, ctx) => {
-      const input = raw as AddTaskInput;
-      // A bound with nothing to bound is refused, never ignored: a filer who
-      // meant to wait learns it didn't.
-      if (input.timeoutMs !== undefined && input.waitForResponse !== true) {
+      const input = raw as NewTaskInput & Record<string, unknown>;
+      const retired = RETIRED_WAIT_FIELDS.filter((field) => input[field] !== undefined);
+      if (retired.length > 0) {
         return {
           ok: false as const,
           error:
-            "wait_timeout_without_wait: timeoutMs bounds a wait, and this call doesn't wait. " +
-            "Set waitForResponse: true, or drop timeoutMs. Nothing was filed.",
+            `add_task_does_not_wait: addTask takes no ${retired.join(" or ")}; it only records a task. ` +
+            (dispatches
+              ? "To start a task now and wait for its result, call dispatchTask with the same fields and wait: true. "
+              : "This board has no tool that waits for a task. ") +
+            "Nothing was filed.",
         };
       }
       // A follow-up takes the finished task's worker: another worker is
@@ -1128,18 +1130,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      const checked = await checkNewTask(ctx, collection, input, input.waitForResponse === true);
+      const checked = await checkNewTask(ctx, collection, input, false);
       if ("error" in checked) return checked;
       return fileNewTask(collection, checked.followUp, input.followUpOf, async () => {
-        if (input.waitForResponse === true) {
-          return waitAnswer(
-            await dispatchAndWait(ctx, collection, checked.init, {
-              ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
-            }),
-          );
+        if (!dispatches) {
+          const task = await collection.addTask(checked.init);
+          return { ok: true as const, taskId: task.id };
         }
-        const task = await collection.addTask(checked.init);
-        return { ok: true as const, taskId: task.id };
+        // FIX-1875 D1: on a board that starts a ready row at once, the row is
+        // filed not dispatched, so recording it starts nothing.
+        const task = await collection.addTask({ ...checked.init, undispatched: true });
+        return { ok: true as const, taskId: task.id, status: "recorded" as const, note: recordedNote(task.id) };
       });
     },
   });
@@ -1360,7 +1361,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     name: named("assignTask"),
     description:
       "Reassign an existing task to a different worker. A task that has already " +
-      "finished cannot be reassigned — you get told so rather than a silent success.",
+      "finished cannot be reassigned — you get told so rather than a silent success." +
+      (dispatches
+        ? " This only changes who owns it: a recorded task stays recorded until you call " +
+          "dispatchTask with its taskId."
+        : ""),
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
@@ -1499,7 +1504,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             // The run working the task, or the one that last worked it: a
             // reader opens it from here (FIX-1668). Absent until a run starts.
             run: taskSchema.shape.run,
-            /** A turn is waiting on this task's answer (`addTask` with `waitForResponse`). */
+            /** A turn is waiting on this task's answer (`dispatchTask` with `wait`). */
             asked: z.literal(true).optional(),
           }),
         ),
@@ -1624,8 +1629,9 @@ export function buildTaskToolsList(
  *   from the running context ({@link AssigneeRosterSource}). Supply it so a
  *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
  *   roster the executive is.
- * @param options `resumesAsks: true` when the board has a waker, so `addTask`
- *   may offer `waitForResponse` ({@link TaskToolsOptions}).
+ * @param options `dispatches: true` on a board that starts a ready row at
+ *   once, and `resumesAsks: true` when it also has a waker, so `dispatchTask`
+ *   may offer `wait` ({@link TaskToolsOptions}).
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
@@ -1660,7 +1666,7 @@ export interface TaskToolsOptions {
    * The board has a waker: whatever runs it calls `resumeOwedAsks` when it
    * touches the board outside a turn (a board run, a task's notice), so a
    * turn parked on an ask is resumed when its task ends. Only then may
-   * `addTask` offer `waitForResponse`, and `dispatchTask` offer `wait`.
+   * `dispatchTask` offer `wait`, so it has no effect without `dispatches`.
    * Default `false`: a board that nothing wakes would leave every wait to its
    * timeout.
    */
@@ -1677,10 +1683,10 @@ export interface TaskToolsOptions {
 /**
  * The task tools as a turn gets them: two lists of the same names, built
  * once, and the one the turn can use. The nine, and `dispatchTask` on a board
- * that dispatches (`options.dispatches`). `addTask` carries `waitForResponse`,
- * and `dispatchTask` `wait`, each with `timeoutMs`, only on a board that
- * resumes asks (`options.resumesAsks`) and a host that can hold and bound one
- * ({@link canHoldWait}); anywhere else the list is {@link buildTaskToolsList}'s.
+ * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
+ * `timeoutMs` only on a board that also resumes asks (`options.resumesAsks`)
+ * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
+ * never waits.
  *
  * For a composing layer that builds its own capability over a board (pass
  * the result as a preset's `controlTools`, or call it from one).
@@ -1695,7 +1701,8 @@ export function taskToolsForTurn(
     dispatches: options.dispatches === true,
   };
   const plain = buildTaskTools(resolveCollection, base);
-  if (options.resumesAsks !== true) return () => plain;
+  // Only `dispatchTask` waits, so a board without it has one list.
+  if (options.resumesAsks !== true || options.dispatches !== true) return () => plain;
   const waiting = buildTaskTools(resolveCollection, { ...base, wait: true });
   return (ctx) => (canHoldWait(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
 }

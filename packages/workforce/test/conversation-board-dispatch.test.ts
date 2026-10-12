@@ -45,7 +45,7 @@ describe("a recorded row on a conversation's board (V4)", () => {
       // A touch: every action on the board starts what's startable.
       for (let i = 0; i < 5; i += 1) await act(host, conv, "listTasks_tasks", {});
       // A filing that starts its own row, so the board runs and its drain exits.
-      const other = await act(host, conv, "addTask_tasks", { goal: "Write the notes", assignee: "eng.tasker" });
+      const other = await act(host, conv, "dispatchTask_tasks", { goal: "Write the notes", assignee: "eng.tasker" });
       expect(other.ok).toBe(true);
       await host.settled();
       // An assign that names the row's new owner: it moves, and stays recorded.
@@ -74,6 +74,100 @@ describe("a recorded row on a conversation's board (V4)", () => {
       await act(host, conv, "listTasks_tasks", {});
       await host.settled();
       expect(await host.row("alice", filing, "task_old")).toMatchObject({ status: "completed" });
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
+describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, V5)", () => {
+  it("addTask_tasks records a row for a delegate, and 20 touches of the board start nothing (BR-1, BR-27)", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
+      expect(filed).toMatchObject({ ok: true, status: "recorded" });
+      for (let i = 0; i < 20; i += 1) {
+        await act(host, conv, "listTasks_tasks", {});
+        await host.settled();
+      }
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        assignee: "eng.tasker",
+        undispatched: true
+      });
+      expect(host.runs).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("an unassigned addTask_tasks takes the only delegate and is still recorded (BR-2)", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const filing = await host.filingOf("alice", conv);
+      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses" });
+      await host.settled();
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({
+        status: "pending",
+        assignee: "eng.tasker",
+        undispatched: true
+      });
+      expect(host.runs).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("assignTask on a ready, unclaimed row moves it and starts it, as before (BR-4)", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      // Ready (no mark) with nobody to run it: flow code filed it unassigned.
+      const { undispatched: _drop, ...ready } = recorded("task_ready", undefined);
+      await host.writeRow("alice", filing, ready as Task);
+      await act(host, conv, "listTasks_tasks", {});
+      await host.settled();
+      expect(host.runs).toEqual([]);
+      await act(host, conv, "assignTask_tasks", { taskId: "task_ready", assignee: "eng.writer" });
+      await host.settled();
+      expect(await host.row("alice", filing, "task_ready")).toMatchObject({ status: "completed", assignee: "eng.writer" });
+      expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("an assign and then a dispatch of a recorded row: the assigned owner runs it, once (BR-25)", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
+      await act(host, conv, "assignTask_tasks", { taskId: filed.taskId!, assignee: "eng.writer" });
+      await act(host, conv, "dispatchTask_tasks", { taskId: filed.taskId! });
+      await host.settled();
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", assignee: "eng.writer" });
+      expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("cancelTask on a recorded row ends it with no run", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
+      expect(await act(host, conv, "cancelTask_tasks", { taskId: filed.taskId! })).toEqual({ ok: true });
+      await host.settled();
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "cancelled", attempts: 0 });
+      expect(host.runs).toEqual([]);
     } finally {
       await host.dispose();
     }
