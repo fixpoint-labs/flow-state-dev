@@ -3,7 +3,7 @@
 "@flow-state-dev/core": patch
 ---
 
-**`@flow-state-dev/cursor`** — two opt-in options on `cursorAgent`, both off by default:
+**`@flow-state-dev/cursor`** — two opt-in options on `cursorAgent`, both off by default (FIX-1917):
 
 - `recordPlan: true` records Cursor's to-do list in the run's plan record (`observed-plan`, with its `observed-plan-list` marker): the whole list Cursor last confirmed, one row per place, with Cursor's own status words, written through core's `replacePlanList`.
 - `env` runs Cursor's local runtime in a separate process whose environment is exactly the variables you pass, so commands Cursor runs can't read the rest of the server's environment. With `env` set, functions in `agent` or `send` and a custom `resolveCursorClient` are refused when the block is built.
