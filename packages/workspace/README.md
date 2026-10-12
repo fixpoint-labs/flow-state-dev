@@ -256,7 +256,9 @@ const host = localWorkspaceHost({
 });
 ```
 
-The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. Nothing is fetched, on the first run or a retry. The place directory is the checkout itself, so there is no `checkout/` level and no `project/` beside it, and a source that names kept files with a local repository is refused. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. Nothing is fetched, on the first run or a retry, and the repository's own working tree is never touched. When the source names no kept files, the place directory is the checkout itself, with no `checkout/` level. When it names kept files, the place is laid out like a remote run's: the worktree in `checkout/` and the kept files in `project/` beside it. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+
+Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.
 
 ### Keeping a directory out of git
 
