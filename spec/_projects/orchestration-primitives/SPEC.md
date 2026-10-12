@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
-Every multi-agent pattern in FSD runs on one work unit: a **Task** row in a **TaskCollection**,
+FSD's multi-agent patterns run on one work unit: a **Task** row in a **TaskCollection**,
 worked by a board that binds a dispatcher, a worker and a loop. This project owns that unit and
 the ways work moves between workers on it.
 
