@@ -52,7 +52,7 @@ function parkingFlow(
         return { answer };
       } catch (error) {
         // The park itself propagates; only an ending is the call's to handle.
-        if ((error as Error).name !== "AskStoppedError" && (error as Error).name !== "AskEndedError") throw error;
+        if ((error as Error).name !== "WaitStoppedError" && (error as Error).name !== "WaitEndedError") throw error;
         seen.push(`ended:${(error as Error).name}:${(error as Error).message}`);
         return { ended: (error as Error).message };
       }
@@ -286,7 +286,7 @@ describe("stop a parked turn", () => {
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
     // The parked call read a stop, not an answer and not a tool error.
-    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
     // Ending the turn is the parked call's (the ask's own tests show it
     // aborted); this bare handler simply returns.
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
@@ -323,7 +323,7 @@ describe("stop a parked turn", () => {
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(2);
     await h.finished[1];
-    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
   });
 
   it("a stop whose fenced abort finds another request under the id does not report it stopped", async () => {
@@ -375,7 +375,7 @@ describe("stop a parked turn", () => {
     expect(stopped).toBe(true);
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
     expect((await h.stores.request.get(result.requestId!))?.status).not.toBe("suspended");
     // The sweep sees the same recorded stop and finds it already carried.
     await runTick(tickArgs(h));
@@ -495,7 +495,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
   });
 
   it("a stranded request older than a full batch of handled gates is still reached", async () => {
@@ -670,7 +670,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
   });
 
   it("the re-drive of a stopped approval waits for a live stop holding the turn's lease", async () => {
@@ -717,7 +717,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["interrupted"], Date.now());
     await runTick(tickArgs(h));
     await drain(h);
-    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });

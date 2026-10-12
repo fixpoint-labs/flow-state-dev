@@ -193,7 +193,7 @@ function scriptedEm(): ModelResolver {
         queue =
           line === null
             ? []
-            : [{ toolName: "addTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
+            : [{ toolName: "dispatchTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
       }
       const call = queue.shift();
       step += 1;

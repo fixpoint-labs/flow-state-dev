@@ -42,8 +42,8 @@ export { NoRequestHostError, requireRequestHost } from "./request-host";
 export type { AskEndingErrorCode, AskGateBinding, AskOutcome, ParkOnAskInput } from "./ask-gate";
 export {
   ASK_GATE_REASON,
-  AskEndedError,
-  AskStoppedError,
+  WaitEndedError,
+  WaitStoppedError,
   isAskGate,
   isExpiredApproval,
   parkOnAsk,

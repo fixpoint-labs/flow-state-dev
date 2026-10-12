@@ -1,33 +1,39 @@
 /**
- * Ask: file a task and wait for its answer in the same turn (FIX-1816).
+ * Waiting on a dispatched task: start a task and wait for its answer in the
+ * same turn (FIX-1816; `dispatchTask({ wait: true })` since FIX-1875).
  *
- * `addTask({ waitForResponse: true })` is a hand-off that waits. The turn files
- * one row on its conversation's board, marked as asked, and parks on an ask
- * gate. When the row ends, whoever ends it, the same write leaves a
- * resume-owed marker on it ({@link resumeOwedAsks} replays it), and the turn
- * resumes with the row's output as the call's answer, or with an error naming
- * how it ended. Nothing holds a request open while it waits.
+ * The turn files one row on its conversation's board, or readies one it
+ * recorded earlier, marked as waited-on, and parks on an ask gate. When the
+ * row ends, whoever ends it, the same write leaves a resume-owed marker on it
+ * ({@link resumeOwedAsks} replays it), and the turn resumes with the row's
+ * output as the call's answer, or with an error naming how it ended. Nothing
+ * holds a request open while it waits.
  *
- * Two functions:
+ * The functions:
  *
- * - {@link addTaskAndWait}, the asking call: refuses a second wait in one step,
- *   files once per tool call (under `ctx.runOnce`, keyed on the call, never the
- *   attempt), returns at once when the row has already ended, and otherwise
- *   parks. When the gate resumes it with a timeout, it cancels its row. It
- *   clears the marker itself once it has the outcome, so a resume whose
- *   marker clear was lost to a crash is still settled.
+ * - {@link dispatchAndWait}, the waiting call: refuses a second wait in one
+ *   step, then runs the two halves below. It is the one entry both
+ *   `dispatchTask({ wait })` and `addTask({ waitForResponse })` call.
+ * - {@link fileWaitedRow}, the first half: files a new row, or readies a
+ *   recorded one, once per tool call (under `ctx.runOnce`, keyed on the call,
+ *   never the attempt), marked waited-on in the same write.
+ * - {@link parkOnFiledRow}, the second half: returns at once when the row has
+ *   already ended, and otherwise parks. When the gate resumes it with a
+ *   timeout, it cancels its row. It clears the marker itself once it has the
+ *   outcome, so a resume whose marker clear was lost to a crash is still
+ *   settled.
  * - {@link resumeOwedAsks}, the waker: a touch of the board resumes every
  *   turn its rows are owed, through `ctx.requestHost.resumeAsk`. It stops at
- *   once when no row owes one. Never called inside the asking turn.
+ *   once when no row owes one. Never called inside the waiting turn.
  *
- * `addTask`'s `waitForResponse` option is the task tools' (`../../skills/
- * task-tools-capability.ts`): the schema it appears in and the check on who
- * may be assigned are theirs. This module is the mechanism under them, and the
- * notice entry that hears an asked row end calls {@link resumeOwedAsks}.
+ * The `wait` field is the task tools' (`../../skills/task-tools-capability.ts`):
+ * the schema it appears in and the check on who may be assigned are theirs.
+ * This module is the mechanism under them, and the notice entry that hears a
+ * waited-on row end calls {@link resumeOwedAsks}.
  */
 import {
-  AskEndedError,
-  AskStoppedError,
+  WaitEndedError,
+  WaitStoppedError,
   parkOnAsk,
   parseBlockInstanceId,
   recordedAskOutcome,
@@ -37,19 +43,19 @@ import type { AskOutcome, BlockContext } from "@flow-state-dev/core/types";
 import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskInit } from "../schema/task-init";
-import type { TaskCollectionRef } from "../collection/types";
+import type { TaskCollectionRef, TaskWriteOutcome } from "../collection/types";
 // The one task-turn test (BR-5a). Reached by path, not through the task-board
 // barrel, which imports this module's neighbours.
 import { isTaskTurn } from "../../task-board/task-turn";
 
-/** How long an ask stays open when its filer sets no `timeoutMs`: five minutes. */
-export const DEFAULT_ASK_TIMEOUT_MS = 5 * 60_000;
+/** How long a wait stays open when its caller sets no `timeoutMs`: five minutes. */
+export const DEFAULT_WAIT_TIMEOUT_MS = 5 * 60_000;
 
-/** The shortest `timeoutMs` an ask takes: 30 seconds. */
-export const MIN_ASK_TIMEOUT_MS = 30_000;
+/** The shortest `timeoutMs` a wait takes: 30 seconds. */
+export const MIN_WAIT_TIMEOUT_MS = 30_000;
 
-/** The longest `timeoutMs` an ask takes: an hour. */
-export const MAX_ASK_TIMEOUT_MS = 60 * 60_000;
+/** The longest `timeoutMs` a wait takes: an hour. */
+export const MAX_WAIT_TIMEOUT_MS = 60 * 60_000;
 
 /**
  * The stem of the gate an asked row's turn parks on: the board and the row.
@@ -61,18 +67,18 @@ export function askGateId(collectionId: string, taskId: string): string {
 }
 
 /**
- * Whether the running turn's host can hold an ask (FIX-1816 BR-5): durable
+ * Whether the running turn's host can hold a wait (FIX-1816 BR-5): durable
  * execution (the ask resume is wired) and a durability sweeper that bounds
- * every ask (`RequestHost.hasAskSweeper`). Read off the server's request
+ * every wait (`RequestHost.hasAskSweeper`). Read off the server's request
  * host, never from input.
  */
-export function canHoldAsk(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
+export function canHoldWait(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
   const host = ctx.requestHost;
   return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
 }
 
-/** What {@link addTaskAndWait} returns. */
-export type WaitForResponseResult =
+/** What {@link dispatchAndWait} returns. */
+export type DispatchAndWaitResult =
   | { readonly ok: true; readonly taskId: string; readonly answer: unknown }
   | {
       readonly ok: false;
@@ -84,10 +90,14 @@ export type WaitForResponseResult =
        *   marker). Nothing was filed.
        * - `wait_timeout_out_of_range`: `timeoutMs` is outside 30 seconds to an
        *   hour. Nothing was filed; it is never clamped.
+       * - `task_not_dispatchable`: the recorded row named can't be dispatched
+       *   (claimed, running, ended, already dispatched or already waited on).
+       *   Nothing was written.
        * - `wait_timed_out`, `wait_task_failed`, `wait_task_cancelled`: the ask
        *   was filed and ended without an answer.
        */
       readonly error:
+        | "task_not_dispatchable"
         | "wait_already_pending"
         | "wait_unavailable"
         | "wait_timeout_out_of_range"
@@ -146,38 +156,59 @@ function outcomeOf(
   }
 }
 
-/** How an ask is bounded. */
-export interface AddTaskAndWaitOptions {
+/** How a wait is bounded. */
+export interface DispatchAndWaitOptions {
   /**
-   * How long to wait, from filing: {@link MIN_ASK_TIMEOUT_MS} to
-   * {@link MAX_ASK_TIMEOUT_MS}, inclusive. {@link DEFAULT_ASK_TIMEOUT_MS} when
-   * unset. Outside the range the ask is refused before filing.
+   * How long to wait, from filing: {@link MIN_WAIT_TIMEOUT_MS} to
+   * {@link MAX_WAIT_TIMEOUT_MS}, inclusive. {@link DEFAULT_WAIT_TIMEOUT_MS} when
+   * unset. Outside the range the wait is refused before filing.
    */
   readonly timeoutMs?: number;
 }
 
 /**
- * File `init` on `collection` as an ask and wait for its answer.
+ * A row recorded earlier, to dispatch and wait on instead of filing a new
+ * one (FIX-1875). `assignee`, when set, is written in the same write.
+ */
+export interface DispatchRef {
+  readonly taskId: string;
+  readonly assignee?: string;
+}
+
+/** What a dispatch waits on: a new row's init, or a recorded row by id. */
+export type DispatchTarget = Omit<TaskInit, "ask"> | DispatchRef;
+
+/** The row a waiting call filed or readied, and the gate it parks on. */
+export interface FiledWait {
+  readonly taskId: string;
+  readonly gateId: string;
+  readonly deadline: number;
+}
+
+/**
+ * Dispatch `target` on `collection` and wait for its answer: a new row
+ * (`init`), or a recorded one (`{ taskId }`), readied in the write that marks
+ * it waited-on.
  *
  * The caller has already run the board's own filing checks (who may be
  * assigned); this adds only what waiting needs. Must run as a block with a
  * stable call identity (a generator's tool), on a durable host, and never on
- * a task turn ({@link isTaskTurn}), so an ask is never asked from inside an
- * ask. Every refusal comes before anything is filed.
+ * a task turn ({@link isTaskTurn}), so a wait is never started from inside a
+ * waited-on task. Every refusal comes before anything is written.
  */
-export async function addTaskAndWait(
+export async function dispatchAndWait(
   ctx: BlockContext,
   collection: TaskCollectionRef,
-  init: Omit<TaskInit, "ask">,
-  options: AddTaskAndWaitOptions = {}
-): Promise<WaitForResponseResult> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
-  if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_ASK_TIMEOUT_MS || timeoutMs > MAX_ASK_TIMEOUT_MS) {
+  target: DispatchTarget,
+  options: DispatchAndWaitOptions = {}
+): Promise<DispatchAndWaitResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_WAIT_TIMEOUT_MS || timeoutMs > MAX_WAIT_TIMEOUT_MS) {
     return {
       ok: false,
       error: "wait_timeout_out_of_range",
       message:
-        `timeoutMs must be from ${MIN_ASK_TIMEOUT_MS} (30 seconds) to ${MAX_ASK_TIMEOUT_MS} (an hour); ` +
+        `timeoutMs must be from ${MIN_WAIT_TIMEOUT_MS} (30 seconds) to ${MAX_WAIT_TIMEOUT_MS} (an hour); ` +
         `${timeoutMs} is outside it. Nothing was filed.`
     };
   }
@@ -186,61 +217,105 @@ export async function addTaskAndWait(
       ok: false,
       error: "wait_unavailable",
       message:
-        "This turn is itself working a task, so it can't wait for another. File the task without " +
-        "waitForResponse instead. Nothing was filed."
+        "This turn is itself working a task, so it can't wait for another. Hand the task over without " +
+        "waiting instead. Nothing was filed."
     };
   }
   const call = toolCallOf(ctx);
-  // A host that can't bound the ask (no durable execution, or no sweeper to
+  // A host that can't bound the wait (no durable execution, or no sweeper to
   // time it out) is refused, so no direct caller parks a turn forever.
   if (
     call === undefined ||
     ctx.runOnce === undefined ||
     ctx.suspend === undefined ||
-    !canHoldAsk(ctx) ||
-    collection.clearResumeOwed === undefined
+    !canHoldWait(ctx) ||
+    collection.clearResumeOwed === undefined ||
+    ("taskId" in target && collection.dispatch === undefined)
   ) {
     return {
       ok: false,
       error: "wait_unavailable",
       message:
-        "Waiting for a task's answer needs durable execution, a durability sweeper that times asks out, " +
-        "and a board that keeps the ask. Nothing was filed."
+        "Waiting for a task's answer needs durable execution, a durability sweeper that times waits out, " +
+        "and a board that keeps the wait. Nothing was filed."
     };
   }
 
-  // One ask per step. The first call to claim the step holds it, durably, so a
-  // replay after the resume re-reads the same holder.
+  // One wait per step. The first call to claim the step holds it, durably, so
+  // a replay after the resume re-reads the same holder.
   const holder = await ctx.runOnce(`fsd.ask.step:${call.stepKey}`, async () => call.logicalId);
   if (holder !== call.logicalId) {
     return {
       ok: false,
       error: "wait_already_pending",
-      message: "This step already waits on another task. Ask again on a later step."
+      message: "This step already waits on another task. Wait again on a later step."
     };
   }
 
-  // One row per call. The filing is recorded under `fsd.ask.file`, keyed on
-  // the call's logical id (which the replay shares; never on the attempt), in
-  // the shape every version reads back: `{ taskId, gateId, deadline }`. An ask
-  // filed by earlier code finds its filing there and goes no further (BP-030),
-  // and a process still on earlier code, mid-rollout, reads a filing it knows.
-  // Inside it, the row's ids are recorded first, in a step with no side
-  // effect, then the row is written under that id unless it already is, so a
-  // crash between the row's commit and the filing's record replays into the
-  // same row. The deadline is counted from the row's write, and read back from
-  // the row on that replay, never from ids a crash outlived.
-  const filed = await ctx.runOnce(`fsd.ask.file:${call.logicalId}`, async () => {
-    const planned = await ctx.runOnce!(`fsd.ask.plan:${call.logicalId}`, async () => {
-      // A caller's own id is kept (a follow-up's `<root>-f<n>`, whose one
-      // insert is what keeps a session to one task); otherwise one is minted,
-      // unique across processes. The gate carries a nonce of this plan's, so
-      // a row under the id is adopted only when this very call filed it.
-      const taskId = init.id ?? `task_${crypto.randomUUID()}`;
+  const filed = await fileWaitedRow(ctx, collection, target, call.logicalId, timeoutMs);
+  if ("refused" in filed) {
+    return { ok: false, error: "task_not_dispatchable", taskId: filed.taskId, message: filed.refused };
+  }
+  const goal = "taskId" in target ? (collection.get(filed.taskId)?.goal ?? filed.taskId) : target.goal;
+  return parkOnFiledRow(ctx, collection, filed, goal);
+}
+
+/**
+ * The first half of a wait: file the row, or ready the recorded one, marked
+ * waited-on, once per call (FIX-1875 split it out of the wait).
+ *
+ * One row per call. The filing is recorded under `fsd.ask.file`, keyed on the
+ * call's logical id (which the replay shares; never on the attempt), in the
+ * shape every version reads back: `{ taskId, gateId, deadline }`. A wait filed
+ * by earlier code finds its filing there and goes no further (BP-030), and a
+ * process still on earlier code, mid-rollout, reads a filing it knows. Inside
+ * it, the row's ids are recorded first, in a step with no side effect, then
+ * the row is written under that id unless it already is, so a crash between
+ * the row's commit and the filing's record replays into the same row. The
+ * deadline is counted from the row's write, and read back from the row on that
+ * replay, never from ids a crash outlived.
+ *
+ * A recorded row is readied by `TaskCollectionRef.dispatch`, which refuses one
+ * that isn't recorded, pending and unwaited. The refusal is recorded with the
+ * call too, so a replay answers as the first call did.
+ */
+export async function fileWaitedRow(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  target: DispatchTarget,
+  logicalId: string,
+  timeoutMs: number
+): Promise<FiledWait | { readonly refused: string; readonly taskId: string }> {
+  if (ctx.runOnce === undefined) throw new Error("fileWaitedRow needs ctx.runOnce, which only a durable host provides.");
+  // The goal check's control (ask-survives-a-restart, no-run-once) patches
+  // this line and the plan's below by their text: keep both spellings.
+  const filed = await ctx.runOnce(`fsd.ask.file:${logicalId}`, async () => {
+    const planned = await ctx.runOnce!(`fsd.ask.plan:${logicalId}`, async () => {
+      // A recorded row keeps its id, and so does a caller's own id (a
+      // follow-up's `<root>-f<n>`, whose one insert is what keeps a session
+      // to one task); otherwise one is minted, unique across processes. The
+      // gate carries a nonce of this plan's, so a row is adopted only when
+      // this very call filed or readied it.
+      const taskId = "taskId" in target ? target.taskId : (target.id ?? `task_${crypto.randomUUID()}`);
       return { taskId, gateId: `${askGateId(collection.collectionId, taskId)}#${crypto.randomUUID()}` };
     });
     const existing = collection.get(planned.taskId);
-    if (existing !== undefined && existing.ask?.gateId !== planned.gateId) {
+    if (existing?.ask != null && existing.ask.gateId === planned.gateId) {
+      return { taskId: planned.taskId, gateId: planned.gateId, deadline: existing.ask.deadline };
+    }
+    const deadline = Date.now() + timeoutMs;
+    if ("taskId" in target) {
+      const outcome = await collection.dispatch!(planned.taskId, {
+        call: logicalId,
+        ...(target.assignee !== undefined ? { assignee: target.assignee } : {}),
+        ask: { gateId: planned.gateId, deadline }
+      });
+      if (outcome.outcome === "declined") {
+        return { refused: notDispatchableMessage(planned.taskId, outcome), taskId: planned.taskId };
+      }
+      return { taskId: planned.taskId, gateId: planned.gateId, deadline };
+    }
+    if (existing !== undefined) {
       // Another call's row under this id (a caller's id already taken), or,
       // for a minted id, a corrupt memo or a programming error: thrown, never
       // adopted, as the one insert under that id would refuse it.
@@ -248,14 +323,43 @@ export async function addTaskAndWait(
         `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
       );
     }
-    let deadline = existing?.ask?.deadline;
-    if (deadline === undefined) {
-      deadline = Date.now() + timeoutMs;
-      await collection.addTask({ ...init, id: planned.taskId, ask: { gateId: planned.gateId, deadline } });
-    }
+    await collection.addTask({ ...target, id: planned.taskId, ask: { gateId: planned.gateId, deadline } });
     return { taskId: planned.taskId, gateId: planned.gateId, deadline };
   });
+  return filed;
+}
 
+/**
+ * Why a recorded row can't be dispatched, in words a model can act on
+ * (FIX-1875 BR-10). Shared by the waiting and the non-waiting dispatch.
+ */
+export function notDispatchableMessage(
+  taskId: string,
+  declined: Extract<TaskWriteOutcome, { outcome: "declined" }>
+): string {
+  const why =
+    declined.reason === "already-dispatched"
+      ? `it is ${declined.status} and was already dispatched, so it starts, or started, without another call`
+      : declined.reason === "terminal"
+        ? `it is ${declined.status}, which is terminal`
+        : declined.reason === "follow-up"
+          ? "it is a follow-up, which runs with the worker of the task it follows, so it keeps its assignee"
+          : declined.reason === "awaiting-answer"
+            ? "it was just answered and picks up again with its worker, so it keeps its assignee"
+            : `it is ${declined.status}; only a recorded task that hasn't started and isn't waited on can be dispatched`;
+  return `task "${taskId}" can't be dispatched: ${why}. Nothing was written.`;
+}
+
+/**
+ * The second half of a wait: park the turn on the row {@link fileWaitedRow}
+ * filed, or answer at once when the row has already ended.
+ */
+export async function parkOnFiledRow(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  filed: FiledWait,
+  goal: string
+): Promise<DispatchAndWaitResult> {
   // Never fails the call: the answer always comes back. A clear that fails
   // leaves the marker, and the next touch clears it, the gate already resolved.
   const clearMarker = async (): Promise<void> => {
@@ -271,7 +375,7 @@ export async function addTaskAndWait(
     gateId: filed.gateId,
     binding: { board: collection.collectionId, taskId: filed.taskId },
     deadline: filed.deadline,
-    message: `Waiting for the answer to "${init.goal}"`
+    message: `Waiting for the answer to "${goal}"`
   };
 
   /**
@@ -282,7 +386,7 @@ export async function addTaskAndWait(
    * fails: a marker left set is cleared by the next touch, and a cancel that
    * failed is owed on the row, for the next touch to pay (FIX-1844).
    */
-  const endStopped = async (): Promise<WaitForResponseResult> => {
+  const endStopped = async (): Promise<DispatchAndWaitResult> => {
     try {
       await cancelOrOwe(collection, filed.taskId, "The asking turn was stopped.");
       await clearMarker();
@@ -320,9 +424,9 @@ export async function addTaskAndWait(
     await clearMarker();
     return { ok: true, taskId: filed.taskId, answer };
   } catch (error) {
-    if (error instanceof AskStoppedError) return endStopped();
+    if (error instanceof WaitStoppedError) return endStopped();
     // Anything else, the park itself among it, is not ours to handle.
-    if (!(error instanceof AskEndedError)) throw error;
+    if (!(error instanceof WaitEndedError)) throw error;
     if (error.code === "wait_timed_out") {
       // The ask is over: end the row too, so its later ending is dropped.
       const cancelled = await cancelOrOwe(collection, filed.taskId, ASK_TIMED_OUT_REASON);
@@ -415,7 +519,7 @@ async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reaso
   }
 }
 
-function answerOf(taskId: string, outcome: Exclude<AskOutcome, { stopped: true }>): WaitForResponseResult {
+function answerOf(taskId: string, outcome: Exclude<AskOutcome, { stopped: true }>): DispatchAndWaitResult {
   if (outcome.answered) return { ok: true, taskId, answer: outcome.answer };
   return { ok: false, error: outcome.error.code, taskId, message: outcome.error.message };
 }

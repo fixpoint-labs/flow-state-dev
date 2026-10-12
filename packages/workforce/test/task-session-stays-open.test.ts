@@ -57,7 +57,7 @@ function host(agentScript: MockGeneratorScriptEntry[], extra: Parameters<typeof 
 }
 
 const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) => {
-  const result = await h.act("alice", conv, "addTask_tasks", input);
+  const result = await h.act("alice", conv, "dispatchTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };

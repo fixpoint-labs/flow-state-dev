@@ -14,6 +14,13 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
+  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
+  expect(result.error, messageOf(result.error)).toBeUndefined();
+  return result.output as { ok: boolean; taskId?: string; error?: string };
+};
+
+/** Write a task down without starting it: the board's `addTask_tasks`, for a row with no owner yet. */
+const record = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
   const result = await host.act(userId, conv, "addTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
@@ -54,8 +61,8 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
       script: [
         {
           toolCalls: [
-            { toolCallId: "a1", toolName: "addTask", args: { goal: "Write the notes", assignee: "eng.tasker" } },
-            { toolCallId: "a2", toolName: "addTask", args: { goal: "Write more", assignee: "bobs.worker" } }
+            { toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Write the notes", assignee: "eng.tasker" } },
+            { toolCallId: "a2", toolName: "dispatchTask", args: { goal: "Write more", assignee: "bobs.worker" } }
           ]
         },
         { text: "Filed it." },
@@ -208,7 +215,7 @@ describe("a task filed with no assignee", () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
-      const filed = await file(host, "alice", conv, { goal: "pick someone" });
+      const filed = await record(host, "alice", conv, { goal: "pick someone" });
       expect(filed).toEqual({ ok: true, taskId: expect.any(String) });
       await host.settled();
       expect(await list(host, "alice", conv)).toEqual([
@@ -233,7 +240,7 @@ describe("what a filing can't name (BR-8)", () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
-      const filed = await file(host, "alice", conv, {
+      const filed = await record(host, "alice", conv, {
         goal: "mine",
         board: "elsewhere",
         partition: "someone-else",
@@ -321,15 +328,15 @@ describe("each conversation's board is its own", () => {
       const one = await host.conversation("alice", "pm");
       const two = await host.conversation("alice", "pm");
       const bobs = await host.conversation("bob", "pm");
-      const a = await file(host, "alice", one, { goal: "in one" });
-      const b = await file(host, "alice", two, { goal: "in two" });
-      await file(host, "bob", bobs, { goal: "bob's" });
+      const a = await record(host, "alice", one, { goal: "in one" });
+      const b = await record(host, "alice", two, { goal: "in two" });
+      await record(host, "bob", bobs, { goal: "bob's" });
       expect((await list(host, "alice", one)).map((task) => task.id)).toEqual([a.taskId]);
       expect((await list(host, "alice", two)).map((task) => task.id)).toEqual([b.taskId]);
       expect((await list(host, "bob", bobs)).map((task) => task.goal)).toEqual(["bob's"]);
       // Bob can't act on Alice's conversation at all (BR-12).
       await expect(host.act("bob", one, "listTasks_tasks", {})).rejects.toThrow(/belongs to another user/);
-      await expect(host.act("bob", one, "addTask_tasks", { goal: "sneak in" })).rejects.toThrow(/belongs to another user/);
+      await expect(host.act("bob", one, "dispatchTask_tasks", { goal: "sneak in" })).rejects.toThrow(/belongs to another user/);
       expect((await list(host, "alice", one)).map((task) => task.id)).toEqual([a.taskId]);
     } finally {
       await host.dispose();
@@ -362,7 +369,7 @@ describe("each conversation's board is its own", () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm", "talk-1");
-      await file(host, "alice", conv, { goal: "before" });
+      await record(host, "alice", conv, { goal: "before" });
       await (await host.state.getRuntime()).stores.session.delete(conv);
       expect(await host.conversation("alice", "pm", "talk-1")).toBe(conv);
       expect(await list(host, "alice", conv)).toEqual([]);

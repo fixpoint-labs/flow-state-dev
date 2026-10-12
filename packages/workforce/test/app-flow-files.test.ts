@@ -91,7 +91,7 @@ async function emSession(h: BoardHost, userId: string, workerId: string): Promis
 }
 
 const file = async (h: BoardHost, userId: string, sessionId: string, input: Record<string, unknown>) => {
-  const result = await h.act(userId, sessionId, "addTask_tasks", input, "em");
+  const result = await h.act(userId, sessionId, "dispatchTask_tasks", input, "em");
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -126,7 +126,7 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
           called = true;
           return true;
         },
-        then: { toolCalls: [{ toolCallId: "em-1", toolName: "addTask", args: { goal: "Ship the build", assignee: "otto" } }] }
+        then: { toolCalls: [{ toolCallId: "em-1", toolName: "dispatchTask", args: { goal: "Ship the build", assignee: "otto" } }] }
       },
       { when: () => true, then: { text: "OK." } }
     ] as never[]);

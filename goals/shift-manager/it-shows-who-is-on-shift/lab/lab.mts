@@ -29,7 +29,7 @@
  * `coordinator`), and each of its sessions names it in its state
  * (`workerId`). A task runs in a task session the board opens for it.
  *
- * Every task is filed through the lead's conversation's `addTask_tasks`, over
+ * Every task is filed through the lead's conversation's `dispatchTask_tasks`, over
  * the Lab's own router, assigned by the worker's id. No model: the runs are
  * scripted.
  */
@@ -270,7 +270,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   const states = (wanted: ShiftState) => Object.entries(spread).flatMap(([name, list]) => list.filter((s) => s === wanted).map(() => name));
   const idOf = (name: string) => seats.find((s) => s.name === name)!.id;
   const file = async (name: string, goal: string, deps?: string[]): Promise<string> => {
-    const filed = await http.act(LEAD_KIND, conversation, "addTask_tasks", { goal, assignee: idOf(name), ...(deps === undefined ? {} : { deps }) });
+    const filed = await http.act(LEAD_KIND, conversation, "dispatchTask_tasks", { goal, assignee: idOf(name), ...(deps === undefined ? {} : { deps }) });
     if (filed?.ok !== true) throw new Error(`filing "${goal}" for ${idOf(name)}: ${JSON.stringify(filed)}`);
     return String(filed.taskId);
   };

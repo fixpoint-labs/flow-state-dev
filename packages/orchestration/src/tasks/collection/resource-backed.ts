@@ -124,6 +124,7 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
+  dispatchWrite,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -1051,6 +1052,35 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           ? { cancelOwed: true }
           : undefined
       );
+    },
+
+    async dispatch(id, dispatchOptions) {
+      const write = () =>
+        patchRef(
+          id,
+          "dispatched",
+          (task) => {
+            const decided = dispatchWrite(task as Task, dispatchOptions);
+            if (decided === undefined) return undefined;
+            if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+            return decided.patch as Partial<Task<TInput, TOutput>>;
+          },
+          { declineOnTerminal: true }
+        );
+      const outcome = await write();
+      // A request reads a resource as the snapshot it first took, and a throw
+      // from the updater skips the store's check of that snapshot. A row
+      // another request claimed or dispatched since moves on, so confirm the
+      // decline against the committed row before reporting it, as
+      // `setAssignee` does.
+      if (outcome.outcome === "declined" && outcome.reason !== "terminal") {
+        const ref = mirror.get(id);
+        if (ref !== undefined) {
+          await readCommitted(ref, () => undefined);
+          return write();
+        }
+      }
+      return outcome;
     },
 
     get(id) {

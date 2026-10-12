@@ -360,7 +360,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   if (opened.status !== 201) throw new Error(`the lead's conversation was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
   const conversation = RUN_LAB_LEAD_SESSION;
   const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[]) => {
-    const out = (await act(flows[leadFlow]!, conversation, "addTask_tasks", {
+    const out = (await act(flows[leadFlow]!, conversation, "dispatchTask_tasks", {
       goal,
       assignee: worker.id,
       input: script,

@@ -1,5 +1,5 @@
 /**
- * Ask on the board: `addTaskAndWait` files a task, the turn parks, and the
+ * Ask on the board: `dispatchAndWait` files a task, the turn parks, and the
  * row's ending resumes it with the answer (FIX-1816 P2, V3 V4 and BR-12a).
  *
  * The asking turn is a generator in a plain sequencer, the shape a Workforce
@@ -229,7 +229,7 @@ describe("ask on the board: a host that can't bound the ask", () => {
     const flow = askFlow(model);
     const state = runtimeFor(flow);
     try {
-      // A direct caller of addTaskAndWait, on a host whose router (and so its sweeper) was never built.
+      // A direct caller of dispatchAndWait, on a host whose router (and so its sweeper) was never built.
       const run = await act(state, flow, "run", {}, { sweeper: false });
       expect(await statusOf(state, run.requestId!)).toBe("completed");
       expect(toolResults(seen[1]!.messages)).toContain("wait_unavailable");

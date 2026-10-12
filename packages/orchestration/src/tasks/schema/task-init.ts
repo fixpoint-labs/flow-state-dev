@@ -43,6 +43,17 @@ export type TaskInit<TInput = unknown> = {
    * writes it in the same write that files the row; never from model input.
    */
   ask?: { gateId: string; deadline: number };
+  /**
+   * File the row recorded, not dispatched (see `Task.undispatched`): a board
+   * that starts work at once leaves it until `dispatch` readies it. Omitted,
+   * the row is ready, as every row was before this.
+   */
+  undispatched?: true;
+  /**
+   * The call that filed this row ready (see `Task.dispatchCall`), so the same
+   * call replayed finds its own row. Set only by the dispatch path.
+   */
+  dispatchCall?: string;
 };
 
 /**

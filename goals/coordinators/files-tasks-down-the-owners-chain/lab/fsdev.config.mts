@@ -83,12 +83,12 @@ const judgment = {
       const file = /\[file:([a-z.-]+)\]/.exec(asked);
       if (file !== null) {
         const goal = asked.replace(file[0], "").trim();
-        return { toolCalls: [{ toolCallId: "file-0", toolName: "addTask", args: { goal, assignee: file[1] } }], finishReason: "tool-calls" };
+        return { toolCalls: [{ toolCallId: "file-0", toolName: "dispatchTask", args: { goal, assignee: file[1] } }], finishReason: "tool-calls" };
       }
       const split = /\[split:([a-z.-]+)\]/.exec(asked);
       if (split !== null) {
         const goal = `a piece of: ${asked.replace(split[0], "").trim()}`;
-        return { toolCalls: [{ toolCallId: "split-0", toolName: "addTask", args: { goal, assignee: split[1] } }], finishReason: "tool-calls" };
+        return { toolCalls: [{ toolCallId: "split-0", toolName: "dispatchTask", args: { goal, assignee: split[1] } }], finishReason: "tool-calls" };
       }
       return { text: "Noted.", finishReason: "stop" };
     }

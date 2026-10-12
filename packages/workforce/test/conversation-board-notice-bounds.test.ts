@@ -56,7 +56,7 @@ describe("a notice that has waited out its patience", () => {
   const script = () =>
     mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
         { when: (input) => JSON.stringify(input).includes("and our workers"), then: { text: "Forty workers." } }
@@ -128,7 +128,7 @@ describe("more notices than may wait on a conversation", () => {
         {
           toolCalls: goals.map((goal, n) => ({
             toolCallId: `a${n}`,
-            toolName: "addTask",
+            toolName: "dispatchTask",
             args: { goal, assignee: "eng.tasker" }
           }))
         },

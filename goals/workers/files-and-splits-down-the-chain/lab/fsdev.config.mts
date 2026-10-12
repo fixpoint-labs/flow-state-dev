@@ -118,9 +118,9 @@ const scripted = {
     const split = /\[split:([a-z0-9.,-]+)\]/.exec(asked);
     const fan = /\[fan:(\d+)\]/.exec(asked);
     if (file !== null) {
-      calls.push({ toolCallId: "file-0", toolName: "addTask", args: { goal: asked.replace(file[0], "").replace(/\s+/g, " ").trim(), assignee: file[1]! } });
+      calls.push({ toolCallId: "file-0", toolName: "dispatchTask", args: { goal: asked.replace(file[0], "").replace(/\s+/g, " ").trim(), assignee: file[1]! } });
     } else if (split !== null) {
-      split[1]!.split(",").forEach((assignee, i) => calls.push({ toolCallId: `split-${i}`, toolName: "addTask", args: { goal: `part ${i + 1} of: ${plain(asked)}`, assignee } }));
+      split[1]!.split(",").forEach((assignee, i) => calls.push({ toolCallId: `split-${i}`, toolName: "dispatchTask", args: { goal: `part ${i + 1} of: ${plain(asked)}`, assignee } }));
     } else if (fan !== null) {
       for (let i = 0; i < Number(fan[1]); i += 1) calls.push({ toolCallId: `fan-${i}`, toolName: "addTask", args: { goal: `piece ${i + 1} of: ${plain(asked)}` } });
     } else if (asked.includes("[try-file]")) {

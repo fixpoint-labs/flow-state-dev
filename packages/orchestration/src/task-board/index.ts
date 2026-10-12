@@ -249,18 +249,20 @@ export {
   type TaskBoardCapabilityAccessor,
 } from "./capability";
 export { currentWorkerClaim } from "./flow-policy-wiring";
-// The ask mechanism under `addTask({ waitForResponse })` (FIX-1816): the call
-// that files a task and waits for its answer, whether this turn's host can
+// The wait under `dispatchTask({ wait })` (FIX-1816, FIX-1875): the call that
+// dispatches a task and waits for its answer, whether this turn's host can
 // hold one, and the bounds. Node-only, like the claim seam it reads.
 export {
-  addTaskAndWait,
-  canHoldAsk,
+  dispatchAndWait,
+  canHoldWait,
   askGateId,
-  DEFAULT_ASK_TIMEOUT_MS,
-  MIN_ASK_TIMEOUT_MS,
-  MAX_ASK_TIMEOUT_MS,
-  type AddTaskAndWaitOptions,
-  type WaitForResponseResult,
+  DEFAULT_WAIT_TIMEOUT_MS,
+  MIN_WAIT_TIMEOUT_MS,
+  MAX_WAIT_TIMEOUT_MS,
+  type DispatchAndWaitOptions,
+  type DispatchAndWaitResult,
+  type DispatchRef,
+  type DispatchTarget,
 } from "../tasks/helpers/wait-for-response";
 export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-turn";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
