@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 250" role="img" aria-label="A vertical fence between the browser on the left and the server's flows on the right. Three paths approach it: the picker, a direct address to a mode, and a direct API call. For a mode that cannot run here, the picker and the direct address are stopped at the gate and shown the reason; the direct API call finds no flow registered for that mode, so it is stopped too."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface-2); }
+    .flows { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:7 5; }
+    .path  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .stop  { stroke:var(--gone); stroke-width:2.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="250"/>
+
+  <g id="sides">
+    <text class="t-lbl" x="16" y="26">THE BROWSER</text>
+    <text class="t-lbl" x="620" y="26">THE SERVER&#x27;S FLOWS</text>
+    <line class="fence" x1="520" y1="36" x2="520" y2="236"/>
+    <text class="t-lbl c-gone" x="530" y="232">THE GATE · ONE ANSWER</text>
+  </g>
+
+  <g id="flows">
+    <rect class="flows" x="620" y="44" width="304" height="176" rx="6"/>
+    <text class="t-b" x="636" y="70">Flow State&#x27;s flows</text>
+    <text class="t-s" x="636" y="88">chat-agent, coordinator, agent, …</text>
+    <text class="t-b" x="636" y="130">No flow registered</text>
+    <text class="t-s" x="636" y="148">for a mode that can&#x27;t run</text>
+  </g>
+
+  <g id="picker-path">
+    <rect class="box" x="16" y="44" width="200" height="40" rx="5"/>
+    <text class="t-b" x="30" y="69">the picker at /</text>
+    <path class="path" d="M216 64 H510"/>
+    <line class="stop" x1="510" y1="54" x2="510" y2="74"/>
+    <text class="t-s" x="240" y="56">shows the reason</text>
+  </g>
+
+  <g id="address-path">
+    <rect class="box" x="16" y="110" width="200" height="40" rx="5"/>
+    <text class="t-b" x="30" y="135">a direct address · /codex</text>
+    <path class="path" d="M216 130 H510"/>
+    <line class="stop" x1="510" y1="120" x2="510" y2="140"/>
+    <text class="t-s" x="240" y="122">same reason · no rail, no session</text>
+  </g>
+
+  <g id="api-path">
+    <rect class="box" x="16" y="176" width="200" height="40" rx="5"/>
+    <text class="t-b" x="30" y="201">a direct API call</text>
+    <path class="path" d="M216 196 H610"/>
+    <line class="stop" x1="610" y1="186" x2="610" y2="206"/>
+    <text class="t-s" x="240" y="188">not found: the flow isn&#x27;t there</text>
+  </g>
+</svg>

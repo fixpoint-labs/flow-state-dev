@@ -1,0 +1,98 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="Before: the front page at / is the shell, with the rail of coordinators, workers and the assistant, the assistant's stream, and the roster. After: / is a picker of four modes. Flow State is available and leads to /flow-state, the same shell moved whole with one header row added. Claude Code, Codex and Cursor each show an availability line, pass through the gate, and when available lead to their own address: a rail of that harness's own sessions with New session, and a stream slot their own issues fill."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .col   { fill:var(--surface-2); }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .off   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .slot  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .band  { fill:var(--code-soft); }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="28">TODAY · /</text>
+    <rect class="panel" x="16" y="40" width="284" height="350" rx="6"/>
+    <text class="t-h" x="30" y="64">The shell</text>
+    <rect class="col" x="28" y="80" width="76" height="292" rx="4"/>
+    <text class="t-s" x="34" y="98">Coordinators</text>
+    <text class="t-s" x="34" y="114">Workers</text>
+    <text class="t-s" x="34" y="130">Assistant</text>
+    <rect class="col" x="110" y="80" width="112" height="292" rx="4"/>
+    <text class="t-s" x="118" y="98">the assistant</text>
+    <text class="t-s" x="118" y="114">stream</text>
+    <rect class="col" x="228" y="80" width="60" height="292" rx="4"/>
+    <text class="t-s" x="234" y="98">roster</text>
+  </g>
+
+  <g id="picker">
+    <text class="t-lbl" x="330" y="28">AFTER · / IS THE PICKER</text>
+    <rect class="panel" x="330" y="40" width="594" height="96" rx="6"/>
+    <rect class="keep" x="342" y="62" width="138" height="60" rx="5"/>
+    <text class="t-h c-code" x="354" y="86">Flow State</text>
+    <text class="t-s" x="354" y="106">always available</text>
+    <rect class="off" x="490" y="62" width="138" height="60" rx="5"/>
+    <text class="t-h" x="502" y="86">Claude Code</text>
+    <text class="t-s" x="502" y="106">or: the reason it&#x27;s off</text>
+    <rect class="off" x="638" y="62" width="138" height="60" rx="5"/>
+    <text class="t-h" x="650" y="86">Codex</text>
+    <text class="t-s" x="650" y="106">or: the reason it&#x27;s off</text>
+    <rect class="off" x="786" y="62" width="126" height="60" rx="5"/>
+    <text class="t-h" x="798" y="86">Cursor</text>
+    <text class="t-s" x="798" y="106">or: why it&#x27;s off</text>
+  </g>
+
+  <g id="arrows">
+    <path class="arr" d="M411 122 V170"/>
+    <polygon class="head" points="406,168 416,168 411,176"/>
+    <path class="arr" d="M559 122 V150 H775 M707 122 V150 M849 122 V150 M775 150 V170"/>
+    <polygon class="head" points="770,168 780,168 775,176"/>
+    <text class="t-lbl c-acc" x="606" y="168">THE GATE · IF AVAILABLE</text>
+  </g>
+
+  <g id="flow-state">
+    <rect class="panel" x="330" y="180" width="280" height="210" rx="6"/>
+    <text class="t-lbl" x="342" y="198">/FLOW-STATE · MOVED WHOLE</text>
+    <rect class="band" x="342" y="208" width="256" height="20" rx="3"/>
+    <text class="t-s" x="350" y="222">+ header: Flow State · back to modes</text>
+    <rect class="col" x="342" y="234" width="70" height="144" rx="4"/>
+    <text class="t-s" x="347" y="252">Coordinators</text>
+    <text class="t-s" x="347" y="268">Workers</text>
+    <text class="t-s" x="347" y="284">Assistant</text>
+    <rect class="col" x="418" y="234" width="118" height="144" rx="4"/>
+    <text class="t-s" x="426" y="252">the assistant</text>
+    <rect class="col" x="542" y="234" width="56" height="144" rx="4"/>
+    <text class="t-s" x="547" y="252">roster</text>
+  </g>
+
+  <g id="harness">
+    <rect class="panel" x="626" y="180" width="298" height="210" rx="6"/>
+    <text class="t-lbl" x="638" y="198">/CLAUDE-CODE · /CODEX · /CURSOR</text>
+    <rect class="band" x="638" y="208" width="274" height="20" rx="3"/>
+    <text class="t-s" x="646" y="222">header: the mode · back to modes</text>
+    <rect class="keep" x="638" y="234" width="100" height="144" rx="4"/>
+    <text class="t-b" x="645" y="252">its own</text>
+    <text class="t-b" x="645" y="267">sessions</text>
+    <text class="t-s" x="645" y="288">+ New session</text>
+    <rect class="slot" x="744" y="234" width="168" height="144" rx="4"/>
+    <text class="t-b c-acc" x="754" y="252">the stream slot</text>
+    <text class="t-s" x="754" y="270">filled by the mode&#x27;s</text>
+    <text class="t-s" x="754" y="285">own issue</text>
+  </g>
+</svg>
