@@ -742,9 +742,18 @@ async function whatTheTurnDid(view: View): Promise<string> {
     .getAttribute("data-session-id")
     .catch(() => null);
   if (sessionId === null) return "the Stream names no coordinator session to read the turn from";
-  const { body: requests } = await view.api.call("GET", `/sessions/${encodeURIComponent(sessionId)}/requests?limit=200`);
-  const { body: state } = await view.api.call("GET", `/sessions/${encodeURIComponent(sessionId)}/state?include_items=true&limit=200`);
-  const items = (state?.items ?? []) as Array<Record<string, any>>;
+  let requests: any;
+  const items: Array<Record<string, any>> = [];
+  try {
+    requests = await view.api.get(`/sessions/${encodeURIComponent(sessionId)}/requests?limit=200`);
+    for (let offset = 0; offset < 5_000; offset += 200) {
+      const page = await view.api.get(`/sessions/${encodeURIComponent(sessionId)}/state?include_items=true&offset=${offset}&limit=200`);
+      items.push(...((page.items ?? []) as Array<Record<string, any>>));
+      if (page.pagination?.hasMore !== true) break;
+    }
+  } catch (error) {
+    return `coordinator session ${sessionId}, whose turn could not be read: ${(error as Error).message}`;
+  }
   const calls = items
     .filter((item) => item.type === "tool_output")
     .map((item) => `${item.toolCall?.name ?? item.blockName}(${item.toolCall?.arguments ?? ""}) → ${JSON.stringify(item.output ?? item.error ?? null).slice(0, 300)}`);
