@@ -46,7 +46,8 @@ export type WorkerSessionCriteria = {
    * The conversation the session was opened for: a coordinator conversation's
    * `filingSessionId`, as its `listDelegates` returns it. Named, the lookup
    * returns that conversation's delegate session; omitted, it never returns a
-   * session that carries one.
+   * session that carries one. The conversation opens that session;
+   * `ensureWorkerSession` never creates one.
    */
   filingSessionId?: string;
   /**

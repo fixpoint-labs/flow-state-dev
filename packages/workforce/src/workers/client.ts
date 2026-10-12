@@ -25,7 +25,7 @@ import {
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
-import { ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
+import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -74,7 +74,9 @@ export interface WorkforceClient {
    * workstream's open starts its lead's session, and until the entry names
    * it this throws. With `taskId` it never creates one either: a task's
    * session is opened when its conversation's board hands it over, and until
-   * then this throws.
+   * then this throws. Nor with `filingSessionId`: a conversation's delegate
+   * session is opened when the conversation hands it a post or a task, and
+   * until then this throws.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
 }
@@ -191,6 +193,9 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
+      // A session naming a conversation is only ever a dispatch run of it; a
+      // top-level one is a caller's, from before a create naming one was refused.
+      if (Object.hasOwn(state, FILING_SESSION_STATE_KEY) && row.parentSessionId == null) return false;
       return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
     });
     if (criteria.workstreamId === undefined) return mostRecent(matching);
@@ -221,6 +226,14 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
         throw new Error(
           `Task "${criteria.taskId}" has no session with "${criteria.worker}" yet: a task's session is opened ` +
             `when the task is handed over, never by ensureWorkerSession.`
+        );
+      }
+      if (criteria.filingSessionId !== undefined) {
+        // Only the coordinator's delivery opens a conversation's delegate
+        // session; one started here would be a decoy lookups could return.
+        throw new Error(
+          `Conversation "${criteria.filingSessionId}" has no session with "${criteria.worker}" yet: a conversation's ` +
+            `delegate session is opened when the conversation hands it a post or a task, never by ensureWorkerSession.`
         );
       }
       if (criteria.workstreamId !== undefined) {
