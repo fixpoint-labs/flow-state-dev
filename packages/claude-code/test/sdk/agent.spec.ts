@@ -318,6 +318,71 @@ describe("claudeCodeAgent", () => {
     expect(options?.sandbox).toEqual({ enabled: true });
   });
 
+  describe("the system prompt a run starts from", () => {
+    // Why this matters: the `claude` CLI starts every run from Claude Code's
+    // own prompt, and that prompt is what tells the agent to keep its to-do
+    // list. Left absent, the SDK sends an EMPTY custom prompt instead, and the
+    // plan record stays empty on every real run. So "omitted" must reach the
+    // SDK as the preset, and every value a host chose must reach it untouched.
+    const CLAUDE_CODE_PROMPT = { type: "preset", preset: "claude_code" };
+
+    async function promptHandedToSdk(
+      options: Partial<Parameters<typeof claudeCodeAgent>[0]>,
+      session?: Record<string, unknown>,
+    ): Promise<unknown> {
+      const spy = vi.fn();
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+        ...options,
+      });
+      await testBlock(block, {
+        input: { prompt: "go" },
+        ...(session ? { session: { state: session } } : {}),
+      });
+      return spy.mock.calls[0][0].options?.systemPrompt;
+    }
+
+    it("asks for Claude Code's own prompt, nothing appended, when the host gives none", async () => {
+      expect(await promptHandedToSdk({})).toEqual(CLAUDE_CODE_PROMPT);
+    });
+
+    it("forwards every prompt the host chose exactly as given", async () => {
+      const long = "You are a narrow agent. ".repeat(200);
+      const preset = { type: "preset" as const, preset: "claude_code" as const, append: "Commit." };
+      const blocks = ["static instructions", "session context"];
+      // A string still REPLACES Claude Code's prompt: it must not be wrapped
+      // into the preset or appended to it.
+      expect(await promptHandedToSdk({ systemPrompt: "Be terse." })).toBe("Be terse.");
+      expect(await promptHandedToSdk({ systemPrompt: long })).toBe(long);
+      // `""` is the spelling of the blank start, and must not read as "absent"
+      // and pick up the default.
+      expect(await promptHandedToSdk({ systemPrompt: "" })).toBe("");
+      expect(await promptHandedToSdk({ systemPrompt: preset })).toBe(preset);
+      expect(await promptHandedToSdk({ systemPrompt: blocks })).toBe(blocks);
+    });
+
+    it("applies the same rule on every path that reaches the SDK", async () => {
+      // One place decides the default, so no path keeps the blank prompt: a
+      // detached run resuming an earlier session, an in-session run resuming
+      // its own, and a run with recording on or off all get the preset.
+      expect(
+        await promptHandedToSdk({ detached: true, resume: () => "sess_prev" }),
+      ).toEqual(CLAUDE_CODE_PROMPT);
+      expect(
+        await promptHandedToSdk({}, { [SDK_SESSION_ID_KEY]: "sess_prior" }),
+      ).toEqual(CLAUDE_CODE_PROMPT);
+      expect(await promptHandedToSdk({ recordWork: false })).toEqual(CLAUDE_CODE_PROMPT);
+      expect(await promptHandedToSdk({ recordWork: true })).toEqual(CLAUDE_CODE_PROMPT);
+      // And a host's own value survives each of them unchanged.
+      expect(
+        await promptHandedToSdk({ detached: true, resume: () => "sess_prev", systemPrompt: "" }),
+      ).toBe("");
+      expect(
+        await promptHandedToSdk({ systemPrompt: "Be terse." }, { [SDK_SESSION_ID_KEY]: "sess_prior" }),
+      ).toBe("Be terse.");
+    });
+  });
+
   it("resolves sandbox settings per run, so they can name the run's own paths", async () => {
     // The settings that confine a run name the directory it works in, and one
     // flow build serves many runs. A build-time constant can say "sandboxed"

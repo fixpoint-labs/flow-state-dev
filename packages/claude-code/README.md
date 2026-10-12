@@ -357,6 +357,13 @@ resource collections and writes into them as it goes:
 claudeCodeAgent({ detached: true, recordWork: true });
 ```
 
+The plan half fills when the agent keeps a to-do list, which it does when the run
+starts from Claude Code's own system prompt. That is the default when
+`systemPrompt` is left out. To add instructions, use
+`systemPrompt: { type: "preset", preset: "claude_code", append: "…" }`. A plain
+string replaces Claude Code's prompt and usually leaves `observed-plan` empty;
+`""` starts the run with no system prompt.
+
 Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —
 and a request that runs the agent more than once — both answer per run.
 All three declare client state reads, so

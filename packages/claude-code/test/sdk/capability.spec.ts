@@ -61,6 +61,32 @@ describe("createClaudeCodeAgentCapability", () => {
     ).toThrow(/Resource conflict.*observed-file-ops/);
   });
 
+  it("starts its runs from the same prompt the block does", async () => {
+    // The capability forwards the agent's options, so the default and a host's
+    // own prompt must both survive the trip unchanged.
+    const promptVia = async (systemPrompt?: string) => {
+      const spy = vi.fn();
+      const cap = createClaudeCodeAgentCapability({
+        ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+        resolveClaudeAgent: () => ({
+          query: async function* (args) {
+            spy(args);
+            yield { type: "result", subtype: "success", result: "ok", session_id: "s" };
+          },
+        }),
+      }) as unknown as {
+        __presetDefs: { tools: { tools: BlockDefinition[] } };
+      };
+      const [tool] = cap.__presetDefs.tools.tools;
+      await testBlock(tool, { input: { prompt: "go" } });
+      return spy.mock.calls[0][0].options?.systemPrompt;
+    };
+
+    expect(await promptVia()).toEqual({ type: "preset", preset: "claude_code" });
+    expect(await promptVia("Be terse.")).toBe("Be terse.");
+    expect(await promptVia("")).toBe("");
+  });
+
   it("exposes the agent handler block as its tool", () => {
     const cap = createClaudeCodeAgentCapability() as unknown as {
       __presetDefs: { tools: { tools: Array<{ kind: string; name: string }> } };

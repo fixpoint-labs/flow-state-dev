@@ -67,7 +67,11 @@ the block directly:
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 
 const agent = claudeCodeAgent({
-  systemPrompt: "You are a careful refactoring assistant.",
+  systemPrompt: {
+    type: "preset",
+    preset: "claude_code",
+    append: "You are a careful refactoring assistant.",
+  },
   allowedTools: ["Read", "Grep", "Edit"],
 });
 // seq.step(agent) with input { prompt: "Tidy the imports in src/." }
@@ -489,6 +493,33 @@ contribute resources, state and tools but never lifecycle hooks, so this is the
 only way to reach one. Releasing something the run was holding is what it is
 for.
 
+### The prompt the run starts from
+
+A system prompt is the standing instruction the agent reads before your request. Leave
+`systemPrompt` out and the run starts from Claude Code's own, the same one the `claude` command
+uses. That prompt is what tells the agent to keep a to-do list as it works, among much else, so
+a run started this way behaves like the agent you know from the terminal.
+
+To add your own instructions on top, append them:
+
+```ts
+claudeCodeAgent({
+  systemPrompt: {
+    type: "preset",
+    preset: "claude_code",
+    append: "Commit your work with git before you finish.",
+  },
+});
+```
+
+A plain string replaces Claude Code's prompt entirely. The agent then knows only what your string
+says. It will still have its tools, but nothing tells it to keep a to-do list, so with
+`recordWork` on the plan record usually stays empty. Use a string when you want that narrow
+agent; use `append` when you want to add a line.
+
+`""` starts the run with no system prompt at all. The value is forwarded to the Agent SDK as
+given, so any shape the SDK accepts works here, and the SDK rejects one it doesn't.
+
 ## Recording what the run did
 
 The item stream tells you what the agent said. `recordWork: true` also records
@@ -554,6 +585,11 @@ nothing applied. `null` means the row was written before the field existed.
 
 The plan record reads the same way, from `observed-plan`. A to-do item's status
 is the harness's own word for it, and stays empty until the harness reports one.
+
+The plan record fills only when the agent keeps a to-do list. It does when the run starts from
+Claude Code's own prompt, with or without `append`. A run given its own prompt string usually
+writes its plan as prose instead, and the record stays empty. That is the honest answer, not a
+recording failure, and nothing appears in `observed-gaps` for it.
 
 ### What the file record is, and what it isn't
 

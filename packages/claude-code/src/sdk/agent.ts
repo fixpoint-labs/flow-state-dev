@@ -53,7 +53,7 @@ import {
   type ClaudeAgentSession,
 } from "./session";
 import { ClaudeAgentRunError } from "./errors";
-import type { ClaudeAgentSettingSource } from "./types";
+import type { ClaudeAgentSettingSource, ClaudeAgentSystemPrompt } from "./types";
 import {
   CLAUDE_SDK_SOURCE,
   outcomeFromResultSubtype,
@@ -116,8 +116,23 @@ export interface ClaudeCodeAgentOptions {
   prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
   /** Model id forwarded to the SDK. */
   model?: string;
-  /** System prompt forwarded to the SDK. */
-  systemPrompt?: string;
+  /**
+   * The system prompt the run starts from, forwarded to the SDK as given.
+   *
+   * - **Omitted:** Claude Code's own prompt, the one the `claude` CLI uses.
+   *   It is what tells the agent to keep a to-do list as it works, so it is
+   *   what fills `recordWork`'s plan half.
+   * - **A string:** replaces Claude Code's prompt entirely. The agent knows
+   *   only what the string says, and usually keeps no to-do list.
+   * - **`""`:** no system prompt at all.
+   * - **`{ type: "preset", preset: "claude_code", append }`:** Claude Code's
+   *   prompt with your text added after it. The way to add instructions
+   *   without losing the to-do guidance.
+   *
+   * Any other shape the SDK accepts is forwarded too, and the SDK rejects one
+   * it doesn't.
+   */
+  systemPrompt?: ClaudeAgentSystemPrompt;
   /** Allowed tool names forwarded to the SDK. */
   allowedTools?: string[];
   /** Disallowed tool names forwarded to the SDK. */
@@ -933,7 +948,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const queryOptions: ClaudeAgentQueryOptions = {
         model,
-        systemPrompt,
+        // The one place the default is decided, so every path that reaches the
+        // SDK (in-session, detached, resumed, through a capability) gets it.
+        // Left absent, the SDK sends an EMPTY custom prompt rather than Claude
+        // Code's own, and the agent never learns to keep its to-do list.
+        // `undefined` only: `""` is a host asking for that blank start.
+        systemPrompt: systemPrompt ?? { type: "preset", preset: "claude_code" },
         allowedTools,
         disallowedTools,
         permissionMode,

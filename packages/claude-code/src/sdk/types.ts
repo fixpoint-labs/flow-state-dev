@@ -353,7 +353,7 @@ export type ClaudeAgentQuery = (args: {
 /** Options forwarded to the SDK `query()` call. Loosely typed by design. */
 export interface ClaudeAgentQueryOptions {
   model?: string;
-  systemPrompt?: string;
+  systemPrompt?: ClaudeAgentSystemPrompt;
   allowedTools?: string[];
   disallowedTools?: string[];
   permissionMode?: string;
@@ -397,6 +397,29 @@ export interface ClaudeAgentQueryOptions {
    */
   spawnClaudeCodeProcess?: (options: ClaudeAgentSpawnOptions) => unknown;
 }
+
+/**
+ * The system prompt a run starts from, in the Agent SDK's own shapes.
+ *
+ * - a string replaces Claude Code's own prompt; `""` starts with none at all
+ * - a string array is the same custom prompt, split into blocks
+ * - `{ type: "preset", preset: "claude_code" }` is Claude Code's own prompt,
+ *   the one the `claude` CLI uses; `append` adds text after it
+ *
+ * Declared here rather than imported, like {@link ClaudeAgentSettingSource},
+ * because the SDK is an optional peer. The preset object stays open so a field
+ * the SDK adds later passes through: the value is forwarded verbatim and the
+ * SDK validates it.
+ */
+export type ClaudeAgentSystemPrompt =
+  | string
+  | string[]
+  | {
+      type: "preset";
+      preset: "claude_code";
+      append?: string;
+      [field: string]: unknown;
+    };
 
 /**
  * A filesystem settings source the run may load from.
