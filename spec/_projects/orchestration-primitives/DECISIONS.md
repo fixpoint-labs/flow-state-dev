@@ -22,14 +22,16 @@ Accepted. The Plan/Task series reshaped Plan & Execute, Supervisor, Coordinator 
 queue-shaped patterns onto it (FIX-447, FIX-448), and the substrate epics since have hardened one
 store rather than several.
 
-### PD-2 · A skill declares a team and its work, never how it runs
+### PD-2 · A skill carries instructions, never how its work runs
 
 **Binds** FIX-930 and any epic that touches skills or patterns.
 
 The project's first framing had skills declare a pattern in `SKILL.md` frontmatter, and FIX-450
 shipped that in May. FIX-918, under FIX-930, reversed it in July: a skill carries instructions,
-optionally a team it may delegate to, and the work as a dependency graph on a task board. The
-board is the one execution path; `context: pattern` and `context: fork` are gone, and FIX-916
+and its work runs as a dependency graph on a task board. FIX-918 also let a skill name a team it
+may delegate to; FIX-1814 (Workforce) removed that, and a `SKILL.md` declaring `agents:` or
+`workers:` is now refused, so teams belong to Workforce workers. The board is the one execution
+path; `context: pattern` and `context: fork` are gone, and FIX-916
 (skills declare a strategy) was canceled. Rejected: an execution mode as a skill-level setting.
 
 **Costs** a skill can no longer pick a bespoke loop. Accepted, because three skill execution modes
@@ -59,12 +61,12 @@ substrate and, now, for consolidating how workers hand work to each other.
 
 **The trade-off.** Keeping them says this project is not done until a person can plan with an
 agent in kitchen-sink and read a catalog of patterns. Moving them out lets this project finish
-when hand-offs are one tool, and gives True Plan Mode an owner that is about the product
+when dispatching work is one tool, and gives True Plan Mode an owner that is about the product
 experience.
 
 **My recommendation.** Move FIX-312 and FIX-449 to the kitchen-sink or Workforce project that owns
 the reference app's experience. Keep FIX-451 here, re-cut after FIX-1870 wraps so the catalog
-documents one hand-off tool, not four.
+documents one dispatch tool, not three.
 
 **What would change my mind.** If True Plan Mode is still the demo you mean to launch the
 multi-agent story with, it belongs beside the primitive it proves, and stays.
@@ -72,3 +74,28 @@ multi-agent story with, it belongs beside the primitive it proves, and stays.
 **What being wrong costs.** Low and reversible: moving an issue between projects is one field.
 The real cost of not deciding is that this project reads as permanently unfinished, with two
 stale milestones nobody is working toward.
+
+### Keep the coordinator's own answer-once check, or let the board's be the only one?
+
+**In plain terms.** When a coordinator passes a person's message on to its delegates, a ledger in
+Workforce makes sure each delegate answers it once. Board tasks have their own check, the claim
+ticket. FIX-1816's D3 (merged, product-owner approved) kept both: "each serves one kind, and no
+third is added." FIX-1870, filed after it, routes the coordinator's delivery through
+`dispatchTask` and removes the ledger (its child FIX-1872). Both can't be built toward. The ledger
+lives in `packages/workforce`, which another project owns, so this binds both projects.
+
+**The trade-off.** Removing the ledger leaves one check to keep right and one path to test. Keeping
+it protects what D3 was protecting: a post shows each delegate's own line, follows a routing
+policy and runs in rounds, and an ask folds those into one reply.
+
+**My recommendation.** Follow FIX-1870, the later word, but only once its first deliverable, an
+inventory of what each dispatch path does on timeout, restart, double delivery and park, shows a
+post sent as a row without a wait still shows each delegate's own line. Then record it as an
+amendment to FIX-1816's D3 so the two specs agree. Until then PR-2 covers board tasks only.
+
+**What would change my mind.** If the inventory shows a post's rounds or routing policy can't
+run as a row, keep D3: two checks, one per kind, and FIX-1872 is cut back to the board's side.
+
+**What being wrong costs.** Settled before FIX-1872 starts, it is a spec change. Settled after, a
+wrong removal means a coordinator's post can reach a delegate twice, and a wrong keep means
+FIX-1872's work is redone. Either is reversible, the first only by rollback.
