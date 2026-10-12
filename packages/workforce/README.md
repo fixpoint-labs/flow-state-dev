@@ -1728,16 +1728,19 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 same problems without throwing.
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
-Orchestration's task tools (`addTask`, `assignTask`, `listTasks`, `answerTask` and the rest), and the
-conversation's session takes them as actions named for the board: `addTask_tasks`,
-`listTasks_tasks` and so on.
+Orchestration's task tools (`dispatchTask`, `addTask`, `assignTask`, `listTasks`, `answerTask` and
+the rest), and the conversation's session takes them as actions named for the board:
+`dispatchTask_tasks`, `addTask_tasks`, `listTasks_tasks` and so on.
 
 An assignee must be one of the conversation's delegates whose flow takes tasks. Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
-`addTask` returns once the task is stored, and the task starts by itself in its task session,
-which belongs to you. Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. The
-conversation hears once when the task ends. See
+`addTask` records a task; `dispatchTask` starts it in its task session, which belongs to you.
+Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. A recorded task starts
+when `dispatchTask` names its `taskId`; `assignTask` changes its owner and leaves it recorded.
+`dispatchTask` returns once the task is stored, without waiting for it to run, unless it is
+given `wait: true`. Unless
+it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks).
 
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow
@@ -1752,7 +1755,7 @@ A worker on a task turn has `parkOnQuestion`: it parks the task on its question,
 conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
 the task picks up in its own session with the answer as its next message, without spending a
 retry. A task's session stays open after the task finishes: message its worker there, or file a
-follow-up with `addTask`'s `followUpOf`, which runs in the same session with the same worker.
+follow-up with `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
 
 A browser reads its user's boards through the ordinary collection read: `tasks`, fetched through
 any of that user's sessions on a flow that carries the session board, answers every one of their

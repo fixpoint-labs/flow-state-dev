@@ -211,12 +211,12 @@ describe("a task filed with no assignee", () => {
     }
   });
 
-  it("waits, pending and unassigned, with several delegates, until assignTask hands it out (BR-6)", async () => {
+  it("waits, pending and unassigned, with several delegates, until it is given an owner and dispatched (BR-6, FIX-1875 BR-3)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
       const filed = await record(host, "alice", conv, { goal: "pick someone" });
-      expect(filed).toEqual({ ok: true, taskId: expect.any(String) });
+      expect(filed).toEqual({ ok: true, taskId: expect.any(String), status: "recorded", note: expect.stringContaining("dispatchTask") });
       await host.settled();
       expect(await list(host, "alice", conv)).toEqual([
         expect.objectContaining({ id: filed.taskId, status: "pending", goal: "pick someone" })
@@ -226,6 +226,13 @@ describe("a task filed with no assignee", () => {
 
       expect((await host.act("alice", conv, "assignTask_tasks", { taskId: filed.taskId, assignee: "eng.writer" })).output).toEqual({
         ok: true
+      });
+      await host.settled();
+      // Assigning a recorded task names its owner and starts nothing.
+      expect(host.runs).toEqual([]);
+      expect((await host.act("alice", conv, "dispatchTask_tasks", { taskId: filed.taskId })).output).toEqual({
+        ok: true,
+        taskId: filed.taskId
       });
       await host.settled();
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);

@@ -12,7 +12,7 @@
  *
  * - a coordinator's turn files a `[file:<worker>]` message as a task for that
  *   worker, with the message less that mark as its goal, through its own
- *   `addTask` tool; a `[split:<worker>]` message it tries to split, filing a
+ *   `dispatchTask` tool; a `[split:<worker>]` message it tries to split, filing a
  *   piece for that worker; a line that tells it a task ended it notes, and
  *   files nothing; anything else it notes;
  * - an `agent` worker's turn holds its answer for `[slow:<ms>]`, fails on

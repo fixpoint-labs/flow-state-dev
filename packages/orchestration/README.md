@@ -710,39 +710,48 @@ refused when it loads; give the work to workers on a task board instead.
 
 `taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-`listTasks`, and `answerTask`. `createTaskToolsCapability(resolver, roster?)` points them at a
+`listTasks`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
+`createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
 context, read on each call that checks an assignee, for a board whose team changes
-while it is in use. `taskToolActions` exposes the same nine as flow
+while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
-`addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
-then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
-minutes by default). The option is in the schema only on a board that resumes asks and a host
-that can hold one: pass `createTaskToolsCapability(resolver, roster, { resumesAsks: true })`
-only when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn
-(a board run, a task's notice), and the host has durable execution and a running durability
-sweeper. `resumesAsks` defaults to `false`, so the standalone `taskTools` and a custom resolver
-never offer the option. A composing layer that builds its own capability gets the same per-turn
-list from `taskToolsForTurn(resolver, roster, { resumesAsks })`. `listTasks` marks an asked row
-`asked: true`. An ask is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
+`dispatchTask` starts work now. Pass
+`createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
+ready row as soon as it's written, the way a Workforce conversation does. It takes `addTask`'s fields, or `taskId` for a recorded row, and `wait`
+to park the turn until the task ends, returning the task's output as `answer`. `timeoutMs`
+bounds the wait (30 s to an hour, five minutes by default). On such a board `addTask` and
+`assignTask` record rows that wait for a dispatch, and `addTask` answers
+`{ ok: true, taskId, status: "recorded", note }`. `wait` and `timeoutMs` are in the schema only
+on a board that also resumes asks and a host that can hold a wait: add `resumesAsks: true` only
+when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn (a
+board run, a task's notice), and the host has durable execution and a running durability
+sweeper (`canHoldWait`). Both default to `false`, so the standalone `taskTools` and a custom
+resolver offer no `dispatchTask`, and their `addTask` files a row the drain runs. `addTask`
+never waits: a call that sends it a wait field is refused by name, `add_task_does_not_wait`. A
+composing layer that builds its own capability gets the same per-turn list from
+`taskToolsForTurn(resolver, roster, { dispatches, resumesAsks })`, and
+`taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds the
+`dispatchTask_<board>` action, which never waits. `listTasks` marks a waited-on row
+`asked: true`. A wait is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
 returns true for those turns. See the task board page for limits and errors.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
 claim clears it until the next run starts.
 
-Two functions sit under the option, for a layer that builds its own board surface:
+For a layer that builds its own board surface:
 
-- `addTaskAndWait(ctx, collection, init, { timeoutMs? })`, from
-  `@flow-state-dev/orchestration/task-board`, files `init` as an ask from inside a generator's
-  tool call and waits for its answer. Call it from your own tool when you don't use the task
-  tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
-  on the same subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in
-  one step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
-  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too.
+- `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
+  `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from
+  inside a generator's tool call. Call it from your own tool when you don't use the task tools'
+  `dispatchTask`. It refuses a host that can't bound the wait (`canHoldWait(ctx)`, on the same
+  subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in one step;
+  check the assignee yourself first. Bounds: `MIN_WAIT_TIMEOUT_MS`, `MAX_WAIT_TIMEOUT_MS`,
+  `DEFAULT_WAIT_TIMEOUT_MS`, there too.
 - `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
   it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
   answer whose resume was lost to a crash is still delivered. It returns at once when nothing
@@ -773,7 +782,9 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
 `session_has_unfinished_task`, and `task_awaiting_answer` — a coordinator
-rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+rule like "when a tool returns `ok: false`, re-plan" covers all of them. `dispatchTask`
+adds its own (`assignee_required`, `task_not_dispatchable`, its target and wait errors); the
+task board page lists them.
 
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
 the task goes back to `pending` with the answer, its next attempt gets it as
@@ -799,7 +810,7 @@ keeps that worker: `assignTask` and `updateTask` won't move it
 `createParkOnQuestion({ resolve })` builds the worker's side.
 `parkOnQuestion({ question })` parks the task the current turn is working on.
 `offered(ctx)` says whether the turn gets the tool: it does on a task turn for a
-running task that wasn't filed with `waitForResponse`.
+running task that no turn is waiting on (`dispatchTask` with `wait`).
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`

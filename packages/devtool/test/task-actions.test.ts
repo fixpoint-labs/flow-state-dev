@@ -30,6 +30,22 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
   });
 
+  it("offers a board's generated dispatchTask on its rows, though a new task makes its taskId optional", () => {
+    // `dispatchTask_<suffix>` starts a recorded row by its id, or files a new
+    // one with a goal, so its taskId is optional. On a row it starts that row.
+    const family = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"];
+    const schemas: Record<string, ActionInputSchema> = {
+      ...Object.fromEntries(family.map((tool) => [`${tool}_tasks`, tool === "addTask" || tool === "listTasks" ? noTaskId : takesTaskId])),
+      dispatchTask_tasks: { type: "object", fields: { goal: { type: "string", required: false }, taskId: { type: "string", required: false } } },
+      // An app's own action with an optional taskId is still not a row action.
+      maybe: optionalTaskId,
+    };
+    const offered = taskActionsFor(Object.keys(schemas), schemas, "tasks", []);
+    expect(offered).toContain("dispatchTask_tasks");
+    expect(offered).not.toContain("maybe");
+    expect(offered).not.toContain("addTask_tasks");
+  });
+
   it("offers a board's own tools only on that board, and a generic action on every board", () => {
     const schemas = {
       answer: takesTaskId,

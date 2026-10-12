@@ -85,7 +85,7 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
 
       // The follow-up files nothing of its own: it is answered by its turn.
       h.controls.plans.s1 = [];
-      const followUp = await h.tool("alice", planner, "addTask", { goal: "Add a second venue", followUpOf: top.id });
+      const followUp = await h.tool("alice", planner, "dispatchTask", { goal: "Add a second venue", followUpOf: top.id });
       expect(followUp.ok).toBe(true);
       await h.settled();
       const row = await one(h, "Add a second venue");

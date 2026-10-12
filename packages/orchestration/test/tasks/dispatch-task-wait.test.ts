@@ -1,6 +1,6 @@
 /**
- * `addTask({ waitForResponse, timeoutMs })` as a model calls it (FIX-1816 P3,
- * V3 and V6 through the task tools, and the D1 check).
+ * `dispatchTask({ wait, timeoutMs })` as a model calls it (FIX-1816 P3,
+ * V3 and V6 through the task tools, and the D1 check), moved from `addTask` by FIX-1875.
  *
  * The asking turn is a generator holding the task tools capability over a
  * durable board, the shape a coordinator's turn has. "The colleague" is a
@@ -37,7 +37,7 @@ const roster = { has: (name: string) => name === "researcher", describe: () => "
 /** The asking flow: `run` is a turn holding the task tools; `settle`, `touch` and `list` as in the ask fixture. */
 function toolFlow(model: ReturnType<typeof stepModel>["model"], resumesAsks = true): FlowInstance {
   // This flow's `touch` action is its waker, so the board resumes asks.
-  const tools = createTaskToolsCapability(boardOf, roster, { resumesAsks });
+  const tools = createTaskToolsCapability(boardOf, roster, { resumesAsks, dispatches: true });
   const settle = handler({
     name: "settle",
     inputSchema: z.object({ output: z.any() }),
@@ -95,14 +95,14 @@ type Row = { id: string; status: string; ask?: { gateId: string; deadline: numbe
 const listRows = async (state: Awaited<ReturnType<typeof host>>, flow: FlowInstance) =>
   (await act(state as never, flow, "list")).output as Row[];
 
-const addTaskCall =
+const dispatchTaskCall =
   (id: string, args: Record<string, unknown>): StepFn =>
-  () => ({ toolCalls: [{ toolCallId: id, toolName: "addTask", args: { goal: "Is ACME's SOC 2 current?", ...args } }], finishReason: "tool-calls" });
+  () => ({ toolCalls: [{ toolCallId: id, toolName: "dispatchTask", args: { goal: "Is ACME's SOC 2 current?", ...args } }], finishReason: "tool-calls" });
 const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
-/** The addTask tool's input fields, as the model was handed them on its first call. */
-function addTaskFields(seen: GeneratorModelCallOptions[]): string[] {
-  const tool = seen[0]!.tools!.find((t) => t.name === "addTask")!;
+/** The dispatchTask tool's input fields, as the model was handed them on its first call. */
+function dispatchTaskFields(seen: GeneratorModelCallOptions[]): string[] {
+  const tool = seen[0]!.tools!.find((t) => t.name === "dispatchTask")!;
   return Object.keys((tool.parameters as z.AnyZodObject).shape).sort();
 }
 
@@ -114,7 +114,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("where addTask offers waitForResponse (BR-5, D1)", () => {
+describe("where dispatchTask offers wait (BR-5, D1)", () => {
   for (const [label, options, offered] of [
     ["a durable host whose durability sweeper runs", { durable: true, router: true }, true],
     ["a durable host with no sweeper", { durable: true, router: false }, false],
@@ -135,12 +135,13 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
           "blockTask",
           "cancelTask",
           "completeTask",
+          "dispatchTask",
           "failTask",
           "listTasks",
           "updateTask"
         ]);
-        const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority"];
-        expect(addTaskFields(seen)).toEqual(offered ? [...base, "timeoutMs", "waitForResponse"].sort() : base);
+        const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId"];
+        expect(dispatchTaskFields(seen)).toEqual(offered ? [...base, "timeoutMs", "wait"].sort() : base);
       } finally {
         await state.dispose();
       }
@@ -153,14 +154,14 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
     const state = await host(flow, { durable: true, router: true });
     try {
       await act(state as never, flow, "run");
-      expect(addTaskFields(seen)).toEqual(["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority"]);
+      expect(dispatchTaskFields(seen)).toEqual(["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId"]);
     } finally {
       await state.dispose();
     }
   });
 
-  it("leaves a plain addTask as it was: it files and returns at once (BR-6)", async () => {
-    const { model, seen } = stepModel([addTaskCall("c1", { assignee: "researcher" }), finalAnswer]);
+  it("leaves a plain dispatchTask as it was: it files and returns at once (BR-6)", async () => {
+    const { model, seen } = stepModel([dispatchTaskCall("c1", { assignee: "researcher" }), finalAnswer]);
     const flow = toolFlow(model);
     const state = await host(flow, { durable: true, router: true });
     try {
@@ -176,9 +177,9 @@ describe("where addTask offers waitForResponse (BR-5, D1)", () => {
   });
 });
 
-describe("addTask waits for its answer (BR-1, BR-2)", () => {
+describe("dispatchTask waits for its answer (BR-1, BR-2)", () => {
   it("files one row marked asked, parks, and returns the row's output as answer once it completes", async () => {
-    const { model, seen } = stepModel([addTaskCall("c1", { assignee: "researcher", waitForResponse: true }), finalAnswer]);
+    const { model, seen } = stepModel([dispatchTaskCall("c1", { assignee: "researcher", wait: true }), finalAnswer]);
     const flow = toolFlow(model);
     const state = await host(flow, { durable: true, router: true });
     try {
@@ -205,9 +206,9 @@ describe("listTasks marks an asked task", () => {
     const listCall: StepFn = () => ({ toolCalls: [{ toolCallId: "l1", toolName: "listTasks", args: {} }], finishReason: "tool-calls" });
     // The first turn asks and waits; the second files a task without waiting, then lists the board.
     const { model, seen } = stepModel([
-      addTaskCall("c1", { assignee: "researcher", waitForResponse: true }),
+      dispatchTaskCall("c1", { assignee: "researcher", wait: true }),
       finalAnswer,
-      addTaskCall("c0", { assignee: "researcher" }),
+      dispatchTaskCall("c0", { assignee: "researcher" }),
       listCall,
       finalAnswer
     ]);
@@ -231,13 +232,13 @@ describe("listTasks marks an asked task", () => {
 
 describe("refused before anything is filed", () => {
   for (const [label, args, code] of [
-    ["an assignee the roster doesn't name (BR-4)", { assignee: "nobody", waitForResponse: true }, "unknown_assignee"],
-    ["timeoutMs under 30 s (BR-14a)", { assignee: "researcher", waitForResponse: true, timeoutMs: 29_999 }, "wait_timeout_out_of_range"],
-    ["timeoutMs over an hour (BR-14a)", { assignee: "researcher", waitForResponse: true, timeoutMs: 3_600_001 }, "wait_timeout_out_of_range"],
-    ["timeoutMs without waitForResponse", { assignee: "researcher", timeoutMs: 60_000 }, "wait_timeout_without_wait"]
+    ["an assignee the roster doesn't name (BR-4)", { assignee: "nobody", wait: true }, "unknown_assignee"],
+    ["timeoutMs under 30 s (BR-14a)", { assignee: "researcher", wait: true, timeoutMs: 29_999 }, "wait_timeout_out_of_range"],
+    ["timeoutMs over an hour (BR-14a)", { assignee: "researcher", wait: true, timeoutMs: 3_600_001 }, "wait_timeout_out_of_range"],
+    ["timeoutMs without wait", { assignee: "researcher", timeoutMs: 60_000 }, "wait_timeout_without_wait"]
   ] as const) {
     it(`${label}: ${code}, nothing filed, nothing parked`, async () => {
-      const { model, seen } = stepModel([addTaskCall("c1", args), finalAnswer]);
+      const { model, seen } = stepModel([dispatchTaskCall("c1", args), finalAnswer]);
       const flow = toolFlow(model);
       const state = await host(flow, { durable: true, router: true });
       try {
@@ -252,7 +253,7 @@ describe("refused before anything is filed", () => {
   }
 
   it("on a task turn: wait_unavailable, so an ask is never asked from inside an ask (BR-5a)", async () => {
-    const { model, seen } = stepModel([addTaskCall("c1", { assignee: "researcher", waitForResponse: true }), finalAnswer]);
+    const { model, seen } = stepModel([dispatchTaskCall("c1", { assignee: "researcher", wait: true }), finalAnswer]);
     const flow = toolFlow(model);
     const state = await host(flow, { durable: true, router: true });
     try {
@@ -273,7 +274,7 @@ describe("refused before anything is filed", () => {
 describe("the bound: timeoutMs, honoured at the exact limits (BR-14, BR-14a)", () => {
   for (const timeoutMs of [30_000, 3_600_000]) {
     it(`files at ${timeoutMs}, with its deadline that far from filing, never clamped`, async () => {
-      const { model } = stepModel([addTaskCall("c1", { assignee: "researcher", waitForResponse: true, timeoutMs }), finalAnswer]);
+      const { model } = stepModel([dispatchTaskCall("c1", { assignee: "researcher", wait: true, timeoutMs }), finalAnswer]);
       const flow = toolFlow(model);
       const state = await host(flow, { durable: true, router: true });
       try {
@@ -293,8 +294,8 @@ describe("the bound: timeoutMs, honoured at the exact limits (BR-14, BR-14a)", (
     ["the five-minute default", undefined, 4 * 60_000 + 50_000, 5 * 60_000 + 10_000]
   ] as const) {
     it(`a real sweep tick times the ask out at ${label}, not before, and cancels its row`, async () => {
-      const args = { assignee: "researcher", waitForResponse: true, ...(timeoutMs !== undefined ? { timeoutMs } : {}) };
-      const { model, seen } = stepModel([addTaskCall("c1", args), finalAnswer]);
+      const args = { assignee: "researcher", wait: true, ...(timeoutMs !== undefined ? { timeoutMs } : {}) };
+      const { model, seen } = stepModel([dispatchTaskCall("c1", args), finalAnswer]);
       const flow = toolFlow(model);
       const state = await host(flow, { durable: true, router: true, sweepIntervalMs: 25 });
       try {
