@@ -7,9 +7,14 @@
 //   - RETIRED: the names FIX-1875 removes (`waitForResponse` and the public
 //     ask names). After the implementation PR, none may remain outside history.
 //   - STARTS: places that rely on `addTask` / `assignTask` starting work on a
-//     conversation board: the `addTask_tasks` / `assignTask_tasks` actions, and
-//     worker files that tell a model `addTask` starts the task. Each is a
-//     migration candidate the implementer reviews (D1).
+//     conversation board: the `addTask_tasks` / `assignTask_tasks` actions,
+//     scripted model calls (`toolName: "addTask"`), and worker files that tell a
+//     model `addTask` starts the task. Each is a migration candidate the
+//     implementer reviews (D1). Not caught: prose that names the tool without
+//     backticks outside a WORKER.md. Re-read those by eye.
+//
+// A line that refuses a retired name on purpose (the BR-21 handler, its test)
+// carries the marker `retired-name-refusal` and is not a live use.
 //
 //   node specs/issues/FIX-1875/poc/surface-sweep/sweep.mjs            # inventory, exit 0
 //   node specs/issues/FIX-1875/poc/surface-sweep/sweep.mjs --assert   # exit 1 while a RETIRED name is live
@@ -37,7 +42,9 @@ const RETIRED = [
   "MAX_ASK_TIMEOUT_MS",
 ];
 const RETIRED_RE = new RegExp(`\\b(${RETIRED.join("|")})\\b`);
+const REFUSAL_MARKER = "retired-name-refusal";
 const ACTION_RE = /\b(addTask|assignTask)_tasks\b/;
+const TOOL_CALL_RE = /toolName:\s*["'`](addTask|assignTask)["'`]/;
 const WORKER_STARTS_RE = /`addTask`/;
 
 // The three regression checks the epic's kill line names (ER-11).
@@ -86,8 +93,9 @@ const retired = new Map();
 const starts = new Map();
 const unclassified = [];
 for (const [p, text] of contents) {
-  const r = RETIRED_RE.test(text);
-  const s = ACTION_RE.test(text) || (p.endsWith("/WORKER.md") && WORKER_STARTS_RE.test(text));
+  const r = text.split("\n").some((line) => RETIRED_RE.test(line) && !line.includes(REFUSAL_MARKER));
+  const s =
+    ACTION_RE.test(text) || TOOL_CALL_RE.test(text) || (p.endsWith("/WORKER.md") && WORKER_STARTS_RE.test(text));
   if (!r && !s) continue;
   const bucket = bucketOf(p);
   if (bucket === undefined) {

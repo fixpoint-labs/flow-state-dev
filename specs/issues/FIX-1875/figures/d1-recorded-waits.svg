@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what addTask does on a conversation's board. Chosen: addTask and assignTask only record, and dispatchTask starts the work. Instead of: addTask keeps starting work when it names an assignee. It comes down to the first row: with start-on-assign kept, two tools start work and the model still has to pick between them; with record-only, one tool starts work. The price is the second row: about 17 goal checks, three worker files and any app that sends addTask_tasks to start work move to dispatchTask, where keeping today's start costs no migration. The third row is a tie: what a started task does is the same either way. Locks in: a persisted waiting-for-dispatch mark that rows filed before this change don't carry, so they keep starting. Flips if: a regression check can't stay a rename."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what addTask does on a conversation's board. Chosen: addTask and assignTask only record, and dispatchTask starts the work. Instead of: addTask keeps starting work when it names an assignee. It comes down to the first row: with start-on-assign kept, two tools start work and the model still has to pick between them; with record-only, one tool starts work. The price is the second row: about 17 goal checks, three worker files and any app that sends addTask_tasks to start work move to dispatchTask, where keeping today's start costs no migration. The third row is a tie: what a started task does is the same either way. Locks in: a persisted not-dispatched mark that rows filed before this change don't carry, so they keep starting. Flips if: a regression check can't stay a rename."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -88,7 +88,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A stored "waiting for dispatch" mark</text>
+    <text class="t-b" x="32" y="371">A stored "not dispatched" mark</text>
     <text class="t-s" x="32" y="389">rows filed before it carry none, so they still start</text>
   </g>
 

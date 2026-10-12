@@ -8,8 +8,8 @@
 |---|---|---|
 | **builds a worker that needs a colleague's answer before it goes on** | Gives the model `addTask` and trusts it to set `waitForResponse: true` | The model calls `dispatchTask` with `wait: true`. Same park, same resume, same limits, same errors |
 | **builds a worker that hands work over and carries on** | `addTask` with an assignee files the task and, on a conversation's board, starts it at once | `dispatchTask` files it and starts it. The ending arrives as a notice, as today |
-| **wants work written down but not started yet** | Can't, on a conversation's board: naming an assignee starts the work | `addTask` and `assignTask` record the task and its owner. It waits until something dispatches it |
-| **files work from an app or a script** through the `addTask_tasks` action | The task starts by itself | Sends `dispatchTask_tasks` to start it. `addTask_tasks` now only records it |
+| **wants work written down but not started yet** | Can't, on a conversation's board: naming an assignee starts the work | `addTask` and `assignTask` record the task and its owner. It stays recorded, not started, until something dispatches it |
+| **files work from an app or a script** through the `addTask_tasks` action | The task starts by itself | Sends `dispatchTask_tasks` to start it. `addTask_tasks` now only records it, and its result says so (`status: "recorded"`) |
 | **still sends `waitForResponse` or imports `addTaskAndWait`** | Works | Refused by name, with a message that points at `dispatchTask`; the import fails to compile and the changeset gives the new name |
 
 **Why it matters.** A worker author has to know that one board tool turns into a delivery tool
@@ -36,7 +36,7 @@ flowchart LR
   D -->|"recorded row never ran · both dispatched rows ran once · other conversation refused"| P["PASS"]
   X["three regression checks · renamed only"] -->|"same results"| P
   C["control · addTask still starts work"] -.-> R
-  R -.->|"under the control"| F["must FAIL · rec:waits"]
+  R -.->|"under the control"| F["must FAIL · rec:not-started"]
 ```
 
 The check reads the store: whether a recorded row ever got a run, and whether a dispatched one
@@ -45,14 +45,14 @@ ran once. The reruns prove nothing else moved.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/dispatching-work/a-recorded-task-waits-for-dispatch/` · the FIX-1817 lab and its model · run by the implementer at completion · verdict in the implementation PR. Plus reruns of `goals/hand-offs/ask-survives-a-restart/`, `goals/coordinators/task-session-stays-open/` and `goals/hand-offs/survives-a-restart-and-runs-once/`, and leg e of `goals/workers/files-and-splits-down-the-chain/`, where a real model hands work over without waiting and must now pick `dispatchTask` |
-| **Signal** | `rec:waits` a row `addTask_tasks` recorded for a delegate has no run after 30 s of board touches · `disp:ref-runs` `dispatchTask_tasks` on that row runs it once, with one completed notice · `disp:new-runs` a new row dispatched the same way runs once · `lineage:refused` the same dispatch from Alice's other conversation answers `task_not_found` and the row is unchanged · `old:refused` `addTask_tasks` with `waitForResponse` is refused, naming `dispatchTask`, and files nothing. The three reruns and leg e PASS |
+| **Signal** | `rec:not-started` a row `addTask_tasks` recorded for a delegate has no run after 30 s of board touches · `disp:ref-runs` `dispatchTask_tasks` on that row runs it once, with one completed notice · `disp:new-runs` a new row dispatched the same way runs once · `lineage:refused` the same dispatch from Alice's other conversation answers `task_not_found` and the row is unchanged · `old:refused` `addTask_tasks` with `waitForResponse` is refused, naming `dispatchTask`, and files nothing. The three reruns and leg e PASS |
 | **Input** | Held-out goal words and a delegate picked at run time. Another delegate, or a row recorded unassigned and given its assignee by the dispatch, must pass too |
 | **Anti-game** | Don't assert on the tool's return value or a unit stub: grade the store. The rerun diffs are checked against the rename map in [PLAN.md](PLAN.md#pinned-names); no assertion loosened, no leg dropped |
-| **Control that must fail** | `GOAL_CONTROL=add-starts` (the task tools don't mark a recorded row as waiting for dispatch) must FAIL `rec:waits`. Today's `main` must FAIL `disp:new-runs` and `rec:waits` |
+| **Control that must fail** | `GOAL_CONTROL=add-starts` (the task tools don't mark a recorded row as not dispatched) must FAIL `rec:not-started`. Today's `main` must FAIL `disp:new-runs` and `rec:not-started` |
 
 ## What changes
 
-![Two columns, today and after, for a conversation's board. Today: addTask with an assignee records and starts the task; addTask with waitForResponse records, starts and parks the turn; assignTask moves and starts it. After: addTask and assignTask only record, and the row waits; dispatchTask starts a new or recorded row; dispatchTask with wait also parks the turn. The waiting rules are drawn once, unchanged, under both](figures/what-changes.svg)
+![Two columns, today and after, for a conversation's board. Today: addTask with an assignee records and starts the task; addTask with waitForResponse records, starts and parks the turn; assignTask moves and starts it. After: addTask and assignTask only record, and the row stays recorded; dispatchTask starts a new or recorded row; dispatchTask with wait also parks the turn. The waiting rules are drawn once, unchanged, under both](figures/what-changes.svg)
 
 Read across a row: the left column starts work from three tools, the right from one. The band
 at the foot is the same in both columns, which is the promise.
@@ -85,7 +85,7 @@ at the foot is the same in both columns, which is the promise.
 flowchart LR
   M["the model, or an action"] -->|"dispatchTask"| T["the task tools"]
   T -->|"a row, ready to start"| B["the conversation's board"]
-  A["addTask · assignTask"] -->|"a row, waiting for dispatch"| B
+  A["addTask · assignTask"] -->|"a row, recorded, not dispatched"| B
   B -->|"wake: ready rows only"| W["the delegate's task session"]
   W -->|"ending"| N["notice, or the parked turn resumes"]
 ```
@@ -111,12 +111,14 @@ and board tools that never do. If wrong: either we ship a second starting tool a
 still picks, or we break app code that relied on `addTask_tasks` starting work for no gain.
 
 1. **[D1](DECISIONS.md#d1) · On a conversation's board, `addTask` and `assignTask` stop starting
-   work; a recorded task waits for `dispatchTask`.** About 17 goal checks, three worker files
-   and an app's `addTask_tasks` calls move to `dispatchTask` with it. If wrong: an app that
-   upgrades without reading the changeset files tasks that never run, and nothing errors.
+   work; a recorded task doesn't start until `dispatchTask`.** About 17 goal checks, three
+   worker files and an app's `addTask_tasks` calls move to `dispatchTask` with it. If wrong: an
+   app that upgrades without reading the changeset files tasks that never run. Nothing errors,
+   but every `addTask` result now says `status: "recorded"`, so a script that logs it sees why.
 2. **[D2](DECISIONS.md#d2) · `dispatchTask` takes `addTask`'s fields plus `wait` and
-   `timeoutMs`, flat, and `taskId` for a recorded row.** If wrong: the model mixes `goal` and
-   `taskId`, which is refused at run time rather than by the schema.
+   `timeoutMs`, flat, with `taskId` for a recorded row and `post: true` for the post a
+   coordinator is routing (FIX-1872).** If wrong: the model mixes the three, which is refused
+   at run time rather than by the schema.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

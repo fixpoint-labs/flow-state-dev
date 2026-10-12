@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What a worker calls on a conversation's board, today and after, for four intents. Hand work over: today addTask with an assignee records and starts it; after, dispatchTask starts it. Need the answer before going on: today addTask with waitForResponse records, starts and parks the turn; after, dispatchTask with wait does the same. Move a task to someone else: today assignTask moves and starts it; after, assignTask moves it and it waits for a dispatch. Write it down for later: today there is no way, because naming an assignee starts it; after, addTask records it and it waits. Under both columns, unchanged: the waiting rules, no question park, the turn owns the row, a timeout cancels it, 30 seconds to an hour, one wait per step, no wait from a task turn."
+<svg viewBox="0 0 940 400" role="img" aria-label="What a worker calls on a conversation's board, today and after, for four intents. Hand work over: today addTask with an assignee records and starts it; after, dispatchTask starts it. Need the answer before going on: today addTask with waitForResponse records, starts and parks the turn; after, dispatchTask with wait does the same. Move a task to someone else: today assignTask moves and starts it; after, assignTask moves it and it stays recorded until a dispatch. Write it down for later: today there is no way, because naming an assignee starts it; after, addTask records it and it stays recorded until a dispatch. Under both columns, unchanged: the waiting rules, no question park, the turn owns the row, a timeout cancels it, 30 seconds to an hour, one wait per step, no wait from a task turn."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -78,7 +78,7 @@
     <rect class="cell" x="568" y="236" width="356" height="50" rx="5"/>
     <text class="t-code" x="582" y="257">addTask({ goal, assignee })</text>
     <rect class="rec" x="850" y="246" width="64" height="16" rx="3"/><text class="t-chip" x="858" y="257">RECORDS</text>
-    <text class="t-s" x="582" y="276">it waits until something dispatches it</text>
+    <text class="t-s" x="582" y="276">it stays recorded until dispatched</text>
   </g>
 
   <g id="unchanged">

@@ -56,6 +56,7 @@ specifics below. Unchanged pages are not copied. P1 publishes the `dispatchTask`
 >
 > | Error | When |
 > |---|---|
+> | `assignee_required` | No `assignee`, and the conversation has more than one delegate to choose from. Nothing is filed |
 > | `wait_timed_out` | The task didn't end in time. It is cancelled |
 > | `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |
 > | `wait_timeout_without_wait` | `timeoutMs` without `wait`. Nothing is filed |
@@ -85,11 +86,11 @@ stands.
 
 ## UPDATE · `apps/docs/docs/workforce/coordinators.md` · "Handing out tasks" and "Managing tasks"
 
-> `addTask_tasks` records a task and answers `{ ok: true, taskId }`. It doesn't start it. To have
+> `addTask_tasks` records a task and answers `{ ok: true, taskId, status: "recorded" }`. It doesn't start it. To have
 > the delegate start now, send `dispatchTask_tasks` with the same fields, or with the `taskId` of a
 > task you recorded. A dispatched task runs in a new session of its own, its **task session**, …
 
-> | `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A recorded task still waits for `dispatchTask_tasks` |
+> | `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A recorded task stays recorded until `dispatchTask_tasks` |
 > | `dispatchTask_tasks` | Starts a new task, or one you recorded, on a delegate now |
 
 The coordinator's `handOff` and the delivery ledger on this page are FIX-1872's.
