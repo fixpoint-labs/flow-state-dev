@@ -640,6 +640,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.234
         version: 0.3.234(@anthropic-ai/sdk@0.117.1(zod@3.25.76))(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))(zod@3.25.76)
+      '@cursor/sdk':
+        specifier: 1.0.31
+        version: 1.0.31
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4
@@ -658,6 +661,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../packages/core
+      '@flow-state-dev/cursor':
+        specifier: workspace:*
+        version: link:../packages/cursor
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../packages/engine

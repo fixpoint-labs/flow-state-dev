@@ -21,7 +21,7 @@
  */
 import { z } from "zod";
 import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { BlockContext, HarnessRunHandle } from "@flow-state-dev/core/types";
+import type { BlockContext, HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/types";
 
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
@@ -342,6 +342,9 @@ export type InstalledSdkVersionReader = () => InstalledSdkVersion;
  *
  * `run_usage` is not an emission — it carries the token report to the handle —
  * but it rides the same union so the block's loop has one shape to walk.
+ * `plan_list` is the same kind of fact: the whole to-do list Cursor confirmed,
+ * which the block writes to the plan record when `recordPlan` is on. The tool
+ * step it came from is emitted as its own `tool_result`.
  */
 export type TranslatedEvent =
   | { kind: "message"; text: string }
@@ -358,4 +361,5 @@ export type TranslatedEvent =
   | { kind: "status"; message: string }
   | { kind: "error"; message: string; code?: string }
   | { kind: "run_usage"; usage: CursorRunUsage }
-  | { kind: "model"; model: string };
+  | { kind: "model"; model: string }
+  | { kind: "plan_list"; items: PlanListItem[] };

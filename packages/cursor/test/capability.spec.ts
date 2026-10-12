@@ -12,7 +12,14 @@
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { defineCapability, defineResourceCollection } from "@flow-state-dev/core";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  defineCapability,
+  defineResourceCollection,
+  observedPlanCollection,
+  observedPlanListCollection,
+} from "@flow-state-dev/core";
 import { createCursorAgentCapability } from "../src/capability";
 import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import { TESTED_SDK_VERSION } from "../src/types";
@@ -68,5 +75,18 @@ describe("createCursorAgentCapability", () => {
       resources?: Record<string, unknown>;
     };
     expect(Object.keys(cap.resources ?? {})).toContain("agent-notes");
+  });
+
+  it("declares the plan record when recordPlan is on, and nothing when it is off", () => {
+    // The block is a tool inside the preset, and a tool's resources reach no
+    // flow, so the capability has to carry them or the flow never registers them.
+    const on = createCursorAgentCapability({ ...GATE_OFF, recordPlan: true }) as unknown as {
+      resources?: Record<string, unknown>;
+    };
+    expect(on.resources?.[OBSERVED_PLAN]).toBe(observedPlanCollection);
+    expect(on.resources?.[OBSERVED_PLAN_LIST]).toBe(observedPlanListCollection);
+
+    const off = createCursorAgentCapability(GATE_OFF) as unknown as { resources?: Record<string, unknown> };
+    expect(off.resources).toBeUndefined();
   });
 });

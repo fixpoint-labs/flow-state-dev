@@ -120,6 +120,7 @@ the block is built:
 | Assistant text | `message` |
 | Thinking | `reasoning` |
 | Tool call | `tool_output`, opened when the call starts and settled with its result |
+| A change to Cursor's to-do list | `tool_output`, like any tool call. With `recordPlan`, also rows in the run's plan record ([Recording the run's plan](#recording-the-runs-plan)) |
 | Run and task lifecycle | transient `status` |
 | Errors | `error` |
 
@@ -133,7 +134,48 @@ Token counts never reach the stream. They ride the handle.
 
 Cursor's own `onStep` and `onDelta` observers are forwarded through `send`
 untouched. The item stream is built from the run's messages rather than from
-those callbacks, so taking both shows you the same run twice.
+those callbacks, so taking both shows you the same run twice. With `env` set
+they can't be passed, because the runtime runs in another process
+([Keeping your server's environment from the run](#keeping-your-servers-environment-from-the-run)).
+
+## Recording the run's plan
+
+Cursor keeps a to-do list while it works, and updates it as it goes. Turn on `recordPlan` and
+the block records that list in the run's plan record, the `observed-plan` collection every
+harness writes in the same shape ([the run's plan](./coding-agents.md#the-runs-plan)):
+
+```ts
+cursorAgent({
+  cwd, resume, onSession,
+  recordPlan: true,
+});
+```
+
+Each row is one to-do item: its wording (`title`) and Cursor's own word for its status
+(`status`): `pending`, `inProgress`, `completed` or `cancelled`. Read the status as text. A
+later Cursor may add a word.
+
+The record always holds the whole list as Cursor last confirmed it. An update Cursor sends can
+change only part of the list, so the block writes nothing until Cursor answers with the list as
+it now stands. An update Cursor rejects changes nothing. You still see every update as a tool
+call in the stream. The block writes through core's `replacePlanList`, the same helper every
+harness whose plan arrives as a whole list uses, so the run's list marker
+(`observed-plan-list`) says whether that list was saved in full.
+
+Cursor doesn't tell the SDK which item is which, so a row is an item's place in the list. If
+Cursor changes an item's status, its row keeps the old one as `previousStatus`. If Cursor
+rewords the item at a place, the row takes the new wording and `previousStatus` is cleared. If
+the list gets shorter, the rows past its end are removed. If Cursor reorders its list, rows after
+that point describe different items, so don't follow one item across a reorder.
+
+A run that never updates its list records nothing: no rows and no marker, which a plan panel
+shows as "no plan recorded for this turn". A list Cursor empties is different: the marker says
+the list is complete with nothing in it. If a write fails partway, the marker says the list is
+incomplete, with the error, so a reader never shows a half-written list as the plan. Cursor's
+plan-mode document, the one `mode: "plan"` produces, is not recorded.
+
+`recordPlan` is off by default. Off, the block declares no session state, exactly as before,
+which is what lets a task board hand it off without any further option.
 
 ## Where the run works
 
@@ -146,6 +188,39 @@ is rarely what you want.
 
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
+
+## Keeping your server's environment from the run
+
+Cursor's SDK runs in your server's process, and every shell command Cursor runs
+gets a copy of that process's environment: every key, token and connection string
+your server was started with. The SDK has no option to narrow it, and its sandbox
+limits files and network, not environment variables.
+
+Set `env` and the block runs Cursor's runtime in a separate Node process whose
+environment is exactly what you pass, with nothing inherited. Build it from names
+with `harnessEnv` from `@flow-state-dev/core`:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+
+cursorAgent({
+  cwd, resume, onSession,
+  env: harnessEnv({ pass: ["PATH", "HOME", "CURSOR_API_KEY"] }),
+});
+```
+
+Name `PATH`, since commands are found through it. Name `HOME` too: Cursor keeps
+its agents and its stored login under it, so a run started with a different
+`HOME` can't resume an agent or find a login. Pass `CURSOR_API_KEY` unless the key
+goes in `agent.apiKey`.
+
+The options cross into that process as data, so with `env` set a function anywhere
+in `agent` or `send` (`onStep`, `onDelta`, custom tools) is refused when the block
+is built, and so is your own `resolveCursorClient`, which would run Cursor outside
+the separate process. If the process can't start, or dies, the run fails with the
+reason. It never falls back to running in your server's process.
+
+Leave `env` out and the runtime runs in your process, as before.
 
 Deriving a safe directory per run is a recipe rather than a one-liner, and the
 Claude Code page works one through in
@@ -177,10 +252,15 @@ resumable. [Coding agents](./coding-agents.md#the-prompt-is-the-input-everything
 covers why the hook exists alongside the handle's own `sessionId`.
 
 A resume Cursor refuses throws instead of opening an agent, so the id you already
-hold is left exactly as it was rather than being overwritten with a dead one.
+hold is left exactly as it was rather than being overwritten with a dead one. When
+the reason is that Cursor doesn't know the agent, the error says so in the
+framework's own terms: `harnessFailureKind(error)` from `@flow-state-dev/core`
+reads `"unknown-conversation"`. Any other failure reads `null`, including one after
+Cursor has resumed the agent.
 
 Keeping no session state also means the block declares none, which is what lets a
-task board hand it off without any further option.
+task board hand it off without any further option. `recordPlan` is the one option
+that adds some, and it is off by default.
 
 ## How a run ends
 
@@ -230,7 +310,10 @@ message:
 | SDK not installed | `CursorSdkNotInstalledError` on the first run, with an install hint |
 | A different SDK version installed, or one whose version cannot be read | `CursorSdkVersionMismatchError` when the block is built |
 | A refused key in `agent` or `send` | `CursorAgentConfigError` when the block is built |
+| `env` with a function in `agent` or `send`, or with `resolveCursorClient` | `CursorAgentConfigError` when the block is built |
+| Cursor doesn't know the agent `resume` named | `CursorAgentRunError` whose `harnessFailure` is `"unknown-conversation"` |
 | The SDK throws opening the agent, sending, or streaming | `CursorAgentRunError`, carrying what it said |
+| With `env` set, the runtime's process can't start or dies | `CursorAgentRunError`, with the reason |
 | Your signal fires | `CursorAgentAbortedError`, carrying the agent id on `sessionId` |
 
 A run Cursor itself fails is not in that list. It comes back as a handle with

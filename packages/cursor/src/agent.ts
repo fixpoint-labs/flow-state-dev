@@ -21,13 +21,31 @@
  * message saying `FINISHED` is a note and nothing more. That is the difference
  * from Codex, whose translator has to decide how a turn ended from the last
  * event that arrived.
+ *
+ * Two opt-in options change what the block touches, and both are off by
+ * default so the block stays exactly what a task board hands off: `recordPlan`
+ * writes Cursor's confirmed to-do list into core's plan record, and `env` runs
+ * Cursor's runtime in a child process with only that environment
+ * (`./child-runtime`).
  */
-import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  handler,
+  harnessRunInputSchema,
+  harnessRunNamespace,
+  observedPlanCollection,
+  observedPlanListCollection,
+  replacePlanList,
+  type PlanListCollection,
+} from "@flow-state-dev/core";
 import type {
+  DeclaredResourceEntry,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
   HarnessSessionHook,
+  PlanListItem,
 } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import {
@@ -35,6 +53,7 @@ import {
   createDefaultResolveCursorClient,
   readInstalledCursorSdkVersion,
 } from "./cursor-client";
+import { createChildProcessResolveCursorClient } from "./child-runtime";
 import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
 import { addUsage, normalizeUsage, translateCursorMessage } from "./translate";
 import { estimateCursorCost } from "./cost";
@@ -43,6 +62,7 @@ import {
   CursorAgentConfigError,
   CursorAgentRunError,
   CursorSdkNotInstalledError,
+  isUnknownAgentFailure,
 } from "./errors";
 import {
   CURSOR_SOURCE,
@@ -56,6 +76,7 @@ import {
   type CursorSendOptions,
   type InstalledSdkVersionReader,
   type ResolveCursorClient,
+  type ResolvedCursorClient,
 } from "./types";
 
 /**
@@ -121,7 +142,48 @@ export interface CursorAgentOptions {
    * here is refused for the same reason it is refused on {@link agent}.
    */
   send?: CursorSendOptions;
-  /** Host hook resolving the Cursor client. Default: lazy SDK import. */
+  /**
+   * Record Cursor's to-do list in the run's plan record, core's
+   * `observed-plan` collection, with its `observed-plan-list` marker. Default
+   * `false`.
+   *
+   * On, the block declares both collections and, each time Cursor confirms an
+   * update to its list, writes the whole list it confirmed through core's
+   * `replacePlanList`: a row per place, Cursor's own status words, under a
+   * namespace per invocation. The update Cursor sent is never written; it can
+   * name only part of the list. A list that cannot be stored in full marks the
+   * run's marker incomplete and the run carries on.
+   *
+   * Off, the block declares no session state and writes nothing, which is what
+   * lets a task board hand it off with no further option.
+   */
+  recordPlan?: boolean;
+  /**
+   * The environment Cursor's runtime sees, and all of it. Default: unset,
+   * which runs the runtime in this process, where every command Cursor runs
+   * inherits the server's whole `process.env`.
+   *
+   * Set, the block runs Cursor's local runtime in a separate Node process
+   * whose environment is exactly this, nothing inherited. Cursor's SDK has no
+   * environment option of its own and copies its process's environment into
+   * every shell it starts, so the process is the only fence. Build it with
+   * core's `harnessEnv({ pass: [...] })`. Name `PATH` (the run's shell commands
+   * are found through it) and `HOME` (Cursor keeps its agents and its stored
+   * login under it, so a resumed agent is found only with the same `HOME`), and
+   * `CURSOR_API_KEY` unless `agent.apiKey` carries the key.
+   *
+   * A process that cannot start, or that dies, fails the run with the reason.
+   * It never falls back to this process. Because the options cross a process
+   * boundary, a function anywhere in `agent` or `send` (`onStep`, `onDelta`,
+   * custom tools) is refused when the block is built, and so is a custom
+   * `resolveCursorClient`, which would bypass the fence.
+   */
+  env?: Record<string, string>;
+  /**
+   * Host hook resolving the Cursor client. Default: lazy SDK import, or the
+   * child process when {@link CursorAgentOptions.env} is set. Not allowed
+   * together with `env`.
+   */
   resolveCursorClient?: ResolveCursorClient;
   /** Capabilities forwarded to the underlying handler. */
   uses?: UsesSlot;
@@ -142,10 +204,31 @@ export interface CursorAgentOptions {
  */
 export const INTERNAL_SDK_VERSION_READER = Symbol("cursor.internal.readInstalledSdkVersion");
 
-/** The shape the specs pass through the symbol above. */
+/**
+ * The module the environment fence's child process loads the SDK from, keyed
+ * by a symbol for the same reason as {@link INTERNAL_SDK_VERSION_READER}: the
+ * specs point the child at a scripted SDK, and no host can.
+ */
+export const INTERNAL_CHILD_SDK_MODULE = Symbol("cursor.internal.childSdkModule");
+
+/** The shape the specs pass through the symbols above. */
 interface InternalTestSeams {
   [INTERNAL_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+  [INTERNAL_CHILD_SDK_MODULE]?: string;
 }
+
+/**
+ * The plan record's two collections, declared on the block when `recordPlan`
+ * is on. Declared statically because `defineFlow` collects resources off block
+ * definitions at build time; a collection nobody declared is never registered.
+ */
+const planRecordResources: Record<string, DeclaredResourceEntry> = {
+  [OBSERVED_PLAN]: observedPlanCollection,
+  [OBSERVED_PLAN_LIST]: observedPlanListCollection,
+};
+
+/** Writes one confirmed list into this invocation's plan record. */
+type PlanWriter = (items: PlanListItem[]) => Promise<void>;
 
 /**
  * Facts accumulated while the stream is being read. `wait()` later overwrites
@@ -207,6 +290,38 @@ function assertNoOwnedKeys(agent: CursorCreateOptions | undefined, send: CursorS
 }
 
 /**
+ * Refuse what cannot cross into the environment fence's child process.
+ *
+ * Options reach the child as data, so a function in either group would be
+ * dropped or fail to send at run time; refusing it here names it at wiring
+ * time instead. A custom client resolver is refused because it would bypass
+ * the child process entirely, which is the fence.
+ */
+function assertFenceable(
+  agent: CursorCreateOptions | undefined,
+  send: CursorSendOptions | undefined,
+  resolveCursorClient: ResolveCursorClient | undefined,
+): void {
+  if (resolveCursorClient !== undefined) {
+    throw new CursorAgentConfigError(
+      "cursorAgent: `env` and `resolveCursorClient` cannot be set together — `env` runs Cursor's runtime in a child process the package starts, and a custom client would run outside it. Drop one.",
+    );
+  }
+  const walk = (value: unknown, path: string): void => {
+    if (typeof value === "function") {
+      throw new CursorAgentConfigError(
+        `cursorAgent: \`${path}\` is a function, and with \`env\` set the options cross into Cursor's runtime process as data. Remove it, or leave \`env\` unset.`,
+      );
+    }
+    if (value !== null && typeof value === "object") {
+      for (const [key, inner] of Object.entries(value)) walk(inner, `${path}.${key}`);
+    }
+  };
+  walk(agent, "agent");
+  walk(send, "send");
+}
+
+/**
  * Build the Cursor harness block.
  *
  * Refuses to build against an installed `@cursor/sdk` that is not the tested
@@ -220,7 +335,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     onSession,
     agent: agentOptions,
     send: sendOptions,
-    resolveCursorClient = createDefaultResolveCursorClient(),
+    recordPlan = false,
+    env,
     uses,
     name = "cursor-agent",
   } = options;
@@ -229,6 +345,14 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
   );
   assertNoOwnedKeys(agentOptions, sendOptions);
+  if (env !== undefined) assertFenceable(agentOptions, sendOptions, options.resolveCursorClient);
+  const resolveCursorClient =
+    env !== undefined
+      ? createChildProcessResolveCursorClient({
+          env: ownStrings(env),
+          sdkModule: (options as InternalTestSeams)[INTERNAL_CHILD_SDK_MODULE],
+        })
+      : (options.resolveCursorClient ?? createDefaultResolveCursorClient());
 
   return handler({
     name,
@@ -240,6 +364,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     // silent if the contract's input ever grew.
     inputSchema: harnessRunInputSchema,
     outputSchema: cursorAgentHandleSchema,
+    // Off, nothing: the block declares no session state, which task boards rely on.
+    ...(recordPlan ? { resources: planRecordResources } : {}),
     ...(uses !== undefined ? { uses } : {}),
     execute: async (input, ctx: AgentCallbackContext): Promise<CursorAgentHandle> => {
       const prompt = input.prompt?.trim();
@@ -251,6 +377,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null);
 
       const emitState = createEmitState();
+      const writePlan = recordPlan ? openPlanWriter(ctx) : null;
       const dispatchedAt = Date.now();
       let agent: CursorAgentLike | null = null;
       let sessionId: string | null = null;
@@ -271,7 +398,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
-        const mirrored = await mirrorRun(run, ctx, emitState, name);
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan);
         const settled = await settleRun(run, mirrored, ctx.signal);
         // A call still `running` when the stream closed has no result coming,
         // and an `error` or `cancelled` wait is an OUTCOME this block returns
@@ -337,9 +464,7 @@ async function openAgent(args: {
   const client = await args.resolveCursorClient(args.ctx);
   const createOptions = mergeCreateOptions(args.agentOptions, workingDirectory);
   const agent =
-    resumeId === null
-      ? await client.create(createOptions)
-      : await client.resume(resumeId, createOptions);
+    resumeId === null ? await client.create(createOptions) : await resumeAgent(client, resumeId, createOptions);
 
   try {
     await args.onSession?.(agent.agentId, args.ctx);
@@ -353,6 +478,72 @@ async function openAgent(args: {
   }
   args.ctx.emit.status(`Cursor agent ${agent.agentId}.`);
   return agent;
+}
+
+/**
+ * Resume `agentId`, classifying Cursor's refusal in core's vocabulary.
+ *
+ * Only a throw from `resume` itself is asked whether it is a refusal: the
+ * agent is confirmed the moment `resume` returns, so any later failure is an
+ * error on an agent Cursor did know. Every other throw passes through as it
+ * was, for `toRunFailure` to wrap.
+ */
+async function resumeAgent(
+  client: ResolvedCursorClient,
+  agentId: string,
+  createOptions: CursorCreateOptions & { local?: { cwd?: string } },
+): Promise<CursorAgentLike> {
+  try {
+    return await client.resume(agentId, createOptions);
+  } catch (err) {
+    if (!isUnknownAgentFailure(err)) throw err;
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new CursorAgentRunError(
+      `Cursor did not continue agent ${agentId}: ${reason}`,
+      { cause: reason },
+      err,
+      "unknown-conversation",
+    );
+  }
+}
+
+/**
+ * The plan writer for this invocation, or `null` when the flow has not
+ * registered the plan record's collections.
+ *
+ * The rows and the marker go under core's per-invocation namespace, so two
+ * invocations in one request, or two attempts of one, never share a list.
+ * Missing collections are a wiring gap a status note names; the run goes on
+ * unrecorded rather than failing over bookkeeping.
+ */
+function openPlanWriter(ctx: AgentCallbackContext): PlanWriter | null {
+  const resources = (ctx as { resources?: Record<string, unknown> }).resources;
+  const plan = resources?.[OBSERVED_PLAN] as PlanListCollection | undefined;
+  const marker = resources?.[OBSERVED_PLAN_LIST] as PlanListCollection | undefined;
+  if (typeof plan?.upsert !== "function" || typeof marker?.upsert !== "function") {
+    ctx.emit.status(
+      `Cursor agent is not recording this run's plan: the "${OBSERVED_PLAN}" and ` +
+        `"${OBSERVED_PLAN_LIST}" collections are not registered on this flow.`,
+      { transient: false },
+    );
+    return null;
+  }
+  const namespace = harnessRunNamespace(ctx);
+  return async (items) => {
+    const written = await replacePlanList(plan, marker, namespace, items);
+    if (written.status === "incomplete") {
+      ctx.emit.status(`Cursor's plan was not recorded in full: ${written.reason}`, { transient: false });
+    }
+  };
+}
+
+/** The entries of `env` that are strings, in a fresh object nothing else holds. */
+function ownStrings(env: Record<string, string>): Record<string, string> {
+  const copy: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") copy[key] = value;
+  }
+  return copy;
 }
 
 /**
@@ -397,6 +588,7 @@ async function mirrorRun(
   ctx: AgentCallbackContext,
   emitState: ReturnType<typeof createEmitState>,
   blockName: string,
+  writePlan: PlanWriter | null,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
   const iterator = stream[Symbol.asyncIterator]();
@@ -420,6 +612,11 @@ async function mirrorRun(
           usage = addUsage(usage, event.usage);
         } else if (event.kind === "model") {
           model = event.model;
+        } else if (event.kind === "plan_list") {
+          // Written in stream order, so the record ends equal to the last list
+          // Cursor confirmed. An empty list is still a write: it is what tells
+          // "the plan is empty" from "no plan recorded".
+          await writePlan?.(event.items);
         }
         await emitTranslatedEvent(event, ctx, emitState, blockName);
       }

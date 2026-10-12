@@ -78,6 +78,20 @@ verbatim. Three keys are refused when the block is built:
 | `agent.local.cwd` | The `cwd` resolver owns where a run works. The rest of `local` is forwarded. |
 | `agent.cloud`, `send.cloud` | This version drives Cursor's **local** runtime only. |
 
+`recordPlan: true` records Cursor's to-do list in the run's plan record, `observed-plan`, the
+shape every harness shares and `@flow-state-dev/core` defines. The record holds the whole list
+Cursor last confirmed, one row per place in the list, with Cursor's own status words. Off by
+default; off, the block declares no session state. Guide:
+[Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
+
+`env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
+separate process with exactly those variables, so commands Cursor runs can't read the rest of
+your server's environment. Name `PATH`, `HOME` and `CURSOR_API_KEY` in it
+(`harnessEnv({ pass: [...] })` from `@flow-state-dev/core`). With `env` set, functions in `agent`
+or `send` and a custom `resolveCursorClient` are refused when the block is built, because they
+can't reach that process. Leave it out and the runtime runs in your process, as before. Guide:
+[Keeping your server's environment from the run](https://flow-state.dev/docs/tools/cursor#keeping-your-servers-environment-from-the-run).
+
 ## The handle
 
 The neutral harness handle (`source: "cursor/sdk"`, `status`, `sessionId`, `url`,

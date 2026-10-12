@@ -8,6 +8,7 @@
  * Every one of them is FATAL for the run that raised it. A run Cursor reports as
  * errored is not here: that is an outcome on the handle, not a throw.
  */
+import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/types";
 
 /**
  * The optional `@cursor/sdk` peer dependency is not installed. Raised on the
@@ -83,8 +84,15 @@ export class CursorAgentConfigError extends Error {
  * `detail.cause` so the caller sees a stable class without losing what the
  * vendor said.
  */
-export class CursorAgentRunError extends Error {
+export class CursorAgentRunError extends Error implements ClassifiedHarnessError {
   readonly code = "CURSOR_AGENT_RUN_FAILED";
+  /**
+   * The failure in core's neutral vocabulary, read with core's
+   * `harnessFailureKind`. `"unknown-conversation"` when Cursor refused to
+   * resume the agent the run asked for (see {@link isUnknownAgentFailure});
+   * `null` for every other failure.
+   */
+  readonly harnessFailure: HarnessFailureKind | null;
   /**
    * @param detail carries the underlying message as a string, the shape the
    *   sibling adapters use and the one a host can log.
@@ -92,11 +100,33 @@ export class CursorAgentRunError extends Error {
    *   class and stack of whatever failed stay reachable. `detail.cause` alone
    *   loses both, which is the difference between "the SDK threw" and knowing
    *   what it threw and where.
+   * @param harnessFailure see {@link CursorAgentRunError.harnessFailure}.
    */
-  constructor(message: string, readonly detail?: { cause?: string }, cause?: unknown) {
+  constructor(
+    message: string,
+    readonly detail?: { cause?: string },
+    cause?: unknown,
+    harnessFailure: HarnessFailureKind | null = null,
+  ) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "CursorAgentRunError";
+    this.harnessFailure = harnessFailure;
   }
+}
+
+/**
+ * Whether `err`, thrown by the SDK's `Agent.resume`, is Cursor saying it does
+ * not know the agent.
+ *
+ * Measured against `@cursor/sdk` 1.0.31: resuming an id the local store does
+ * not hold throws the SDK's `AgentNotFoundError` ("Agent ID not found") with
+ * the stable code `agent_not_found`. The code is what is matched: it survives
+ * the trip out of the runtime's child process, where the class does not. The
+ * block asks this only of an error from `resume` itself, so a run that resumed
+ * the agent and then failed is never read as a refusal.
+ */
+export function isUnknownAgentFailure(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "agent_not_found";
 }
 
 /**

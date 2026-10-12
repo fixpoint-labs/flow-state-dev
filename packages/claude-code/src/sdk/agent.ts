@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
+import { handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
@@ -512,6 +512,14 @@ export function forwardSignalToController(
 }
 
 /**
+ * The key namespace for ONE run: `<requestId>/<invocation>`. Core's
+ * `harnessRunNamespace`, under the name this package has always exported, so
+ * every harness that records into the shared plan record keys its runs the
+ * same way.
+ */
+export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
+
+/**
  * Open a {@link WorkRecorder} against the three collections the block declared,
  * or return `null` with a status note when the two records are not on the
  * context.
@@ -530,104 +538,6 @@ export function forwardSignalToController(
  * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
  * child session's runs apart.
  */
-/**
- * Percent-escape the characters that stop a value being ONE resource-path
- * segment: `/`, `\`, control characters, and a segment of exactly `..` — the
- * four `normalizeResourcePath` rejects or splits on. The request id reaches
- * here straight from the caller (`sendOptions.requestId` rides the action
- * request body into `ctx.request.identity.id`), so all four are reachable
- * input, not hypotheticals.
- *
- * **The escaping is injective, and that is the point.** Stripping the offending
- * characters would satisfy the normalizer just as well and be a worse bug: two
- * distinct request ids would collapse onto ONE namespace and merge two runs'
- * rows under one key — trading a silent empty recorder for silent cross-run
- * mixing, which looks healthy.
- *
- * **What this costs:** injectivity requires escaping `%` first, so an id that
- * already contains one moves (`a%b` keys under `a%25b`). That is the whole
- * exception — every other already-valid id, `[`, `]`, `.` and `...` included,
- * is unchanged byte for byte, so existing rows keep their keys.
- *
- * One boundary, for whoever reads this next: injectivity holds among ids
- * encoded by THIS function, not across rows written before it existed. An id
- * that was literally `a%2Fb` keyed itself raw back then, and `a/b` encodes to
- * that same string now. Segregating the two would need a version segment,
- * which would orphan every row rather than the one shape at risk — so the
- * boundary is documented instead. It is safe to leave documented only while
- * no released version wrote these rows; check before assuming that still holds.
- */
-function encodePathSegment(value: string): string {
-  const escaped = value
-    .replace(/%/g, "%25")
-    .replace(/\//g, "%2F")
-    .replace(/\\/g, "%5C")
-    .replace(
-      /[\x00-\x1f]/g,
-      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
-    );
-  // Dots survive the escaping above untouched, so `..` — the one segment the
-  // normalizer rejects outright — is still reachable and needs its own branch.
-  // Exactly `..`, not any run of dots: `.` and `...` are accepted keys today,
-  // and widening this would move rows that are keyed fine. A literal `%2E%2E`
-  // escapes to `%252E%252E` above, so it cannot collide with what this emits.
-  return escaped === ".." ? "%2E%2E" : escaped;
-}
-
-/**
- * The key namespace for ONE run: `<requestId>/<invocation>`.
- *
- * **The request id alone is not the run's identity, and using it as one is a
- * silent data-merging bug.** A generator holding this agent as a tool can call
- * it several times inside a single request — the framework's own tool executor
- * disambiguates each call by `stepNumber:toolCallId` precisely because that
- * happens. Every such call is a separate coding run: its own files, its own
- * to-do ids (the harness numbers those per agent session, so two runs both
- * having a task `5` is ordinary), and its own gap ordinals, which restart at 1
- * per recorder and would therefore overwrite each other outright.
- *
- * `blockPath` is the framework's per-invocation identity — derived from the
- * block tree and the model step, so it is unique per call AND stable across a
- * replay, which a minted id would not be. Slashes are flattened so one
- * invocation stays one key segment.
- *
- * Two segments rather than one, deliberately: the request id stays the leading
- * segment, so `topicPrefix=<collection>/<requestId>/` still selects everything
- * one request did, while `<collection>/<requestId>/<invocation>/` narrows to a
- * single run. Replacing the request id outright would have made a row
- * impossible to correlate back to the request that caused it.
- *
- * Both parts are escaped into a single segment each — see
- * {@link encodePathSegment} for why that escaping must not be lossy.
- */
-export function runNamespace(ctx: BlockContext): string {
-  const identity = (
-    ctx as { _blockIdentity?: { blockPath?: string; attempt?: number } }
-  )._blockIdentity;
-  const path = identity?.blockPath;
-  // A context without a block identity (a direct `execute`, a mock) has exactly
-  // one invocation by construction, so a constant is the honest discriminator.
-  //
-  // The path is escaped too, and for the same reason the request id is: its
-  // user-controlled parts (a router branch name, a model-supplied tool name or
-  // call id) are escaped on the way in by the blockInstanceId grammar's own
-  // rules, which cover `%/[]:` — but not a backslash and not a control
-  // character, both of which this grammar cares about.
-  const step =
-    typeof path === "string" && path.length > 0
-      ? encodePathSegment(path.replace(/\//g, "."))
-      : "0";
-  // …and the ATTEMPT, because a retried block re-enters at the SAME path.
-  // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
-  // instance id from `(request, path, attempt)` while leaving the path
-  // untouched — so the framework's own invocation identity has three parts and
-  // this had two. Two attempts of one retried run would otherwise share a
-  // namespace: paths overwritten, and gap ordinals (which restart at 1 per
-  // recorder) clobbering the earlier attempt's outright.
-  const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
-  return `${encodePathSegment(ctx.request.identity.id)}/${step}#${attempt}`;
-}
-
 function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
