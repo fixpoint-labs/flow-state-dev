@@ -124,6 +124,7 @@ Replaces the epic's draft of the same section.
 
 > | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 
-The opening paragraph's "in a directory you choose" (epic draft, published by FIX-1914) no
-longer reads right: FIX-1914 changes it to "on a repository you choose" in the same round. No other page changes. The sentence "Claude Code doesn't
+The opening paragraph's "in a directory you choose" (epic draft) no longer reads right: the
+harness issue that publishes that sentence changes it to "on a repository you choose", as
+FIX-1914's draft says, and the epic's draft now reads that way. No other page changes. The sentence "Claude Code doesn't
 report its plan through the SDK yet" is removed when FIX-1185 makes the plan fill.

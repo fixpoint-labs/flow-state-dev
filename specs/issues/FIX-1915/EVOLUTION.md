@@ -11,4 +11,6 @@
 
 Aligned with FIX-1917's merged spec: `cursor-session` is now settled there, and a list `replacePlanList` can't store in full ends the turn *incomplete* without failing the run, as FIX-1917 BR-15b relies on.
 
+Amended after merge by the cross-spec check (2026-10-12): `replacePlanList` follows Claude Code's recorder (`work-recorder.ts`, previous status only on a status change), and BR-13b gathers the fence each sibling spec stated on its own into one rule here.
+
 Re-check each source against current code before PR-A moves the record.

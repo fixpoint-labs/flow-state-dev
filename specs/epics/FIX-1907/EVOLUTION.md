@@ -11,5 +11,8 @@ Only lineage that spans children. Per-harness lineage belongs in each child's ow
 | FIX-1701 D1 and D2 put one item-scope reader in core, internal to this repo's harnesses; source [`../../issues/FIX-1701/DECISIONS.md#d1`](../../issues/FIX-1701/DECISIONS.md#d1) | **Retained**, and followed as precedent | The same reason applies to the plan record: one copy in core, because per-package copies drift | D3: the plan record shape in core, owned by FIX-1915. Whether it is published to outside harness authors is FIX-1915's call, with FIX-1701 D2 as the default | Claude Code's existing `observed-plan` rows keep their key and parse (BP-030); the shape moves, the storage key doesn't |
 | The Claude Code docs say a run's plan is not a work queue; source [`apps/docs/docs/tools/claude-code-sdk.md#the-plan-is-not-a-work-queue`](../../../apps/docs/docs/tools/claude-code-sdk.md#the-plan-is-not-a-work-queue) | **Retained**, widened from one harness to three | D3 | ER-5 and ER-10 | No behaviour change for Claude Code |
 
+Amended after merge by the cross-spec check (2026-10-12, follow-up PR from `main`): the Flow State
+question is answered as recommended (#3167), so the first two rows hold as written.
+
 Shipped inputs FIX-1735 (#2654) and FIX-1701 (#2569) are consumed, not superseded. Re-check each
 cited intent against current code before implementing.

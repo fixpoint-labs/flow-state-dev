@@ -11,7 +11,7 @@ holds for Cursor unchanged: the queue; the server choosing the conversation and 
 session's own git worktree and branch of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, here
 on `kitchen-sink/cursor-session/<session>`, under a derived root outside the checkout, as FIX-1915
 defines it; and the panel's five states (rows, "this turn's plan is empty", "no plan recorded for
-this turn", "this harness reports no plan", rows marked "may be incomplete"). They are proved there
+this turn", "<Mode label> reports no plan", rows marked "may be incomplete"). They are proved there
 once. The rules below are
 where Cursor is different, or where the case needs a Cursor run to prove it.
 
@@ -49,7 +49,7 @@ Cursor calls the conversation an *agent*; each turn is one *run* inside it.
 | BR-15 | Two items have the same wording | Two rows, one per place (FIX-1915 BR-22a) | CI |
 | BR-15a | Cursor's confirmed list is empty | The turn's list marker says *complete* with no places, and the panel says "this turn's plan is empty", not "no plan recorded for this turn" (FIX-1915 BR-22c) | FIX-1915 V11 · CI here that an empty result still calls the helper |
 | BR-15b | A row or the trim fails to save partway through a list | The turn's list marker says *incomplete* with the error, the panel shows the rows it has as "may be incomplete", never as the plan, and the run carries on (FIX-1915 BR-22d) | FIX-1915 V12 · CI here that the run finishes |
-| BR-16 | The session's latest turn made no to-do update | The panel says "no plan recorded for this turn", even when an earlier turn recorded one (FIX-1915 BR-15). It never says "this harness reports no plan" in Cursor mode | CI · goal **p** |
+| BR-16 | The session's latest turn made no to-do update | The panel says "no plan recorded for this turn", even when an earlier turn recorded one (FIX-1915 BR-15). It never says "Cursor reports no plan" in Cursor mode; checks match on "reports no plan" | CI · goal **p** |
 | BR-17 | A status word Cursor has not used before | It records as itself (FIX-1915 BR-22, BR-22a) | CI |
 | BR-18 | The block runs more than once in one request | Each invocation writes its own run namespace, one writer per namespace, so each run's rows and marker are kept apart (FIX-1915 BR-22b) | CI |
 | BR-19 | A host leaves recording off, the default | The block declares no session state and writes nothing, exactly as today. A task board hands it off unchanged | CI |
@@ -61,6 +61,7 @@ Cursor calls the conversation an *agent*; each turn is one *run* inside it.
 |---|---|---|---|
 | BR-21 | Harness modes are off for this host: on Vercel; `KITCHEN_SINK_HARNESS_WORKSPACE` is set but names something that isn't the top level of a git checkout; or it is unset and the server is not in local development from inside a checkout, where it would use the server's own checkout (FIX-1914 BR-6, BR-7, as amended) | No Cursor flow is registered. Opening `/cursor` creates no session, and its flow's API is not found (FIX-1914 BR-14, BR-15) | FIX-1914's goal check, extended here |
 | BR-22 | Harness modes are on, but the pinned Cursor SDK is missing or another version is installed, or the host has no Cursor key and no stored Cursor login | The mode reports itself unavailable with that reason through FIX-1914's mode check, and opens no session (epic ER-1). Decided once per server start | CI |
+| BR-23 | Cursor runs a command | It sees only the allowlisted environment, never the server's secrets (FIX-1915 BR-13b). Cursor's local runtime runs in a child process whose own environment is the allowlist: that is the only lever, since neither the block nor the SDK has an environment option. A host where that child process can't be provided shows Cursor mode unavailable with the reason | Goal, a planted variable a real run must not see, with a control run that sees it · CI |
 
 ## Failure taxonomy
 

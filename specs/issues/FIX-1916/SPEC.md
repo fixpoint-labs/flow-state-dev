@@ -71,7 +71,7 @@ The middle column is all this issue builds. The rest is FIX-1915's or FIX-1914's
 + });
 ```
 
-Codex works in the session's working directory as FIX-1915 defines it
+Codex works in the session's own git worktree, from FIX-1915's factory
 ([Decided, not asked](DECISIONS.md#decided-not-asked)). No plan collection: a harness that declares no plan record is what the panel
 reads as "reports no plan" (FIX-1915 BR-16).
 

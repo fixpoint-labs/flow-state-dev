@@ -34,6 +34,7 @@ the goal check, on real Claude Code in a real browser.
 | BR-12 | A session or tenant id holds characters a path or a branch name can't | It still maps to one worktree and one branch inside the root, distinct from every other id | CI |
 | BR-13 | The run tries to write outside its worktree: the main checkout, another session's worktree, or the repository's `.git` | The sandbox refuses it. So the run can edit files but not commit; its work waits, uncommitted, in the worktree for the person | The Claude Code package's own tests · goal **w** |
 | BR-13a | A session goes idle, is deleted, or the server restarts | Its worktree and branch stay, untouched, until the host clears them. Nothing is merged, pushed or deleted for the person | CI |
+| BR-13b | Any harness mode runs a turn: Claude Code, Codex or Cursor | One fence for every mode, owned here. The run's writes are confined to the session's worktree, never the repository's `.git`, and the run sees only an allowlisted environment, never the server's secrets. A mode that can't hold either half on this host is unavailable with the reason, through FIX-1914's mode check (epic ER-1), and opens no session. Each harness proves its own half | Here BR-13 and V6, a planted server variable the run must not see · FIX-1916 BR-10, BR-12 · FIX-1917's fence rule |
 
 ## The plan panel
 
@@ -41,7 +42,7 @@ the goal check, on real Claude Code in a real browser.
 |---|---|---|---|
 | BR-14 | Claude Code records plan rows during a turn | The panel shows each row's wording and status while the run works, equal to the record | CI · goal **p** |
 | BR-15 | The session's latest turn recorded no plan | The panel says "no plan recorded for this turn", even when an earlier turn recorded one. Until FIX-1185 lands, that is every Claude Code turn | CI · goal **p** |
-| BR-16 | The harness declares no plan record at all | The panel says "this harness reports no plan" | CI |
+| BR-16 | The harness declares no plan record at all | The panel says "<Mode label> reports no plan", the label read as data from FIX-1914's mode list, never from a branch on harness kind | CI |
 | BR-17 | Several turns ran | The panel shows the latest turn's plan, labelled with its turn. An earlier turn's rows are never shown as the current plan | CI |
 | BR-18 | The person uses the panel | Nothing in it starts, edits or hands off work (epic ER-10) | CI · review |
 
@@ -53,7 +54,7 @@ the goal check, on real Claude Code in a real browser.
 | BR-20 | Code imports the plan names from the Claude Code package | It gets the same objects core exports | CI |
 | BR-21 | A plan row changes during a run | An open page sees the change without a refresh | CI |
 | BR-22 | A harness writes a field the shape lacks, or a status it has never seen | The status records as itself. A new field is an epic-level change (epic ER-15), not a local one | Review |
-| BR-22a | A harness hands `replacePlanList` the whole list, again, during one run | Row *n* holds the list's *n*th item. Where the wording at a place is unchanged, the row's earlier status becomes its previous status; where it changed, the previous status is empty. Rows past the new end are deleted | CI |
+| BR-22a | A harness hands `replacePlanList` the whole list, again, during one run | Row *n* holds the list's *n*th item, with its last outcome *applied*. Where the wording at a place is unchanged and the status changed, the row's earlier status becomes its previous status; a repeated status leaves the previous status as it was, as Claude Code's recorder does. Where the wording changed, the previous status is empty. Rows past the new end are deleted | CI |
 | BR-22b | A second invocation writes to the same run namespace | Not supported: one writer per run namespace, per invocation. The helper remembers how many rows it wrote and never lists the prefix. A row past the end that a lost count leaves behind doesn't show, since a reader shows only places below the marker's count | Review · CI |
 | BR-22c | A harness reports an empty list | The turn's marker says *complete* with no places, and the panel says "this turn's plan is empty", not "no plan recorded for this turn" | CI |
 | BR-22d | A plan write fails partway, whether through the helper or a Claude Code plan row | The turn's marker says *incomplete*, with the error. The panel shows the rows it has as possibly incomplete, never as the plan. A marker still *writing* after the turn ended reads the same | CI, a collection that fails on its second write |

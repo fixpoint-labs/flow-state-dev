@@ -32,7 +32,7 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Recording each update as Cursor sends it · or treating Cursor as a harness that reports no plan, the fallback the issue allowed |
 | **Because** | Cursor has a to-do list, so "reports none" would be false. The update it sends can change only part of the list, and the SDK drops the item ids that would say which part. The call's result carries the whole list after the update. Only that list can make the panel equal Cursor's own ([POC](poc/sdk-wire/README.md) F1, F1b, F1c) |
-| **Locks in** | Four of the panel's five states in Cursor mode: rows, "this turn's plan is empty", "no plan recorded for this turn", and rows marked "may be incomplete" when a write fails partway (FIX-1915 BR-22c, BR-22d). Never "this harness reports no plan" while recording is on. A row appears when Cursor confirms the update, not when it sends it. An update Cursor rejects changes nothing |
+| **Locks in** | Four of the panel's five states in Cursor mode: rows, "this turn's plan is empty", "no plan recorded for this turn", and rows marked "may be incomplete" when a write fails partway (FIX-1915 BR-22c, BR-22d). Never "Cursor reports no plan" while recording is on. A row appears when Cursor confirms the update, not when it sends it. An update Cursor rejects changes nothing |
 
 ![D1: what goes in the plan record? Chosen: the whole list Cursor confirms. Instead of: the update as sent. It comes down to a partial update, which without ids cannot be placed. The price: a row appears when the update settles. Flips if Cursor never updates its list](figures/d1-confirmed-list.svg)
 
@@ -74,8 +74,14 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
 - **Kitchen Sink's Cursor options**: `composer-2.5` (the coding-skill lab's default), agent mode,
   the sandbox on, recording on. No model setting until someone needs a second model.
 - **Cursor's sandbox fences writes to the session's worktree only**: not the main checkout,
-  another session's worktree, or the repository's `.git` (FIX-1915 BR-13). The run edits files
-  and leaves them uncommitted. A sandbox that can't hold that fence makes the mode unavailable.
+  another session's worktree, or the repository's `.git` (FIX-1915 BR-13, BR-13b). The run edits
+  files and leaves them uncommitted. A sandbox that can't hold that fence makes the mode unavailable.
+- **The run's environment is fenced by the process Cursor runs in** (FIX-1915 BR-13b, BR-23 here).
+  Cursor's local runtime runs in a child process whose own environment is the allowlist. It is the
+  only lever: every local shell Cursor's SDK spawns copies the process's environment, its sandbox
+  changes only file and network access, and neither the SDK nor our block has an environment
+  option ([Evolution](EVOLUTION.md)). A host that can't provide that child process shows the mode
+  unavailable with the reason.
 - **Sign-in is probed** (epic ER-1), as FIX-1915 does: the pinned SDK is installed, and a Cursor
   key is in the environment or the SDK reports a stored login. No run is started. A rejected key
   fails that turn with Cursor's own error.
@@ -125,5 +131,8 @@ plan?" to D1, and from "key by item id" to D2.
   marker, not a Cursor writer, so an empty list and a half-written one each read as what they are;
   each session gets FIX-1915's worktree and branch; the off conditions follow FIX-1914's amended
   gate; one empty-state string; the changeset is a patch.
+- **Amended after merge (Oct 12, cross-spec check)**: the option is `recordPlan`; checks match on
+  "reports no plan"; the run's environment is fenced through a child process (BR-23), under the
+  fence FIX-1915 owns (BR-13b).
 
 **Open: none.**

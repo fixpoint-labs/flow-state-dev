@@ -90,8 +90,8 @@ a new field. Then keep it internal until all three harnesses have written it.
   failed. Kitchen Sink writes no item.
 - **A turn sent while one runs waits** (`concurrency: "queue"`).
 - **The panel shows the session's latest turn**: its rows · "this turn's plan is empty" · "no
-  plan recorded for this turn", even when an earlier turn recorded one · "this harness reports
-  no plan", when no record is declared · its rows marked "may be incomplete", from the list
+  plan recorded for this turn", even when an earlier turn recorded one · "<Mode label> reports
+  no plan", when no record is declared, the label from FIX-1914's mode list · its rows marked "may be incomplete", from the list
   marker below. An earlier turn's plan is never shown as the current one.
 - **The plan record streams live** (`client.live: true`); today it refreshes when the request ends.
 - **One setting, `KITCHEN_SINK_HARNESS_WORKSPACE`, now names the repository**, and the root
@@ -120,12 +120,14 @@ a new field. Then keep it internal until all three harnesses have written it.
   can edit `.claude/settings.json` in its worktree, and a hook it adds would run outside the
   sandbox on the next turn. The prompt can point the run at `CLAUDE.md` or `AGENTS.md`.
 - **Whole-list plans become rows through one helper in core**, beside the plan record:
-  `replacePlanList(collection, marker, namespace, items)`. Codex and Cursor report their plan as
-  the whole list, with no item ids (FIX-1916, FIX-1917); the helper keys rows by place, keeps the
-  previous status when the wording at a place is unchanged, and deletes rows past the new end.
-  Its invariant: one writer per run namespace, per invocation, which is why it may remember how
-  many rows it wrote instead of listing the prefix. It ships in PR-A, so both siblings call it
-  rather than each writing a copy.
+  `replacePlanList(collection, marker, namespace, items)`. Cursor reports its plan as the whole
+  list, with no item ids (FIX-1917), and so would an outside harness author's; the helper keys
+  rows by place, keeps the previous status when the wording at a place is unchanged and its
+  status changed, and deletes rows past the new end. Its invariant: one writer per run
+  namespace, per invocation, which is why it may remember how many rows it wrote instead of
+  listing the prefix. It is public and in core, not in the Cursor package, because the list
+  marker's meaning belongs with the record. It ships in PR-A, so Cursor calls it rather than
+  writing a copy.
 - **Each turn's plan carries a list marker**, a second small record in core (`observed-plan-list`,
   one row per run namespace): *writing*, *complete* or *incomplete*, the number of places, and
   why it is incomplete. Two things need it. A confirmed empty list writes no rows, and without a
@@ -161,7 +163,7 @@ a new field. Then keep it internal until all three harnesses have written it.
 | One flow kind, harness chosen per session | The rail per mode would need a filter, and a session could change harness mid-conversation |
 | A plan reader helper in core | Two readers today (Shift Manager, the panel), a few lines each. The one part not to hand-copy is the turn's key prefix, which the recorder escapes; see [PLAN → Notes from review](PLAN.md#notes-from-review) |
 | A marker field on every plan row instead of a separate record | A new field on the row is an epic-level change (ER-15), and a turn with no rows would have nowhere to hold it |
-| Each whole-list harness keeps its own place-keyed writer | Two copies of the same thirty lines land before anyone consolidates them, and the record they write is this PR's |
+| Each whole-list harness keeps its own place-keyed writer | Cursor is the one caller in this repo, but an outside harness author needs the same thirty lines, and what the marker means (when a turn's rows read as the plan) belongs with the record, not with one harness |
 | A second setting for the worktree root | Nothing else reads it, and a second setting is a second thing FIX-1914's gate must agree on |
 | Let the run commit, by opening `.git` to the sandbox | A run that can write `.git` can plant a hook the person's next git command runs unsandboxed. The host committing at turn end, with hooks off, is the follow-up if people want commits |
 | Move the file and gap records to core too | Only Claude Code writes them. The epic moves the plan alone |
@@ -192,5 +194,9 @@ The one unproved mechanism, live rows on a lazily loaded collection, is a CI che
   ahead of Codex and Cursor needing it, and each turn's plan a marker that tells an empty list
   from none and a half-written list from a whole one. The sign-in probe is FIX-1904's, shared
   rather than built twice, and the session branches got a prefix of their own.
+- **Amended after merge (Oct 12, cross-spec check)**: one fence for every harness mode (BR-13b);
+  `replacePlanList` keeps a previous status only on a status change and marks its rows
+  *applied*; the undeclared panel state names the mode; S8 pins `systemPrompt` and passes the
+  allowlisted environment to the sign-in probe; VH loops over every harness mode.
 
 **Open: none.**

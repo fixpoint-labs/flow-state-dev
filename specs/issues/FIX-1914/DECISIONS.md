@@ -2,8 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Two decisions and one open question, which the epic put to the product lead and which is still
-unanswered. The epic's D1 to D3 bind this issue and are not reopened here.
+Two decisions and one question the epic put to the product lead, now answered. The epic's D1 to D3 bind this issue and are not reopened here.
 
 ## The tree
 
@@ -14,17 +13,17 @@ flowchart TD
   I --> D2["D2 · harness modes on a git checkout · named, or the server's own in local dev"]
   D2 -.->|"rejected · a setting before a dev server runs anything"| X2b["off until the host names one"]
   D2 -.->|"rejected · one missed check exposes a coding agent"| X2["on unless the host looks deployed"]
-  I --> Q["Open · today's app becomes Flow State mode, or moves out"]
+  I --> Q["Answered · today's app becomes Flow State mode, unchanged"]
 ```
 
-Solid edges are what you're signing. The open question is written on its recommended answer.
+Solid edges are what you're signing. The question is answered as recommended.
 
 <a name="open"></a>
-## Open · Does today's Kitchen Sink become the Flow State mode, or move out?
+## Answered · Does today's Kitchen Sink become the Flow State mode, or move out?
 
-**Carried from the [epic](../../epics/FIX-1907/DECISIONS.md#open), unanswered.** The epic gates
-this spec on it, so the answer comes before this spec merges. It is written on the recommendation
-so review can proceed meanwhile.
+**Carried from the [epic](../../epics/FIX-1907/DECISIONS.md#open), and answered: it becomes Flow
+State mode, unchanged.** The owner decided it by merging this spec (#3167) on 2026-10-12, as the
+epic records. The ask is kept below as it was put.
 
 **In plain terms.** Picking **Flow State** either opens today's app as it is (the assistant, the
 support desk, its workers, voice, background work), or opens one plain assistant, a peer of the
@@ -158,3 +157,5 @@ too, as first reviewed. Kitchen Sink gaining real sign-in would let deploy detec
   repository itself, each in its own worktree and branch. The setting now names a git checkout,
   read by one function shared with FIX-1915, and D2 changed: unset in local development is on,
   using the server's own checkout; a production server stays off without the setting.
+- **Amended after merge (Oct 12, cross-spec check)**: the Flow State question recorded as
+  answered by the owner's merge of #3167; the merge gate on it is gone.

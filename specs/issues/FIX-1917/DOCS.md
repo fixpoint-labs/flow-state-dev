@@ -4,8 +4,7 @@
 
 The epic's shared story is in [its draft](../../epics/FIX-1907/DOCS.md), and "The run's plan" on
 the coding agents page is FIX-1915's. This issue publishes the Cursor specifics and Kitchen Sink's
-Cursor section. PR-A publishes the first three; PR-B the last. The option name `recordPlan` is a
-placeholder until the cross-spec pass aligns it with Codex's.
+Cursor section. PR-A publishes the first three; PR-B the last.
 
 ## UPDATE · `apps/docs/docs/tools/cursor.md` · "What it emits", a row after "Tool call"
 
@@ -76,7 +75,8 @@ placeholder until the cross-spec pass aligns it with Codex's.
 > of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, on `kitchen-sink/cursor-session/<session>`,
 > and every turn of that session works there. Cursor runs with its sandbox on, which lets it edit
 > files in that worktree and nowhere else, `.git` included, so its work waits uncommitted for you
-> to review. A command Cursor started can keep running briefly after you stop a turn.
+> to review. It sees only the environment variables Kitchen Sink passes it, not the server's whole
+> environment. A command Cursor started can keep running briefly after you stop a turn.
 >
 > **Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same
 > agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn

@@ -52,11 +52,11 @@ against the record it reads. With `resume` cut, turn 2 must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/kitchen-sink-harness/cursor-continues-its-agent/` · real Cursor, in a real browser, on a host with a Cursor key · run by the implementer at completion, handed to `fsd-qa` over the mailbox if no such host is available · verdict in the implementation PR |
-| **Signal** | **c** turn 2 names turn 1's token and the recorded agent id is unchanged · **l** a Cursor step shows before the turn completes · **s** after stop, turn 3 names the token under the same id · **r** after a reload, the same · **p** the panel's rows equal the last successful `updateTodos` result among the turn's steps, in order, or the panel says "this turn's plan is empty" when that list is empty, or "no plan recorded for this turn" when the turn has no such step. Never "this harness reports no plan" |
+| **Signal** | **c** turn 2 names turn 1's token and the recorded agent id is unchanged · **l** a Cursor step shows before the turn completes · **s** after stop, turn 3 names the token under the same id · **r** after a reload, the same · **p** the panel's rows equal the last successful `updateTodos` result among the turn's steps, in order, or the panel says "this turn's plan is empty" when that list is empty, or "no plan recorded for this turn" when the turn has no such step. Never a panel text containing "reports no plan" |
 | **Input** | A fresh random token per run, and a job of several steps long enough to stop. Durable store (`STORE_TYPE=filesystem`) |
 | **Anti-game** | Assert on what the page shows and the id in session state. Never on the scripted client, and never on a prompt Kitchen Sink built from earlier turns |
-| **The gate** | FIX-1914's goal check gains FIX-1915's two legs for `/cursor`: with harness modes off, opening Cursor creates *no session* and *no harness flow is served*. Both FAIL under its `GOAL_CONTROL=gate-open` |
-| **Control that must fail** | `GOAL_CONTROL=no-resume`: **c** and **s** FAIL. `GOAL_CONTROL=no-record`: **p** FAILS (recording off, so the panel says "this harness reports no plan"). Today's `main`: every leg FAILS, as there is no Cursor mode |
+| **The gate** | FIX-1915's loop over every harness mode in FIX-1914's goal check covers `/cursor`, with no edit here: with harness modes off, opening Cursor creates *no session* and *no harness flow is served*. Both FAIL under its `GOAL_CONTROL=gate-open` |
+| **Control that must fail** | `GOAL_CONTROL=no-resume`: **c** and **s** FAIL. `GOAL_CONTROL=no-record`: **p** FAILS (recording off, so the panel says "Cursor reports no plan"; the check matches on "reports no plan"). Today's `main`: every leg FAILS, as there is no Cursor mode |
 
 ## What changes
 
@@ -67,8 +67,7 @@ list into items and hands them to core's `replacePlanList(collection, marker, na
 which FIX-1915 builds for every whole-list harness. The translation lives in the Cursor package,
 because a gap patched in the app would hide from every other host (epic ER-11).
 
-**What Kitchen Sink writes** (illustrative; the option name is aligned with Codex's in the
-cross-spec pass):
+**What Kitchen Sink writes** (illustrative; the option name `recordPlan` is settled):
 
 ```diff
 + export const cursorSession = harnessSessionFlow({

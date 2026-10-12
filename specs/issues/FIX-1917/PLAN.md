@@ -13,9 +13,9 @@ session flow.
 |---|---|---|---|
 | S1 | `cursor` · `translate` | A settled `updateTodos` call with a success result also yields a plan-list event carrying the result's list. The `tool_output` step is unchanged. A running call, an error result, or a result that isn't a list yields nothing extra. The args are never read for the plan | BR-8 to BR-11 BR-20 |
 | S2 | `cursor` · the plan-list hand-off, new | On each plan-list event, translate the result's todos into core's items (wording, Cursor's status word as itself) and call core's `replacePlanList(collection, marker, namespace, items)` (1915/S1), an empty list included. The helper owns the rows, previous status, the trim and the `observed-plan-list` marker: *writing*, then *complete*, or *incomplete* with the error (FIX-1915 BR-22a to BR-22d). No row logic here | BR-8 BR-12 to BR-15b BR-17 BR-18 |
-| S3 | `cursor` · `agent` | An opt-in option (illustratively `recordPlan`) that declares core's `observedPlanCollection` and the list marker (1915/S1) on the block and runs S2 per invocation, under a run namespace per invocation the way Claude Code's recorder does (one writer per namespace, BR-22b). Off: no resources, no writer | BR-18 BR-19 D1 |
+| S3 | `cursor` · `agent` | An opt-in option, `recordPlan`, that declares core's `observedPlanCollection` and the list marker (1915/S1) on the block and runs S2 per invocation, under a run namespace per invocation the way Claude Code's recorder does (one writer per namespace, BR-22b). Off: no resources, no writer | BR-18 BR-19 D1 |
 | S4 | `cursor` docs and release note | Per [DOCS.md](DOCS.md): the Cursor page and the Cursor README. Changeset: `cursor` patch (an additive, opt-in option, pre-1.0) | — |
-| S5 | `kitchen-sink` · Cursor mode | 1915/S5's factory with kind `cursor-session` and `cursorAgent`: the option from S3 on, `composer-2.5`, `mode: "agent"`, the sandbox on and fenced to the session's worktree, not `.git`. Each session's worktree and branch (`kitchen-sink/cursor-session/<session>`) come from the factory, through `@flow-state-dev/workspace`. Its own check in FIX-1914's mode-check slot: the pinned SDK, and a Cursor key in the environment or a stored Cursor login (the SDK's login status, no run). Registered in `fsdev.config.ts` only when the mode is available, decided once per server start. The package and the SDK added as dependencies | BR-1 to BR-7 BR-21 BR-22 ER-6 |
+| S5 | `kitchen-sink` · Cursor mode | 1915/S5's factory with kind `cursor-session` and `cursorAgent`: the option from S3 on, `composer-2.5`, `mode: "agent"`, the sandbox on and fenced to the session's worktree, not `.git`. Cursor's local runtime runs in a child process whose own environment is the allowlist (BR-23); no block or SDK environment option is assumed. Each session's worktree and branch (`kitchen-sink/cursor-session/<session>`) come from the factory, through `@flow-state-dev/workspace`. Its own check in FIX-1914's mode-check slot: the pinned SDK, and a Cursor key in the environment or a stored Cursor login (the SDK's login status, no run). Registered in `fsdev.config.ts` only when the mode is available, decided once per server start. The package and the SDK added as dependencies | BR-1 to BR-7 BR-21 BR-22 BR-23 ER-6 |
 | S6 | `kitchen-sink` · a scripted Cursor for test mode | Behind the app's test mode, through the block's `resolveCursorClient` seam: opens an agent, emits steps with a pause, sends `updateTodos` with a partial update and a whole-list result, fails one update, refuses a named agent id | All CI rows |
 | S7 | `kitchen-sink` README | Per [DOCS.md](DOCS.md) | — |
 
@@ -51,9 +51,10 @@ flowchart TD
 | V3 | A | Block with a scripted client: option off declares no resources and writes nothing (BR-19); on, two invocations in one request keep separate rows and markers (BR-18); with 1915/V12's collection that fails on its second write, the marker ends *incomplete* and the run finishes (BR-15b) | Turn the option on by default |
 | V4 | A | A Cursor row parses with core's `observedPlanItemStateSchema` and reaches a subscribed client live (reuses 1915/V4's harness) | Write a field the shape lacks |
 | V5 | B | Resolvers with the scripted Cursor: BR-1 to BR-3a. A refused resume leaves the id and the next turn asks for it again; a resume that succeeds and then fails reads as an error, not a refusal | Clear the id on a refused resume · read the notice from session-wide fields: BR-3a reads as refused |
-| V6 | B | Browser, scripted: a step shows before the turn completes; stop shows stopped, leaves the id, and the next turn continues; the panel shows the partial-update fixture's whole list, then "no plan recorded for this turn" on a later turn without one (BR-5, BR-6, BR-9, BR-16) | Register the Cursor flow with the option off: the panel says "this harness reports no plan" |
+| V6 | B | Browser, scripted: a step shows before the turn completes; stop shows stopped, leaves the id, and the next turn continues; the panel shows the partial-update fixture's whole list, then "no plan recorded for this turn" on a later turn without one (BR-5, BR-6, BR-9, BR-16) | Register the Cursor flow with the option off: the panel says "Cursor reports no plan" |
 | V7 | B | Availability: each named reason disables the mode, sign-in included, and an unavailable mode registers no flow (BR-22) | Report a host with no key and no stored login as available |
-| VH | B | FIX-1914's goal check (`goals/kitchen-sink-harness-mode/opens-on-the-picker/`), with FIX-1915's two legs added for `/cursor`: with harness modes off, opening it creates **no session**, and **no harness flow is served** (`/api/flows/cursor-session/…` not found) (BR-21) | `GOAL_CONTROL=gate-open`: both legs FAIL |
+| V8 | B | A canary variable planted in the server is not visible to a command in a real Cursor run, and a control run on the unscrubbed path sees it (BR-23). The first implementation step of PR-B | Start the runtime in the server's own process: the canary shows |
+| VH | B | FIX-1914's goal check (`goals/kitchen-sink-harness-mode/opens-on-the-picker/`), whose loop over every harness mode (FIX-1915 VH) covers `/cursor` with no edit here: with harness modes off, opening it creates **no session**, and **no harness flow is served** (`/api/flows/cursor-session/…` not found) (BR-21) | `GOAL_CONTROL=gate-open`: both legs FAIL |
 | VG | B | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness/cursor-continues-its-agent/run.mts` PASSES on real Cursor after FAILING under `GOAL_CONTROL=no-resume` (**c**, **s**) and `GOAL_CONTROL=no-record` (**p**) | The controls are the red state |
 
 The second path (BP-035) here is the resumed turn, the stopped turn, the reload, and the update
@@ -70,9 +71,9 @@ that was partial or failed. A check that covers only a first turn with a whole l
 | Plan writer | core's `replacePlanList(collection, marker, namespace, items)` | 1915/S1's, the one writer for whole-list harnesses |
 | Session branch | `kitchen-sink/cursor-session/<session>` | FIX-1915's `kitchen-sink/<flow kind>/<session>` |
 | Status words | Cursor's own, unchanged | A reader matches on them as text |
+| Opt-in option | `recordPlan` | Settled in the cross-spec check; the docs and Kitchen Sink name it |
 
-The opt-in option's name is aligned with Codex's (FIX-1916) in the cross-spec pass. Everything
-else is yours to name.
+Everything else is yours to name.
 
 ## Guardrails
 
@@ -114,10 +115,13 @@ messages are summaries. Premise held for the record, and moved the keying (D2).
 - Re-run the POC; if the SDK pin moved, its facts are what V1's fixtures are built from.
 - Read FIX-1915's merged code for the factory, its writers' namespace and how the panel reads a
   declared record. This plan assumes Cursor plugs in with options only.
-- Check that Cursor's sandbox fails closed when it can't start, that it can fence writes to the
-  session's worktree only, not `.git` (FIX-1915 BR-13), and what environment Cursor's commands
-  see (the block has no `env` option, unlike Claude Code's). Each gap is filed against the Cursor
-  package (ER-15); a sandbox that can't hold the fence makes the mode unavailable until fixed.
+- **PR-B starts with the real-run canary (V8).** Run Cursor's local runtime in a child process
+  whose environment is the allowlist, plant a variable in the server, and show a real run can't
+  see it while a control run on the unscrubbed path can. The SDK copies the process's environment
+  into every shell it spawns ([Evolution](EVOLUTION.md)); this is the only lever.
+- Check that Cursor's sandbox fails closed when it can't start, and that it can fence writes to
+  the session's worktree only, not `.git` (FIX-1915 BR-13, BR-13b). Each gap is filed against the
+  Cursor package (ER-15); a sandbox that can't hold the fence makes the mode unavailable until fixed.
 - Record whether Cursor called `updateTodos` on the goal check's job. Never → file it (D1's flip).
 
 ## Notes from review
