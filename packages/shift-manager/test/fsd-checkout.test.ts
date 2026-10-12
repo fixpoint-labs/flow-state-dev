@@ -88,11 +88,11 @@ beforeAll(async () => {
 }, 120_000);
 
 /**
- * A checkout like a person's: `main` with one commit, and a feature branch one
+ * A checkout like a user's: `main` with one commit, and a feature branch one
  * commit ahead checked out, so a run cut from HEAD is told apart from one cut
  * from `main`.
  */
-function personCheckout() {
+function userCheckout() {
   const { sourceRepo } = createScratchRepo("fsd-checkout");
   const repo = realpathSync(sourceRepo);
   const main = git(repo, "rev-parse", "main");
@@ -167,13 +167,13 @@ async function fileOnBoard(lab: Lab, issue: string, project: string) {
 const branchOf = (cwd: string) => git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
 
 /** What BR-13 says of one run: a worktree of `repo`, on a branch of `repo` cut from `main`, not from HEAD. */
-function expectWorktreeFromMain(person: ReturnType<typeof personCheckout>, cwd: string) {
-  expect(worktrees(person.repo)).toContain(cwd);
+function expectWorktreeFromMain(user: ReturnType<typeof userCheckout>, cwd: string) {
+  expect(worktrees(user.repo)).toContain(cwd);
   const branch = branchOf(cwd);
   expect(branch).not.toBe("my-feature");
-  expect(git(person.repo, "branch", "--list", branch)).not.toBe("");
-  expect(isAncestor(person.repo, person.main, branch)).toBe(true);
-  expect(isAncestor(person.repo, person.head, branch)).toBe(false);
+  expect(git(user.repo, "branch", "--list", branch)).not.toBe("");
+  expect(isAncestor(user.repo, user.main, branch)).toBe(true);
+  expect(isAncestor(user.repo, user.head, branch)).toBe(false);
   return branch;
 }
 
@@ -203,32 +203,32 @@ describe("the fsd profile's checkout mapping", () => {
 
 describe("a coding run on the fsd profile's projects", () => {
   it("BR-13: from a board, a run on fsd and one on shift-manager each work in a fresh worktree of the checkout, cut from main", async () => {
-    const person = personCheckout();
+    const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork });
-    const { lab, root } = await openMapped(person.repo, stub);
+    const { lab, root } = await openMapped(user.repo, stub);
 
     const branches: string[] = [];
     for (const project of ["fsd", "shift-manager"]) {
       const row = await fileOnBoard(lab, `on-${project}`, project);
       const run = stub.runs.find((r) => r.prompt.includes(`on-${project}`));
       expect(run, `the ${project} row ended ${row?.status}: ${JSON.stringify(row?.error ?? null)}`).toBeDefined();
-      const branch = expectWorktreeFromMain(person, run!.cwd);
-      // The coder's commit is on the run's branch, in the person's checkout.
-      expect(git(person.repo, "show", `${branch}:SCRIPTED-RUN.md`)).toContain("A scripted run");
+      const branch = expectWorktreeFromMain(user, run!.cwd);
+      // The coder's commit is on the run's branch, in the user's checkout.
+      expect(git(user.repo, "show", `${branch}:SCRIPTED-RUN.md`)).toContain("A scripted run");
       branches.push(branch);
     }
     expect(new Set(stub.runs.map((r) => r.cwd)).size).toBe(2);
     expect(new Set(branches).size).toBe(2);
-    // The person's own branch is untouched, and nothing was cloned.
-    expect(git(person.repo, "rev-parse", "my-feature")).toBe(person.head);
+    // The user's own branch is untouched, and nothing was cloned.
+    expect(git(user.repo, "rev-parse", "my-feature")).toBe(user.head);
     expect(existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")) : []).toEqual([]);
   }, 120_000);
 
   it("BR-13: from a conversation, the chief of staff's task for the coder works in a worktree of the checkout, cut from main", async () => {
-    const person = personCheckout();
+    const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "Noted." });
     const call = { toolName: "dispatchTask", args: { goal: "note the row", assignee: CODER, input: { project: { visibility: "shared", id: "shift-manager" } } } };
-    const { lab } = await openMapped(person.repo, stub, scripted(call));
+    const { lab } = await openMapped(user.repo, stub, scripted(call));
     const runtime = await lab.state.getRuntime();
     const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
     const created = await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId, state: { workerId: "chief-of-staff" } } });
@@ -252,15 +252,15 @@ describe("a coding run on the fsd profile's projects", () => {
       if (["completed", "errored", "cancelled"].includes(task?.status)) break;
     }
     expect(stub.runs, `the task ended ${task?.status}: ${JSON.stringify(task?.error ?? null)}`).toHaveLength(1);
-    expectWorktreeFromMain(person, stub.runs[0]!.cwd);
+    expectWorktreeFromMain(user, stub.runs[0]!.cwd);
     expect(task?.status).toBe("completed");
   }, 120_000);
 
   it("BR-14: a shared project of the Lab the mapping doesn't name is refused by its remote, with no worktree and nothing cloned", async () => {
-    const person = personCheckout();
+    const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork });
-    const { lab, root } = await openMapped(person.repo, stub);
-    const before = worktrees(person.repo);
+    const { lab, root } = await openMapped(user.repo, stub);
+    const before = worktrees(user.repo);
 
     const row = await fileOnBoard(lab, "on-mine", "mine");
     expect(row?.status).toBe("errored");
@@ -268,7 +268,7 @@ describe("a coding run on the fsd profile's projects", () => {
     const said = JSON.stringify(row);
     expect(said).toContain("remote-not-allowed");
     expect(said).toContain("/fixpoint-labs/flow-state-dev");
-    expect(worktrees(person.repo)).toEqual(before);
+    expect(worktrees(user.repo)).toEqual(before);
     expect(existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")) : []).toEqual([]);
   }, 120_000);
 });
