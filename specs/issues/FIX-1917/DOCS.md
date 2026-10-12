@@ -58,6 +58,10 @@ Cursor section. PR-A publishes the first three; PR-B the last.
 > Cursor last confirmed, one row per place in the list, with Cursor's own status words. Off by
 > default; off, the block declares no session state. Guide:
 > [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
+>
+> `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
+> separate process with exactly those variables, so commands Cursor runs can't read the rest of
+> your server's environment. Leave it out and the runtime runs in your process, as before.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · new section "Cursor mode", after FIX-1915's "Claude Code mode"
 

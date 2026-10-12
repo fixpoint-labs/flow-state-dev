@@ -60,12 +60,15 @@ against the record it reads. With `resume` cut, turn 2 must fail.
 
 ## What changes
 
-![Before: no app runs Cursor, and its block records none of its to-do updates. After: Kitchen Sink's Cursor mode on FIX-1915's session flow; the Cursor block, with recording on, writes the whole list Cursor confirms into core's plan record, a row per place; off by default](figures/what-changes.svg)
+![Before: no app runs Cursor, and its block records none of its to-do updates. After: Kitchen Sink's Cursor mode on FIX-1915's session flow; the Cursor block, with recording on, writes the whole list Cursor confirms into core's plan record, a row per place, and with env set runs its runtime in a child process with only that environment; both off by default](figures/what-changes.svg)
 
 Kitchen Sink adds a flow kind and Cursor's options. The Cursor package turns Cursor's confirmed
 list into items and hands them to core's `replacePlanList(collection, marker, namespace, items)`,
-which FIX-1915 builds for every whole-list harness. The translation lives in the Cursor package,
-because a gap patched in the app would hide from every other host (epic ER-11).
+which FIX-1915 builds for every whole-list harness. The Cursor block also gains `env`, the
+allowlisted environment its runtime sees: set, the package runs Cursor's runtime in a child process
+with exactly that environment (BR-23). Kitchen Sink passes FIX-1915's allowlist through it. The
+translation and the fence live in the Cursor package, because a gap patched in the app would hide
+from every other host (epic ER-11).
 
 **What Kitchen Sink writes** (illustrative; the option name `recordPlan` is settled):
 
@@ -75,6 +78,7 @@ because a gap patched in the app would hide from every other host (epic ER-11).
 +   agent: (shared) => cursorAgent({
 +     ...shared,                                   // cwd, resume, onSession
 +     recordPlan: true,
++     env: harnessEnvAllowlist,                    // FIX-1915 BR-13b's allowlist, passed through
 +     agent: { model: { id: "composer-2.5" }, mode: "agent",
 +              local: { sandboxOptions: { enabled: true } } },
 +   }),
@@ -112,7 +116,8 @@ Only a confirmed list is written ([D1](DECISIONS.md#d1)). Each row is an item's 
 
 ## What stays as it is
 
-- The Cursor block's contract and every step it emits, the to-do update included.
+- The Cursor block's contract and every step it emits, the to-do update included. Its two new
+  options, `recordPlan` and `env`, are opt-in; unset, the block runs as today.
 - FIX-1915's session flow, binding, workspace, session view and panel. Cursor brings options.
 - The plan record's and the list marker's keys and fields. Cursor writes them through core's
   helper and adds none.
@@ -133,5 +138,5 @@ breaks, or the panel claims a list Cursor never confirmed.
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `cursor` + `kitchen-sink` · medium (7 surfaces, 9 checks, 4 doc surfaces) · 2 PRs ·
+Feature · `cursor` + `kitchen-sink` · medium (9 surfaces, 10 checks, 4 doc surfaces) · 2 PRs ·
 blocked by FIX-1915 · epic [FIX-1907](../../epics/FIX-1907/SPEC.md)

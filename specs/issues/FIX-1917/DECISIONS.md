@@ -76,12 +76,13 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
 - **Cursor's sandbox fences writes to the session's worktree only**: not the main checkout,
   another session's worktree, or the repository's `.git` (FIX-1915 BR-13, BR-13b). The run edits
   files and leaves them uncommitted. A sandbox that can't hold that fence makes the mode unavailable.
-- **The run's environment is fenced by the process Cursor runs in** (FIX-1915 BR-13b, BR-23 here).
-  Cursor's local runtime runs in a child process whose own environment is the allowlist. It is the
-  only lever: every local shell Cursor's SDK spawns copies the process's environment, its sandbox
-  changes only file and network access, and neither the SDK nor our block has an environment
-  option ([Evolution](EVOLUTION.md)). A host that can't provide that child process shows the mode
-  unavailable with the reason.
+- **The run's environment is fenced by the Cursor package** (FIX-1915 BR-13b, BR-23 here). The
+  block gains `env`, the allowlisted environment the runtime sees; set, the package runs Cursor's
+  local runtime in a child process whose environment is exactly that. It is the only lever: every
+  local shell Cursor's SDK spawns copies the process's environment, its sandbox changes only file
+  and network access, and the SDK has no environment option ([Evolution](EVOLUTION.md)). Kitchen
+  Sink only passes FIX-1915 BR-13b's allowlist through `env` (epic ER-11). A host where the child
+  process can't start shows the mode unavailable with the reason.
 - **Sign-in is probed** (epic ER-1), as FIX-1915 does: the pinned SDK is installed, and a Cursor
   key is in the environment or the SDK reports a stored login. No run is started. A rejected key
   fails that turn with Cursor's own error.
@@ -98,6 +99,7 @@ in the package release that pins the new SDK. Rows from earlier runs keep their 
 | Alternative | Why not |
 |---|---|
 | Write Cursor's rows from Kitchen Sink, reading the to-do steps | Epic ER-11: a gap fixed in the app is a gap every other host keeps |
+| Spawn Cursor's runtime in a child process from Kitchen Sink | Same: every other host would keep the leak, and Kitchen Sink would hold Cursor-only code beyond the block's options |
 | Turn recording on by default | Adds a session collection to every Cursor host, including task boards that rely on there being none |
 | A place-keyed writer of Cursor's own | FIX-1915 put one in core, `replacePlanList`, for every whole-list harness (Codex too), with the marker that tells an empty list from none and a half-written one from the plan. A copy here would be a second writer of the same record |
 | Record Cursor's summaries as the plan | A summary describes the past. The panel shows what the run planned |
@@ -136,5 +138,8 @@ plan?" to D1, and from "key by item id" to D2.
   "reports no plan"; the run's environment is fenced through a child process (BR-23), under the
   fence FIX-1915 owns (BR-13b). BR-3 reads a refusal only from the package's unknown-conversation
   classification (S8).
+- **Amended again (Codex review of the cross-spec PR)**: the environment fence moved from Kitchen
+  Sink into the Cursor package, as the block's `env` option (PLAN S9, in PR-A); the changeset
+  becomes a minor.
 
 **Open: none.**

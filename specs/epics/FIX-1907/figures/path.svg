@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 388" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 12 October 2026. An input lane: FIX-1735 and FIX-1701, both done. This epic spec in review at the now line. FIX-1914 the picker: spec once the open question is answered, then implementation. FIX-1915 Claude Code mode: spec beside, implementation after FIX-1914 merges. FIX-1916 Codex and FIX-1917 Cursor: specs beside, implementations side by side after FIX-1915 merges. FIX-1185 Claude plan tools: one bar that can run any time before the closure. The closure FIX-1918: QA plan written early, run after every other child merges. The critical path runs through the FIX-1914, FIX-1915 and Codex or Cursor implementations, then the closure run.">
+     aria-label="The path as of 12 October 2026. An input lane: FIX-1735 and FIX-1701, both done. This epic spec in review at the now line. FIX-1914 the picker: spec, then implementation; the Flow State question is settled (keep, from Jake's merge of #3167). FIX-1915 Claude Code mode: spec beside, implementation after FIX-1914 merges. FIX-1916 Codex and FIX-1917 Cursor: specs beside, implementations side by side after FIX-1915 merges. FIX-1185 Claude plan tools: one bar that can run any time before the closure. The closure FIX-1918: QA plan written early, run after every other child merges. The critical path runs through the FIX-1914, FIX-1915 and Codex or Cursor implementations, then the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -84,5 +84,5 @@
   </g>
   <path class="crit" d="M360 103 L368 139 M560 139 L568 175 M676 175 L684 211 M772 211 L784 319"/>
   <text class="t-g" x="16" y="358">Critical path: this spec &#8594; FIX-1914 &#8594; FIX-1915 &#8594; FIX-1916 or FIX-1917 &#8594; the closure run.</text>
-  <text class="t-s" x="16" y="374">Specs run side by side; FIX-1914's waits on the open question. Codex and Cursor are the one parallel window.</text>
+  <text class="t-s" x="16" y="374">Specs run side by side; the Flow State question is settled (keep, #3167). Codex and Cursor are the one parallel window.</text>
 </svg>

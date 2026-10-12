@@ -56,7 +56,7 @@ With `resume` cut, turn 2 must fail, which is what makes its pass mean the threa
 
 ![Before: Codex runs only from a goal script never run on a real model. After: Kitchen Sink's Codex mode, FIX-1915's flow with the Codex block's options and Codex's own availability check; one thread per session, live steps, and a panel saying Codex reports no plan](figures/what-changes.svg)
 
-The middle column is all this issue builds. The rest is FIX-1915's or FIX-1914's, and the Codex package doesn't change.
+The middle column is all this issue builds. The rest is FIX-1915's or FIX-1914's, and the Codex package changes in one place only: it maps Codex's `no rollout found for thread id` error to core's unknown-conversation classification (PLAN S5, a `codex` patch changeset).
 
 **What Codex mode writes** (illustrative; the names are the implementer's):
 
@@ -93,7 +93,8 @@ is exactly FIX-1915's per-turn binding. Codex needs no binding code.
 
 ## What stays as it is
 
-- The Codex package and its contract (epic ER-13), and its LAB-153 goal script.
+- The Codex package and its contract (epic ER-13), and its LAB-153 goal script, except S5's one
+  error mapping.
 - FIX-1915's session flow, binding, workspace, view and panel; FIX-1914's picker and gate.
 - The plan record in core. Codex writes nothing to it.
 

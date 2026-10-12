@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 372" role="img" aria-label="Before: Codex is reached only from a goal script that has never run on a real model, and nothing records a plan. After: Kitchen Sink's Codex mode is the codex-session flow from FIX-1915's shared factory, with the Codex block given its options only: its sandbox, no approval prompts, FIX-1915's working directory and an allowlisted environment. Its own availability check covers the pinned Codex SDK, sign-in and the sandbox. Turns continue the same Codex thread, items stream to the session, and the plan panel says Codex reports no plan, because Codex's headless runs offer the model no plan tool at the pinned version. The Codex package itself is unchanged."
+<svg viewBox="0 0 940 372" role="img" aria-label="Before: Codex is reached only from a goal script that has never run on a real model, and nothing records a plan. After: Kitchen Sink's Codex mode is the codex-session flow from FIX-1915's shared factory, with the Codex block given its options only: its sandbox, no approval prompts, FIX-1915's working directory and an allowlisted environment. Its own availability check covers the pinned Codex SDK, sign-in and the sandbox. Turns continue the same Codex thread, items stream to the session, and the plan panel says Codex reports no plan, because Codex's headless runs offer the model no plan tool at the pinned version. The Codex package changes in one place only: its no-rollout resume error maps to the unknown-conversation classification, released as a codex patch changeset."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -29,7 +29,7 @@
     <text class="t-s" x="30" y="78">dispatches and resumes once</text>
     <text class="t-g" x="30" y="93">verdict log: not yet run on a real model</text>
     <rect class="n-box" x="16" y="116" width="280" height="64" rx="5"/>
-    <text class="t-b" x="30" y="140">Codex package · unchanged</text>
+    <text class="t-b" x="30" y="140">Codex package · one error mapping</text>
     <text class="t-s" x="30" y="158">block · resume · onSession · handle</text>
     <text class="t-s" x="30" y="173">a to-do list maps to a tool item</text>
     <rect class="n-gone" x="16" y="196" width="280" height="56" rx="5"/>
@@ -76,7 +76,7 @@
   <g id="foot">
     <rect class="n-box" x="16" y="296" width="908" height="60" rx="5"/>
     <text class="t-lbl" x="30" y="318">NOT IN THIS ISSUE</text>
-    <text class="t-s" x="30" y="338">A Codex plan writer: open question in DECISIONS.md · any change to the Codex package or its contract (epic ER-13)</text>
+    <text class="t-s" x="30" y="338">A Codex plan writer: open question in DECISIONS.md · any other change to the Codex package (S5 maps one error) or its contract (epic ER-13)</text>
     <text class="t-s" x="30" y="352">The picker and gate (FIX-1914) · the session flow, workspace and panel (FIX-1915)</text>
   </g>
 </svg>

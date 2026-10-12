@@ -4,8 +4,8 @@
 
 FIX-1914 publishes the opening of Kitchen Sink's README ([epic DOCS](../../epics/FIX-1907/DOCS.md#ownership)).
 When it merges only Flow State runs, so the opening names no coding harness as runnable; FIX-1915,
-FIX-1916 and FIX-1917 each add their mode as it lands. The Flow State paragraph assumes the
-[open question](DECISIONS.md#open) is answered as recommended. No page under `apps/docs` changes:
+FIX-1916 and FIX-1917 each add their mode as it lands. The Flow State paragraph follows the
+[settled answer](DECISIONS.md#open): keep, from Jake's merge of #3167. No page under `apps/docs` changes:
 none describes what `/` shows.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · the opening, replacing the first paragraph
