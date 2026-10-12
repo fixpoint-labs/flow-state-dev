@@ -11,8 +11,9 @@ three calls that remained.
 
 ```mermaid
 flowchart TD
-  I["FIX-1915"] --> D1["D1 · a directory per session, under one root"]
-  D1 -.->|"rejected · two sessions overwrite each other"| X1["one shared directory"]
+  I["FIX-1915"] --> D1["D1 · a git worktree of the repository per session"]
+  D1 -.->|"rejected · two sessions overwrite each other"| X1["the main checkout, shared"]
+  D1 -.->|"rejected · cannot change the codebase"| X1b["an empty directory per session"]
   I --> D2["D2 · a refused conversation fails visibly, every turn"]
   D2 -.->|"rejected · a resume bug turns into a notice"| X2["drop the id and start fresh"]
   I --> D3["D3 · the plan shape is public in core, first PR"]
@@ -22,20 +23,21 @@ flowchart TD
 Solid edges are what you sign. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Each session works in its own directory, under one root the host sets
+## D1 · Each session works in its own git worktree of the flow-state repository, on its own branch
 
 | | |
 |---|---|
-| **Instead of** | One directory every session shares, such as the person's own repository |
-| **Because** | Two sessions running at once in one tree overwrite each other's work, and nothing stops them: the turn queue is per session. A session's directory must also never change, since a harness continues a conversation where it started. One directory per session gives both, for all three harnesses |
-| **Locks in** | Kitchen Sink is a place to try a harness, not to work on your code: a new session starts in an empty directory. Directories stay until the host clears them. The root is the one host setting FIX-1914 gates every harness mode on, `KITCHEN_SINK_HARNESS_WORKSPACE` |
+| **Instead of** | The main checkout, which every session would share · an empty directory per session, under one root (this decision's first draft) |
+| **Because** | The mode is for changing the codebase itself, so the run has to work on the real repository: an empty directory can't. Two sessions running at once in one tree overwrite each other's work, and nothing stops them: the turn queue is per session. A worktree per session gives each its own tree and branch, leaves the main checkout untouched, and never moves, since a harness continues a conversation where it started |
+| **Locks in** | Kitchen Sink is a place to work on this repository: a session's edits land on the session's own branch, in its own worktree, cut from the checkout `KITCHEN_SINK_HARNESS_WORKSPACE` names. Nothing is merged, pushed or committed for the person. The worktree and branch stay when a session goes idle or is deleted, until the host clears them. The worktree comes from `@flow-state-dev/workspace`'s local-repository host, the one harness-manager uses: no second worktree path |
 
-![D1: where does a harness session work? Chosen: its own directory under one root the host sets. Instead of: one directory every session shares. It comes down to two sessions at once: shared, they overwrite each other with nothing to stop them. The price: a session starts empty, so a person cannot point it at their own repository. A tie: either is stable across turns. Locks in Kitchen Sink as a place to try a harness. Flips if the product wants people to work on their own repositories](figures/d1-workspace.svg)
+![D1: where does a harness session work? Chosen: its own git worktree of the flow-state repository, on its own branch. Instead of: the main checkout every session shares, or an empty directory per session. It comes down to two sessions at once: in one checkout they overwrite each other with nothing to stop them. Both work on the real repository; an empty directory does not. The main checkout stays untouched only with a worktree. A tie: each is stable across turns. Locks in Kitchen Sink as a place to work on the repository itself, one branch per session, kept until the host clears it. Flips if sessions need to share one tree](figures/d1-workspace.svg)
 
-It comes down to two sessions at once: a shared tree lets them overwrite each other silently.
+It comes down to two sessions at once: a shared checkout lets them overwrite each other silently,
+and mixes a session's edits with whatever the person has open.
 
-**What would change my mind:** the product wanting people to use Kitchen Sink on their own
-repositories. Then a shared directory with a lock across sessions, as a new issue.
+**What would change my mind:** sessions needing to work in one tree, such as two harnesses on
+the same change. Then a shared checkout with a lock across sessions, as a new issue.
 
 <a name="d2"></a>
 ## D2 · A conversation Claude Code won't continue is shown as refused on every turn; the session never starts a new one by itself
@@ -76,7 +78,7 @@ a new field. Then keep it internal until all three harnesses have written it.
   The coding-skill lab turns sub-agents off; this mode doesn't.
 - **No approval prompts; the sandbox is the fence.** Kitchen Sink has no in-page approval for a
   harness, so the SDK's prompts would have no one to answer them. Writes stay in the session's
-  directory. No sandbox, or a server running as root, makes the mode unavailable with that reason.
+  worktree, and nowhere else: not the main checkout, and not the repository's `.git`. No sandbox, or a server running as root, makes the mode unavailable with that reason.
   The run sees an allowlisted environment (`harnessEnv`), as Shift Manager passes Claude Code,
   never the server's whole environment.
 - **The binding is session state, with a record per turn.** The session holds the confirmed id,
@@ -87,19 +89,51 @@ a new field. Then keep it internal until all three harnesses have written it.
   never refused. Two session-wide fields can't tell a refusal from a turn that confirmed and then
   failed. Kitchen Sink writes no item.
 - **A turn sent while one runs waits** (`concurrency: "queue"`).
-- **The panel shows the session's latest turn**, in three states: its rows · "no plan recorded
-  for this turn", even when an earlier turn recorded one · "this harness reports no plan", when
-  no record is declared. An earlier turn's plan is never shown as the current one.
+- **The panel shows the session's latest turn**: its rows · "this turn's plan is empty" · "no
+  plan recorded for this turn", even when an earlier turn recorded one · "this harness reports
+  no plan", when no record is declared · its rows marked "may be incomplete", from the list
+  marker below. An earlier turn's plan is never shown as the current one.
 - **The plan record streams live** (`client.live: true`); today it refreshes when the request ends.
-- **The root is `KITCHEN_SINK_HARNESS_WORKSPACE`**, FIX-1914's one host setting. It must name an
-  existing directory; Kitchen Sink never creates or defaults it. Unset, or on Vercel, harness
-  modes are off, and the same server-side check that hides the mode decides whether the Claude
-  Code flow is registered at all (FIX-1914 BR-15).
-- **Sign-in is probed** (epic ER-1). A host where Claude Code is not signed in shows the mode
-  unavailable with that reason and opens no session. A sign-in that lapses later fails that turn
-  with Claude Code's own error.
-- **One flow kind per harness**, from one factory: each rail lists its own sessions, and a
-  session can't switch harness.
+- **One setting, `KITCHEN_SINK_HARNESS_WORKSPACE`, now names the repository**, and the root
+  the worktrees live under is derived from it, never set: `<repository>/.kitchen-sink/harness/`,
+  which PR-B adds to `.gitignore`. The name stays, since a person already types it from FIX-1914.
+  One function reads it, and FIX-1914's gate and this spec's resolver both call it:
+  - on Vercel → off;
+  - set → it must be the top level of an existing git checkout, else off with that reason;
+  - unset, in local development (`NODE_ENV !== "production"`) → the top level of the git
+    checkout the server runs from, or off if there is none;
+  - unset, otherwise → off. A production server lets a run edit a repository only when the
+    host names it.
+
+  Off means the mode is hidden and the Claude Code flow is not registered at all (FIX-1914
+  BR-15). The root is derived rather than a second setting because nothing needs it elsewhere,
+  and inside the repository it is ignored and found by anyone looking for a session's work.
+- **A session's work stays uncommitted, on its branch.** The run edits files in its worktree but
+  can't commit: its index and the repository's objects live under `.git`, which the sandbox
+  doesn't open, because a run that can write there can plant a hook that runs outside the sandbox
+  the next time the person uses git. The person reviews the worktree and commits. The branch is
+  named `kitchen-sink/<flow kind>/<session>`, so it can be found.
+- **The run doesn't read the repository's Claude Code settings** (`settingSources: []`). A turn
+  can edit `.claude/settings.json` in its worktree, and a hook it adds would run outside the
+  sandbox on the next turn. The prompt can point the run at `CLAUDE.md` or `AGENTS.md`.
+- **Whole-list plans become rows through one helper in core**, beside the plan record:
+  `replacePlanList(collection, marker, namespace, items)`. Codex and Cursor report their plan as
+  the whole list, with no item ids (FIX-1916, FIX-1917); the helper keys rows by place, keeps the
+  previous status when the wording at a place is unchanged, and deletes rows past the new end.
+  Its invariant: one writer per run namespace, per invocation, which is why it may remember how
+  many rows it wrote instead of listing the prefix. It ships in PR-A, so both siblings call it
+  rather than each writing a copy.
+- **Each turn's plan carries a list marker**, a second small record in core (`observed-plan-list`,
+  one row per run namespace): *writing*, *complete* or *incomplete*, the number of places, and
+  why it is incomplete. Two things need it. A confirmed empty list writes no rows, and without a
+  marker it reads the same as a turn that never reported; with one, the panel says the plan is
+  empty. And the collection only writes one key at a time, so a write that fails halfway leaves
+  old and new rows mixed; the marker says so, and the panel shows those rows as possibly
+  incomplete, never as the plan. A reader shows only places below the marker's count, so a row
+  past the end that a lost count left behind doesn't show either. Claude Code's plan arrives item
+  by item, so it has no empty list to report and writes no *complete* marker; a plan row it fails
+  to write marks the turn *incomplete*, besides the gap row it writes today, so the panel reads
+  one signal for every harness.
 
 ## Considered and dropped
 
@@ -109,6 +143,10 @@ a new field. Then keep it internal until all three harnesses have written it.
 | Kitchen Sink writes a notice item when a conversation moves or is refused | Epic ER-11: no shell-written items. Session state carries it |
 | One flow kind, harness chosen per session | The rail per mode would need a filter, and a session could change harness mid-conversation |
 | A plan reader helper in core | Two readers today (Shift Manager, the panel), a few lines each. The one part not to hand-copy is the turn's key prefix, which the recorder escapes; see [PLAN → Notes from review](PLAN.md#notes-from-review) |
+| A marker field on every plan row instead of a separate record | A new field on the row is an epic-level change (ER-15), and a turn with no rows would have nowhere to hold it |
+| Each whole-list harness keeps its own place-keyed writer | Two copies of the same thirty lines land before anyone consolidates them, and the record they write is this PR's |
+| A second setting for the worktree root | Nothing else reads it, and a second setting is a second thing FIX-1914's gate must agree on |
+| Let the run commit, by opening `.git` to the sandbox | A run that can write `.git` can plant a hook the person's next git command runs unsandboxed. The host committing at turn end, with hooks off, is the follow-up if people want commits |
 | Move the file and gap records to core too | Only Claude Code writes them. The epic moves the plan alone |
 | Approval prompts in the page | A new in-page approval surface for harnesses; not needed to test the contract |
 
@@ -129,5 +167,12 @@ The one unproved mechanism, live rows on a lazily loaded collection, is a CI che
   could not tell a refusal from a turn that confirmed and then failed, nor from a stop; sign-in
   is probed, because the epic's ER-1 requires it; the root became FIX-1914's
   `KITCHEN_SINK_HARNESS_WORKSPACE` gate, so the mode is registered only through it.
+- **Review round 2** — D1 flipped on the owner's direction: a session works on the flow-state
+  repository itself, in its own git worktree and branch, so the main checkout stays untouched.
+  The setting now names the repository, defaulting in local development to the checkout the
+  server runs from, with the worktree root derived from it. The worktree comes from
+  `@flow-state-dev/workspace`, not a second path. Whole-list plans get one writer in core,
+  ahead of Codex and Cursor needing it, and each turn's plan a marker that tells an empty list
+  from none and a half-written list from a whole one.
 
 **Open: none.**

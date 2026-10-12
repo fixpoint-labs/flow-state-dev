@@ -10,16 +10,16 @@ is the plan record in core, which needs no picker.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `core` · a harness plan-record module beside `types/harness` | The plan key, its item state schema, its outcome enum and the collection definition, moved from Claude Code unchanged except `client.live: true`. Exported from the package root (D3) | BR-19 BR-21 BR-22 |
-| S2 | `claude-code` · `sdk/work-collections` | Import S1 and **remove** the local definitions. Re-export the same names from `sdk`, as the same objects. File and gap records stay | BR-20 |
+| S1 | `core` · a harness plan-record module beside `types/harness` | The plan key, its item state schema, its outcome enum and the collection definition, moved from Claude Code unchanged except `client.live: true`. Beside them, new: a per-turn **list marker** record (`observed-plan-list`, one row per run namespace: what state the turn's plan write is in, how many places it holds, and why it is incomplete, every field nullable) and **`replacePlanList(collection, marker, namespace, items)`** for harnesses whose plan arrives as the whole list. The helper marks the turn *writing* with the new count, upserts place *n* (keeping the earlier status as `previousStatus` when the wording at that place is unchanged, clearing it when reworded), deletes places past the new end, then marks it *complete*, or *incomplete* with the failure. One writer per run namespace, per invocation: it remembers the count it last wrote and never lists the prefix. Exported from the package root (D3) | BR-19 BR-21 BR-22 BR-22a to BR-22d |
+| S2 | `claude-code` · `sdk/work-collections` and the work recorder | Import S1 and **remove** the local definitions. Re-export the same names from `sdk`, as the same objects. Declare the list marker beside the plan record. When a plan row's write fails, besides the gap row it writes today, mark the turn *incomplete* in the list marker. Claude Code writes no *writing* or *complete* marker: its plan arrives item by item, not as a list. File and gap records stay | BR-20 BR-22d |
 | S3 | `shift-manager` · the recorded-work reader | Read the plan pattern from S1's key, **removing** its own copy (the `observed-plan/**` glob) | — |
 | S4 | Docs and release notes for S1 to S3 | Per [DOCS.md](DOCS.md): core README, Claude Code README, coding agents page, Claude Code page. Changesets: `core` patch, `claude-code` patch (additive, per AGENTS.md) | — |
 | S5 | `kitchen-sink` · the harness session flow factory | One factory: a flow kind and a function that builds a harness block from the shared resolvers. One action taking the prompt, `concurrency: "queue"`. Session state holds the binding. No harness-specific code | BR-5 BR-7 ER-6 |
 | S6 | `kitchen-sink` · the binding resolvers | `resume` reads the confirmed id and notes, under the turn's request, what it asked for; `onSession` writes the confirmed id and marks it confirmed for that turn. Nothing else writes either (D2) | BR-1 to BR-4 BR-6 BR-7 BR-9 ER-2 |
-| S7 | `kitchen-sink` · the workspace resolver | `<root>/<flow kind>/<tenant>/<session>`, each segment derived the way the Claude Code page's checkout example does it, created on first use. The root is FIX-1914's `KITCHEN_SINK_HARNESS_WORKSPACE`, read through its gate; never created or defaulted here (D1) | BR-11 BR-12 |
-| S8 | `kitchen-sink` · Claude Code mode | The flow from S5 with `claudeCodeAgent`: `detached`, `recordWork`, `bypassPermissions`, `containmentSandbox` on S7's directory with `failIfUnavailable`, and `env` from `harnessEnv` with an allowlist like Shift Manager's. Its own check in FIX-1914's mode-check slot: SDK, root, sandbox, sign-in. Registered in `fsdev.config.ts` only through FIX-1914's gate; the package and the SDK added as dependencies | BR-10 BR-13 BR-23 BR-24 |
+| S7 | `kitchen-sink` · the session's worktree | One reader of `KITCHEN_SINK_HARNESS_WORKSPACE`, shared with FIX-1914's gate: the repository (the setting, or in local development the checkout the server runs from) or off with a reason ([DECISIONS → Decided, not asked](DECISIONS.md#decided-not-asked)). A place per session through `@flow-state-dev/workspace`'s `localWorkspaceHost({ root: <repository>/.kitchen-sink/harness, localRepositories: [repository], source: () => ({ kind: "repo", repo: repository, baseRef: "HEAD" }) })`, keyed on flow kind, tenant and session, with branch `kitchen-sink/<flow kind>/<session>`. No `mkdir` and no git of Kitchen Sink's own; harness-manager's `workspace.ts` is the worked example. Adds `.kitchen-sink/` to `.gitignore`. Nothing clears a place (D1) | BR-11 BR-12 BR-13a BR-23a |
+| S8 | `kitchen-sink` · Claude Code mode | The flow from S5 with `claudeCodeAgent`: `detached`, `recordWork`, `bypassPermissions`, `settingSources: []`, `containmentSandbox` on S7's worktree with `failIfUnavailable` (the worktree only: not the main checkout, not `.git`), and `env` from `harnessEnv` with an allowlist like Shift Manager's. Its own check in FIX-1914's mode-check slot: SDK, root, sandbox, sign-in. Registered in `fsdev.config.ts` only through FIX-1914's gate; the package and the SDK added as dependencies | BR-10 BR-13 BR-23 BR-24 |
 | S9 | `kitchen-sink` · the session view in FIX-1914's Claude Code slot | The conversation with Claude Code's items through the existing renderers, a stop control on the session's abort, and the binding notice read from session state | BR-3 BR-4 BR-8 BR-9 ER-3 ER-4 |
-| S10 | `kitchen-sink` · the plan panel | Reads the manifest for the plan record, then the latest turn's rows by request prefix. Three states. Read-only | BR-14 to BR-18 ER-5 |
+| S10 | `kitchen-sink` · the plan panel | Reads the manifest for the plan record, then the latest turn's list marker and rows by request prefix. Its states: rows · "this turn's plan is empty" (marker *complete*, no places) · "no plan recorded for this turn" (no marker, no rows) · "this harness reports no plan" · rows marked "may be incomplete", with the reason (marker *incomplete*, or still *writing* after the turn ended). With a count in the marker, only places below it show. Read-only | BR-14 to BR-18 BR-22c BR-22d ER-5 |
 | S11 | `kitchen-sink` · a scripted Claude Code for test mode | Behind the app's existing test mode, through the block's `resolveClaudeAgent` seam: a script that names a session, emits items with a pause, writes plan rows, refuses a named id | All CI rows |
 | S12 | Docs for S5 to S10 | Kitchen Sink README, per [DOCS.md](DOCS.md) | — |
 
@@ -47,7 +47,7 @@ flowchart TD
 
 | PR | Surfaces | depends_on | Why it stands alone |
 |---|---|---|---|
-| PR-A | S1 S2 S3 S4 | — | The public shape first (BP-004, D3). Needs no picker, so it can merge while FIX-1914 is in flight, and FIX-1916, FIX-1917 and FIX-1185 build on it |
+| PR-A | S1 S2 S3 S4 | — | The public shape first (BP-004, D3), with `replacePlanList` and the list marker. Needs no picker, so it can merge while FIX-1914 is in flight, and FIX-1916, FIX-1917 and FIX-1185 build on it |
 | PR-B | S5 to S12 · the goal check | PR-A · FIX-1914 | The mode. Needs FIX-1914's mode slot and rail |
 
 ## Checks
@@ -58,10 +58,13 @@ flowchart TD
 | V2 | A | The Claude Code `sdk` names are `===` core's (BR-20); Claude Code's recorder tests pass unchanged | Re-declare the collection in Claude Code |
 | V3 | A | Shift Manager's recorded-work tests pass, reading the key from core | Change S1's key |
 | V4 | A | A plan row upserted mid-run reaches a subscribed client as a live delta, on the lazy collection (BR-21) | Drop `live` |
+| V10 | A | `replacePlanList`: a list of three, then three with the second reworded, then two. Places hold the new items; unchanged wording keeps the earlier status as `previousStatus`, reworded clears it; place 2 is deleted; it never calls `list()` (BR-22a, BR-22b) | Key by index without the trim: a stale third row survives |
+| V11 | A | A confirmed empty list writes a *complete* marker with no places, and a reader tells it from a turn that reported nothing (BR-22c) | Skip the marker when the list is empty: the two read the same |
+| V12 | A | A collection that fails on the second write: the marker ends *incomplete* with the error, and a reader shows the rows as incomplete, never as the plan. The same for a Claude Code plan row whose write fails (BR-22d) | Write the marker *complete* before the rows, or not at all |
 | V5 | B | Resolvers, with a scripted Claude Code: BR-1 to BR-4, including a turn that confirms *X* then fails (an error, not a refusal) and one that fails before confirming (refused). Nothing but `onSession` writes the confirmed id (D2) | Clear the id on a refused resume, as the lab does: BR-3 fails · derive the notice from session-wide fields only: the confirmed-then-failed turn reads wrong |
-| V6 | B | Workspace: every turn of a session gets one directory; two sessions, two; hostile ids stay inside the root (BR-11, BR-12) | Key by session id raw |
+| V6 | B | Worktree: every turn of a session, and a restart, gets the same worktree and branch; two sessions, two; hostile ids stay inside the root and make valid, distinct branches; the main checkout's `git status` is unchanged after a run edits a file; a deleted session leaves its worktree and branch (BR-11 to BR-13a, BR-23a) | Key by session id raw · hand the run the repository itself |
 | V7 | B | Browser, scripted: a step shows before the turn completes; stop leaves the id and turn 2 continues it; a stop before the confirmation shows stopped, not refused; a second turn queues (BR-5, BR-8, BR-9) | Await the run before rendering |
-| V8 | B | Browser, scripted: the panel's three states and latest-turn labelling, including turn 2 with no plan after turn 1 recorded one (BR-14 to BR-17); no control in it writes (BR-18) | Return `[]` for an undeclared record: BR-16 fails · pick the latest turn *with* rows: BR-15 fails |
+| V8 | B | Browser, scripted: the panel's states (S10) and latest-turn labelling, including turn 2 with no plan after turn 1 recorded one (BR-14 to BR-17); no control in it writes (BR-18) | Return `[]` for an undeclared record: BR-16 fails · pick the latest turn *with* rows: BR-15 fails |
 | V9 | B | Availability: each named reason disables the mode, sign-in included (BR-23) | Report a host with no sign-in as available |
 | VH | B | FIX-1914's goal check (`goals/kitchen-sink-harness-mode/opens-on-the-picker/`), extended with two legs: with harness modes off, opening `/claude-code` creates **no session**, and **no harness flow is served** (`/api/flows/claude-code-session/…` not found) (BR-24) | `GOAL_CONTROL=gate-open`: both legs FAIL |
 | VG | B | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/kitchen-sink-harness/claude-code-continues-its-conversation/run.mts` PASSES on real Claude Code after FAILING under `GOAL_CONTROL=no-resume` (**c**, **s**) and `GOAL_CONTROL=no-record` (**p**) | The controls are the red state |
@@ -74,8 +77,11 @@ covers only a first turn proves none of them.
 | Where | Name | Why pinned |
 |---|---|---|
 | Flow kinds | `claude-code-session`, and `codex-session`, `cursor-session` for the siblings | FIX-1914's rail lists a mode's sessions by kind. Confirm with FIX-1914's spec at implement time |
-| Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE` | FIX-1914's, the one setting every harness mode is gated on. A person types it |
-| Goal controls | `GOAL_CONTROL=no-resume`, `GOAL_CONTROL=no-record`; FIX-1914's `gate-open` for VH | The goal checks and the closure name them |
+| Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE`, now naming the repository | FIX-1914's, the one setting every harness mode is gated on. A person types it |
+| Worktree root | `<repository>/.kitchen-sink/harness/` | Derived, not set. A person looks there for a session's work |
+| Session branch | `kitchen-sink/<flow kind>/<session>`, segments encoded | A person takes a session's work from it; goal **w** reads it |
+| Core names | `replacePlanList`, the `observed-plan-list` key | FIX-1916 and FIX-1917 call and read them |
+| Goal controls | `GOAL_CONTROL=no-resume`, `GOAL_CONTROL=no-record`, `GOAL_CONTROL=main-checkout`; FIX-1914's `gate-open` for VH | The goal checks and the closure name them |
 | Record key | `observed-plan` | Stored rows and Shift Manager read it today (BP-030) |
 
 Everything else is yours to name.
@@ -86,7 +92,7 @@ Everything else is yours to name.
 |---|---|
 | Kitchen Sink writes no item, no plan row and no progress of its own | ER-11. A test bed that patches a gap hides it |
 | Nothing harness-specific in S5 to S7, S9 or S10 | ER-6. Codex and Cursor plug in with block options only; a branch on harness kind here is a gap in a package |
-| The conversation and the directory come from session state and the server, never the request | BP-031. The prompt reaches the model |
+| The conversation and the worktree come from session state and the server, never the request | BP-031. The prompt reaches the model |
 | One definition of the plan record, in core; every writer and reader goes through it (tenet 5) | Two copies drift, which is how FIX-1692 hid a task's steps |
 | The move keeps the key and every field nullable (BP-023, BP-030) | Rows already stored must read |
 | The panel reads the record; it never derives a plan from items | The record is the promise. A plan rebuilt from items is a second, unproved one |
@@ -101,7 +107,8 @@ Kitchen Sink section with PR-B, after VG. Reconcile each against shipped behavio
 ```
 harness session flow (kind, buildAgent):
     shared resolvers:
-        cwd       ← workspace(root, kind, tenant, session)       (D1)
+        cwd       ← host.provision(place: kind/tenant/session,
+                                    branch: kitchen-sink/<kind>/<session>)  (D1)
         resume    ← state.binding.confirmed; turns[request].asked = it          (D2)
         onSession ← state.binding.confirmed = id; turns[request].confirmed = id  (only writer)
     one action "turn", queued per session:
@@ -112,7 +119,17 @@ page:
                stopped → stopped · confirmed = asked → continued
                confirmed ≠ asked → new · none confirmed, failed → refused
     panel    ← manifest has observed-plan?  no → "reports no plan"
-               rows under the latest turn's request prefix? no → "none this turn"
+               marker for the latest turn:
+                 complete, count 0 → "empty"
+                 incomplete, or writing after the turn ended → rows + "may be incomplete"
+                 none, and no rows → "none this turn"
+               rows: places below the marker's count, when it has one
+
+replacePlanList(collection, marker, namespace, items):
+    marker[namespace] ← writing, count = len(items)
+    for n, item: upsert namespace/n  (previousStatus ← old status if same title, else null)
+    for n in len(items) .. countWrittenBefore: delete namespace/n
+    marker[namespace] ← complete    · on any throw: incomplete, reason
 ```
 
 **POC:** none. See [DECISIONS.md → What the POC showed](DECISIONS.md#what-the-poc-showed).
@@ -120,7 +137,7 @@ page:
 ## At implement time
 
 - Read FIX-1914's merged spec and code for the mode slot, the rail, the gate and how
-  availability is shown. This plan assumes a mode is a flow kind registered through the gate,
+  availability is shown. Its gate and S7 call the one reader of the setting. This plan assumes a mode is a flow kind registered through the gate,
   plus a session view, plus its own check.
 - Find the cheapest sign-in probe that doesn't start a run. If there is none, raise it to the
   epic as an ER-1 question rather than dropping BR-23's sign-in reason.
@@ -129,6 +146,11 @@ page:
 - `client.live` on a `prefetchMode: "lazy"` collection is V4's question. If it does not stream,
   raise it to the epic rather than polling in the panel.
 - The Claude Agent SDK may need listing as a server-only package in `next.config.mjs`.
+- A fresh worktree has no `node_modules`, and pnpm's store is outside the sandbox. Find whether
+  the run can install and test in its worktree; if it can't, say so in the README rather than
+  widening the sandbox.
+- How long worktrees and branches are kept, and any "clear this session's worktree" control,
+  are yours to decide or leave out. The spec only requires that nothing clears one by itself.
 - Compare [EVOLUTION.md](EVOLUTION.md)'s claims against current code before moving S1.
 
 ## Notes from review

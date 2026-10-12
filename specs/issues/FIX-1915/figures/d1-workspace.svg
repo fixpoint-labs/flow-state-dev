@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 416" role="img" aria-label="D1: where does a harness session work? Chosen: its own directory under one root the host sets. Instead of: one directory every session shares. It comes down to two sessions at once: shared, they overwrite each other with nothing to stop them. The price: a session starts empty, so a person cannot point it at their own repository. A tie: either is stable across turns. Locks in Kitchen Sink as a place to try a harness. Flips if the product wants people to work on their own repositories."
+<svg viewBox="0 0 940 474" role="img" aria-label="D1: where does a harness session work? Chosen: its own git worktree of the flow-state repository, on its own branch. Instead of: the main checkout every session shares, or an empty directory per session. It comes down to two sessions at once: in one checkout they overwrite each other with nothing to stop them. Both work on the real repository; an empty directory does not. The main checkout stays untouched only with a worktree. A tie: each is stable across turns. Locks in Kitchen Sink as a place to work on the repository itself, one branch per session, kept until the host clears it. Flips if sessions need to share one tree"
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -31,7 +31,7 @@
     .c-lost { fill:var(--ink-2); }
     .c-acc  { fill:var(--accent); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="416"/>
+  <rect class="bg" x="0" y="0" width="940" height="474"/>
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
@@ -42,10 +42,10 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Its own directory, under one root</text>
+    <text class="t-h c-code" x="228" y="112">Its own worktree of the repository</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">One directory every session shares</text>
+    <text class="t-h c-lost" x="592" y="112">The main checkout, shared</text>
   </g>
 
   <g id="row-1">
@@ -55,7 +55,7 @@
     <text class="t-lbl" x="32" y="169">AT ONCE</text>
     <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Each in its own tree</text>
+    <text class="t-b" x="248" y="161">Each on its own branch and tree</text>
     <text class="t-s" x="248" y="179">no two live runs share a tree</text>
     <text class="mark minus" x="592" y="162">&#8722;</text>
     <text class="t-b" x="612" y="161">They overwrite each other</text>
@@ -63,40 +63,52 @@
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">WHAT IT</text>
-    <text class="t-lbl" x="32" y="231">WORKS ON</text>
-    <text class="mark minus" x="228" y="224">&#8722;</text>
-    <text class="t-b" x="248" y="223">An empty directory</text>
-    <text class="t-s" x="248" y="241">you can&#x27;t point it at your own repository</text>
-    <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Your repository</text>
-    <text class="t-s" x="612" y="241">as you&#x27;d use the harness at your desk</text>
+    <text class="t-lbl" x="32" y="218">YOUR MAIN</text>
+    <text class="t-lbl" x="32" y="231">CHECKOUT</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">Untouched</text>
+    <text class="t-s" x="248" y="241">a session&#x27;s edits stay on its branch</text>
+    <text class="mark minus" x="592" y="224">&#8722;</text>
+    <text class="t-b" x="612" y="223">Edited directly</text>
+    <text class="t-s" x="612" y="241">mixed with whatever you have open</text>
     <line class="row" x1="16" y1="252" x2="924" y2="252"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="276">ACROSS</text>
-    <text class="t-lbl" x="32" y="289">TURNS</text>
+    <text class="t-lbl" x="32" y="276">WHAT IT</text>
+    <text class="t-lbl" x="32" y="289">WORKS ON</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">Stable</text>
-    <text class="t-s" x="248" y="299">the same directory every turn</text>
+    <text class="t-b" x="248" y="281">The real repository</text>
+    <text class="t-s" x="248" y="299">cut from your checkout, nothing fetched</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">Stable</text>
-    <text class="t-s" x="612" y="299">the same directory every turn</text>
+    <text class="t-b" x="612" y="281">The real repository</text>
+    <text class="t-s" x="612" y="299">the round-1 empty directory lost here</text>
     <line class="row" x1="16" y1="310" x2="924" y2="310"/>
   </g>
 
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="334">ACROSS</text>
+    <text class="t-lbl" x="32" y="347">TURNS</text>
+    <text class="mark tie" x="228" y="340">=</text>
+    <text class="t-b" x="248" y="339">Stable</text>
+    <text class="t-s" x="248" y="357">keyed on the session, never moves</text>
+    <text class="mark tie" x="592" y="340">=</text>
+    <text class="t-b" x="612" y="339">Stable</text>
+    <text class="t-s" x="612" y="357">the same directory every turn</text>
+    <line class="row" x1="16" y1="368" x2="924" y2="368"/>
+  </g>
+
   <g id="locks-in">
-    <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="32" y="347">LOCKS IN</text>
-    <text class="t-b" x="32" y="367">A place to try a harness, not to work on code</text>
-    <text class="t-s" x="32" y="385">directories stay until the host clears them</text>
+    <rect class="foot" x="16" y="384" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="405">LOCKS IN</text>
+    <text class="t-b" x="32" y="425">Work on the repository itself, a branch per session</text>
+    <text class="t-s" x="32" y="443">kept, never merged or pushed, until the host clears it</text>
   </g>
 
   <g id="flips-if">
-    <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="347">FLIPS IF</text>
-    <text class="t-b" x="494" y="367">The product wants it used on real repositories</text>
-    <text class="t-s" x="494" y="385">then a shared directory with a cross-session lock</text>
+    <rect class="foot" x="478" y="384" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="405">FLIPS IF</text>
+    <text class="t-b" x="494" y="425">Sessions need to work in one shared tree</text>
+    <text class="t-s" x="494" y="443">then a shared checkout with a cross-session lock</text>
   </g>
 </svg>

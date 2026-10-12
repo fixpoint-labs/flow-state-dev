@@ -34,10 +34,25 @@ Replaces the epic's draft of the same section.
 >
 > Not every harness reports a plan. Read the session's resource manifest first. If it doesn't
 > list `observed-plan`, the harness records none, and a reader should say so rather than show
-> an empty list. If it does and a run wrote no rows, that run planned nothing it reported.
+> an empty list.
 >
-> To record a plan from a harness of your own, declare `observedPlanCollection` on the block
-> and upsert rows under `<requestId>/<run>/<item id>`.
+> Beside the entries, each run has a list marker in `observed-plan-list`, keyed by the run. It
+> says whether the run's plan is `complete`, still `writing`, or `incomplete`, how many places
+> it holds, and why it's incomplete. Read it before the entries:
+>
+> - `complete` with no places means the agent reported an empty list.
+> - `incomplete`, or `writing` once the run has ended, means a write failed partway. Show what's
+>   there as possibly incomplete, with the reason, not as the plan.
+> - With a count, show only the places below it.
+> - No marker and no entries means the run reported no plan.
+>
+> To record a plan from a harness of your own, declare `observedPlanCollection` and
+> `observedPlanListCollection` on the block. If your agent reports its whole list each time,
+> with no ids, hand it to `replacePlanList(plan, marker, runNamespace, items)`: it keys entries
+> by place, keeps an entry's earlier status when its wording is unchanged, removes entries past
+> the end, and writes the marker. Call it from one writer per run. If your agent reports items
+> by id, upsert entries under `<requestId>/<run>/<item id>` and mark the run `incomplete` when
+> a write fails.
 
 ## UPDATE · `apps/docs/docs/tools/claude-code-sdk.md` · "Recording what the run did", replacing the paragraph that starts "The plan record reads the same way"
 
@@ -51,7 +66,9 @@ Replaces the epic's draft of the same section.
 ## UPDATE · `packages/core/README.md` · the harness contract list, after the `harnessEnv` bullet
 
 > - The run's plan record, from the package root: `OBSERVED_PLAN`, `observedPlanCollection`,
->   `observedPlanItemStateSchema`, and the type `ObservedOutcome`. One shape for a coding
+>   `observedPlanItemStateSchema`, the type `ObservedOutcome`, the per-run list marker
+>   (`OBSERVED_PLAN_LIST`, `observedPlanListCollection`) and `replacePlanList`, which writes a
+>   whole-list plan as entries. One shape for a coding
 >   agent's own to-do list, which a harness that reports one declares and writes. A record of
 >   what the agent planned, never a work queue. Guide: [the run's plan](https://flow-state.dev/docs/tools/coding-agents#the-runs-plan).
 
@@ -73,11 +90,20 @@ Replaces the epic's draft of the same section.
 > without the SDK, a server running as root, or a machine where Claude Code's sandbox isn't
 > available shows the mode as unavailable, with the reason.
 >
-> **Where it works.** Each session gets its own empty directory under one root, and every turn
-> of that session works there. The root is `KITCHEN_SINK_HARNESS_WORKSPACE`, the setting that
-> turns the harness modes on. Two sessions never share a directory. Claude Code runs without
-> asking for approval, inside its sandbox: it can write only in the session's directory.
-> Delete old session directories yourself when you no longer need them.
+> **Where it works.** Claude Code works on this repository. Each session gets its own git
+> worktree, cut from your checkout's `HEAD` on a branch named
+> `kitchen-sink/claude-code-session/<session>`, and every turn of that session works there.
+> Worktrees live under `.kitchen-sink/harness/` in the repository, which git ignores. Your own
+> checkout is never touched, and two sessions never share a worktree.
+>
+> Claude Code runs without asking for approval, inside its sandbox: it can write only in the
+> session's worktree. That includes `.git`, so it can't commit. Its changes wait, uncommitted,
+> in the worktree for you to review and commit. Nothing is merged or pushed. Worktrees and
+> branches stay until you remove them (`git worktree remove`, then delete the branch).
+>
+> In local development the mode uses the checkout the server runs from. To point it at another
+> checkout, or to turn it on for a production server, set `KITCHEN_SINK_HARNESS_WORKSPACE` to
+> that checkout's top level.
 >
 > **Continuing.** A session is one Claude Code conversation. Stop a turn and the next one picks
 > up the same conversation. If Claude Code can't continue it, the session says so on every
@@ -86,7 +112,8 @@ Replaces the epic's draft of the same section.
 > it started a new one and follows it.
 >
 > **The plan panel** shows what Claude Code recorded of its to-do list for the session's latest
-> turn, read-only. Claude Code doesn't report its plan through the SDK yet, so the panel
+> turn, read-only. If part of it couldn't be recorded, the panel says the plan may be incomplete,
+> and why. Claude Code doesn't report its plan through the SDK yet, so the panel
 > says "no plan recorded for this turn". Nothing in the panel starts work.
 >
 > Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across
@@ -94,8 +121,8 @@ Replaces the epic's draft of the same section.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "Environment variables" table, the `KITCHEN_SINK_HARNESS_WORKSPACE` row FIX-1914 adds
 
-> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The directory the coding harness modes work in; each session gets its own directory under it. Unset, they're off. Ignored on Vercel, where they're always off. |
+> | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, under `.kitchen-sink/harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 
-The opening paragraph's "in a directory you choose" (epic draft, published by FIX-1914) stays
-true: the person chooses the root. No other page changes. The sentence "Claude Code doesn't
+The opening paragraph's "in a directory you choose" (epic draft, published by FIX-1914) no
+longer reads right: FIX-1914 changes it to "on a repository you choose" in the same round. No other page changes. The sentence "Claude Code doesn't
 report its plan through the SDK yet" is removed when FIX-1185 makes the plan fill.
