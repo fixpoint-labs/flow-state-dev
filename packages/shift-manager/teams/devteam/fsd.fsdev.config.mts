@@ -17,9 +17,13 @@
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab
  *   asks Claude Code for an account and refuses to start without one, naming
  *   what to set. `DEVFORCE_LAB_HARNESS=stub` runs the scripted coder instead.
- * - **No remote is reached.** The workspace host allows none, so a coding run
- *   the host would have to clone for is refused, naming the remote, and
- *   nothing is fetched.
+ * - **Runs work in this checkout.** A coding run on FSD or Shift Manager gets
+ *   a fresh worktree of the checkout this file sits in, on a branch of its
+ *   own cut from local `main` ({@link CHECKOUTS}). The checkout's location is
+ *   worked out from this file's, never written down.
+ * - **No remote is reached.** The workspace hosts allow none, so a run the
+ *   mapping misses (a project a user made, or one in another organization) is
+ *   refused, naming the remote, and nothing is fetched.
  * - **Its own store**: SQLite at `FSD_STORE` or
  *   `packages/shift-manager/.fsdev/fsd.sqlite`. DevTeam's rows never show
  *   here. Delete the file for a fresh start.
@@ -28,17 +32,39 @@
  * {@link lab} is the Lab itself, for checks that drive it in-process.
  */
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import type { ProjectCheckout } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { startHarness } from "./harness.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 
 /** This repository's remote: the one both projects name. */
 const REPOSITORY = "https://github.com/fixpoint-labs/flow-state-dev.git";
+
+/** The root of the checkout this file sits in: `packages/shift-manager/teams/devteam/` is four levels down. */
+const CHECKOUT = resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
+
+/**
+ * Where the two projects' runs work: worktrees of {@link CHECKOUT}, each on a
+ * branch cut from local `main`, never fetched. Only the two shared projects
+ * of the Lab's organization are named, so a project a user makes on the same
+ * remote is not mapped, and is refused.
+ */
+const CHECKOUTS: readonly ProjectCheckout[] = [
+  {
+    remote: REPOSITORY,
+    checkout: CHECKOUT,
+    projects: [
+      { orgId: LAB_ORG_ID, id: "fsd" },
+      { orgId: LAB_ORG_ID, id: "shift-manager" },
+    ],
+    baseRef: "main",
+  },
+];
 
 /** Where this Lab keeps what it was told, across restarts. */
 const STORE = process.env.FSD_STORE ?? fileURLToPath(new URL("../../.fsdev/fsd.sqlite", import.meta.url));
@@ -82,8 +108,9 @@ export const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
-  // Runs' places beside the store. No remote is allowed: a run is never cloned from one.
-  workspace: { root: join(dirname(STORE), "fsd-runs"), remotes: { allow: [] } },
+  // Runs' places beside the store, the two projects' worktrees of this checkout
+  // among them. No remote is allowed: a run is never cloned from one.
+  workspace: { root: join(dirname(STORE), "fsd-runs"), remotes: { allow: [] }, checkouts: CHECKOUTS },
   coderWorkerId,
   inventory: true,
   devtool: true,

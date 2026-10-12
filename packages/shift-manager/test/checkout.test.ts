@@ -1,8 +1,9 @@
 /**
  * The checkout's `start` and `dev` scripts (`scripts/checkout.mts`), run as
- * `pnpm shift-manager:dev` runs them: which profile opens with no `--config`,
- * that `--config` opens the `fsd` profile, and that under `--dev` a coder the
- * profile can't start refuses before the watcher starts, whichever profile it is.
+ * `pnpm shift-manager:dev` runs them: the `fsd` profile opens with no
+ * `--config`, `--config` naming DevTeam's file opens DevTeam (in the form
+ * typed from the repository root, too), and under `--dev` a coder the profile
+ * can't start refuses before the watcher starts, whichever profile it is.
  *
  * Each case runs the script in a child process with no Claude credential (no
  * `ANTHROPIC_API_KEY`, no `CLAUDE_CODE_OAUTH_TOKEN`, an empty home). Which
@@ -20,6 +21,8 @@ const tsx = join(pkg, "node_modules", ".bin", "tsx");
 const script = join(pkg, "scripts/checkout.mts");
 const assets = fileURLToPath(new URL("./fixtures/assets", import.meta.url));
 const FSD = "teams/devteam/fsd.fsdev.config.mts";
+const DEVTEAM = "teams/devteam/fsdev.config.mts";
+const repo = join(pkg, "../..");
 
 const running: ChildProcess[] = [];
 afterEach(() => {
@@ -33,8 +36,9 @@ function stores() {
 }
 
 /**
- * Run the script from the package folder with `args` and no Claude credential;
- * resolve once it listens or exits, or after `timeoutMs`.
+ * Run the script with `args` and no Claude credential, as typed from the
+ * package folder unless `env.INIT_CWD` says otherwise; resolve once it
+ * listens or exits, or after `timeoutMs`.
  */
 function run(args: string[], s: ReturnType<typeof stores>, env: Record<string, string> = {}, timeoutMs = 90_000) {
   const childEnv: Record<string, string | undefined> = {
@@ -71,29 +75,41 @@ function run(args: string[], s: ReturnType<typeof stores>, env: Record<string, s
 }
 
 describe("the checkout's script", () => {
-  it("with no --config opens DevTeam on the scripted coder, so no credential is needed", async () => {
+  it("with no --config opens fsd, not DevTeam", async () => {
     const s = stores();
-    const started = await run(["--assets", assets], s);
+    const started = await run(["--assets", assets], s, { DEVFORCE_LAB_HARNESS: "stub" });
+    expect(started.outcome, started.output).toBe("listening");
+    expect(existsSync(s.fsd)).toBe(true);
+    expect(existsSync(s.devteam)).toBe(false);
+  }, 120_000);
+
+  it("with no --config and no credential exits 3 before it listens: fsd's coder is Claude Code", async () => {
+    const s = stores();
+    const started = await run(["--assets", assets], s, {}, 60_000);
+    expect(started.outcome, started.output).toBe("exited");
+    expect(started.code).toBe(3);
+    expect(started.output).toContain("DEVFORCE_LAB_HARNESS=stub");
+    expect(existsSync(s.devteam)).toBe(false);
+  }, 90_000);
+
+  it.each([
+    ["typed from the package folder", DEVTEAM, pkg],
+    ["typed from the repository root", `packages/shift-manager/${DEVTEAM}`, repo],
+  ])("with --config naming DevTeam's file, %s, opens DevTeam on the scripted coder with no credential", async (_, config, from) => {
+    const s = stores();
+    const started = await run(["--assets", assets, "--config", config], s, { INIT_CWD: from });
     expect(started.outcome, started.output).toBe("listening");
     expect(started.output).toContain("Coder: the scripted run, no model");
     expect(existsSync(s.devteam)).toBe(true);
     expect(existsSync(s.fsd)).toBe(false);
   }, 120_000);
 
-  it("with --config naming the fsd profile opens fsd, not DevTeam", async () => {
-    const s = stores();
-    const started = await run(["--assets", assets, "--config", FSD], s, { DEVFORCE_LAB_HARNESS: "stub" });
-    expect(started.outcome, started.output).toBe("listening");
-    expect(existsSync(s.fsd)).toBe(true);
-    expect(existsSync(s.devteam)).toBe(false);
-  }, 120_000);
-
   // Under --dev a Lab that fails to load leaves the watcher waiting for a save,
   // so a refusal only ends the command if it comes before the watcher starts.
   it.each([
-    ["--dev --config <fsd> (Claude Code by default)", ["--dev", "--config", FSD], {}],
+    ["--dev with no --config (fsd, Claude Code by default)", ["--dev"], {}],
     ["--dev --config=<fsd>", ["--dev", `--config=${FSD}`], {}],
-    ["--dev on DevTeam with DEVFORCE_LAB_HARNESS=claude-code", ["--dev"], { DEVFORCE_LAB_HARNESS: "claude-code" }],
+    ["--dev on DevTeam with DEVFORCE_LAB_HARNESS=claude-code", ["--dev", "--config", DEVTEAM], { DEVFORCE_LAB_HARNESS: "claude-code" }],
   ] as const)("%s with no credential exits 3 before it listens, naming what to set", async (_, args, env) => {
     const started = await run([...args], stores(), env, 60_000);
     expect(started.outcome, started.output).toBe("exited");

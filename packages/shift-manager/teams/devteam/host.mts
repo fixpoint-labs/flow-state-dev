@@ -81,6 +81,7 @@ import {
   type HireOptions,
   type OpenWorkstreamInput,
   type OpenWorkstreamOutput,
+  type ProjectCheckout,
   type WorkerInstallation,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
@@ -631,6 +632,15 @@ export interface LabWorkspaceHost {
   root: string;
   /** The remotes the host may reach; list `"file"` to allow `file://` remotes. */
   remotes: { allow: readonly string[] };
+  /**
+   * Checkouts on this machine that named shared projects' runs work in, as
+   * `projectWorkspace({ checkouts })` takes them: a run on one gets a
+   * worktree of the checkout instead of a clone of its remote. Both of the
+   * lab's hosts (a board's rows and a conversation's tasks) get them, and
+   * each checkout is listed in both hosts' `localRepositories`. Absent: no
+   * project is mapped, as before.
+   */
+  checkouts?: readonly ProjectCheckout[];
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -1401,7 +1411,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
 /**
  * The lab's workspace host: `localWorkspaceHost` over `root`, reaching only
- * the remotes listed, with `projectWorkspace()` as its source. `saveNothing`
+ * the remotes listed, with `projectWorkspace()` as its source, given the
+ * lab's `checkouts` ({@link checkoutSource}). `saveNothing`
  * is the `no-sync-back` control's seam: the host is the same, and its `save`
  * reports nothing saved.
  */
@@ -1409,7 +1420,7 @@ function labWorkspaceHost(options: LabWorkspaceHost, saveNothing: boolean): Work
   const host = localWorkspaceHost({
     root: options.root,
     remotes: { allow: [...options.remotes.allow] },
-    source: projectWorkspace(),
+    ...checkoutSource(options),
   });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
@@ -1417,18 +1428,32 @@ function labWorkspaceHost(options: LabWorkspaceHost, saveNothing: boolean): Work
 
 /**
  * The coder's workspace host for an answer task: `localWorkspaceHost` beside
- * the lab's own, with `projectWorkspace()` as its source, so a task works in
- * its project and is refused with none. A lab on one fixed repository reaches
+ * the lab's own, with `projectWorkspace()` as its source and the lab's
+ * `checkouts`, so a task works in its project (in a mapped checkout as a
+ * board's row does) and is refused with none. A lab on one fixed repository reaches
  * no remote here: only a project with no repository can answer there.
  */
 function answerWorkspaceHost(workspace: WorkspaceConfig | LabWorkspaceHost, saveNothing: boolean): WorkspaceHost {
   const host = localWorkspaceHost({
     root: join(workspace.root, "answers"),
     remotes: { allow: "remotes" in workspace ? [...workspace.remotes.allow] : [] },
-    source: projectWorkspace(),
+    ...checkoutSource("remotes" in workspace ? workspace : {}),
   });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
+}
+
+/**
+ * A host's `source` and `localRepositories` from one `checkouts` value, so
+ * the two never disagree: every checkout a project is mapped to is one the
+ * host may work in, and no other is.
+ */
+function checkoutSource({ checkouts }: Pick<LabWorkspaceHost, "checkouts">) {
+  if (checkouts === undefined || checkouts.length === 0) return { source: projectWorkspace() };
+  return {
+    source: projectWorkspace({ checkouts }),
+    localRepositories: [...new Set(checkouts.map((entry) => entry.checkout))],
+  };
 }
 
 /** The row filed for `issue` among `rows`, by the issue its payload names. */

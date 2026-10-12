@@ -138,11 +138,14 @@ const lab = await openLab({
 This tree is served as two Shift Manager profiles, each a config beside this file
 that opens it through `openLab`; `fsdev dev --config` takes either file:
 
-- `fsdev.config.mts` is the `devteam` profile, which the checks run against. It is what
-  `pnpm shift-manager:dev` opens: DevTeam's demo.
-- `fsd.fsdev.config.mts` is the `fsd` profile: the same tree with two projects on this
-  repository, FSD and Shift Manager, and Claude Code as its coder. It opens with
-  `pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`.
+- `fsd.fsdev.config.mts` is the `fsd` profile, what `pnpm shift-manager:dev` opens: the
+  same tree with two projects on this repository, FSD and Shift Manager, and Claude Code as
+  its coder. A coding run on either works in a fresh worktree of the checkout this file sits
+  in, on a branch cut from local `main`; a run on any other project is refused, and nothing
+  is cloned.
+- `fsdev.config.mts` is the `devteam` profile, DevTeam's demo, which the checks run against.
+  It opens with
+  `pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts`.
 
 `DEVFORCE_LAB_HARNESS` picks what runs an approved row (`harness.mts`). Unset, each profile
 uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
