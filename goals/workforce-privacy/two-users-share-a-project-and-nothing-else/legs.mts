@@ -527,7 +527,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       convs.map(async (c) => {
         const filed = await act(alice, COORDINATOR, c.id, "dispatchTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
         c.task = (filed.output as any)?.taskId ?? (filed.output as any)?.task?.id;
-        if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `addTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
+        if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `dispatchTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
       }),
     );
     for (const until = Date.now() + 300_000; Date.now() < until; await sleep(2_000)) {
@@ -585,8 +585,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         await quiet(o.store, 420_000, 15_000);
         const filed = taskRows(o.store).filter((t) => t.partition.startsWith(ws!.sessionId!));
         const emItems = await alice.routes.items(ws.sessionId!, "");
-        const adds = emItems.filter((i) => i.type === "tool_output" && /(^|[._/])addTask$/.test(String(i.toolCall?.name ?? "")));
-        if (adds.length === 0) r.fail("b5", `the EM's workstream session called no \`addTask\` (items: ${emItems.map((i) => i.type).join(",")})`);
+        const adds = emItems.filter((i) => i.type === "tool_output" && /(^|[._/])dispatchTask$/.test(String(i.toolCall?.name ?? "")));
+        if (adds.length === 0) r.fail("b5", `the EM's workstream session called no \`dispatchTask\` (items: ${emItems.map((i) => i.type).join(",")})`);
         if (filed.length === 0) r.fail("b5", "no task row sits on the workstream session's board");
         const coderish = filed.filter((t) => t.assignee === "eng.coder" || t.assignee === "eng.reviewer");
         if (coderish.length !== filed.length) r.fail("b5", `a task's assignee isn't a DevTeam standard worker: ${show(filed.map((t) => t.assignee))}`);

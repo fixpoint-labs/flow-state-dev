@@ -136,6 +136,31 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
+  it("a follow-up recorded with addTask waits, and dispatched by its id runs in the root task's session", async () => {
+    const h = plain();
+    try {
+      const conv = await h.conversation("alice", "lead");
+      const root = await file(h, conv, { goal: "Draft the plan", assignee: "eng.tasker" });
+      await h.settled();
+      const recorded = await h.act("alice", conv, "addTask_tasks", { goal: "Now open the PR", followUpOf: root.taskId });
+      expect(recorded.error, messageOf(recorded.error)).toBeUndefined();
+      const followUp = recorded.output as { ok: boolean; taskId?: string; status?: string };
+      expect(followUp).toMatchObject({ ok: true, status: "recorded" });
+      await h.settled();
+      // Recorded: nothing ran.
+      expect(h.runs.map((run) => run.message)).toEqual(["Draft the plan"]);
+
+      expect(await file(h, conv, { taskId: followUp.taskId })).toMatchObject({ ok: true, taskId: followUp.taskId });
+      await h.settled();
+      expect(h.runs.map((run) => run.message)).toEqual(["Draft the plan", "Now open the PR"]);
+      expect(new Set(h.runs.map((run) => run.sessionId)).size).toBe(1);
+      const row = (await h.rows("alice")).find((r) => r.id === followUp.taskId)!;
+      expect(row).toMatchObject({ status: "completed", followUpOf: root.taskId, assignee: "eng.tasker" });
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("keeps two conversations apart: each follows up its own task, in its own session (BR-23)", async () => {
     const h = plain();
     try {

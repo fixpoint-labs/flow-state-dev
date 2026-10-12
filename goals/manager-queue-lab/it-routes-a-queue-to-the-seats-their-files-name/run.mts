@@ -33,7 +33,7 @@
  * `GOAL_FILER` decides who files:
  *
  * - **`model` (default) — THE GATE.** The manager's judgment turn decides
- *   which builder each piece is for and files with its `addTask` tool, which
+ *   which builder each piece is for and files with its `dispatchTask` tool, which
  *   it holds because its delegates take tasks. Needs a model credential.
  * - **`scripted` — NOT the gate.** The four rows are filed through the
  *   conversation's `dispatchTask_tasks` action, spread across the manager's
@@ -178,7 +178,7 @@ await runGoal(async (failures) => {
       const actions = (await lab.requestsOf(lab.conversation)).map((request) => String(request.actionName));
       if (actions.includes("dispatchTask_tasks") || actions.includes("addTask_tasks")) note(`something filed through the action, not the manager's turn`);
       if (!lab.judgmentCalls.some((call) => call.tools.includes("dispatchTask"))) {
-        note(`the manager's turn was never handed addTask`);
+        note(`the manager's turn was never handed dispatchTask`);
       }
     }
 
@@ -336,7 +336,7 @@ await runGoal(async (failures) => {
     const filedBy =
       FILER === "model"
         ? `The manager, whose own file says \`tools: []\`, decided who got what and filed ${rowsAfter.length} rows ` +
-          `for ${WORK.length} pieces with its own addTask tool, which it holds because its delegates take tasks.`
+          `for ${WORK.length} pieces with its own dispatchTask tool, which it holds because its delegates take tasks.`
         : `**NOT THE GATE — GOAL_FILER=scripted.** No model chose: the ${rowsAfter.length} rows were filed ` +
           `through the conversation's dispatchTask_tasks action, spread across the manager's delegates. What follows ` +
           `is the routing half, and says nothing about a manager choosing.`;

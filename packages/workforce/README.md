@@ -1401,6 +1401,26 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
     uses: [projectWorkspaceCapability],
   });
   ```
+
+  Pass `checkouts` to have some projects' runs work in a checkout on the server's machine
+  instead of a clone. Each entry gives a `remote`, the absolute `checkout` path, the `projects`
+  it serves, shared projects only, by `{ orgId, id, tenantId? }`, and an optional `baseRef` (the
+  checkout's `HEAD` when omitted). A run uses the checkout only when its project is shared and
+  listed with the run's own organization and tenant, as the server verified them, and its
+  `repository` equals `remote` exactly; every other run is answered the usual way. List the same path
+  in the host's `localRepositories`. A relative path, a `remote` a project couldn't store, or a
+  project listed twice is refused when `projectWorkspace()` is called.
+
+  ```ts
+  projectWorkspace({
+    checkouts: [{
+      remote: "https://github.com/acme/acme.git",
+      checkout: "/home/me/acme",
+      projects: [{ orgId: "acme", id: "web" }, { orgId: "acme", id: "api" }],
+      baseRef: "main",
+    }],
+  })
+  ```
 - **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so give each that name with
   `projects.createProject.as({ name: "createProject", description: "…" })`. The owner is the session the worker
@@ -1721,7 +1741,11 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the
   `minConfidence` where there are some). When best fit's evaluator call failed and it asked again
   as a language model, `evaluationFailed` carries the evaluator's error. Render it apart from the
-  conversation's lines.
+  conversation's lines. App code
+  reads the records with `createSessionClient(...).listSessionRequests(sessionId, { includeItems: true })`,
+  keeping each request's `items` whose `type` is `"component"` and `component` is
+  `COORDINATOR_ROUTE`; the record is the item's `data`. Without `includeItems: true` there are no
+  `items` to read.
 
 `hireWorkforce` refuses a broken standard coordinator at load, naming the problem: a `rounds:`
 above 3 (`rounds can be at most 3`), a `routing:` outside the four, a `fallback:` that isn't one
@@ -1730,16 +1754,19 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 same problems without throwing.
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
-Orchestration's task tools (`addTask`, `assignTask`, `listTasks`, `answerTask` and the rest), and the
-conversation's session takes them as actions named for the board: `addTask_tasks`,
-`listTasks_tasks` and so on.
+Orchestration's task tools (`dispatchTask`, `addTask`, `assignTask`, `listTasks`, `answerTask` and
+the rest), and the conversation's session takes them as actions named for the board:
+`dispatchTask_tasks`, `addTask_tasks`, `listTasks_tasks` and so on.
 
 An assignee must be one of the conversation's delegates whose flow takes tasks. Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
-`addTask` returns once the task is stored, and the task starts by itself in its task session,
-which belongs to you. Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. The
-conversation hears once when the task ends. See
+`addTask` records a task; `dispatchTask` starts it in its task session, which belongs to you.
+Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. A recorded task starts
+when `dispatchTask` names its `taskId`; `assignTask` changes its owner and leaves it recorded.
+`dispatchTask` returns once the task is stored, without waiting for it to run, unless it is
+given `wait: true`. Unless
+it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks).
 
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow
@@ -1754,7 +1781,7 @@ A worker on a task turn has `parkOnQuestion`: it parks the task on its question,
 conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
 the task picks up in its own session with the answer as its next message, without spending a
 retry. A task's session stays open after the task finishes: message its worker there, or file a
-follow-up with `addTask`'s `followUpOf`, which runs in the same session with the same worker.
+follow-up with `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
 
 A browser reads its user's boards through the ordinary collection read: `tasks`, fetched through
 any of that user's sessions on a flow that carries the session board, answers every one of their
@@ -1850,7 +1877,7 @@ the root exports, and reaches no Node built-in.
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. |
-| `projectWorkspace()` / `projectWorkspaceCapability` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. The capability holds the collections it reads. See [Projects](#projects). |
+| `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
 | `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there, for a message door over the session's run. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |

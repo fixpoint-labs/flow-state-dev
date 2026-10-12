@@ -101,12 +101,9 @@ One answer per server start decides what the picker shows and whether a mode's f
 unavailable state decided on the server, and today's app moved without losing a check. If wrong:
 harness modes that can't be trusted to refuse, or a support desk that quietly lost its checks.
 
-**Open · [Does today's Kitchen Sink become the Flow State mode, or move out?](DECISIONS.md#open)**
-Asked of the product lead on the epic, unanswered; the epic gates this spec on it, so this spec
-does not merge until it is answered. It is written on the recommended answer: it becomes Flow
-State mode, unchanged. If the answer is "move it out", Flow State's rules, the move and its
-entry points, the docs and one lineage row are re-drafted here first; the picker, the gate and
-the harness frame do not change.
+**Answered · [Does today's Kitchen Sink become the Flow State mode, or move out?](DECISIONS.md#open)**
+It becomes Flow State mode, unchanged: the owner decided it by merging this spec (#3167) on
+2026-10-12. The spec was written on that answer, so nothing here changes.
 
 1. **[D1](DECISIONS.md#d1) · The picker is its own front page; each mode has its own address,
    and today's app moves whole to `/flow-state`.** If wrong: 6 files of browser checks change

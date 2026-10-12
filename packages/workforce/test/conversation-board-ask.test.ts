@@ -1,6 +1,6 @@
 /**
  * An ask on a conversation's board (FIX-1816 S9, V7): the coordinator's turn
- * files a task with `waitForResponse` and parks; the task's ending reaches the
+ * dispatches a task with `wait` and parks; the task's ending reaches the
  * conversation through the same notice every ending sends, and there it
  * resumes the parked turn with the answer, waking no judgment turn and landing
  * no line. A task filed without waiting still wakes a turn (FIX-1794's notices
@@ -29,7 +29,7 @@ function toolResults(messages: unknown): string {
 
 /**
  * The coordinator's judgment as a step model: its first step asks with a
- * waiting `addTask` for `goal`, and the step after the answer replies with
+ * waiting `dispatchTask` for `goal`, and the step after the answer replies with
  * `reply(answer)`. Every call is kept in `seen`.
  */
 function askingJudgment(goal: string, reply: (results: string) => string) {
@@ -66,7 +66,7 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
 const statusOf = async (host: BoardHost, requestId: string) =>
   (await (await host.state.getRuntime()).stores.request.get(requestId))?.status;
 
-/** A durable host whose router has built its durability sweeper, so `addTask` offers the wait. */
+/** A durable host whose router has built its durability sweeper, so `dispatchTask` offers the wait. */
 async function askingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel) {
   const host = bootBoardHost(
     "generateStep" in judgment ? { judgmentModel: judgment as GeneratorModel, durable: true } : { judgment, durable: true }

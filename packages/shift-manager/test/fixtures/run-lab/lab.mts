@@ -16,7 +16,7 @@
  * Workforce's task entry (`workerTaskEntry`).
  *
  * At boot, after the inventory, the Lab opens one conversation with the lead
- * and files its tasks there through the conversation's own `addTask_tasks`:
+ * and files its tasks there through the conversation's own `dispatchTask_tasks`:
  *
  * - one **held** task for each worker named first on its flow: its run
  *   narrates a step about every second and holds until it is aborted (or

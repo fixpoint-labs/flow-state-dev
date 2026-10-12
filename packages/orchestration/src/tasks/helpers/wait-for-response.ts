@@ -12,8 +12,8 @@
  * The functions:
  *
  * - {@link dispatchAndWait}, the waiting call: refuses a second wait in one
- *   step, then runs the two halves below. It is the one entry both
- *   `dispatchTask({ wait })` and `addTask({ waitForResponse })` call.
+ *   step, then runs the two halves below. It is the one entry
+ *   `dispatchTask({ wait })` calls, for a new row and a recorded one.
  * - {@link fileWaitedRow}, the first half: files a new row, or readies a
  *   recorded one, once per tool call (under `ctx.runOnce`, keyed on the call,
  *   never the attempt), marked waited-on in the same write.

@@ -26,7 +26,7 @@
 - `GOAL_CONTROL=no-run-once`: the ask records neither its filing nor its row's id with `runOnce` (two patches), so the replay after the resume reaches `addTask` with a new id and files again. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
 - `GOAL_CONTROL=no-waker`: nothing resumes a waiting turn; a touch of the board finds no owed resume. Must fail **`a:completed`** (the request stays `suspended`). `a:word` goes red with it.
 
-**Before-state:** on `main` before FIX-1816 P3 the asker has no `waitForResponse`, so there is no ask to survive a restart.
+**Before-state:** on `main` before FIX-1816 P3 the asker has no `wait`, so there is no ask to survive a restart.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

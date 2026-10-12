@@ -92,5 +92,7 @@ text meant to sit on top. Then replacement protects nobody and the addition is t
 - **Draft** — framed as a prompt-assembly gap, not a driver gap; the block's default moves to
   Claude Code's own prompt and forwards the SDK's addition form; one PR in the package, proved by
   a real-model goal check reading the plan record from state.
+- **Amended after merge (Oct 12, cross-spec check)**: BR-12 quotes FIX-1915's panel text, "no
+  plan recorded for this turn". This spec has no Evolution document, so the line is here.
 
 **Open: none.**

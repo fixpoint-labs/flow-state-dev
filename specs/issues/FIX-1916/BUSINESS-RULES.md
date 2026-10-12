@@ -12,7 +12,7 @@ of one, or a case only Codex has. "CI" is a scripted Codex client through `resol
 |---|---|---|---|
 | BR-1 | The first turn of a new session runs | Codex names a new thread before any work, and the id is recorded then | POC A · CI · goal **c** |
 | BR-2 | A later turn runs | Codex names the same id again at the start of the turn; it shows *continued* | POC B · CI · goal **c** |
-| BR-3 | Codex no longer has the thread (its record was removed, or the host's Codex home changed) | The run fails with Codex's own error and names no thread. The turn shows Codex refused thread *X*. The recorded id stays, and the next turn asks for *X* again (FIX-1915 D2) | POC C · CI · goal **x** |
+| BR-3 | Codex refuses a known thread id: it no longer has the thread (its record was removed, or the host's Codex home changed) | The run fails with Codex's own resume error (`no rollout found for thread id …`), which the Codex package classifies as an unknown conversation (FIX-1915 S13), and names no thread. The turn shows Codex refused thread *X*. The recorded id stays, and the next turn asks for *X* again (FIX-1915 D2). Any other failure before Codex names a thread (the process didn't start, sign-in, the sandbox) is not a refusal: the turn shows its error, and the id stays | POC C · CI, both paths · goal **x** |
 | BR-4 | A refused thread | Codex starts no new thread in its place, so it never shows as *started a new one*. A different id named, if it ever happens, follows FIX-1915's rule as is | POC C · CI, a scripted different id |
 | BR-5 | Codex itself fails a turn after naming the thread (the model's turn failed) | The block returns a failed run, not a throw. The turn shows failed with Codex's message, not refused. The id stays | CI |
 | BR-6 | The page is reloaded, or the server restarts on a durable store | The same session holds the same id, and the next turn continues it. Codex keeps the thread in the host's Codex home, not in the session's directory | Goal **r** |
@@ -29,8 +29,7 @@ of one, or a case only Codex has. "CI" is a scripted Codex client through `resol
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-10 | Any turn runs | Codex works in the session's working directory as FIX-1915 defines it, and its sandbox confines its writes to it | Codex's own sandbox · FIX-1915's workspace checks |
-| BR-11 | The session's directory is not a git repository | Codex still runs: its repository check is turned off by an option, not by code in the shared resolver | CI |
+| BR-10 | Any turn runs | Codex works in the session's own git worktree from FIX-1915's factory, and its sandbox confines its writes to that worktree, never the repository's `.git` (FIX-1915 BR-13b). This is required: a host where Codex's sandbox can't hold it shows the mode unavailable with the reason. The run edits files and leaves them uncommitted | Codex's own sandbox · FIX-1915's workspace checks · CI, a write to `.git` refused |
 | BR-12 | Codex runs a command | The command sees only the allowlisted environment, never the server's secrets | CI, a planted variable the run must not see |
 
 ## The plan panel
@@ -49,7 +48,7 @@ of one, or a case only Codex has. "CI" is a scripted Codex client through `resol
 | BR-17 | Codex is not signed in: `codex login status` fails and no Codex API key is in the allowlisted environment | The card says Codex is not signed in, and no session opens | CI |
 | BR-18 | Codex's sandbox can't run on this host | The card says so, and no session opens | CI |
 | BR-19 | Harness modes are off for this host (FIX-1914) | No Codex flow is registered. `/codex` creates no session, and its flow's API is not found | FIX-1914's goal check, extended for Codex |
-| BR-20 | A sign-in lapses after the server started | That turn fails with Codex's own error. The id stays | CI |
+| BR-20 | A sign-in lapses after the server started | That turn fails with Codex's own error, shown as a sign-in error, never as Codex refusing the thread (BR-3). The id stays. From the next server start the card says Codex is not signed in (BR-17) | CI |
 
 ## Failure taxonomy
 

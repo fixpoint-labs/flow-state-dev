@@ -50,7 +50,7 @@
     <text class="t-b" x="608" y="66">the three harness blocks</text>
     <text class="t-s" x="608" y="84">their handle, resume and onSession</text>
     <text class="t-b" x="608" y="106">the framework's own flows</text>
-    <text class="t-s" x="608" y="124">under Flow State mode (open question)</text>
+    <text class="t-s" x="608" y="124">under Flow State mode (settled: keep, #3167)</text>
   </g>
 
   <g id="replaced">

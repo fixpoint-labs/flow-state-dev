@@ -19,9 +19,9 @@
  * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
  *   breadth is refused in the ref the resolver returns (`./chain`), as the
  *   task substrate refuses a full board: `total_task_cap_exceeded`.
- * - **The tools and the actions.** Orchestration's nine task tools, on the
+ * - **The tools and the actions.** Orchestration's task tools, `dispatchTask` among them, on the
  *   model's turn and as public actions, over one resolver and one roster. The
- *   tools are one capability whose nine are on a turn only while the session
+ *   tools are one capability whose tools are on a turn only while the session
  *   files, read per call. The resolver is the running session's own board,
  *   and none while it doesn't file, so an action answers
  *   `no_delegation_board`. The roster is the session's delegates that take a
@@ -523,8 +523,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     .tap(afterRun);
 
   /**
-   * The nine task tools for the model's turn: one capability instance, whose
-   * nine are on a turn only while the session files, read before each model
+   * The task tools for the model's turn: one capability instance, whose
+   * tools are on a turn only while the session files, read before each model
    * call. Orchestration's own tools over this board's resolver and roster;
    * `controlTools`, as Orchestration's capability carries them, so a worker's
    * `tools:` line doesn't fence them out.

@@ -30,7 +30,7 @@ The cases, written as rules. Each says what a host or the run does and what happ
 |---|---|---|---|
 | BR-10 | A real run, no prompt given, works a multi-step job that names no tool | The plan record holds the agent's own to-do items, read back from state, and at least one reaches `completed` | Goal check, 3 of 3 runs |
 | BR-11 | The same run with `""` | No plan rows | Goal check control, 2 of 2 runs |
-| BR-12 | A run reports no plan at all | Nothing is invented. The record stays empty and the plan panel says the harness reported none ([ER-5](../../epics/FIX-1907/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1915's panel) | Existing recorder tests |
+| BR-12 | A run reports no plan at all | Nothing is invented. The record stays empty and the plan panel says "no plan recorded for this turn" ([ER-5](../../epics/FIX-1907/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1915's panel) | Existing recorder tests |
 
 ## Failure taxonomy
 

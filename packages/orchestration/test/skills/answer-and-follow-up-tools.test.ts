@@ -250,16 +250,16 @@ describe("addTask's followUpOf (S4)", () => {
     expect(b.ref.list()).toHaveLength(0);
   });
 
-  it("allows waitForResponse beside followUpOf, and refuses before anything is filed, so nothing parks (BR-22a)", async () => {
+  it("allows wait beside followUpOf on dispatchTask, and refuses before anything is filed, so nothing parks (BR-22a)", async () => {
     const b = await board([row("root", { status: "in_progress", assignee: "researcher", attempts: 1 })]);
-    // A host that can hold an ask, so addTask carries waitForResponse.
+    // A host that can hold a wait, so dispatchTask carries wait.
     const ctx = { ...b.ctx, requestHost: { resumeAsk: async () => undefined, hasAskSweeper: true } };
-    const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesAsks: true })(ctx);
-    const addTask = toolNamed(tools, "addTask");
-    expect(Object.keys((addTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "waitForResponse"]));
-    const unfinished = (await runForTest(addTask, { goal: "next", followUpOf: "root", waitForResponse: true }, ctx)) as any;
+    const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesAsks: true, dispatches: true })(ctx);
+    const dispatchTask = toolNamed(tools, "dispatchTask");
+    expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
+    const unfinished = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
     expect(unfinished).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished/) });
-    const assigned = (await runForTest(addTask, { goal: "next", followUpOf: "root", assignee: "x", waitForResponse: true }, ctx)) as any;
+    const assigned = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", assignee: "x", wait: true }, ctx)) as any;
     expect(assigned).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee/) });
     expect(b.ref.list()).toHaveLength(1);
   });

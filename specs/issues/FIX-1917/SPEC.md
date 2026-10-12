@@ -52,23 +52,25 @@ against the record it reads. With `resume` cut, turn 2 must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/kitchen-sink-harness/cursor-continues-its-agent/` · real Cursor, in a real browser, on a host with a Cursor key · run by the implementer at completion, handed to `fsd-qa` over the mailbox if no such host is available · verdict in the implementation PR |
-| **Signal** | **c** turn 2 names turn 1's token and the recorded agent id is unchanged · **l** a Cursor step shows before the turn completes · **s** after stop, turn 3 names the token under the same id · **r** after a reload, the same · **p** the panel's rows equal the last successful `updateTodos` result among the turn's steps, in order, or the panel says "this turn's plan is empty" when that list is empty, or "no plan recorded for this turn" when the turn has no such step. Never "this harness reports no plan" |
+| **Signal** | **c** turn 2 names turn 1's token and the recorded agent id is unchanged · **l** a Cursor step shows before the turn completes · **s** after stop, turn 3 names the token under the same id · **r** after a reload, the same · **p** the panel's rows equal the last successful `updateTodos` result among the turn's steps, in order, or the panel says "this turn's plan is empty" when that list is empty, or "no plan recorded for this turn" when the turn has no such step. Never a panel text containing "reports no plan" |
 | **Input** | A fresh random token per run, and a job of several steps long enough to stop. Durable store (`STORE_TYPE=filesystem`) |
 | **Anti-game** | Assert on what the page shows and the id in session state. Never on the scripted client, and never on a prompt Kitchen Sink built from earlier turns |
-| **The gate** | FIX-1914's goal check gains FIX-1915's two legs for `/cursor`: with harness modes off, opening Cursor creates *no session* and *no harness flow is served*. Both FAIL under its `GOAL_CONTROL=gate-open` |
-| **Control that must fail** | `GOAL_CONTROL=no-resume`: **c** and **s** FAIL. `GOAL_CONTROL=no-record`: **p** FAILS (recording off, so the panel says "this harness reports no plan"). Today's `main`: every leg FAILS, as there is no Cursor mode |
+| **The gate** | FIX-1915's loop over every harness mode in FIX-1914's goal check covers `/cursor`, with no edit here: with harness modes off, opening Cursor creates *no session* and *no harness flow is served*. Both FAIL under its `GOAL_CONTROL=gate-open` |
+| **Control that must fail** | `GOAL_CONTROL=no-resume`: **c** and **s** FAIL. `GOAL_CONTROL=no-record`: **p** FAILS (recording off, so the panel says "Cursor reports no plan"; the check matches on "reports no plan"). Today's `main`: every leg FAILS, as there is no Cursor mode |
 
 ## What changes
 
-![Before: no app runs Cursor, and its block records none of its to-do updates. After: Kitchen Sink's Cursor mode on FIX-1915's session flow; the Cursor block, with recording on, writes the whole list Cursor confirms into core's plan record, a row per place; off by default](figures/what-changes.svg)
+![Before: no app runs Cursor, and its block records none of its to-do updates. After: Kitchen Sink's Cursor mode on FIX-1915's session flow; the Cursor block, with recording on, writes the whole list Cursor confirms into core's plan record, a row per place, and with env set runs its runtime in a child process with only that environment; both off by default](figures/what-changes.svg)
 
 Kitchen Sink adds a flow kind and Cursor's options. The Cursor package turns Cursor's confirmed
 list into items and hands them to core's `replacePlanList(collection, marker, namespace, items)`,
-which FIX-1915 builds for every whole-list harness. The translation lives in the Cursor package,
-because a gap patched in the app would hide from every other host (epic ER-11).
+which FIX-1915 builds for every whole-list harness. The Cursor block also gains `env`, the
+allowlisted environment its runtime sees: set, the package runs Cursor's runtime in a child process
+with exactly that environment (BR-23). Kitchen Sink passes FIX-1915's allowlist through it. The
+translation and the fence live in the Cursor package, because a gap patched in the app would hide
+from every other host (epic ER-11).
 
-**What Kitchen Sink writes** (illustrative; the option name is aligned with Codex's in the
-cross-spec pass):
+**What Kitchen Sink writes** (illustrative; the option name `recordPlan` is settled):
 
 ```diff
 + export const cursorSession = harnessSessionFlow({
@@ -76,6 +78,7 @@ cross-spec pass):
 +   agent: (shared) => cursorAgent({
 +     ...shared,                                   // cwd, resume, onSession
 +     recordPlan: true,
++     env: harnessEnvAllowlist,                    // FIX-1915 BR-13b's allowlist, passed through
 +     agent: { model: { id: "composer-2.5" }, mode: "agent",
 +              local: { sandboxOptions: { enabled: true } } },
 +   }),
@@ -113,7 +116,8 @@ Only a confirmed list is written ([D1](DECISIONS.md#d1)). Each row is an item's 
 
 ## What stays as it is
 
-- The Cursor block's contract and every step it emits, the to-do update included.
+- The Cursor block's contract and every step it emits, the to-do update included. Its two new
+  options, `recordPlan` and `env`, are opt-in; unset, the block runs as today.
 - FIX-1915's session flow, binding, workspace, session view and panel. Cursor brings options.
 - The plan record's and the list marker's keys and fields. Cursor writes them through core's
   helper and adds none.
@@ -134,5 +138,5 @@ breaks, or the panel claims a list Cursor never confirmed.
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `cursor` + `kitchen-sink` · medium (7 surfaces, 9 checks, 4 doc surfaces) · 2 PRs ·
+Feature · `cursor` + `kitchen-sink` · medium (9 surfaces, 10 checks, 4 doc surfaces) · 2 PRs ·
 blocked by FIX-1915 · epic [FIX-1907](../../epics/FIX-1907/SPEC.md)

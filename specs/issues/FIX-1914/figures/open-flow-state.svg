@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 416" role="img" aria-label="Open: where does today&#x27;s Kitchen Sink go? Recommended: it becomes the Flow State mode, unchanged. Instead of: moving it out so Flow State mode is one assistant. It comes down to what depends on it: the support desk&#x27;s browser tests and goals keep running with only their address changed, against a migration epic. The price is four modes that are not like for like. Locks in the support desk in Flow State&#x27;s rail. Flips if the product wants Kitchen Sink read first as a harness test bed."
+<svg viewBox="0 0 940 416" role="img" aria-label="Settled (keep, from Jake's merge of #3167). The fork was: where does today&#x27;s Kitchen Sink go? Recommended: it becomes the Flow State mode, unchanged. Instead of: moving it out so Flow State mode is one assistant. It comes down to what depends on it: the support desk&#x27;s browser tests and goals keep running with only their address changed, against a migration epic. The price is four modes that are not like for like. Locks in the support desk in Flow State&#x27;s rail. Flips if the product wants Kitchen Sink read first as a harness test bed."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">OPEN · THE FORK</text>
+    <text class="t-lbl" x="32" y="32">SETTLED · KEEP (#3167) · THE FORK</text>
     <text class="t-q" x="32" y="52">Does today&#x27;s Kitchen Sink become the Flow State mode, or move out?</text>
   </g>
 

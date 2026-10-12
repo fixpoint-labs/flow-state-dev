@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
@@ -107,14 +107,19 @@ function repository(dir: string, which: string): string {
 
 function lab(options: {
   script: Step[];
-  source: "files" | "repo" | "files-then-repo" | "refused" | "remote-not-allowed";
+  source: "files" | "repo" | "mapped" | "files-then-repo" | "refused" | "remote-not-allowed";
   maxAttempts?: number;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-host-"));
   dirs.push(dir);
   const collection: FakeCollection = createFakeCollection("project-files/**");
-  const remoteA = options.source !== "files" && options.source.includes("repo") ? repository(dir, "A") : "";
-  const remoteB = options.source === "repo" ? repository(dir, "B") : "";
+  const remoteA =
+    options.source === "mapped"
+      ? fileURLToPath(repository(dir, "A"))
+      : options.source !== "files" && options.source.includes("repo")
+        ? repository(dir, "A")
+        : "";
+  const remoteB = options.source === "repo" || options.source === "mapped" ? repository(dir, "B") : "";
   let remote = remoteA;
   // `files-then-repo`: the project gains a repository when the source switches.
   let gainedRepository = false;
@@ -137,6 +142,10 @@ function lab(options: {
         return { kind: "refused", reason: "not-a-member", message: "alice is not on this project" };
       case "remote-not-allowed":
         return { kind: "repo", repo: "https://example.com/acme/storefront.git" };
+      case "mapped":
+        // A checkout on this machine with the project's files beside it,
+        // until the mapping moves the project to a remote.
+        return { kind: "repo", repo: remote, baseRef: "main", projectId: "sandbox", files: { collection, collectionId: "project-files" } };
       default:
         return { kind: "repo", repo: remote, baseRef: "main" };
     }
@@ -144,6 +153,7 @@ function lab(options: {
   const workspace = localWorkspaceHost({
     root: join(dir, "places"),
     remotes: { allow: ["file"] },
+    ...(options.source === "mapped" ? { localRepositories: [remoteA] } : {}),
     source: (): RunSourceAnswer => {
       asked += 1;
       return answer();
@@ -327,6 +337,24 @@ describe("the repository a run started on (BR-19)", () => {
 
     expect(run.seen).toEqual(["switch-throw", "A"]);
     expect(await run.record()).toMatchObject({ remote: run.remoteA, baseRef: "main" });
+  }, 60_000);
+
+  it("and a run in a mapped checkout stays in that checkout after the mapping moves (BR-16)", async () => {
+    // Attempt 1 works in a worktree of a checkout on this machine; then the
+    // source answers a remote instead. The retry is still the checkout's.
+    const run = lab({ script: ["switch-throw", "read"], source: "mapped", maxAttempts: 2 });
+    await run.act("seed");
+    await run.act("drain");
+    await run.settled("pending");
+    await run.act("drain");
+    await run.settled("completed");
+
+    expect(run.seen).toEqual(["switch-throw", "A"]);
+    const record = await run.record();
+    expect(record).toMatchObject({ remote: run.remoteA, baseRef: "main" });
+    // The run's branch is in the checkout itself, and the run worked in its checkout/ worktree.
+    expect(execFileSync("git", ["branch", "--list", record.branch], { cwd: run.remoteA, encoding: "utf8" })).not.toBe("");
+    expect(basename(record.workspacePath)).toBe("checkout");
   }, 60_000);
 });
 

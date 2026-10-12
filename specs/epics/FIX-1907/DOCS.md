@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 The shared story is written once here; each child publishes its own specifics with its
-implementation. The Flow State paragraph assumes the [open question](DECISIONS.md#open) is answered
-as recommended, and changes with the answer.
+implementation. The Flow State paragraph follows the owner's [answer](DECISIONS.md#flow-state-mode): today's app,
+unchanged.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · opening, replacing the first paragraph
 
@@ -21,13 +21,13 @@ as recommended, and changes with the answer.
 > **Flow State** is the framework's own flows: the assistant, and the support desk with a
 > coordinator and four specialists (see [The support team](#the-support-team-workforce)).
 >
-> The three coding harnesses run on your machine, in a directory you choose, signed in the way
+> The three coding harnesses run on your machine, on a repository you choose, signed in the way
 > each one is on its own. A harness this machine can't run shows as unavailable, with the reason.
 > A deployed copy of Kitchen Sink offers Flow State only.
 
-For example, in Codex mode, start a session and ask it to add a test for a function. Codex's to-do
-list appears beside the session as it plans. Ask a follow-up in the same session and Codex continues
-the same thread, so it already knows which function you meant.
+For example, in Codex mode, start a session and ask it to add a test for a function. Each step
+shows as Codex takes it. Ask a follow-up in the same session and Codex continues the same
+thread, so it already knows which function you meant.
 
 ## CREATE · `apps/docs/docs/tools/coding-agents.md` · section "The run's plan", after "The handle"
 
@@ -46,7 +46,7 @@ the same thread, so it already knows which function you meant.
 | The README's per-mode sections: setup, sign-in, where the run works | FIX-1915, FIX-1916, FIX-1917, each for its harness | Its `DOCS.md` |
 | "The run's plan" on the coding agents page | FIX-1915, which moves the record into core | This document |
 | The plan row in "What it emits" on `codex.md` and `cursor.md`, and "Recording what the run did" on `claude-code-sdk.md` | FIX-1916, FIX-1917, FIX-1915 | Their `DOCS.md` |
-| Why the SDK path's plan tools did or didn't fire | FIX-1185, in `claude-code-sdk.md` → Limitations, only if it doesn't fire | Its `DOCS.md` |
+| The SDK path's plan tools filling: the fix's own edits to `claude-code-sdk.md`, the Claude Code README and its release note | FIX-1185, which fixes it and publishes them with the fix | Its `DOCS.md` |
 | The `apps/kitchen-sink` row in the repo's `CLAUDE.md` package map | FIX-1914 | Internal; no draft |
 
 Publish each specific with its implementation. The opening never names a mode that doesn't run

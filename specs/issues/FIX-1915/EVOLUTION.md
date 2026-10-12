@@ -11,4 +11,6 @@
 
 Aligned with FIX-1917's merged spec: `cursor-session` is now settled there, and a list `replacePlanList` can't store in full ends the turn *incomplete* without failing the run, as FIX-1917 BR-15b relies on.
 
+Amended by the cross-spec check (2026-10-12); see [the epic's Evolution](../../epics/FIX-1907/EVOLUTION.md).
+
 Re-check each source against current code before PR-A moves the record.
