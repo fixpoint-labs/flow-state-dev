@@ -21,8 +21,9 @@ Solid edges are what you're signing. The open question is written on its recomme
 <a name="open"></a>
 ## Open · Does today's Kitchen Sink become the Flow State mode, or move out?
 
-**Carried from the [epic](../../epics/FIX-1907/DECISIONS.md#open), unanswered.** This spec is
-written on the recommendation, so it can merge either way.
+**Carried from the [epic](../../epics/FIX-1907/DECISIONS.md#open), unanswered.** The epic gates
+this spec on it, so the answer comes before this spec merges. It is written on the recommendation
+so review can proceed meanwhile.
 
 **In plain terms.** Picking **Flow State** either opens today's app as it is (the assistant, the
 support desk, its workers, voice, background work), or opens one plain assistant, a peer of the
@@ -39,10 +40,12 @@ checks and docs that does nothing for the harnesses: an epic of its own.
 support desk under Flow State muddies that.
 
 **What being wrong costs.** Keeping it is cheap to reverse: moving it out later is the same work.
-**If the answer is "move it out"**, this spec changes in one place. Flow State's surface becomes
-"a plain assistant at `/flow-state`", the 6 files of checks move with the support desk instead of
-to `/flow-state`, and a migration issue is filed under the epic. The picker, D1's addresses, D2's
-gate and the harness frame are the same under both answers.
+**If the answer is "move it out"**, this spec is re-drafted before it merges, in everything that
+describes Flow State: its rules (BR-17 to BR-20), the move and its entry points (S5, S9), the
+docs draft, and the support example's lineage row. Flow State becomes "a plain assistant at
+`/flow-state`", the 6 files of checks move with the support desk instead of to `/flow-state`, and
+a migration issue is filed under the epic. The picker, D1's addresses, D2's gate and the harness
+frame are the same under both answers.
 
 ![Open fork: Flow State mode unchanged, recommended, beside moving it out. Decides it: what depends on it, an address change against a migration epic](figures/open-flow-state.svg)
 
@@ -82,8 +85,9 @@ means anyone. Then deploy detection is enough.
 
 ## Decided, not asked
 
-- **Availability is decided on the server, per request**, never inlined into the browser bundle.
-  One build must serve a laptop and a deployed copy.
+- **Availability is decided on the server, once per start**, never inlined into the browser
+  bundle, and the flow list registers a mode's flow only when that mode is available. One build
+  must serve a laptop and a deployed copy, and the page and the server must never disagree.
 - **One reason per unavailable mode, the first that applies:** deployed host, then no workspace,
   then not built yet, then the mode's own check (sign-in, key), which its issue supplies.
 - **"Not built yet" is an ordinary unavailable reason.** FIX-1914 merges before any harness mode
@@ -92,8 +96,9 @@ means anyone. Then deploy detection is enough.
 - **The way back is one link at the top of every mode's rail**, with the mode's name. Switching
   modes goes through the picker.
 - **A harness mode is one flow kind**, and its rail lists that kind's sessions with **New
-  session**. How FIX-1915 registers its one session flow per harness is its call; if it needs one
-  shared kind, it raises that to the epic (ER-15).
+  session**. FIX-1915 builds one shared session-flow factory and registers a kind per harness
+  (`claude-code-session`, `codex-session`, `cursor-session`); the epic's "one session flow" rule
+  is being amended to say so.
 
 ## What already does these jobs
 
@@ -114,10 +119,15 @@ means anyone. Then deploy detection is enough.
 |---|---|
 | Keep `/` working for old test links with a redirect when it carries `?e2eSession=` | A hidden second front door for tests only. The 6 files change once |
 | A dedicated on/off flag beside the workspace setting | Two settings for one decision, and the flag alone leaves the run with no directory |
-| Leave the harness frame to FIX-1915 | The epic gives the rail to this issue (ER-1, the rail seam). The frame is one navigator over one flow kind, proved here by a component test and in a browser by FIX-1915 |
+| Leave the harness frame to FIX-1915 | The epic gives the rail to this issue (ER-1, the rail seam), and FIX-1915's mode PR is planned on it, as are FIX-1916 and FIX-1917's. Built once here, three sibling modes don't race to build it. It has no live path until FIX-1915 lands: a component test proves it here, FIX-1915's goal check in a browser. The kind it lists by is now fixed by FIX-1915, so its shape is not a guess |
+| Decide availability per request | The flow list is built once per process, so a per-request page can disagree with it after a change, and a restart is needed anyway |
 
 ## How it got here
 
 - **Draft**: framed as the front door the epic's harness modes need; a picker page with a mode
   per address, a server-side gate that the flow list obeys too, and today's app moved whole on
   the open question's recommended answer.
+- **Review round 1**: availability moved from per request to once per server start, and the flow
+  list now follows each mode's full availability rather than the host alone, because a mode whose
+  own check failed would otherwise be served while the picker called it unavailable. The open
+  question now gates merge, as the epic says.

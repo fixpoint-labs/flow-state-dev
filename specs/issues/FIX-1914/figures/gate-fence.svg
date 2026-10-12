@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 250" role="img" aria-label="A vertical fence between the browser on the left and the server's flows on the right. Three paths approach it: the picker, a direct address to a mode, and a direct API call. When harness modes are off, the picker and the direct address are stopped at the gate and shown the reason; the direct API call finds no harness flow registered, so it is stopped too."
+<svg viewBox="0 0 940 250" role="img" aria-label="A vertical fence between the browser on the left and the server's flows on the right. Three paths approach it: the picker, a direct address to a mode, and a direct API call. For a mode that cannot run here, the picker and the direct address are stopped at the gate and shown the reason; the direct API call finds no flow registered for that mode, so it is stopped too."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -25,15 +25,15 @@
     <text class="t-lbl" x="16" y="26">THE BROWSER</text>
     <text class="t-lbl" x="620" y="26">THE SERVER&#x27;S FLOWS</text>
     <line class="fence" x1="520" y1="36" x2="520" y2="236"/>
-    <text class="t-lbl c-gone" x="530" y="232">THE GATE · ONE PREDICATE</text>
+    <text class="t-lbl c-gone" x="530" y="232">THE GATE · ONE ANSWER</text>
   </g>
 
   <g id="flows">
     <rect class="flows" x="620" y="44" width="304" height="176" rx="6"/>
     <text class="t-b" x="636" y="70">Flow State&#x27;s flows</text>
     <text class="t-s" x="636" y="88">chat-agent, coordinator, agent, …</text>
-    <text class="t-b" x="636" y="130">No harness flow registered</text>
-    <text class="t-s" x="636" y="148">while harness modes are off</text>
+    <text class="t-b" x="636" y="130">No flow registered</text>
+    <text class="t-s" x="636" y="148">for a mode that can&#x27;t run</text>
   </g>
 
   <g id="picker-path">

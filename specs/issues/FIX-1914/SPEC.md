@@ -73,14 +73,14 @@ Today's front page moves whole behind the Flow State card; three new addresses w
 
 ```mermaid
 flowchart LR
-  P["the picker at /"] -->|"each mode's availability, read on the server"| G["the gate"]
+  P["the picker at /"] -->|"each mode's availability, decided on the server at start"| G["the gate"]
   G -->|"Flow State · always"| FS["/flow-state · today's shell"]
   G -->|"a harness mode · available"| H["its address · rail of its own flow's sessions"]
   G -.->|"unavailable · the reason"| R["reason page · no session, no flow"]
-  G -->|"the same predicate"| CFG["the server's flow list · harness flows only when on"]
+  G -->|"the same answer"| CFG["the server's flow list · a mode's flow only when it can run"]
 ```
 
-One predicate decides what the picker shows and whether a harness flow is served at all.
+One answer per server start decides what the picker shows and whether a mode's flow is served at all.
 
 ## What stays as it is
 
@@ -97,9 +97,11 @@ unavailable state decided on the server, and today's app moved without losing a 
 harness modes that can't be trusted to refuse, or a support desk that quietly lost its checks.
 
 **Open · [Does today's Kitchen Sink become the Flow State mode, or move out?](DECISIONS.md#open)**
-Asked of the product lead on the epic, unanswered. This spec is written on the recommended answer:
-it becomes Flow State mode, unchanged. If the answer is "move it out", only Flow State's surface
-changes; the picker, the gate and the harness frame do not.
+Asked of the product lead on the epic, unanswered; the epic gates this spec on it, so this spec
+does not merge until it is answered. It is written on the recommended answer: it becomes Flow
+State mode, unchanged. If the answer is "move it out", Flow State's rules, the move and its
+entry points, the docs and one lineage row are re-drafted here first; the picker, the gate and
+the harness frame do not change.
 
 1. **[D1](DECISIONS.md#d1) · The picker is its own front page; each mode has its own address,
    and today's app moves whole to `/flow-state`.** If wrong: 6 files of browser checks change

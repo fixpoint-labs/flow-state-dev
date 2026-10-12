@@ -28,26 +28,26 @@ this issue owns, and obey ER-9 to ER-13.
 | BR-10 | Local, setting valid, the mode is built | The mode's own check decides (sign-in, key). Its reason is shown as the mode's issue writes it | That mode's issue |
 | BR-11 | A mode's own check throws | Unavailable, with the error's message. The picker still renders the other three | Unit test |
 | BR-12 | More than one reason applies | Only the first, in the order of BR-6 to BR-10 | Unit test |
-| BR-13 | The host's setting changes and the server restarts | The picker follows it. No rebuild | Goal check: one build, three starts |
+| BR-13 | The host's setting, or a mode's own sign-in or key, changes | Availability is decided once when the server starts, so the picker follows the change at the next restart. No rebuild | Goal check: one build, three starts |
 
 ## An unavailable mode refuses everywhere
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-14 | A person opens an unavailable mode by its address | The reason the picker shows, and a link back. No rail, no composer, no session created | Goal check |
-| BR-15 | Harness modes are off for this host (BR-6, BR-7) | The server registers no harness flow, so `/api/flows/<harness flow>/…` is not found. The picker and the flow list read the same predicate | Unit test here; FIX-1915's goal check once a harness flow exists |
+| BR-15 | A harness mode is unavailable, for any reason in BR-6 to BR-11 | The server registers no flow for that mode, so `/api/flows/<its flow>/…` is not found. The picker and the flow list read the same availability, decided once at start | Unit test here; FIX-1915's goal check once a harness flow exists |
 | BR-16 | A host turns harness modes off and restarts | That mode's sessions stay in the store, unlisted and unreachable until it is on again. Nothing is deleted | FIX-1915 |
 
 ![A vertical fence between the browser and the server's flows. The picker and a direct address both reach the gate; when harness modes are off, the gate stops them and the server's flow list holds no harness flow, so a direct API call is stopped too](figures/gate-fence.svg)
 
 The picker and a direct address stop at the gate. A direct API call never meets the page, and
-finds no harness flow on the other side: that is why the page cannot be the only fence.
+finds no flow for that mode on the other side: that is why the page cannot be the only fence.
 
 ```mermaid
 flowchart LR
   A["the picker"] -->|"the gate · off"| R["reason shown"]
   B["a direct address"] -->|"the gate · off"| R
-  C["a direct API call"] -.->|"no harness flow registered"| N["not found"]
+  C["a direct API call"] -.->|"no flow registered for that mode"| N["not found"]
 ```
 
 ## Flow State mode
@@ -65,7 +65,7 @@ Built here, filled by FIX-1915, FIX-1916 and FIX-1917.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-21 | An available harness mode opens | A rail with the mode's name and a link back to the picker, listing only its own flow's sessions, newest first, with **New session**; the stream slot beside it | Component test; FIX-1915's goal check |
+| BR-21 | An available harness mode opens | A rail with the mode's name and a link back to the picker, listing only its own flow kind's sessions, newest first, with **New session**; the stream slot beside it | Component test; FIX-1915's goal check |
 | BR-22 | **New session** in a harness mode | A session on that mode's flow, opened in its stream. No other mode's list changes | Component test |
 | BR-23 | A harness mode has no sessions yet | The rail says so and offers **New session** | Component test |
 
@@ -73,7 +73,8 @@ Built here, filled by FIX-1915, FIX-1916 and FIX-1917.
 
 Nothing on the front page is fatal. A mode whose check fails or throws is shown unavailable
 with the reason, and the others still render. The only refusal is BR-14/BR-15: an unavailable
-mode does nothing, wherever it is reached from. Nothing retries; a restart re-reads the settings.
+mode does nothing, wherever it is reached from. Nothing retries; a restart re-reads the settings
+and re-runs each mode's check.
 
 ## Acceptance criteria this issue owns
 

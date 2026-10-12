@@ -10,15 +10,15 @@ is under `apps/kitchen-sink/`, `goals/` and docs; nothing under `packages/`.
 
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
-| S1 | `lib/` · the mode list, a leaf module (BP-019) | The four modes: id, label, address, and for a harness mode its flow kind (unset until its issue fills it). Imported by the browser and the server | BR-1 BR-2 |
-| S2 | `lib/` · the gate, server only | One predicate for "harness modes on for this host" (`VERCEL` unset and a workspace setting naming an existing directory), and one function giving each mode's availability and first reason, in BR-12's order. A mode's own check is a slot its issue fills | BR-5–BR-13 |
-| S3 | `fsdev.config.ts` · the flow list | Harness flows are added only through S2's predicate. Today there are none; this is the seam FIX-1915 registers through | BR-15 |
-| S4 | `app/page.tsx` · **replaced** | The picker: a server-rendered page reading S2 per request, four cards, the reason on each unavailable one | BR-1 BR-3 BR-4 |
+| S1 | `lib/` · the mode list, a leaf module (BP-019) | The four modes: id, label, address, and for a harness mode its flow kind (unset until its issue fills it; see *Pinned names*). Imported by the browser and the server | BR-1 BR-2 |
+| S2 | `lib/` · the gate, server only | Each mode's availability and first reason, in BR-12's order: the host (`VERCEL` unset, a workspace setting naming an existing directory), then "not built yet", then the mode's own check, a slot its issue fills (it may be async). Evaluated **once per server start** and memoized | BR-5–BR-13 |
+| S3 | `fsdev.config.ts` · the flow list | A harness mode's flow is added only when S2 says **that mode** is available, for every reason in BR-6 to BR-11, not the host alone. The config already awaits at module scope, so the result is in hand before `createFlowState`. Today there are none; this is the seam FIX-1915 registers through | BR-15 |
+| S4 | `app/page.tsx` · **replaced** | The picker: a server-rendered page reading S2's result, four cards, the reason on each unavailable one | BR-1 BR-3 BR-4 |
 | S5 | `app/flow-state/page.tsx` · **moved** | Today's `app/page.tsx`, moved whole. One addition: the rail's header row with the mode name and the link back | BR-17 BR-18 BR-19 |
 | S6 | `app/` · the three harness addresses | Each reads S2. Unavailable: the reason page. Available: the harness frame (S7) with the mode's flow kind | BR-14 BR-21 |
 | S7 | `components/` · the harness frame | Rail header, one `FlowNavigator` section over the mode's flow kind with **New session**, an empty-state line, and a stream slot for the mode's issue | BR-21–BR-23 |
-| S8 | `lib/goal-control.ts` | Add `gate-open`, honoured only in a test-mode build like the others | Goal check |
-| S9 | The 6 entry-point files | `/` → `/flow-state`, keeping each query (see [Entry points](#entry-points)) | BR-17 BR-18 |
+| S8 | `lib/goal-control.ts` | Add `gate-open`, honoured only in a test-mode build like the others. It forces S2's result to available, so the flow list and the pages both see it | Goal check |
+| S9 | The 6 entry-point files, and the 2 tests that name the shell's file | `/` → `/flow-state`, keeping each query; `app/page.tsx` → `app/flow-state/page.tsx` (see [Entry points](#entry-points) and [the two tests](#tests-that-name-the-shells-file)) | BR-17 BR-18 |
 | S10 | `goals/kitchen-sink-harness-mode/opens-on-the-picker/` | The goal check: `goal.md`, `run.mts` on `goals/lib/kitchen-sink.mts` | Goal |
 | S11 | Docs | Publish [DOCS.md](DOCS.md); `apps/kitchen-sink/CLAUDE.md` layout lines; the `apps/kitchen-sink` row in the root `CLAUDE.md` | ER-18 |
 
@@ -38,6 +38,16 @@ Every place a browser opens Kitchen Sink's front page expecting the shell. Re-de
 
 8 of the 9 e2e specs and all 6 `kitchen-sink-talk` goals. Only `devtool-loads.spec.ts` opens
 nothing but `/devtool`, and doesn't change.
+
+## Tests that name the shell's file
+
+Two unit tests name the shell's file rather than open it, so the entry-points POC (which counts
+browser opens) does not see them. Both re-point to `app/flow-state/page.tsx`:
+
+| File | Names `app/page.tsx` as |
+|---|---|
+| `apps/kitchen-sink/test/shell-imports.test.ts` | The page that mounts `FlowNavigator` (`REGION_MODULES`) |
+| `apps/kitchen-sink/test/client-imports.test.ts` | A client component its scan must find. The picker is a server component, so it drops out |
 
 ## Sequence
 
@@ -64,8 +74,8 @@ fault or the picker's, never both.
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S2 | Each of BR-6 to BR-12 for each harness mode, with the env stubbed per case. Flow State available in every case |
-| V2 | S3 | With the predicate off, a stand-in harness flow handed to the flow list is not registered; on, it is. D2's check |
+| V1 | S2 | Each of BR-6 to BR-12 for each harness mode, with the env stubbed per case. Flow State available in every case. A mode's check runs once per start |
+| V2 | S3 | A stand-in harness flow is not registered when its mode is unavailable for any reason (host off, or its own check failing or throwing); it is when the mode is available. D2's check |
 | V3 | S5, S9 | The e2e suite and the 6 `kitchen-sink-talk` goals pass at `/flow-state`, before the picker exists |
 | V4 | S9 | `node specs/issues/FIX-1914/poc/entry-points/check.mjs --after` passes: nothing still opens `/` expecting the shell |
 | V5 | S4, S6 | Component tests: four cards in order; an unavailable mode by address renders the reason and no navigator. D1's check |
@@ -80,14 +90,16 @@ fault or the picker's, never both.
 | Addresses | `/`, `/flow-state`, `/claude-code`, `/codex`, `/cursor` | The README, the closure and every browser check type them (D1) |
 | Host setting | `KITCHEN_SINK_HARNESS_WORKSPACE` | A person types it (D2). FIX-1915's workspace resolver reads this same setting; see *At implement time* |
 | Goal control | `gate-open` | The goal check and FIX-1915's extension of it use it |
+| Flow kinds | `claude-code-session`, `codex-session`, `cursor-session` | One per harness, built by FIX-1915's shared session-flow factory. S1 holds them; S7's rail lists by them |
 | Mode labels | Flow State, Claude Code, Codex, Cursor | The epic's ER-1 |
 
 ## Guardrails
 
 | Rule | Because |
 |---|---|
-| The gate runs on the server per request; no `NEXT_PUBLIC_` value carries availability | One build serves a laptop and a deployed copy (BR-13). An inlined answer is the hollow pass the goal's one-build input exists to catch |
-| The picker and the flow list read one predicate (tenet 5) | Two copies of "is it on" drift, and the page then says off while the API runs an agent (BR-15) |
+| Availability is decided on the server, once per start; no `NEXT_PUBLIC_` value carries it | One build serves a laptop and a deployed copy (BR-13). An inlined answer is the hollow pass the goal's one-build input exists to catch |
+| The picker and the three harness addresses render dynamically, never prerendered at build | They read only `process.env` and the filesystem, so Next would prerender them and bake the build host's answer into every host |
+| The picker and the flow list read one availability result (tenet 5) | Two evaluations drift: a directory or sign-in that changes after start, or a mode's own check failing, and the page says off while the API runs an agent (BR-15) |
 | Today's page is moved, not edited, beyond the rail header row | "Unchanged" is the open question's recommended answer, and the move is what lets the suite prove it (V3) |
 | No browser check is deleted or skipped to get green | A check that stops running reports nothing, and that is how `main` goes green by checking less. V4 and the entry-points table are the inventory |
 | Nothing harness-specific in S7 beyond a flow kind | ER-6 and ER-11: a harness that needs more has found a gap in its package |
@@ -103,14 +115,14 @@ private.
 ## Sketch · pseudocode, illustrative, react to the shape
 
 ```
-the gate (server):
-    harness modes on  ←  not on Vercel  and  workspace setting names a directory
+the gate (server, once per start, memoized):
+    host on  ←  not on Vercel  and  workspace setting names a directory
     for each mode:
         flow state       → available
-        not on           → the host's reason
+        host not on      → the host's reason
         no flow kind yet → "not built yet"
-        otherwise        → the mode's own check, or its thrown message
-the flow list:      add harness flows only if harness modes on
+        otherwise        → await the mode's own check, or its thrown message
+the flow list:      add a mode's flow only if that mode is available
 the picker at /:    render the four with their availability
 a harness address:  unavailable → reason page;  available → frame(mode's flow kind)
 ```
@@ -121,13 +133,42 @@ negative controls fail as they should. The premise held: the move is an address 
 
 ## At implement time
 
-- **The workspace setting is one setting.** If FIX-1915 merged first under another name, use that
-  name here and in the docs; never ship two.
+- **The workspace setting is one setting.** FIX-1915's draft names a workspace root
+  `KITCHEN_SINK_HARNESS_ROOT` with a default under the user's home, which D2's opt-in forbids. If
+  FIX-1915 merged first under another name, use that name here and in the docs, without a
+  default; never ship two.
 - Re-run the entry-points check; a browser check added since this spec must be in the table.
 - Open PR #2973 edits `talk-from-page.spec.ts` near its `/` open. Rebase onto it if it lands first.
 - Compare [Evolution](EVOLUTION.md)'s predecessor claims with the current shell and README.
 
 ## Follow-ups
 
-- None filed. If the open question is answered "move it out", file the support-desk migration
-  under FIX-1907 and amend this spec in a follow-up PR from `main`.
+- None filed. The open question is answered before this spec merges. If the answer is "move it
+  out", this spec is re-drafted on its review PR and the support-desk migration is filed under
+  FIX-1907.
+
+## Notes from review
+
+Recorded for the implementer, not baked into the design. Verbatim.
+
+- **Cursor · entry-points POC maintenance (PLAN V4).** "V4 ties CI hygiene to this script
+  **parsing** the PLAN table + brittle `.goto(` regex (single-line, fixed grammar). For a **6-file**
+  set that's already enumerated, consider: (1) one constant in `goals/lib/kitchen-sink.mts` +
+  `e2e/fixtures.ts` for `/flow-state`, (2) a one-line `rg` guard in kitchen-sink tests, (3) keep
+  `check.mjs` as **retained evidence** without `--after` in the implementation checklist. Reduces
+  triple maintenance (table ↔ parser ↔ dated README snapshot)." V4 is a run the implementer does
+  once, not a CI job; a shared path constant is the implementer's call.
+- **Cursor · DECISIONS duplication.** "'Decided, not asked' duplicates BR-5–15 and the
+  availability ordering already normative in BUSINESS-RULES. Consider keeping DECISIONS to **D1,
+  D2, open**, plus 'considered and dropped,' with a pointer: *normative cases → BUSINESS-RULES §
+  Whether a mode can run*—one source of truth for implementers." BUSINESS-RULES is normative
+  where the two differ.
+- **Cursor · `gate-open` shape.** "Consider deferring S8 to when server bypass matters, or
+  document why server honour is required in the picker gate for this issue alone (mirror
+  `landing-control.ts` pattern if you keep it)." Kept: the goal's control leg needs it. Mirror the
+  existing `*-control.ts` modules, reading `goalControl()`.
+- **Second look · other entry points to `/`.** "`moat.yaml` exposes port 3000 and the README
+  links localhost root. Neither is a browser check, so the POC can't see them. Re-grep README and
+  docs for `localhost:3000/` at implement time."
+- **Second look · V2's layer.** "'not found' is right. Make sure V2 asserts the HTTP status through
+  the real route handler, not only the flow-list function, so it covers the layer a caller hits."

@@ -36,7 +36,8 @@ none describes what `/` shows.
 > The directory has to exist; Kitchen Sink doesn't create it. Point it at a scratch checkout, not
 > work you care about: a coding harness edits files there. Harness modes stay off on a deployed
 > copy, even with the setting, because Kitchen Sink has no sign-in and anyone who can reach it
-> acts as the same user.
+> acts as the same user. Restart the server after changing the setting; the picker reads it once,
+> at start.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "What to read first", second bullet
 
