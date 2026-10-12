@@ -26,16 +26,22 @@ import { pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages } from "../../lib/shift-manager.mts";
-import { orgScopedWorkers, probeOrgScopedWorkers, profileOf, scratchProfile, secondOrg, SECOND_ORG } from "./controls/patches.mts";
+import { noDelegateCheck, noFollowUp, noRosterCheck, orgScopedWorkers, probeOrgScopedWorkers, unpartitioned, type ModulePatch, profileOf, scratchProfile, secondOrg, SECOND_ORG } from "./controls/patches.mts";
 import { checkoutFor, Install, storesDir, type Checkout } from "./install.mts";
+import { legC, legsAB, type LegControl, type LegOptions } from "./legs.mts";
 import { milestone, type MilestoneControl } from "./milestone.mts";
 import { loadShipped, type Person } from "./people.mts";
 import { RunRecord, messageOf } from "./record.mts";
 import { writeReport, type StepsRun } from "./report.mts";
 
 const MILESTONE_PARTS = ["milestone-plain", "milestone-org-scoped-workers"] as const;
-/** The final run's parts, added by the closure once QR-1 holds. Not built yet. */
-const FINAL_PARTS = ["legs", "unpartitioned", "no-follow-up", "no-delegate-check", "no-roster-check", "baseline", "j1", "p3", "p4"] as const;
+/**
+ * The final run's parts. `baseline` serves the pre-epic commit (set
+ * GOAL_COMMIT) and runs legs a to c plainly; it must fail a at a1/a2, b at
+ * b1/b2 and c at c2. J1 and parts 3 and 4 run outside this script and are
+ * graded in the closure's verdict table.
+ */
+const FINAL_PARTS = ["legs", "unpartitioned", "no-follow-up", "no-delegate-check", "no-roster-check", "org-scoped-workers-c", "baseline"] as const;
 
 /** Unset runs every part built so far: the milestone, until the final run lands. */
 const ONLY = (process.env.GOAL_ONLY || "milestone").split(",").map((s) => s.trim()).filter(Boolean).flatMap((s) => (s === "milestone" ? [...MILESTONE_PARTS] : [s]));
@@ -47,8 +53,7 @@ const say = (s: string) => console.error(`[closure ${new Date().toISOString().sl
 
 await runGoal(async (failures) => {
   for (const part of ONLY) {
-    if ((FINAL_PARTS as readonly string[]).includes(part)) return { failures: [`part "${part}" belongs to the final run, which is not built yet`], evidence: "" };
-    if (!(MILESTONE_PARTS as readonly string[]).includes(part)) throw new Error(`unknown GOAL_ONLY part "${part}"; known: milestone, ${MILESTONE_PARTS.join(", ")}`);
+    if (!(MILESTONE_PARTS as readonly string[]).includes(part) && !(FINAL_PARTS as readonly string[]).includes(part)) throw new Error(`unknown GOAL_ONLY part "${part}"; known: milestone, ${MILESTONE_PARTS.join(", ")}`);
   }
   const provider = MODEL_KEYS.filter((k) => (process.env[k] ?? "") !== "");
   if (provider.length === 0) return { failures: [`blocked (QR-6): no model key; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
@@ -142,6 +147,79 @@ await runGoal(async (failures) => {
         controls.push({ control: "org-scoped-workers", ok, line });
         if (!ok) failures.push(`control org-scoped-workers: ${line}`);
       }
+
+      // ---- the final run ----
+      const runLegs = async (label: string, legs: Array<(o: LegOptions) => Promise<unknown>>, control: LegControl, patch: ModulePatch | undefined, only?: string[]) => {
+        const record = new RunRecord(label, SHOTS);
+        const run: StepsRun = { label, record, patches: [...(patch === undefined ? [] : [patch.diff]), second.diff], stores: [], ms: 0, legNotes: [] };
+        const t = Date.now();
+        for (const [i, leg] of legs.entries()) {
+          const store = join(storesDir(SCRATCH, `${label}-${i}`), "devteam.sqlite");
+          const install = new Install(browser, shipped, checkout, { pages, scratch: SCRATCH, store, record });
+          run.stores.push({ file: store.slice(SCRATCH.length + 1), steps: leg === legsAB ? "a1 to b7" : "c1 to c6" });
+          try {
+            const facts = (await leg({ install, browser, record, store, people, configs: { first: shippedConfig, second: second.config }, env: patch?.env ?? {}, control, ...(only === undefined ? {} : { only: new Set(only) }), say })) as { notes: string[] };
+            run.legNotes!.push(JSON.stringify(facts));
+          } catch (error) {
+            record.fail(leg === legsAB ? "legs-ab" : "leg-c", (error as Error).stack?.slice(0, 1500) ?? String(error));
+          } finally {
+            await install.stop().catch(() => undefined);
+          }
+        }
+        if (patch?.reached !== undefined) {
+          try {
+            patch.reached();
+            setup.push(`\`${patch.name}\` reached the served code: the patched module loaded in the process it ran`);
+          } catch (error) {
+            record.fail("reach", messageOf(error));
+          }
+        }
+        run.ms = Date.now() - t;
+        cost.push(`${label}: ${Math.round(run.ms / 1000)} s, ${record.turns.length} model turns, ${record.boots.length} boots`);
+        runs.push(run);
+        return run;
+      };
+      /** A control must fail `step` on its merits; anything else it shows is reported beside it. */
+      const control = async (name: string, make: () => ModulePatch, legs: Array<(o: LegOptions) => Promise<unknown>>, step: string, only?: string[]) => {
+        let line: string;
+        let ok = false;
+        try {
+          const patch = make();
+          const run = await runLegs(name, legs, name as LegControl, patch, only);
+          const at = run.record.steps.get(step);
+          const reach = run.record.verdict("reach");
+          ok = at?.verdict === "FAIL" && reach !== "FAIL";
+          const others = run.record.reds().filter((x) => x.id !== step).map((x) => `${x.id} ${x.verdict}`);
+          line = `${step} ${at?.verdict ?? "missing"}: ${(at?.notes ?? []).filter((n) => /^(FAIL|NOT RUN|BLOCKED)/.test(n)).join(" / ").slice(0, 400)}${others.length > 0 ? `; also red: ${others.join(", ")}` : ""}`;
+        } catch (error) {
+          line = `could not apply to the commit: ${messageOf(error)}`;
+        }
+        controls.push({ control: name, ok, line });
+        if (!ok) failures.push(`control ${name}: ${line}`);
+      };
+
+      if (ONLY.includes("legs")) {
+        say("legs a to c, as shipped");
+        const run = await runLegs("legs", [legsAB, legC], null, undefined);
+        for (const red of run.record.reds()) failures.push(`${red.id} ${red.verdict}: ${red.notes.filter((n) => /^(FAIL|NOT RUN|BLOCKED)/.test(n)).join(" / ")}`);
+      }
+      if (ONLY.includes("unpartitioned")) await control("unpartitioned", () => unpartitioned(checkout.root, SCRATCH), [legsAB], "b4", ["b4"]);
+      if (ONLY.includes("no-follow-up")) await control("no-follow-up", () => noFollowUp(checkout.root, SCRATCH), [legsAB], "b5", ["b5"]);
+      if (ONLY.includes("no-delegate-check")) await control("no-delegate-check", () => noDelegateCheck(checkout.root, SCRATCH), [legsAB], "b6", ["b1", "b6"]);
+      if (ONLY.includes("no-roster-check")) await control("no-roster-check", () => noRosterCheck(checkout.root, SCRATCH), [legC], "c4", ["c4"]);
+      if (ONLY.includes("org-scoped-workers-c")) await control("org-scoped-workers", () => orgScopedWorkers(checkout.root), [legC], "c2", ["c2"]);
+      if (ONLY.includes("baseline")) {
+        say(`the pre-epic baseline on ${checkout.describe}`);
+        const run = await runLegs("baseline", [legsAB, legC], null, undefined, ["a1", "a2", "b1", "b2", "c2"]);
+        const want = { a: ["a1", "a2"], b: ["b1", "b2"], c: ["c2"] };
+        for (const [leg, steps] of Object.entries(want)) {
+          const failed = steps.filter((s) => run.record.verdict(s) === "FAIL");
+          const ok = failed.length > 0;
+          const line = `leg ${leg}: ${steps.map((s) => `${s} ${run.record.verdict(s) ?? "missing"}`).join(", ")}${ok ? "" : "; none failed on its merits"}`;
+          controls.push({ control: `baseline leg ${leg}`, ok, line });
+          if (!ok) failures.push(`baseline ${line}`);
+        }
+      }
     } finally {
       await browser.close();
       // Read while the checkout is still there.
@@ -165,7 +243,7 @@ await runGoal(async (failures) => {
     .split("\n")
     .filter((l) => /FIX-1788/i.test(l));
   const report = writeReport(SCRATCH, {
-    kind: "milestone",
+    kind: ONLY.some((p) => (FINAL_PARTS as readonly string[]).includes(p)) ? "final" : "milestone",
     run: RUN_STAMP,
     served: checkout.describe,
     commit: checkout.commit,
@@ -180,7 +258,7 @@ await runGoal(async (failures) => {
     failures,
   });
   say(`report: ${report}`);
-  return { failures, evidence: `the milestone only (the final run is not built yet); report at ${report}` };
+  return { failures, evidence: `parts ${ONLY.join(", ")}; report at ${report}` };
 });
 
 /** The model the forked standard worker's file names, or the DevTeam's chief of staff's when none was forked. */
