@@ -236,7 +236,7 @@ await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" 
 
 It moves the task back to `pending` with the answer, like `unparkAndDrain`, but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, one parked for a person's turn or waiting on its own sub-tasks included, and an answer that arrives after the task has moved on to a newer question, writing nothing.
 
-The worker's side is `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task filed with `waitForResponse` has no `parkOnQuestion`: its worker answers with what it has, or fails.
+The worker's side is `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task dispatched with `wait` has no `parkOnQuestion`: its worker answers with what it has, or fails.
 
 ### What the mode requires
 
@@ -556,41 +556,79 @@ Read it as "which run", not "is it running". Whether work is live is the task's 
 
 Nothing a caller or a model sets can write `run`. Naming a session doesn't grant access to it: opening the session or aborting the request still goes through the server's owner check.
 
-### Asking, and waiting for the answer
+### Giving another worker work
 
-When the board can wake a waiting turn, and the server has durable execution and runs the
-[durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup), `addTask` takes a
-`waitForResponse` option. A conversation's board in Workforce can wake one. For a board of your
-own, pass `{ resumesAsks: true }` to `createTaskToolsCapability` only when whatever runs it calls
-`resumeOwedAsks` each time it touches the board outside a turn. Set it and the task is filed as usual, on the same board a plain
-`addTask` writes to, then the worker's turn parks until the task ends, and the tool returns the
-task's output as its result, `{ ok: true, taskId, answer }`. One wait per step, where a step is
-one model call and the tool calls it makes: a second waiting `addTask` in the same step is
-refused. Where the server can't hold an ask, the option isn't in `addTask`'s schema at all, and
-`addTask` files without waiting.
+`addTask` and `assignTask` record work and who owns it. They don't start it. When you want
+another worker to start now, dispatch the task:
+
+```ts
+dispatchTask({ goal: "Draft the release note", assignee: "writer" })
+```
+
+The work starts at once, and the call returns the task's id without waiting for it. When the
+task ends, you hear about it the same way you hear about any task you filed. To start a task
+you recorded earlier, name it instead of describing a new one:
+
+```ts
+dispatchTask({ taskId: "task_8f2" })
+```
+
+On a board that dispatches, `addTask` answers `{ ok: true, taskId, status: "recorded" }`, with a
+one-line `note` saying the task starts on `dispatchTask`. `assignTask` changes a recorded task's
+owner and leaves it recorded.
+
+If your next step needs the result, wait for it:
+
+```ts
+dispatchTask({ goal: "Which region is the outage in?", assignee: "ops", wait: true })
+```
+
+Your turn pauses until the task ends, then carries on with the task's output as the tool's
+result, `{ ok: true, taskId, answer }`. Nothing holds a request open while it waits, so a server
+restart loses nothing. A wait has a time limit, five minutes unless you set `timeoutMs` between
+30 000 (30 seconds) and 3 600 000 (an hour). When it runs out, the task is cancelled. On a
+long-lived server the limit fires at the deadline; where the sweep is an external cron, not
+sooner than its next run. A worker you're waiting on can't stop to ask you a question; it
+answers with what it has, or fails. One wait per step, where a step is one model call and the
+tool calls it makes.
+
+Only wait when the result changes what you do next. Otherwise let the task run and carry on.
+
+`dispatchTask` is on a board that can start work at once, such as a conversation's board in
+Workforce. A board that a drain runs decides for itself when each task runs, so it has no
+`dispatchTask`, and its `addTask` files the task as before. Waiting needs more: a board that
+wakes a waiting turn, and a server with durable execution and the
+[durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
+wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
+`createTaskToolsCapability` only when the board's writes wake whatever runs it, and add
+`resumesAsks: true` only when that also calls `resumeOwedAsks` each time it touches the board
+outside a turn.
 
 | Input | |
 |---|---|
-| `waitForResponse` | `true` to wait for the answer. Everything else is as for `addTask`, and an assignee it would refuse is refused the same way, with nothing parked |
-| `timeoutMs` | How long to wait, from 30 000 (30 seconds) to 3 600 000 (an hour). Defaults to five minutes. Only with `waitForResponse`. Fires at the deadline on a long-lived server; where the sweep is an external cron, not sooner than its next run |
+| `goal`, `assignee`, `deps`, `priority`, `input`, `metadata`, `followUpOf` | A new task, exactly as for `addTask`, and refused the same way |
+| `taskId` | A task you recorded earlier on this board, instead of a new one. It must not have started |
+| `wait` | `true` to wait for the result |
+| `timeoutMs` | How long to wait: 30 000 to 3 600 000, five minutes by default. Only with `wait` |
 
 | Error | When |
 |---|---|
-| `wait_timed_out` | The task did not end within its time limit. It is cancelled |
-| `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed, and the value is never clamped |
-| `wait_timeout_without_wait` | `timeoutMs` was set without `waitForResponse`. Nothing is filed |
-| `wait_task_failed` | The task failed for good |
-| `wait_task_cancelled` | The task was cancelled by someone else |
-| `wait_already_pending` | This step is already waiting on a task. Nothing is filed |
+| `assignee_required` | No `assignee`, and the conversation has more than one delegate to choose from. Nothing is filed |
+| `task_not_dispatchable` | The task named by `taskId` has already started, ended, or been dispatched. Nothing changes |
+| `wait_timed_out` | The task didn't end in time. It is cancelled |
+| `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |
+| `wait_timeout_without_wait` | `timeoutMs` without `wait`. Nothing is filed |
+| `wait_task_failed` · `wait_task_cancelled` | The task failed for good, or someone else cancelled it |
+| `wait_already_pending` | This step already waits on a task. One wait per step |
 | `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
 
-Stopping the conversation while its turn waits ends the turn and cancels the task. The turn
-doesn't see an error, because it doesn't run again.
+Stopping a conversation while its turn waits ends the turn and cancels the task. A task you
+wait on is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's limits
+apply. When it ends, the waiting turn continues with the answer, and the conversation gets no
+separate completion message for it. The `dispatchTask_<board>` action starts work and never
+waits.
 
-An asked task is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's
-limits apply to it.
-When an asked task ends, the waiting turn continues with the answer. The conversation gets no
-separate completion message for it. The `addTask_<board>` action has no wait option.
+**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`, rather than filing a task that nobody waits for. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`.
 
 ## Concurrency and error handling
 

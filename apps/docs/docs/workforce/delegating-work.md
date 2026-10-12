@@ -26,7 +26,7 @@ delegates: [eng.coder, eng.reviewer]
 
 `delegates:` is who works for this worker. A coordinator hands posts to this list, and any worker files tasks for it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s nine task tools in that session: `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`. Your app can send the same nine as actions on any of that worker's sessions, named for the board, `tasks`: `addTask_tasks`, `listTasks_tasks` and so on.
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` records a task without starting it, until `dispatchTask` names it by its `taskId`. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
 
 A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer:
 
@@ -92,8 +92,8 @@ What the kit gives you, and where each piece goes:
 
 | Field | Put it in |
 |-------|-----------|
-| `tools` | The `uses` of the block that runs the model. It carries the nine tools only while the session files, and nothing otherwise. |
-| `actions` | The flow's `actions`: the nine as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
+| `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
+| `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
@@ -177,4 +177,4 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 
 - [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.
-- [Task board](../orchestration/task-board.md): the board and the nine task tools underneath.
+- [Task board](../orchestration/task-board.md): the board and the task tools underneath.

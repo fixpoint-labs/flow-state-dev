@@ -203,12 +203,12 @@ still a disagreement: ownership is by instance, not by kind. A `task` dispatcher
 ### Waiting for the answer
 
 A dispatch returns before the work it started has run. That is right for a job that outlives
-the turn, and wrong when the next step needs the result. For that case, a worker files the task
-and waits for it.
+the turn, and wrong when the next step needs the result. For that case, a worker dispatches the
+task and waits for it.
 
-A waiting `addTask` (`waitForResponse: true`) files the work on the same board a plain
-`addTask` would, the board the worker's task tools write to (in Workforce, the conversation's
-own board), then parks the turn on it. When the task ends, the turn picks up where it stopped,
+A worker dispatches the task and waits for it: `dispatchTask` with `wait: true`. The task lands
+on the board the worker's task tools write to (in Workforce, the conversation's own board),
+and the turn parks on it. When the task ends, the turn picks up where it stopped,
 with the task's output as the tool's result. Nothing holds the request open in between. A server
 restart while the turn waits loses nothing: the turn resumes after the restart, and the task is
 filed only once.
@@ -222,14 +222,15 @@ long-lived server the timeout arrives within seconds of the limit. Where the swe
 external cron job, it arrives at the first run after the limit.
 
 Stopping the conversation while it waits cancels the task and ends the turn. A worker that is
-itself working a task can't wait: a waiting `addTask` there is refused with `wait_unavailable`,
-and nothing is filed.
+itself working a task can't wait: `dispatchTask` with `wait` is refused there with
+`wait_unavailable`, and nothing is filed.
 
 Waiting has a cost you can see in the run. The turn is saved when it parks and loaded again
 when the answer arrives. Steps it already ran aren't run again; the model picks up with the
 answer as the tool's result. Use an ask when the answer changes what this turn says or does
-next. When it doesn't, file the task and let the turn end. See [the task board](/docs/orchestration/task-board#asking-and-waiting-for-the-answer)
-for the option, its limits and its errors.
+next. When it doesn't, dispatch the task without waiting and let the turn end. See
+[the task board](/docs/orchestration/task-board#giving-another-worker-work) for the tool, its
+limits and its errors.
 
 ## Finding dispatched runs on a flow
 

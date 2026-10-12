@@ -57,14 +57,16 @@ const REGRESSION = [
 /**
  * A line that names a retired name and is not one of: a refusal on purpose,
  * Playwright's own `page.waitForResponse(...)` (a method of the browser API,
- * not ours), or a dated row of a goal's verdict log (history, like a
- * changelog).
+ * not ours), a dated row of a goal's verdict log (history, like a
+ * changelog), or a published migration note, a paragraph that opens
+ * `**Moving from` and names the old field to say what replaces it.
  */
 function isLiveRetired(p, line) {
   if (!RETIRED_RE.test(line) || line.includes(REFUSAL_MARKER)) return false;
   const rest = line.replace(/\.waitForResponse\(/g, "");
   if (!RETIRED_RE.test(rest)) return false;
   if (p.startsWith("goals/") && p.endsWith(".md") && /^\| \d{4}-\d{2}-\d{2} /.test(line)) return false;
+  if (p.endsWith(".md") && line.startsWith("**Moving from ")) return false;
   return true;
 }
 
