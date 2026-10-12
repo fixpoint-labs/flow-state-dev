@@ -1522,13 +1522,20 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
     replacing each field given;
   - `fire({ id })` returns `{ id }` and deletes the row.
 - **From an app.** `createWorkforceClient`, from `@flow-state-dev/workforce/browser`, takes the
-  transport options `createSessionClient` takes:
+  transport options `createSessionClient` takes: `baseUrl`, `apiPath`, and `fetcher`, a
+  `(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>` used for every request. Wrap
+  `fetch` to add the caller's credential, such as an `Authorization` header, and pass the same
+  `fetcher` to `createClient`. The server decides who the caller is with `resolvePrincipal` on
+  `createFlowState`. See [Authentication](https://flow-state.dev/docs/server/authentication),
+  [Host adapters](https://flow-state.dev/docs/server/host-adapters) for serving it, and
+  [Serving it to your users](https://flow-state.dev/docs/workforce/overview#serving-it-to-your-users).
 
   ```ts
   import { createClient } from "@flow-state-dev/client";
   import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-  const workforce = createWorkforceClient({ userId, baseUrl });
+  // fetcher: wraps fetch to add the caller's credential, as described above
+  const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 
   const roster = await workforce.roster();
   // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
@@ -1537,10 +1544,11 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
 
-  const research = createClient({ flowKind: session.flowKind, userId, baseUrl });
-  const { requestId } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
+  const research = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
+  const { status, request } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
     sessionId: session.id,
   });
+  // status: "in_progress" | "completed" | "failed" | "incomplete"; use request.id to connect to its stream
   ```
 
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
