@@ -174,7 +174,11 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  addressEntries,
+  describeAction,
+  resolveTaskAction,
   resolveTaskFlowKind,
+  resolveTaskSessionTarget,
   resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
@@ -192,8 +196,11 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
+  TaskEntryChoice,
   TaskFlowTarget,
   TaskStateTarget,
+  KeyedTaskSessionPolicy,
+  TaskSessionChoice,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./types/dispatch";

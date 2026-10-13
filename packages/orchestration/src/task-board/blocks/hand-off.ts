@@ -3,8 +3,9 @@
  *
  * A board assignee holding a `dispatcher({ type: "task" })` declares that its rows
  * run elsewhere. This block is what the drain installs at that assignee: it takes
- * the dispatcher's address as declared — the entry it names and the session
- * policy — and adds the bookkeeping only the drain can do, because only the
+ * the dispatcher's address as declared — the entry it names (or chooses per
+ * row, among declared ones) and the session policy (a keyed child, or an
+ * existing session chosen per row) — and adds the bookkeeping only the drain can do, because only the
  * drain holds the claim: mint the envelope from the ticket, release the claim
  * before the point of no return, put the dispatch through the seam, hand the
  * claim back on refusal. The drain's shape is untouched — claim, route,
@@ -55,11 +56,16 @@ import {
   DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
+  resolveTaskAction,
   resolveTaskFlowKind,
-  resolveTaskState,
-  taskSessionKeyFor,
+  resolveTaskSessionTarget,
 } from "@flow-state-dev/core/types";
-import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
+import type {
+  BlockDefinition,
+  TaskBinding,
+  TaskDispatchInput,
+  TaskTargetQuery,
+} from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskWorker, TaskWorkerInput } from "../../tasks";
@@ -164,44 +170,32 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         payload: snapshot,
       };
 
-      const key = taskSessionKeyFor(name, address.session, envelope, ctx);
-
-      // Which flow takes it, looked up now when the assignee's target is per task.
-      // A refusal here is decided before anything is dispatched, with the
-      // claim still held, like the seam's own refusals below.
-      const flowKind = await resolveTaskFlowKind(
-        name,
-        address,
-        {
-          assignee,
-          taskId: claim.taskId,
-          input: snapshot,
-          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
-        },
-        ctx
-      );
-
-      // The child's initial state, when the assignee names one: looked up now,
-      // like the flow, so a bad answer refuses with the claim still held.
-      const initialState = await resolveTaskState(
-        name,
-        address,
-        {
-          assignee,
-          taskId: claim.taskId,
-          input: snapshot,
-          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
-        },
-        ctx
-      );
+      // Everything about where this row goes is looked up now, per row, from
+      // the row as it was claimed: the entry, the session, the flow, and the
+      // child's initial state. A bad answer refuses here, before anything is
+      // dispatched and with the claim still held, like the seam's own
+      // refusals below. All of it reads the packed row, never a store.
+      const task: TaskTargetQuery = {
+        assignee,
+        taskId: claim.taskId,
+        input: snapshot,
+        ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
+      };
+      const action = await resolveTaskAction(name, address, task, ctx);
+      // A keyed child, or an existing session by id when the assignee's
+      // policy chooses one. An id is delivered into, never created: the seam
+      // refuses a missing session `session-not-found` and one this request's
+      // principal cannot reach `session-not-addressable`, before dispatching.
+      const session = await resolveTaskSessionTarget(name, address, envelope, task, ctx);
+      const flowKind = await resolveTaskFlowKind(name, address, task, ctx);
 
       // Release BEFORE the point of no return — see the file header.
       await ctx.sequencer!.patchState({ currentClaim: undefined });
 
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
-        action: address.action,
-        session: initialState === undefined ? { key } : { key, state: initialState },
+        action,
+        session,
         payload: envelope,
         from: name,
         // Stamped onto the dispatched REQUEST record, so a run can be correlated

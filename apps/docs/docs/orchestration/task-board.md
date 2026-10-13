@@ -382,6 +382,7 @@ export default defineFlow({
 | `"per-task"` | one per task; a follow-up task runs in the session of the task it follows | tasks are independent |
 | `"per-worker"` | one per assignee, shared by every task the assignee runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several assignees, or a key you compute from the task |
+| `{ by: (task) => ({ key }) \| ({ id }) }` | chosen per task: a run keyed like `{ key }`, or a session that already exists | some tasks belong in a run of their own and others in a session that is already running ([below](#choosing-the-entry-and-the-session-per-task)) |
 
 The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two assignees, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow assignee names. A `key` function that returns an empty string fails that task.
 
@@ -449,6 +450,38 @@ const board = taskBoard({
 When the function returns `undefined` or an empty string, the hand-over is refused with a `DispatchRefusedError` whose `refused` is `"flow-not-found"`, naming the assignee, and the attempt fails through the board's ordinary error path. A task with no assignee is refused the same way, since the fallback hands a task over by the name on it. A function that throws fails the attempt with its own error.
 
 Only a `task` dispatcher takes a function. An `internal` dispatcher given one throws when you build it. The flow the function returns is cross-flow, so `defineFlow` can't check it ahead of time; the entry named by `action` has to exist on whichever flow it returns, or the dispatch is refused `no-entry`. Workforce's worker lookup supplies one: `createWorkerLookup({ installation }).flowKind` hands a task to the flow of the worker its `assignee` names, with `state` beside it naming that worker. A workforce coordinator, a worker that hands work to other workers called its delegates, keeps a board of its own for that: see [Handing out tasks](../workforce/coordinators.md#handing-out-tasks).
+
+### Choosing the entry and the session per task
+
+One assignee can send different tasks to different places. Give its dispatcher an `action` of `{ among, by }` and it picks the entry for each task: `among` lists the entries it may pick, and `by` returns one of them. Give it a `session` of `{ by }` and it picks the session for each task: `{ key }` for a run of the task's own, keyed as a `{ key }` policy would key it, or `{ id }` for a session that already exists. Both functions receive the task's `assignee`, `taskId`, `input` and `filedBy`, and the running context, and either may be async. Read what they decide from the task itself, from fields your code wrote when it filed the task.
+
+```ts
+import { dispatcher } from "@flow-state-dev/core";
+import type { TaskTargetQuery } from "@flow-state-dev/core/types";
+import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+
+// Fields your code wrote on the task when it filed it.
+const filed = (task: TaskTargetQuery) =>
+  (task.input as TaskWorkerInput).input as { reply?: boolean; sessionId?: string };
+
+assistant: dispatcher({
+  name: "hand-off-assistant",
+  action: {
+    among: ["work", "reply"],
+    by: (task) => (filed(task).reply ? "reply" : "work"),
+  },
+  session: {
+    by: (task) => {
+      const sessionId = filed(task).sessionId;
+      return sessionId ? { id: sessionId } : { key: `work|${task.taskId}` };
+    },
+  },
+}),
+```
+
+Every name in `among` is checked when the flow is defined, exactly as a single `action` is, so each one must be declared under `task.actions`. A `by` that returns a name outside `among` fails that task with `refused: "no-entry"` before anything is sent.
+
+A session picked by `{ id }` is never created. If it doesn't exist, belongs to someone else, or belongs to another flow, the task fails with `session-not-found` or `session-not-addressable`, the same refusals a dispatcher's `{ id }` gets anywhere else. The session keeps its own state, so the dispatcher's `state` applies only to tasks answered with `{ key }`. An answer that isn't exactly one non-empty `key` or `id` fails the task. As with `per-worker` and `{ key }`, the entries a `{ by }` assignee hands off to default to `"queue"` concurrency, since several tasks can land in one session.
 
 ### A task entry served by many boards
 
