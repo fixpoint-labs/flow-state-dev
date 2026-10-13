@@ -85,6 +85,11 @@ const PLAN_UPDATE_TOOL = "TaskUpdate";
  * a GAP rather than silently followed.
  */
 
+/** Whether a thinking block or delta carries text worth showing. */
+function hasThinkingText(text: string): boolean {
+  return text.trim() !== "";
+}
+
 /** Read a string field off an untyped tool input/output. `null` when absent. */
 function readString(source: unknown, field: string): string | null {
   if (typeof source !== "object" || source === null) return null;
@@ -322,6 +327,22 @@ export function translateSdkMessage(
   }
 }
 
+/** The longest live status a tool call can set; a longer one is cut with an ellipsis. */
+const MAX_STATUS_LENGTH = 120;
+
+/**
+ * What a tool call tells the person while it runs: for Bash, the call's own
+ * `description` (its one-line statement of intent), else `Using <tool>…`, the
+ * line the framework's own tool loop emits. `description` is a domain field on
+ * many other tools (an issue body, a page), so it is read by tool name, not by
+ * field name, and the line is bounded either way.
+ */
+function toolStatus(name: string, input: unknown): string {
+  const intent = name === "Bash" ? readString(input, "description")?.trim() : undefined;
+  const line = intent || `Using ${name}…`;
+  return line.length > MAX_STATUS_LENGTH ? `${line.slice(0, MAX_STATUS_LENGTH - 1)}…` : line;
+}
+
 /**
  * `system` compact_boundary → a transient status notice.
  *
@@ -365,7 +386,7 @@ function translateAssistant(
       // The SDK can withhold the thinking text. An item with nothing in it is a
       // chevron with nothing behind it, and it splits the tool calls around it
       // into separate groups.
-      if (block.thinking.trim() === "") continue;
+      if (!hasThinkingText(block.thinking)) continue;
       events.push({ kind: "reasoning_complete", text: block.thinking, ...withParent });
     } else if (block.type === "tool_use") {
       if (SUBAGENT_TOOL_NAMES.has(block.name)) {
@@ -380,9 +401,7 @@ function translateAssistant(
           arguments: stringifyArgs(block.input),
           ...withParent,
         });
-        // `description` is the call's intent only on Bash. On other tools it is the payload.
-        const description = block.name === "Bash" ? readString(block.input, "description")?.trim() : null;
-        events.push({ kind: "status", message: description || `Using ${block.name}…` });
+        events.push({ kind: "status", message: toolStatus(block.name, block.input) });
         observeToolCall(block, state, events);
       }
     }
@@ -738,6 +757,12 @@ function translateUser(
       }
     }
   }
+  // A tool's status line lasts as long as the tool: once the last open tool or
+  // sub-agent settles, the slot clears, as the framework's own tool loop does.
+  // Without this the line outlives the call through the model's next turn.
+  if (blocks.some((b) => b.type === "tool_result") && state.openTools.size === 0 && state.openSubagents.size === 0) {
+    events.push({ kind: "status", message: "" });
+  }
   // Only when recorded work actually settled from it: a batch of results for
   // tools nobody records discarded nothing that mattered.
   if (discardedConfirmation && settledRecordedWork) {
@@ -772,7 +797,7 @@ function translateStreamEvent(
     return [{ kind: "message_delta", text: delta.text, ...(parentCallId ? { parentCallId } : {}) }];
   }
   // Thinking deltas carry the token on `delta.thinking`, not `delta.text`.
-  if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking !== "") {
+  if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && hasThinkingText(delta.thinking)) {
     return [{ kind: "reasoning_delta", text: delta.thinking, ...(parentCallId ? { parentCallId } : {}) }];
   }
   return [];
