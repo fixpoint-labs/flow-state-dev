@@ -218,6 +218,8 @@ Like `unpark`, it needs no options to be advisory. A task that isn't finished is
 
 The reopened task keeps its id and `attempts`, and its `output` stays until the next attempt writes its own. Its `error` and `completedAt` are cleared, and it carries `reopened: true`, which a later park, `unpark` or retrying failure clears. The next attempt is not charged against `maxAttempts`, and the worker input for it carries `reopened: true`, so a worker can tell it is picking the task up again rather than starting it. Reopening is not an ending: a collection's `recordEnding` is not called for it, and the reopened attempt's own completion or failure is recorded as a new ending.
 
+Reopening touches no other task. A task that `deps` on it and already started ran on the first result and is not re-run. One that hasn't started yet waits again, since a dependency only counts once it is `completed`, and starts after the reopened attempt completes. A cancelled task reopens like any other finished one, so reopen only what a person has chosen to pick up again.
+
 `reopen` only re-queues. Nothing runs the task until something drains the board.
 
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `parked`). Two refusals come out of it, and they mean different things:

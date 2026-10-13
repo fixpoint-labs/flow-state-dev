@@ -1157,7 +1157,7 @@ describe("refusals", () => {
     await lab.act(ALICE, "drain");
     await lab.until((t) => t.status === "completed", "the run to finish");
     const sent = await lab.send(ALICE, "one more thing");
-    expect(messageOf(sent.error)).toContain("This task has finished, and its board can't reopen it.");
+    expect(messageOf(sent.error)).toContain("This task has finished and can't take a message here.");
     expect((await lab.row()).status).toBe("completed");
     // Refused before a turn was kept, so no later attempt acts on it.
     expect(await lab.turns()).toEqual([]);

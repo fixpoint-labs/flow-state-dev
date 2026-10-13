@@ -156,7 +156,7 @@ export type TurnRefusalReason =
 const REFUSAL_TEXT: Record<TurnRefusalReason, string> = {
   "no-run": "No such run.",
   "not-started": "This task hasn't started, so there's no session to write into.",
-  "task-finished": "This task has finished, and its board can't reopen it.",
+  "task-finished": "This task has finished and can't take a message here.",
   "finished-first": "The task finished before your message reached it.",
   "cannot-continue": "This run's harness can't continue with a message.",
   "still-starting": "This run is still starting and can't take a message yet. Send it again once it's under way.",

@@ -122,10 +122,38 @@ describe("a person's message on a finished task", () => {
       await h.settled();
       expect((await h.row("alice", filing, followUp.taskId!))?.status).toBe("completed");
 
-      await h.act("alice", row.run!.sessionId, "run", { message: "Use a draft PR." }, "agent");
+      const message = await h.act("alice", row.run!.sessionId, "run", { message: "Use a draft PR." }, "agent");
+      expect(message.output).toEqual({ reopened: followUp.taskId });
       await h.settled();
       expect((await h.row("alice", filing, followUp.taskId!)) as Task).toMatchObject({ status: "completed", attempts: 2 });
       expect((await h.row("alice", filing, row.id)) as Task).toMatchObject({ status: "completed", attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("reopens once when two lines arrive together, and both lines reach the one reopened attempt", async () => {
+    const h = host([{ when: () => true, then: { text: "done" } }]);
+    try {
+      const { conv, filing, row } = await finishedTask(h, "Write the release note");
+      const session = row.run!.sessionId;
+      const [first, second] = await Promise.all([
+        h.act("alice", session, "run", { message: "Mention the new flag too." }, "agent"),
+        h.act("alice", session, "run", { message: "And the removed one." }, "agent")
+      ]);
+      // Neither line fails, and neither runs a turn of its own.
+      expect(first.output).toEqual({ reopened: row.id });
+      expect(second.output).toEqual({ reopened: row.id });
+      await h.settled();
+
+      // One reopen: one more attempt, one more ending, one uncharged re-entry.
+      const done = (await h.row("alice", filing, row.id)) as Task;
+      expect(done).toMatchObject({ status: "completed", attempts: 2, turnReentries: 1 });
+      expect(await heardEndings(h, conv)).toBe(2);
+      expect(h.agentAnswer.calls).toHaveLength(2);
+      const texts = sent(h.agentAnswer.calls[1]!.input).map((m) => m.text);
+      expect(texts).toContain("Mention the new flag too.");
+      expect(texts).toContain("And the removed one.");
     } finally {
       await h.dispose();
     }

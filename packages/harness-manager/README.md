@@ -275,7 +275,7 @@ It answers `{ outcome: "continuing" | "kept", taskId }`:
 - **claimed, with its run not started yet** → `kept` for that attempt.
 - **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
 - **finished (`completed`, `errored` or `cancelled`), on a board with `reopenIn`** → `continuing`. The door keeps the message for the next attempt, [reopens](https://flow-state.dev/docs/orchestration/task-substrate#putting-a-finished-task-back-in-the-queue) the row and runs the board's drain in the `reopenIn` session, so the task reads in progress again and the next attempt resumes the same coding session with the message in its prompt. `kept` if another message reopened it first.
-- **finished, on a board without `reopenIn`** → refused: "This task has finished, and its board can't reopen it." The manager's own `messageDoor` has no `reopenIn`, so it always refuses a finished task.
+- **finished, on a board without `reopenIn`** → refused: "This task has finished and can't take a message here." The manager's own `messageDoor` has no `reopenIn`, so it always refuses a finished task.
 - **never started in this session, or on a harness that named no session** → refused. A refusal fails the request, with the reason in words as the error's message and the door's `TurnRefused` error as its cause, so only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
 
 The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.

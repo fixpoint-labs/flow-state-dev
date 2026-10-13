@@ -24,6 +24,7 @@ import {
   type TaskCollectionRef,
   type TaskEnding,
 } from "../../src/tasks";
+import { assertEdgeAllowed } from "../../src/tasks/collection/internal";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 type Backing = { tasks: TaskCollectionRef; events: TaskChangeEvent[] };
@@ -134,6 +135,19 @@ describe.each(BACKINGS)("reopen (%s)", (_name, makeBacking) => {
     expect((tasks.get("t") as Task).status).toBe("completed");
   });
 
+  it("holds back a dependent that hasn't started until the reopened attempt completes", async () => {
+    const { tasks } = await makeBacking();
+    await finished(tasks, complete);
+    await tasks.addTask({ id: "d", goal: "d", deps: ["t"] });
+    await tasks.reopen("t");
+    // `t` is no longer completed, so `d` waits; the next claim is `t`'s reopened attempt.
+    const next = (await tasks.claim("w"))!;
+    expect(next.id).toBe("t");
+    expect(await tasks.claim("w")).toBeNull();
+    await tasks.complete("t", { done: 2 }, { claim: ticketForClaim("tasks", next) });
+    expect((await tasks.claim("w"))?.id).toBe("d");
+  });
+
   it("a later failure clears the mark, so a retry is not told it was reopened", async () => {
     const { tasks } = await makeBacking();
     await finished(tasks, complete, 3);
@@ -178,5 +192,14 @@ describe("reopen and the ledger's ending recorder", () => {
     await ref.claim("w");
     await ref.complete("t", "second");
     expect(seen.map((ending) => ending.kind)).toEqual(["completed", "completed"]);
+  });
+});
+
+describe("the edge reopen owns", () => {
+  it("skips the status table for finished to pending alone", () => {
+    expect(() => assertEdgeAllowed("completed", "pending", "t", "finished")).not.toThrow();
+    // Any other target from a finished row is still the table's call, which has no such edge.
+    expect(() => assertEdgeAllowed("completed", "in_progress", "t", "finished")).toThrow(IllegalTaskTransitionError);
+    expect(() => assertEdgeAllowed("cancelled", "completed", "t", "finished")).toThrow(IllegalTaskTransitionError);
   });
 });

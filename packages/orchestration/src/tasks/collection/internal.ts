@@ -208,6 +208,15 @@ export function reopenPatch(task: Task): Partial<Task> {
  */
 export type EdgeSource = TaskStatus | "finished";
 
+/**
+ * Whether a write is `reopen`'s edge: from a finished row, back to `pending`.
+ * The only edge the status table is skipped for, so a verb that names
+ * `"finished"` for any other target is still checked against the table.
+ */
+function isReopenEdge(requireFrom: EdgeSource | undefined, to: TaskStatus): boolean {
+  return requireFrom === "finished" && to === "pending";
+}
+
 /** Whether `status` is a source of the edge `source` names. */
 export function onEdgeSource(status: TaskStatus, source: EdgeSource): boolean {
   return source === "finished" ? isTerminalStatus(status) : status === source;
@@ -226,7 +235,7 @@ export function assertEdgeAllowed(
   taskId: string,
   requireFrom: EdgeSource | undefined
 ): void {
-  if (requireFrom === "finished") return;
+  if (isReopenEdge(requireFrom, to)) return;
   assertTransitionAllowed(from, to, taskId);
 }
 
@@ -642,7 +651,7 @@ export function transitionDeclineReason(
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
-  const reopening = requireFrom === "finished";
+  const reopening = isReopenEdge(requireFrom, targetStatus);
   if (options.ifAllowed === true && isTerminalStatus(task.status) && !reopening) return "terminal";
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   if (

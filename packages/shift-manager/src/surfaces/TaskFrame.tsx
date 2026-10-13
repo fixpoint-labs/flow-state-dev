@@ -271,7 +271,9 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
     <TurnComposer
       testId="task-composer"
       label={`Message ${worker ?? "this worker"}`}
-      placeholder={reopens ? `Message ${worker ?? "this worker"} to pick this task up again…` : `Message ${worker ?? "this worker"}…`}
+      placeholder={
+        reopens ? `Message ${worker ?? "this worker"} to pick this task up again…` : `Message ${worker ?? "this worker"}…`
+      }
       blocked={blocked}
       // No `held`: the Session tab draws only the task's own run, not this line's
       // request, so the line keeps its draft until delivered.

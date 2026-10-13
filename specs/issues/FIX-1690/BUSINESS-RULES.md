@@ -28,7 +28,7 @@ rules apply as written; these are the ones a turn adds. *Proved by* names the ki
 | BR-12 | The row is `parked` on the run's own question | The turn is kept and folded into the attempt that follows the answer. It does not unpark the row; answering stays the ask's path (FIX-1671, the manager's `answer`) | CI |
 | BR-13 | The row is `pending` and its link names an earlier attempt's run | The turn goes into that session and is kept for the next attempt; nothing is stopped | CI |
 | BR-14 | The row is `pending` with no linked run (never started) | Refused: *this task hasn't started, so there's no session to write into* | CI |
-| BR-15 | The row is `completed`, `errored` or `cancelled` | Send is disabled with *a finished task takes no message*; a door call that races it is refused per BR-5 | CI |
+| BR-15 | The row is `completed`, `errored` or `cancelled` | ~~Send is disabled with *a finished task takes no message*; a door call that races it is refused per BR-5~~ **Amended by FIX-1764:** Send stays enabled and the message reopens the task; a door on a board that can't reopen still refuses | CI |
 | BR-16 | The run's harness gave no coding session id, or can't resume one | Refused: *this run's harness can't continue with a message*. Applies to `claude-code/cli-remote`, which only dispatches | CI |
 | BR-17 | A turn and an Interrupt meet | Interrupt wins: an attempt stopped by Interrupt follows FIX-1664 (the board decides), and a turn kept before it still reaches the next attempt, if the board runs one | CI |
 

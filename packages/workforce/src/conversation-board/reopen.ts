@@ -22,17 +22,11 @@
 import { handler, router } from "@flow-state-dev/core";
 import { dispatchThroughSeam, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { isTerminalStatus, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
-import { z } from "zod";
-import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { z, type ZodTypeAny } from "zod";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
-
-/** A readonly string field the hand-over wrote on the session at its birth. */
-function sessionField(ctx: BlockContext, key: string): string | undefined {
-  const value = (ctx.session.state as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : undefined;
-}
+import { filingFlowOf, filingPartitionOf, sessionTaskOf } from "./task-entry";
 
 /** A task session's finished task, with the board it is on and where that board runs. */
 interface FinishedTask {
@@ -48,9 +42,9 @@ interface FinishedTask {
  * session, or while one of them is still open.
  */
 async function finishedTaskOf(ctx: BlockContext): Promise<FinishedTask | undefined> {
-  const taskId = sessionField(ctx, TASK_ID_STATE_KEY);
-  const partition = sessionField(ctx, FILING_SESSION_STATE_KEY);
-  const filingFlow = sessionField(ctx, FILING_FLOW_STATE_KEY);
+  const taskId = sessionTaskOf(ctx);
+  const partition = filingPartitionOf(ctx);
+  const filingFlow = filingFlowOf(ctx);
   if (taskId === undefined || partition === undefined || filingFlow === undefined) return undefined;
   const ledger = await conversationLedgerAt(ctx, partition);
   if (ledger === undefined) return undefined;
@@ -67,34 +61,39 @@ const reopenedSchema = z.object({ reopened: z.string() });
  * Put the finished task back on its board and run the board in the
  * conversation that filed it. Declared beside the turn, so the line is in the
  * session before either runs.
+ *
+ * The router chose this route from its own read, and this reads again: a
+ * route takes only the router's input, so the row it saw can't be handed
+ * over. Between the two reads the row can only have left its finished status
+ * (another line reopened it, or a follow-up was filed on it), and `reopen`
+ * declines the same race at the write. Either way the line is already in this
+ * session, where the attempt that is now open reads it when it starts, so
+ * this answers with the session's task and starts nothing.
  */
 const reopenFinishedTask = handler({
   name: "worker-reopen-finished-task",
   inputSchema: z.unknown(),
   outputSchema: reopenedSchema,
   resources: { ...conversationLedgerResources },
-  execute: async (_input, ctx) => {
-    const finished = await finishedTaskOf(ctx as never);
-    if (finished === undefined) {
-      // Chosen as finished a moment ago; reopened since by another line, which
-      // started the attempt that will read this one too.
-      return { reopened: sessionField(ctx as never, TASK_ID_STATE_KEY) ?? "" };
-    }
-    const { ledger, row, filingSession, filingFlow } = finished;
-    await ledger.reopen(row.id);
+  execute: async (_input, typed) => {
+    // A handler's context is typed by its own resources; the readers take the base context.
+    const ctx = typed as unknown as BlockContext;
+    const finished = await finishedTaskOf(ctx);
+    const reopened = finished === undefined ? undefined : await finished.ledger.reopen(finished.row.id);
+    if (finished === undefined || reopened?.outcome !== "recorded") return { reopened: sessionTaskOf(ctx) ?? "" };
     try {
-      await dispatchThroughSeam(ctx as never, {
+      await dispatchThroughSeam(ctx, {
         type: "internal",
         action: RUN_BOARD_ENTRY,
-        flowKind: filingFlow,
-        session: { id: filingSession },
+        flowKind: finished.filingFlow,
+        session: { id: finished.filingSession },
         payload: {},
         from: "worker-reopen-finished-task"
       });
     } catch {
       // The row stays pending and assigned: the conversation's next touch of its board starts it.
     }
-    return { reopened: row.id };
+    return { reopened: finished.row.id };
   }
 });
 
@@ -104,13 +103,18 @@ const reopenFinishedTask = handler({
  *
  * @param turn The worker's turn for one message: what the door ran before.
  */
-export function replyOrReopen(turn: BlockDefinition<any, any>): BlockDefinition<any, any> {
+export function replyOrReopen<TInputSchema extends ZodTypeAny>(
+  turn: BlockDefinition<TInputSchema, ZodTypeAny>
+): BlockDefinition<TInputSchema, ZodTypeAny> {
+  // The two routes answer different shapes (the turn's reply, or the row it
+  // reopened), so the router's output is left open rather than one of them.
+  const reopen = reopenFinishedTask as unknown as BlockDefinition<TInputSchema, ZodTypeAny>;
   return router({
     name: "worker-reply-or-reopen",
     inputSchema: turn.inputSchema,
-    routes: [turn, reopenFinishedTask],
+    routes: [turn, reopen],
     resources: { ...conversationLedgerResources },
-    execute: async (_input: unknown, ctx: BlockContext) =>
-      (await finishedTaskOf(ctx)) === undefined ? turn : reopenFinishedTask
-  } as never) as BlockDefinition<any, any>;
+    execute: async (_input, ctx) =>
+      (await finishedTaskOf(ctx as unknown as BlockContext)) === undefined ? turn : reopen
+  });
 }
