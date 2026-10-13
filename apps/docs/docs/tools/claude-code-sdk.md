@@ -89,7 +89,7 @@ As the agent runs, the block translates the SDK stream into items:
 | SDK output | flow-state-dev item |
 |------------|---------------------|
 | Assistant text | `message` (streamed token by token when partial messages are on) |
-| Extended thinking | `reasoning` |
+| Extended thinking | `reasoning`, when the SDK returns any text. Thinking with the text withheld emits nothing. |
 | Tool call and its result | `tool_output`, with the tool call's id, name, and arguments |
 | Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items |
 | System init, history compaction | transient `status` |

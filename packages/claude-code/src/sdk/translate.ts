@@ -360,6 +360,10 @@ function translateAssistant(
       events.push({ kind: "message_complete", text: block.text, ...withParent });
     } else if (block.type === "thinking") {
       if (state.partialMessages) continue;
+      // The SDK can withhold the thinking text. An item with nothing in it is a
+      // chevron with nothing behind it, and it splits the tool calls around it
+      // into separate groups.
+      if (block.thinking.trim() === "") continue;
       events.push({ kind: "reasoning_complete", text: block.thinking, ...withParent });
     } else if (block.type === "tool_use") {
       if (SUBAGENT_TOOL_NAMES.has(block.name)) {
@@ -763,7 +767,7 @@ function translateStreamEvent(
     return [{ kind: "message_delta", text: delta.text, ...(parentCallId ? { parentCallId } : {}) }];
   }
   // Thinking deltas carry the token on `delta.thinking`, not `delta.text`.
-  if (delta.type === "thinking_delta" && typeof delta.thinking === "string") {
+  if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking !== "") {
     return [{ kind: "reasoning_delta", text: delta.thinking, ...(parentCallId ? { parentCallId } : {}) }];
   }
   return [];

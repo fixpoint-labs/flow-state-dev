@@ -34,6 +34,19 @@ describe("translateSdkMessage", () => {
     expect(events).toEqual([{ kind: "reasoning_complete", text: "let me think" }]);
   });
 
+  it("emits no reasoning for a thinking block with no text", () => {
+    // The SDK returns thinking blocks with the text withheld. An empty reasoning
+    // item renders as a "Thinking" chevron with nothing inside, and sits between
+    // tool calls so they never group.
+    for (const thinking of ["", "  \n"]) {
+      const events = translateOne({
+        type: "assistant",
+        message: { content: [{ type: "thinking", thinking }] },
+      });
+      expect(events).toEqual([]);
+    }
+  });
+
   it("maps a tool_use block to a tool_call with callId, name, and JSON arguments", () => {
     const events = translateOne({
       type: "assistant",
@@ -44,6 +57,15 @@ describe("translateSdkMessage", () => {
     expect(events).toEqual([
       { kind: "tool_call", callId: "toolu_1", name: "Bash", arguments: '{"command":"ls"}' },
     ]);
+  });
+
+  it("does not stream a thinking_delta with no text", () => {
+    const state = createTranslateState({ partialMessages: true });
+    const events = translateSdkMessage(
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "" } } },
+      state,
+    );
+    expect(events).toEqual([]);
   });
 
   it("emits one event per content block when a message carries several", () => {
