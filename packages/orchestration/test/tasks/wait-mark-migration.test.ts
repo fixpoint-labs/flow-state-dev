@@ -1,17 +1,7 @@
 /**
- * A row stored before the wait rename still reads as waited on (WR-8).
- *
- * A row the build before the rename filed for a waiting turn carries its mark
- * as `ask: { gateId, deadline }` (retired-name-refusal: WR-8). Stored rows reach board logic two ways, and
- * both have to read the old mark as `wait`:
- *
- * - **Cast**, on a task collection instance (the durable board): no schema
- *   runs, so `withMigratedWait` at each backing's read boundary maps it.
- * - **Parsed**, through the delegation board field: `taskSchema` would strip
- *   the unknown key, so the field's schema maps it before parsing.
- *
- * If either dropped the old mark, the row's ending would never resume the
- * turn parked on it: the answer would be lost.
+ * A row stored as `ask` still reads as waited on (WR-8). A collection casts
+ * the row; the delegation board field parses it, and `taskSchema` would strip
+ * the unknown key. Either miss and the ending never resumes the turn.
  */
 import { describe, expect, it } from "vitest";
 import { delegationBoardSchema } from "../../src/skills/task-tools-capability";

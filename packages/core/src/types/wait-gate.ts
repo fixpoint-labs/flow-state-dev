@@ -30,16 +30,9 @@ import { SuspensionError, type SuspendOptions } from "../errors/suspension-error
 /** The suspension reason a wait gate carries. */
 export const WAIT_GATE_REASON = "wait" as const;
 
-/**
- * The reason a wait gate was stored under before it was renamed. A gate parked
- * before the upgrade still carries it, and is a wait gate everywhere one is tested.
- */
 const LEGACY_WAIT_GATE_REASON = "ask"; // retired-name-refusal: WR-9, a gate parked before the rename
 
-/**
- * Whether a suspension is a wait gate: the one test of a gate's kind, so a gate
- * stored under the old reason is read as one wherever a wait gate is tested.
- */
+/** The one test of a gate's kind, including a gate stored before the rename. */
 export function isWaitGate(suspension: { readonly reason: string }): boolean {
   return suspension.reason === WAIT_GATE_REASON || suspension.reason === LEGACY_WAIT_GATE_REASON;
 }
