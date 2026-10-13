@@ -90,13 +90,7 @@ const WORKSTREAM_LEAD = "workstream-lead";
 const COORDINATOR_FLOW = "coordinator";
 const AGENT_FLOW = "agent";
 const LIST_TASKS = "listTasks_tasks";
-/**
- * What a filing turn may spend outside its model's own calls. It catches a turn
- * that stalls on the framework's side: one that blocks on the coder's run, or
- * retries or hangs in the hand-over. A scripted model answers at once, so a
- * scripted turn is nearly all framework (about 100 ms); a real model's calls are
- * the provider's latency, not the framework's, so they are taken off first.
- */
+/** A filing turn's own time, outside its model's calls: over it, the turn stalled on the framework's side. */
 const TURN_BUDGET_MS = 10_000;
 const LINE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
