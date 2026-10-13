@@ -202,7 +202,9 @@ export const projectsFlow = defineFlow({
 });
 ```
 
-It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, `updateWorkstreamTool` for a lead, and `listLeadsTool` for whoever picks a lead (see [Opening workstreams from the coordinator](#opening-workstreams-from-the-coordinator)).
+It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, `updateWorkstreamTool` for a lead, and `listLeadsTool` and `openWorkstreamTool` for a worker that picks a lead and opens the workstream (see [Opening workstreams from the coordinator](#opening-workstreams-from-the-coordinator)).
+
+Pass `leadFit: { model }` to have `openWorkstreamTool` check a worker's pick of lead against the work before it opens. Left out, `openWorkstreamTool` is the same block as `openWorkstream`.
 
 A lead flow must declare the internal entry `workstreamOpenedEntry()` returns, under `internal.actions[WORKSTREAM_OPENED_ENTRY]`. The built-in `agent` flow declares it, and a worker flow of your own spreads it in to let its workers lead. `leadFlows` reads only each flow's `kind` and that entry, so you can pass the flow itself or describe it, as above. A lead flow without the entry is refused when the blocks are built.
 
@@ -261,6 +263,7 @@ A workstream id is unique within a project for each owner, so Alice's `checkout`
 | `invalid-workstream-id` | The id is empty or holds a `/` |
 | `no-such-worker` | The lead isn't a worker on your roster. Another user's worker is refused the same way |
 | `cannot-lead` | The lead runs on a flow that isn't in `leadFlows`, or lists no `delegates:` |
+| `lead-doesnt-fit` | A worker opened it with `openWorkstreamTool`, `leadFit` is set, and the lead's description doesn't say it does this work. See [Checking the lead fits](#checking-the-lead-fits) |
 | `lead-differs` | You already have this workstream open, with another lead. A workstream's lead doesn't change |
 | `too-many-workstreams` | You already have 25 open workstreams in the project. Mark one done first. Applies when your installation names a [project coordinator](#talking-to-a-project) |
 
@@ -408,9 +411,16 @@ A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses 
 Your coordinator can open a workstream for you when you ask for work none of your workstreams in the project covers. Add these tools from `defineWorkstreamBlocks` to its catalog:
 
 - `listLeadsTool`, a tool named `listLeads`. It takes no input and returns `{ leads: [{ id, description }] }`: every worker on your roster, your own and the standard ones, that can lead a workstream, as the roster stands when the tool runs. `description` is `null` for a worker without one.
-- `openWorkstream`, the same block as the action, named for the catalog with `.as()`. Called without `project`, it opens the workstream in the coordinator's own project. Naming another project is refused with `other-project`, so tell the coordinator to leave `project` out, as the file below does.
+- `openWorkstreamTool`, the `openWorkstream` write for a worker, named for the catalog with `.as()`. Called without `project`, it opens the workstream in the coordinator's own project. Naming another project is refused with `other-project`, so tell the coordinator to leave `project` out, as the file below does.
 
 ```ts
+// The same call as above, with leadFit added.
+const workstreams = defineWorkstreamBlocks({
+  installation,
+  leadFlows: [agentLeads],
+  leadFit: { model: "openai/gpt-5.4-mini" },
+});
+
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
@@ -419,7 +429,7 @@ const coordinator = defineCoordinatorFlow({
     catalog: {
       ...projectCoordinatorTools,
       listLeads: workstreams.listLeadsTool,
-      openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" }),
+      openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream" }),
     },
   },
 });
@@ -443,6 +453,18 @@ workstream it returns. When nobody fits, say so and open nothing.
 ```
 
 When `openWorkstream` runs in your own coordinator's turn, the new workstream is already one of the coordinator's delegates when the open returns, so the coordinator can hand your ask to it in the same turn. The delegate's target is `<project.visibility>/<project.id>/<id>`, read from the `workstream` the open returns, for example `shared/apollo/checkout`. One worker can lead several of your workstreams, each with its own session and board.
+
+#### Checking the lead fits
+
+`listLeads` returns every worker that can lead, whether or not it suits the work. A coordinator with a single lead tends to pick it even when its description says it does something else. Set `leadFit` to have the open refuse that pick.
+
+With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
+
+The check runs only once every other refusal has passed, so a bad id or a lead that can't lead is refused for that reason without a model call. Opening a workstream that is already open, with the same lead, isn't checked again.
+
+The open goes through without a verdict when the model call fails or the lead has no description, so a model outage never stops a workstream opening. Opens through the `openWorkstream` action, such as a user's own open from the app, are never checked.
+
+The tool's answer says what became of the check in `leadFit`: `{ checked: true }` when the lead passed, or `{ checked: false, why }` when it went unchecked. `why` is `already-open`, `no-description`, or `unanswered:` followed by the model call's error, so a check that has stopped answering shows up in the answers rather than nowhere.
 
 ### Managing the project from the coordinator
 

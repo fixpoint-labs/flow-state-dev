@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 316" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 11 October 2026. An input lane: FIX-1820, the restart closure, done on 11 October. This epic spec in review at the now line. FIX-1875 dispatchTask: spec, then implementation. FIX-1872 one fence: spec beside FIX-1875's build, implementation after FIX-1875 merges. FIX-1876 docs and vocabulary: spec beside, implementation after both. The closure FIX-1887: its QA plan written early, its run after all three merge. The critical path runs through every implementation in order, then the closure run.">
+     aria-label="The path as of 11 October 2026. An input lane: FIX-1820, the restart closure, done on 11 October. This epic spec in review at the now line. FIX-1875 dispatchTask: spec, then implementation. FIX-1872 one fence: spec beside FIX-1875's build, implementation in two PRs after FIX-1875 merges. FIX-1876 docs and vocabulary: spec beside, implementation after both. The closure FIX-1887: its QA plan written early, its run after all three merge. The critical path runs through every implementation in order, then the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -55,7 +55,7 @@
     <rect class="todo" x="472" y="164" width="96" height="22" rx="3"/>
     <text class="t-s" x="480" y="179">spec</text>
     <rect class="todo" x="610" y="164" width="110" height="22" rx="3"/>
-    <text class="t-s" x="618" y="179">impl</text>
+    <text class="t-s" x="618" y="179">impl &#183; 2 PRs</text>
   </g>
   <g id="words">
     <text class="t-ln" x="16" y="214">FIX-1876 &#183; docs, vocabulary</text>

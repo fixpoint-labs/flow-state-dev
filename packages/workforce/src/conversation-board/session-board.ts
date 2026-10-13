@@ -38,6 +38,7 @@
  * ```
  */
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { DispatchPostForm } from "@flow-state-dev/orchestration";
 import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
@@ -46,13 +47,14 @@ import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
 import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY } from "./board-entries";
-import { TASK_SETTLED_ENTRY } from "./notice-delivery";
+import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { questionPark } from "./question-park";
 import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
   CONVERSATION_BOARD_SERVER_OWNED,
   conversationBoardStateShape,
+  postSettledEntry,
   taskSettledEntry
 } from "./task-settled";
 
@@ -83,6 +85,11 @@ export interface SessionBoardOptions {
    * coordinator's flow seeds one per workstream its user has open there.
    */
   readonly seed?: (ctx: BlockContext) => Promise<readonly DelegateRecord[] | undefined>;
+  /**
+   * `dispatchTask`'s post form, for a flow that routes posts: on a turn routing
+   * one, the model hands it on with `post: true`.
+   */
+  readonly posts?: DispatchPostForm;
 }
 
 /**
@@ -95,7 +102,15 @@ export function defineSessionBoard(options: SessionBoardOptions) {
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
     flowKind: options.flowKind,
-    chainLimit: () => taskChainLimitOf(options.installation)
+    chainLimit: () => taskChainLimitOf(options.installation),
+    ...(options.posts === undefined ? {} : { posts: options.posts }),
+    // A post row's delegate is checked again at hand-over, for a post: one
+    // fired or moved to a flow that takes none since its filing is refused.
+    postFlow: async (ctx, worker) => {
+      const checked = await delegates.check(ctx as never, worker, "post");
+      if (!checked.ok) throw new Error(`The post wasn't handed to "${worker}": ${checked.message}`);
+      return checked.worker.flow;
+    }
   });
 
   return {
@@ -114,6 +129,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
+    /** File a post row and start it: the coordinator's one way to hand a post on. */
+    filePost: board.filePost,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
     actions: { ...board.actions, ...delegates.actions },
     /** The ledger, for the flow's `resources`. */
@@ -131,11 +148,18 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      *   with a notice as its message.
      * @param policy Whether a notice wakes the turn (`judgment`, the default)
      *   or lands as a line only (`fixed`), for the running session.
+     * @param onPost A post row's ending, for a flow that hands posts on: the
+     *   coordinator's own handling (`PostEnding` in), on its own entry.
      */
-    entries(turn: BlockDefinition<any, any>, policy: (ctx: BlockContext) => NoticePolicy = () => "judgment") {
+    entries(
+      turn: BlockDefinition<any, any>,
+      policy: (ctx: BlockContext) => NoticePolicy = () => "judgment",
+      onPost?: BlockDefinition<any, any>
+    ) {
       return {
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard },
-        [TASK_SETTLED_ENTRY]: taskSettledEntry({ runBoard: board.runBoard, turn, policy }),
+        [TASK_SETTLED_ENTRY]: taskSettledEntry({ runBoard: board.runBoard, turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
+        ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ runBoard: board.runBoard, turn, policy, onPost }) }),
         [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
         [CANCEL_PIECES_ENTRY]: { inputSchema: cancelPiecesInputSchema, block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY }
       };

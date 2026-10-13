@@ -239,13 +239,17 @@ export function scopeItemsToLatestCollectionRequest(
 // ---------------------------------------------------------------------------
 
 /**
- * Return the set of `item.id` values that belong to any task-board task in
- * `items` — across every `collectionId` present.
+ * Return the set of `item.id` values that belong to a task whose board
+ * `items` mounts a `<TaskPlan />` for (a `task-board-meta` item for its
+ * collection), across every such board.
  *
  * Items belonging to a task should render inside that task's expansion
  * in `<TaskPlan />`, not also inline in the chat thread. The chat-level
  * `<RequestGroupRenderer>` uses this set to skip them so the user sees
- * each tool call / message / reasoning event exactly once.
+ * each tool call / message / reasoning event exactly once. A task worked in
+ * this list for a board shown somewhere else, such as a post a coordinator
+ * handed to a delegate's session, has no `<TaskPlan />` here, so its items
+ * stay in the chat thread.
  *
  * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
  * (FIX-658), which keys off the emit-time `taskId` stamped on each item, so
@@ -256,7 +260,27 @@ export function scopeItemsToLatestCollectionRequest(
 export function collectTaskOwnedItemIds(
   items: ReadonlyArray<OutputItem>,
 ): Set<string> {
-  return collectAttributedItemIds(items);
+  const boards = new Set<string>();
+  for (const item of items) {
+    if (!isComponentItem(item) || item.component !== TASK_BOARD_META_COMPONENT) continue;
+    const collectionId = (item.data as TaskBoardMetaData).collectionId;
+    if (collectionId !== undefined) boards.add(collectionId);
+  }
+  if (boards.size === 0) return new Set();
+  const planned = new Set<string>();
+  for (const item of items) {
+    if (!isComponentItem(item) || item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    if (data.collectionId !== undefined && boards.has(data.collectionId) && data.taskId !== undefined) {
+      planned.add(data.taskId);
+    }
+  }
+  const attributed = collectAttributedItemIds(items);
+  const owned = new Set<string>();
+  for (const item of items) {
+    if (attributed.has(item.id) && item.taskId !== undefined && planned.has(item.taskId)) owned.add(item.id);
+  }
+  return owned;
 }
 
 // ---------------------------------------------------------------------------

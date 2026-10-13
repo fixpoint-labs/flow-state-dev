@@ -18,8 +18,8 @@
  * `openWorkstream` names it as the lead over HTTP, as any app may.
  */
 import { randomBytes } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
 import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
+import { postDeliveries, type PostDelivery } from "../../lib/post-rows.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
 import { ENTRY_WRITER_ACTION } from "./flows/entry-writer.mts";
@@ -227,24 +227,14 @@ async function talk(who: Connected, kind: string, sessionId: string, words: stri
 
 const calls = (name: string, tool: string) => name === tool || [`/${tool}`, `.${tool}`, `_${tool}`].some((s) => name.endsWith(s));
 
-type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; reason?: string };
+type Delivery = PostDelivery;
 
 /**
- * A coordinator session's delivery ledger, from the store file, from the row
- * `who` owns. No route exposes it: the coordinator keeps it server-written.
+ * A coordinator session's post rows, from the store file, from the rows `who`
+ * owns. No route exposes them with their server-written payload.
  */
 function ledgerOf(store: string, who: Connected, sessionId: string): Delivery[] {
-  const db = new DatabaseSync(store, { readOnly: true });
-  try {
-    db.exec("PRAGMA busy_timeout = 5000");
-    const row = db
-      .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
-      .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
-    const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return (state?.deliveries ?? []) as Delivery[];
-  } finally {
-    db.close();
-  }
+  return postDeliveries(store, who.person.userId, sessionId);
 }
 
 /** What each leg found: failures by assertion name, and notes. */

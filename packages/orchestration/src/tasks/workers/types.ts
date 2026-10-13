@@ -77,6 +77,12 @@ export const taskWorkerInputSchema = z.object({
   followUpOf: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
   /**
+   * The row's server-written payload (`Task.sealed`), present only on a row
+   * filed with one. What the code that filed the row left for the entry that
+   * runs it; no model wrote it.
+   */
+  sealed: z.record(z.unknown()).optional(),
+  /**
    * Selected observations from prior tasks in this board run.
    * Populated when the Task Board's `flowPolicy` returns a non-empty
    * selection for this task. Workers may read either the raw
