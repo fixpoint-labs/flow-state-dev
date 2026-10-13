@@ -215,8 +215,8 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
       (item) => item.type === "tool_output" && item.toolCall?.name === "discover",
     );
     expect(found).toHaveLength(1);
-    expect(JSON.stringify(found[0]!.output)).not.toContain(setup.projectCoordinator!);
-    expect(JSON.stringify(found[0]!.output)).not.toContain("eng.coder");
+    const domains = (found[0]!.output as { domains: Array<{ domain: string; entries: unknown[] }> }).domains;
+    expect(domains.flatMap((d) => d.entries)).toEqual([]);
   });
 
   it("opens one led by the EM and hands the ask into its session in the same turn, adding nobody to her roster", async () => {

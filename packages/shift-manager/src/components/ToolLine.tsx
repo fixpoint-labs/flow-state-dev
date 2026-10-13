@@ -42,7 +42,11 @@ function stateOf(status: string): CallState {
   }
 }
 
-/** Each call's state in its run: a failure that a later call of the same tool completed is `retried`. */
+/**
+ * Each call's state in its run: a failure that a later call of the same tool
+ * completed is `retried`. Same tool name, later in this run, completed: the
+ * arguments aren't compared, and a retry in another run doesn't count.
+ */
 function statesInRun(items: readonly ToolOutputItem[]): CallState[] {
   return items.map((item, i) => {
     const state = stateOf(item.status);
