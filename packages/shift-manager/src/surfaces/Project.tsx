@@ -15,8 +15,9 @@
  *   with the progress worked out from them (BR-18, BR-19). It opens none: a
  *   workstream opens when the user asks their project coordinator in
  *   Stream for the work, and it names the lead (BR-38).
- *   An entry opens on its own view: its owner talks with its lead in its
- *   workstream session; anyone else reads the entry (BR-12).
+ *   Each row counts its objectives met. An entry opens on its own view,
+ *   under its objectives, each marked met or not: its owner talks with its
+ *   lead in its workstream session; anyone else reads the entry (BR-12).
  * - **Brief** is the row's brief, under the repository its code lives in, or
  *   a line saying it has none and its coding work runs on its files.
  *
@@ -411,6 +412,7 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
             <span className="truncate">{entry.title}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
               {entry.owner} · {entry.status}
+              {entry.objectives.length === 0 ? "" : ` · ${entry.objectives.filter((o) => o.met).length} of ${entry.objectives.length} objectives met`}
               {entry.stale ? " · gone quiet" : ""}
             </span>
           </button>
@@ -469,7 +471,10 @@ function EntryView({
     const worker = leadWorker(entry, roster, workers);
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="project-entry-own" data-workstream-id={entry.id}>
-        <div className="mx-auto w-full max-w-3xl px-4 pt-3">{back}</div>
+        <div className="mx-auto w-full max-w-3xl px-4 pt-3 text-sm">
+          {back}
+          <Objectives objectives={entry.objectives} />
+        </div>
         {entry.sessionId === null ? (
           <EmptyState title="This workstream's session isn't open yet" testId="project-entry-no-session">
             Its open hasn't finished. Open it again from the project to finish it.
@@ -529,16 +534,7 @@ function EntryDetails({
         {entry.due === null ? "" : ` · due ${entry.due}`}
         {entry.stale ? " · gone quiet" : ""}
       </p>
-      {entry.objectives.length === 0 ? null : (
-        <ul className="list-inside list-disc" data-testid="project-entry-objectives">
-          {entry.objectives.map((objective, i) => (
-            <li key={i} data-met={objective.met ? "true" : undefined}>
-              {objective.text}
-              {objective.met ? " · met" : ""}
-            </li>
-          ))}
-        </ul>
-      )}
+      <Objectives objectives={entry.objectives} />
       <section aria-label="Latest report" data-testid="project-entry-report">
         {report === undefined ? (
           <p className="text-muted-foreground">Reading the latest report…</p>
@@ -551,6 +547,22 @@ function EntryDetails({
         )}
       </section>
     </article>
+  );
+}
+
+/** A workstream's objectives, each marked met or not; nothing when it has none. */
+function Objectives({ objectives }: { objectives: WorkstreamEntry["objectives"] }) {
+  if (objectives.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-0.5" aria-label="Objectives" data-testid="project-entry-objectives">
+      {objectives.map((objective, i) => (
+        <li key={i} data-testid="project-entry-objective" data-met={objective.met ? "true" : "false"}>
+          <span aria-hidden="true">{objective.met ? "✓ " : "○ "}</span>
+          {objective.text}
+          <span className="sr-only">{objective.met ? " (met)" : " (not met)"}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -390,6 +390,40 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     expect(conversation.getAttribute("data-session-id")).toBe(own.sessionId);
   });
 
+  it("shows a workstream's objectives and which are met, on its row and on its owner's own view", async () => {
+    const { screen, act, fireEvent, within } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    await runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "openWorkstream", {
+      project: APOLLO,
+      id: "survey",
+      title: "The survey",
+      lead: EM,
+      objectives: ["Survey the repo", "Write up findings"],
+    });
+    await runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "updateWorkstream", {
+      project: APOLLO,
+      id: "survey",
+      objectives: [
+        { text: "Survey the repo", met: true },
+        { text: "Write up findings", met: false },
+      ],
+    });
+
+    openApp(alice.clients, baseUrl, "/p/apollo/workstreams");
+    const row = (await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 })).find((li) => li.getAttribute("data-workstream-id") === "survey")!;
+    expect(row.textContent).toContain("1 of 2 objectives met");
+
+    // Her own entry: the objectives above the conversation with its lead, each marked met or not.
+    act(() => fireEvent.click(row.querySelector("button")!));
+    await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
+    const items = within(screen.getByTestId("project-entry-own")).getAllByTestId("project-entry-objective");
+    expect(items.map((li) => [li.textContent?.includes("Survey the repo") ? "survey" : "write-up", li.getAttribute("data-met")])).toEqual([
+      ["survey", "true"],
+      ["write-up", "false"],
+    ]);
+  });
+
   it("its Stream is her project coordinator session, linked to the project", async () => {
     const { screen } = dom!;
     const { baseUrl, setup, as } = await open();
