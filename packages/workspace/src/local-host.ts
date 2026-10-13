@@ -907,8 +907,15 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           );
           const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated })).stdout.trim();
           // Only over the copy this fetch started from: a provision running
-          // beside this one may have fetched something newer since.
-          await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", ref, fetched, previous], left()).catch(() => undefined);
+          // beside this one may have fetched something newer since. A ref
+          // that failed to move for any other reason (a lock) is a failed
+          // fetch, and falls back like one.
+          try {
+            await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", ref, fetched, previous], left());
+          } catch (error) {
+            const now = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
+            if (now === previous) throw error;
+          }
           // What was fetched, not what the shared ref says now.
           return { ref, commit: fetched };
         } catch (error) {

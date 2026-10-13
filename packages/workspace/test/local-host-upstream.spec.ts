@@ -247,6 +247,20 @@ describe("a fetch that can't happen falls back to the last-fetched copy", () => 
     expect(String(warn.mock.calls[0]![0])).toContain(upstream.url);
   });
 
+  it("falls back with a warning when the fetched tracking ref is locked and can't move", async () => {
+    const localMain = git(repo, "rev-parse", "main");
+    upstream.commit("main", "merged.txt", "a teammate's merge");
+    writeFileSync(join(repo, ".git", "refs", "remotes", "origin", "main.lock"), "");
+
+    const place = await provision("main");
+
+    // Never cut from a commit the tracking ref doesn't hold.
+    expect(git(repo, "rev-parse", "refs/remotes/origin/main")).toBe(localMain);
+    expect(place.repo?.baseCommit).toBe(localMain);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("could not fetch");
+  });
+
   it("cuts from local when the fetch fails and nothing was ever fetched", async () => {
     const lone = join(tempDir("lone"), "repo");
     git(join(lone, ".."), "init", "-q", "-b", "main", lone);
