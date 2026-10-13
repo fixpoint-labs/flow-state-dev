@@ -260,7 +260,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const listDelegatesTool = handler({
     name: LIST_DELEGATES,
     description:
-      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `handOff` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
+      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `dispatchTask` with `post: true` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,

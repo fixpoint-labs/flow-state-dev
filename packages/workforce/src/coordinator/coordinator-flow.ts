@@ -7,8 +7,8 @@
  * created, and each turn loads that worker's configuration.
  *
  * **What a conversation holds.** Its delegates and its fallback
- * (`../delegates/delegate-list.ts`), and best fit's hold and the delivery
- * ledger (`coordinator-state.ts`), in server-written session state: the list
+ * (`../delegates/delegate-list.ts`), and best fit's hold and the open rounds
+ * (`coordinator-state.ts`), in server-written session state: the list
  * copied from the worker's defaults the first time it's read or changed,
  * changed only by the four actions and the coordinator's own tools, and never
  * seeded by a session create.
@@ -16,7 +16,7 @@
  * **How a post is routed.**
  *
  * - `judgment`: the coordinator's own turn reads the post and hands it to
- *   delegates with its `handOff` tool, or answers itself. It reads its
+ *   delegates with its `dispatchTask` tool and `post: true`, or answers itself. It reads its
  *   delegates with its `listDelegates` tool; the list is never in its prompt.
  * - `best-fit`: best fit's ladder (`best-fit.ts`): the delegate still on the
  *   user's last post, else one evaluator call (asked again as a language model when it
@@ -38,9 +38,12 @@
  * carries them to the delegate, whose model is shown them for that turn as a
  * message of the conversation, never as system text (`delegated-post.ts`).
  *
- * **How a delivery reaches a delegate.** Each delivery is opened in the
- * delivery ledger with a token, then dispatched to the delegate's flow on
- * {@link DELEGATED_POST_ENTRY}, into a session keyed by this conversation and
+ * **How a delivery reaches a delegate.** Each delivery is one row on this
+ * conversation's board (`../conversation-board`), its id derived from the
+ * post, the round and the delegate record, so the same pick twice files one
+ * row. The post rides on the row's server-written payload. The board hands the
+ * row to the delegate's flow on its task entry {@link DELEGATED_POST_ENTRY},
+ * behind the board's claim gate, into a session keyed by this conversation and
  * the delegate record. The session is created on first delivery, naming the
  * delegate as its worker, so the delegate's own create check links it at
  * create; the key's derivation includes this conversation's incarnation, so a
@@ -55,22 +58,25 @@
  * of this conversation's; the records change only through the workstream's
  * entry paths, on the internal {@link WORKSTREAM_DELEGATE_ACTION}.
  *
- * **How an answer lands.** On the internal {@link DELEGATE_ANSWER_ACTION}, with
- * its delivery's token, claimed once. It lands as a line under the delegate's
- * name. The round, the delegate and the post come from the delivery the
- * token names, never from the answer. With `rounds: 0`, an answer routes
- * nowhere further.
+ * **How an answer lands.** The delegate's run settles its row with its reply,
+ * and the row's ending reaches this conversation once, on the board's notice
+ * entry for post rows (`onPostSettled`): only the claim the row was worked
+ * under can settle it, and the notice is acted on once however often it is
+ * sent. It lands as a line under the delegate's name. The round, the delegate
+ * and the post come from the row's payload, never from the answer. With
+ * `rounds: 0`, an answer routes nowhere further.
  *
  * **How an answer goes back out** (`coordinator-rounds.ts`). Below the
  * coordinator's `rounds:`, best fit and round robin route each answer again
  * as it lands, never to its author; everyone and judgment send a round's
  * answers on when the round closes. Either way the next round runs on the
  * internal {@link ROUTE_ON_ACTION}, which the conversation dispatches into
- * itself, through the same policy steps as a user's post. A delegate with
- * no answer says so on {@link DELEGATE_MISSED_ACTION}, so a round doesn't wait
- * on a failed or cancelled turn, and closes at its deadline whatever is still
- * out. Every wake of the conversation (a user's post, an answer, a missed
- * report, the end of a routing) also closes each round past its deadline, so
+ * itself, through the same policy steps as a user's post. A row that ends
+ * without an answer (failed, or cancelled: a cancelled run tells the
+ * conversation on {@link POST_CANCELLED_ACTION}, which ends the row under its
+ * claim) ends that delegate's part, so a round doesn't wait on it, and a round
+ * closes at its deadline whatever is still out. Every wake of the conversation
+ * (a user's post, a row's ending, the end of a routing) also closes each round past its deadline, so
  * a delegate that never reports holds its round only until the next wake.
  */
 import {

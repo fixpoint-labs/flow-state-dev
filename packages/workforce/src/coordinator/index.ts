@@ -4,7 +4,7 @@
  *
  * - `defineCoordinatorFlow`: the `coordinator` worker flow, registered on a
  *   worker installation like any worker flow.
- * - `delegatedPostEntry`: the internal entry a worker flow declares so its
+ * - `delegatedPostEntry`: the task entry a worker flow declares so its
  *   workers can be delegates that take posts; `delegatedPostOnFinished`, the
  *   request `onFinished` that reports a cancelled run; and
  *   `delegatedPostHistory`, a generator `history` that hands a turn's model
