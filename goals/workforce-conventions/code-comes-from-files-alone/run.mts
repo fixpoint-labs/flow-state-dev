@@ -9,8 +9,8 @@
  *      kitchen-sink's `workforce/blocks/`; the app's own `fsdev gen`, the
  *      workspace packages' build and `next build` run, and the token must be
  *      in compiled chunks under `.next`, beside the hand-wired flows as the
- *      probe's positive control. The plant and every file the build rewrites
- *      are restored when the leg ends.
+ *      probe's positive control. The plant and `workforce.gen.ts` are restored
+ *      when the leg ends.
  *
  *   d  the KIND, on the fixture host. Two workers sit on ONE custom kind,
  *      `desk-clerk`, and differ only in the `desk:` their own `WORKER.md`
@@ -145,8 +145,6 @@ const KITCHEN_SINK = join(REPO_ROOT, "apps", "kitchen-sink");
 const NEXT_DIR = join(KITCHEN_SINK, ".next");
 const APP_GEN = join(KITCHEN_SINK, "workforce", "workforce.gen.ts");
 const APP_BLOCKS = join(KITCHEN_SINK, "workforce", "blocks");
-/** Files a Next build or this leg rewrites, restored byte for byte when the leg ends. */
-const APP_RESTORE = [APP_GEN, join(KITCHEN_SINK, "next-env.d.ts")];
 /** Flows kitchen-sink wires by hand: the probe must find these, or a 0 for the block means nothing. */
 const HAND_WIRED = ["chat-agent", "rich-text-component", "weekly-digest"];
 
@@ -193,11 +191,11 @@ await runGoal(async (failures) => {
   // The file, the map key and the block's own name must agree (the tool catalog refuses otherwise).
   const plant = join(APP_BLOCKS, `${token}.ts`);
   const hadBlocksDir = existsSync(APP_BLOCKS);
-  const saved = APP_RESTORE.map((path) => [path, readFileSync(path)] as const);
+  const savedGen = readFileSync(APP_GEN);
   const restoreApp = () => {
     rmSync(plant, { force: true });
     if (!hadBlocksDir) rmSync(APP_BLOCKS, { recursive: true, force: true });
-    for (const [path, bytes] of saved) writeFileSync(path, bytes);
+    writeFileSync(APP_GEN, savedGen);
   };
   process.once("SIGINT", () => {
     restoreApp();
