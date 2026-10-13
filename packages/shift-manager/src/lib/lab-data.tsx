@@ -2,17 +2,11 @@
  * The one snapshot every surface draws from, and when it is read again.
  *
  * S3's contract: a refresh on boot, on an organization switch, after a
- * successful answer to an ask, after each line the chief of staff takes (its
- * turn may have created a project or hired a worker), and on Retry. Never on a
- * route or tab change, so moving around the app costs no reads. Inbox, the
- * Stream's asks, the sidebar counts and the Tasks list all come from the same
- * snapshot.
- *
- * An answer is followed past the resume: the answered request runs on, so
- * the provider reads its status until it stops running, then reads the Lab
- * again. Each step bumps {@link LabData.answered}, which a conversation on
- * that session reads as its cue to read itself back: the approval first,
- * then what the run did with it.
+ * successful answer to an ask and again once the run it resumed stops, after
+ * each line the chief of staff takes (its turn may have created a project or
+ * hired a worker), and on Retry. Never on a route or tab change, so moving
+ * around the app costs no reads. Inbox, the Stream's asks, the sidebar counts
+ * and the Tasks list all come from the same snapshot.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
@@ -43,23 +37,29 @@ const SETTLE_POLL_MS = 1_000;
 const SETTLE_POLLS = 130;
 /** Polls a request may still read `suspended` right after its answer, before that counts as stopped again. */
 const RESUME_GRACE_POLLS = 3;
+/** Status reads in a row that may fail before the wait gives up. */
+const SETTLE_FAILED_READS = 3;
 
 /**
  * Wait until the request an answer resumed stops running, or `live()` turns
  * false (the provider is gone, or reads another Lab), whichever is first. A
- * read that fails ends the wait: the snapshot read after it says what it can.
+ * read that fails is tried again on the next poll; {@link SETTLE_FAILED_READS}
+ * in a row end the wait, and the snapshot read after it says what it can.
  * A run still going after {@link SETTLE_POLLS} reads ends the wait too, and
  * its result is drawn on the conversation's next read.
  */
 async function settled(clients: LabClients, flowId: string, requestId: string, live: () => boolean): Promise<void> {
+  let failed = 0;
   for (let poll = 0; poll < SETTLE_POLLS && live(); poll += 1) {
-    let status: string;
+    let status: string | undefined;
     try {
       status = (await clients.actions(flowId).getRequestStatus(requestId)).status;
+      failed = 0;
     } catch {
-      return;
+      failed += 1;
+      if (failed >= SETTLE_FAILED_READS) return;
     }
-    if (status !== "in_progress" && (status !== "suspended" || poll >= RESUME_GRACE_POLLS)) return;
+    if (status !== undefined && status !== "in_progress" && (status !== "suspended" || poll >= RESUME_GRACE_POLLS)) return;
     await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
   }
 }

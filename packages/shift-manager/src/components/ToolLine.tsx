@@ -7,9 +7,8 @@
  * result and metadata; a run of consecutive calls is one line ("Used 3 tools
  * ›") that opens to one row per call. A call that is running or failed says
  * so in words ("Using discover…", "discover failed"), since there is no badge.
- * A call stopped on an approval or a question is waiting, not failed
- * (`isSuspensionWait`): its real result replaces the wait once the answer
- * resumes the run.
+ * A call that stopped to wait (`isSuspensionWait`) says so ("discover is
+ * waiting"), not that it failed.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
@@ -43,7 +42,7 @@ function stateOf(item: ToolOutputItem): CallState {
   }
 }
 
-/** The worst state in a run: any failure, else any call waiting on an answer, else any call still going, else done. */
+/** The worst state in a run: any failure, else any call waiting, else any call still going, else done. */
 function runState(items: readonly ToolOutputItem[]): CallState {
   const states = items.map(stateOf);
   if (states.includes("error")) return "error";
@@ -62,17 +61,17 @@ function argsOf(item: ToolOutputItem): unknown {
   }
 }
 
-/** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting for an answer" while it waits. */
+/** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting" while it waits. */
 function callLabel(name: string, state: CallState): string {
   if (state === "error") return `${name} failed`;
-  if (state === "waiting") return `${name} is waiting for an answer`;
+  if (state === "waiting") return `${name} is waiting`;
   if (state === "running" || state === "pending") return `Using ${name}…`;
   return `Used ${name}`;
 }
 
 /** The input, result and metadata of one call: what a quiet line opens to. */
 function CallDetails({ item }: { item: ToolOutputItem }) {
-  // A wait is not an error: its message is the ask's question, which the ask itself shows.
+  // A wait is not an error: its message is what it waits on, which the ask itself shows.
   const failed = stateOf(item) === "error";
   const args = argsOf(item);
   const output = failed ? undefined : item.output;
@@ -131,7 +130,7 @@ export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
       : state === "error"
         ? `Used ${items.length} tools, one failed`
         : state === "waiting"
-          ? `Used ${items.length} tools, one waiting for an answer`
+          ? `Used ${items.length} tools, one waiting`
           : `Used ${items.length} tools`;
   return (
     <QuietLine label={label} state={state}>

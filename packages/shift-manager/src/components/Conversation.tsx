@@ -114,8 +114,7 @@ export function Conversation({
   const feed = useFollowLatest({ startAtEnd: false });
   const { sessionId, opened, read, failure, reread } = conversation;
 
-  // An ask in this conversation answered anywhere on this page (Inbox, the
-  // summary): read it back as the answer lands and as the run it resumed stops.
+  // An ask in this conversation answered in Inbox or the summary: read the conversation back.
   const answeredHere = answered !== undefined && answered.sessionId === sessionId ? answered.count : undefined;
   useEffect(() => {
     if (answeredHere !== undefined) reread();
