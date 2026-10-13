@@ -27,6 +27,7 @@
 import { createManifestRegistry, isManifestDomain } from "@flow-state-dev/core";
 import type { ManifestDomain, ManifestRegistry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { turnConfigOf } from "./workers/verified-worker";
 
 /**
  * The worker-file key, pinned.
@@ -45,12 +46,13 @@ export const WORKER_DISCOVER_KEY = "discover";
  *
  * Read defensively off an erased config bag — this runs on a block whose
  * settings shape the capability cannot see, and a flow that declares no such
- * setting is the common case rather than an error.
+ * setting is the common case rather than an error. The bag is the turn's
+ * ({@link turnConfigOf}): the worker the turn resolved, so a worker on a flow
+ * shared by many workers, such as `coordinator`, is narrowed by its own file,
+ * and otherwise the flow copy's own settings.
  */
 export function workerDiscoverSelection(ctx: BlockContext): ManifestDomain[] | undefined {
-  const declared = (ctx.flow?.config as Record<string, unknown> | undefined)?.[
-    WORKER_DISCOVER_KEY
-  ];
+  const declared = turnConfigOf(ctx)[WORKER_DISCOVER_KEY];
   if (!Array.isArray(declared)) return undefined;
   return declared.filter(
     (entry): entry is ManifestDomain => typeof entry === "string" && isManifestDomain(entry),

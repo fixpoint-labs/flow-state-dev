@@ -15,15 +15,16 @@
  *
  * A call's label is its stated intent when its tool carries one (Bash's
  * `description`), otherwise the name-based phrase ("Ran a search"). There
- * is no status badge: a running call ends in "…", a failed one says so
- * and turns destructive.
+ * is no status badge: a running call ends in "…", a call waiting on an
+ * approval or a question says "(waiting)", and a failed one says so and
+ * turns destructive.
  *
  * Consecutive `tool_output` items in the chat stream are wrapped in a
  * <ToolGroup> via ItemsRenderer's `toolGroupRenderer`.
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
-import type { BlockTraceItem, ToolOutputItem } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type BlockTraceItem, type ToolOutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -157,8 +158,10 @@ export const ToolOutput = ({
 
 type ToolItem = BlockTraceItem | ToolOutputItem;
 
-function mapToolStatus(status: string): ToolState {
-  switch (status) {
+/** A call waiting on an approval or a question is `awaiting`, not `error` (`isSuspensionWait`). */
+function mapToolStatus(item: ToolItem): ToolState {
+  if (isSuspensionWait(item)) return "awaiting";
+  switch (item.status) {
     case "in_progress": return "running";
     case "completed": return "completed";
     case "failed": return "error";
@@ -198,26 +201,28 @@ function getToolOutput(item: ToolItem): unknown {
 }
 
 function getToolErrorText(item: ToolItem): string | undefined {
-  if (item.status !== "failed") return undefined;
+  if (item.status !== "failed" || isSuspensionWait(item)) return undefined;
   if (item.type === "tool_output" && item.error) return item.error.message;
   const raw = unwrapToolOutput(item);
   return raw === undefined ? undefined : String(raw);
 }
 
 /** A call's (or a run's) state, reduced to what a quiet line says in words. */
-type LineState = "running" | "completed" | "error";
+type LineState = "running" | "waiting" | "completed" | "error";
 
-function lineState(status: string): LineState {
-  const state = mapToolStatus(status);
+function lineState(item: ToolItem): LineState {
+  const state = mapToolStatus(item);
   if (state === "error") return "error";
+  if (state === "awaiting") return "waiting";
   if (state === "completed") return "completed";
   return "running";
 }
 
-/** The worst state in a run: any failure, else any call still going, else done. */
+/** The worst state in a run: any failure, else any call waiting, else any call still going, else done. */
 function runState(items: readonly ToolItem[]): LineState {
-  const states = items.map((item) => lineState(item.status));
+  const states = items.map(lineState);
   if (states.includes("error")) return "error";
+  if (states.includes("waiting")) return "waiting";
   if (states.includes("running")) return "running";
   return "completed";
 }
@@ -291,17 +296,22 @@ function ToolLine({ label, state, nested = false, mono = false, defaultOpen = fa
   );
 }
 
-/** "List files", "List files…" while it runs, "List files (failed)" when it did. */
-function withState(label: string, state: LineState, failed = 0, total = 1): string {
+/**
+ * "List files", "List files…" while it runs, "List files (failed)" when it
+ * did, "List files (waiting)" while it waits on an approval or a question.
+ * `count` is how many calls in a run are in `state`.
+ */
+function withState(label: string, state: LineState, count = 1, total = 1): string {
   if (state === "running") return `${label}…`;
-  if (state === "error") return total > 1 ? `${label} (${failed} failed)` : `${label} (failed)`;
+  if (state === "error") return total > 1 ? `${label} (${count} failed)` : `${label} (failed)`;
+  if (state === "waiting") return total > 1 ? `${label} (${count} waiting)` : `${label} (waiting)`;
   return label;
 }
 
 /** One tool call as a quiet line that opens to its details. */
 export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
   if (!item.toolCall) return null;
-  const state = lineState(item.status);
+  const state = lineState(item);
   return (
     <ToolLine label={withState(composeToolCallsLabel([labelInput(item)]), state)} state={state}>
       <ToolCallDetails item={item} />
@@ -341,17 +351,17 @@ export function ToolGroup({ items, defaultOpen = false, className }: ToolGroupPr
     );
   }
 
-  const failed = items.filter((item) => lineState(item.status) === "error").length;
+  const inState = items.filter((item) => lineState(item) === state).length;
   let current = -1;
   if (state === "running") {
     for (let i = items.length - 1; i >= 0; i--) {
-      if (lineState(items[i]!.status) === "running") { current = i; break; }
+      if (lineState(items[i]!) === "running") { current = i; break; }
     }
   }
   const label =
     current >= 0
       ? withState(composeToolCallsLabel([inputs[current]!]), "running")
-      : withState(composeToolCallsLabel(inputs), state, failed, items.length);
+      : withState(composeToolCallsLabel(inputs), state, inState, items.length);
 
   return (
     <ToolLine label={label} state={state} defaultOpen={defaultOpen} className={className}>
@@ -379,7 +389,7 @@ export type ToolRowProps = {
  * it stated none, opening to the call's input, result and metadata.
  */
 export function ToolRow({ item, intent, defaultOpen = false, className }: ToolRowProps) {
-  const state = lineState(item.status);
+  const state = lineState(item);
   const stated = intent ?? labelInput(item).intent;
   return (
     <ToolLine
