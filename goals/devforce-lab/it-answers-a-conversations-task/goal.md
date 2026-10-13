@@ -23,9 +23,8 @@ project's repository, or left in a project's files by an earlier run, after the 
 as the lab's owner. Each clock starts at the filing.
 
 - **a** a Shift Coordinator (chief of staff) conversation; the scripted coordinator files a task
-  naming storefront. The turn returns within 10 s of its own time (`a:turn-returns`): the budget
-  catches a turn that stalls on the framework's side, blocking on the coder's run or hanging in the
-  hand-over, so the time a generator model spends answering is taken off first; exactly one line under the
+  naming storefront. The turn returns within 10 s outside the model's calls (`a:turn-returns`), and a turn
+  that blocks on the coder's run or hangs in the hand-over still fails it; exactly one line under the
   row's assignee, `eng.coder`, names the task (`a:one-line-under-eng.coder`), and it is a
   completed line carrying storefront's marker (`a:carrying-the-marker`). The run record's working
   folder is a checkout of its own cut from storefront's repository (`a:own-checkout`), and the
@@ -43,8 +42,7 @@ as the lab's owner. Each clock starts at the filing.
 - **d** a real model as every turn and Jev as the judge, on the standard projects (storefront is
   the only one with a repository): the ask files a task for `eng.coder` naming storefront
   (`d:names-storefront`), and its one completed line carries the marker, judged done by Jev. The
-  turn's checks are leg a's, so `d:turn-returns` holds the same 10 s to the turn's time outside
-  the real model's calls: the provider's latency varies from run to run and is not the framework's.
+  turn's checks are leg a's (`d:turn-returns`).
 - **d2** the same ask with a run that answers "Storefront is a project.": the task ends `errored`
   with one failed line (`d2:ends-errored`) carrying Jev's reason (`d2:jevs-reason`).
 
