@@ -53,16 +53,11 @@ export interface IgnoredDirectory {
 }
 
 /**
- * Git options that run none of the repository's hooks.
- *
- * `worktree add` runs `post-checkout` in the new tree, and cutting or deleting
- * a branch runs `reference-transaction`. Those hooks are the operator's, written
- * for their own checkout: a `pnpm build` in one fails in a fresh tree with no
- * dependencies, and the provision fails with it. A run can also write into the
- * repository's hooks directory, which its worktree shares, and have the host
- * execute it outside the run's sandbox on the next provision. A hooks path of
- * `/dev/null` holds no hooks on Linux or macOS, and the flag beats any
- * `core.hooksPath` the repository sets.
+ * No repository hooks, on every git call the host makes. `worktree add` runs
+ * post-checkout (a build hook fails in a fresh tree), and cutting, moving or
+ * resetting a branch runs reference-transaction. A run can plant a hook in the
+ * shared hooks directory that the next provision would run outside the
+ * sandbox. `/dev/null` holds no hooks and beats `core.hooksPath`.
  */
 export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
 

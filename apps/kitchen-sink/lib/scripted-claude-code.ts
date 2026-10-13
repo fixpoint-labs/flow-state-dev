@@ -13,7 +13,7 @@
  * | Directive | What the script does |
  * |---|---|
  * | (none) | names the conversation (the asked one, or a new one), streams a reply with a pause, succeeds |
- * | `[plan]` | also records two to-do items and moves the first to `in_progress`, when the run names a to-do tool in `allowedTools` (as Claude Code requires) |
+ * | `[plan]` | also records two to-do items and moves the first to `in_progress`, when the run is offered the to-do tools (see below) |
  * | `[slow]` | after the reply and plan have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the conversation, so a stop lands before it is confirmed |
  * | `[new]` | names a new conversation even when asked to continue one |
@@ -34,7 +34,7 @@ import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from
  */
 export const scriptedPauses = { stepMs: 400, slowMs: 20_000 };
 
-/** The to-do tools whose naming in `allowedTools` makes Claude Code offer them. */
+/** Claude Code's gate: it offers its to-do tools only when `allowedTools` names one. */
 const PLAN_TOOLS = new Set(["TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite"]);
 
 /** One scripted Claude Code's conversations: turns per conversation, and how many it has started. */
@@ -100,8 +100,6 @@ async function* scriptedTurn(
 
   if (has("fail")) throw new Error("scripted failure after Claude Code named the conversation");
 
-  // Claude Code offers its to-do tools only when the run names one in
-  // `allowedTools`; a run that doesn't has no task list to plan with.
   if (has("plan") && options?.allowedTools?.some((tool) => PLAN_TOOLS.has(tool))) {
     yield toolUse("toolu_plan_1", "TaskCreate", { subject: "Read the request", description: "…", activeForm: "Reading" });
     yield toolResult("toolu_plan_1", { task: { id: "1", subject: "Read the request" } }, "Task #1 created successfully: Read the request");

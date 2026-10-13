@@ -19,7 +19,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import {
   FlowNavigator,
-  type FlowNavigatorLeaf,
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
@@ -31,7 +30,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
-/** The address's query parameter naming the open session (`?session=<id>`). */
 const SESSION_PARAM = "session";
 
 /** The flow list the navigator reads. */
@@ -68,7 +66,6 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
   // The open leaf's re-read, so a session just created shows in the list.
   const refreshLeaf = useRef<(() => void) | null>(null);
 
-  /** Open a session, and name it in the address so a reload comes back to it. */
   const open = useCallback((sessionId: string) => {
     setSelected(sessionId);
     const url = new URL(window.location.href);
@@ -77,8 +74,8 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
   }, []);
 
   // After mount, since the server draws no session: the one the address names,
-  // when it is one of this mode's. Anything else leaves the picker, and a failed
-  // listing is the rail's to report.
+  // when it is one of this mode's. Anything else leaves the picker. A failed
+  // listing says so, so it doesn't read as a session that isn't there.
   useEffect(() => {
     const named = new URLSearchParams(window.location.search).get(SESSION_PARAM);
     if (named === null) return;
@@ -87,7 +84,9 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
       (rows) => {
         if (current && rows.some((row) => row.id === named)) setSelected((picked) => picked ?? named);
       },
-      () => undefined,
+      (cause: unknown) => {
+        if (current) setError(`Session ${named} can't be reopened: ${cause instanceof Error ? cause.message : String(cause)}`);
+      },
     );
     return () => {
       current = false;
@@ -107,8 +106,6 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
       setCreating(false);
     }
   }, [sessions, flowKind, open]);
-
-  const handleSelect = useCallback((sessionId: string, _leaf: FlowNavigatorLeaf) => open(sessionId), [open]);
 
   const slots = useMemo(
     () => ({
@@ -150,7 +147,7 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
             sessionClient={sessions}
             userId={KITCHEN_SINK_USER_ID}
             selectedSessionId={selected}
-            onSelectSession={handleSelect}
+            onSelectSession={open}
             slots={slots}
           />
         </div>

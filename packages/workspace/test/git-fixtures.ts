@@ -15,10 +15,7 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", [...AUTHOR, ...args], { cwd, encoding: "utf8" }).trim();
 }
 
-/**
- * A host git call's arguments from its subcommand on, past any leading
- * `-c key=value` the host sets (it runs none of the repository's hooks).
- */
+/** Args from the git subcommand on, past leading `-c <value>` pairs. */
 export function subcommand(args: readonly string[]): readonly string[] {
   let i = 0;
   while (args[i] === "-c") i += 2;

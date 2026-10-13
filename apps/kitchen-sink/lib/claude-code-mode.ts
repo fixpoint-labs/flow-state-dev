@@ -83,21 +83,11 @@ export interface ClaudeCodeSeams {
 }
 
 /**
- * Claude Code's to-do tools, the ones its plan record is read from. Outside
- * its interactive terminal, Claude Code offers them on its current models only
- * when one is named in `allowedTools`; unnamed, the run has no task list and
- * the plan panel never fills. Under `bypassPermissions` naming them allows
- * nothing more: every tool is already allowed.
- */
-const CLAUDE_CODE_PLAN_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
-
-/**
  * The Claude Code block, built from the session flow's feeds.
  *
  * `systemPrompt` is left unset on purpose, which starts the run from Claude
  * Code's own preset. A plain string there would turn off its planning tool,
- * and the plan panel would never fill. So would leaving the to-do tools
- * unnamed (`CLAUDE_CODE_PLAN_TOOLS`).
+ * and the plan panel would never fill.
  */
 export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
@@ -109,7 +99,6 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordWork: goalControl() !== "no-record",
     permissionMode: "bypassPermissions",
-    allowedTools: [...CLAUDE_CODE_PLAN_TOOLS],
     // The run doesn't load the worktree's own Claude Code settings: a turn can
     // edit `.claude/settings.json`, and a hook it added would run outside the
     // sandbox on the next turn.

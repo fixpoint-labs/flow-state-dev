@@ -590,10 +590,11 @@ stays empty until the harness reports one. Plan entries reach an open page as th
 change, rather than when the request ends.
 
 The plan record fills only when the agent keeps a to-do list with Claude Code's to-do tools,
-`TaskCreate` and `TaskUpdate`. That takes two things. The run has to be offered the tools: on
-newer models Claude Code switches them off unless you name them in `allowedTools`. And the agent
-has to choose to use them, which it often doesn't on a short job, whatever prompt the run
-started from. When it doesn't, the record stays empty. That is the honest answer, not a
+`TaskCreate` and `TaskUpdate`. Every run is offered them: on newer models Claude Code switches
+them off unless they're named in `allowedTools`, so the block adds them to whatever list you
+pass. They ask no permission, so this allows nothing else. To keep a run from them, list them in
+`disallowedTools`. The agent still has to choose to use them, which it often doesn't on a short
+job, whatever prompt the run started from. When it doesn't, the record stays empty. That is the honest answer, not a
 recording failure, and nothing appears in `observed-gaps` for it.
 
 ### What the file record is, and what it isn't

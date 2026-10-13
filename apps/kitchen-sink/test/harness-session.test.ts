@@ -286,7 +286,6 @@ describe("where a session works (V6)", () => {
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-plan-tools", "[plan] make a plan");
-    // Claude Code offers TaskCreate and TaskUpdate on its current models only when one is named here.
     expect(recorder.runs[0]!.allowedTools).toEqual(expect.arrayContaining(["TaskCreate", "TaskUpdate"]));
   });
 

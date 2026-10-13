@@ -406,15 +406,16 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const heldWork = options.heldWork;
   let id: string | undefined;
 
+  /** Git as the host runs it: none of the repository's hooks (`NO_HOOKS`), and this host's environment. */
   async function git(cwd: string, args: string[], timeoutMs: number): Promise<string> {
-    const { stdout } = await run("git", args, { cwd, timeoutMs, env });
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env });
     return stdout.trim();
   }
 
-  /** Git for held work: one budget, extra environment and input per call. */
+  /** Git for held work: one budget, extra environment and input per call, and no hooks, as `git`. */
   function heldGit(left: () => number): Git {
     return async (cwd, args, extra) => {
-      const { stdout } = await run("git", args, {
+      const { stdout } = await run("git", [...NO_HOOKS, ...args], {
         cwd,
         timeoutMs: left(),
         env: { ...env, ...extra?.env },
@@ -878,7 +879,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
               // Nothing in config that runs a program is obeyed here.
               "-c", "core.sshCommand=ssh",
               "-c", "core.askPass=",
-              "-c", "core.hooksPath=/dev/null",
+              ...NO_HOOKS,
               "-c", "core.fsmonitor=false",
               "-c", "protocol.allow=never",
               "-c", `protocol.${judged.scheme}.allow=always`,
@@ -913,7 +914,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           try {
             // `--no-deref`: a tracking ref a run replaced with a symbolic ref
             // moves itself, never the branch it points at.
-            await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", "--no-deref", ref, fetched, previous], left());
+            await git(repo, ["update-ref", "--no-deref", ref, fetched, previous], left());
           } catch (error) {
             const now = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
             if (now === previous) throw error;
@@ -1210,7 +1211,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const g = heldGit(left);
     await branchAside(clone, branch, [held.base, held.head], left);
     mkdirSync(dirname(checkout), { recursive: true });
-    await g(clone, [...NO_HOOKS, "worktree", "add", "--quiet", "-B", branch, checkout, held.base]);
+    await g(clone, ["worktree", "add", "--quiet", "-B", branch, checkout, held.base]);
     const scratch = scratchDir();
     try {
       await g(checkout, ["read-tree", "-u", "--reset", held.snapshot]);
