@@ -1903,6 +1903,7 @@ export function useSession(
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
     stoppedRequestsRef.current.add(requestId);
+    let refused = false;
 
     // Mark the request as abort-requested in the persistent store. This
     // flag lets the server distinguish an intentional stop from an
@@ -1916,6 +1917,7 @@ export function useSession(
       // server's account of it stands, so the view stops claiming a stop.
       if (cause instanceof ClientHttpError && cause.status === 409) {
         stoppedRequestsRef.current.delete(requestId);
+        refused = true;
       }
     }
 
@@ -1932,7 +1934,7 @@ export function useSession(
     setIsFinishing(false);
     setIsStuck(false);
 
-    injectSyntheticAbortItem(requestId);
+    if (!refused) injectSyntheticAbortItem(requestId);
   }, [client, flushContentDeltas, injectSyntheticAbortItem]);
 
   const refresh = useCallback(async () => {

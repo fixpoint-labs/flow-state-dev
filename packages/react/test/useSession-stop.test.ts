@@ -263,6 +263,8 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     await act(async () => {
       await result.current.abortRequest();
     });
+    // Nothing claims a stop, not even before the next read.
+    expect(stopItemsOf(result.current.items, requestId)).toHaveLength(0);
 
     // The server's account of the finished turn wins at the next read.
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
