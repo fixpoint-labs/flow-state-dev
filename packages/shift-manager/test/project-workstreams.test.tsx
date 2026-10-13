@@ -203,6 +203,22 @@ describe("the Lab's project setup (S9)", () => {
 });
 
 describe("opening a workstream by asking the project coordinator (V8b: BR-38 to BR-40, BR-42)", () => {
+  it("reads workers only through listLeads: its discovery lists none of the workers that can't lead", async () => {
+    // A coordinator that could list every worker once picked itself as a lead, was refused, and retried.
+    const { setup, as } = await open();
+    const alice = await as(ALICE);
+    judgmentCalls = [{ toolName: "discover", args: { domain: "workers", detail: "full" } }];
+    const pc = await projectCoordinator(alice, setup);
+    await runAction(alice.clients, "coordinator", pc, "run", { message: "Who can lead a research workstream?" });
+    const { items } = await readSessionItems(alice.clients, pc);
+    const found = (items as Array<{ type?: string; toolCall?: { name?: string }; output?: unknown }>).filter(
+      (item) => item.type === "tool_output" && item.toolCall?.name === "discover",
+    );
+    expect(found).toHaveLength(1);
+    expect(JSON.stringify(found[0]!.output)).not.toContain(setup.projectCoordinator!);
+    expect(JSON.stringify(found[0]!.output)).not.toContain("eng.coder");
+  });
+
   it("opens one led by the EM and hands the ask into its session in the same turn, adding nobody to her roster", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
