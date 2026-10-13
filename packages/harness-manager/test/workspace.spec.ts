@@ -108,6 +108,30 @@ describe("provisioning", () => {
     expect(readFileSync(join(first.path, "wip.txt"), "utf8")).toBe("half done");
   });
 
+  it("starts a new run from the source repository's upstream when it is ahead of main", async () => {
+    // The fixed `sourceRepo` goes through the same host path as the Lab: a
+    // person who hasn't pulled still gets a run cut from the current base.
+    const config = workspace();
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" }).trim();
+    const upstream = join(config.root, "..", "upstream.git");
+    git(config.sourceRepo, "clone", "-q", "--bare", config.sourceRepo, upstream);
+    git(config.sourceRepo, "remote", "set-url", "origin", upstream);
+    git(config.sourceRepo, "fetch", "-q", "origin");
+    git(config.sourceRepo, "branch", "-q", "--set-upstream-to=origin/main", "main");
+    const teammate = join(config.root, "..", "teammate");
+    git(join(config.root, ".."), "clone", "-q", upstream, teammate);
+    git(teammate, "commit", "-q", "--allow-empty", "-m", "merged upstream");
+    git(teammate, "push", "-q", "origin", "main");
+    const merged = git(teammate, "rev-parse", "HEAD");
+    const localMain = git(config.sourceRepo, "rev-parse", "main");
+
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+
+    expect(git(checkout.path, "rev-parse", "HEAD")).toBe(merged);
+    expect(git(config.sourceRepo, "rev-parse", "main")).toBe(localMain);
+  });
+
   it("puts the checkout on its own branch", async () => {
     const config = workspace();
     const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));

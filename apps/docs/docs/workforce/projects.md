@@ -543,11 +543,22 @@ Only shared projects can be listed, each by its organization and id. A run uses 
 
 The checkout also has to be in the host's `localRepositories`. That list is what lets the host touch a folder on its machine at all. If the two disagree, the run is refused with `invalid-remote`, naming the path, before git runs. A relative `checkout` path, a `remote` a project couldn't store, or a project listed twice is refused when `projectWorkspace()` is called, naming the entry.
 
-Each run's place has the worktree in `checkout/` and the [project's files](#the-projects-own-files) in `project/` beside it, as for any other repository. The branch is cut from `baseRef`, or from whatever your checkout has checked out when `baseRef` is left out. Nothing is fetched, so `main` is whatever you last pulled. The server never switches, resets or cleans your own working tree.
+Each run's place has the worktree in `checkout/` and the [project's files](#the-projects-own-files) in `project/` beside it, as for any other repository. The branch is cut from `baseRef`, or from whatever your checkout has checked out when `baseRef` is left out.
+
+Before the server cuts a new branch, it fetches that base's upstream, the remote branch it tracks, such as `origin/main`. Then it starts from whichever is newer: upstream when you haven't pulled, your own branch when it has commits you haven't pushed. Only the remote-tracking copy is updated. The server never switches, resets or cleans your working tree, and never moves your branch.
+
+A few cases go differently:
+
+- **Your branch and its upstream have each moved.** The run is refused with `base-diverged`, naming both commits, and nothing is made. Pull or rebase, or push, and the next run starts.
+- **The fetch fails**, because you're offline, a credential is refused, or it times out. The comparison uses the copy you last fetched, and the server logs a warning naming the checkout and git's error.
+- **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
+- **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
+
+Listing the checkout is what allows the fetch, so the upstream doesn't need to be in `remotes.allow`. That list still decides which remotes the host clones. The upstream's URL is checked before git sees it: one that uses a transport helper such as `ext::`, starts with `-`, or uses a scheme other than `https`, `ssh` or `file` isn't fetched, and the server logs why.
 
 Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
 
-To review a run, open its worktree, or run `git diff main...<branch>` from your checkout. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
+To review a run, open its worktree, or run `git log -p <branch> --not main main@{upstream}` from your checkout, with your base branch in place of `main`. For a base with no upstream, leave out `main@{upstream}`. That shows only the run's commits, whether it started from your base branch or from its upstream. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
 
 A fresh worktree has no `node_modules`. The coding agent installs them the way your repository tells it to. With pnpm that comes from the machine's shared store and takes seconds once the checkout has been installed.
 

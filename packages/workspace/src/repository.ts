@@ -1,7 +1,7 @@
 /**
- * What repository a directory belongs to, and whether a ref names a commit in
- * it — the two synchronous git questions a host asks at startup, before
- * anything is claimed.
+ * What repository a directory belongs to, whether a ref names a commit in it,
+ * and what a listed repository's upstream fetch may use — the synchronous git
+ * questions a host asks at startup, before anything is claimed.
  *
  * One definition of "the same repository" for every caller. The provisioning
  * path (`./worktree`) asks git asynchronously, inside its budget, and turns the
@@ -66,4 +66,75 @@ export function resolvesToCommit(repo: string, ref: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * What a listed repository's upstream fetch may use, read once when the host
+ * starts, before any run of it could have rewritten the repository's config.
+ */
+export interface FetchPins {
+  /** Each remote's fetch URL, by remote name, as `git remote -v` expands it. */
+  remotes: ReadonlyMap<string, string>;
+  /**
+   * The credential helpers set outside the repository (system, global and
+   * command-line config, in git's order), as `[key, value]` pairs: what a
+   * fetch replays after clearing every helper, so a helper planted in the
+   * repository's own config never runs and the person's own still do.
+   */
+  credentialHelpers: ReadonlyArray<readonly [string, string]>;
+  /**
+   * Each local branch's upstream, by its full ref name (`refs/heads/main`):
+   * its tracking ref, remote and the branch on that remote. A run can rewrite
+   * `branch.<name>.remote` and `.merge`, so a fetch follows these instead.
+   */
+  upstreams: ReadonlyMap<string, PinnedUpstream>;
+}
+
+/** One local branch's upstream, as {@link FetchPins} pins it. */
+export interface PinnedUpstream {
+  /** The tracking ref, e.g. `refs/remotes/origin/main`. */
+  ref: string;
+  /** The remote's name. */
+  remoteName: string;
+  /** The branch on the remote, e.g. `refs/heads/main`. */
+  remoteRef: string;
+}
+
+/** Read {@link FetchPins} for `repo`. Anything unreadable pins nothing. */
+export function readFetchPins(repo: string): FetchPins {
+  const read = (args: string[]): string => {
+    try {
+      return execFileSync("git", args, {
+        cwd: repo,
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf8",
+        timeout: STARTUP_GIT_TIMEOUT_MS,
+      });
+    } catch {
+      return "";
+    }
+  };
+  const remotes = new Map<string, string>();
+  for (const line of read(["remote", "-v"]).split("\n")) {
+    const match = /^([^\t]+)\t(.*) \(fetch\)$/.exec(line);
+    if (match !== null && !remotes.has(match[1]!)) remotes.set(match[1]!, match[2]!);
+  }
+  // `-z --show-scope`: `<scope>\0<key>\n<value>\0` per entry.
+  const fields = read(["config", "-z", "--show-scope", "--includes", "--get-regexp", "^credential\\.(.*\\.)?helper$"]).split("\0");
+  const credentialHelpers: Array<readonly [string, string]> = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const scope = fields[i]!;
+    const entry = fields[i + 1]!;
+    const newline = entry.indexOf("\n");
+    if (scope === "local" || scope === "worktree" || newline < 0) continue;
+    credentialHelpers.push([entry.slice(0, newline), entry.slice(newline + 1)]);
+  }
+  const upstreams = new Map<string, PinnedUpstream>();
+  for (const line of read(["for-each-ref", "--format=%(refname)%09%(upstream)%09%(upstream:remotename)%09%(upstream:remoteref)", "refs/heads"]).split("\n")) {
+    const [refname = "", ref = "", remoteName = "", remoteRef = ""] = line.split("\t");
+    if (ref.startsWith("refs/remotes/") && remoteName !== "" && remoteName !== ".") {
+      upstreams.set(refname, { ref, remoteName, remoteRef });
+    }
+  }
+  return { remotes, credentialHelpers, upstreams };
 }
