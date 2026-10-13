@@ -13,7 +13,7 @@
  *   p      the panel equals turn 1's last confirmed to-do list, read from its items; or says empty / none recorded; never "reports no plan".
  *   c      turn 2 names the token without being told it, under turn 1's id.
  *   s      a stopped turn says so, and the next turn names the token under the same id.
- *   r      after a reload, the same session shows the same id, and its next turn names the token.
+ *   r      a reload lands back in the same session, which shows the same id, and its next turn names the token.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/cursor-continues-its-agent/run.mts
  * Controls: GOAL_CONTROL=no-resume (must FAIL at c, s and r, and nothing else)
@@ -78,6 +78,21 @@ const stopButton = (page: Page) => page.getByRole("button", { name: "Stop" });
 
 async function boundId(page: Page): Promise<string> {
   return ((await bound(page).textContent()) ?? "").trim();
+}
+
+/** The bound id once a freshly loaded page has read it: it draws "none yet" until the session's state arrives. */
+async function loadedBoundId(page: Page): Promise<string> {
+  await page
+    .waitForFunction(
+      () => {
+        const text = document.querySelector('[data-testid="bound-conversation"]')?.textContent?.trim();
+        return text !== undefined && text !== "none yet";
+      },
+      undefined,
+      { timeout: 30_000 },
+    )
+    .catch(() => undefined);
+  return boundId(page);
 }
 
 /** How many times `token` shows in the conversation, as drawn. */
@@ -222,15 +237,23 @@ await runGoal(async (failures) => {
     if ((await tokenCount(page, token)) <= seenS) fail("s", "after the stop, the next turn did not name the token");
     if ((await boundId(page)) !== id1) fail("s", `after the stop the agent is ${await boundId(page)} (want ${id1})`);
 
-    // ---- r: a reload keeps the session and its agent
+    // ---- r: a reload lands back in the session, on its agent
     await page.reload();
-    await page.locator(`[data-session-id="${sessionId}"]`).first().click({ timeout: 30_000 });
-    await bound(page).waitFor({ timeout: 30_000 });
-    if ((await boundId(page)) !== id1) fail("r", `after a reload the session shows ${await boundId(page)} (want ${id1})`);
-    const seenR = await tokenCount(page, token);
-    await turn(page, "One more time: the token, only.");
-    if ((await tokenCount(page, token)) <= seenR) fail("r", "after a reload, the next turn did not name the token");
-    if ((await boundId(page)) !== id1) fail("r", `after a reload the agent moved to ${await boundId(page)}`);
+    const back = await page
+      .waitForFunction((id) => document.querySelector('[data-testid="stream"]')?.getAttribute("data-session-id") === id, sessionId, {
+        timeout: 30_000,
+      })
+      .then(() => true, () => false);
+    if (!back) {
+      fail("r", `after a reload the page is not back in session ${sessionId}: ${JSON.stringify(await page.getByTestId("stream").textContent())}`);
+    } else {
+      const reloaded = await loadedBoundId(page);
+      if (reloaded !== id1) fail("r", `after a reload the session shows ${reloaded} (want ${id1})`);
+      const seenR = await tokenCount(page, token);
+      await turn(page, "One more time: the token, only.");
+      if ((await tokenCount(page, token)) <= seenR) fail("r", "after a reload, the next turn did not name the token");
+      if ((await boundId(page)) !== id1) fail("r", `after a reload the agent moved to ${await boundId(page)}`);
+    }
     evidence.push(`ids ${id1} → ${id2} → ${await boundId(page)}`);
   } finally {
     await browser.close();

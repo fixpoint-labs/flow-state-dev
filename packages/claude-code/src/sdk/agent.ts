@@ -70,6 +70,23 @@ import {
 } from "./types";
 import type { BindingProvider } from "@flow-state-dev/core/types";
 
+/**
+ * Claude Code's to-do tools, added to every run's `allowedTools`. Outside its
+ * terminal, Claude Code on its current models offers them only when one is
+ * named there; without them a run keeps no list and the plan record stays
+ * empty. They ask no permission, so naming them allows nothing more.
+ */
+const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
+
+/**
+ * Claude Code's search tools, added to `allowedTools` under `bypassPermissions`
+ * only. Outside its terminal it offers them only when they are named there.
+ * They check paths for permission, so naming them for a host that prompts
+ * would approve searches outside the working directory; under
+ * `bypassPermissions` every tool is already allowed.
+ */
+const SEARCH_TOOLS = ["Grep", "Glob"] as const;
+
 /** Session-state key holding the SDK session id to resume across requests. */
 export const SDK_SESSION_ID_KEY = "sdkSessionId" as const;
 /** Session-state key under which run handles accumulate. */
@@ -124,12 +141,21 @@ export interface ClaudeCodeAgentOptions {
    * Claude Code's own prompt, the one the `claude` CLI uses.
    *
    * No prompt makes the agent keep a to-do list. `recordWork`'s plan half fills
-   * only when the run is offered the to-do tools and the agent chooses to use
-   * them; on newer models Claude Code offers them only when they are named in
-   * `allowedTools`.
+   * only when the agent chooses to use its to-do tools, which every run is
+   * offered (see `allowedTools`).
    */
   systemPrompt?: ClaudeAgentSystemPrompt;
-  /** Allowed tool names forwarded to the SDK. */
+  /**
+   * Tools the run may use without asking, forwarded to the SDK with Claude
+   * Code's to-do tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`)
+   * added. Outside its terminal, Claude Code offers those on its current
+   * models only when they are named here, and they need no permission, so
+   * naming them allows nothing else. Under `bypassPermissions` its search
+   * tools (`Grep`, `Glob`) are added too, which Claude Code also offers only
+   * when named; in other modes naming them would skip path prompts, so they
+   * are left to the host. To keep a run from any of them, list them in
+   * `disallowedTools`.
+   */
   allowedTools?: string[];
   /** Disallowed tool names forwarded to the SDK. */
   disallowedTools?: string[];
@@ -862,7 +888,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // Code's own, so the run would not start the way the CLI starts it.
         // `undefined` only: `""` is a host asking for that blank start.
         systemPrompt: systemPrompt ?? { type: "preset", preset: "claude_code" },
-        allowedTools,
+        // Added to the host's list: see `TODO_TOOLS` and `SEARCH_TOOLS`.
+        allowedTools: [
+          ...new Set([
+            ...(allowedTools ?? []),
+            ...TODO_TOOLS,
+            ...(permissionMode === "bypassPermissions" ? SEARCH_TOOLS : []),
+          ]),
+        ],
         disallowedTools,
         permissionMode,
         agents,

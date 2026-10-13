@@ -114,7 +114,7 @@ describe("a collapsed row", () => {
     render(view([taskItem(full)]));
 
     const grid = rowOf("task-full").querySelector<HTMLElement>("[data-row-grid]")!;
-    expect(grid.style.gridTemplateColumns).toContain("minmax(0, 1fr) minmax(0, 1fr)");
+    expect(grid.className).toContain("minmax(0,1fr)_minmax(0,1fr)");
   });
 
   it("BR-3 · is collapsed until asked, with the disclosure wired", () => {

@@ -52,6 +52,15 @@ export interface IgnoredDirectory {
   why: string;
 }
 
+/**
+ * No repository hooks, on every git call the host makes. `worktree add` runs
+ * post-checkout (a build hook fails in a fresh tree), and cutting, moving or
+ * resetting a branch runs reference-transaction. A run can plant a hook in the
+ * shared hooks directory that the next provision would run outside the
+ * sandbox. `/dev/null` holds no hooks and beats `core.hooksPath`.
+ */
+export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
+
 /** One worktree to provision. */
 export interface WorktreeRequest {
   /** The repository worktrees are cut from, and where branches live. */
@@ -157,7 +166,7 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
   const { repo, repoLabel, checkout, marker, branch, now } = request;
   const left = () => remainingBudget(request.deadline, now);
   const git = async (cwd: string, args: string[], timeoutMs: number): Promise<string> => {
-    const { stdout } = await run("git", args, {
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], {
       cwd,
       timeoutMs,
       ...(request.env !== undefined ? { env: request.env } : {}),

@@ -1,5 +1,5 @@
 /**
- * The project writes: `createProject` and `setRepository`.
+ * The project writes: `createProject`, `setRepository` and `setBrief`.
  *
  * **Shared or private.** `createProject` takes a `visibility`, `"shared"` when
  * omitted. A shared project is a row of the organization's `projects`; a
@@ -32,6 +32,7 @@ import {
   projectIdProblem,
   projectRowSchema,
   projectVisibilitySchema,
+  type ProjectAddress,
   type ProjectRow,
   type ProjectVisibility
 } from "./collections";
@@ -40,6 +41,7 @@ import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
 import { listProjects, readProject } from "./project-read";
+import { projectOfWrite } from "./project-coordinator";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
 
@@ -81,9 +83,9 @@ export const createProjectOutputSchema = z.object({
 /** @see createProjectOutputSchema */
 export type CreateProjectOutput = z.infer<typeof createProjectOutputSchema>;
 
-/** What setting a project's repository takes: the project's address, and the new remote or `null` to clear it. */
+/** What `setRepository` takes: the address and the new remote or `null`. No address: the linked project. */
 export const setRepositoryInputSchema = z
-  .object({ project: projectAddressSchema, repository: z.string().nullable() })
+  .object({ project: projectAddressSchema.optional(), repository: z.string().nullable() })
   .strict();
 
 /** @see setRepositoryInputSchema */
@@ -92,16 +94,29 @@ export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
 /** What setting a project's repository returns: the row as written. */
 export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
 
+/** What `setBrief` takes: the address and the new brief or `null`. No address: the linked project. */
+export const setBriefInputSchema = z
+  .object({ project: projectAddressSchema.optional(), brief: z.string().nullable() })
+  .strict();
+
+/** @see setBriefInputSchema */
+export type SetBriefInput = z.infer<typeof setBriefInputSchema>;
+
+/** What setting a project's brief returns: the row as written. */
+export const setBriefOutputSchema = z.object({ project: projectRowSchema });
+
 /** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
   createProject: typeof writeProject;
   setRepository: typeof setRepository;
+  setBrief: typeof setBrief;
   readProject: typeof readProject;
   listProjects: typeof listProjects;
   readProjectFiles: typeof readProjectFiles;
   actions: {
     createProject: ActionConfig;
     setRepository: ActionConfig;
+    setBrief: ActionConfig;
     readProject: ActionConfig;
     listProjects: ActionConfig;
     readProjectFiles: ActionConfig;
@@ -233,18 +248,36 @@ const setRepository = handler({
   resources: WRITE_RESOURCES,
   execute: async (input, rawCtx) => {
     const ctx = rawCtx as unknown as BlockContext;
-    const row = await projectAt(ctx, input.project);
-    if (!isMember(row.state, ctx.session.identity.userId)) {
-      throw new ProjectRefusedError(
-        "not-a-member",
-        `only project "${input.project.id}"'s members may change its repository.`
-      );
-    }
+    const row = await projectRowToChange(ctx, input.project, "repository");
     assertRepository(input.repository);
     await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
     return { project: projectRowSchema.parse(row.state) };
   }
 });
+
+/** Members only. Rewritten like `setRepository`, so a concurrent write keeps what it wrote. */
+const setBrief = handler({
+  name: "project-set-brief",
+  inputSchema: setBriefInputSchema,
+  outputSchema: setBriefOutputSchema,
+  resources: WRITE_RESOURCES,
+  execute: async (input, rawCtx) => {
+    const ctx = rawCtx as unknown as BlockContext;
+    const row = await projectRowToChange(ctx, input.project, "brief");
+    await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));
+    return { project: projectRowSchema.parse(row.state) };
+  }
+});
+
+/** The row a later write changes ({@link projectOfWrite}), when the caller is one of its members. */
+async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | undefined, field: string) {
+  const address = projectOfWrite(ctx.session.state, named, `change its ${field}`);
+  const row = await projectAt(ctx, address);
+  if (!isMember(row.state, ctx.session.identity.userId)) {
+    throw new ProjectRefusedError("not-a-member", `only project "${address.id}"'s members may change its ${field}.`);
+  }
+  return row;
+}
 
 /**
  * Build the project writes, the project read, the caller's project list and
@@ -259,6 +292,7 @@ export function defineProjectBlocks(): ProjectBlocks {
   return {
     createProject,
     setRepository,
+    setBrief,
     readProject,
     listProjects,
     readProjectFiles,
@@ -271,6 +305,10 @@ export function defineProjectBlocks(): ProjectBlocks {
         block: setRepository,
         description:
           "Set, change or clear (null) the git remote a project's code lives in. Members only; a bare path or a remote carrying a credential is refused."
+      },
+      setBrief: {
+        block: setBrief,
+        description: "Set, change or clear (null) a project's brief: what the project is for. Members only."
       },
       readProject: {
         block: readProject,

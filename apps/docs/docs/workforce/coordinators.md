@@ -475,25 +475,57 @@ The follow-up is a new task with its own id, and the conversation hears how it e
 
 ## Making your own flow a delegate
 
-A worker on the built-in `agent` flow can take posts as it is. A [worker flow of your own](./workers-on-disk.md#which-flows-can-run-workers) takes them once it declares the delegated-post entry around its door, the block its `run` action runs. Here `door` and `inputSchema` are that flow's own:
+A worker on the built-in `agent` flow can take posts as it is. A [worker flow of your own](./workers-on-disk.md#which-flows-can-run-workers) takes them once it declares the delegated-post entry around its door, the block its `run` action runs. Here the door is `researchAnswer`, a generator that answers with the worker's own instructions, the way the `agent` flow does:
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import {
   DELEGATED_POST_ENTRY,
   delegatedPostEntry,
+  delegatedPostHistory,
   delegatedPostOnFinished,
+  workerConfigOf,
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
+import { z } from "zod";
 
+const inputSchema = z.object({ message: z.string() });
+
+const loadWorker = handler({
+  name: "research-load-worker",
+  inputSchema: z.unknown(),
+  resources: { ...installation.resources },
+  execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "research")).id }),
+});
+
+const researchAnswer = generator({
+  name: "research-answer",
+  inputSchema,
+  model: "openai/gpt-5.4-mini",
+  history: delegatedPostHistory,
+  prompt: (_input, ctx) => {
+    const { instructions } = workerConfigOf(ctx);
+    return typeof instructions === "string" ? instructions : "You answer research questions in two or three sentences.";
+  },
+  user: (input) => input.message,
+});
+```
+
+`workerConfigOf(ctx)` returns the configuration of the worker the turn loaded, synchronously, so a prompt, a tool list or a step condition can read it. The turn loads its worker when `installation.resolveWorker(ctx, flowKind)` runs. `loadWorker` calls it from the flow's `request.onStarted`, so every turn has its worker loaded, a resumed one included. If the turn loaded no worker, `workerConfigOf` throws.
+
+The prompt is the worker's `WORKER.md` body, which arrives as its [`instructions` setting](./workers-on-disk.md#the-body-arrives-as-instructions). `workerConfigOf` types every setting as `unknown`, and a worker with an empty body has no `instructions` key at all, so the `typeof` check gives the prompt a string either way.
+
+The flow wires the two blocks in:
+
+```ts
 const researchFlow = defineFlow({
   kind: "research",
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  request: { onFinished: delegatedPostOnFinished },
-  actions: { run: { inputSchema, block: door, userMessage: (input) => input.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } },
+  request: { onStarted: loadWorker, onFinished: delegatedPostOnFinished },
+  actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
+  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(researchAnswer) } },
 });
 ```
 
@@ -501,24 +533,7 @@ Then add it to `delegateFlows`. The door is handed `{ message }`, where the mess
 
 `delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
-To show your flow's model the conversation's [recent lines](#follow-ups-and-recent-lines), set the `history` of the generator your door runs to `delegatedPostHistory`, in place of `history: true`:
-
-```ts
-import { generator } from "@flow-state-dev/core";
-import { delegatedPostHistory } from "@flow-state-dev/workforce";
-import { z } from "zod";
-
-const door = generator({
-  name: "research-answer",
-  inputSchema: z.object({ message: z.string() }),
-  model: "openai/gpt-5.4-mini",
-  history: delegatedPostHistory,
-  prompt: "You answer research questions in two or three sentences.",
-  user: (input) => input.message,
-});
-```
-
-It's the session's history, as `history: true` reads it. On a delegated post that came with lines, the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) goes in just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
+To show the model the conversation's [recent lines](#follow-ups-and-recent-lines), set the generator's `history` to `delegatedPostHistory`. It reads the session's history the same way `history: true` does. On a delegated post that came with lines, it also puts the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
 
 ### Taking a conversation's tasks
 

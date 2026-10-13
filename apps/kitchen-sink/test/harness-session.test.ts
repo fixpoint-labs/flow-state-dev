@@ -282,6 +282,13 @@ describe("where a session works (V6)", () => {
     expect(sandbox.filesystem?.denyWrite).toContain(join(run.cwd!, ".git"));
   });
 
+  it("the run is offered Claude Code's to-do tools, so a turn asked to plan can record one (BR-14)", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-plan-tools", "[plan] make a plan");
+    expect(recorder.runs[0]!.allowedTools).toEqual(expect.arrayContaining(["TaskCreate", "TaskUpdate"]));
+  });
+
   it("the run starts with the allowlisted environment, not the server's (BR-13b)", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     const stores = createInMemoryStores();

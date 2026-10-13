@@ -3,7 +3,7 @@
  * organization: `alice` and `bob` (members), and `mallory` (in the org, not a
  * member).
  *
- * Covers the row writes (`createProject`, `setRepository`) and the project
+ * Covers the row writes (`createProject`, `setRepository`, `setBrief`) and the project
  * files read. Identity comes from a verified header, never the body (BP-031).
  *
  * **Controls.** Three modules are swappable on purpose, and each swap must turn
@@ -404,6 +404,37 @@ describe("a project's repository", () => {
     expect(refusal(nowhere)).toContain("no-such-project");
     expect((await h.inspectRow("apollo")).row).toEqual(before);
     expect((await h.inspectRow("nope")).row).toBeNull();
+  });
+});
+
+describe("a project's brief", () => {
+  it("lets a member set, change and clear it, and changes nothing else on the row", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const bobLab = await h.openSession("bob", "lab");
+    const set = await h.ok("bob", "lab", bobLab, "setBrief", { project: { visibility: "shared", id: "apollo" }, brief: "Ship guest checkout." });
+    expect(set.project).toEqual({ ...before, brief: "Ship guest checkout." });
+    expect((await h.inspectRow("apollo")).row).toEqual({ ...before, brief: "Ship guest checkout." });
+    const cleared = await h.ok("bob", "lab", bobLab, "setBrief", { project: { visibility: "shared", id: "apollo" }, brief: null });
+    expect(cleared.project.brief).toBeNull();
+  });
+
+  it("refuses a non-member, an unknown project, and a call naming none from a conversation linked to none", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const malloryLab = await h.openSession("mallory", "lab");
+    const outsider = await h.act("mallory", "lab", malloryLab, "setBrief", { project: { visibility: "shared", id: "apollo" }, brief: "Mine now." });
+    expect(refusal(outsider)).toContain("not-a-member");
+    const nowhere = await h.act("mallory", "lab", malloryLab, "setBrief", { project: { visibility: "shared", id: "nope" }, brief: "x" });
+    expect(refusal(nowhere)).toContain("no-such-project");
+    const aliceLab = await h.openSession("alice", "lab");
+    for (const action of ["setBrief", "setRepository"]) {
+      const unnamed = await h.act("alice", "lab", aliceLab, action, action === "setBrief" ? { brief: "x" } : { repository: null });
+      expect(refusal(unnamed), action).toContain("no-such-project");
+    }
+    expect((await h.inspectRow("apollo")).row).toEqual(before);
   });
 });
 

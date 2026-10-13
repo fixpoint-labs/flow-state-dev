@@ -15,7 +15,7 @@
  *   - create the new session on the first listed flow, not the mode's: the New-session case fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
 
 import PickerPage from "@/app/page";
@@ -170,6 +170,72 @@ describe("V6 · a harness mode's frame", () => {
     expect(screen.getByTestId("new-session").textContent).toContain("New session");
   });
 });
+
+describe("FIX-1915 BR-6 · a reload comes back to the open session", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  /** A reload, as the frame sees one: everything drawn goes, the address stays. */
+  function reload(server: ReturnType<typeof fakeServer>) {
+    cleanup();
+    mount(server);
+  }
+
+  it("reopens a session started with New session", async () => {
+    const server = fakeServer([{ id: "c1", kind: "codex-session", title: "codex one" }]);
+    mount(server);
+    fireEvent.click(screen.getByTestId("new-session"));
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("new-1"));
+
+    reload(server);
+
+    await waitFor(() => expect(screen.getByTestId("stream").dataset.sessionId).toBe("new-1"));
+    expect(screen.getByTestId("opened").textContent).toBe("new-1");
+  });
+
+  it("reopens a session picked in the rail", async () => {
+    const server = fakeServer([
+      { id: "c1", kind: "codex-session", title: "codex one" },
+      { id: "c2", kind: "codex-session", title: "codex two" },
+    ]);
+    mount(server);
+    await openKind("codex-session");
+    fireEvent.click(await waitFor(() => within(screen.getByTestId("rail")).getByText("codex two")));
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("c2"));
+
+    reload(server);
+
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("c2"));
+  });
+
+  it("opens nothing for an address naming a session that isn't this mode's", async () => {
+    const server = fakeServer([
+      { id: "c1", kind: "codex-session", title: "codex one" },
+      { id: "k1", kind: "claude-code-session", title: "claude one" },
+    ]);
+    window.history.replaceState(null, "", "/codex?session=k1");
+    mount(server);
+    await listingsSettled(server);
+    expect(screen.getByTestId("stream").dataset.sessionId).toBeUndefined();
+    expect(screen.getByText(/Pick a session/)).toBeTruthy();
+  });
+
+  it("says so when the session the address names can't be looked up", async () => {
+    const server = fakeServer([{ id: "c1", kind: "codex-session", title: "codex one" }]);
+    server.sessionSource.listSessions.mockRejectedValueOnce(new Error("the server is down"));
+    window.history.replaceState(null, "", "/codex?session=c1");
+    mount(server);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/c1 can't be reopened: the server is down/));
+    expect(screen.getByTestId("stream").dataset.sessionId).toBeUndefined();
+  });
+});
+
+/** Every listing the frame asked for has answered, and what it set from them has drawn. */
+async function listingsSettled(server: ReturnType<typeof fakeServer>) {
+  await waitFor(() => expect(server.sessionSource.listSessions).toHaveBeenCalled());
+  await act(async () => {
+    await Promise.allSettled(server.sessionSource.listSessions.mock.results.map((result) => result.value));
+  });
+}
 
 describe("V6 · BR-19 · Flow State's rail", () => {
   it("lists no harness mode's sessions", () => {

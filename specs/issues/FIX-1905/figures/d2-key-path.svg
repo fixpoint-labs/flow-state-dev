@@ -1,0 +1,113 @@
+<svg viewBox="0 0 940 480" role="img" aria-label="D2, who holds the MCP connection and the key for a coding run. Chosen: FSD holds it, and the run gets tools only. Instead of: Claude Code&#x27;s own MCP config. It comes down to the first row, who controls the connection: FSD, for any harness, observing, closing and swapping it per run, against the harness, configured per run. Second row, where the key is handed: nowhere in the run, against the run&#x27;s own command line. Third row, the price: one in-process hop per tool call, against nothing extra. Fourth row, a tie: an unsandboxed shell can read the Lab&#x27;s store either way. Locks in: never handed to the run, not unreachable. Flips if a harness takes no in-process tools."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="480"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Who holds the MCP connection and the key for a coding run?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">FSD holds it; the run gets tools</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Claude Code&#x27;s own MCP config</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO CONTROLS</text>
+    <text class="t-lbl" x="32" y="169">THE CONNECTION</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">FSD, for any harness</text>
+    <text class="t-s" x="248" y="179">observes, closes, swaps it per run</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The harness, configured per run</text>
+    <text class="t-s" x="612" y="179">FSD hands it over and lets go</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">WHERE THE KEY</text>
+    <text class="t-lbl" x="32" y="235">IS HANDED</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">Nowhere in the run</text>
+    <text class="t-s" x="248" y="241">not argv, env, MCP config, session</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">The run&#x27;s own command line</text>
+    <text class="t-s" x="612" y="241">--mcp-config, which a shell can list</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">WHAT IT COSTS</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">One in-process hop per tool call</text>
+    <text class="t-s" x="248" y="299">and FSD&#x27;s client in the run&#x27;s path</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">Nothing extra</text>
+    <text class="t-s" x="612" y="299">Claude Code connects itself</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="338">AN UNSANDBOXED</text>
+    <text class="t-lbl" x="32" y="351">SHELL</text>
+    <text class="mark tie" x="228" y="340">=</text>
+    <text class="t-b" x="248" y="339">Can read the Lab&#x27;s store</text>
+    <text class="t-s" x="248" y="357">same OS user as the Lab</text>
+    <text class="mark tie" x="592" y="340">=</text>
+    <text class="t-b" x="612" y="339">Can read the Lab&#x27;s store</text>
+    <text class="t-s" x="612" y="357">and the argv as well</text>
+    <line class="row" x1="16" y1="374" x2="924" y2="374"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="390" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="411">LOCKS IN</text>
+    <text class="t-b" x="32" y="431">Never handed to the run, not unreachable</text>
+    <text class="t-s" x="32" y="449">the docs say exactly that</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="390" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="411">FLIPS IF</text>
+    <text class="t-b" x="494" y="431">A harness takes no in-process tools</text>
+    <text class="t-s" x="494" y="449">then it gets no servers, not the key</text>
+  </g>
+</svg>

@@ -9,17 +9,20 @@
  * a flow's call signature is checked contravariantly, and a worker flow (which
  * declares the installation's session) was refused by `workerFlows` (TS2322).
  * The flows below follow `packages/workforce/README.md` "Workers as data" and
- * the docs' "Making your own flow a delegate".
+ * the docs' "Making your own flow a delegate", whose door answers with the
+ * worker's own instructions through `workerConfigOf`.
  */
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createWorkerInstallation,
   defineCoordinatorFlow,
   DELEGATED_POST_ENTRY,
   delegatedPostEntry,
+  delegatedPostHistory,
   delegatedPostOnFinished,
   hireWorkforce,
+  workerConfigOf,
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
 
@@ -30,14 +33,33 @@ const installation = createWorkerInstallation({
   workerFlows: () => ({ research: researchFlow, coordinator: coordinatorFlow, plain: { flow: plainFlow, standardOnly: true } }),
 });
 
+const loadWorker = handler({
+  name: "research-load-worker",
+  inputSchema: z.unknown(),
+  resources: { ...installation.resources },
+  execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "research")).id }),
+});
+
+const researchAnswer = generator({
+  name: "research-answer",
+  inputSchema,
+  model: "openai/gpt-5.4-mini",
+  history: delegatedPostHistory,
+  prompt: (_input, ctx) => {
+    const { instructions } = workerConfigOf(ctx);
+    return typeof instructions === "string" ? instructions : "You answer research questions in two or three sentences.";
+  },
+  user: (input) => input.message,
+});
+
 const researchFlow = defineFlow({
   kind: "research",
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  request: { onFinished: delegatedPostOnFinished },
-  actions: { run: { inputSchema, block: door, userMessage: (input) => input.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } },
+  request: { onStarted: loadWorker, onFinished: delegatedPostOnFinished },
+  actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
+  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(researchAnswer) } },
 });
 
 /** A worker flow that declares no settings of its own. */
