@@ -90,7 +90,7 @@ const CLAUDE_CODE_PASS = [
 ] as const;
 
 /** The environment a Claude Code run gets, and the one its account is probed with. */
-function claudeCodeEnv(): Record<string, string> {
+export function claudeCodeEnv(): Record<string, string> {
   return harnessEnv({ pass: CLAUDE_CODE_PASS });
 }
 
