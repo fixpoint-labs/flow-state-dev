@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ClientHttpError,
   compareItemOrder,
   createClient,
   createRecoveryClient,
@@ -78,6 +79,24 @@ const IN_PROGRESS_LOOKUP_LIMIT = 10;
  */
 function optimisticIdOf(requestId: string): string {
   return `item_msg_optimistic_${requestId}`;
+}
+
+/**
+ * The id of the stop record the view shows for a request the person stopped,
+ * until the server's own stop record for it arrives.
+ */
+function abortItemIdOf(requestId: string): string {
+  return `item_status_aborted_${requestId}`;
+}
+
+/** The code of the status item that records a request was stopped. */
+const STOP_CODE = "system.request_aborted";
+
+/** Whether `item` is a record that `requestId` was stopped: the server's or the view's own. */
+function isStopRecordOf(item: OutputItem, requestId: string): boolean {
+  if (item.requestId !== requestId || item.type !== "status") return false;
+  const detail = (item as { detail?: unknown }).detail;
+  return typeof detail === "object" && detail !== null && (detail as { code?: unknown }).code === STOP_CODE;
 }
 
 /**
@@ -578,6 +597,15 @@ export function useSession(
    */
   const latestRequestIdAfterDropRef = useRef<string | null>(null);
   /**
+   * Requests the person stopped whose stop the server has not yet shown in a
+   * snapshot. The view keeps its own stop record for each until a snapshot
+   * holds the server's: a read taken before the engine wrote its record
+   * would otherwise erase the stop, and the turn would read as running. A
+   * stop pressed while the turn's POST is still out is also read from here,
+   * when the POST answers.
+   */
+  const stoppedRequestsRef = useRef(new Set<string>());
+  /**
    * Wall-clock timestamp of the most recent SSE event or heartbeat. The
    * watchdog reads this to decide whether the stream has gone silent
    * past `stuckThresholdMs`.
@@ -911,6 +939,17 @@ export function useSession(
           live.delete(key);
           if (loaded !== undefined && !mayReplace(kept, loaded)) storeRef.current.upsert(kept);
         }
+      }
+      // Put back the view's own stop record for each request the person
+      // stopped, until a snapshot holds the server's record of that stop.
+      const stopped = stoppedRequestsRef.current;
+      for (const requestId of [...stopped]) {
+        if ((nextSnapshot.items ?? []).some((item) => isStopRecordOf(item, requestId))) {
+          stopped.delete(requestId);
+          continue;
+        }
+        const shown = held.find((item) => item.requestId === requestId && item.id === abortItemIdOf(requestId));
+        if (shown !== undefined) storeRef.current.upsert(shown);
       }
       setItems(storeRef.current.getSorted());
       return true;
@@ -1466,6 +1505,8 @@ export function useSession(
           }
 
           if (activeRequest !== undefined) {
+            // The hook now carries this request, so a stop reaches it.
+            activeRequestIdRef.current = activeRequest.id;
             attachToStream(activeRequest.id);
           }
         }
@@ -1503,6 +1544,7 @@ export function useSession(
       setIsStuck(false);
       activeRequestIdRef.current = null;
       latestRequestIdAfterDropRef.current = null;
+      stoppedRequestsRef.current.clear();
       lastEventAtRef.current = Date.now();
       cancelScheduledFlush();
     };
@@ -1622,7 +1664,7 @@ export function useSession(
     (requestId: string) => {
       if (!itemConfig.enabled) return;
       const abortItem: OutputItem = {
-        id: `item_status_aborted_${requestId}`,
+        id: abortItemIdOf(requestId),
         type: "status",
         status: "completed",
         requestId,
@@ -1630,7 +1672,7 @@ export function useSession(
         provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
         ts: Date.now(),
         message: "Request was stopped.",
-        detail: { code: "system.request_aborted" }
+        detail: { code: STOP_CODE }
       } as OutputItem;
 
       storeRef.current.upsert(abortItem);
@@ -1767,6 +1809,23 @@ export function useSession(
           metadata: actionOptions?.metadata
         });
 
+        // Stopped while the POST was out. That stop may have reached nothing,
+        // since the server had no request yet; now it does. Stop it, and
+        // don't pick the turn back up.
+        if (stoppedRequestsRef.current.has(requestId)) {
+          postResponse.body?.cancel().catch(() => {});
+          await client.abortRequest(requestId).catch(() => {});
+          return {
+            status: "in_progress" as const,
+            request: {
+              id: requestId,
+              flowKind: resolvedFlowKind,
+              actionName: action,
+              status: "in_progress" as const
+            }
+          };
+        }
+
         const contentType = postResponse.headers.get("content-type") ?? "";
 
         if (contentType.includes("text/event-stream")) {
@@ -1843,15 +1902,21 @@ export function useSession(
   const abortRequest = useCallback(async () => {
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
+    stoppedRequestsRef.current.add(requestId);
 
     // Mark the request as abort-requested in the persistent store. This
     // flag lets the server distinguish an intentional stop from an
     // accidental disconnect (browser reload, network drop).
     try {
       await client.abortRequest(requestId);
-    } catch {
+    } catch (cause) {
       // Best-effort — if the endpoint is unreachable the server will
-      // treat the subsequent disconnect as "interrupted" instead.
+      // treat the subsequent disconnect as "interrupted" instead. A 409
+      // means the request finished before the stop reached it: the
+      // server's account of it stands, so the view stops claiming a stop.
+      if (cause instanceof ClientHttpError && cause.status === 409) {
+        stoppedRequestsRef.current.delete(requestId);
+      }
     }
 
     // Close the SSE connection. On the server, request.signal fires
