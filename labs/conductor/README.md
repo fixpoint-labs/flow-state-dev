@@ -170,12 +170,16 @@ long-lived board over many issues needs a retention policy, which is not built.
 Derived, never read back from anywhere:
 
 ```
-<root>/<tenant>/<user>/<board-collection-id>/<issue>--<phase>
-conductor/<tenant>/<user>/<board-collection-id>/<issue>--<phase>
+<root>/<tenant>/<org>/<user>/<board-collection-id>/<issue>--<phase>
+conductor/<tenant>/<org>/<user>/<board-collection-id>/<issue>--<phase>
 ```
 
-`<tenant>` and `<user>` are **encoded**, not validated: `t0` when the request is
-untenanted, `t1h<hex>` when it is not, and `h<hex>` for the user. Those ids belong to
+`<tenant>`, `<org>` and `<user>` are **encoded**, not validated: `t0` when the request
+is untenanted, `t1h<hex>` when it is not, and `h<hex>` for the organization and the
+user. The organization is the one the request was admitted under, so one person
+working in two organizations on one host gets two checkouts and two branches. A run
+whose record already names a branch without `<org>`, because it started before the
+organization was part of the path, keeps that branch and its checkout. Those ids belong to
 whoever issued them — `auth0|abc` and `alice@example.com` are ordinary values — so a
 grammar there would reject a valid caller on every attempt and burn the row's retry
 budget on a mismatch no retry can fix. Encoding cannot reject anyone, and it cannot

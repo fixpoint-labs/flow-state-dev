@@ -7,6 +7,9 @@
  * board's rows. The snapshot beside this file was written by the manager as it
  * stood before boards could be read from a claim; this compares against it
  * rather than re-deriving, which would only prove the code agrees with itself.
+ * It was rewritten once, deliberately, when the organization became part of a
+ * run's checkout and branch; a run recorded before that keeps its older place
+ * (`org-place.spec.ts`).
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { relative } from "node:path";

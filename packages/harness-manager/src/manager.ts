@@ -127,6 +127,7 @@ import {
   ASK_MARKER_IGNORED,
   acquireCheckout,
   branchFor,
+  locationFor,
   hostForConfig,
   placeFor,
   releaseCheckout,
@@ -1883,13 +1884,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // Building them from one object is what stops a discriminator reaching one
       // and missing another, which would leave the report partitioned and the
       // overwrite on disk.
-      const location: RunLocation = {
-        principal: runPrincipal(ctx),
-        epic,
-        issue,
-        phase: phaseName,
-      };
-      const branch = branchFor(location);
       const topic = runTopic(epic, issue, phaseName);
 
       await ctx.sequencer!.patchState({
@@ -1898,7 +1892,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         topic,
         taskId: input.taskId,
         attempt: input.attempts,
-        branch,
       });
 
       // **Where the run works, from the workspace host.** Its source is asked
@@ -1912,6 +1905,14 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       } catch (corrupt) {
         throw new HarnessAttemptFailed((corrupt as Error).message);
       }
+      // The record is read first because a run it names an older branch for
+      // keeps that branch and its tree (see `locationFor`).
+      const location = locationFor(
+        { principal: runPrincipal(ctx), epic, issue, phase: phaseName },
+        recorded?.branch,
+      );
+      const branch = branchFor(location);
+      await ctx.sequencer!.patchState({ branch });
       const pinned = {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
@@ -2114,12 +2115,12 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // to the context that resolved it. If its answer moved the run since
       // the row was opened, the prompt already names the old place, so the
       // attempt stops rather than running the agent somewhere else.
-      const location: RunLocation = {
-        principal: runPrincipal(ctx),
-        epic: state.epic!,
-        issue: state.issue!,
-        phase: state.phase!,
-      };
+      // The branch the run opened on decides the derivation, so this step
+      // derives the place the open step did.
+      const location = locationFor(
+        { principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! },
+        state.branch,
+      );
       const answer = pinnedAnswer(await host.source(ctx), state);
       if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
       if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
