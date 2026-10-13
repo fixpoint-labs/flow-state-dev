@@ -37,11 +37,14 @@ export {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  setBriefInputSchema,
+  setBriefOutputSchema,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
   type CreateProjectInput,
   type CreateProjectOutput,
   type ProjectBlocks,
+  type SetBriefInput,
   type SetRepositoryInput
 } from "./project-writes";
 
@@ -125,6 +128,7 @@ export {
 } from "./workstream-writes";
 
 export {
+  linkedProjectOf,
   projectCoordinatorTools,
   WORKSTREAM_DELEGATE_ACTION,
   workstreamDelegateChangeSchema,

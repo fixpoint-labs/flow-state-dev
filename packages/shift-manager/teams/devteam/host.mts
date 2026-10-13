@@ -70,6 +70,7 @@ import {
   listProjectsInputSchema,
   listProjectsOutputSchema,
   defineWorkstreamBlocks,
+  linkedProjectOf,
   projectCoordinatorTools,
   projectWorkspace,
   mergeWorkerFlows,
@@ -274,8 +275,8 @@ function projectSetup(installation: WorkerInstallation) {
  */
 const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
-/** The chief of staff's project tools, by the names its `tools:` line spells. */
-const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "openWorkstream", "listProjects"];
+/** The project tools, by the names the chief of staff's and the project coordinator's `tools:` lines spell. */
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "listProjects"];
 
 /** The user's projects, with what a coder's task that names no project does next. */
 const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
@@ -310,9 +311,13 @@ const forCoding = handler({
  * `setRepository` and `openWorkstream`, and its one project read,
  * `listProjects`: the same blocks the Lab's own projects flow runs, under the
  * names its `tools:` line spells. A catalog key must be the tool's own name,
- * so `openWorkstream` is the block under `.as()`; the others are sequencers
- * named for the tool, since each waits for an approval first, or, for
- * `listProjects`, adds `forCoding`.
+ * so `openWorkstream` and `setBrief` are the blocks under `.as()`; the others
+ * are sequencers named for the tool, since each waits for an approval first,
+ * or, for `listProjects`, adds `forCoding`.
+ *
+ * The project coordinator manages its own project with `setBrief`,
+ * `setRepository` and `openWorkstream`, called without a `project`: each
+ * then writes the project its conversation is linked to, and only that one.
  *
  * `listProjects` is how the chief of staff knows which project a coder's task
  * works in: the projects the user is a member of, read when asked, never
@@ -367,13 +372,20 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     setRepository: sequencer({
       name: "setRepository",
       description:
-        "Set, change or clear (null) the git remote a project's code lives in. " +
+        "Set, change or clear (null) the git remote a project's code lives in, by the project's address " +
+        "(`visibility` and `id`); in a project's own conversation, leave `project` out. " +
         "Only project members may, and the user approves it first.",
       inputSchema: setRepositoryInputSchema,
       outputSchema: setRepositoryOutputSchema,
     })
-      .tap(askRepository((input) => input.project?.id))
+      .tap(askRepository((input, ctx) => input.project?.id ?? linkedProjectOf(ctx.session.state)?.id))
       .step(blocks.setRepository),
+    setBrief: blocks.setBrief.as({
+      name: "setBrief",
+      description:
+        "Set, change or clear (null) a project's brief, what the project is for, by the project's address " +
+        "(`visibility` and `id`); in a project's own conversation, leave `project` out. Only project members may.",
+    }),
   };
 }
 
@@ -445,13 +457,17 @@ const repositoryAskInputSchema = z
  * the project and the remote, with any user or password left out of what
  * Inbox shows. Returns on Approve; on Deny the runtime throws out of it.
  */
-function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchema>) => string | undefined) {
+function askRepository(
+  projectOf: (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => string | undefined,
+) {
   return handler({
     name: "devforce-cos-ask-repository",
     inputSchema: repositoryAskInputSchema,
     outputSchema: z.void(),
     execute: async (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => {
-      const project = projectOf(input) ?? "";
+      const project = projectOf(input, ctx);
+      // No project to name: the write that follows refuses, so there is nothing to approve.
+      if (project === undefined) return;
       if (ctx.suspend === undefined) {
         throw new Error(
           `the repository of project "${project}" waits for a user's approval here, and this app ` +
@@ -903,7 +919,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The built-in `agent` worker flow, which the chief of staff (`org/workers/
   // chief-of-staff/`) runs on. Every worker on it gets the discovery door; a
   // worker holds hire, fire and the project writes only by naming them in
-  // its `tools:`, and in this tree only the chief of staff does. Hire and fire
+  // its `tools:`: in this tree the chief of staff names them, and the project
+  // coordinator names the writes to its own project. Hire and fire
   // write the roster of the user talking to it: a worker of their own, which
   // runs on that user's turns only. A fire, and a project's repository, wait
   // for a user's Approve in Inbox, which needs durable execution (on
@@ -918,9 +935,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
-    // The worker flow carries them, and only the chief of staff's line names them; a
-    // project coordinator's line names `readProject`, `listLeads` and
-    // `openWorkstream`, and a workstream's lead's `updateWorkstream`.
+    // The worker flow carries them, and only the chief of staff's line names
+    // the roster writes; a project coordinator's line names `readProject`,
+    // `setBrief`, `setRepository`, `listLeads` and `openWorkstream`, and a
+    // workstream's lead's `updateWorkstream`.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
       ...rosterTools,

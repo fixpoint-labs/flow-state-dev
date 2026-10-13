@@ -25,7 +25,7 @@ A **private** project lives with you. Nobody else can list, open or read it, its
 
 Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
 
-A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exception is `openWorkstream` from a project coordinator, covered in [Opening one](#opening-one). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exceptions are the writes a project coordinator makes in its own project: `openWorkstream`, covered in [Opening one](#opening-one), and `setBrief` and `setRepository`, covered in [Managing the project from the coordinator](#managing-the-project-from-the-coordinator). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
@@ -69,7 +69,7 @@ Every call returns the same declaration, so declaring the collections on several
 
 ## Creating a project
 
-`defineProjectBlocks()` gives you the project blocks, `createProject`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
+`defineProjectBlocks()` gives you the project blocks, `createProject`, `setBrief`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -119,6 +119,22 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 | `invalid-project-id` | The id is empty, `unassigned`, or not one path segment |
 | `private-has-members` | A private project names anyone besides its owner |
 | `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
+
+### Changing the brief
+
+`setBrief` sets, changes or clears a project's brief. Send `null` to clear it:
+
+```ts
+await projects.sendAction(
+  "setBrief",
+  { project: { visibility: "shared", id: "apollo" }, brief: "Ship the new checkout before the holiday freeze." },
+  { sessionId }
+);
+```
+
+It returns `{ project }`, the row as written, and changes `brief` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+
+`project` is optional. Leave it out and the write changes the project the calling conversation belongs to. From a conversation that belongs to a project, the write changes only that project, so naming a different one is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
 
 ### Default projects from app code
 
@@ -428,6 +444,58 @@ workstream it returns. When nobody fits, say so and open nothing.
 
 When `openWorkstream` runs in your own coordinator's turn, the new workstream is already one of the coordinator's delegates when the open returns, so the coordinator can hand your ask to it in the same turn. The delegate's target is `<project.visibility>/<project.id>/<id>`, read from the `workstream` the open returns, for example `shared/apollo/checkout`. One worker can lead several of your workstreams, each with its own session and board.
 
+### Managing the project from the coordinator
+
+Your coordinator can keep its own project's row current: rewrite the brief when the goal shifts, or set the repository once there is one. Give its catalog `setBrief` and `setRepository` from `defineProjectBlocks()`, named for the catalog with `.as()`:
+
+```ts
+const projects = defineProjectBlocks();
+
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    catalog: {
+      ...projectCoordinatorTools,
+      setBrief: projects.setBrief.as({ name: "setBrief" }),
+      setRepository: projects.setRepository.as({ name: "setRepository" }),
+      listLeads: workstreams.listLeadsTool,
+      openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" }),
+    },
+  },
+});
+```
+
+List them in the worker's `tools:` and tell it to leave `project` out:
+
+```md title="workforce/org/workers/project-coordinator/WORKER.md"
+---
+description: Your coordinator for one project. Says how its workstreams are going, keeps the project's brief and repository current, opens a workstream for new work, and hands your asks to the workstreams you own there.
+flow: coordinator
+routing: judgment
+tools: [readProject, setBrief, setRepository, listLeads, openWorkstream]
+---
+
+When the user changes what the project is for, call `setBrief` with the new
+brief and no `project`. When they name the project's repository, call
+`setRepository` with it and no `project`.
+```
+
+Left out, `project` is the coordinator's own project, and naming any other one is refused with `other-project`. Called from a conversation that belongs to no project, such as a user's own coordinator, a write without `project` is refused with `no-such-project`. Either way, only the project's members can change it.
+
+If a user should approve the repository before it's written, give the catalog a `setRepository` that asks first: a sequencer, a block that runs steps in order, with a step that waits for the user's approval before the write, as the [chief of staff](./chief-of-staff.md) does for `fire`. When the input leaves `project` out, that step can name the project with `linkedProjectOf(ctx.session.state)` from `@flow-state-dev/workforce`. It returns the session's `{ visibility, id }`, or `undefined` for a session that belongs to no project:
+
+```ts
+setRepository: sequencer({
+  name: "setRepository",
+  inputSchema: setRepositoryInputSchema,
+  outputSchema: setRepositoryOutputSchema,
+})
+  .tap(askToSetRepository) // reads input.project?.id ?? linkedProjectOf(ctx.session.state)?.id
+  .step(projects.setRepository),
+```
+
 ## A project's code and files
 
 A project can name the repository its code lives in. It's a remote, the address you'd pass to `git clone`, not a folder on some machine. Set it when you create the project, or later with `setRepository`. Send `null` to clear it:
@@ -444,6 +512,8 @@ A project can name the repository its code lives in. It's a remote, the address 
 A private project's repository and files are its owner's alone. On a shared project, everyone in the org can read the row, and so the repository's address.
 
 `setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+
+`project` is optional. Leave it out and the write changes the project the calling conversation belongs to. From a conversation that belongs to a project, the write changes only that project, so naming a different one is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
 
 A value has to be a remote. Both writes refuse these with `invalid-repository`, and the refusal never repeats the value:
 

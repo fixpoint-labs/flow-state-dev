@@ -55,7 +55,7 @@ import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
 import { deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
-import { changeWorkstreamRecordHere, linkedProjectOf, WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
+import { changeWorkstreamRecordHere, projectOfWrite, WORKSTREAM_DELEGATE_ACTION } from "./project-coordinator";
 import { DONE_STATUS } from "./project-progress";
 import { projectEntries } from "./project-read";
 import { retryOnConflict } from "./cas-retry";
@@ -318,26 +318,6 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
    * Check the open, and make the entry or find it: everything that can refuse
    * runs before anything is written.
    */
-  /**
-   * The project an open is in: the one it names, or, left out, the one its
-   * conversation is linked to. A conversation linked to a project opens only
-   * in that project, so a coordinator's open never lands in another.
-   */
-  const openingProjectOf = (ctx: { readonly session: { readonly state: unknown } }, named: ProjectAddress | undefined): ProjectAddress => {
-    const linked = linkedProjectOf(ctx.session.state);
-    if (named === undefined) {
-      if (linked === undefined) throw new ProjectRefusedError("no-such-project", "name the project to open the workstream in.");
-      return linked;
-    }
-    if (linked !== undefined && (linked.visibility !== named.visibility || linked.id !== named.id)) {
-      throw new ProjectRefusedError(
-        "other-project",
-        `this conversation is project "${linked.id}"'s; it opens workstreams only there, not in "${named.id}".`
-      );
-    }
-    return named;
-  };
-
   const checkOpen = handler({
     name: "workstream-open-check",
     inputSchema: openWorkstreamInputSchema,
@@ -347,7 +327,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     execute: async (input: OpenWorkstreamInput, ctx): Promise<OpenStep> => {
       const owner = ownerOf(ctx, "openWorkstream");
       assertWorkstreamId(input.id);
-      const at = openingProjectOf(ctx, input.project);
+      const at = projectOfWrite(ctx.session.state, input.project, "open workstreams");
       const project = await projectAt(ctx, at);
       if (!isMember(project.state, owner)) {
         throw new ProjectRefusedError(
