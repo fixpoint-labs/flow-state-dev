@@ -34,7 +34,7 @@
  *                 its owner, or saying it is not planned in the first cut; the
  *                 composer takes a message, since every worker flow has a door
  *   no run        the unclaimed row says no run has started and can't be stopped
- *   reach         the page throws nothing
+ *   reach         each row opens by clicking, and the page throws nothing
  *
  * Controls rebuild Shift Manager with `src/lib/run.ts` swapped for a module under
  * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
@@ -332,6 +332,31 @@ async function reach(page: Page, origin: string, row: Row) {
   await page.locator(`[data-testid=task-frame][data-task-id="${row.id}"]`).waitFor({ timeout: 10_000 });
 }
 
+/**
+ * {@link reach} as a graded step: a row the page can't reach fails `reach`,
+ * naming what Tasks drew and what the store holds for the row now, and its
+ * other legs are skipped, since they would grade some other screen.
+ */
+async function reached({ page, origin, api, tree, fail }: Ctx, row: Row): Promise<boolean> {
+  try {
+    await reach(page, origin, row);
+    return true;
+  } catch (error) {
+    const drawnRows = await page
+      .getByTestId("task-row")
+      .evaluateAll((els) => els.map((e) => e.getAttribute("data-task-id") ?? ""))
+      .catch(() => [] as string[]);
+    const board = await api.board(tree).catch(() => undefined);
+    const now = board === undefined ? undefined : (await api.rows(board).catch(() => [] as Row[])).find((r) => r.id === row.id);
+    fail(
+      "reach",
+      `${row.id} could not be opened by clicking (${String((error as Error).message ?? error).split("\n")[0]}); ` +
+        `Tasks drew [${drawnRows.join(", ")}]; the store has it ${now === undefined ? "nowhere" : now.status}`,
+    );
+    return false;
+  }
+}
+
 // ---- one row -----------------------------------------------------------------
 
 type Ctx = { page: Page; origin: string; devtool: string; api: LabApi; tree: Tree; fail: (leg: string, why: string) => void; evidence: string[] };
@@ -513,12 +538,14 @@ await runGoal(async (failures) => {
   const browser = await launchChromium();
   try {
     const api = labApi(served.origin);
-    // The held runs are linked once the board has handed them over.
+    // The held runs are linked once the board has handed them over. Both short
+    // tasks must have finished too: one still running reads as a held run, and
+    // picked as one it finishes under the screen and leaves Tasks.
     const board = await api.board(tree);
     let rows: Row[] = [];
     for (let waited = 0; waited < 30_000; waited += 250) {
       rows = await api.rows(board);
-      if (rows.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rows.some((r) => r.status === "completed")) break;
+      if (rows.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rows.filter((r) => r.status === "completed").length >= 2) break;
       await sleep(250);
     }
     const owners = new Map<string, string>();
@@ -554,7 +581,7 @@ await runGoal(async (failures) => {
     for (const { name, row, running } of cases) {
       const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
       const ctx: Ctx = { page, origin: served.origin, devtool: served.devtool, api, tree, fail, evidence };
-      await reach(page, served.origin, row);
+      if (!(await reached(ctx, row))) continue;
       await leg(fail, "items equal the run session's", () => checkItems(ctx, row, running));
       await leg(fail, "inspector", () => checkInspector(ctx, row));
       await leg(fail, "gaps", () => checkGaps(ctx, running));
@@ -569,12 +596,13 @@ await runGoal(async (failures) => {
     }
 
     // The row no run has claimed.
-    await reach(page, served.origin, unclaimed);
     const unclaimedFail = (name: string, why: string) => failures.push(`[unclaimed] ${name}: ${why}`);
-    await leg(unclaimedFail, "no run", async () => {
-      if (!(await visible(page, "session-no-run", 5_000))) unclaimedFail("no run", "the Session doesn't say no run has started");
-      if (!(await page.getByTestId("task-interrupt").isDisabled())) unclaimedFail("no run", "Interrupt is enabled with nothing running");
-    });
+    if (await reached({ page, origin: served.origin, devtool: served.devtool, api, tree, fail: unclaimedFail, evidence }, unclaimed)) {
+      await leg(unclaimedFail, "no run", async () => {
+        if (!(await visible(page, "session-no-run", 5_000))) unclaimedFail("no run", "the Session doesn't say no run has started");
+        if (!(await page.getByTestId("task-interrupt").isDisabled())) unclaimedFail("no run", "Interrupt is enabled with nothing running");
+      });
+    }
 
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
   } finally {
