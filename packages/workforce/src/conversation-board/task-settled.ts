@@ -7,9 +7,13 @@
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
  * attempt runs the board again with no turn; an asked row's ending resumes
  * the turn parked on it (`dispatchTask` with `wait`), with no line and no turn woken;
- * any other ending lands as a line under the delegate's name and, when its
- * coordinator has a turn of its own (judgment or best-fit routing), wakes
- * that turn to read it and decide what to do.
+ * a post row's ending (a delegate's answer to a post its coordinator handed
+ * on, `../coordinator/delegated-post`) goes to the coordinator's own
+ * handling, which lands it as the delegate's line or ends its part of the
+ * round, with no generic line and no turn woken; any other ending lands as a
+ * line under the delegate's name and, when its coordinator has a turn of its
+ * own (judgment or best-fit routing), wakes that turn to read it and decide
+ * what to do.
  *
  * A notice that arrives while the conversation is replying waits for the
  * reply to end, then runs (BR-27). It waits for the replies running when it
@@ -42,6 +46,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { isPostRow, postRowOf, postRowSchema } from "../coordinator/delegated-post";
 import { replayNotices } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
@@ -78,9 +83,13 @@ export const conversationBoardStateShape = {
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE, PARENT_BINDING_STATE];
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask", "post"]),
   text: z.string().optional(),
-  worker: z.string().optional()
+  worker: z.string().optional(),
+  /** On a post row's ending: what the coordinator's handling is handed. */
+  post: z.unknown().optional(),
+  /** On a post row's ending: the notice, acknowledged once the coordinator's handling has run. */
+  notice: taskNoticeSchema.optional()
 });
 
 type Settled = z.infer<typeof settledSchema>;
@@ -93,7 +102,25 @@ export interface TaskSettledOptions {
   readonly turn: BlockDefinition<any, any>;
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
+  /**
+   * A post row's ending, acted on once like any notice, and handed here
+   * instead of a line or a turn ({@link PostEnding}). Only a coordinator's
+   * conversation files post rows.
+   */
+  readonly onPost?: BlockDefinition<any, any>;
 }
+
+/** What a post row's ending hands {@link TaskSettledOptions.onPost}. */
+export const postEndingSchema = z.object({
+  taskId: z.string(),
+  ending: z.enum(["completed", "errored", "cancelled"]),
+  /** The row's output: the delegate's reply, on a completed row. */
+  output: z.unknown().optional(),
+  /** The row's server-written post, read once here. */
+  post: postRowSchema
+});
+
+export type PostEnding = z.infer<typeof postEndingSchema>;
 
 /**
  * Not `"session"`. Delegate answers are `queue` on that key, and a queued
@@ -116,6 +143,48 @@ export const AFTER_REPLY_CONCURRENCY = { policy: "defer", key: replyLine } as co
  * once by the dedupe, a versioned write.
  */
 export function taskSettledEntry(options: TaskSettledOptions) {
+  return settledEntry(options, false);
+}
+
+/**
+ * Both entries. On `onPostSettled` (`posts`) a post row's notice is
+ * acknowledged (its dedupe key written, its marker cleared) only after the
+ * coordinator's handling has run, so a failure there leaves it owed for the
+ * board's next touch rather than losing the answer. The entry is queued on
+ * the session, so a second copy waits behind the first and finds it no
+ * longer owed.
+ */
+function settledEntry(options: TaskSettledOptions, posts: boolean) {
+  /** Write the notice's dedupe key: `true` the first time. */
+  const noteSeen = (ctx: BlockContext, key: string) =>
+    withOutcome(
+      (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+        ctx.session.atomicState(mutator as never),
+      (state: Readonly<Record<string, unknown>>) => {
+        const seen = (state[TASK_NOTICES_STATE] ?? []) as string[];
+        if (seen.includes(key)) return { state: {}, result: false };
+        return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
+      }
+    );
+
+  /**
+   * Whatever a run does, the notices still owed go out again behind it, but
+   * never `notice`: its marker is cleared, or stays owed for its own entry.
+   * Nor an asked row still owed its resume: its notice stays owed while the
+   * resume fails, so two such rows would send each other's forever. A touch
+   * of the board retries those, once per touch.
+   */
+  const replayOthers = (ctx: BlockContext, ref: NonNullable<Awaited<ReturnType<typeof ownConversationLedger>>>, notice: TaskNotice) =>
+    replayNotices(
+      ctx as never,
+      ref
+        .list()
+        .filter((task) => !(task.ask != null && task.resumeOwed === true))
+        .map((task) =>
+          task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
+        )
+    );
+
   /** Is the notice still owed, and the first time it is acted on? Then what does it do. */
   const settle = handler({
     name: "conversation-task-settled",
@@ -135,37 +204,56 @@ export function taskSettledEntry(options: TaskSettledOptions) {
           await deleteChain(ctx as never, { partition: await filingSessionIdOf(ctx.session), taskId: notice.taskId });
         }
       }
-      // Whatever this run does, the notices still owed go out again behind
-      // it, but never this one: its marker is cleared below, or already was.
-      // Nor an asked row still owed its resume: its notice stays owed while
-      // the resume fails, so two such rows would send each other's forever.
-      // A touch of the board retries those, once per touch.
-      const replayRest = () =>
-        replayNotices(
-          ctx as never,
-          ref
-            .list()
-            .filter((task) => !(task.ask != null && task.resumeOwed === true))
-            .map((task) =>
-              task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
-            )
-        );
+      const replayRest = () => replayOthers(ctx as never, ref, notice);
       const row = ref.get(notice.taskId);
+      // A post row a user cancelled owes no notice; the board sends its
+      // ending when it cancels it, and it is taken from the row's status. Its
+      // handling only closes what the cancel lets close, so a copy sent again
+      // changes nothing.
+      const cancelledPost = posts && options.onPost !== undefined && isPostRow(row) && row!.status === "cancelled";
+      if (cancelledPost && notice.ending === "cancelled") {
+        const post = postRowOf(row);
+        if (post === undefined) return { act: "none" };
+        return { act: "post", post: { taskId: row!.id, ending: "cancelled", post } satisfies PostEnding };
+      }
       // A notice its row doesn't owe was delivered already, or was never owed.
       if (row === undefined || !isNoticeOwed(row, notice)) {
         await replayRest();
         return { act: "none" };
       }
       const key = noticeKey(notice);
-      const first = await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>) => {
-          const seen = (state[TASK_NOTICES_STATE] ?? []) as string[];
-          if (seen.includes(key)) return { state: {}, result: false };
-          return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
+      // A post row's ending is the coordinator's, never the generic line. A
+      // post has one attempt and nobody to ask, so it ends only one way of
+      // three. Only `onPostSettled` acts on it: a copy sent here any other
+      // way leaves it owed, and the replay sends it there.
+      if (options.onPost !== undefined && isPostRow(row)) {
+        if (!posts) {
+          await replayNotices(ctx as never, ref.list().filter((task) => !(task.ask != null && task.resumeOwed === true)));
+          return { act: "none" };
         }
-      );
+        const acknowledged = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
+        const post = postRowOf(row);
+        // Acknowledged already, by a run that stopped before clearing the
+        // marker. A post that doesn't read can't be landed: its round closes at its deadline.
+        if (
+          acknowledged.includes(key) ||
+          post === undefined ||
+          (notice.ending !== "completed" && notice.ending !== "errored" && notice.ending !== "cancelled")
+        ) {
+          await noteSeen(ctx as never, key);
+          await ref.patchMetadata(row.id, clearNotice(notice));
+          await replayRest();
+          return { act: "none" };
+        }
+        const ending: PostEnding = {
+          taskId: row.id,
+          ending: notice.ending,
+          ...(notice.output !== undefined ? { output: notice.output } : {}),
+          post
+        };
+        return { act: "post", post: ending, notice };
+      }
+      const first = await noteSeen(ctx as never, key);
       const decision = decideNotice(notice, options.policy(ctx as never));
       // An asked row's ending: resume the turn parked on it, with no line and
       // no turn. Every copy tries: the gate admits one answer. The owed notice
@@ -210,6 +298,23 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     }
   });
 
+  /** The coordinator's handling of a post row's ending ran: acknowledge its notice. */
+  const acknowledge = handler({
+    name: "conversation-post-acknowledged",
+    inputSchema: settledSchema,
+    outputSchema: z.object({}),
+    sessionStateSchema: z.object(conversationBoardStateShape),
+    execute: async (settled: Settled, ctx) => {
+      const notice = settled.notice as TaskNotice;
+      const ref = await ownConversationLedger(ctx as never);
+      await noteSeen(ctx as never, noticeKey(notice));
+      if (ref === undefined) return {};
+      await ref.patchMetadata(notice.taskId, clearNotice(notice));
+      await replayOthers(ctx as never, ref, notice);
+      return {};
+    }
+  });
+
   const block = sequencer({ name: "conversation-on-task-settled", inputSchema: taskNoticeSchema })
     .step(settle)
     .tapIf((settled: Settled) => settled.act === "line" || settled.act === "wake-turn", line)
@@ -218,11 +323,32 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       (settled: Settled) => ({ message: settled.text ?? "" }),
       options.turn
     )
-    .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard)
+    .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard);
+  const withPosts = (
+    options.onPost === undefined
+      ? block
+      : block
+          .tapIf(
+            (settled: Settled) => settled.act === "post",
+            (settled: Settled) => settled.post as PostEnding,
+            options.onPost
+          )
+          .tapIf((settled: Settled) => settled.act === "post" && settled.notice !== undefined, acknowledge)
+  )
     // In a task session whose task waits on its pieces: settle it once none
     // is open, after any turn this notice woke, never inside it (FIX-1802
     // S4). A turn that failed leaves it for the next touch.
     .tap(settleSplitBlock);
 
-  return { inputSchema: taskNoticeSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
+  return { inputSchema: taskNoticeSchema, block: withPosts, concurrency: AFTER_REPLY_CONCURRENCY };
+}
+
+/**
+ * Build the `onPostSettled` internal entry: {@link taskSettledEntry}'s
+ * dedupe and hand-off for a post row's ending, acknowledged once the
+ * hand-off has run, and queued on the session rather than deferred on the
+ * reply line, so a delegate's answer lands while a reply runs.
+ */
+export function postSettledEntry(options: TaskSettledOptions & { readonly onPost: BlockDefinition<any, any> }) {
+  return { ...settledEntry(options, true), concurrency: "queue" as const };
 }

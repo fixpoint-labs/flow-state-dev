@@ -5,9 +5,9 @@
  * Two doors, both durable, both ending in the framework's stock
  * `human_approval` suspension:
  *
- * - `onDelegatedPost` — the internal entry a coordinator delivers a post to
- *   (Workforce's `delegatedPostEntry`), into a session of the delegate's own
- *   that the coordinator's dispatch opens. So an ask raised here lives in a
+ * - `onDelegatedPost` — the task entry a coordinator's post row is handed to
+ *   (Workforce's `delegatedPostEntry`), in a session of the delegate's own
+ *   that the hand-over opens. So an ask raised here lives in a
  *   dispatch-run session, which is what Shift Manager's listing has to ask
  *   for. Its answer, once a user decides, goes back to the coordinator.
  * - `ask` — a public action a test calls directly, in a session a user
@@ -171,7 +171,7 @@ export function defineAskerFlow(
         description: "A user's line into this worker's session.",
       },
     },
-    internal: {
+    task: {
       actions: {
         [DELEGATED_POST_ENTRY]: { ...delegatedPostEntry(onPost), durable: true },
       },

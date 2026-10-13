@@ -8,7 +8,7 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path as of 11 October 2026. An input lane: FIX-1820, the restart closure, done on 11 October. This epic spec in review at the now line. FIX-1875 dispatchTask: spec, then implementation. FIX-1872 one fence: spec beside FIX-1875's build, implementation after FIX-1875 merges. FIX-1876 docs and vocabulary: spec beside, implementation after both. The closure FIX-1887: its QA plan written early, its run after all three merge. The critical path runs through every implementation in order, then the closure run](figures/path.svg)
+![The path as of 11 October 2026. An input lane: FIX-1820, the restart closure, done on 11 October. This epic spec in review at the now line. FIX-1875 dispatchTask: spec, then implementation. FIX-1872 one fence: spec beside FIX-1875's build, implementation in two PRs after FIX-1875 merges. FIX-1876 docs and vocabulary: spec beside, implementation after both. The closure FIX-1887: its QA plan written early, its run after all three merge. The critical path runs through every implementation in order, then the closure run](figures/path.svg)
 
 A straight chain. Specs can be written side by side once this one merges; implementations can't,
 because each one hands the next a surface that must stop moving. Only the QA plan runs early.
@@ -18,7 +18,7 @@ because each one hands the next a surface that must stop moving. Only the QA pla
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1875** dispatchTask | spec → impl PR | `wait-for-response.ts` and the notices · D1 · ER-3 | The tool; `waitForResponse` and `timeoutMs` retired; public ask names renamed | FIX-1872 · FIX-1876 | Medium |
-| **FIX-1872** one fence | spec → impl PR | `dispatchTask` · D2 | Today's coordinator posts sorted into tells and answers; answers as rows, a workstream's row carrying its `target` (added to `dispatchTask`), tells as `dispatcher()` messages; the `handOff` tool, the ledger and its two entries removed in one PR | FIX-1876 | Medium |
+| **FIX-1872** one fence | spec → impl PR | `dispatchTask` · D2 | Today's coordinator posts sorted: none is a tell, so every post is a row per delegate, a workstream's row carrying its `target` (added to `dispatchTask`); board seams first, then the `handOff` tool, the ledger and its two entries removed in one PR ([FIX-1872 D3](../../issues/FIX-1872/DECISIONS.md#d3)) | FIX-1876 | Medium |
 | **FIX-1876** docs and vocabulary | spec → impl PR | Both above, merged · D3 | Internal ask and hand-off names renamed, with a migration for rows already marked; the pages in [DOCS.md](DOCS.md) | The closure run | Small–medium |
 | **FIX-1887** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The reruns, the sweep, a QA report, and a bug child for every failure | The wrap | Medium, repeats per retest |
 

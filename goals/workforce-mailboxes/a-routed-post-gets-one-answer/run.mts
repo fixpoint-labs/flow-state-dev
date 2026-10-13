@@ -53,7 +53,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { createModelResolver, defineFlow, generator, handler } from "@flow-state-dev/core";
+import { createModelResolver, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
   delegatedPostEntry,
@@ -66,6 +66,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import type { TaskWorkerInput } from "@flow-state-dev/orchestration";
 import { gatewayModel, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 import type { HostSeams, RoutedHost } from "./host.mts";
 
@@ -96,8 +97,10 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 const heard = (post: DelegatedPost) => `${post.from}, through ${post.coordinator}: ${post.body}`;
 
 /**
- * `no-landing`'s agent flow: takes a delegated post and answers it through
- * `agent-answer` in its own conversation, and never hands the answer back.
+ * `no-landing`'s agent flow: takes a delegated post behind the published
+ * entry's claim gate and answers it through `agent-answer` in its own
+ * conversation, and never hands the answer back: its turn then fails, so the
+ * post's row ends with no answer on it, as a delegate's that answers nothing.
  */
 function quietAgentFlow(installation: WorkerInstallation) {
   const answer = generator({
@@ -108,6 +111,17 @@ function quietAgentFlow(installation: WorkerInstallation) {
     user: heard
   });
   const run = generator({ name: "agent-answer", inputSchema: z.object({ message: z.string() }), model: "scripted/answer", prompt: "", user: (i: { message: string }) => i.message });
+  const keep = handler({
+    name: "quiet-agent-keep",
+    inputSchema: z.unknown(),
+    execute: (): string => {
+      throw new Error("this agent keeps its answer");
+    }
+  });
+  const entry = delegatedPostEntry(run);
+  const quiet = sequencer({ name: "quiet-agent-post", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })
+    .step((task: { sealed?: unknown }) => task.sealed as DelegatedPost, answer)
+    .step(keep);
   const loadWorker = handler({
     name: "quiet-agent-load-worker",
     inputSchema: z.unknown(),
@@ -121,15 +135,15 @@ function quietAgentFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { onDelegatedPost: { inputSchema: delegatedPostSchema, block: answer, userMessage: heard } } }
+    task: { actions: { onDelegatedPost: { from: entry.from, userMessage: entry.userMessage, block: quiet } } }
   } as never);
 }
 
 /**
  * `no-context`'s agent flow: takes a delegated post through the published
  * entry, answers it through `agent-answer` with `delegatedPostHistory`, and
- * hands the answer back, as the built-in one does; but the post reaches the
- * entry with its lines stripped, so the turn is shown none.
+ * hands the answer back, as the built-in one does; but the post row's payload
+ * reaches the entry with its lines stripped, so the turn is shown none.
  */
 function linelessAgentFlow(installation: WorkerInstallation) {
   const run = generator({
@@ -154,9 +168,15 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    internal: {
+    task: {
       actions: {
-        onDelegatedPost: { ...entry, block: entry.block.connectInput(({ recent: _recent, ...post }: DelegatedPost) => post) }
+        onDelegatedPost: {
+          ...entry,
+          block: entry.block.connectInput((task: TaskWorkerInput) => {
+            const { recent: _recent, ...post } = task.sealed as DelegatedPost;
+            return { ...task, sealed: post };
+          })
+        }
       }
     }
   } as never);

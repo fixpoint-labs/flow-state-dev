@@ -162,7 +162,8 @@ function posterFlow(installation: any) {
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { [wf.DELEGATED_POST_ENTRY]: { inputSchema: z.unknown(), block: door } } },
+    // A post is a row on the coordinator's board: the post entry settles it with the door's reply.
+    task: { actions: { [wf.DELEGATED_POST_ENTRY]: wf.delegatedPostEntry(door) } },
   } as never);
 }
 

@@ -739,7 +739,7 @@ async function askFromPage(view: View, origin: string, held: Held, title: string
  * What the person's project coordinator did with their ask, read from the
  * Stream's conversation: each request's status, every tool call its turn
  * made with what it answered, and what it said. Said with a miss, so a red
- * names its cause: no `handOff`, a refused one, or a turn that failed.
+ * names its cause: no post handed on, a refused one, or a turn that failed.
  */
 async function whatTheTurnDid(view: View): Promise<string> {
   const sessionId = await view.page

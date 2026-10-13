@@ -23,11 +23,23 @@
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { delegateKey, deliveryDelegateSchema, type DeliveryDelegate } from "../delivery-ledger";
 import { DELEGATES_STATE, FALLBACK_STATE, MAX_DELEGATES } from "./delegate-keys";
 
+/** The delegate a post goes to: a worker, and the target a caller resolved for it, if any. */
+export const delegateRefSchema = z.object({
+  worker: z.string().min(1),
+  target: z.string().min(1).optional()
+});
+
+export type DelegateRef = z.infer<typeof delegateRefSchema>;
+
+/** One key per delegate record: a worker with two targets is two delegates. */
+export function delegateKey(delegate: DelegateRef): string {
+  return JSON.stringify([delegate.worker, delegate.target ?? null]);
+}
+
 /** One delegate record. */
-export const delegateRecordSchema = deliveryDelegateSchema.extend({
+export const delegateRecordSchema = delegateRefSchema.extend({
   /** What it's good at, for best fit. Preferred over the worker's description. */
   note: z.string().min(1).optional()
 });
@@ -41,7 +53,7 @@ export type DelegateRecord = z.infer<typeof delegateRecordSchema>;
  */
 export const delegateStateShape = {
   [DELEGATES_STATE]: z.array(delegateRecordSchema).nullable().default(null),
-  [FALLBACK_STATE]: deliveryDelegateSchema.nullable().default(null)
+  [FALLBACK_STATE]: delegateRefSchema.nullable().default(null)
 } as const;
 
 /** The delegate list's fields: only this module writes them. */
@@ -56,15 +68,15 @@ export const delegateSessionStateSchema = z.object(delegateStateShape);
 export type DelegateDefaults = { delegates: readonly string[]; fallback?: string; records?: readonly DelegateRecord[] };
 
 /** The conversation's delegates and fallback, seeded from the defaults when never set. */
-export type DelegateList = { delegates: DelegateRecord[]; fallback: DeliveryDelegate | null };
+export type DelegateList = { delegates: DelegateRecord[]; fallback: DelegateRef | null };
 
 /** How a record reads to a user and to the evaluator: its worker, with its target when it has one. */
-export function delegateLabel(delegate: DeliveryDelegate): string {
+export function delegateLabel(delegate: DelegateRef): string {
   return delegate.target === undefined ? delegate.worker : `${delegate.worker} (${delegate.target})`;
 }
 
 /** Whether two values name the same delegate record. */
-export function sameDelegate(a: DeliveryDelegate, b: DeliveryDelegate): boolean {
+export function sameDelegate(a: DelegateRef, b: DelegateRef): boolean {
   return delegateKey(a) === delegateKey(b);
 }
 
@@ -84,8 +96,8 @@ export function currentDelegates(state: Readonly<Record<string, unknown>>, defau
 /** A change to a conversation's delegates. */
 export type DelegateChange =
   | { readonly add: DelegateRecord }
-  | { readonly remove: DeliveryDelegate }
-  | { readonly fallback: DeliveryDelegate | null };
+  | { readonly remove: DelegateRef }
+  | { readonly fallback: DelegateRef | null };
 
 /** What a change came to: the list after it, or why it was refused. */
 export type DelegateChangeOutcome = { ok: true; list: DelegateList } | { ok: false; message: string };

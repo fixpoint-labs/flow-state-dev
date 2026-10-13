@@ -87,3 +87,15 @@ a delegate's conversation.
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to f pass on Shift Manager with two
 users and a real model, and each control fails on its named signal. Epic ER-4 and ER-5 hold.
+
+<a name="amendment-fix-1872"></a>
+## Superseded in part (FIX-1872, 2026-10-13)
+
+[FIX-1872](../FIX-1872/SPEC.md) replaced the delivery ledger with rows on the conversation's board ([epic FIX-1870 D2](../../epics/FIX-1870/DECISIONS.md)). What each rule promises a person still holds; how it is enforced moved:
+
+| Rule | Now |
+|---|---|
+| BR-20 | An answer lands once, under the delegate's name, from its post row's ending. No token: only the claim the row was worked under can settle it ([FIX-1872 rules](../FIX-1872/BUSINESS-RULES.md)) |
+| BR-21 | A delivery picked twice is one row (its id comes from the post, round and delegate record); an ending sent twice is acted on once by the board's notice dedupe |
+| BR-22 | There is no answer entry to name a post or token on. A settle that isn't the row's claim is refused by the board |
+| BR-27 | A post's round, delegate and author come from the row's server-written payload; a model's `dispatchTask` with `post: true` takes `assignee` and `target` only |
