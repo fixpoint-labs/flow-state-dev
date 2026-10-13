@@ -1129,4 +1129,53 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(resumed.output).toBe("Approved and done.");
     expect(JSON.stringify(seen[1]!.messages)).toContain("Checking with a reviewer.");
   });
+
+  // The wait stays on the record as a failed tool_output. The next turn
+  // must see the call once, with its result.
+  it("replays an approved call once on the next turn, never the wait as a failure", async () => {
+    const gate = handler({
+      name: "set_repository",
+      inputSchema: z.object({ repository: z.string() }),
+      outputSchema: z.object({ repository: z.string() }),
+      execute: async (input, ctx) => {
+        await ctx.suspend!({ reason: "human_approval", message: `Set the repository to ${input.repository}?` });
+        return { repository: input.repository };
+      },
+    });
+    const { model, seen } = stepModel([
+      () => ({ toolCalls: [{ toolCallId: "c1", toolName: "set_repository", args: { repository: "acme/web" } }], finishReason: "tool-calls" }),
+      () => ({ text: "repository set", finishReason: "stop" }),
+      () => ({ text: "anything else?", finishReason: "stop" }),
+    ]);
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate], history: true });
+    const flow = defineFlow({
+      kind: "gen-history-after-approval",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-history-after-approval" });
+    const { stores, provider } = createDurableStores();
+    const runtimeConfig = { durabilityProvider: provider };
+    const sessionId = "s-history";
+    const first = await runAction({
+      orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", sessionId, stores, runtimeConfig,
+    });
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await resolve(flow, stores, provider, first.requestId!, suspension, "approve");
+    expect((await stores.request.get(first.requestId!))?.status).toBe("completed");
+
+    await runAction({
+      orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", sessionId, stores, runtimeConfig,
+    });
+    const calls: string[] = [];
+    for (const m of seen[2]!.messages as Array<Record<string, unknown>>) {
+      if (!Array.isArray(m.content)) continue;
+      for (const part of m.content as Array<Record<string, unknown>>) {
+        if (part.type === "tool-call") calls.push(part.toolCallId as string);
+      }
+    }
+    const results = toolResultParts(seen[2]!.messages);
+    expect(calls).toEqual(["c1"]);
+    expect(results).toHaveLength(1);
+    expect(JSON.stringify(results[0]!.output)).toContain("acme/web");
+    expect(JSON.stringify(results[0]!.output)).not.toContain("failed");
+  });
 });

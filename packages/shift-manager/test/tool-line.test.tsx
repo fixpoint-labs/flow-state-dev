@@ -49,7 +49,6 @@ describe("a tool call is a quiet line", () => {
   });
 
   it("a call stopped on an approval is waiting, not failed, and shows no error", () => {
-    // The engine records the wait as a failed call coded SUSPENSION, with the ask's question as its message.
     const waiting = { ...call("setRepository", "failed"), error: { message: "Approve setting the repository?", code: "SUSPENSION" } } as ToolOutputItem;
     render(<ToolLine item={waiting} />);
     const line = screen.getByRole("button", { name: /setRepository is waiting for an answer/ });

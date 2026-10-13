@@ -8,8 +8,7 @@
  * ›") that opens to one row per call. A call that is running or failed says
  * so in words ("Using discover…", "discover failed"), since there is no badge.
  * A call stopped on an approval or a question is waiting, not failed: the
- * engine records the wait as a failed call coded `SUSPENSION`, and its real
- * result replaces it once the answer resumes the run.
+ * engine records the wait as a failed call coded `SUSPENSION`.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}

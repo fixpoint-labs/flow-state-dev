@@ -171,12 +171,9 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
  * `(ts, itemIndex)`, the transient filter, the allowed-item-types filter,
  * and `itemToLLMMessages` per item.
  *
- * The collapse is what keeps a resumed request's history true: a tool call
- * that waited on an approval leaves its wait on the record as a failed
- * `tool_output` (code `SUSPENSION`) beside its real result, and
- * `collapseToCanonicalLog` keeps only the result. Replayed raw, a later turn
- * would show the model the approval's question as the call's error, then the
- * same call again, and the model reads that as a failure it retried.
+ * Collapse first. A resumed request keeps the wait (a failed `tool_output`
+ * coded `SUSPENSION`) beside the result; replayed raw, the next turn shows
+ * the approval's question as the call's error, then the same call again.
  * `itemToLLMMessages` internally applies `resolveItemVisibility` so
  * sub-agent and trace items are dropped here as well.
  *

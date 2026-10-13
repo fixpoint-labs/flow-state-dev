@@ -2,17 +2,11 @@
  * The one snapshot every surface draws from, and when it is read again.
  *
  * S3's contract: a refresh on boot, on an organization switch, after a
- * successful answer to an ask, after each line the chief of staff takes (its
- * turn may have created a project or hired a worker), and on Retry. Never on a
- * route or tab change, so moving around the app costs no reads. Inbox, the
- * Stream's asks, the sidebar counts and the Tasks list all come from the same
- * snapshot.
- *
- * An answer is followed past the resume: the answered request runs on, so
- * the provider reads its status until it stops running, then reads the Lab
- * again. Each step bumps {@link LabData.answered}, which a conversation on
- * that session reads as its cue to read itself back: the approval first,
- * then what the run did with it.
+ * successful answer to an ask, again once that run stops, after each line
+ * the chief of staff takes (its turn may have created a project or hired a
+ * worker), and on Retry. Never on a route or tab change, so moving around
+ * the app costs no reads. Inbox, the Stream's asks, the sidebar counts and
+ * the Tasks list all come from the same snapshot.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
