@@ -17,7 +17,19 @@
  * | `in_progress`, its harness not yet named its session | keeps the turn and waits (bounded) for the attempt to start: it takes the line into its prompt, or names its session and the door goes on as for a running row |
  * | `parked` on its own question, or `pending` after an attempt | keeps the turn for the next attempt; stops nothing, unparks nothing |
  * | `parked` for an earlier turn | re-queues it (an interrupted earlier door) |
- * | not started in this session, finished, someone else's, or on a harness that named no session | refuses, by name |
+ * | finished (`completed`, `errored` or `cancelled`) | keeps the turn for the next attempt, reopens the row and drains: the next attempt resumes the same coding session with the line (FIX-1764) |
+ * | not started in this session, someone else's, or on a harness that named no session | refuses, by name |
+ *
+ * ## A finished task is reopened
+ *
+ * A person's message on a finished task picks it up again (FIX-1764): the
+ * door keeps the turn for the attempt after the last one, puts the row back in
+ * the queue (`reopen`, which only a finished row takes) and runs the board's
+ * drain, so the task reads in progress again and its next attempt resumes the
+ * coding session the last one confirmed. A finished row's claim was cleared
+ * when it settled, so the board says where its drain runs
+ * ({@link MessageDoorBoard.reopenIn}); a board that can't say refuses the
+ * line, as does a run whose harness never confirmed a session.
  *
  * ## A run that is still starting
  *
@@ -119,7 +131,8 @@ export const messageDoorInputSchema = z.object({ message: z.string() });
  *
  * - `continuing` — the run acts on the message now: the running attempt was
  *   stopped and the next one starts, resuming the same coding session with
- *   the message, or the attempt that was starting took it into its prompt.
+ *   the message, or the attempt that was starting took it into its prompt,
+ *   or the finished task was reopened and its next attempt starts with it.
  * - `kept` — the message waits for the run's next attempt: nothing was
  *   running, or the run could not be re-queued now.
  */
@@ -143,7 +156,7 @@ export type TurnRefusalReason =
 const REFUSAL_TEXT: Record<TurnRefusalReason, string> = {
   "no-run": "No such run.",
   "not-started": "This task hasn't started, so there's no session to write into.",
-  "task-finished": "A finished task takes no message.",
+  "task-finished": "This task has finished, and its board can't reopen it.",
   "finished-first": "The task finished before your message reached it.",
   "cannot-continue": "This run's harness can't continue with a message.",
   "still-starting": "This run is still starting and can't take a message yet. Send it again once it's under way.",
@@ -244,6 +257,13 @@ export interface MessageDoorBoard {
    * payload, as on a feature board.
    */
   runOf?: (row: Task) => DoorRunIdentity | undefined;
+  /**
+   * The session that runs this board's drain, for a finished row: the row's
+   * claim, which names it for a running one, is cleared when the row settles.
+   * Absent, a finished row's line is refused (`task-finished`) rather than
+   * reopened with nowhere to run.
+   */
+  reopenIn?: string;
 }
 
 /** What the door needs from the host or the manager that built it. */
@@ -345,6 +365,8 @@ async function findRun(
 /** What the decide step hands the re-queue step. */
 type Decided = MessageDoorOutput & {
   requeue: boolean;
+  /** The decide step already put the row back in the queue: it was finished, and is reopened. */
+  reopened: boolean;
   /** The session that claimed the row, where its drain runs. */
   resumeIn: string | null;
   /** The board the row is on, so the re-queue resolves the same one. */
@@ -357,6 +379,7 @@ type Decided = MessageDoorOutput & {
 
 const decidedSchema = messageDoorOutputSchema.extend({
   requeue: z.boolean(),
+  reopened: z.boolean(),
   resumeIn: z.string().nullable(),
   collectionId: z.string().nullable(),
   partition: z.string().nullable(),
@@ -366,7 +389,17 @@ const decidedSchema = messageDoorOutputSchema.extend({
 
 /** A decision that re-queues nothing. */
 function answered(outcome: MessageDoorOutput["outcome"], taskId: string): Decided {
-  return { outcome, taskId, requeue: false, resumeIn: null, collectionId: null, partition: null, drain: null, flowKind: null };
+  return {
+    outcome,
+    taskId,
+    requeue: false,
+    reopened: false,
+    resumeIn: null,
+    collectionId: null,
+    partition: null,
+    drain: null,
+    flowKind: null,
+  };
 }
 
 /** Decide what a person's line does to the run, and do it. */
@@ -382,7 +415,7 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
     const owner = runOwnerOf(row);
     if (owner !== null && !isRunOwner(owner, runPrincipal(ctx))) throw new TurnRefused("no-run");
   }
-  if (isTerminalStatus(row.status)) throw new TurnRefused("task-finished");
+  if (isTerminalStatus(row.status) && board.reopenIn === undefined) throw new TurnRefused("task-finished");
 
   const identity = board.runOf === undefined ? payloadRun(row) : board.runOf(row);
   if (identity === undefined) throw new TurnRefused("no-run");
@@ -418,13 +451,14 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
         ? record?.sessionId == null
         : sessionConfirmedBy(record, row.attempts) === null;
   } else {
-    // Between attempts: the next attempt takes the turn.
+    // Between attempts, or finished: the next attempt takes the turn.
     if ((await readRunRow(ctx, topic))?.sessionId == null) throw new TurnRefused("cannot-continue");
     starting = false;
     turnKey = await keep(row.attempts + 1);
   }
 
   try {
+    if (isTerminalStatus(row.status)) return await reopenRun(board, row);
     return starting
       ? await continueOnceStarted(board, row, topic, turnKey, ctx)
       : await continueRun(board, row, ctx);
@@ -502,6 +536,29 @@ async function continueOnceStarted(
   return decided;
 }
 
+/**
+ * With the turn kept for the next attempt: put the finished row back in the
+ * queue, for the requeue step to drain where the board says. A row that left
+ * its finished status first (another line reopened it) keeps the turn for
+ * whatever runs it next.
+ */
+async function reopenRun(board: MessageDoorBoard, row: Task): Promise<Decided> {
+  const { tasks } = board;
+  const reopened = await tasks.reopen(row.id);
+  if (reopened.outcome !== "recorded") return answered("kept", row.id);
+  return {
+    outcome: "continuing",
+    taskId: row.id,
+    requeue: true,
+    reopened: true,
+    resumeIn: board.reopenIn ?? null,
+    collectionId: tasks.collectionId,
+    partition: tasks.partition ?? null,
+    drain: board.drain.drain,
+    flowKind: board.drain.flowKind ?? null,
+  };
+}
+
 /** With the turn kept: stop the running attempt and park the row for it, or leave it kept. */
 async function continueRun(board: MessageDoorBoard, row: Task, ctx: BlockContext): Promise<Decided> {
   const { tasks } = board;
@@ -510,6 +567,7 @@ async function continueRun(board: MessageDoorBoard, row: Task, ctx: BlockContext
     outcome: "continuing",
     taskId: row.id,
     requeue: true,
+    reopened: false,
     resumeIn: row.claimedBy?.sessionId ?? null,
     collectionId: tasks.collectionId,
     partition: tasks.partition ?? null,
@@ -562,8 +620,9 @@ async function continueRun(board: MessageDoorBoard, row: Task, ctx: BlockContext
 }
 
 /**
- * Re-queue a row parked for a turn without charging it, and run its board's
- * drain in the session that claimed it, so the next attempt starts now in the
+ * Re-queue a row parked for a turn without charging it (a reopened row is
+ * queued already), and run its board's drain in the session that claimed it
+ * (for a reopened row, the session its board names), so the next attempt starts now in the
  * run's own session. Any failure here answers `kept`: the turn is kept and the
  * attempt stopped, so the run gets the line from whatever runs the row next.
  */
@@ -579,9 +638,12 @@ async function requeue(deps: MessageDoorDeps, decided: Decided, ctx: BlockContex
         (candidate.tasks.partition ?? null) === decided.partition,
     );
     if (board === undefined) return kept;
-    const unparked = await board.tasks.unpark(taskId);
-    // Someone re-queued it first; the turn is kept for what they started.
-    if (unparked.outcome !== "recorded") return kept;
+    // A reopened row is in the queue already; a parked one is put there now.
+    if (!decided.reopened) {
+      const unparked = await board.tasks.unpark(taskId);
+      // Someone re-queued it first; the turn is kept for what they started.
+      if (unparked.outcome !== "recorded") return kept;
+    }
     if (decided.resumeIn === null || decided.drain === null) return kept;
     const drained = await dispatchThroughSeam(ctx, {
       type: "internal",

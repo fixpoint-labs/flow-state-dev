@@ -239,7 +239,8 @@ function Brief({ gaps }: { gaps: Gaps }) {
 /**
  * The composer (BR-18): sends into the session the task's run link names,
  * through the door of the flow that session records as its owner, never the
- * board's. Says why when it can't.
+ * board's. Says why when it can't. On a finished task too: the door reopens
+ * it with the line (FIX-1764).
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();
@@ -256,20 +257,21 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       ? "This task isn't on its board yet."
       : row.run === null
         ? gaps.turn.notStarted
-        : isDone(row.status)
-          ? gaps.turn.finished
-          : task.run.kind === "failed"
-            ? task.run.failure.message
-            : flowId === undefined
-              ? "Reading the run…"
-              : door === null
-                ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
-                : null;
+        : task.run.kind === "failed"
+          ? task.run.failure.message
+          : flowId === undefined
+            ? "Reading the run…"
+            : door === null
+              ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
+              : null;
+  // A message on a finished task picks it up again (FIX-1764): the worker's
+  // door reopens it, so the box says so before the line is sent.
+  const reopens = row !== undefined && isDone(row.status);
   return (
     <TurnComposer
       testId="task-composer"
       label={`Message ${worker ?? "this worker"}`}
-      placeholder={`Message ${worker ?? "this worker"}…`}
+      placeholder={reopens ? `Message ${worker ?? "this worker"} to pick this task up again…` : `Message ${worker ?? "this worker"}…`}
       blocked={blocked}
       // No `held`: the Session tab draws only the task's own run, not this line's
       // request, so the line keeps its draft until delivered.

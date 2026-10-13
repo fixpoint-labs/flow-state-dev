@@ -39,8 +39,6 @@ export const GAPS = {
   turn: {
     /** BR-14: the row has no linked run. */
     notStarted: "This task hasn't started, so there's no session to write into.",
-    /** BR-15. */
-    finished: "A finished task takes no message.",
     /** The run's worker flow declares no door. Drawn after the worker's name. */
     noDoor: "takes no message.",
     /** BR-22: Inbox's reply, to a worker flow with no door. Drawn after the worker's name. */

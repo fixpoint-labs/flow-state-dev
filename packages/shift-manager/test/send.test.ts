@@ -236,10 +236,10 @@ describe("sendTurn", () => {
   });
 
   it("is refused, in the door's own words, when the door's request failed", async () => {
-    const { clients } = stubClients({ status: "failed", failure: "A finished task takes no message." });
+    const { clients } = stubClients({ status: "failed", failure: "This task has finished, and its board can't reopen it." });
     const error = await workerFlowOf(sendTurn(clients, TARGET, "hello", { pollMs: 1 }));
     expect(error.kind).toBe("refused");
-    expect(error.message).toBe("A finished task takes no message.");
+    expect(error.message).toBe("This task has finished, and its board can't reopen it.");
   });
 
   it("is not sent when the action never reached the Lab", async () => {

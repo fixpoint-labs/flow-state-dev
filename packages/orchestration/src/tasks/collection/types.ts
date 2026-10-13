@@ -668,6 +668,25 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     options?: UnparkOptions
   ): Promise<TaskWriteOutcome>;
   /**
+   * Put a finished task back in the queue: a person picked it up again
+   * (FIX-1764).
+   *
+   * Fenced to the one edge it owns: `completed`, `errored` or `cancelled` →
+   * `pending`. The status table has no edge out of a finished status, and no
+   * other verb gains one, so only this write reopens a row. A task that is not
+   * finished is **refused as a value**: `declined`, `disallowed`, naming the
+   * status the write found. Advisory by construction, like `unpark`.
+   *
+   * The row keeps its id, attempts and result; its ending's error and time are
+   * cleared, and its next attempt is marked `reopened` and is not charged
+   * against `maxAttempts`. A debt its ending owes (a notice, a resume) is left
+   * for whoever pays it. The ending was already heard, so reopening it is not
+   * an ending; the reopened attempt's own ending is a new one.
+   *
+   * Re-queues only. Nothing runs the work until something drains the board.
+   */
+  reopen(id: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  /**
    * Cancel the task (terminal).
    *
    * Advisory by construction: cancelling an already-settled task writes

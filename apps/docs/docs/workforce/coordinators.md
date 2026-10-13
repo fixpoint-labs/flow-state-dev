@@ -500,15 +500,18 @@ A task a coordinator dispatched and is waiting for (`dispatchTask` with `wait`) 
 
 ### After a task finishes
 
-A finished task's session stays open. To ask it about the work, send a message to its worker in that session:
+A finished task's session stays open. For a worker on the built-in `agent` flow, a message to its worker in that session picks the task up again:
 
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
 const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl })
-await licenses.sendAction("run", { message: "Which licenses did you flag?" }, { sessionId: run.id })
+await licenses.sendAction("run", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
+// output: { reopened: <id of the task it reopened> }
 ```
 
-It answers from what it did. The task itself doesn't change: a finished task stays finished.
+The message reopens the task. It goes back on the conversation's board and reads in progress, under the same id, and its next attempt runs in the same session, where the worker answers from everything the session holds. The attempt doesn't use up the task's retries. When it ends, the conversation that filed the task hears the new ending, as it heard the first. If the task has follow-ups, the latest of them is the one reopened, and the output names it. A worker flow you build yourself handles the message however its `run` action does.
+
+While the task or one of its follow-ups is still unfinished, a message in that session is an ordinary turn and the worker answers it directly.
 
 To build on the work, dispatch a follow-up task that names it:
 

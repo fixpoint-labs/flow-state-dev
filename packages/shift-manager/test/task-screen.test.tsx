@@ -381,6 +381,18 @@ describe("the disabled acts and empty tabs carry their gap lines (BR-15 to BR-17
   }, 30_000);
 });
 
+describe("a finished task's composer (FIX-1764)", () => {
+  it("takes a message, and says the message picks the task up again", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}`);
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLTextAreaElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    expect(screen.queryByTestId("task-composer-blocked")).toBeNull();
+    expect(input.placeholder).toMatch(/to pick this task up again/);
+  }, 30_000);
+});
+
 describe("the inspector (BR-18 to BR-23)", () => {
   it("shows the worker, started, the harness gap, what a recording run recorded, and the trace link with the session beside it", async () => {
     const opened = await openLab();

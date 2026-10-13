@@ -48,6 +48,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } fr
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
+import { sessionIdOfFiling } from "./filing-session";
 import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
@@ -69,11 +70,20 @@ export function taskMessage(task: TaskWorkerInput): string {
  * on every other attempt. A retry after a failure is handed the task again,
  * never an answer. Shares its invariant with `packWorkerInput`'s `answer`
  * (orchestration `worker-step.ts`, `answer-envelope.test.ts`).
+ *
+ * On the attempt a person's message reopened (FIX-1764), the message is
+ * already in the session, written there by the worker's door, so the turn
+ * points at it rather than repeating it.
  */
 export function taskTurnMessage(task: TaskWorkerInput): string {
   if (task.answer !== undefined) return `Answer to your question:\n\n${task.answer}`;
+  if (task.reopened === true) return REOPENED_TURN;
   return taskMessage(task);
 }
+
+/** What the turn of a reopened task says: the person's message is the line above it. */
+export const REOPENED_TURN =
+  "A person wrote to you about this task after you finished it; their message is just above. Pick the task up again from there.";
 
 /** True for a task input worth showing: present, and not an empty object. */
 function hasInput(input: unknown): boolean {
@@ -208,19 +218,22 @@ function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
  * For a host's message door over a worker's runs
  * (`harnessMessageDoor` in `@flow-state-dev/harness-manager`): the row the
  * session works is on this board, and its next attempt starts when the
- * conversation runs its board.
+ * conversation runs its board. `filingSession` is that conversation, where a
+ * finished row's board runs once a message reopens it (FIX-1764).
  *
  * @param ctx The running block's context, in the task session. Its flow must
  *   declare the conversation ledger (`workerTaskEntry` installs it).
  */
 export async function filingConversationBoard(
   ctx: BlockContext
-): Promise<{ tasks: TaskCollectionRef; runEntry: string; filingFlow: string } | undefined> {
+): Promise<{ tasks: TaskCollectionRef; runEntry: string; filingFlow: string; filingSession: string } | undefined> {
   const partition = filingPartitionOf(ctx);
   const filingFlow = filingFlowOf(ctx);
   if (partition === undefined || filingFlow === undefined) return undefined;
   const tasks = await conversationLedgerAt(ctx, partition);
-  return tasks === undefined ? undefined : { tasks, runEntry: RUN_BOARD_ENTRY, filingFlow };
+  return tasks === undefined
+    ? undefined
+    : { tasks, runEntry: RUN_BOARD_ENTRY, filingFlow, filingSession: sessionIdOfFiling(partition) };
 }
 
 /**
@@ -248,10 +261,11 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
 
   // A task whose pieces its session already filed (a retry, or a takeover
   // after a crash) runs no turn: it parks on them again. An answer to the
-  // worker's question always runs the turn (FIX-1817). A `block` is handed
-  // the task and the claim the gate verified; a `turn`, the task's message.
+  // worker's question always runs the turn (FIX-1817), and so does a person's
+  // message that reopened it (FIX-1764). A `block` is handed the task and the
+  // claim the gate verified; a `turn`, the task's message.
   const runs = async (task: TaskWorkerInput, ctx: unknown) =>
-    task.answer !== undefined || !(await hasPieces(ctx as never, task.taskId));
+    task.answer !== undefined || task.reopened === true || !(await hasPieces(ctx as never, task.taskId));
   const base = sequencer({ name, inputSchema: taskWorkerInputSchema });
   const block = (
     options.block !== undefined
