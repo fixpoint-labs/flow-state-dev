@@ -83,6 +83,26 @@ test.describe("Claude Code mode (V7)", () => {
     await expect(notice(page)).toHaveAttribute("data-kind", "continued", { timeout: 10_000 });
   });
 
+  test("a reload lands back in the session, and the next turn continues its conversation (BR-6)", async ({
+    page,
+    consoleErrors: _consoleErrors,
+  }) => {
+    await newSession(page);
+    const sessionId = await page.getByTestId("stream").getAttribute("data-session-id");
+    await send(page, "hello");
+    await expect(notice(page)).toHaveAttribute("data-kind", "started");
+    const conversation = (await bound(page).textContent())!.trim();
+
+    await page.reload();
+
+    await expect(page.getByTestId("stream")).toHaveAttribute("data-session-id", sessionId!);
+    await expect(bound(page)).toHaveText(conversation);
+    await expect(page.getByTestId("message-input")).toBeEnabled();
+    await send(page, "again");
+    await expect(page.getByTestId("conversation")).toContainText(`turn 2 of conversation ${conversation}`);
+    await expect(notice(page)).toHaveAttribute("data-kind", "continued");
+  });
+
   test("a conversation Claude Code won't continue reads as refused, and keeps the id", async ({ page, consoleErrors }) => {
     await newSession(page);
     await send(page, "hello");

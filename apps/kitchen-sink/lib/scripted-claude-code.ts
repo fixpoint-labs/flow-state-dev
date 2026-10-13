@@ -13,7 +13,7 @@
  * | Directive | What the script does |
  * |---|---|
  * | (none) | names the conversation (the asked one, or a new one), streams a reply with a pause, succeeds |
- * | `[plan]` | also records two to-do items and moves the first to `in_progress` |
+ * | `[plan]` | also records two to-do items and moves the first to `in_progress`, when the run is offered the to-do tools (see below) |
  * | `[slow]` | after the reply and plan have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the conversation, so a stop lands before it is confirmed |
  * | `[new]` | names a new conversation even when asked to continue one |
@@ -33,6 +33,9 @@ import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from
  * shorten them.
  */
 export const scriptedPauses = { stepMs: 400, slowMs: 20_000 };
+
+/** Claude Code's gate: it offers its to-do tools only when `allowedTools` names one. */
+const PLAN_TOOLS = new Set(["TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite"]);
 
 /** One scripted Claude Code's conversations: turns per conversation, and how many it has started. */
 interface Conversations {
@@ -97,7 +100,7 @@ async function* scriptedTurn(
 
   if (has("fail")) throw new Error("scripted failure after Claude Code named the conversation");
 
-  if (has("plan")) {
+  if (has("plan") && options?.allowedTools?.some((tool) => PLAN_TOOLS.has(tool))) {
     yield toolUse("toolu_plan_1", "TaskCreate", { subject: "Read the request", description: "…", activeForm: "Reading" });
     yield toolResult("toolu_plan_1", { task: { id: "1", subject: "Read the request" } }, "Task #1 created successfully: Read the request");
     yield toolUse("toolu_plan_2", "TaskCreate", { subject: "Answer it", description: "…", activeForm: "Answering" });

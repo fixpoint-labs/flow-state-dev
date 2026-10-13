@@ -18,7 +18,7 @@
  *   anything else is acknowledged under the worker's name.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, generator } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import type { SessionItem } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
@@ -36,6 +36,7 @@ import { delegatedPostEntry, delegatedPostHistory } from "../src/coordinator/del
 import { workerConfigSchema } from "../src/worker-config";
 import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
+import { workerConfigOf } from "../src/workers/verified-worker";
 
 type ModelMessage = { role: string; content: unknown };
 
@@ -98,18 +99,29 @@ function scriptedRoute() {
 }
 
 /**
- * An app's own delegate flow: its door is a generator that names its worker
- * and reads `delegatedPostHistory`, as the coordinators page shows.
+ * An app's own delegate flow, as the coordinators page shows it: the worker is
+ * loaded in `request.onStarted`, and the door is a generator that answers
+ * with the worker's own instructions (`workerConfigOf`) and reads
+ * `delegatedPostHistory`. Each worker's body names it, so a turn that missed
+ * its instructions is graded as `unknown`.
  */
 function researchFlow(installation: ReturnType<typeof createWorkerInstallation>) {
   const input = z.object({ message: z.string() });
+  const loadWorker = handler({
+    name: "research-load-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "research")).id })
+  });
   const door = generator({
     name: "research-answer",
     inputSchema: input,
     model: "scripted/research",
-    resources: { ...installation.resources },
     history: delegatedPostHistory,
-    prompt: async (_input, ctx) => `You are ${(await installation.resolveWorker(ctx as never, "research")).id}.`,
+    prompt: (_input, ctx) => {
+      const { instructions } = workerConfigOf(ctx);
+      return typeof instructions === "string" ? instructions : "You answer research questions.";
+    },
     user: (turn: { message: string }) => turn.message
   });
   return defineFlow({
@@ -117,6 +129,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
+    request: { onStarted: loadWorker },
     actions: { run: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
     task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }
   });

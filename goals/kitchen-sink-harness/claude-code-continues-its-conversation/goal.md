@@ -11,13 +11,15 @@
 - **c**: turn 2 asks for the token without naming it; the reply names it, and the conversation id the page shows is the one turn 1 recorded.
 - **l**: at least one of Claude Code's items shows before turn 1 completes.
 - **s**: a long turn is stopped; the page says it stopped, and the next turn names the token under the same id.
-- **r**: after a reload, the same session shows the same id, and its next turn names the token.
+- **r**: after a reload, the page is back in the same session without a click, the session shows the same id, and its next turn names the token.
 - **w**: the file turn 1 was asked to write exists in the session's worktree, on branch `kitchen-sink/claude-code-session/<session>`, and the main checkout's `git status` is unchanged.
-- **p**: the panel shows what the record holds for turn 1: its rows, or "No plan recorded for this turn.", never "Claude Code reports no plan."
+- **p**: turn 1 asks Claude Code to plan with its task list, so the panel shows the rows it recorded for turn 1. "No plan recorded for this turn." fails, and so does "Claude Code reports no plan."
 
 **Anti-game:** the token count is read off the page, and the id off the page's own display of session state; never off the scripted SDK, and never off a prompt Kitchen Sink built from earlier turns (it builds none: each prompt is the person's alone). Turns 2 onward never name the token, so it can only come back from the conversation.
 
-**Model:** whatever Claude Code is signed in with. The check needs a model that follows "answer with the token only".
+**Model:** whatever Claude Code is signed in with. The check needs a model that follows "answer with the token only" and uses its task list when asked to.
+
+**Host setup:** none. The session's worktree is cut without running the checkout's git hooks, so a hook that builds or installs needn't be turned off.
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/claude-code-continues-its-conversation/run.mts`
 

@@ -734,6 +734,22 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(conversation.textContent).not.toMatch(/Waiting on you/);
   });
 
+  it("redraws the conversation once its ask is answered on the page, without a line sent (FIX-1901)", async () => {
+    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    setURL(lab.baseUrl);
+    await workerAction(clients, "ops.chief-of-staff", "ask", { what: "ship it" }, "s_cos_asked");
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const conversation = await screen.findByTestId("cos-conversation");
+    await waitFor(() => expect(conversation.textContent).toMatch(/Waiting on you/));
+    const ask = (await screen.findAllByTestId("cos-ask"))[0]!;
+    act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(screen.getByTestId("cos-conversation").textContent).not.toMatch(/Waiting on you/), { timeout: 5_000 });
+    expect(within(screen.getByTestId("cos-conversation")).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true);
+  });
+
   it("says what the Lab answered, with Retry, for asks or a conversation's board that didn't load (BR-8)", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);

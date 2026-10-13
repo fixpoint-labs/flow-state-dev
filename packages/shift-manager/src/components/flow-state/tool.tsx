@@ -17,7 +17,7 @@
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
-import type { BlockTraceItem, ToolOutputItem } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type BlockTraceItem, type ToolOutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -198,8 +198,10 @@ export const ToolOutput = ({
 
 type ToolItem = BlockTraceItem | ToolOutputItem;
 
-function mapToolStatus(status: string): ToolState {
-  switch (status) {
+/** A call waiting on an approval or a question is `awaiting`, not `error` (`isSuspensionWait`). */
+function mapToolStatus(item: ToolItem): ToolState {
+  if (isSuspensionWait(item)) return "awaiting";
+  switch (item.status) {
     case "in_progress": return "running";
     case "completed": return "completed";
     case "failed": return "error";
@@ -239,7 +241,7 @@ function getToolOutput(item: ToolItem): unknown {
 }
 
 function getToolErrorText(item: ToolItem): string | undefined {
-  if (item.status !== "failed") return undefined;
+  if (item.status !== "failed" || isSuspensionWait(item)) return undefined;
   if (item.type === "tool_output" && item.error) return item.error.message;
   const raw = unwrapToolOutput(item);
   return raw === undefined ? undefined : String(raw);
@@ -247,7 +249,7 @@ function getToolErrorText(item: ToolItem): string | undefined {
 
 export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
   if (!item.toolCall) return null;
-  const state = mapToolStatus(item.status);
+  const state = mapToolStatus(item);
   const name = getToolName(item);
   const args = getToolArgs(item);
   return (
@@ -270,13 +272,16 @@ export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
 /** Worst status in a batch, used to color the group summary. */
 function aggregateGroupState(items: ToolOutputItem[]): ToolState {
   let hasError = false;
+  let hasAwaiting = false;
   let hasRunning = false;
   for (const item of items) {
-    const state = mapToolStatus(item.status);
+    const state = mapToolStatus(item);
     if (state === "error") hasError = true;
+    else if (state === "awaiting") hasAwaiting = true;
     else if (state === "running" || state === "streaming" || state === "pending") hasRunning = true;
   }
   if (hasError) return "error";
+  if (hasAwaiting) return "awaiting";
   if (hasRunning) return "running";
   return "completed";
 }
@@ -351,7 +356,7 @@ export type ToolRowProps = {
  * line that expands to the Level-3 detail (input args, output, metadata).
  */
 export function ToolRow({ item, defaultOpen = false, className }: ToolRowProps) {
-  const state = mapToolStatus(item.status);
+  const state = mapToolStatus(item);
   const name = item.toolCall.name;
   const args = getToolArgs(item);
   const output = getToolOutput(item);

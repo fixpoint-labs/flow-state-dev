@@ -11,7 +11,7 @@
 - **c**: turn 2 asks for the token without naming it; the reply names it, and the agent id the page shows is the one turn 1 recorded.
 - **l**: at least one of Cursor's items shows before turn 1 completes.
 - **s**: a long turn is stopped; the page says it stopped, and the next turn names the token under the same id.
-- **r**: after a reload, the same session shows the same id, and its next turn names the token.
+- **r**: after a reload, the page is back in the same session without a click, the session shows the same id, and its next turn names the token.
 - **p**: the panel's rows equal, in order, the list on the last successful `updateTodos` step of turn 1, read from the turn's own items (what Cursor's emitter wrote, not the record the panel reads). When that list is empty the panel says the turn's plan is empty; when the turn has no such step, it says no plan was recorded for the turn. Never a panel text containing "reports no plan".
 
 **Anti-game:** the token count is read off the page, and the id off the page's own display of session state; never off the scripted SDK, and never off a prompt Kitchen Sink built from earlier turns (it builds none: each prompt is the person's alone). Turns 2 onward never name the token, so it can only come back from the agent. The panel is compared with the turn's items, never with the plan record it is drawn from.

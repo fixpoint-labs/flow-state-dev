@@ -47,4 +47,16 @@ describe("a tool call is a quiet line", () => {
     render(<ToolLine item={call("discover", "failed")} />);
     expect(screen.getByRole("button", { name: /discover failed/ })).toBeTruthy();
   });
+
+  it("a call that stopped to wait says it waits, not that it failed, and shows no error", () => {
+    const waiting = { ...call("setRepository", "failed"), error: { message: "Approve setting the repository?", code: "SUSPENSION" } } as ToolOutputItem;
+    render(<ToolLine item={waiting} />);
+    const line = screen.getByRole("button", { name: /setRepository is waiting/ });
+    expect(screen.queryByText(/setRepository failed/)).toBeNull();
+    fireEvent.click(line);
+    expect(screen.queryByText(/Approve setting the repository/)).toBeNull();
+    cleanup();
+    render(<ToolLineGroup items={[call("listProjects"), waiting]} />);
+    expect(screen.getByRole("button", { name: /Used 2 tools, one waiting/ })).toBeTruthy();
+  });
 });

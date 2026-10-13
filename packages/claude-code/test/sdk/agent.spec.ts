@@ -383,6 +383,50 @@ describe("claudeCodeAgent", () => {
     });
   });
 
+  describe("the tools a run is offered", () => {
+    // Why this matters: outside its terminal, Claude Code on its current models
+    // offers its to-do tools only when `allowedTools` names one. A run that
+    // isn't offered them can't keep a list, so the plan record stays empty
+    // however the agent is asked. Every run gets them, whatever list the host
+    // passes; a host that wants them off says so in `disallowedTools`.
+    const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"];
+
+    async function handedToSdk(options: Partial<Parameters<typeof claudeCodeAgent>[0]>) {
+      const spy = vi.fn();
+      await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), ...options }), {
+        input: { prompt: "go" },
+      });
+      return spy.mock.calls[0][0].options as { allowedTools?: string[]; disallowedTools?: string[] };
+    }
+
+    it("names Claude Code's to-do tools when the host names nothing", async () => {
+      expect((await handedToSdk({})).allowedTools).toEqual(TODO_TOOLS);
+    });
+
+    it("adds them to the host's own list instead of replacing it, once each", async () => {
+      const options = await handedToSdk({ allowedTools: ["Bash(git status)", "TaskCreate"] });
+      expect(options.allowedTools).toEqual(["Bash(git status)", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList"]);
+    });
+
+    it("adds Grep and Glob too, but only under bypassPermissions, where naming them allows nothing new", async () => {
+      // Claude Code offers its search tools outside its terminal only when they are named here.
+      // They check paths for permission, so naming them for a host that prompts would approve
+      // searches outside the working directory that it would otherwise be asked about.
+      expect((await handedToSdk({ permissionMode: "bypassPermissions" })).allowedTools).toEqual([...TODO_TOOLS, "Grep", "Glob"]);
+      expect(
+        (await handedToSdk({ permissionMode: "bypassPermissions", allowedTools: ["Grep", "Bash"] })).allowedTools,
+      ).toEqual(["Grep", "Bash", ...TODO_TOOLS, "Glob"]);
+      expect((await handedToSdk({})).allowedTools).toEqual(TODO_TOOLS);
+      expect((await handedToSdk({ permissionMode: "default" })).allowedTools).toEqual(TODO_TOOLS);
+      expect((await handedToSdk({ permissionMode: "acceptEdits" })).allowedTools).toEqual(TODO_TOOLS);
+    });
+
+    it("leaves the host's disallowedTools as the way to turn them off", async () => {
+      const options = await handedToSdk({ disallowedTools: ["TaskCreate"] });
+      expect(options.disallowedTools).toEqual(["TaskCreate"]);
+    });
+  });
+
   it("resolves sandbox settings per run, so they can name the run's own paths", async () => {
     // The settings that confine a run name the directory it works in, and one
     // flow build serves many runs. A build-time constant can say "sandboxed"

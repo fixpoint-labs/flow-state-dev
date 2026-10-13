@@ -88,6 +88,29 @@ export function linkedProjectOf(state: unknown): ProjectAddress | undefined {
   return typeof ref === "string" ? parseProjectRef(ref) : undefined;
 }
 
+/**
+ * The project a project write acts on: the one it names, or, left out, the
+ * one its conversation is linked to. A conversation linked to a project
+ * writes only that project, so a project coordinator never changes another.
+ *
+ * @param doing What the write does, for its refusals, such as "open workstreams".
+ * @throws `no-such-project` when it names none and is linked to none; `other-project` when it names another.
+ */
+export function projectOfWrite(state: unknown, named: ProjectAddress | undefined, doing: string): ProjectAddress {
+  const linked = linkedProjectOf(state);
+  if (named === undefined) {
+    if (linked === undefined) throw new ProjectRefusedError("no-such-project", `name the project to ${doing} in.`);
+    return linked;
+  }
+  if (linked !== undefined && (linked.visibility !== named.visibility || linked.id !== named.id)) {
+    throw new ProjectRefusedError(
+      "other-project",
+      `this conversation is project "${linked.id}"'s; it may ${doing} only there, not in "${named.id}".`
+    );
+  }
+  return named;
+}
+
 /** The session's user: a workstream's owner, when it is theirs. */
 function userOf(ctx: CoordinatorContext): string {
   const user = ctx.session.identity.userId;

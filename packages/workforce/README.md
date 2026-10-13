@@ -1374,12 +1374,18 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   `{ visibility, id, title, repository }` (`repository` is `null` when it has none). Shared ones
   come first, then the caller's private ones, each by id. A shared project whose `members` leave the caller
   out is left out, though its row is readable in the organization.
-- **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
+- **`setRepository { project?: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
   returns `{ project }`. Members only. Nothing else on the row moves, and of two project members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
   or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted.
+- **`setBrief { project?: { visibility, id }, brief }`** sets, changes or clears (`null`) the brief and
+  returns `{ project }`. Members only; nothing else on the row moves.
+- **Leaving `project` out** of `setRepository` or `setBrief` changes the project the calling
+  conversation is linked to, as a project coordinator's is (`linkedProjectOf(session.state)` reads it).
+  With no linked project it is refused with `no-such-project`, and a linked conversation naming
+  another project is refused with `other-project`, so a project coordinator changes only its own.
 - **`readProjectFiles { project: { visibility, id } }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
   never the body, since the output is logged as the tool result), the files the project keeps at
   `project-files/<projectId>/<path>`, in the org's `project-files` collection for a shared project
@@ -1880,11 +1886,12 @@ the root exports, and reaches no Node built-in.
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
-| `defineProjectBlocks()` | Returns `{ createProject, setRepository, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
+| `defineProjectBlocks()` | Returns `{ createProject, setRepository, setBrief, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
 | `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
-| `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. |
+| `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
+| `linkedProjectOf(state)` | The `{ visibility, id }` a session's state links it to by its `projectId`, or `undefined`. |
 | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
