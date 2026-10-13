@@ -93,12 +93,13 @@ describe("V1 · the boot serves one best-fit coordinator and four specialists", 
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
     // The workforce's worker flows are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows,
-    // Claude Code mode's among them: in test mode on a checkout it is available, running the scripted Claude Code.
+    // Claude Code and Cursor modes' among them: in test mode on a checkout they are available, running the scripted harnesses.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
       "chat-agent",
       "claude-code-session",
       "coordinator",
+      "cursor-session",
       "rich-text-component",
       "weekly-digest",
       "workforce-roster",

@@ -19,8 +19,10 @@ const nextConfig = {
   // `flows/chat-agent/shared/capabilities/bash.ts`), so the static import is
   // visible to nft like any other dependency. The Claude Agent SDK is loaded
   // by name at run time and starts the Claude Code executable it ships, so it
-  // stays a package on disk, never bundled.
-  serverExternalPackages: ["pg", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk"],
+  // stays a package on disk, never bundled. The Cursor SDK is the same: it
+  // ships its local runtime as a native binary, and the Cursor package loads
+  // it by name, in the runtime's own process.
+  serverExternalPackages: ["pg", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk", "@cursor/sdk"],
   transpilePackages: workspacePackages,
   turbopack: {
     root: resolve(__dirname, "../../"),
