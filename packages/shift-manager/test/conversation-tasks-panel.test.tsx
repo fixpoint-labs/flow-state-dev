@@ -122,6 +122,54 @@ describe("the tasks panel (S11)", () => {
     expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
   });
 
+  describe("at the Shift Coordinator, whose conversation never ends (activeOnly)", () => {
+    const mixed: Row[] = [
+      { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "notes", attempts: 1 },
+      { id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 },
+      { id: "t4", goal: "Drop the old flag", status: "cancelled", attempts: 0 },
+      { id: "t5", goal: "Draft the launch post", status: "pending", attempts: 0 },
+      { id: "t6", goal: "Check the docs links", status: "completed", assignee: "docs", attempts: 1 },
+    ];
+    const group = (name: string) => screen.getAllByTestId("cos-task-group").find((el) => el.getAttribute("data-group") === name);
+
+    it("lists only the active tasks, so the list stops growing with every task it ever handled", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5"]);
+    });
+
+    it("folds the done into a count and the errored into a group of their own, each opening to its tasks", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(group("done")!.textContent).toContain("3 done");
+      expect(group("errored")!.textContent).toContain("1 errored");
+      act(() => group("errored")!.querySelector("button")!.click());
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5", "t3"]);
+      act(() => group("done")!.querySelector("button")!.click());
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5", "t1", "t4", "t6", "t3"]);
+    });
+
+    it("says no task is active when every task has ended, and draws no empty group", async () => {
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(screen.getByTestId("cos-tasks-none-active")).toBeTruthy();
+      expect(shown()).toEqual([]);
+      expect(screen.getAllByTestId("cos-task-group").map((el) => el.getAttribute("data-group"))).toEqual(["done"]);
+    });
+
+    it("leaves a workstream's board whole: there every task is a subtask of the one piece of work", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+      await settle();
+      expect(shown().map((task) => task.id)).toEqual(["t1", "t2", "t3", "t4", "t5", "t6"]);
+      expect(screen.queryAllByTestId("cos-task-group")).toEqual([]);
+    });
+  });
+
   describe("a task that ends between the user's lines", () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
     afterEach(() => vi.useRealTimers());
