@@ -619,14 +619,52 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
       await h.settled();
       expect(await workstreams(h)).toEqual(["research"]);
+      expect(await opens(h, id)).toContain('"leadFit":{"checked":true}');
     });
 
-    it("opens it when the check can't answer, so a failed model call never stops an open", async () => {
+    it("opens it when the check can't answer, so a failed model call never stops an open, and says why", async () => {
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: mockGenerator({ script: [] }) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
       await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
       await h.settled();
+      expect(await workstreams(h)).toEqual(["research"]);
+      // The open's record says the check didn't run, and why: a dead check shows up here, not nowhere.
+      expect(await opens(h, id)).toContain('"leadFit":{"checked":false,"why":"unanswered: ');
+    });
+
+    it("refuses on the open's own terms before asking the model: a bad id is refused as one, with no call", async () => {
+      const leadFit = fit(false);
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: { ...research, id: "two/segments" } }]), leadFit });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+      const answered = await opens(h, id);
+      expect(answered).toContain("invalid-workstream-id");
+      expect(answered).not.toContain("lead-doesnt-fit");
+      expect(leadFit.calls).toEqual([]);
+    });
+
+    it("doesn't check a workstream opened again: it was accepted once, and a second verdict can't refuse it", async () => {
+      // The first open is judged a fit; asked again, the judge would say no, but it is never asked.
+      const leadFit = mockGenerator({ script: [{ structuredOutput: { fits: true } }, { structuredOutput: { fits: false } }] });
+      const h = await boot({
+        judgment: scripted([
+          { toolName: "openWorkstream", args: research },
+          { toolName: "openWorkstream", args: research }
+        ]),
+        leadFit
+      });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+      const answered = await opens(h, id);
+      expect(answered).not.toContain("lead-doesnt-fit");
+      expect(answered).toContain('"opened":false');
+      expect(answered).toContain('"leadFit":{"checked":false,"why":"already-open"}');
+      expect(leadFit.calls).toHaveLength(1);
       expect(await workstreams(h)).toEqual(["research"]);
     });
 

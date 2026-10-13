@@ -1462,7 +1462,10 @@ to that model asking whether the lead's description (as `listLeads` shows it) sa
 the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
 is written; the message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open
 nothing and say a worker for it has to be hired first. A failed call, or a lead with no description,
-lets the open through. Without `leadFit`, `openWorkstreamTool` is `openWorkstream`. Opens
+lets the open through. The check runs after every other refusal, and an open of a workstream that is
+already open with the same lead isn't checked again. The tool's answer carries `leadFit`: `{ checked: true }`,
+or `{ checked: false, why }` with `why` one of `already-open`, `no-description` or `unanswered: <error>`.
+Without `leadFit`, `openWorkstreamTool` is `openWorkstream`. Opens
 through the `openWorkstream` action, such as a user's own open from the app, are never checked.
 
 ## Workers as data
