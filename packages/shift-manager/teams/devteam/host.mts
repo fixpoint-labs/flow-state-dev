@@ -948,14 +948,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // The project tools and the roster writes a worker names in `tools:`.
     // The worker flow carries them, and only the chief of staff's line names
     // the roster writes; a project coordinator's line names `readProject`,
-    // `setBrief`, `setRepository`, `listLeads` and `openWorkstream`, and a
-    // workstream's lead's `updateWorkstream`.
+    // `setBrief`, `setRepository`, `listLeads`, `openWorkstream` and
+    // `editWorkstream`, and a workstream's lead's `updateWorkstream`.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
       ...rosterTools,
       ...projectCoordinatorTools,
       listLeads: workstreamBlocks.listLeadsTool,
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
+      editWorkstream: workstreamBlocks.editWorkstreamTool,
     },
     uses: [
       // The worker inventory, which the discovery door reads.

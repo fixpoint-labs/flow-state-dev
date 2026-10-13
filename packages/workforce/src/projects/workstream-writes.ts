@@ -1,6 +1,6 @@
 /**
  * The workstream writes: `openWorkstream` and `updateWorkstream`, as app
- * actions, and `updateWorkstream` and `listLeads` as tools.
+ * actions, and `updateWorkstream`, `editWorkstream` and `listLeads` as tools.
  *
  * **Opening one.** The caller names a project by its address, an id, a title
  * and a lead from their own roster: a worker on a lead flow that lists
@@ -49,7 +49,9 @@
  * its input names, the caller's own unless it names another owner, which the
  * store then refuses. The lead's tool writes the workstream its session
  * leads, read from the session's readonly `workstreamId`, so it only ever
- * reaches its own owner's entry. Each write is a compare-and-swap that
+ * reaches its own owner's entry. The owner's project coordinator's tool,
+ * `editWorkstream`, writes one of its user's workstreams by id, in the project
+ * its conversation is linked to and no other. Each write is a compare-and-swap that
  * recomputes on retry, stamps `writtenBy` from the session and sets
  * `updatedAt` from the server's clock. Nothing deletes an entry; done is a
  * status.
@@ -199,6 +201,26 @@ export const updateOwnWorkstreamInputSchema = z.object(changesShape).strict();
 /** @see updateOwnWorkstreamInputSchema */
 export type UpdateOwnWorkstreamInput = z.infer<typeof updateOwnWorkstreamInputSchema>;
 
+/**
+ * What the coordinator's `editWorkstream` tool takes: one of the caller's own
+ * workstreams, by id, and the changes. The latest report stays the lead's.
+ * Left out, `project` is the one the conversation is linked to, the only one
+ * such a conversation may change.
+ */
+export const editWorkstreamInputSchema = z
+  .object({
+    project: projectAddressSchema.optional(),
+    id: z.string().min(1),
+    title: changesShape.title,
+    status: changesShape.status,
+    due: changesShape.due,
+    objectives: changesShape.objectives
+  })
+  .strict();
+
+/** @see editWorkstreamInputSchema */
+export type EditWorkstreamInput = z.infer<typeof editWorkstreamInputSchema>;
+
 /** What an update returns: the entry as written. */
 export const updateWorkstreamOutputSchema = z.object({ workstream: workstreamViewSchema });
 
@@ -241,6 +263,17 @@ export type WorkstreamBlocks = {
     typeof updateOwnWorkstreamInputSchema,
     typeof updateWorkstreamOutputSchema,
     UpdateOwnWorkstreamInput,
+    UpdateWorkstreamOutput
+  >;
+  /**
+   * The owner's tool: changes one of the caller's workstreams by id (its
+   * title, status, due date or objectives), in the project the conversation
+   * is linked to. Give it to a project coordinator.
+   */
+  editWorkstreamTool: BlockDefinition<
+    typeof editWorkstreamInputSchema,
+    typeof updateWorkstreamOutputSchema,
+    EditWorkstreamInput,
     UpdateWorkstreamOutput
   >;
   actions: {
@@ -681,6 +714,27 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it."
   );
 
+  const editFromCoordinator = handler({
+    name: "workstream-edit-write",
+    inputSchema: editWorkstreamInputSchema,
+    outputSchema: updatedStepSchema,
+    resources: WORKSTREAM_RESOURCES,
+    execute: async (input: EditWorkstreamInput, ctx): Promise<UpdatedStep> => {
+      const { project, id, ...changes } = input;
+      const at = projectOfWrite(ctx.session.state, project, "change workstreams");
+      const written = await updateEntry(ctx, { project: at, id }, ownerOf(ctx, "editWorkstream"), changes);
+      const record = await recordFor(ctx, written.workstream, written.before);
+      return { workstream: written.workstream, ...(record === undefined ? {} : { record }) };
+    }
+  });
+  const editWorkstreamTool = withRecord(
+    "editWorkstream",
+    editFromCoordinator,
+    "Change one of the user's own workstreams in this project, by its id: its title, status (\"done\" closes it), " +
+      "due date (YYYY-MM-DD, or null to clear it) or objectives (the whole list, each met or not). What you leave out stays. " +
+      "Leave `project` out. Nobody else's workstream can be changed."
+  );
+
   const listLeadsTool = handler({
     name: "listLeads",
     description:
@@ -702,6 +756,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     updateWorkstream,
     listLeadsTool,
     updateWorkstreamTool,
+    editWorkstreamTool,
     actions: {
       openWorkstream: {
         block: openWorkstream,
