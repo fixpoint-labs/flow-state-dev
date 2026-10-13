@@ -23,7 +23,9 @@ project's repository, or left in a project's files by an earlier run, after the 
 as the lab's owner. Each clock starts at the filing.
 
 - **a** a Shift Coordinator (chief of staff) conversation; the scripted coordinator files a task
-  naming storefront. The turn returns within 10 s (`a:turn-returns`); exactly one line under the
+  naming storefront. The turn returns within 10 s of its own time (`a:turn-returns`): the budget
+  catches a turn that stalls on the framework's side, blocking on the coder's run or hanging in the
+  hand-over, so the time a generator model spends answering is taken off first; exactly one line under the
   row's assignee, `eng.coder`, names the task (`a:one-line-under-eng.coder`), and it is a
   completed line carrying storefront's marker (`a:carrying-the-marker`). The run record's working
   folder is a checkout of its own cut from storefront's repository (`a:own-checkout`), and the
@@ -40,7 +42,9 @@ as the lab's owner. Each clock starts at the filing.
   (`c:<case>:runs`), and every row still `errored` 5 s later (`c:stays-errored`).
 - **d** a real model as every turn and Jev as the judge, on the standard projects (storefront is
   the only one with a repository): the ask files a task for `eng.coder` naming storefront
-  (`d:names-storefront`), and its one completed line carries the marker, judged done by Jev.
+  (`d:names-storefront`), and its one completed line carries the marker, judged done by Jev. The
+  turn's checks are leg a's, so `d:turn-returns` holds the same 10 s to the turn's time outside
+  the real model's calls: the provider's latency varies from run to run and is not the framework's.
 - **d2** the same ask with a run that answers "Storefront is a project.": the task ends `errored`
   with one failed line (`d2:ends-errored`) carrying Jev's reason (`d2:jevs-reason`).
 
@@ -102,3 +106,4 @@ Two departures from the spec's wording, both forced by the lab as it is:
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | scripted (a–c); `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS | Converted with no change: nothing the goal reads moved in P4. a: one completed line under eng.coder carrying storefront's marker, in the checkout derived for its task. b: billing's line cut from its remote, sandbox's carrying the marker a run left in its files. c: no project, a stranger's project, a run throwing twice and a judged miss each end in one errored line saying why. d: "the coder should take a look at our repo" filed a task for eng.coder naming storefront on the first turn, judged done by Jev (0.97). d2: "Storefront is a project." ended errored, Jev not-done four times. No control re-run: no leg changed. |
 | 2026-10-11 | FIX-1883 (FIX-1793 P5) on 9a618969 + uncommitted | as the row above | PASS | The workstream's lead is a hired `workstream-lead` (agent, delegates [eng.coder]) named over HTTP, replacing the fork of the removed workstream coordinator |
 | 2026-10-12 | fa95ebf3 + uncommitted (FIX-1910) | scripted (a–c); d and d2 not run | PASS (a–c); `no-filing-project` and `no-judge` FAIL (expected) | Since best fit asks again as a language model (`coordinator-route-ask`), the scripted resolver handed that call the queued `addTask`, so the judgment turn filed nothing: on fa95ebf3 unchanged, a and c red ("the task is undefined", lines only "Filed it." under coordinator-judgment). The resolver now throws for `coordinator-route-ask`, as `devteam-repository-ask.test.ts` does, and a–c PASS. `no-filing-project` FAILs `b:carrying-the-marker`, `b:sandbox-note-kept`, `b-sandbox:carrying-the-marker` (refused, no-project); `no-judge` FAILs `c:judged-not-done:*` and `c:stays-errored`. |
+| 2026-10-13 | `07c6ca14` + uncommitted (FIX-1935) | scripted (a–c); `openai/gpt-5.4-mini` + `typesafe-ai/jev` (d, d2) | PASS; `no-filing-project` FAILs (expected), d stays green | `turn-returns` now times the turn outside the model's calls, since run 5's `no-filing-project` reddened `d:turn-returns` at 12175 ms of mostly provider latency. Green: a 104 ms; d 4878 ms, 874 ms outside the model's calls. `no-filing-project` FAILs only `b:carrying-the-marker`, `b:sandbox-note-kept`, `b-sandbox:carrying-the-marker`. Red state by scratch mutation (an 11 s sleep at the top of `dispatchTask`'s execute, `GOAL_LEGS=a,d`): FAILs `a:turn-returns` (11087 ms, all outside) and `d:turn-returns` (14761 ms, 11458 ms outside); file restored. |
