@@ -208,6 +208,7 @@ describe("createMcpManager", () => {
           originalName: "list_issues",
           description: "List issues",
           inputSchema: expect.objectContaining({ jsonSchema: expect.any(Object) }),
+          jsonSchema: { type: "object", properties: { query: { type: "string" } } },
         },
       ]);
       expect(catalog.servers[0].status).toBe("connected");

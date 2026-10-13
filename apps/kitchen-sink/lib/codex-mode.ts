@@ -1,0 +1,295 @@
+/**
+ * Codex mode: the session flow with the Codex block, and the mode's own check
+ * of whether this host can run it.
+ *
+ * Server only. Kitchen Sink passes the Codex block options and nothing else:
+ * the thread lifecycle, the item stream and the classification of a refused
+ * thread are the Codex package's. Codex declares no plan record, so the plan
+ * panel says "Codex reports no plan": the pinned Codex gives its model no
+ * to-do tool in the headless mode the package drives.
+ *
+ * Codex runs without approval prompts inside its own sandbox
+ * (`workspace-write`), with `/tmp` and `$TMPDIR` taken off its writable list,
+ * so its writes land in the session's worktree and nowhere else: not the
+ * worktree's `.git` pointer and not the repository's git data, which Codex's
+ * sandbox keeps read-only. The run edits files and cannot commit. Its process
+ * starts with an allowlisted environment (`client.env`); left unset, the SDK
+ * would hand it the server's whole environment. That filters what the run is
+ * handed; it is not a security boundary. A command the run starts as the
+ * server's OS user can still read the server's environment (on Linux, from
+ * `/proc`). Run the server as a separate OS user or in a container when that
+ * matters.
+ *
+ * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Codex
+ * (`lib/scripted-codex.ts`) and the check passes, unless
+ * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
+ * does so its controls apply to a real run.
+ */
+import { spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { delimiter } from "node:path";
+import { harnessEnv } from "@flow-state-dev/core";
+import {
+  assertTestedSdkVersion,
+  codexAgent,
+  readInstalledCodexSdkVersion,
+  TESTED_SDK_VERSION,
+  type CodexAgentOptions,
+  type CodexClientOptions,
+  type CodexThreadOptions,
+  type InstalledSdkVersionReader,
+  type ResolveCodexClient,
+} from "@flow-state-dev/codex";
+
+import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
+import { worktreeRoot } from "./harness-worktree";
+import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import { flowKindOf, modeById } from "./modes";
+import { scriptedCodex } from "./scripted-codex";
+
+/** Codex mode's flow kind, from the mode list: the rail lists its sessions by it. */
+export const CODEX_SESSION = flowKindOf(modeById("codex"));
+
+/**
+ * The model Codex mode runs. `undefined` is Codex's own default model, which
+ * the Codex package can't price, so a run reports no cost estimate.
+ */
+export const CODEX_MODEL: string | undefined = undefined;
+
+/**
+ * The only variables of the server's environment Codex's process is handed
+ * (what its commands start with, not what they could read: see the header).
+ * `PATH` (its shell finds commands through it), `HOME` and `CODEX_HOME` (Codex
+ * keeps its sign-in and its threads there, so a thread is found again only
+ * under the same home), `USER`, `SHELL` and `TMPDIR` (its shell),
+ * `CODEX_API_KEY`, and the proxy and CA settings a proxied network needs. Add
+ * a name here, never a spread of `process.env`.
+ */
+export const CODEX_PASS = [
+  "PATH",
+  "HOME",
+  "CODEX_HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "CODEX_API_KEY",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "CODEX_CA_CERTIFICATE",
+  "SSL_CERT_FILE",
+] as const;
+
+/** The environment Codex's process gets, and the one its sign-in and sandbox are checked over. */
+export function codexEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
+  return harnessEnv({ pass: CODEX_PASS, env });
+}
+
+/** Whether this server runs the scripted Codex instead of the SDK. */
+export function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
+  return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
+}
+
+/**
+ * Whether Codex mode runs Codex in its sandbox, and requires one on the host.
+ * Always `true` today.
+ *
+ * The one place a harness-wide opt-out of the sandbox requirement wires in:
+ * the block's sandbox options and the host check's sandbox probe both read
+ * this, and nothing else decides it.
+ */
+export function codexSandboxed(): boolean {
+  return true;
+}
+
+/** The SDK's thread options Codex mode runs with. */
+export function codexThreadOptions(): CodexThreadOptions {
+  return {
+    ...(CODEX_MODEL !== undefined ? { model: CODEX_MODEL } : {}),
+    // No approval prompts: nobody is there to answer one. The sandbox is the fence.
+    approvalPolicy: "never",
+    sandboxMode: codexSandboxed() ? "workspace-write" : "danger-full-access",
+  };
+}
+
+/**
+ * The SDK's client options Codex mode runs with: the allowlisted environment,
+ * and the sandbox's writable list narrowed to the run's own directory.
+ * Codex's `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by
+ * default, where a repository or another session's files may sit.
+ */
+export function codexClientOptions(env: Record<string, string | undefined> = process.env): CodexClientOptions {
+  return {
+    env: codexEnv(env),
+    ...(codexSandboxed()
+      ? { config: { sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } } }
+      : {}),
+  };
+}
+
+/** Test seams for the block: a stand-in for the Codex SDK. */
+export interface CodexSeams {
+  /** Replaces the SDK (and the scripted one test mode picks). */
+  readonly resolveCodexClient?: ResolveCodexClient;
+}
+
+/** The Codex block's options, built from the session flow's feeds. */
+export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): CodexAgentOptions {
+  const resolveCodexClient = seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : undefined);
+  return {
+    cwd: feeds.cwd,
+    resume: feeds.resume,
+    onSession: feeds.onSession,
+    thread: codexThreadOptions(),
+    client: codexClientOptions(),
+    ...(resolveCodexClient !== undefined ? { resolveCodexClient } : {}),
+    name: "codex",
+  };
+}
+
+/**
+ * The Codex block, built from the session flow's feeds.
+ *
+ * Codex's handle is core's plus its own fields, and a block's hooks take its
+ * output as a parameter, so the extended block isn't assignable to core's
+ * neutral `HarnessBlock` (core's own note on that type). The other modes cast
+ * the same way.
+ */
+export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): HarnessBlock {
+  return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
+}
+
+/** Codex mode's session flow. `seams` is for tests. */
+export function codexSessionFlow(seams: CodexSeams = {}) {
+  return harnessSessionFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
+}
+
+/** The Codex program the SDK runs, and the directories it puts on the program's `PATH`. */
+export interface CodexProgram {
+  readonly path: string;
+  readonly pathDirs: readonly string[];
+}
+
+/** What the mode's check asks of the host. Each a seam for tests. */
+export interface CodexHostChecks {
+  /** Which `@openai/codex-sdk` is installed beside the Codex package. */
+  readonly sdk: InstalledSdkVersionReader;
+  /** Make the worktree root and return it, or throw why it can't be made. */
+  readonly makeRoot: (repository: string) => string;
+  /** Whether Codex's own `codex login status` succeeds over `env`. No run. */
+  readonly loggedIn: (env: Record<string, string>) => Promise<boolean>;
+  /** Why Codex's sandbox can't run a command in `dir` over `env`, or `null` when it can. No run. */
+  readonly sandboxFails: (dir: string, env: Record<string, string>) => Promise<string | null>;
+}
+
+/**
+ * The Codex program the SDK would start, found the way the SDK finds it.
+ *
+ * The SDK resolves its platform binary when its client is constructed, which
+ * starts nothing; its version is pinned, so the field read here is checked by
+ * the same gate that pins the wire.
+ */
+async function codexProgram(env: Record<string, string>): Promise<CodexProgram> {
+  // Loaded only here, so a host without the SDK never loads it.
+  const { Codex } = (await import("@openai/codex-sdk")) as unknown as {
+    Codex: new (options: CodexClientOptions) => { exec?: { executablePath?: unknown; pathDirs?: unknown } };
+  };
+  const exec = new Codex({ env }).exec;
+  if (typeof exec?.executablePath !== "string") throw new Error("the Codex SDK did not say where its program is");
+  const pathDirs = Array.isArray(exec.pathDirs) ? exec.pathDirs.filter((d): d is string => typeof d === "string") : [];
+  return { path: exec.executablePath, pathDirs };
+}
+
+/** Run the Codex program with `args` over `env`, the way the SDK would start it. */
+async function runCodex(args: readonly string[], env: Record<string, string>, cwd?: string) {
+  const program = await codexProgram(env);
+  const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
+  return spawnSync(program.path, args, {
+    // Next types `NODE_ENV` as always set; this process deliberately gets only `env`.
+    env: { ...env, PATH } as Record<string, string> as NodeJS.ProcessEnv,
+    ...(cwd !== undefined ? { cwd } : {}),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 30_000,
+  });
+}
+
+/** The last line of what a failed Codex command said, or how it ended. */
+function failureOf(result: ReturnType<typeof spawnSync>): string {
+  if (result.error !== undefined) return result.error.message;
+  const said = `${String(result.stderr ?? "")}\n${String(result.stdout ?? "")}`
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("WARNING:"));
+  if (said.length > 0) return said.at(-1)!;
+  return result.signal !== null ? `it was ended by ${result.signal}` : `it exited with code ${String(result.status)}`;
+}
+
+/** The host's own answers. */
+export const HOST_CHECKS: CodexHostChecks = {
+  sdk: readInstalledCodexSdkVersion,
+  makeRoot: (repository) => {
+    const root = worktreeRoot(repository);
+    mkdirSync(root, { recursive: true });
+    return root;
+  },
+  loggedIn: async (env) => (await runCodex(["login", "status"], env)).status === 0,
+  sandboxFails: async (dir, env) => {
+    // Codex's own sandbox command, under its built-in workspace profile: the
+    // sandbox a `workspace-write` run gets, around a command that does nothing.
+    const ran = await runCodex(["sandbox", "--permission-profile", ":workspace", "--cd", dir, "--", "true"], env, dir);
+    return ran.status === 0 ? null : failureOf(ran);
+  },
+};
+
+/**
+ * Codex mode's own check, for the gate's mode-check slot: the pinned Codex SDK
+ * is installed (the Codex package's own version refusal is the reason
+ * otherwise), the worktree root can be made, Codex is signed in over the run's
+ * environment, and Codex's sandbox can run a command there. The first that
+ * fails is the reason.
+ *
+ * The block itself is built only once the mode is available, so another SDK
+ * version is a reason here and never a crash at server start.
+ */
+export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck {
+  return async ({ repository }): Promise<ModeAvailability> => {
+    if (codexIsScripted()) return { available: true };
+    if (checks.sdk().kind === "absent") {
+      return { available: false, reason: `The Codex SDK is not installed. Install @openai/codex-sdk ${TESTED_SDK_VERSION}, then restart.` };
+    }
+    try {
+      // The gate `codexAgent` runs when it is built: it names both versions.
+      assertTestedSdkVersion(checks.sdk);
+    } catch (error) {
+      return { available: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+    let root: string;
+    try {
+      root = checks.makeRoot(repository);
+    } catch (error) {
+      return {
+        available: false,
+        reason: `The folder for session worktrees can't be made: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    const env = codexEnv();
+    // A key in the run's environment signs a run in, though `login status` says otherwise.
+    if ((env.CODEX_API_KEY ?? "") === "" && !(await checks.loggedIn(env))) {
+      return {
+        available: false,
+        reason: "Codex is not signed in on this host (`codex login status` fails and there is no CODEX_API_KEY in the run's environment). Sign in with `codex login`, then restart.",
+      };
+    }
+    if (codexSandboxed()) {
+      const sandbox = await checks.sandboxFails(root, env);
+      if (sandbox !== null) return { available: false, reason: `Codex's sandbox can't run on this host: ${sandbox}` };
+    }
+    return { available: true };
+  };
+}

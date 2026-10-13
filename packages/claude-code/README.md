@@ -181,6 +181,10 @@ claudeCodeAgent({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
+  // Tools this process serves to the run, grouped by server: a value, or a resolver per run.
+  mcpTools: async (ctx) => ({
+    tracker: { tools: await trackerToolsFor(ctx), close: async () => {} },
+  }),
   // Capabilities installed on the block, same slot any other block takes.
   uses: [myCapability],
   // Runs after the block threw, with the error. It does not swallow it — the
@@ -205,6 +209,19 @@ connection string in it, readable by any shell command the model runs. Setting
 `harnessEnv({ pass: [...] })` from `@flow-state-dev/core` is the way to hand the
 run only what it needs. Nothing is passed unless it is named, `PATH` and `HOME`
 included, and a named variable that is unset is left out.
+
+**`mcpTools` gives the run tools your process serves.** Each entry becomes an MCP
+server inside your process, named by its key, and the run calls its tools as
+`mcp__tracker__…`. Each tool is a name, a description, a JSON Schema for its
+input and a `call` function. The run never sees where a tool's work happens or
+what credential it uses: the option can't carry an address or headers. Set it,
+even to `{}`, and it is the run's whole MCP set: no servers from settings files
+or your claude.ai connectors. The tools are allowed without asking; name one in
+`disallowedTools` to keep it out. A resolver gets the run's context only, like
+`cwd`. Each `close` is called when the run ends. Leave it unset and nothing
+changes. If the run still reports a server it wasn't handed, its session says
+so. A coding run on a Workforce project gets its project's servers this way,
+through `projectMcpTools` from `@flow-state-dev/workforce`.
 
 **`allowWrite` is not a fence.** The SDK documents it as *additional* paths to
 allow writing, merged with the paths that `Edit(...)` permission rules already

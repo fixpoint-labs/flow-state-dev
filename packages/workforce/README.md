@@ -1386,6 +1386,11 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
   or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted.
+- **`setMcpServers { project?: { visibility, id }, mcpServers }`** replaces the project's list of
+  MCP server names; `[]` clears it. Members only; nothing else on the row moves. A name must be one
+  the host offers, `defineProjectBlocks({ mcpServers })`: refusals `unknown-mcp-server` (naming what
+  it offers) and `invalid-mcp-server` (anything that isn't a bare lowercase name, never repeated).
+  `createProject` takes the same `mcpServers`. A row stored before the field reads `[]`.
 - **`setBrief { project?: { visibility, id }, brief }`** sets, changes or clears (`null`) the brief and
   returns `{ project }`. Members only; nothing else on the row moves.
 - **Leaving `project` out** of `setRepository` or `setBrief` changes the project the calling
@@ -1413,6 +1418,29 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
     uses: [projectWorkspaceCapability],
   });
   ```
+
+- **`projectMcpTools(servers, { operator })`** is a resolver for a coding harness's per-run
+  tools, in `claudeCodeAgent`'s `mcpTools` shape. It finds the run's project and owner the way
+  `projectWorkspace()` does, connects to each server the project names in `servers`
+  (`{ [name]: { url, seedEnv? } }`, HTTP only) with the owner's stored key, through one
+  `createMcpManager`, and answers each connected server's tools, whose `call` goes through that
+  connection. The key goes in the connection's headers only. `seedEnv` is read only for
+  `operator`, and only while that user has no stored key. A server with no key, one the host no
+  longer offers and one whose connection fails are each skipped, and the run's session says so.
+  `named(ctx)` answers the names alone, for a harness that takes no relayed tools. The block that
+  calls it holds `projectWorkspaceCapability` and `mcpCredentialsCapability`:
+
+  ```ts
+  claudeCodeAgent({
+    uses: [projectWorkspaceCapability, mcpCredentialsCapability],
+    mcpTools: projectMcpTools({ linear: { url: "https://mcp.linear.app/mcp" } }, { operator: "u_ops" }),
+  });
+  ```
+
+  Each user's key is `mcp-credentials/<server>` at user scope, `{ value, setAt }`
+  (`defineMcpCredentialsCollection()`); a browser read exposes `setAt` only. Write it from a route
+  of your own, not an action, since an action's input is kept on its request record;
+  `mcpCredentialProblem(value)` says why a value can't be stored, without repeating it.
 
   Pass `checkouts` to have some projects' runs work in a checkout on the server's machine
   instead of a clone. Each entry gives a `remote`, the absolute `checkout` path, the `projects`
@@ -1910,7 +1938,10 @@ the root exports, and reaches no Node built-in.
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
-| `defineProjectBlocks()` | Returns `{ createProject, setRepository, setBrief, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
+| `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
+| `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
+| `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
+| `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
 | `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |

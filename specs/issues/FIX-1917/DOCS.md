@@ -60,8 +60,9 @@ Cursor section. PR-A publishes the first three; PR-B the last.
 > [Recording the run's plan](https://flow-state.dev/docs/tools/cursor#recording-the-runs-plan).
 >
 > `env` is the environment Cursor's runtime sees. Set it and the block runs the runtime in a
-> separate process with exactly those variables, so commands Cursor runs can't read the rest of
-> your server's environment. Leave it out and the runtime runs in your process, as before.
+> separate process with exactly those variables, so commands Cursor runs start without the rest of
+> your server's environment. It is not a security boundary: the process runs as your server's user,
+> and on Linux a command can still read the server's environment through `/proc`. Leave it out and the runtime runs in your process, as before.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · new section "Cursor mode", after FIX-1915's "Claude Code mode"
 
@@ -79,8 +80,9 @@ Cursor section. PR-A publishes the first three; PR-B the last.
 > of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, on `kitchen-sink/cursor-session/<session>`,
 > and every turn of that session works there. Cursor runs with its sandbox on, which lets it edit
 > files in that worktree and nowhere else, `.git` included, so its work waits uncommitted for you
-> to review. It sees only the environment variables Kitchen Sink passes it, not the server's whole
-> environment. A command Cursor started can keep running briefly after you stop a turn.
+> to review. Its commands start with only the environment variables Kitchen Sink passes it, not the
+> server's whole environment. That is not a security boundary;
+> containing a command that goes looking takes a separate user or a container. A command Cursor started can keep running briefly after you stop a turn.
 >
 > **Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same
 > agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn

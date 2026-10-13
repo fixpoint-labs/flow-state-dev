@@ -38,6 +38,7 @@ A project's address is its visibility and its id, `{ visibility: "shared", id: "
 | `ownerUserId` | The user who created it |
 | `members` | On a shared project, who may open workstreams in it. Always includes the owner. A private project has only its owner |
 | `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
+| `mcpServers` | The MCP servers the project's coding runs get, by name, such as `["linear"]`. Empty by default. See [Tools a project's coding work gets](#tools-a-projects-coding-work-gets) |
 
 Each workstream is its own entry, not part of the row, so two owners can update their workstreams at the same time.
 
@@ -652,6 +653,50 @@ A coordinator filing for a coding worker from a conversation with no project nam
 ```
 
 Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
+
+### Tools a project's coding work gets
+
+A project can name MCP servers, and every coding run on the project can use their tools. MCP, the Model Context Protocol, is how an agent reaches a tool outside its checkout: an issue tracker, a docs search, a database. A run gets the project's servers however the work reached it: from a workstream, from the project's conversation, or from a task that names the project.
+
+Three parties each decide one thing. The server running your workers decides which MCP servers exist, and their addresses. A project picks from those names. Each user sets their own key for a server, and a run uses the key of the user it works for, so it acts in that tool as them.
+
+```ts
+// the server's config, for example in a Shift Manager Lab
+mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } }
+
+// a project, at create
+{ id: "fsd", title: "FSD", repository: "https://github.com/acme/fsd.git", mcpServers: ["linear"] }
+
+// later, from a member's session; [] turns them all off
+{ project: { visibility: "shared", id: "fsd" }, mcpServers: ["linear"] }
+```
+
+`setMcpServers` replaces the list whole and returns `{ project }`. Only members can call it. Both writes refuse a name the server doesn't offer with `unknown-mcp-server`, naming the ones it does, and anything that isn't a plain name (lowercase letters, digits and hyphens) with `invalid-mcp-server`. A project row can't hold an address or a key.
+
+FSD holds the connection, not the coding agent. When a run starts, FSD connects to each of the project's servers with the requester's key, and the agent gets the servers' tools. It never gets the key or the address: not on its command line, in its environment, in its MCP config or in its session. The connections close when the run ends.
+
+A project that names no servers gets none: its runs don't pick up MCP servers from the server machine's own Claude Code settings, or the connectors of the Claude account it's signed in with. A list or a key changed while work is running applies from the next attempt.
+
+If the requester hasn't set a key for one of the project's servers, the run goes ahead without it, and its session says which key is missing. The same happens for a name the server stopped offering, and for a server FSD can't connect to.
+
+Keys are stored in the server's own store, as written. A run with a shell and no sandbox runs as the same operating-system user as the server, so it could read that store. Sandbox the run if that matters, and use a key scoped to what runs need.
+
+Only Claude Code runs get a project's servers today. A Codex or Cursor run on the same project works without them, and says so.
+
+In your own app, give the Claude Code block the resolver and the two collections it reads:
+
+```ts
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { mcpCredentialsCapability, projectMcpTools, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+claudeCodeAgent({
+  // ...the run's other options
+  uses: [projectWorkspaceCapability, mcpCredentialsCapability],
+  mcpTools: projectMcpTools({ linear: { url: "https://mcp.linear.app/mcp" } }),
+});
+```
+
+Pass the same names to `defineProjectBlocks({ mcpServers: ["linear"] })`, so a project can name them. Each user's key is a record at `mcp-credentials/<server>` in their own user scope, `{ value, setAt }`. Write it from a route of your own rather than an action: an action's input is kept on its request record. A browser read of the collection shows `setAt` only. Shift Manager's [Settings](../shift-manager/settings.md) page is one such route.
 
 ### Working in a checkout you already have
 

@@ -26,6 +26,7 @@ import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { RosterView } from "./surfaces/Roster";
+import { SettingsView } from "./surfaces/Settings";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
 import { TaskFrame } from "./surfaces/TaskFrame";
@@ -169,6 +170,8 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
+    case "settings":
+      return <SettingsView />;
   }
 }
 
