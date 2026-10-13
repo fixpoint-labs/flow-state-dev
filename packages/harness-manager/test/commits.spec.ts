@@ -68,7 +68,7 @@ describe("readRunCommits", () => {
 
   it("counts none of the upstream's commits when the branch was cut from it, whatever its remote is called", async () => {
     // A local checkout cuts from the base's upstream when the person hasn't
-    // pulled. Named anything but `origin`, only `<base>@{upstream}` finds it.
+    // pulled. Named anything but `origin`, only the recorded cut commit finds it.
     const dir = repo("local");
     git(dir, "update-ref", "-d", "refs/remotes/origin/main");
     git(dir, "config", "remote.upstream.url", dir);
@@ -82,12 +82,29 @@ describe("readRunCommits", () => {
     git(dir, "reset", "-q", "--hard", "main~1");
     git(dir, "branch", "-q", "-D", "tmp");
     git(dir, "checkout", "-q", "-b", "run", "upstream/main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
     commit(dir, "the run's first change");
     commit(dir, "the run's second change");
-    expect(await readRunCommits(dir, "main")).toEqual({
+    expect(await readRunCommits(dir, "main", cut)).toEqual({
       count: 2,
       subjects: ["the run's second change", "the run's first change"],
     });
+  });
+
+  it("still counts a run's commits after the run repoints the base's upstream at its own branch", async () => {
+    // The run's worktree shares the checkout's config, so `@{upstream}` is
+    // the run's to move; only the recorded cut commit is not.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's change");
+    git(dir, "update-ref", "refs/remotes/origin/run", "HEAD");
+    git(dir, "config", "remote.origin.url", dir);
+    git(dir, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*");
+    git(dir, "config", "branch.main.remote", "origin");
+    git(dir, "config", "branch.main.merge", "refs/heads/run");
+    expect(git(dir, "rev-parse", "main@{upstream}").trim()).toBe(git(dir, "rev-parse", "HEAD").trim());
+    expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"] });
   });
 
   it("answers none for a base the checkout doesn't have", async () => {
@@ -127,7 +144,7 @@ describe("readRunCommits", () => {
     warn.mockRestore();
     commit(place.cwd, "the run's change");
 
-    expect(await readRunCommits(place.cwd, place.repo!.baseRef ?? null)).toEqual({
+    expect(await readRunCommits(place.cwd, place.repo!.baseRef ?? null, place.repo!.baseCommit ?? null)).toEqual({
       count: 1,
       subjects: ["the run's change"],
     });

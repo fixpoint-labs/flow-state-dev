@@ -62,7 +62,8 @@
  * ```
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import {
@@ -738,26 +739,24 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       // or a base that has split from its upstream, fails naming it and
       // leaves no marker, tree or branch behind. Only a NEW branch gets here.
       base: async (left) => {
-        let local: string;
         try {
-          local = await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
+          await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
         } catch (error) {
           if (!gitAnsweredNo(error)) throw error;
           throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
         }
+        // Named once, and everything after read off that one name: `HEAD` can
+        // move to another branch while this runs, and the ref recorded, the
+        // commit compared and the upstream fetched must all be one branch's.
+        const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
+        const branchRef = full.startsWith("refs/heads/") ? full : undefined;
+        const local = await git(repo, ["rev-parse", "--verify", "--quiet", `${branchRef ?? base}^{commit}`], left());
         // No base named: recorded as the branch HEAD is on, so a reader of the
-        // run's commits can leave out that branch and its own upstream. A
-        // detached HEAD is recorded as "HEAD".
-        let ref = base;
-        if (baseRef === undefined) {
-          try {
-            ref = await git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"], left());
-          } catch (error) {
-            if (!gitAnsweredNo(error)) throw error;
-          }
-        }
+        // run's commits can leave out that branch. A detached HEAD is recorded
+        // as "HEAD".
+        const ref = baseRef ?? (branchRef !== undefined ? branchRef.slice("refs/heads/".length) : "HEAD");
         // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
-        const upstream = await fetchUpstream(repo, base, left);
+        const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
         // Equal, or local ahead: the person's branch, as it always was.
         if (upstream === undefined || (await isAncestor(repo, upstream.commit, local, left))) {
           // The commit compared, not the name: the name can move while the fetch runs.
@@ -787,20 +786,21 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /**
-   * Bring `base`'s upstream up to date in a repository the operator listed,
-   * and say where it is: its tracking ref and commit, or `undefined` when the
-   * base has none (a tag, a commit, a detached `HEAD`, a branch tracking
-   * nothing or another local branch) or none was ever fetched.
+   * Bring the upstream of `full`, the branch `base` named, up to date in a
+   * repository the operator listed, and say where it is: its tracking ref and
+   * commit, or `undefined` when the branch has none (it tracks nothing or
+   * another local branch) or none was ever fetched.
    *
    * Only that one upstream branch is fetched, into its own tracking ref: no
    * tags, no `FETCH_HEAD`, no maintenance, no other ref. Listing the
    * repository admits its upstream, so `remotes.allow` isn't asked, but the
    * URL is judged for shape before git sees it and git may speak only its
    * scheme. The URL fetched is the one pinned when the host was built: a remote
-   * repointed since, or not there then, or a pinned URL a newer
-   * `url.insteadOf` rewrites, is skipped. Nothing in the repository's config
-   * that runs a program (ssh command, upload-pack, credential helper, hooks,
-   * askpass, fsmonitor) is obeyed; credential helpers from outside the
+   * repointed since, or not there then, is skipped. The fetch runs in an empty
+   * repository of its own, so nothing in the repository's config, a
+   * `url.insteadOf` included, is read by it; nothing outside it that runs a
+   * program (ssh command, upload-pack, credential helper, hooks, askpass,
+   * fsmonitor) is obeyed either; credential helpers from outside the
    * repository, read when the host was built, are. **A fetch that fails, a URL
    * that fails the judge, or one skipped, is a warning,
    * never a refusal**: the comparison uses the copy last fetched. A probe
@@ -810,10 +810,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   async function fetchUpstream(
     repo: string,
     base: string,
+    full: string,
     left: () => number,
   ): Promise<{ ref: string; commit: string } | undefined> {
-    const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
-    if (!full.startsWith("refs/heads/")) return undefined;
     const [liveRef = "", liveRemote = "", liveRemoteRef = ""] = (
       await git(repo, ["for-each-ref", "--format=%(upstream)%0a%(upstream:remotename)%0a%(upstream:remoteref)", full], left())
     ).split("\n");
@@ -862,23 +861,31 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       if ("reason" in judged) skip(`its upstream was not fetched: ${judged.message}`);
       else if (!/^refs\/heads\/[^\s:]+$/.test(remoteRef)) skip(`its upstream was not fetched: "${remoteRef}" is not a branch`);
       // A `url.<base>.insteadOf` added since would still rewrite the URL git is handed.
-      else if ((await git(repo, ["ls-remote", "--get-url", "--", judged.url], left()).catch(() => "")) !== judged.url) {
-        skip(`its upstream was not fetched: a url.insteadOf rule in its config rewrites "${redactRemote(judged.url)}"`);
-      } else {
+      else {
+        // Fetched in an empty repository of its own, into the person's object
+        // store: the person's config, which every run's worktree shares and can
+        // rewrite at any moment, is never read, so no `url.insteadOf` added in
+        // it can aim the fetch elsewhere. The tracking ref moves only after.
+        const scratch = mkdtempSync(join(tmpdir(), "fsd-fetch-"));
         try {
+          const objects = join(await git(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"], left()), "objects");
+          const isolated = { ...env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: objects };
+          await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env });
+          // The copy last fetched, so only what is new crosses the wire.
+          const previous = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
+          if (previous !== "") await run("git", ["update-ref", ref, previous], { cwd: scratch, timeoutMs: left(), env: isolated });
           await run(
             "git",
             [
-              // The repository's config is shared with every run's worktree,
-              // so nothing in it that runs a program is obeyed here.
+              // Nothing in config that runs a program is obeyed here.
               "-c", "core.sshCommand=ssh",
               "-c", "core.askPass=",
               "-c", "core.hooksPath=/dev/null",
               "-c", "core.fsmonitor=false",
               "-c", "protocol.allow=never",
               "-c", `protocol.${judged.scheme}.allow=always`,
-              // An empty helper clears every one before it, the repository's
-              // included; the person's own, read at start, are put back.
+              // An empty helper clears every one before it; the person's own,
+              // read at start, are put back.
               "-c", "credential.helper=",
               ...(pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
               "fetch",
@@ -894,10 +901,18 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
               `+${remoteRef}:${ref}`,
             ],
             // A slice of what is left, so a fetch that hangs leaves time to cut.
-            { cwd: repo, timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)), env: { ...env, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
+            {
+              cwd: scratch,
+              timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)),
+              env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" },
+            },
           );
+          const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated })).stdout.trim();
+          await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", ref, fetched], left());
         } catch (error) {
           skip(`could not fetch "${redactRemote(judged.url)}" (${firstLine(error)})`);
+        } finally {
+          rmSync(scratch, { recursive: true, force: true });
         }
       }
     }

@@ -28,20 +28,27 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * The commits on `cwd`'s HEAD that `baseRef` does not have, in any copy: the
- * remote's (`origin/<baseRef>`), the local branch, or the local branch's
- * upstream (`<baseRef>@{upstream}`, whatever its remote is called). A local
- * checkout cuts the run's branch from the newer of the local branch and its
- * upstream, and a clone from the remote's, and any copy can be ahead of
- * another, so a commit any one has is not the run's. No base, or no checkout
- * git can read, answers none.
+ * The commits on `cwd`'s HEAD that the base does not have: not the commit the
+ * run's branch was cut at (`baseCommit`), nor the remote's copy of `baseRef`
+ * (`origin/<baseRef>`), nor the local branch. A local checkout cuts the run's
+ * branch from the newer of the local branch and its upstream, and a clone from
+ * the remote's, so the cut commit is the one copy every host has. It is read
+ * from the run's record, never from the checkout's config: a run shares that
+ * config and could repoint an upstream at its own work. No base, or no
+ * checkout git can read, answers none.
  */
-export async function readRunCommits(cwd: string, baseRef: string | null): Promise<RunCommits> {
+export async function readRunCommits(
+  cwd: string,
+  baseRef: string | null,
+  baseCommit: string | null = null,
+): Promise<RunCommits> {
   if (baseRef === null) return { count: 0, subjects: [] };
   const bases: string[] = [];
   // In the run's own checkout, a bare `HEAD` is the run's branch, never its base.
-  const copies =
-    baseRef === "HEAD" ? [`refs/remotes/origin/HEAD`] : [`refs/remotes/origin/${baseRef}`, baseRef, `${baseRef}@{upstream}`];
+  const copies = [
+    ...(baseCommit !== null ? [baseCommit] : []),
+    ...(baseRef === "HEAD" ? [`refs/remotes/origin/HEAD`] : [`refs/remotes/origin/${baseRef}`, baseRef]),
+  ];
   for (const base of copies) {
     try {
       await git(cwd, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`]);

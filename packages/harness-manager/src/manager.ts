@@ -715,6 +715,7 @@ const managerStateSchema = z.object({
    */
   remote: z.string().nullable().default(null),
   baseRef: z.string().nullable().default(null),
+  baseCommit: z.string().nullable().default(null),
   /** The run was first provisioned as kept files alone, read off its run record with them. */
   filesOnly: z.boolean().nullable().default(null),
   /**
@@ -1915,6 +1916,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const pinned = {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
+        baseCommit: recorded?.baseCommit ?? null,
         filesOnly: recorded?.filesOnly ?? null,
       };
       await ctx.sequencer!.patchState({
@@ -2145,7 +2147,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       if (state.remote == null && state.filesOnly !== true) {
         const pin =
           place.repo !== undefined
-            ? { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null }
+            ? {
+                remote: place.repo.remote,
+                baseRef: place.repo.baseRef ?? null,
+                baseCommit: place.repo.baseCommit ?? null,
+              }
             : { filesOnly: true };
         await fenced(
           writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
@@ -2309,7 +2315,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [] })
-          : readRunCommits(state.workspacePath!, state.baseRef);
+          : readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit);
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.

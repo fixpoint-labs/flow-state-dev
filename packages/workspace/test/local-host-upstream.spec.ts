@@ -378,7 +378,7 @@ describe("a run that rewrites the checkout's shared config can't aim the next ru
     expect(warn.mock.calls.map(([m]) => String(m)).join("\n")).toContain("refs/remotes/origin/attacker");
   });
 
-  it("does not follow a url.insteadOf a run added that rewrites the pinned URL", async () => {
+  it("fetches the pinned URL, never one a url.insteadOf a run added rewrites it to", async () => {
     // The person's own rewrite: origin is spelled as an alias the host pins expanded.
     git(repo, "config", `url.${upstream.url}.insteadOf`, "person-alias:");
     git(repo, "config", "remote.origin.url", "person-alias:");
@@ -388,12 +388,15 @@ describe("a run that rewrites the checkout's shared config can't aim the next ru
     // Leaves origin's own URL as it was, but rewrites the pinned URL itself.
     git(repo, "config", `url.${other.url}.insteadOf`, upstream.url);
 
+    const pushed = upstream.commit("main", "merged.txt", "a teammate's merge");
+
     await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
 
-    expect(fetches()).toHaveLength(0);
+    // The fetch never reads the person's config, so the rule has nothing to rewrite.
+    expect(fetches()).toHaveLength(1);
     expect(contains("refs/remotes/origin/main", planted)).toBe(false);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]![0])).toMatch(/insteadOf/);
+    expect(contains("refs/heads/fsd/run-1", pushed)).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("never runs an upload-pack a run planted for the remote, by name or by URL", async () => {
