@@ -753,10 +753,11 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
     // The user's conversation boards are read once, through one of their
-    // coordinator conversations: Tasks names it, with what the Lab answered.
+    // sessions whose flow keeps them (a coordinator's, or a delegate's that
+    // takes posts, as the asker does): Tasks names it, with what the Lab answered.
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     const board = await screen.findByTestId("section-failure");
-    expect(board.textContent).toMatch(/The boards of ops\.(desk|side) did not load/);
+    expect(board.textContent).toMatch(/The boards of (ops\.(desk|side)|s_ops_asker) did not load/);
     expect(board.textContent).toMatch(/store offline.*503/);
     expect(within(board).getByRole("button", { name: "Retry" })).toBeTruthy();
   });

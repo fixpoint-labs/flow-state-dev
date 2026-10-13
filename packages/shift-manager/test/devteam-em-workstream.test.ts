@@ -119,7 +119,7 @@ const judge = {
 };
 
 function scripted(emTurns: string[]): ModelResolver {
-  const judgment = stepping("test/judgment", [{ toolName: "handOff", args: { worker: EM, target: "shared/storefront/feature" } }], "Handed on.");
+  const judgment = stepping("test/judgment", [{ toolName: "dispatchTask", args: { post: true, assignee: EM, target: "shared/storefront/feature" } }], "Handed on.");
   const em = emModel(emTurns);
   const helper = stepping("test/helper", [], "On it.");
   return Object.assign(
@@ -198,7 +198,8 @@ describe("the EM files from the workstream it leads", () => {
 
     // The EM filed one task per part, from the workstream session, on that session's board; each ran and completed.
     const settled = await eventually(async () => {
-      const rows = Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>;
+      // The post to the EM is a row on the project coordinator's board; the coder's tasks are the rest.
+      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.kind !== "post");
       return rows.length === ISSUES.length && rows.every((r) => r.status === "completed") ? rows : undefined;
     }, "both tasks completed", 60_000);
     expect(settled.map((r) => r.input).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(

@@ -164,7 +164,7 @@ async function askFor(user: User, setup: ProjectSetup, id: string, message: stri
   judgmentCalls = [
     { toolName: "listLeads", args: {} },
     { toolName: "openWorkstream", args: { project: APOLLO, id, title: `The ${id}`, lead, objectives: [message] } },
-    { toolName: "handOff", args: { worker: lead, target: `shared/apollo/${id}` } },
+    { toolName: "dispatchTask", args: { post: true, assignee: lead, target: `shared/apollo/${id}` } },
   ];
   const pc = await projectCoordinator(user, setup);
   await runAction(user.clients, "coordinator", pc, "run", { message });
