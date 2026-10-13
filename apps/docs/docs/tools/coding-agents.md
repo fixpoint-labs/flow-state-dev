@@ -105,8 +105,8 @@ Not every harness reports a plan. Read the session's resource manifest first. If
 it doesn't list `observed-plan`, the harness records none, and a reader should say
 so rather than show an empty list.
 
-Codex is one of them: its headless runs don't produce a to-do list in the version
-`@flow-state-dev/codex` supports, so a Codex block declares no plan record.
+A Codex block is one: Codex doesn't keep a to-do list in the version
+`@flow-state-dev/codex` supports, so its manifest doesn't list `observed-plan`.
 
 Beside the entries, each run has a list marker in `observed-plan-list`, keyed by
 the run. It says whether the run's plan is `complete`, still `writing`, or

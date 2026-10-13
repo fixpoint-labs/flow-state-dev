@@ -224,11 +224,11 @@ It runs on your machine through the Codex SDK, and needs the SDK version that `@
 
 **Where it works.** Codex works in the session's own worktree and branch, on `kitchen-sink/codex-session/<session>`, the same way Claude Code mode does (see [Claude Code mode](#claude-code-mode) for where worktrees live and how to clear them). It runs without asking for approval, inside its own sandbox, which lets it write only in that worktree: not in its git data, and not in `/tmp`. Its work waits uncommitted for you. It sees only the environment variables Kitchen Sink passes it, not the server's whole environment. That filters what it's handed and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
 
-**Continuing.** A session is one Codex thread. Stop a turn and the next one continues the same thread. Codex keeps its threads in its own home directory (`~/.codex` unless you set `CODEX_HOME`), not in the session's directory. If Codex no longer has a session's thread, because its record was cleared or the server now uses a different Codex home, the session says Codex refused it, on every turn. It never moves to a new thread on its own; start a new session for that. A turn Codex itself fails shows as an error, and the next turn still continues the same thread.
+**Continuing.** A session is one Codex thread. Stop a turn and the next one continues the same thread. Codex keeps its threads in its own home directory (`~/.codex` unless you set `CODEX_HOME`), not in the session's directory. If Codex no longer has a session's thread, because its record was cleared or the server points at a different Codex home, the session says Codex refused it, on every turn. It never moves to a new thread on its own; start a new session for that. A turn Codex itself fails shows as an error, and the next turn still continues the same thread.
 
 **Steps.** Codex reports each step whole: a command shows when it starts and again when it finishes, and a reply shows once Codex has written all of it.
 
-**The plan panel** says "Codex reports no plan". Codex doesn't produce a to-do list in its headless mode, in the version Kitchen Sink runs.
+**The plan panel** says "Codex reports no plan." In the version Kitchen Sink runs, Codex doesn't keep a to-do list.
 
 ## Cursor mode
 
