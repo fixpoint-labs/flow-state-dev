@@ -54,7 +54,7 @@ import { SuggestionRow } from "@/components/suggestion-row";
 import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ModeRailHeader } from "@/components/mode-rail-header";
+import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
@@ -104,15 +104,6 @@ const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
   ...(SHOW_WORKERS_IN_RAIL ? [{ label: "Workers", kinds: WORKER_FLOWS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW] },
 ];
-
-/** The rail's theme: the navigator's custom properties, set to this app's tokens. */
-const RAIL_THEME = {
-  "--fsd-nav-fg": "var(--color-foreground)",
-  "--fsd-nav-muted-fg": "var(--color-muted-foreground)",
-  "--fsd-nav-selected-bg": "var(--color-accent)",
-  "--fsd-nav-selected-fg": "var(--color-accent-foreground)",
-  "--fsd-nav-guide": "var(--color-border)",
-} as CSSProperties;
 
 /**
  * A session picked in the rail that is not one of the assistant's own.

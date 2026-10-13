@@ -14,7 +14,7 @@
  */
 import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, type RequestStatus } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, planKeySegment, type RequestStatus } from "@flow-state-dev/core/types";
 import type { LabClients } from "./connection";
 import { describeFailure, type Failure } from "./reads";
 
@@ -223,7 +223,8 @@ export async function readRecordedWork(clients: LabClients, run: Pick<OpenRun, "
   const read = async (pattern: string) => {
     const ref = recordedRef(manifest, pattern);
     if (ref === undefined) return null;
-    const prefix = `${pattern.slice(0, -"/**".length)}/${run.requestId}/`;
+    // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
+    const prefix = `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
     try {
       const page = await clients.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
       return { items: page.items, truncated: page.nextCursor != null };

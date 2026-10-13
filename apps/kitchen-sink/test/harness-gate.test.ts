@@ -136,9 +136,11 @@ describe("V1 · decideAvailability", () => {
 
   it("BR-9: with the host on, a mode with no flow kind is not built yet", async () => {
     const decided = await decideAvailability({ workspace: on, modes: MODES, checks: {}, gateOpen: false });
-    for (const id of ["claude-code", "codex", "cursor"] as const) {
+    for (const id of ["codex", "cursor"] as const) {
       expect(decided[id]).toEqual({ available: false, reason: NOT_BUILT_YET });
     }
+    // Claude Code mode is built: with no check of its own given here, it is available.
+    expect(decided["claude-code"]).toEqual({ available: true });
   });
 
   it("BR-10: with the host on and the mode built, its own check decides, handed the repository", async () => {

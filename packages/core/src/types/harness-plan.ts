@@ -135,6 +135,52 @@ export const observedPlanListCollection = defineResourceCollection({
   },
 });
 
+/**
+ * Escape one value into ONE key segment of the plan record: `/`, `\`, control
+ * characters, and a segment of exactly `..`, the four the resource path
+ * normalizer rejects or splits on, are percent-escaped, and `%` first.
+ *
+ * The escaping is injective, so two distinct values never share a key: a
+ * request id that holds a `/` keys under `%2F` rather than splitting into two
+ * segments or merging with another request's rows. Every other value is
+ * unchanged byte for byte, so a plain request id is its own segment. The one
+ * boundary: injectivity holds among values encoded here, not across rows
+ * written before ids were escaped, when an id that was literally `a%2Fb` keyed
+ * itself raw, which is what `a/b` encodes to now.
+ *
+ * A writer builds a run's namespace from it (`<planKeySegment(requestId)>/<run>`);
+ * a reader finds a request's rows with {@link planRowsPrefix}, which uses it.
+ */
+export function planKeySegment(value: string): string {
+  const escaped = value
+    .replace(/%/g, "%25")
+    .replace(/\//g, "%2F")
+    .replace(/\\/g, "%5C")
+    .replace(/[\x00-\x1f]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+  // Dots survive the escaping above, so `..` needs its own branch. Exactly
+  // `..`: `.` and `...` are accepted keys and stay as they are.
+  return escaped === ".." ? "%2E%2E" : escaped;
+}
+
+/**
+ * The storage-key prefix every run of one request keeps its rows under, in the
+ * plan record (`observed-plan`) or its list markers (`observed-plan-list`).
+ * Pass it as a collection read's `topicPrefix` to select what one request
+ * planned and nothing an earlier request in the same session did.
+ *
+ * Built with {@link planKeySegment}, the escaping writers use, so a reader
+ * never hand-copies it.
+ *
+ * @param requestId The request whose rows to select, as the framework names it.
+ * @param key Which collection: the plan rows (default) or the list markers.
+ */
+export function planRowsPrefix(
+  requestId: string,
+  key: typeof OBSERVED_PLAN | typeof OBSERVED_PLAN_LIST = OBSERVED_PLAN,
+): string {
+  return `${key}/${planKeySegment(requestId)}/`;
+}
+
 /** One item of a whole-list plan, as the harness reported it. */
 export interface PlanListItem {
   /** The item's wording. */

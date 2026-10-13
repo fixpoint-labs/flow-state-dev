@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
+import { handler, harnessRunInputSchema, planKeySegment } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
@@ -541,50 +541,6 @@ export function forwardSignalToController(
  * child session's runs apart.
  */
 /**
- * Percent-escape the characters that stop a value being ONE resource-path
- * segment: `/`, `\`, control characters, and a segment of exactly `..` — the
- * four `normalizeResourcePath` rejects or splits on. The request id reaches
- * here straight from the caller (`sendOptions.requestId` rides the action
- * request body into `ctx.request.identity.id`), so all four are reachable
- * input, not hypotheticals.
- *
- * **The escaping is injective, and that is the point.** Stripping the offending
- * characters would satisfy the normalizer just as well and be a worse bug: two
- * distinct request ids would collapse onto ONE namespace and merge two runs'
- * rows under one key — trading a silent empty recorder for silent cross-run
- * mixing, which looks healthy.
- *
- * **What this costs:** injectivity requires escaping `%` first, so an id that
- * already contains one moves (`a%b` keys under `a%25b`). That is the whole
- * exception — every other already-valid id, `[`, `]`, `.` and `...` included,
- * is unchanged byte for byte, so existing rows keep their keys.
- *
- * One boundary, for whoever reads this next: injectivity holds among ids
- * encoded by THIS function, not across rows written before it existed. An id
- * that was literally `a%2Fb` keyed itself raw back then, and `a/b` encodes to
- * that same string now. Segregating the two would need a version segment,
- * which would orphan every row rather than the one shape at risk — so the
- * boundary is documented instead. It is safe to leave documented only while
- * no released version wrote these rows; check before assuming that still holds.
- */
-function encodePathSegment(value: string): string {
-  const escaped = value
-    .replace(/%/g, "%25")
-    .replace(/\//g, "%2F")
-    .replace(/\\/g, "%5C")
-    .replace(
-      /[\x00-\x1f]/g,
-      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
-    );
-  // Dots survive the escaping above untouched, so `..` — the one segment the
-  // normalizer rejects outright — is still reachable and needs its own branch.
-  // Exactly `..`, not any run of dots: `.` and `...` are accepted keys today,
-  // and widening this would move rows that are keyed fine. A literal `%2E%2E`
-  // escapes to `%252E%252E` above, so it cannot collide with what this emits.
-  return escaped === ".." ? "%2E%2E" : escaped;
-}
-
-/**
  * The key namespace for ONE run: `<requestId>/<invocation>`.
  *
  * **The request id alone is not the run's identity, and using it as one is a
@@ -608,7 +564,7 @@ function encodePathSegment(value: string): string {
  * impossible to correlate back to the request that caused it.
  *
  * Both parts are escaped into a single segment each — see
- * {@link encodePathSegment} for why that escaping must not be lossy.
+ * `planKeySegment` in `@flow-state-dev/core` for why that escaping must not be lossy.
  */
 export function runNamespace(ctx: BlockContext): string {
   const identity = (
@@ -625,7 +581,7 @@ export function runNamespace(ctx: BlockContext): string {
   // character, both of which this grammar cares about.
   const step =
     typeof path === "string" && path.length > 0
-      ? encodePathSegment(path.replace(/\//g, "."))
+      ? planKeySegment(path.replace(/\//g, "."))
       : "0";
   // …and the ATTEMPT, because a retried block re-enters at the SAME path.
   // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
@@ -635,7 +591,7 @@ export function runNamespace(ctx: BlockContext): string {
   // namespace: paths overwritten, and gap ordinals (which restart at 1 per
   // recorder) clobbering the earlier attempt's outright.
   const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
-  return `${encodePathSegment(ctx.request.identity.id)}/${step}#${attempt}`;
+  return `${planKeySegment(ctx.request.identity.id)}/${step}#${attempt}`;
 }
 
 function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {

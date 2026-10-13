@@ -10,20 +10,17 @@
  */
 import Link from "next/link";
 
-import { HarnessFrame } from "@/components/harness-frame";
-import { modeAvailability, NOT_BUILT_YET } from "@/lib/harness-gate";
-import { modeById, type HarnessModeId } from "@/lib/modes";
+import { HarnessModeView } from "@/components/harness-mode-view";
+import { modeAvailability } from "@/lib/harness-gate";
+import { flowKindOf, modeById, type HarnessModeId } from "@/lib/modes";
 
 /** The page for the harness mode `id`. */
 export async function HarnessModePage({ id }: { id: HarnessModeId }) {
   const mode = modeById(id);
   const availability = (await modeAvailability())[id];
-  // An available harness mode always has a flow kind: the gate calls a mode
-  // without one "not built yet".
-  if (availability.available && mode.flowKind !== undefined) {
-    return <HarnessFrame label={mode.label} flowKind={mode.flowKind} />;
-  }
-  const reason = availability.available ? NOT_BUILT_YET : availability.reason;
+  // Trusted: the gate makes a harness mode available only once it has a flow kind.
+  if (availability.available) return <HarnessModeView label={mode.label} flowKind={flowKindOf(mode)} />;
+  const reason = availability.reason;
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10 sm:px-6" data-testid="mode-unavailable" data-mode-id={id}>
       <div className="mx-auto max-w-xl">
