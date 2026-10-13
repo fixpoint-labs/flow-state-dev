@@ -151,3 +151,15 @@ describe("the tasks panel (S11)", () => {
     });
   });
 });
+
+describe("opening a task from the panel", () => {
+  it("each task opens its own session on the conversation's board", async () => {
+    rows = [{ id: "t1", goal: "Audit the licenses", status: "errored", assignee: "licenses", attempts: 1 }];
+    window.history.pushState(null, "", "/");
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    await act(async () => screen.getByTestId("cos-task-open").click());
+    // The route is the same one the Tasks list and JumpTo go to, so a failed task is reachable here too.
+    expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
+  });
+});

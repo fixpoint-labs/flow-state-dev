@@ -29,8 +29,9 @@ import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
+import { TaskBoardRefProvider } from "../lib/task-board-ref";
 import { useLab } from "../lib/lab-data";
-import type { Worker } from "../lib/reads";
+import { conversationBoardRef, type Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
@@ -196,62 +197,64 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <SessionItemsProvider value={read.items}>
-              {read.truncated ? (
-                <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
-                  More than shown: this conversation holds more than one read returns.
-                </p>
-              ) : null}
-              <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                {shown.map((segment) => {
-                  if (segment.kind === "group") {
-                    const first = segment.items[0]!;
+            <TaskBoardRefProvider value={sessionId === null ? undefined : conversationBoardRef(sessionId)}>
+              <SessionItemsProvider value={read.items}>
+                {read.truncated ? (
+                  <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
+                    More than shown: this conversation holds more than one read returns.
+                  </p>
+                ) : null}
+                <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
+                  {shown.map((segment) => {
+                    if (segment.kind === "group") {
+                      const first = segment.items[0]!;
+                      return (
+                        <li
+                          key={`${first.requestId}/${first.id}`}
+                          data-testid={`${testId}-item`}
+                          data-item-id={first.id}
+                          data-request-id={first.requestId}
+                          data-item-type="tool_output"
+                          data-role=""
+                        >
+                          <ToolLineGroup items={segment.items} />
+                        </li>
+                      );
+                    }
+                    const item = segment.item;
+                    const role = (item as { role?: string }).role ?? "";
+                    const own = renderItem?.(item);
                     return (
                       <li
-                        key={`${first.requestId}/${first.id}`}
+                        key={`${item.requestId}/${item.id}`}
                         data-testid={`${testId}-item`}
-                        data-item-id={first.id}
-                        data-request-id={first.requestId}
-                        data-item-type="tool_output"
-                        data-role=""
+                        data-item-id={item.id}
+                        data-request-id={item.requestId}
+                        data-item-type={item.type}
+                        data-role={role}
                       >
-                        <ToolLineGroup items={segment.items} />
+                        {item.type === "message" && role === "assistant" ? (
+                          // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
+                          <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                            {(delegateOf(worker, item) ?? name).toUpperCase()}
+                            <span className="tracking-normal" data-look="message-time">
+                              {clockTime(item.ts)}
+                            </span>
+                          </p>
+                        ) : null}
+                        {own !== undefined ? (
+                          own
+                        ) : (
+                          <div data-look="registry-item">
+                            <ItemRenderer item={item} />
+                          </div>
+                        )}
                       </li>
                     );
-                  }
-                  const item = segment.item;
-                  const role = (item as { role?: string }).role ?? "";
-                  const own = renderItem?.(item);
-                  return (
-                    <li
-                      key={`${item.requestId}/${item.id}`}
-                      data-testid={`${testId}-item`}
-                      data-item-id={item.id}
-                      data-request-id={item.requestId}
-                      data-item-type={item.type}
-                      data-role={role}
-                    >
-                      {item.type === "message" && role === "assistant" ? (
-                        // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
-                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {(delegateOf(worker, item) ?? name).toUpperCase()}
-                          <span className="tracking-normal" data-look="message-time">
-                            {clockTime(item.ts)}
-                          </span>
-                        </p>
-                      ) : null}
-                      {own !== undefined ? (
-                        own
-                      ) : (
-                        <div data-look="registry-item">
-                          <ItemRenderer item={item} />
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </SessionItemsProvider>
+                  })}
+                </ol>
+              </SessionItemsProvider>
+            </TaskBoardRefProvider>
           </FlowProvider>
         )}
         {working ? (

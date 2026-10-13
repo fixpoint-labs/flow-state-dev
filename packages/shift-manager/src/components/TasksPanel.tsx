@@ -17,7 +17,8 @@ import { useEffect, useRef, useState } from "react";
 import { columnFor } from "../lib/columns";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Worker } from "../lib/reads";
+import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
+import { navigate } from "../lib/routes";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 
 type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
@@ -110,12 +111,17 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
           data-status={task.status}
         >
           <StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />
-          <span className="min-w-0">
+          <button
+            type="button"
+            className="min-w-0 text-left hover:underline"
+            data-testid="cos-task-open"
+            onClick={() => navigate({ level: "task", boardRef: conversationBoardRef(sessionId), taskId: task.id, tab: "session" })}
+          >
             <span className="line-clamp-2">{task.goal}</span>
             <span className="block text-xs text-muted-foreground">
               {task.status} · {task.assignee ?? "unassigned"}
             </span>
-          </span>
+          </button>
         </li>
       ))}
     </ul>
