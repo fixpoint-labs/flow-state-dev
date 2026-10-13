@@ -348,9 +348,11 @@ describe("translateSdkMessage", () => {
     expect(result).toMatchObject({ usage: null, costUsd: null, finalMessage: null });
   });
 
-  it("emits a transient status for a system init message", () => {
+  it("emits nothing for a system init message", () => {
+    // The session id reaches the host through `onSession`. A "session started"
+    // line says nothing a person acts on, and read as stale once the run was working.
     const events = translateOne({ type: "system", subtype: "init", session_id: "s" });
-    expect(events).toEqual([{ kind: "status", message: "Claude Code agent session started." }]);
+    expect(events).toEqual([]);
   });
 
   it("threads parent_tool_use_id from a partial stream_event onto the delta event", () => {

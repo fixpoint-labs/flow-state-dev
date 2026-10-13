@@ -332,11 +332,13 @@ function toolStatus(name: string, input: unknown): string {
   return description !== undefined && description !== "" ? description : `Using ${name}…`;
 }
 
-/** `system` init/compact_boundary → a transient status notice. */
+/**
+ * `system` compact_boundary → a transient status notice.
+ *
+ * `init` says nothing: the session id reaches the host through `onSession`, and
+ * a "session started" line only read as stale once the run was working.
+ */
 function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>): TranslatedEvent[] {
-  if (msg.subtype === "init") {
-    return [{ kind: "status", message: "Claude Code agent session started." }];
-  }
   if (msg.subtype === "compact_boundary") {
     return [{ kind: "status", message: "Claude Code agent compacted its context." }];
   }

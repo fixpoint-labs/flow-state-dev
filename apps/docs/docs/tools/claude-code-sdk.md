@@ -92,7 +92,7 @@ As the agent runs, the block translates the SDK stream into items:
 | Extended thinking | `reasoning`, when the SDK returns any text. Thinking with the text withheld emits nothing. |
 | Tool call and its result | `tool_output`, with the tool call's id, name, and arguments. While it runs, a transient `status` carries the call's `description` (Bash gives one), or `Using <tool>…` when it has none. |
 | Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items |
-| System init, history compaction | transient `status` |
+| History compaction | transient `status` |
 | Errors | `error` |
 
 Every item carries provenance, so the devtool shows the full trace of what the
