@@ -100,6 +100,57 @@ describe("translateSdkMessage", () => {
     expect(events[1]).toEqual({ kind: "status", message: "Using Read…" });
   });
 
+  it("clears the live status once the last open tool settles, and not before", () => {
+    // Status is a latest-wins slot. A tool's line must not outlive the tool, or the
+    // UI reads "Using Read…" through the model's next 30 seconds of writing.
+    const state = createTranslateState({ partialMessages: false });
+    translateSdkMessage(
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "toolu_a", name: "Read", input: { path: "a" } },
+            { type: "tool_use", id: "toolu_b", name: "Grep", input: { pattern: "x" } },
+          ],
+        },
+      },
+      state,
+    );
+    const first = translateSdkMessage(
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_a", content: "ok" }] } },
+      state,
+    );
+    expect(first.map((e) => e.kind)).toEqual(["tool_result"]);
+    const last = translateSdkMessage(
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_b", content: "ok" }] } },
+      state,
+    );
+    expect(last.map((e) => e.kind)).toEqual(["tool_result", "status"]);
+    expect(last[1]).toEqual({ kind: "status", message: "" });
+  });
+
+  it("bounds a Bash description so no input can fill the status line", () => {
+    const events = translateOne({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "toolu_l", name: "Bash", input: { command: "ls", description: "x".repeat(400) } }],
+      },
+    });
+    const status = events[1] as { kind: "status"; message: string };
+    expect(status.message.length).toBeLessThanOrEqual(120);
+    expect(status.message.endsWith("…")).toBe(true);
+  });
+
+  it("does not stream a whitespace-only thinking_delta either", () => {
+    // Same rule as a whole block: thinking with no text is not shown.
+    const state = createTranslateState({ partialMessages: true });
+    const events = translateSdkMessage(
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: " \n" } } },
+      state,
+    );
+    expect(events).toEqual([]);
+  });
+
   it("does not stream a thinking_delta with no text", () => {
     const state = createTranslateState({ partialMessages: true });
     const events = translateSdkMessage(
@@ -148,6 +199,7 @@ describe("translateSdkMessage", () => {
     );
     expect(events).toEqual([
       { kind: "tool_result", callId: "toolu_3", output: "done", isError: false },
+      { kind: "status", message: "" },
     ]);
     expect(state.openTools.has("toolu_3")).toBe(false);
   });
@@ -161,6 +213,7 @@ describe("translateSdkMessage", () => {
     });
     expect(events).toEqual([
       { kind: "tool_result", callId: "toolu_x", output: "boom", isError: true },
+      { kind: "status", message: "" },
     ]);
   });
 
@@ -258,6 +311,7 @@ describe("translateSdkMessage", () => {
     );
     expect(close).toEqual([
       { kind: "subagent_close", callId: "toolu_agent", output: "child done", isError: false },
+      { kind: "status", message: "" },
     ]);
     expect(state.openSubagents.has("toolu_agent")).toBe(false);
   });
@@ -749,9 +803,9 @@ describe("translateSdkMessage — observed work", () => {
 
   it("leaves the existing tool_call / tool_result stream untouched", () => {
     // The observation events are additive: the item stream's own events keep
-    // their order, with only the call's live status added after the call.
+    // their order, with only the live status added: set after the call, cleared after the result.
     const kinds = translateScript([writeCall, writeResult]).map((e) => e.kind);
-    expect(kinds).toEqual(["tool_call", "status", "file_op_observed", "tool_result", "file_op_observed"]);
+    expect(kinds).toEqual(["tool_call", "status", "file_op_observed", "tool_result", "file_op_observed", "status"]);
   });
 
   const createCall: SdkMessageLike = {
@@ -1574,7 +1628,7 @@ describe("translateSdkMessage — observed work", () => {
     expect(events.filter((e) => e.kind === "file_op_observed")).toEqual([]);
     expect(events.filter((e) => e.kind === "plan_item_observed")).toEqual([]);
     // …and the tool still surfaces on the item stream as it always did.
-    expect(events.map((e) => e.kind)).toEqual(["tool_call", "status", "tool_result"]);
+    expect(events.map((e) => e.kind)).toEqual(["tool_call", "status", "tool_result", "status"]);
   });
 
   it("does not attribute a message-level structured output when the message carries two results", () => {
