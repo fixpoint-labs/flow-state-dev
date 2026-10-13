@@ -1,4 +1,5 @@
 ---
+name: General Lead
 flow: agent
 description: Leads research and planning, where the result is a write-up of findings, options or a recommendation, not software. Files each question as a task for the researcher, and keeps the workstream it leads current; never does the work itself.
 delegates: [researcher]

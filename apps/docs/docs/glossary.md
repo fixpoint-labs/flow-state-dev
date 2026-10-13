@@ -137,7 +137,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |
 | **Roster** | Shift Manager | Your workers, grouped as on shift (running a task), on call (a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
-| **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
+| **General** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
 
 ## Words that mean two things
 

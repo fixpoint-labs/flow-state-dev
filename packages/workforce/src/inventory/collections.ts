@@ -75,6 +75,17 @@ export const workerInventoryRowSchema = z.object({
    */
   door: z.string().nullable().default(null),
   /**
+   * The worker's display name (its `WORKER.md` `name:`), for people only; ids
+   * stay the wiring. `null` when it names none, and on a row written before
+   * the field (BP-023, BP-030): a view shows the id instead.
+   */
+  name: z.string().nullable().default(null),
+  /**
+   * Its team's display name (the team's `TEAM.md` `name:`). `null` when the
+   * team names none, on an org worker, and on a row written before the field.
+   */
+  teamName: z.string().nullable().default(null),
+  /**
    * Where the worker came from: `true` for a worker hired at runtime (its id is
    * its address, `<org>.<workerId>`), `false` for a declared one. A team list
    * reads this rather than the id's shape, because a declared team can share
@@ -120,7 +131,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
+const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "name", "teamName", "hired", "incarnation"] as const;
 
 /**
  * The worker inventory — one row per registered worker, at `inventory/workers/*`.

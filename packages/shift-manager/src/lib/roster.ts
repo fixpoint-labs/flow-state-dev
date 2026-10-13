@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { LoadedSnapshot } from "./derive";
-import { describeFailure, STAFF_TEAM, type Failure, type Worker } from "./reads";
+import { describeFailure, workerNames, type Failure, type Worker } from "./reads";
 import { useLab } from "./lab-data";
 import { useWorkforce } from "./workforce";
 
@@ -59,22 +59,18 @@ export function useRoster(readAt: number | undefined): RosterRead {
 
 /**
  * The user's own workers as rows beside the inventory's: each on the flow
- * it names, with that flow's door, grouped by its id the way an inventory
+ * it names, with that flow's door, grouped and named the way an inventory
  * row is.
  */
 function ownWorkers(entries: readonly RosterEntry[], inventory: readonly Worker[]): Worker[] {
   return entries
     .filter((entry) => !entry.standard && !inventory.some((worker) => worker.id === entry.id))
-    .map((entry) => {
-      const dot = entry.id.indexOf(".");
-      return {
-        id: entry.id,
-        kind: entry.flow,
-        door: inventory.find((worker) => worker.kind === entry.flow)?.door ?? null,
-        team: dot > 0 ? entry.id.slice(0, dot) : STAFF_TEAM,
-        name: dot > 0 ? entry.id.slice(dot + 1) : entry.id,
-      };
-    });
+    .map((entry) => ({
+      id: entry.id,
+      kind: entry.flow,
+      door: inventory.find((worker) => worker.kind === entry.flow)?.door ?? null,
+      ...workerNames(entry.id, entry.name, entry.teamName),
+    }));
 }
 
 /** A standard worker the roster lists and the inventory hasn't registered, as a row. */

@@ -9,7 +9,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { STAFF_TEAM, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -68,8 +68,10 @@ describe("which worker is the chief of staff (V2, D2)", () => {
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
-      team: STAFF_TEAM,
+      team: GENERAL_TEAM,
+      teamName: "General",
       name: "chief-of-staff",
+      displayName: "chief-of-staff",
     });
   });
 });

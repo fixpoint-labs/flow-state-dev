@@ -102,9 +102,14 @@ export type Worker = {
    * written before doors were published.
    */
   door: string | null;
-  /** The team it sits under, or {@link STAFF_TEAM} for an org worker (see {@link toWorker}). */
+  /** The id of the team it sits under, or {@link GENERAL_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
+  /** Its team's display name: the team's own, "General" for {@link GENERAL_TEAM}, else the team id. */
+  teamName: string;
+  /** Its id without the team: what a board may name it by. */
   name: string;
+  /** What a person reads it by: its display name, or its id when it has none. */
+  displayName: string;
 };
 
 /** Where a project lives: the organization's, or the user's own. */
@@ -365,26 +370,50 @@ function time(value: unknown): number | null {
 }
 
 /**
- * The group an org worker sits in: a worker whose address has no team, such as a
- * chief of staff or Ops. Capitalised, so no team id (lowercase by Workforce's
- * segment rule) can be it.
+ * The id of the group an org worker sits in: a worker whose address has no
+ * team, such as a chief of staff or a researcher. A person reads it as
+ * {@link GENERAL_TEAM_NAME}.
  */
-export const STAFF_TEAM = "Staff";
+export const GENERAL_TEAM = "general";
+
+/** {@link GENERAL_TEAM}'s display name. */
+export const GENERAL_TEAM_NAME = "General";
 
 /**
- * A worker inventory row, grouped by its worker id:
+ * A worker's team and names, from its id and the display names its row
+ * carries (each `null` when unset):
  *
  * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
  *   is everything before the first one;
- * - an id with no dot is an org worker, and sits in {@link STAFF_TEAM}.
+ * - an id with no dot is an org worker, and sits in {@link GENERAL_TEAM}.
+ *
+ * A missing display name reads as the id, so nothing shows blank.
  */
+export function workerNames(
+  id: string,
+  displayName: string | null,
+  teamName: string | null,
+): Pick<Worker, "team" | "teamName" | "name" | "displayName"> {
+  const dot = id.indexOf(".");
+  const team = dot > 0 ? id.slice(0, dot) : GENERAL_TEAM;
+  return {
+    team,
+    teamName: dot > 0 ? (teamName ?? team) : GENERAL_TEAM_NAME,
+    name: dot > 0 ? id.slice(dot + 1) : id,
+    displayName: displayName ?? id,
+  };
+}
+
+/** A worker inventory row, grouped and named by {@link workerNames}. */
 export function toWorker(row: unknown): Worker | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
-  const dot = id.indexOf(".");
-  const team = dot > 0 ? id.slice(0, dot) : STAFF_TEAM;
-  const name = dot > 0 ? id.slice(dot + 1) : id;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
+  return {
+    id,
+    kind: text(field(row, "kind")),
+    door: text(field(row, "door")),
+    ...workerNames(id, text(field(row, "name")), text(field(row, "teamName"))),
+  };
 }
 
 /**

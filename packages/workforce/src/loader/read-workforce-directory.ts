@@ -281,6 +281,12 @@ function parseWorkerMd(
       `${WORKER_MD} in "${workerName}/" must declare a non-empty \`description\``,
     );
   }
+  const name = declared["name"];
+  if (name !== undefined && (typeof name !== "string" || name.trim().length === 0)) {
+    throw new Error(
+      `${WORKER_MD} in "${workerName}/" declares a \`name\` that is not a non-empty string`,
+    );
+  }
 
   return { declared, body };
 }

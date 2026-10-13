@@ -688,7 +688,7 @@ async function readStore(api: LabApi, userId: string, boards: readonly string[] 
     running += rows.filter((r) => r.status === "in_progress").length;
   }
   return {
-    teams: new Set(seats.map((s) => (s.id.includes(".") ? s.id.split(".")[0] : "Staff"))).size,
+    teams: new Set(seats.map((s) => (s.id.includes(".") ? s.id.split(".")[0] : "general"))).size,
     seats: seats.length,
     running,
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),

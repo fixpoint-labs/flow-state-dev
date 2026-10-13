@@ -14,7 +14,7 @@ import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { asksOfTask, rosterOf, workerFor, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
+import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
 import { useTask } from "../lib/task";
@@ -53,10 +53,10 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
       <div data-testid="task-inspector">
         <Section title="WORKER" testId="inspector-worker">
           <p className="text-sm" data-testid="inspector-worker-id" data-worker-id={worker?.id ?? ""}>
-            {worker?.id ?? row?.assignee ?? "No worker named"}
+            {worker?.displayName ?? row?.assignee ?? "No worker named"}
           </p>
           <p className="text-xs text-muted-foreground" data-testid="inspector-team">
-            {worker === undefined ? "" : worker.team === STAFF_TEAM ? STAFF_TEAM : `team ${worker.team}`}
+            {worker === undefined ? "" : worker.team === GENERAL_TEAM ? worker.teamName : `team ${worker.teamName}`}
           </p>
         </Section>
         <Section title="STARTED" testId="inspector-started">

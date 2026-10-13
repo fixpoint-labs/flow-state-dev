@@ -193,12 +193,12 @@ export async function walkSurfaces(
 
   // TEAMS: one row per team, a square per seat, and each row opens Roster for it.
   const teamRows = await attr(page, "team", "data-team");
-  const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))];
+  const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "general")))];
   if (!same(teamRows, wantTeams)) teams(`TEAMS rows: ${diff(wantTeams, teamRows)}`);
   const squares = await attr(page, "worker", "data-worker-id");
   if (!same(squares, store.seats)) teams(`TEAMS squares: ${diff(store.seats, squares)}`);
   for (const team of teamRows) {
-    const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
+    const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "general") === team);
     const under = (await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""))) as string[];
     if (!same(under, want)) teams(`team ${team}'s squares: ${diff(want, under)}`);
     await page.locator(`[data-testid=team][data-team="${team}"]`).click();

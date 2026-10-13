@@ -134,6 +134,9 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
       team.instructions === undefined ? [] : [[team.id, team.instructions] as const],
     ),
   );
+  const nameByTeam = new Map<string, string>(
+    teams.flatMap((team) => (team.name === undefined ? [] : [[team.id, team.name] as const])),
+  );
 
   // Once, for the whole tree, like the team files: a library is one value per
   // level, and each worker's reach is a filter over the one read.
@@ -154,6 +157,7 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
     const { team, name } = parseDeclaredWorkerId(worker.id)!;
     const read = await readWorkerSkills({ team, worker: name });
     const teamInstructions = team === undefined ? undefined : instructionsByTeam.get(team);
+    const teamName = team === undefined ? undefined : nameByTeam.get(team);
     // The org's library, the worker's team's, then its own folder — in walk
     // order, which is that order. Another team's library and a sibling's own
     // folder are not in reach, so they never reach this record at all.
@@ -172,6 +176,7 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
       // `hasOwn`, and a key that is there holding `undefined` is a team layer
       // the record claims to have read and does not have.
       ...(teamInstructions === undefined ? {} : { teamInstructions }),
+      ...(teamName === undefined ? {} : { teamName }),
       // Absent rather than empty, for the reason `teamInstructions` is.
       ...(reach.length === 0 ? {} : { packages: reach }),
     });

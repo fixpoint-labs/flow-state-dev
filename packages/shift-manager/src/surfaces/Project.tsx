@@ -119,12 +119,12 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
         <ScreenTitle testId="project-title">{title}</ScreenTitle>
       </header>
       <ul className="flex flex-wrap items-center gap-x-[26px] gap-y-1 border-b border-foreground/[0.12] px-[22px] py-2" data-testid="team-strip" aria-label="Teams">
-        {teams.map(({ team }) => {
+        {teams.map(({ team, name }) => {
           const counts = shiftCounts(states, team);
           return (
             <li key={team} className="flex items-center gap-2.5" data-testid="team-strip-team" data-team={team}>
               <Meta role="count" className="tracking-[0.12em] text-muted-foreground uppercase">
-                {team}
+                {name}
               </Meta>
               <Meta>
                 {counts["on shift"]} on shift · {counts["on call"]} on call
@@ -520,18 +520,22 @@ function EntryView({
       </div>
     );
   }
-  return <EntryDetails address={address} entry={entry} readerSessionId={readerSessionId} back={back} />;
+  const leadName = workers.find((worker) => worker.id === entry.lead)?.displayName ?? entry.lead;
+  return <EntryDetails address={address} entry={entry} leadName={leadName} readerSessionId={readerSessionId} back={back} />;
 }
 
 /** Another user's entry, as anyone who reads the project reads it (BR-12). */
 function EntryDetails({
   address,
   entry,
+  leadName,
   readerSessionId,
   back,
 }: {
   address: ProjectAddress;
   entry: WorkstreamEntry;
+  /** The lead's display name, or its id when the roster doesn't name it. */
+  leadName: string;
   readerSessionId: string;
   back: ReactNode;
 }) {
@@ -552,7 +556,7 @@ function EntryDetails({
       {back}
       <h3 className="text-base font-medium">{entry.title}</h3>
       <p className="text-muted-foreground">
-        {entry.owner}'s · led by {entry.lead} · {entry.status}
+        {entry.owner}'s · led by {leadName} · {entry.status}
         {entry.due === null ? "" : ` · due ${entry.due}`}
         {entry.stale ? " · gone quiet" : ""}
       </p>

@@ -237,7 +237,9 @@ describe("what one boot writes", () => {
         kind: "coder",
         door: null,
         hired: false,
-        incarnation: null
+        incarnation: null,
+        name: null,
+        teamName: null
       });
     } finally {
       await lab.dispose();
@@ -257,7 +259,9 @@ describe("what one boot writes", () => {
         kind: "agent",
         door: null,
         hired: false,
-        incarnation: null
+        incarnation: null,
+        name: null,
+        teamName: null
       });
     } finally {
       await lab.dispose();

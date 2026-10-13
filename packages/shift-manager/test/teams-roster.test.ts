@@ -52,7 +52,7 @@ async function teams(lab: Lab) {
 }
 
 describe("TEAMS", () => {
-  it("lists every registered worker, a dotless org worker under Staff", async () => {
+  it("lists every registered worker, a dotless org worker under General", async () => {
     const value = await teams({
       workers: [
         { id: "eng.lead", kind: "agent" },
@@ -63,7 +63,7 @@ describe("TEAMS", () => {
     });
     expect(value.workers.map((worker) => [worker.id, worker.team, worker.name])).toEqual([
       ["eng.lead", "eng", "lead"],
-      ["chief-of-staff", "Staff", "chief-of-staff"],
+      ["chief-of-staff", "general", "chief-of-staff"],
       ["acme.support", "acme", "support"],
     ]);
   });
@@ -89,5 +89,20 @@ describe("TEAMS and a real Lab", () => {
     expect(workers.map((worker) => [worker.id, worker.team]).sort()).toEqual(
       opened.tree.workers.map((worker) => [worker.id, "ops"]).sort(),
     );
+  });
+
+  it("names each worker and team by the display names its files declare, and a worker that declares none by its id", async () => {
+    const opened = await openAskLab({ bearer: "ask-lab-secret", orgId: "ops" });
+    const lab = await serveLab(opened.flowState);
+    served.push(lab);
+    const snapshot = await createLabReader(
+      createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" }),
+    ).read();
+    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("not loaded");
+    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
+    const byId = new Map(snapshot.inventory.value.workers.map((worker) => [worker.id, worker]));
+    // `asker/WORKER.md` declares `name: Asker`; `ops/TEAM.md` declares `name: Operations`.
+    expect(byId.get("ops.asker")).toMatchObject({ displayName: "Asker", teamName: "Operations" });
+    expect(byId.get("ops.desk")).toMatchObject({ displayName: "ops.desk", teamName: "Operations" });
   });
 });

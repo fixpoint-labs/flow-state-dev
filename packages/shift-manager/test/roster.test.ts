@@ -6,18 +6,37 @@
 import { describe, expect, it } from "vitest";
 import { pickedTeam, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { parseRoute, pathFor } from "../src/lib/routes";
-import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "acme";
 
 describe("BR-13a, BR-13b: which group a worker sits in", () => {
-  it("an org worker (no dot) sits in Staff, never in a team of its own", () => {
-    expect(toWorker({ id: "chief-of-staff", kind: "cos" })).toMatchObject({ team: STAFF_TEAM, name: "chief-of-staff" });
-    expect(toWorker({ id: "ops", kind: "ops" })).toMatchObject({ team: STAFF_TEAM, name: "ops" });
+  it("an org worker (no dot) sits in General, never in a team of its own", () => {
+    expect(toWorker({ id: "chief-of-staff", kind: "cos" })).toMatchObject({ team: GENERAL_TEAM, name: "chief-of-staff" });
+    expect(toWorker({ id: "ops", kind: "ops" })).toMatchObject({ team: GENERAL_TEAM, name: "ops" });
   });
 
   it("a team worker `<team>.<name>` is unchanged", () => {
     expect(toWorker({ id: "eng.coder", kind: "coder" })).toMatchObject({ id: "eng.coder", team: "eng", name: "coder" });
+  });
+
+  it("a person reads a worker and its team by their display names; ids stay the wiring", () => {
+    expect(toWorker({ id: "eng.em", kind: "em", name: "Engineering Manager", teamName: "Engineering" })).toMatchObject({
+      id: "eng.em",
+      team: "eng",
+      displayName: "Engineering Manager",
+      teamName: "Engineering",
+    });
+    expect(toWorker({ id: "general-lead", kind: "agent", name: "General Lead" })).toMatchObject({
+      team: GENERAL_TEAM,
+      displayName: "General Lead",
+      teamName: "General",
+    });
+  });
+
+  it("a worker or team with no display name reads as its id, so nothing shows blank", () => {
+    expect(toWorker({ id: "eng.coder", kind: "coder" })).toMatchObject({ displayName: "eng.coder", teamName: "eng" });
+    expect(toWorker({ id: "eng.coder", kind: "coder", name: null, teamName: null })).toMatchObject({ displayName: "eng.coder", teamName: "eng" });
   });
 });
 
@@ -118,21 +137,21 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
 
   it("counts only the workers shown when a team is picked", () => {
     expect(shiftCounts(workerStates(snapshot), "ops")).toEqual({ "on shift": 0, "on call": 1, "off shift": 0, waiting: 2 });
-    expect(shiftCounts(workerStates(snapshot), STAFF_TEAM)).toEqual({ "on shift": 0, "on call": 0, "off shift": 1, waiting: 0 });
+    expect(shiftCounts(workerStates(snapshot), GENERAL_TEAM)).toEqual({ "on shift": 0, "on call": 0, "off shift": 1, waiting: 0 });
   });
 
-  it("lists teams with Staff first, each with exactly its workers", () => {
-    expect(teamsOf([coder, chief, asker, reviewer]).map(({ team, workers }) => [team, workers.map((s) => s.id)])).toEqual([
-      [STAFF_TEAM, ["chief-of-staff"]],
-      ["eng", ["eng.coder", "eng.reviewer"]],
-      ["ops", ["ops.asker"]],
+  it("lists teams with General first, each with exactly its workers", () => {
+    expect(teamsOf([coder, chief, asker, reviewer]).map(({ team, name, workers }) => [team, name, workers.map((s) => s.id)])).toEqual([
+      [GENERAL_TEAM, "General", ["chief-of-staff"]],
+      ["eng", "eng", ["eng.coder", "eng.reviewer"]],
+      ["ops", "ops", ["ops.asker"]],
     ]);
   });
 });
 
 describe("BR-13: the Roster route", () => {
   it("round-trips All and a team", () => {
-    for (const route of [{ level: "roster", team: null }, { level: "roster", team: "eng" }, { level: "roster", team: STAFF_TEAM }] as const) {
+    for (const route of [{ level: "roster", team: null }, { level: "roster", team: "eng" }, { level: "roster", team: GENERAL_TEAM }] as const) {
       const path = pathFor(route);
       const q = path.indexOf("?");
       expect(parseRoute(q < 0 ? path : path.slice(0, q), q < 0 ? "" : path.slice(q))).toEqual(route);
@@ -145,7 +164,7 @@ describe("BR-13: the Roster route", () => {
     const workers = [worker("eng.coder"), worker("chief-of-staff")];
     expect(pickedTeam(workers, "nope")).toBeNull();
     expect(pickedTeam(workers, "eng")).toBe("eng");
-    expect(pickedTeam(workers, STAFF_TEAM)).toBe(STAFF_TEAM);
+    expect(pickedTeam(workers, GENERAL_TEAM)).toBe(GENERAL_TEAM);
     expect(pickedTeam(workers, null)).toBeNull();
   });
 });

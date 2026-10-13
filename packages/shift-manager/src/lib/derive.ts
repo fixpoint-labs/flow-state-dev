@@ -4,7 +4,7 @@
  */
 import { isDone, readStatus } from "./columns";
 import {
-  STAFF_TEAM,
+  GENERAL_TEAM,
   type Ask,
   type BoardRow,
   type Failure,
@@ -172,14 +172,14 @@ export function doorOf(workers: readonly Worker[], flowId: string): string | nul
 }
 
 /**
- * The teams in the worker inventory, each with its workers, in first-seen order,
- * with the org workers' Staff group first.
+ * The teams in the worker inventory, each with its display name and its
+ * workers, in first-seen order, with the org workers' General group first.
  */
-export function teamsOf(workers: readonly Worker[]): Array<{ team: string; workers: Worker[] }> {
+export function teamsOf(workers: readonly Worker[]): Array<{ team: string; name: string; workers: Worker[] }> {
   const teams = new Map<string, Worker[]>();
   for (const worker of workers) teams.set(worker.team, [...(teams.get(worker.team) ?? []), worker]);
-  const all = [...teams].map(([team, workers]) => ({ team, workers }));
-  return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
+  const all = [...teams].map(([team, workers]) => ({ team, name: workers[0]!.teamName, workers }));
+  return [...all.filter((t) => t.team === GENERAL_TEAM), ...all.filter((t) => t.team !== GENERAL_TEAM)];
 }
 
 /** PROJECTS: every project the user reads. */

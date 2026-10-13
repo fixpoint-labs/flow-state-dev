@@ -453,7 +453,8 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const bobs = (await screen.findAllByTestId("project-entry")).find((li) => li.getAttribute("data-owner") === BOB.userId)!;
     act(() => fireEvent.click(bobs.querySelector("button")!));
     const details = await screen.findByTestId("project-entry-details");
-    expect(details.textContent).toContain(`led by ${EM}`);
+    // DevTeam's `eng/workers/em/WORKER.md` names the EM; the entry shows that name, not its id.
+    expect(details.textContent).toContain("led by Engineering Manager");
     await eventually(async () => (/No report yet|didn't load/.test(screen.getByTestId("project-entry-report").textContent ?? "") ? true : undefined), "the report read");
     expect(seen.some((r) => r.path.includes(his.sessionId!) || r.body.includes(his.sessionId!))).toBe(false);
 
