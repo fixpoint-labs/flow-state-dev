@@ -134,7 +134,7 @@ await projects.sendAction(
 
 It returns `{ project }`, the row as written, and changes `brief` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
 
-`project` is optional. Leave it out and the write changes the project the calling conversation belongs to. From a conversation that belongs to a project, the write changes only that project, so naming a different one is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
+`project` is optional. Left out, it changes the project the calling conversation belongs to (`no-such-project` when it belongs to none); naming another is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
 
 ### Default projects from app code
 
@@ -513,7 +513,7 @@ A private project's repository and files are its owner's alone. On a shared proj
 
 `setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
 
-`project` is optional. Leave it out and the write changes the project the calling conversation belongs to. From a conversation that belongs to a project, the write changes only that project, so naming a different one is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
+`project` is optional. Left out, it changes the project the calling conversation belongs to (`no-such-project` when it belongs to none); naming another is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
 
 A value has to be a remote. Both writes refuse these with `invalid-repository`, and the refusal never repeats the value:
 

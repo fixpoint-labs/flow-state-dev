@@ -315,10 +315,6 @@ const forCoding = handler({
  * are sequencers named for the tool, since each waits for an approval first,
  * or, for `listProjects`, adds `forCoding`.
  *
- * The project coordinator manages its own project with `setBrief`,
- * `setRepository` and `openWorkstream`, called without a `project`: each
- * then writes the project its conversation is linked to, and only that one.
- *
  * `listProjects` is how the chief of staff knows which project a coder's task
  * works in: the projects the user is a member of, read when asked, never
  * guessed.

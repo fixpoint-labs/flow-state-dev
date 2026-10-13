@@ -20,10 +20,6 @@
  *
  * **Re-sending a create.** The same owner sending the same id again gets the
  * existing row back, unchanged.
- *
- * **Which project a later write changes.** The one its input names, or, left
- * out, the one its conversation is linked to: a project coordinator's session
- * changes its own project without naming it, and never another.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -87,11 +83,7 @@ export const createProjectOutputSchema = z.object({
 /** @see createProjectOutputSchema */
 export type CreateProjectOutput = z.infer<typeof createProjectOutputSchema>;
 
-/**
- * What setting a project's repository takes: the project's address, and the
- * new remote or `null` to clear it. Without an address, the project the
- * conversation is linked to.
- */
+/** What `setRepository` takes: the address and the new remote or `null`. No address: the linked project. */
 export const setRepositoryInputSchema = z
   .object({ project: projectAddressSchema.optional(), repository: z.string().nullable() })
   .strict();
@@ -102,11 +94,7 @@ export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
 /** What setting a project's repository returns: the row as written. */
 export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
 
-/**
- * What setting a project's brief takes: the project's address, and the new
- * brief or `null` to clear it. Without an address, the project the
- * conversation is linked to.
- */
+/** What `setBrief` takes: the address and the new brief or `null`. No address: the linked project. */
 export const setBriefInputSchema = z
   .object({ project: projectAddressSchema.optional(), brief: z.string().nullable() })
   .strict();
@@ -267,11 +255,7 @@ const setRepository = handler({
   }
 });
 
-/**
- * `setBrief`: set, change or clear a project's brief, what the project is
- * for. Members only. Rewritten from the state the store hands the updater,
- * as `setRepository` is, so a concurrent write keeps what it wrote.
- */
+/** Members only. Rewritten like `setRepository`, so a concurrent write keeps what it wrote. */
 const setBrief = handler({
   name: "project-set-brief",
   inputSchema: setBriefInputSchema,
@@ -285,12 +269,6 @@ const setBrief = handler({
   }
 });
 
-/**
- * The row a later write changes: the project it names, or the conversation's
- * own ({@link projectOfWrite}), when the caller is one of its members.
- *
- * @param field The field the write changes, for its refusal.
- */
 async function memberRowOf(ctx: BlockContext, named: ProjectAddress | undefined, field: string) {
   const address = projectOfWrite(ctx.session.state, named, `change its ${field}`);
   const row = await projectAt(ctx, address);
