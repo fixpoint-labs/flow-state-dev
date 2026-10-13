@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  omitSecretFields,
   resolveClientProjection,
   validateClientProjection,
 } from "../src/helpers/client-projection";
@@ -57,6 +58,18 @@ describe("resolveClientProjection", () => {
       state
     );
     expect(result).toEqual({ title: "T" });
+  });
+});
+
+describe("omitSecretFields", () => {
+  it("drops the fields a config names secret and keeps the rest", () => {
+    expect(omitSecretFields({ secret: ["value"] }, { value: "k", setAt: "t" })).toEqual({ setAt: "t" });
+  });
+
+  it("returns the same state object when nothing is secret", () => {
+    const state = { value: "k" };
+    expect(omitSecretFields({}, state)).toBe(state);
+    expect(omitSecretFields({ secret: [] }, state)).toBe(state);
   });
 });
 

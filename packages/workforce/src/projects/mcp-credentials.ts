@@ -9,6 +9,8 @@
  *
  * **Write-only from outside.** A browser read of the collection exposes
  * `setAt` alone (BP-015), so no client field, page or response carries a value.
+ * The value is also declared `secret`, which keeps it out of the engine's
+ * debug reads, the one path that ignores `expose`.
  * The writes go around the action pipeline, since an action's input is kept
  * on its request record: a host writes a record through its own route
  * ({@link mcpCredentialProblem} checks the value), and the one reader of the
@@ -46,6 +48,8 @@ const MCP_CREDENTIALS_COLLECTION = defineResourceCollection({
   flowIsolation: false,
   prefetchMode: "lazy",
   stateSchema: mcpCredentialSchema,
+  // The key never leaves the server, debug reads included; a run reads it through the handle.
+  secret: ["value"],
   client: { state: { read: true }, expose: ["setAt"] }
 });
 
