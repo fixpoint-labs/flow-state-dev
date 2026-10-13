@@ -337,21 +337,21 @@ async function reach(page: Page, origin: string, row: Row) {
  * naming what Tasks drew and what the store holds for the row now, and its
  * other legs are skipped, since they would grade some other screen.
  */
-async function reached({ page, origin, api, tree, fail }: Ctx, row: Row): Promise<boolean> {
+async function reached({ page, origin, api, fail }: Ctx, board: Board, row: Row): Promise<boolean> {
   try {
     await reach(page, origin, row);
     return true;
   } catch (error) {
-    const drawnRows = await page
-      .getByTestId("task-row")
-      .evaluateAll((els) => els.map((e) => e.getAttribute("data-task-id") ?? ""))
+    // A done row is reached from Jump to, an open one from Tasks: say what the path it took drew.
+    const done = row.status === "completed" || row.status === "cancelled";
+    const drawnRows = await (done ? page.locator("[data-testid=jump-result]") : page.getByTestId("task-row"))
+      .evaluateAll((els, attr) => els.map((e) => (attr === "" ? e.textContent : e.getAttribute(attr)) ?? ""), done ? "" : "data-task-id")
       .catch(() => [] as string[]);
-    const board = await api.board(tree).catch(() => undefined);
-    const now = board === undefined ? undefined : (await api.rows(board).catch(() => [] as Row[])).find((r) => r.id === row.id);
+    const now = (await api.rows(board).catch(() => [] as Row[])).find((r) => r.id === row.id);
     fail(
       "reach",
       `${row.id} could not be opened by clicking (${String((error as Error).message ?? error).split("\n")[0]}); ` +
-        `Tasks drew [${drawnRows.join(", ")}]; the store has it ${now === undefined ? "nowhere" : now.status}`,
+        `${done ? "Jump to listed" : "Tasks drew"} [${drawnRows.join(", ")}]; the store has it ${now === undefined ? "nowhere" : now.status}`,
     );
     return false;
   }
@@ -543,10 +543,13 @@ await runGoal(async (failures) => {
     // picked as one it finishes under the screen and leaves Tasks.
     const board = await api.board(tree);
     let rows: Row[] = [];
-    for (let waited = 0; waited < 30_000; waited += 250) {
+    const settled = (rs: Row[]) => rs.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rs.filter((r) => r.status === "completed").length >= 2;
+    for (let waited = 0; waited < 30_000 && !settled(rows); waited += 250) {
       rows = await api.rows(board);
-      if (rows.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rows.filter((r) => r.status === "completed").length >= 2) break;
-      await sleep(250);
+      if (!settled(rows)) await sleep(250);
+    }
+    if (!settled(rows)) {
+      throw new Error(`store: within 30 s the board never held two held runs and both short runs finished: ${rows.map((r) => `${r.id} ${r.status}`).join("; ")}`);
     }
     const owners = new Map<string, string>();
     for (const row of rows) if (row.run !== null) owners.set(row.id, await api.ownerOf(row.run.sessionId));
@@ -581,7 +584,7 @@ await runGoal(async (failures) => {
     for (const { name, row, running } of cases) {
       const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
       const ctx: Ctx = { page, origin: served.origin, devtool: served.devtool, api, tree, fail, evidence };
-      if (!(await reached(ctx, row))) continue;
+      if (!(await reached(ctx, board, row))) continue;
       await leg(fail, "items equal the run session's", () => checkItems(ctx, row, running));
       await leg(fail, "inspector", () => checkInspector(ctx, row));
       await leg(fail, "gaps", () => checkGaps(ctx, running));
@@ -597,7 +600,7 @@ await runGoal(async (failures) => {
 
     // The row no run has claimed.
     const unclaimedFail = (name: string, why: string) => failures.push(`[unclaimed] ${name}: ${why}`);
-    if (await reached({ page, origin: served.origin, devtool: served.devtool, api, tree, fail: unclaimedFail, evidence }, unclaimed)) {
+    if (await reached({ page, origin: served.origin, devtool: served.devtool, api, tree, fail: unclaimedFail, evidence }, board, unclaimed)) {
       await leg(unclaimedFail, "no run", async () => {
         if (!(await visible(page, "session-no-run", 5_000))) unclaimedFail("no run", "the Session doesn't say no run has started");
         if (!(await page.getByTestId("task-interrupt").isDisabled())) unclaimedFail("no run", "Interrupt is enabled with nothing running");
