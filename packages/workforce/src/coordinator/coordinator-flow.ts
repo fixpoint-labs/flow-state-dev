@@ -197,7 +197,7 @@ import {
   type RouteOn
 } from "./coordinator-rounds";
 import {
-  POST_ROW_KIND,
+  POST_ROW,
   delegatedPostHistory,
   delegatedPostMessage,
   postCancelledSchema,
@@ -454,7 +454,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const ref = open.length === 0 ? undefined : await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
     const read = new Map<string, { ids: string[] }>();
     for (const { postId, round } of open) {
-      const rows = ref?.list({ sealed: { kind: POST_ROW_KIND, postId, round } }) ?? [];
+      const rows = ref?.list({ sealed: { kind: POST_ROW, postId, round } }) ?? [];
       read.set(JSON.stringify([postId, round]), { ids: rows.map((row) => row.id) });
     }
     return (postId, round) => read.get(JSON.stringify([postId, round])) ?? { ids: [] };
@@ -492,7 +492,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       session = { id: resolved.sessionId };
     }
     const post: PostRow = {
-      kind: POST_ROW_KIND,
+      kind: POST_ROW,
       postId: request.postId,
       round: request.round,
       delegate: named,

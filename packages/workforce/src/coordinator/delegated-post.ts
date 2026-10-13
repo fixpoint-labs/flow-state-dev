@@ -82,14 +82,14 @@ export const delegatedPostSchema = z.object({
 export type DelegatedPost = z.infer<typeof delegatedPostSchema>;
 
 /** What a post row's `kind` says: the row is a post, not a task. */
-export const POST_ROW_KIND = "post";
+export const POST_ROW = "post";
 
 /**
  * A post row's server-written payload (`Task.sealed`): the post, and where and
  * for whom it is worked. Written only by the coordinator when it files the row.
  */
 export const postRowSchema = delegatedPostSchema.extend({
-  kind: z.literal(POST_ROW_KIND),
+  kind: z.literal(POST_ROW),
   /** The user's post this row hands on. Answers going back out keep its id, in a later round. */
   postId: z.string().min(1),
   /** The round it was handed on in: 0 for a user's post. */
@@ -109,7 +109,7 @@ export type PostRow = z.infer<typeof postRowSchema>;
 /** A row's post, when the row is a post row; `undefined` for any other row. */
 export function postRowOf(row: { readonly sealed?: Readonly<Record<string, unknown>> } | undefined): PostRow | undefined {
   const sealed = row?.sealed;
-  if (sealed === undefined || sealed.kind !== POST_ROW_KIND) return undefined;
+  if (sealed === undefined || sealed.kind !== POST_ROW) return undefined;
   const parsed = postRowSchema.safeParse(sealed);
   return parsed.success ? parsed.data : undefined;
 }
