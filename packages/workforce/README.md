@@ -1621,14 +1621,14 @@ const coordinatorFlow = defineCoordinatorFlow({
 });
 ```
 
-Earlier versions declared the entry under `internal.actions`. A delegate flow that still does makes
-`defineCoordinatorFlow` throw, with a message naming the `task` form.
+Earlier versions declared the entry under `internal.actions` and named the hand-off tool `handOff`.
+A delegate flow that still declares it there makes `defineCoordinatorFlow` throw, and a worker
+whose `tools:` names `handOff` is refused at load; each message names the replacement.
 
 The judgment turn is the built-in agent's own turn. A coordinator worker's `model`, `tools`,
 `skills` and `capabilities` read the way an `agent` worker's do, against the catalog and
 capabilities you pass as `agent`. The four delegate tools and `dispatchTask` are on every
-coordinator, whatever its `tools:` line grants. A worker whose `tools:` names `handOff` is refused
-at load, pointing at `dispatchTask` with `post: true`.
+coordinator, whatever its `tools:` line grants.
 
 A coordinator's file names its defaults:
 
@@ -1728,13 +1728,12 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   coordinator's own turn hands it a post with `dispatchTask`, the refusal adds the delegates that take
   posts, `Delegates here that take posts: <ids>.`, or `No delegate here takes posts.` when none does.
 - **Delivery.** Each post is one task per delegate per round on the conversation's board, so its
-  answer lands under the delegate's name once, however many times its ending is sent. Each
+  answer lands under the delegate's name once. Each
   delegate's task runs in its own session per conversation, created naming the delegate as its
   worker, and reused for that conversation's later posts. A post's task can be cancelled from the
   board, but not reassigned, completed, failed or blocked. The board answers task actions only
   while one of the conversation's delegates takes tasks, and `no_delegation_board` otherwise. The
-  session
-  carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
+  session carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
   naming only `{ worker }` never returns a delegate's session. Only the delivery opens one:

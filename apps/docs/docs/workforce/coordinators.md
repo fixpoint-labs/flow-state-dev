@@ -276,11 +276,11 @@ A conversation keeps at most 50 rounds open. A post past that is still delivered
 
 Each delegate a post goes to gets a task for it on the conversation's [task board](./delegating-work.md), one per delegate per round. It sits on the board next to the tasks you filed yourself, and it ends like any task: completed with the delegate's answer, which lands as the delegate's line, or failed.
 
-An answer counts once. However many times a delegate's ending is sent, after a restart or a dropped connection, the conversation gets one line. A delegate handed the same post twice in one round gets one task, and the record says the second was skipped.
+Each delegate's answer to a post lands once, even across a restart or a dropped connection. A delegate handed the same post twice in one round gets one task, and the record says the second was skipped.
 
 The task runs in the delegate's own session for this conversation, the same session every post from this conversation to that delegate runs in, so the delegate keeps what it was told before. A post to a [workstream](./projects.md#talking-to-a-project) runs in the workstream's own session.
 
-You can cancel a post's task from the board with `cancelTask_tasks`. That delegate's part ends with no line, and if its turn is still running, what it says afterwards doesn't land. Reassigning a post's task is refused, since the post was for that delegate, and so is completing, failing or blocking it from the board. The board answers task actions only while the conversation files tasks, which it does while at least one of its delegates takes tasks. In a conversation whose delegates take only posts, `cancelTask_tasks` and `listTasks_tasks` answer `{ "ok": false, "error": "no_delegation_board" }`.
+You can cancel a post's task from the board with `cancelTask_tasks`. That delegate's part ends with no line, and if its turn is still running, what it says afterwards doesn't land. Reassigning, completing, failing or blocking a post's task from the board is refused. The board answers task actions only while the conversation files tasks, which it does while at least one of its delegates takes tasks. So in a conversation whose delegates take only posts, a post's task can't be cancelled from the board: `cancelTask_tasks` and `listTasks_tasks` answer `{ "ok": false, "error": "no_delegation_board" }`.
 
 With 25 delegates, `everyone` and `rounds: 3`, one post adds up to 100 tasks to the board. They stay there like any finished task.
 
@@ -511,7 +511,7 @@ const researchFlow = defineFlow({
 
 Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the user's id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
 
-If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form.
+If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form. Earlier versions also named the coordinator's hand-off tool `handOff`; a worker file whose `tools:` still names it is refused when the app loads, with a message pointing at `dispatchTask` and `post: true`.
 
 `delegatedPostOnFinished` ends a delegated run's task when the run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
