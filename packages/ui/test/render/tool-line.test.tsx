@@ -1,9 +1,5 @@
 // @vitest-environment happy-dom
 /**
- * Tool calls are background, not content: a run of calls is one quiet line
- * labelled by what the agent said it was doing, and opens to one line per
- * call. Ten Bash calls are one line, not ten cards.
- *
  * Renders registry source, which imports shadcn primitives through `@/`; the
  * vitest config aliases those to Storybook's stubs, the way Storybook builds.
  */

@@ -109,7 +109,6 @@ async function* scriptedTurn(
   }
 
   if (has("bash")) {
-    // A run of shell commands, each with the description Claude Code asks for.
     const commands = ["git status", "ls", "cat package.json", "pnpm test", "pnpm typecheck"];
     const descriptions = ["Check git status", "List files", "Read the package manifest", "Run the tests", "Typecheck"];
     for (const [i, command] of commands.entries()) {

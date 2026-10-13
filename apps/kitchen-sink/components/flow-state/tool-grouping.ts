@@ -119,13 +119,7 @@ export function composeToolGroupLabel(toolNames: string[]): string {
   return capitalizeFirst(joinClauses(clauses));
 }
 
-/**
- * Argument that carries a tool's own statement of intent, by tool name.
- * Claude Code's `Bash` asks the agent for a short `description` of each
- * command ("List files in src"); `Task` / `Agent` do the same for a
- * sub-agent. Only tools listed here are read: a `description` argument on
- * an arbitrary tool can be a payload (an issue body), not an intent.
- */
+/** A `description` on any other tool can be a payload, not an intent. */
 export const TOOL_INTENT_ARG: Record<string, string> = {
   Bash: "description",
   bash: "description",
@@ -133,11 +127,7 @@ export const TOOL_INTENT_ARG: Record<string, string> = {
   Agent: "description",
 };
 
-/**
- * The intent a call stated for itself, or `undefined` when its tool has no
- * intent argument or the call left it empty. `args` is the parsed
- * arguments object.
- */
+/** Trimmed allowlisted intent, or undefined when the call left it empty. */
 export function toolIntent(toolName: string, args: unknown): string | undefined {
   const key = TOOL_INTENT_ARG[toolName];
   if (key === undefined || args === null || typeof args !== "object") return undefined;
@@ -147,34 +137,13 @@ export function toolIntent(toolName: string, args: unknown): string | undefined 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-/** One call, as the label composer sees it. */
 export type ToolCallLabelInput = { name: string; intent?: string };
 
-/**
- * Intent phrases shown in a group label before the rest are counted as
- * "+N more". The full list is one click away in the expanded group.
- */
+/** Phrases kept before the rest are counted as "+N more". */
 export const TOOL_GROUP_INTENT_CAP = 3;
 
-/**
- * Composes a group label from each call's stated intent, in order:
- *
- *   composeToolCallsLabel([
- *     { name: "Bash", intent: "List files" },
- *     { name: "Bash", intent: "Run tests" },
- *   ])
- *   // → "List files · Run tests"
- *
- * Consecutive calls with no intent fold into one name-based phrase from
- * {@link composeToolGroupLabel} ("Ran 2 searches"). A batch where no call
- * stated an intent is exactly {@link composeToolGroupLabel} of its names.
- * More than {@link TOOL_GROUP_INTENT_CAP} phrases end in "+N more".
- */
+/** Intents in order. Calls with none fold into the name-based phrase. */
 export function composeToolCallsLabel(calls: ToolCallLabelInput[]): string {
-  if (!calls.some((c) => c.intent !== undefined)) {
-    return composeToolGroupLabel(calls.map((c) => c.name));
-  }
-
   const phrases: string[] = [];
   let unnamed: string[] = [];
   const flush = () => {
@@ -183,9 +152,8 @@ export function composeToolCallsLabel(calls: ToolCallLabelInput[]): string {
     unnamed = [];
   };
   for (const call of calls) {
-    if (call.intent === undefined) {
-      unnamed.push(call.name);
-    } else {
+    if (call.intent === undefined) unnamed.push(call.name);
+    else {
       flush();
       phrases.push(call.intent);
     }

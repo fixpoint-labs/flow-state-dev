@@ -86,8 +86,6 @@ describe("toolIntent", () => {
     expect(toolIntent("Bash", { command: "ls", description: "   " })).toBeUndefined();
   });
 
-  // A `description` on an arbitrary tool can be a payload (an issue body),
-  // so only tools known to state intent there are read.
   it("ignores a description argument on a tool that does not state intent", () => {
     expect(toolIntent("create_issue", { description: "## Problem\n..." })).toBeUndefined();
   });
