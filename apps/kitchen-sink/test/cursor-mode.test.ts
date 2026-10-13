@@ -6,12 +6,8 @@
  * is handed, not the server's.
  *
  * Red state produced before this was trusted: report a host with no key and no
- * stored login as available, and the sign-in case fails.
- *
- * Every run asks for Cursor's sandbox, and Cursor fails a run whose sandbox
- * can't start, so a host without one must not be offered the mode: its card
- * would say Available and every turn would fail. Red state: on a check that
- * didn't ask about the sandbox, the sandbox case reported such a host available.
+ * stored login as available, and the sign-in case fails. Report a host whose
+ * sandbox can't start as available, and the sandbox case fails.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -84,10 +80,11 @@ describe("Cursor mode's check (V7)", () => {
     expect(await check({ signIn: async () => ({ status: "login" }) })).toEqual({ available: true });
   });
 
-  it("is unavailable when Cursor's sandbox can't start here, in Cursor's words", async () => {
+  it("is unavailable when Cursor's sandbox can't start here, in Cursor's words, and names the opt-out", async () => {
     const said = "Local SDK sandboxing was requested, but sandboxing is not supported in this environment.";
     const result = await check({ sandbox: () => ({ supported: false, reason: said }) });
     expect(result).toMatchObject({ available: false, reason: expect.stringContaining(said) });
+    expect(result).toMatchObject({ reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
   });
 
   it("asks about the sandbox for the repository the sessions work on", async () => {
@@ -102,11 +99,6 @@ describe("Cursor mode's check (V7)", () => {
     const result = await check({ sandbox });
     expect(sandbox).not.toHaveBeenCalled();
     expect(result).toMatchObject({ available: true, note: expect.stringContaining("not confined") });
-  });
-
-  it("names the opt-out in the reason when the sandbox can't start", async () => {
-    const result = await check({ sandbox: () => ({ supported: false, reason: "no sandbox here" }) });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
   });
 
   it("checks the sign-in, the sandbox, and starts the process over the run's environment, not the server's", async () => {

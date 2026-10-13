@@ -283,8 +283,6 @@ describe("where a session works (V6)", () => {
   });
 
   it("runs with no sandbox only when KITCHEN_SINK_HARNESS_UNSANDBOXED=1 asks for it", async () => {
-    // The person opted out of confinement for every harness; the run must not
-    // still ask for a sandbox the host may not have.
     vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
     const stores = createInMemoryStores();
     const recorder = recorded();

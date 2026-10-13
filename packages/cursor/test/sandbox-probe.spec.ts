@@ -1,13 +1,9 @@
 /**
  * Cursor's sandbox, as a run would find it.
  *
- * The SDK starts its local sandbox through a helper binary it looks for by
- * walking up `node_modules` folders from the running script's directory,
- * never from its own install. Under pnpm the helper's platform package sits
- * beside `@cursor/sdk` in the store, off that walk, so every sandboxed run
- * failed with "sandboxing is not supported in this environment" on a host
- * that supports it. This package depends on the platform packages so the walk
- * from its runtime scripts finds the helper.
+ * The SDK finds `cursorsandbox` by walking up from the running script, not
+ * from its own install. Under pnpm that walk misses the helper unless this
+ * package depends on the platform packages.
  *
  * Red state produced before this was trusted: without the optional
  * dependencies, the first case fails (no helper on the walk), and the real
