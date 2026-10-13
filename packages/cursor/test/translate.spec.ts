@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { addUsage, normalizeUsage, translateCursorMessage } from "../src/translate";
 import type { CursorSdkMessage } from "../src/types";
+import { PARTIAL_ARGS, WHOLE_LIST, todosFailed, todosRunning, todosSettled } from "./fixtures/update-todos";
 
 describe("translateCursorMessage — what reaches the stream", () => {
   it("turns assistant text into a message", () => {
@@ -194,5 +195,67 @@ describe("translateCursorMessage — drift (BP-030)", () => {
       totalTokens: 0,
       reasoningTokens: 0,
     });
+  });
+});
+
+describe("translateCursorMessage — Cursor's to-do list (FIX-1917 V1)", () => {
+  // The list in the record has to equal Cursor's own. The update Cursor sends
+  // can name only part of the list, with no ids to place it, so the only list
+  // that can be written is the one on the call's success result (D1).
+  const planLists = (message: CursorSdkMessage) =>
+    translateCursorMessage(message).filter((e) => e.kind === "plan_list");
+
+  it("yields the result's whole list on a settled success, never the partial args", () => {
+    const plan = planLists(todosSettled("t1"));
+    expect(plan).toEqual([
+      {
+        kind: "plan_list",
+        items: WHOLE_LIST.map((t) => ({ title: t.content, status: t.status })),
+      },
+    ]);
+    // Four places, though the update Cursor sent named two.
+    expect((plan[0] as { items: unknown[] }).items).toHaveLength(4);
+    expect(PARTIAL_ARGS).toHaveLength(2);
+  });
+
+  it("still emits the tool step, before the plan event, unchanged", () => {
+    const events = translateCursorMessage(todosSettled("t1"));
+    expect(events[0]).toMatchObject({ kind: "tool_result", callId: "t1", name: "updateTodos", isError: false });
+    expect(events.map((e) => e.kind)).toEqual(["tool_result", "plan_list"]);
+  });
+
+  it("yields nothing extra while the call runs", () => {
+    expect(translateCursorMessage(todosRunning("t1"))).toEqual([
+      expect.objectContaining({ kind: "tool_call", name: "updateTodos" }),
+    ]);
+  });
+
+  it("yields nothing extra when Cursor rejects the update, and the step carries the error", () => {
+    expect(planLists(todosFailed("t1"))).toEqual([]);
+    expect(translateCursorMessage(todosFailed("t1"))[0]).toMatchObject({ kind: "tool_result", isError: true });
+  });
+
+  it("yields nothing extra for a settled call with no result, or a result that is not a list", () => {
+    const base = todosSettled("t1") as Record<string, unknown>;
+    expect(planLists({ ...base, result: undefined } as CursorSdkMessage)).toEqual([]);
+    expect(
+      planLists({ ...base, result: { status: "success", value: { todos: "four" } } } as CursorSdkMessage),
+    ).toEqual([]);
+    expect(planLists({ ...base, result: { status: "success" } } as CursorSdkMessage)).toEqual([]);
+  });
+
+  it("yields an empty list when Cursor confirms one, which is not the same as no list", () => {
+    expect(planLists(todosSettled("t1", []))).toEqual([{ kind: "plan_list", items: [] }]);
+  });
+
+  it("keeps a status word it has never seen as itself", () => {
+    expect(planLists(todosSettled("t1", [{ content: "Ship it", status: "blockedOnReview" }]))).toEqual([
+      { kind: "plan_list", items: [{ title: "Ship it", status: "blockedOnReview" }] },
+    ]);
+  });
+
+  it("does not read a list off any other tool", () => {
+    const other = { ...(todosSettled("t1") as Record<string, unknown>), name: "readTodos" } as CursorSdkMessage;
+    expect(planLists(other)).toEqual([]);
   });
 });

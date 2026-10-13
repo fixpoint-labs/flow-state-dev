@@ -577,6 +577,7 @@ export {
 export {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
+  harnessRunNamespace,
   observedOutcomeSchema,
   observedPlanCollection,
   observedPlanItemStateSchema,
