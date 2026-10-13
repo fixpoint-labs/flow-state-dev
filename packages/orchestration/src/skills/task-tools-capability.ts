@@ -956,10 +956,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     assignee: z.string().optional(),
     deps: z.array(z.string()).optional(),
     priority: z.number().optional(),
+    // An object, not `unknown`: a schema with no type is one a model may fill
+    // with the payload as a JSON string, which every reader of `input.<field>`
+    // then misses (a project-bound coder's `input.project`, a tool's arguments).
     input: z
-      .unknown()
+      .record(z.string(), z.unknown())
       .optional()
-      .describe("Structured payload handed to the worker as the task's input."),
+      .describe("Structured payload handed to the worker as the task's input: a JSON object, not a string."),
     metadata: z.record(z.string(), z.unknown()).optional(),
     followUpOf: z
       .string()
