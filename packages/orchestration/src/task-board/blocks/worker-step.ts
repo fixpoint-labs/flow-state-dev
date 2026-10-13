@@ -146,6 +146,7 @@ export async function packWorkerInput(
     // The task a follow-up follows: a `per-task` hand-off keys its session by it.
     ...(task.followUpOf !== undefined ? { followUpOf: task.followUpOf } : {}),
     ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),
+    ...(task.sealed !== undefined ? { sealed: task.sealed } : {}),
     ...(Object.keys(deps).length > 0 ? { deps } : {}),
     ...(priorWork !== undefined ? { priorWork } : {}),
   };

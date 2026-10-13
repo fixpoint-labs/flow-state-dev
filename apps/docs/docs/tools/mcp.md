@@ -91,7 +91,7 @@ const mcpCap = createMcpCapability({
 
 ## Exposing the catalog
 
-Use `createMcpManager` directly when you need the serializable catalog outside a capability — for example, to show users which servers are connected:
+Use `createMcpManager` directly when you need the serializable catalog outside a capability — for example, to show users which servers are connected. It is also what a Workforce coding run's MCP tools go through: FSD holds the connection and relays each tool to the run, calling it with `manager.callTool(name, args, { signal })` (see [Tools a project's coding work gets](../workforce/projects.md#tools-a-projects-coding-work-gets)).
 
 ```typescript
 import { createMcpManager, createMcpCapability } from "@flow-state-dev/tools/mcp";

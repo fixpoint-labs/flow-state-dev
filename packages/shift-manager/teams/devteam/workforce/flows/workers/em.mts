@@ -4,8 +4,9 @@
  *
  * **This worker flow declares no harness slot, and that is the point.** "The EM
  * does no harness work" is a locked DevForce opinion, and it is graded on the
- * worker flow rather than on behaviour: there is no `task:` entry here and no option
- * through which one could be installed, so the worker cannot run a coding
+ * worker flow rather than on behaviour: its one `task:` entry is a coordinator's
+ * delegated post, which runs the EM's own turn, and there is no option through
+ * which a harness could be installed, so the worker cannot run a coding
  * harness — not merely "it happened not to". Search this file for the word
  * harness and the only hits are in this paragraph.
  *
@@ -380,11 +381,12 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       // The nine task actions and the four delegate actions.
       ...kit.actions,
     },
+    // A coordinator's delegated post: the project coordinator's hand-off to
+    // the workstream this worker leads, or the chief of staff's. A post is a
+    // row on the coordinator's board, so its entry is a task entry.
+    task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } },
     internal: {
       actions: {
-        // A coordinator's delegated post: the project coordinator's hand-off
-        // to the workstream this worker leads, or the chief of staff's.
-        [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn),
         // Opening a workstream this worker leads starts its session here.
         [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
         // A run of the board, each task's notice (which wakes the turn), and

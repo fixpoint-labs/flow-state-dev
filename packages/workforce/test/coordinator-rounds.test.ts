@@ -4,7 +4,8 @@
  *
  * What is graded is who heard what (the `helper` flow records every delivery
  * it hears), what landed in the conversation, the `coordinator-route`
- * records, and the delivery ledger, never a router's internal decision.
+ * records, and the post rows on the conversation's board, never a router's
+ * internal decision.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1791/BUSINESS-RULES.md`, V3 and V5):
  *   BR-17  round robin: the next delegate in list order takes each user's post, skipping one
@@ -21,8 +22,8 @@
  *          a round whose delegate says nothing closes on the conversation's next wake after its
  *          deadline, once; past 50 open rounds the oldest is no longer tracked;
  *   BR-25  at the limit an answer goes nowhere and wakes nothing;
- *   BR-21, BR-22  an answer sent twice goes back out once; a report on a token no delivery carries
- *          is refused;
+ *   BR-21, BR-22  an ending sent twice goes back out once; a cancel reported under a claim the row
+ *          doesn't hold changes nothing;
  *   BR-27  a post and a hand-off can't carry a round; no caller reaches the route-on entry;
  *   BR-28  every decision, in every round, is one `coordinator-route` record.
  */
@@ -39,8 +40,8 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
+import type { RoundPost, RoundRows } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
-import { claimAnswer, openDelivery, type DeliveryLedger, type DeliveryRecord } from "../src/delivery-ledger";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
@@ -208,7 +209,11 @@ describe("a round, on its own (V5)", () => {
   });
 
   const delegate = { worker: "eng.em" };
-  const opened = (round = 0) => openDelivery([], { postId: "p1", round, delegate }, "t1").ledger;
+  const posted: RoundPost = { postId: "p1", round: 0, delegate };
+  /** The round's one post row, `t1`, as the board reads it, with the round's routing counts read just before. */
+  const rowsOf =
+    (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundRows =>
+    () => ({ ids: ["t1"], running: row.running ?? false, replied: row.replied === true ? [delegate] : [], ...at });
 
   it("waits while a routing still adds to it, and shares one deadline across its deliveries (BR-24b)", () => {
     let rounds = beginRound([], "p1", 0).rounds;
@@ -219,35 +224,73 @@ describe("a round, on its own (V5)", () => {
     // A round nobody opened carries no deadline: nothing waits for it.
     expect(roundDeadline(rounds, "p1", 1, 1_200, 500).deadlineAt).toBeUndefined();
 
-    const answered = (claimAnswer(opened(), "t1") as { ledger: DeliveryLedger }).ledger;
-    // Every delivery ended, but the routing hasn't finished adding: still open.
-    expect(closeRound(rounds, answered, "p1", 0, 1_200).closed).toBeUndefined();
-    expect(closeRound(endRound(rounds, "p1", 0), answered, "p1", 0, 1_200).closed).toMatchObject({ deliveries: 1 });
-    // A delivery still out holds it open until the deadline, then not.
-    const ended = endRound(rounds, "p1", 0);
-    expect(closeRound(ended, opened(), "p1", 0, 1_499).closed).toBeUndefined();
-    expect(closeRound(ended, opened(), "p1", 0, 1_500).closed).toMatchObject({ round: 0, answers: [] });
+    // Every row ended, but the routing hasn't finished adding: still open.
+    const ended = rowsOf({});
+    expect(closeRound(rounds, ended, "p1", 0, 1_200).closed).toBeUndefined();
+    // The routing's own end closes it: it was still filing when it read its rows.
+    expect(closeRound(endRound(rounds, "p1", 0), rowsOf({}, { begun: 1, opening: 1 }), "p1", 0, 1_200, true).closed).toMatchObject({
+      deliveries: 1
+    });
+    // A row still running holds it open until the deadline, then not.
+    const done = endRound(rounds, "p1", 0);
+    expect(closeRound(done, rowsOf({ running: true }), "p1", 0, 1_499).closed).toBeUndefined();
+    expect(closeRound(done, rowsOf({ running: true }), "p1", 0, 1_500).closed).toMatchObject({ round: 0, answers: [] });
+  });
+
+  it("holds a round open on a reply whose row ended before the reply landed here", () => {
+    // The row's reply is on the board, and the round hasn't kept it yet: closing now
+    // would send the round on without it.
+    const rounds = endRound(roundDeadline(beginRound([], "p1", 0).rounds, "p1", 0, 1_000, 500).rounds, "p1", 0);
+    const replied = rowsOf({ replied: true });
+    expect(closeRound(rounds, replied, "p1", 0, 1_200).closed).toBeUndefined();
+    // Once it lands, the round closes with it.
+    expect(landAnswer(rounds, replied, posted, "on time", 1_200)).toMatchObject({
+      kept: true,
+      closed: { answers: [{ worker: "eng.em", body: "on time" }] }
+    });
+  });
+
+  it("doesn't close on a read of its rows that a routing has gone stale since", () => {
+    const rounds = endRound(beginRound([], "p1", 0).rounds, "p1", 0);
+    // A routing was still filing when the rows were read: it may have filed one the read missed.
+    expect(closeRound(rounds, rowsOf({}, { begun: 1, opening: 1 }), "p1", 0, 1_200).closed).toBeUndefined();
+    // A routing began after the read, and has finished since: the same.
+    const again = endRound(beginRound(rounds, "p1", 0).rounds, "p1", 0);
+    expect(closeRound(again, rowsOf({}, { begun: 1, opening: 0 }), "p1", 0, 1_200).closed).toBeUndefined();
+    expect(closeRound(again, rowsOf({}, { begun: 2, opening: 0 }), "p1", 0, 1_200).closed).toMatchObject({ round: 0 });
   });
 
   it("closes without an answer that comes after the deadline, which then goes nowhere (BR-24b)", () => {
     const rounds = endRound(roundDeadline(beginRound([], "p1", 0).rounds, "p1", 0, 1_000, 500).rounds, "p1", 0);
-    const claimed = claimAnswer(opened(), "t1") as { ledger: DeliveryLedger; delivery: DeliveryRecord };
-    const late = landAnswer(rounds, claimed.ledger, claimed.delivery, "late", 1_600);
+    const rows = rowsOf({ replied: true });
+    const late = landAnswer(rounds, rows, posted, "late", 1_600);
     expect(late).toMatchObject({ kept: false, rounds: [], closed: { answers: [] } });
-    expect(routeOnAfterAnswer(claimed.delivery, "late", late.kept, "best-fit", 1)).toBeUndefined();
+    expect(routeOnAfterAnswer(posted, "late", late.kept, "best-fit", 1)).toBeUndefined();
 
-    const onTime = landAnswer(rounds, claimed.ledger, claimed.delivery, "on time", 1_200);
+    const onTime = landAnswer(rounds, rows, posted, "on time", 1_200);
     expect(onTime).toMatchObject({ kept: true, closed: { answers: [{ worker: "eng.em", body: "on time" }] } });
-    expect(routeOnAfterAnswer(claimed.delivery, "on time", onTime.kept, "best-fit", 1)).toEqual({
+    expect(routeOnAfterAnswer(posted, "on time", onTime.kept, "best-fit", 1)).toEqual({
       postId: "p1",
       round: 1,
       answers: [{ worker: "eng.em", body: "on time" }],
       exclude: { worker: "eng.em" }
     });
     // At the limit, nowhere.
-    expect(routeOnAfterAnswer(claimed.delivery, "on time", true, "best-fit", 0)).toBeUndefined();
+    expect(routeOnAfterAnswer(posted, "on time", true, "best-fit", 0)).toBeUndefined();
     expect(routeOnAfterClose(onTime.closed!, "everyone", 0)).toBeUndefined();
     expect(routeOnAfterClose(onTime.closed!, "everyone", 1)).toMatchObject({ round: 1 });
+  });
+
+  it("keeps an answer heard again once, and sends it on once", () => {
+    // Two rows out, so the first answer doesn't close the round.
+    const open = endRound(beginRound([], "p1", 0).rounds, "p1", 0);
+    const two: RoundRows = () => ({ ids: ["t1", "t2"], running: true, replied: [delegate], begun: 1, opening: 0 });
+    const first = landAnswer(open, two, posted, "on time", 1_200);
+    expect(first).toMatchObject({ kept: true });
+    const again = landAnswer(first.rounds, two, posted, "on time", 1_300);
+    expect(again).toMatchObject({ kept: false, again: true });
+    expect(again.rounds[0]!.answers).toEqual([{ worker: "eng.em", body: "on time" }]);
+    expect(routeOnAfterAnswer(posted, "on time", again.kept, "best-fit", 1)).toBeUndefined();
   });
 });
 
@@ -349,15 +392,15 @@ describe("rounds (V5)", () => {
       script: [
         {
           toolCalls: [
-            { toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em" } },
-            { toolCallId: "h2", toolName: "handOff", args: { worker: "eng.coder" } }
+            { toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } },
+            { toolCallId: "h2", toolName: "dispatchTask", args: { post: true, assignee: "eng.coder" } }
           ]
         },
         { text: "Asked both." },
         {
           toolCalls: [
-            { toolCallId: "h3", toolName: "handOff", args: { worker: "eng.em" } },
-            { toolCallId: "h4", toolName: "handOff", args: { worker: "eng.em" } }
+            { toolCallId: "h3", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } },
+            { toolCallId: "h4", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }
           ]
         },
         { text: "Passed the answers to the EM." }
@@ -423,13 +466,8 @@ describe("rounds (V5)", () => {
       { worker: "eng.coder", outcome: "delivered" },
       { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
     ]);
-    const failed = (await host.sessionState(id)).deliveries.find(
-      (d: any) => d.round === 0 && d.delegate.worker === "eng.coder"
-    );
-    expect(failed).toMatchObject({
-      answered: false,
-      missed: expect.stringMatching(/^its turn failed: .*eng\.coder could not answer/)
-    });
+    const failed = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    expect(failed).toMatchObject({ status: "errored", error: expect.stringMatching(/eng\.coder could not answer/) });
   });
 
   it("closes a round at its deadline without a slow delegate; its late answer lands once and goes no further (BR-24b)", async () => {
@@ -457,25 +495,24 @@ describe("rounds (V5)", () => {
     expect(roundOne).toBeLessThan(coderLine);
     // The EM's answer, the coder's late one, then the coder's to round 1: each once.
     expect((await answers(host, id)).map((line) => line.agentName)).toEqual(["eng.em", "eng.coder", "eng.coder"]);
-    const late = (await host.sessionState(id)).deliveries.find(
-      (d: any) => d.round === 0 && d.delegate.worker === "eng.coder"
-    );
-    expect(late).toMatchObject({ answered: true, missed: "it hadn't answered by the round's deadline" });
+    const late = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    expect(late).toMatchObject({ status: "completed" });
   });
 
-  it("goes back out once for an answer sent twice, and refuses a report on a token no delivery carries (BR-21, BR-22)", async () => {
+  it("goes back out once for an ending sent twice, and a cancel reported under a claim the row doesn't hold changes nothing (BR-21, BR-22)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { rounds: 1 } }) });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "who owns it? [route:eng.em] [route:eng.coder]");
     await quiet(host);
-    const first = (await host.sessionState(id)).deliveries.find((d: any) => d.round === 0);
+    const first = (await host.postRows("alice")).find((row) => row.sealed.round === 0)!;
 
-    const again = await host.act("alice", id, "delegateAnswer", { token: first.token, body: "again" }, "coordinator", "internal");
-    expect(again.output).toEqual({ landed: false });
-    const missed = await host.act("alice", id, "delegateMissed", { token: first.token }, "coordinator", "internal");
-    expect(missed.output).toEqual({ missed: false });
-    const forged = await host.act("alice", id, "delegateMissed", { token: "made-up" }, "coordinator", "internal");
-    expect(messageOf(forged.error)).toMatch(/No delivery in this conversation carries that token/);
+    const notice = { boardId: "tasks", taskId: first.id, attempt: first.attempts, ending: "completed", output: "again" };
+    expect((await host.act("alice", id, "onPostSettled", notice, "coordinator", "internal")).error).toBeUndefined();
+    // A forged claim: the right row, a ticket nobody was handed.
+    const claim = { collectionId: "tasks", taskId: first.id, attempt: first.attempts, createdAt: first.createdAt, incarnationId: "made-up" };
+    const forged = await host.act("alice", id, "postCancelled", { taskId: first.id, claim }, "coordinator", "internal");
+    expect(forged.error).toBeUndefined();
+    expect((await host.postRows("alice")).find((row) => row.id === first.id)).toMatchObject({ status: "completed" });
     await quiet(host);
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);
     expect((await host.items(id)).records).toHaveLength(2);
@@ -484,7 +521,7 @@ describe("rounds (V5)", () => {
   it("never takes a round from a post or a hand-off, and no caller reaches the route-on entry (BR-27)", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em", round: 1 } }] },
+        { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em", round: 1 } }] },
         { text: "Tried." }
       ]
     });
@@ -492,8 +529,12 @@ describe("rounds (V5)", () => {
     const id = await host.conversation("alice", "chief");
     const forgedPost = await host.act("alice", id, "run", { message: "go", round: 2 });
     expect(messageOf(forgedPost.error)).toMatch(/round/);
+    // The hand-off's extra field is refused by the tool, so nothing is filed.
     const forgedHandOff = await host.act("alice", id, "run", { message: "go" });
-    expect(messageOf(forgedHandOff.error)).toMatch(/Unrecognized key\(s\) in object: 'round'/);
+    expect(forgedHandOff.error).toBeUndefined();
+    const refused = (await host.items(id)).all.filter((item: any) => item.type === "tool_output").map((item: any) => item.output);
+    expect(refused).toEqual([{ ok: false, error: expect.stringMatching(/^post_takes_assignee_and_target: .*\(not round\)/) }]);
+    expect(await host.postRows("alice")).toEqual([]);
     await quiet(host);
     // Neither reached a delegate.
     expect(host.heard).toEqual([]);
@@ -529,27 +570,57 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
     await quiet(host);
 
-    const cancelled = (await host.sessionState(id)).deliveries.find(
-      (d: any) => d.round === 0 && d.delegate.worker === "eng.coder"
-    );
-    expect(cancelled).toMatchObject({ answered: false, missed: "its turn failed: its run was cancelled" });
+    const cancelled = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    expect(cancelled).toMatchObject({ status: "errored", error: "its run was cancelled" });
     expect(passedToCoder(host, "status?")).toHaveLength(1);
     expect((await host.sessionState(id)).openRounds).toEqual([]);
   });
 
-  for (const wake of ["delegateAnswer", "delegateMissed"] as const) {
-    it(`closes an overdue round when a ${wake === "delegateAnswer" ? "repeated answer" : "missed report"} wakes the conversation`, async () => {
+  it("closes a round at once when the user cancels a post's row from the board, while its delegate still works", async () => {
+    // A deadline far off: only the cancel can close the round in time. eng.lead takes
+    // tasks, so this conversation's board answers the task tools.
+    const host = bootHost({
+      standard: standardWorkers({ desk: { rounds: 1, delegates: ["eng.em", "eng.coder", "support.general", "eng.lead"] } }),
+      roundDeadlineMs: 60_000
+    });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    // The coder is working on it.
+    for (let i = 0; i < 200 && !host.heard.some((h) => h.worker === "eng.coder"); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const row = (await host.postRows("alice")).find((r) => r.sealed.round === 0 && r.assignee === "eng.coder")!;
+    const cancelled = await host.act("alice", id, "cancelTask_tasks", { taskId: row.id });
+    expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
+    // Closed before the coder's turn ends.
+    const openNow = async () => (await host.sessionState(id)).openRounds.filter((open: OpenRound) => open.round === 0);
+    let open = await openNow();
+    for (let i = 0; i < 50 && open.length > 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      open = await openNow();
+    }
+    expect(open).toEqual([]);
+    await quiet(host);
+    expect((await host.postRows("alice")).find((r) => r.id === row.id)).toMatchObject({ status: "cancelled" });
+    expect(await answers(host, id)).toEqual([]);
+  });
+
+  for (const wake of ["roundDeadline"] as const) {
+    it("closes an overdue round when the deadline wake wakes the conversation", async () => {
       const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
       const id = await host.conversation("alice", "desk");
       expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
       expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
       await quiet(host);
       expect(passedToCoder(host, "status?")).toHaveLength(0);
-      const answered = (await host.sessionState(id)).deliveries.find((d: any) => d.delegate.worker === "eng.em");
+      const answered = (await host.postRows("alice")).find((row) => row.assignee === "eng.em")!;
 
       await untilOverdue(host, id);
-      // The EM's delivery already has its answer, so this writes nothing of its own; it only wakes.
-      const input = wake === "delegateAnswer" ? { token: answered.token, body: "again" } : { token: answered.token };
+      // The EM's row has already ended, so this writes nothing of its own; it only wakes.
+      const input =
+        wake === "roundDeadline"
+          ? {}
+          : { boardId: "tasks", taskId: answered.id, attempt: answered.attempts, ending: "completed", output: "again" };
       expect((await host.act("alice", id, wake, input, "coordinator", "internal")).error).toBeUndefined();
       await quiet(host);
       expect(passedToCoder(host, "status?")).toHaveLength(1);
@@ -589,11 +660,8 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(first).toMatchObject({ round: 0 });
     // Nothing reported, so round 0 waits: nothing has gone on.
     expect(passedToCoder(host, "status?")).toHaveLength(0);
-    const silent = (await host.sessionState(id)).deliveries.find(
-      (d: any) => d.round === 0 && d.delegate.worker === "eng.coder"
-    );
-    expect(silent).toMatchObject({ answered: false });
-    expect(silent.missed).toBeUndefined();
+    const silent = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    expect(silent).toMatchObject({ status: "in_progress" });
 
     // Past the deadline, the user posts again.
     await untilOverdue(host, id);
@@ -646,7 +714,8 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
         round: 0,
         opening: 0,
         deadlineAt: Date.now() + 60_000,
-        answers: []
+        answers: [],
+        begun: 1
       }));
       const state = { ...session.state, openRounds: [...open, ...others] };
       written = (await runtime.stores.session.set(id, { ...session, state } as never, session.version as never)).ok;
@@ -672,17 +741,15 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 });
 
 describe("a conversation's writes under contention (V5)", () => {
-  it("passes a closed round's answers on when its first delivery loses its write to four others in a row", async () => {
+  it("passes a closed round's answers on when the write that closes it loses to four others in a row", async () => {
     // Each delegate's answer, each routing and each pass-on writes this one conversation's
-    // state. Here the write that opens the EM's pass-on delivery loses to another writer
-    // four times in a row.
+    // state. Here the write that lands round 0's second answer, and so closes it, loses to
+    // another writer four times in a row.
     const adapter = inMemoryStores();
     const registry = await adapter.resolve();
     const set = registry.session.set.bind(registry.session);
-    const opensPassOnToEm = (state: unknown) =>
-      ((state as { deliveries?: Array<{ round: number; delegate: { worker: string } }> } | undefined)?.deliveries ?? []).some(
-        (d) => d.round === 1 && d.delegate.worker === "eng.em"
-      );
+    const landed = (state: unknown) => ((state as { landedAnswers?: unknown[] } | undefined)?.landedAnswers ?? []).length;
+    const opensPassOnToEm = (state: unknown) => landed(state) >= 2;
     let lost = 0;
     registry.session.set = async (id, value, expected) => {
       const stored = await registry.session.get(id);

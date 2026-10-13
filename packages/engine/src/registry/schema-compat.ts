@@ -21,7 +21,7 @@ export type CompatibilityResult =
   | { kind: "compatible"; warnings: string[] }
   | { kind: "incompatible"; reason: CompatibilityReason; detail: string };
 
-export type CompatibilityReason = "incompatible-shape" | "incompatible-types";
+export type CompatibilityReason = "incompatible-shape" | "incompatible-types" | "secret-mismatch";
 
 const WRAPPER_TYPE_NAMES = new Set([
   "ZodOptional",

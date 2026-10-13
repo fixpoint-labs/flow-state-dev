@@ -400,6 +400,7 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     const owned = makeSideChainMessage("owned", "t1");
     const orphan = makeSideChainMessage("orphan"); // no taskId
     const items: OutputItem[] = [
+      makeBoardMeta("c", "active"),
       makeTaskChange("c", t, { kind: "claimed" }),
       owned,
       orphan,
@@ -411,6 +412,29 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     expect(ids.has(orphan.id)).toBe(false);
     // Substrate components such as task-change are never owned.
     expect([...ids].some((id) => id.startsWith("item_change"))).toBe(false);
+  });
+
+  it("keeps a task's items in the thread when no task plan for its board is shown here", () => {
+    // A delegate's session works a post row filed on its coordinator's board:
+    // the plan for that board renders in the coordinator's conversation, not
+    // here, so hiding the reply would leave the session showing no answer.
+    resetItemCounters();
+    const post = makeTask({ id: "post:1" });
+    const planned = makeTask({ id: "t1" });
+    const reply = makeSideChainMessage("[reply:wake] Heard it.", "post:1");
+    const work = makeSideChainMessage("work", "t1");
+    const items: OutputItem[] = [
+      makeTaskChange("tasks", post, { kind: "claimed" }),
+      reply,
+      makeTaskChange("tasks", post, { kind: "completed" }),
+      makeBoardMeta("other", "active"),
+      makeTaskChange("other", planned, { kind: "claimed" }),
+      work,
+    ];
+
+    const ids = collectTaskOwnedItemIds(items);
+    expect(ids.has(reply.id)).toBe(false);
+    expect(ids.has(work.id)).toBe(true);
   });
 });
 

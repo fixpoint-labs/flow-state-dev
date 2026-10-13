@@ -9,8 +9,8 @@
  * by a fixture or written to a store. Every grade is read back as that
  * person: the conversation's items (its routing records and the turn's tool
  * outputs) and the delegate's own session through the install's routes, and
- * the conversation's session record (its delegates and its delivery ledger)
- * from the install's store file, from the row that person owns. The session
+ * the conversation's record (its delegates, and its post rows) from the
+ * install's store file, from the rows that person owns. The session
  * route sends a client only the state a flow exposes, and the coordinator
  * exposes neither field. A reply's words are graded only in leg d, and only
  * against the list the session holds.
@@ -23,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { postDeliveries, type PostDelivery } from "../../lib/post-rows.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 
 /** One person the run acts as. */
@@ -186,15 +187,15 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
   return turn;
 }
 
-type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; answered: boolean };
+type Delivery = PostDelivery;
 
 /**
- * A conversation's session record (its delegates, its delivery ledger and best fit's hold),
- * read from the SQLite file the install writes, from the row `who` owns. Not
+ * A conversation's record (its delegates, its post rows and best fit's hold),
+ * read from the SQLite file the install writes, from the rows `who` owns. Not
  * through the session route: that sends a client only the state a flow
- * exposes, and the coordinator exposes neither field (its ledger carries
- * delivery tokens). A row is keyed by the session id, prefixed `<tenant>:`
- * when the session has a tenant. Read-only, and closed after each read.
+ * exposes, and the coordinator exposes neither its delegates nor its hold. A
+ * session row is keyed by the session id, prefixed `<tenant>:` when the
+ * session has a tenant. Read-only, and closed after each read.
  */
 async function recordOf(
   store: string,
@@ -208,7 +209,7 @@ async function recordOf(
       .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
       .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
     const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[], hold: state?.bestFitHold ?? null };
+    return { delegates: state?.delegates ?? null, ledger: postDeliveries(store, who.person.userId, sessionId), hold: state?.bestFitHold ?? null };
   } finally {
     db.close();
   }

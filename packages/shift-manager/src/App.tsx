@@ -26,6 +26,7 @@ import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { RosterView } from "./surfaces/Roster";
+import { SettingsView } from "./surfaces/Settings";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
 import { TaskFrame } from "./surfaces/TaskFrame";
@@ -132,7 +133,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     </>
   );
   return (
-    <div className="flex h-screen min-h-0 min-w-[900px]" data-testid="shell">
+    <div className="flex h-dvh min-h-0 min-w-[900px]" data-testid="shell">
       <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.
@@ -169,6 +170,8 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
+    case "settings":
+      return <SettingsView />;
   }
 }
 

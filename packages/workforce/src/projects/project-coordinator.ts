@@ -287,6 +287,7 @@ const readLinkedProject = handler({
  * agent catalog the coordinator flow is built with
  * (`defineCoordinatorFlow({ agent: { catalog } })`), and list `readProject`
  * in the project coordinator's `tools:`. Handing work to a workstream is the
- * coordinator's own `handOff`, by the workstream's delegate record.
+ * coordinator's own `dispatchTask` with `post: true`, by the workstream's
+ * delegate record.
  */
 export const projectCoordinatorTools = { readProject: readLinkedProject } as const;

@@ -11,7 +11,11 @@
  * - **Two projects, FSD and Shift Manager**, created at start as the Lab's
  *   owner, with the project members DevTeam's projects have, unless the store
  *   already holds them. Both are shared, and both name this repository's
- *   remote ({@link REPOSITORY}).
+ *   remote, and both name Linear's MCP server (`fsd-projects.mts`).
+ * - **Linear, for a coding run.** The Lab offers Linear's hosted MCP server,
+ *   and a run on either project reads Linear with the key of the user it runs
+ *   for, set on Settings. `LINEAR_MCP_API_KEY` stands in for the Lab's own
+ *   user's key until that user stores one.
  * - **Nothing else at open**: no ask waiting in Inbox and no workstream, so a
  *   user's first act is asking for work.
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab
@@ -38,36 +42,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { CHECKOUTS, REPOSITORY } from "./fsd-checkouts.mts";
+import { CHECKOUTS } from "./fsd-checkouts.mts";
+import { FSD_MCP_SERVERS, FSD_PROJECTS } from "./fsd-projects.mts";
 import { startHarness } from "./harness.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 
 /** Where this Lab keeps what it was told, across restarts. */
 const STORE = process.env.FSD_STORE ?? fileURLToPath(new URL("../../.fsdev/fsd.sqlite", import.meta.url));
 mkdirSync(dirname(STORE), { recursive: true });
-
-/** Who may open workstreams in each project: the Lab's other users, as in DevTeam's. */
-const OTHER_USERS = [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)];
-
-/** The two projects a fresh open shows. */
-const PROJECTS = [
-  {
-    id: "fsd",
-    title: "FSD",
-    brief: "The framework: the packages under packages/ other than Shift Manager, their docs and their goal checks.",
-    members: OTHER_USERS,
-    repository: REPOSITORY,
-  },
-  {
-    id: "shift-manager",
-    title: "Shift Manager",
-    brief: "This app: packages/shift-manager, its pages, its team profiles and its checks under goals/shift-manager/.",
-    members: OTHER_USERS,
-    repository: REPOSITORY,
-  },
-];
 
 // Read off the tree, as DevTeam's profile reads it: the EM, and the coder its
 // doors file for, its first delegate on the coder worker flow.
@@ -92,7 +76,8 @@ export const lab = await openLab({
   coderWorkerId,
   inventory: true,
   devtool: true,
-  projects: PROJECTS,
+  projects: FSD_PROJECTS,
+  mcpServers: FSD_MCP_SERVERS,
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
 });
 

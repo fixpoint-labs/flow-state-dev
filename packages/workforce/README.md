@@ -1352,7 +1352,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   one of `leadFlows`, that lists delegates (`delegates:`), since a lead runs its workstream through
   them. Returns `{ workstream, opened }`; opening it again hands the entry back
   (`opened: false`). Refused: `not-a-member` on a shared project, `no-such-worker`, `cannot-lead`
-  (a lead off `leadFlows`, or one that lists no delegates), `lead-differs`, `invalid-workstream-id`, and `too-many-workstreams` past 25 open workstreams per
+  (a lead off `leadFlows`, or one that lists no delegates), `lead-differs`, `invalid-workstream-id`, `lead-doesnt-fit` (from `openWorkstreamTool` with `leadFit` set only, see below), and `too-many-workstreams` past 25 open workstreams per
   owner per project when the installation names a project coordinator.
 - **`updateWorkstream { project, owner?, id, title?, status?, due?, objectives?, report? }`** changes
   an entry and returns `{ workstream }`. `status` is a label of up to 80 characters; `"done"` marks
@@ -1380,6 +1380,11 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
   or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted.
+- **`setMcpServers { project?: { visibility, id }, mcpServers }`** replaces the project's list of
+  MCP server names; `[]` clears it. Members only; nothing else on the row moves. A name must be one
+  the host offers, `defineProjectBlocks({ mcpServers })`: refusals `unknown-mcp-server` (naming what
+  it offers) and `invalid-mcp-server` (anything that isn't a bare lowercase name, never repeated).
+  `createProject` takes the same `mcpServers`. A row stored before the field reads `[]`.
 - **`setBrief { project?: { visibility, id }, brief }`** sets, changes or clears (`null`) the brief and
   returns `{ project }`. Members only; nothing else on the row moves.
 - **Leaving `project` out** of `setRepository` or `setBrief` changes the project the calling
@@ -1407,6 +1412,29 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
     uses: [projectWorkspaceCapability],
   });
   ```
+
+- **`projectMcpTools(servers, { operator })`** is a resolver for a coding harness's per-run
+  tools, in `claudeCodeAgent`'s `mcpTools` shape. It finds the run's project and owner the way
+  `projectWorkspace()` does, connects to each server the project names in `servers`
+  (`{ [name]: { url, seedEnv? } }`, HTTP only) with the owner's stored key, through one
+  `createMcpManager`, and answers each connected server's tools, whose `call` goes through that
+  connection. The key goes in the connection's headers only. `seedEnv` is read only for
+  `operator`, and only while that user has no stored key. A server with no key, one the host no
+  longer offers and one whose connection fails are each skipped, and the run's session says so.
+  `named(ctx)` answers the names alone, for a harness that takes no relayed tools. The block that
+  calls it holds `projectWorkspaceCapability` and `mcpCredentialsCapability`:
+
+  ```ts
+  claudeCodeAgent({
+    uses: [projectWorkspaceCapability, mcpCredentialsCapability],
+    mcpTools: projectMcpTools({ linear: { url: "https://mcp.linear.app/mcp" } }, { operator: "u_ops" }),
+  });
+  ```
+
+  Each user's key is `mcp-credentials/<server>` at user scope, `{ value, setAt }`
+  (`defineMcpCredentialsCollection()`); a browser read exposes `setAt` only. Write it from a route
+  of your own, not an action, since an action's input is kept on its request record;
+  `mcpCredentialProblem(value)` says why a value can't be stored, without repeating it.
 
   Pass `checkouts` to have some projects' runs work in a checkout on the server's machine
   instead of a clone. Each entry gives a `remote`, the absolute `checkout` path, the `projects`
@@ -1448,12 +1476,25 @@ session the user's entry names, looked up at delivery, so the post lands in that
 session.
 
 To let the coordinator open workstreams, add `listLeads: workstreams.listLeadsTool` and
-`openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" })` to its catalog and name
+`openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream" })` to its catalog and name
 both in its `tools:`. Asked for work none of the user's workstreams covers, it lists the leads,
 opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
 coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
 built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
 take the hand-off as soon as `openWorkstream` returns.
+
+`listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
+with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
+leadFlows, leadFit: { model: "openai/gpt-5.4-mini" } })`: `openWorkstreamTool` then makes one call
+to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
+the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
+is written; the message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open
+nothing and say a worker for it has to be hired first. A failed call, or a lead with no description,
+lets the open through. The check runs after every other refusal, and an open of a workstream that is
+already open with the same lead isn't checked again. The tool's answer carries `leadFit`: `{ checked: true }`,
+or `{ checked: false, why }` with `why` one of `already-open`, `no-description` or `unanswered: <error>`.
+Without `leadFit`, `openWorkstreamTool` is `openWorkstream`. Opens
+through the `openWorkstream` action, such as a user's own open from the app, are never checked.
 
 ## Workers as data
 
@@ -1594,7 +1635,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
 A coordinator is a worker that hands each post to other workers on the same user's roster, its
 **delegates**, by `judgment`, `best-fit`, `round-robin` or `everyone`. It runs on the
 `coordinator` flow, registered on the installation like any worker flow. A delegate's flow
-declares the internal entry that takes a delegated post; the built-in `agent` flow declares it,
+declares the task entry that takes a delegated post; the built-in `agent` flow declares it,
 and your own flow does with `delegatedPostEntry`. The site's
 [Coordinators](https://flow-state.dev/docs/workforce/coordinators) page walks through setting one up.
 
@@ -1615,7 +1656,7 @@ const researchFlow = defineFlow({
   resources: { ...installation.resources },
   request: { onFinished: delegatedPostOnFinished }, // reports a cancelled delegated post
   actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // takes delegated posts
+  task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // takes delegated posts
 });
 
 const coordinatorFlow = defineCoordinatorFlow({
@@ -1627,10 +1668,14 @@ const coordinatorFlow = defineCoordinatorFlow({
 });
 ```
 
+Earlier versions declared the entry under `internal.actions` and named the hand-off tool `handOff`.
+A delegate flow that still declares it there makes `defineCoordinatorFlow` throw, and a worker
+whose `tools:` names `handOff` is refused at load; each message names the replacement.
+
 The judgment turn is the built-in agent's own turn. A coordinator worker's `model`, `tools`,
 `skills` and `capabilities` read the way an `agent` worker's do, against the catalog and
-capabilities you pass as `agent`. The four delegate tools and `handOff` are on every coordinator,
-whatever its `tools:` line grants.
+capabilities you pass as `agent`. The four delegate tools and `dispatchTask` are on every
+coordinator, whatever its `tools:` line grants.
 
 A coordinator's file names its defaults:
 
@@ -1645,8 +1690,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 ---
 ```
 
-- **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
-  `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
+- **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with
+  `dispatchTask` (`post: true`, the delegate as `assignee`) or answers itself. `best-fit` sends a
+  follow-up to the delegate still working the
   user's last post, else makes one evaluator call over each delegate's note or description and
   the coordinator's own description, reading the post with the conversation's recent lines. When
   that call fails and `routeModel` is a model string, best fit asks once more as a language model
@@ -1726,12 +1772,15 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   A worker whose flow takes tasks but no posts can be added. A post handed to it is skipped, and
   the routing record gives the reason
   `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the
-  coordinator's own turn hands it a post with `handOff`, the refusal adds the delegates that take
+  coordinator's own turn hands it a post with `dispatchTask`, the refusal adds the delegates that take
   posts, `Delegates here that take posts: <ids>.`, or `No delegate here takes posts.` when none does.
-- **Delivery.** Each delegate gets its own session per conversation, created naming the delegate
-  as its worker, and reused for that conversation's later posts. Its answer lands in the
-  conversation under the delegate's name, once, however many times it is sent. The session
-  carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
+- **Delivery.** Each post is one task per delegate per round on the conversation's board, so its
+  answer lands under the delegate's name once. Each
+  delegate's task runs in its own session per conversation, created naming the delegate as its
+  worker, and reused for that conversation's later posts. A post's task can be cancelled from the
+  board, but not reassigned, completed, failed or blocked. The board answers task actions only
+  while one of the conversation's delegates takes tasks, and `no_delegation_board` otherwise. The
+  session carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
   naming only `{ worker }` never returns a delegate's session. Only the delivery opens one:
@@ -1827,8 +1876,8 @@ the root exports, and reaches no Node built-in.
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's nine task tools, present only while the session has a delegate that takes tasks), `actions` (the nine as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `entries(turn)` for `internal: { actions }`, and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
-| `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
-| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
+| `delegatedPostEntry(turn)` | The `onDelegatedPost` task entry that makes a flow's workers delegates that take posts: `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } }`. It takes a post's task from the conversation's board, runs `turn` on it, and ends the task with the reply. At the round's deadline, while the turn is still running, it tells the coordinator so the round can close. The turn isn't stopped; a later answer lands once. |
+| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated run is cancelled, it tells the coordinator, which fails the post's task, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
@@ -1878,8 +1927,11 @@ the root exports, and reaches no Node built-in.
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
-| `defineProjectBlocks()` | Returns `{ createProject, setRepository, setBrief, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
-| `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
+| `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
+| `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
+| `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
+| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
