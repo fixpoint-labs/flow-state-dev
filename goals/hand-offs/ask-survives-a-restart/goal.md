@@ -23,7 +23,10 @@
 
 **Controls:** each is a scratch patch to `packages/orchestration/src/tasks/helpers/wait-for-response.ts`, applied as the server loads it (`goals/lib/module-patch.mjs`), printed by the run, and refused when it never reached the code.
 
-- `GOAL_CONTROL=no-run-once`: the ask records neither its filing nor its row's id with `runOnce` (two patches), so the replay after the resume reaches `addTask` with a new id and files again. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
+- `GOAL_CONTROL=no-run-once`: the ask records neither its filing nor its row's id with `runOnce` (two patches), so the replay after the resume files again. What that breaks depends on how the asker waited, which the run reads from the asking request's own `dispatchTask` call and prints:
+  - On a new task (`goal`), the replay reaches `addTask` with a new id and files a second row. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
+  - On a task it recorded first with `addTask` (`taskId`), the replay dispatches that row again, and the board declines it, since it was already dispatched. No second row can exist on this path, so `one-row` stays green; the answer never reaches the turn. Must fail **`a:word`**.
+  - When the asker never dispatched with `wait`, the patched code never ran, and the control fails as ungraded.
 - `GOAL_CONTROL=no-waker`: nothing resumes a waiting turn; a touch of the board finds no owed resume. Must fail **`a:completed`** (the request stays `suspended`). `a:word` goes red with it.
 
 **Before-state:** on `main` before FIX-1816 P3 the asker has no `wait`, so there is no ask to survive a restart.
@@ -50,3 +53,8 @@
 | 2026-10-10 | c0719a0d6 | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-run-once`, expected) | Both patches reached the code: `one-row`, 2 rows; `b:once`, 2 completed rows in 2 runs |
 | 2026-10-10 | 48ead3872 (main merged in: FIX-1817's caller-supplied ids; a gate id ends in a per-filing nonce) | openai/gpt-5.4-mini (vercel gateway) | PASS | Attempt 1 of 3. Killed 7317 ms after the ask, while suspended; one turn, one row (`completed`, 2 attempts), one completed run, "The release code word is: **copperc1fc04**" |
 | 2026-10-10 | 48ead3872 | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-run-once`, expected) | `one-row`: 2 rows; `b:once`: 2 completed rows in 2 runs |
+| 2026-10-13 | 2375ef519 + the control graded by wait path, uncommitted | openai/gpt-5.4-mini (vercel gateway) | PASS | Waited on a new task. Killed 4264 ms after the ask, while suspended; one turn, one row (`completed`, 2 attempts), one completed run, "The code word is **heronad6031**." |
+| 2026-10-13 | same | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-run-once`, expected) | Waited on a new task: `one-row`, 2 rows; `b:once`, 2 completed rows in 2 runs |
+| 2026-10-13 | same | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-waker`, expected) | Waited on a new task; the request stayed `suspended`: `a:completed`, `a:word` |
+| 2026-10-13 | same, with a scratch wording that asks for `addTask` then `dispatchTask` by `taskId` (not committed) | openai/gpt-5.4-mini (vercel gateway) | PASS | Waited on a recorded task. Killed 3163 ms after the ask, while suspended; one turn, one row (`completed`, 2 attempts), one completed run, "The release code word is **copper11bfb4**." |
+| 2026-10-13 | same scratch wording | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-run-once`, expected) | Waited on a recorded task: one row; the replay's dispatch was declined ("already marked completed"), so `a:word`. The same shape as the 2026-10-12 closure run on `f15779da`, which graded it against `one-row` |
