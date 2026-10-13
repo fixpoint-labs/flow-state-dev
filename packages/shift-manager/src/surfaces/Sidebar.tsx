@@ -421,7 +421,7 @@ export function Sidebar({
               <NavItem
                 label="Roster"
                 icon={<NavIcon name="roster" />}
-                count={counts === undefined ? undefined : `${counts["on shift"]}`}
+                count={counts?.["on shift"]}
                 mark={partial}
                 active={route.level === "roster" && route.team === null}
                 onClick={() => navigate({ level: "roster", team: null })}

@@ -185,7 +185,7 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
 describe("empty states (BR-14, BR-28)", () => {
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
+    // v2's sentence, with what is still going: nothing runs in this Lab.
     expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
