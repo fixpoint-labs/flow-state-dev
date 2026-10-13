@@ -20,6 +20,7 @@
  * than running the post a second time.
  */
 import { describe, expect, it } from "vitest";
+import { inMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { createWorkerInstallation } from "../src/workers/installation";
@@ -149,6 +150,59 @@ describe("a post row whose run stopped without a word", () => {
     const ended = (await host.postRows("alice")).find((r) => r.id === row.id);
     expect(ended).toMatchObject({ status: "errored" });
     expect(ended.error).toMatch(/one attempt/);
+  });
+});
+
+describe("a post row's ending, landed", () => {
+  it("stays owed when landing it fails, and lands once at the board's next touch", async () => {
+    // The write that lands the coder's answer loses to another writer every time it is
+    // retried, so landing it fails.
+    const adapter = inMemoryStores();
+    const registry = await adapter.resolve();
+    const set = registry.session.set.bind(registry.session);
+    const landed = (state: unknown) => ((state as { landedAnswers?: unknown[] } | undefined)?.landedAnswers ?? []).length;
+    let lost = 0;
+    registry.session.set = async (id, value, expected) => {
+      const stored = await registry.session.get(id);
+      if (stored !== undefined && lost < 20 && landed(value.state) === 1 && landed(stored.state) === 0) {
+        lost += 1;
+        return { ok: false, conflict: { currentValue: stored, currentVersion: stored.version } };
+      }
+      return set(id, value, expected);
+    };
+    const host = bootHost({ stores: adapter as never });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "first [route:eng.coder]");
+    const runtime = await host.state.getRuntime();
+    const requests = await runtime.stores.request.list({ sessionId: id });
+    expect(requests.filter((r) => r.actionName === "onPostSettled").map((r) => r.status)).toContain("failed");
+    expect(await lines(host, id)).toEqual([]);
+
+    // Writes land again. The next post touches the board, which sends the ending it still owes.
+    lost = 20;
+    await post(host, id, "second");
+    await host.settled();
+    const said = (await lines(host, id)).filter((m: any) => m.text.includes("first"));
+    expect(said).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("first") }]);
+  });
+
+  it("runs a later post to a delegate beside its turn on an earlier one that hasn't ended", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "first [hang:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    for (let i = 0; i < 200 && !host.heard.some((h) => h.message.includes("first")); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect((await host.act("alice", id, "run", { message: "second [route:eng.coder]" })).error).toBeUndefined();
+    // The second answer lands while the first turn still hangs.
+    let said: any[] = [];
+    for (let i = 0; i < 300 && said.length === 0; i += 1) {
+      said = (await lines(host, id)).filter((m: any) => m.text.includes("second"));
+      if (said.length === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(said).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("second") }]);
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await host.settled();
   });
 });
 

@@ -460,7 +460,10 @@ export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
       return post === undefined ? "" : delegatedPostMessage(post);
     },
     onCompleted: tell,
-    onErrored: tell
+    onErrored: tell,
+    // Each post is its own row, fenced by its claim: a later post to the same
+    // delegate session runs beside a slow turn rather than waiting behind it.
+    concurrency: "allow" as const
   };
 }
 

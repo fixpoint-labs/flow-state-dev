@@ -101,7 +101,7 @@ import {
   conversationLedgerAt,
   conversationLedgerResources
 } from "./ledger";
-import { sendOwedNotices } from "./notice-delivery";
+import { POST_SETTLED_ENTRY, sendOwedNotices } from "./notice-delivery";
 import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
 
 /**
@@ -472,7 +472,27 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       addTask,
       complete: runOnly(ending(ref.complete.bind(ref))) as TaskCollectionRef["complete"],
       fail: runOnly(ending(ref.fail.bind(ref))) as TaskCollectionRef["fail"],
-      cancel: ending(ref.cancel.bind(ref)) as TaskCollectionRef["cancel"],
+      // A cancelled post row owes no notice (only an asked row's turn hears a
+      // cancel), so its ending is sent here: its round closes now, not at
+      // its deadline. A send that fails leaves that to the deadline.
+      cancel: (async (id: string, ...rest: any[]) => {
+        const outcome = await ending(ref.cancel.bind(ref))(id, ...rest);
+        const row = ref.get(id);
+        if (outcome.outcome !== "declined" && isPostRow(row) && row!.status === "cancelled") {
+          try {
+            await dispatchThroughSeam(ctx, {
+              type: "internal",
+              action: POST_SETTLED_ENTRY,
+              session: { id: ctx.session.identity.id },
+              payload: { boardId: CONVERSATION_LEDGER_ID, taskId: id, attempt: row!.attempts, ending: "cancelled" },
+              from: "conversation-board-cancel"
+            });
+          } catch {
+            // Its round closes at its deadline.
+          }
+        }
+        return outcome;
+      }) as TaskCollectionRef["cancel"],
       block: runOnly(ending(ref.block.bind(ref))) as TaskCollectionRef["block"],
       async addTasks(inits) {
         const added: Task[] = [];

@@ -110,6 +110,7 @@ import {
   workstreamDelegateEntry,
   workstreamDelegateSeed
 } from "../projects/project-coordinator";
+import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
 import { conversationLedgerAt } from "../conversation-board/ledger";
 import { sendOwedNotices } from "../conversation-board/notice-delivery";
 import { defineSessionBoard } from "../conversation-board/session-board";
@@ -181,7 +182,6 @@ import {
   beginRound,
   closeOverdue,
   closeRound,
-  markRowEnded,
   endRound,
   landAnswer,
   othersOf,
@@ -193,6 +193,7 @@ import {
   wakeMessage,
   type ClosedRound,
   type RoundPost,
+  type RoundRead,
   type RoundRows,
   type RouteOn
 } from "./coordinator-rounds";
@@ -444,20 +445,41 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // Delivery: one row on the conversation's board per delegate picked.
   // -------------------------------------------------------------------------
 
+  /** The open rounds, as saved. A round saved before it counted its routings reads as having begun none (BP-030). */
+  const roundsIn = (state: Readonly<Record<string, unknown>>) =>
+    ((state[ROUNDS_STATE] ?? []) as Array<Omit<OpenRound, "begun"> & { begun?: number }>).map(
+      ({ ended: _ended, ...open }: Omit<OpenRound, "begun"> & { begun?: number; ended?: unknown }): OpenRound => ({
+        ...open,
+        begun: open.begun ?? 0
+      })
+    );
+
   /**
    * The open rounds' rows, read off the conversation's board before a write
-   * that may close one: one filtered read per open round. A round the read
-   * didn't see (opened since) reads as having nothing out.
+   * that may close one: one filtered read per open round, after the rounds
+   * themselves are read, so the write can tell a routing filed rows since. A
+   * round the read didn't see (opened since) can't close on it.
    */
   const roundRowsOf = async (ctx: BlockContext): Promise<RoundRows> => {
-    const open = (ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[];
+    const open = roundsIn(ctx.session.state);
     const ref = open.length === 0 ? undefined : await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
-    const read = new Map<string, { ids: string[] }>();
-    for (const { postId, round } of open) {
+    const read = new Map<string, RoundRead>();
+    for (const { postId, round, begun, opening } of open) {
       const rows = ref?.list({ sealed: { kind: POST_ROW, postId, round } }) ?? [];
-      read.set(JSON.stringify([postId, round]), { ids: rows.map((row) => row.id) });
+      const replied = rows.flatMap((row) => {
+        const post = row.status === "completed" && typeof row.output === "string" ? postRowOf(row) : undefined;
+        return post === undefined ? [] : [post.delegate];
+      });
+      read.set(JSON.stringify([postId, round]), {
+        ids: rows.map((row) => row.id),
+        running: rows.some((row) => !isTerminalStatus(row.status)),
+        replied,
+        begun,
+        opening
+      });
     }
-    return (postId, round) => read.get(JSON.stringify([postId, round])) ?? { ids: [] };
+    const unseen: RoundRead = { ids: [], running: false, replied: [], begun: -1, opening: 0 };
+    return (postId, round) => read.get(JSON.stringify([postId, round])) ?? unseen;
   };
 
   /**
@@ -1303,12 +1325,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     inputSchema: z.object({ routeOns: z.array(routeOnSchema) })
   }).forEach((value: { routeOns: RouteOn[] }) => value.routeOns, routeOnDispatch);
 
-  /** The open rounds an atomic write reads. */
-  /** The open rounds, as saved. A round saved before it counted endings reads as having counted none (BP-030). */
-  const roundsIn = (state: Readonly<Record<string, unknown>>) =>
-    ((state[ROUNDS_STATE] ?? []) as Array<Omit<OpenRound, "ended"> & { ended?: string[] }>).map(
-      (open): OpenRound => ({ ...open, ended: open.ended ?? [] })
-    );
 
   /**
    * Every wake of the conversation starts here: each open round whose
@@ -1365,7 +1381,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         (state: Readonly<Record<string, unknown>>) => {
           const rounds = roundsIn(state);
           const ended = rounds.some(isThisRound)
-            ? closeRound(endRound(rounds, post.postId, post.round), rows, post.postId, post.round, now)
+            ? closeRound(endRound(rounds, post.postId, post.round), rows, post.postId, post.round, now, true)
             : { rounds };
           const swept = closeOverdue(ended.rounds, rows, now);
           return {
@@ -1433,8 +1449,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // --- a post row's ending ---------------------------------------------------
 
   /**
-   * A post row ended, heard once through `onTaskSettled`, whose dedupe and the
-   * row's claim are the only fence: completed, its reply lands as a line under
+   * A post row ended, heard through `onPostSettled`, whose dedupe and the
+   * row's claim are the only fence. The notice is acknowledged only once this
+   * has run, so a failure here leaves it owed for the board's next touch, and
+   * an answer its round already keeps isn't kept or said twice. Completed, its reply lands as a line under
    * the delegate's name; failed or cancelled, it only ends that delegate's
    * part. In an open round a reply is kept for what goes on, and the round
    * closes if that was the last row out; in a round already closed, it lands
@@ -1452,12 +1470,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const body = ending.ending === "completed" && typeof ending.output === "string" ? ending.output : undefined;
       const now = Date.now();
       const rows = await roundRowsOf(ctx as never);
-      type Ended = { kept: boolean; closed: ClosedRound[] };
+      type Ended = { kept: boolean; again?: true; closed: ClosedRound[] };
       const outcome = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Ended } => {
-          const rounds = markRowEnded(roundsIn(state), post.postId, post.round, ending.taskId);
+          const rounds = roundsIn(state);
           if (body === undefined) {
             const closing = closeRound(rounds, rows, post.postId, post.round, now);
             const swept = closeOverdue(closing.rounds, rows, now);
@@ -1471,6 +1489,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
             hold !== null && hold !== undefined && hold.postId === post.postId && sameDelegate(hold.delegate, post.delegate);
           const landed = landAnswer(rounds, rows, posted, body, now);
           const swept = closeOverdue(landed.rounds, rows, now);
+          // Heard again after a failure past this write: it landed then.
+          if (landed.again === true) {
+            return {
+              state: { [ROUNDS_STATE]: swept.rounds },
+              result: { kept: false, again: true, closed: [...(landed.closed === undefined ? [] : [landed.closed]), ...swept.closed] }
+            };
+          }
           return {
             state: {
               // Kept before the answer is said, so a post routed while this request finishes still reads it.
@@ -1491,7 +1516,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         }
       );
       if (outcome === undefined) throw new Error("The post's ending could not be recorded.");
-      if (body === undefined) {
+      if (body === undefined || outcome.again === true) {
         return { landed: false, ...routeOnsOutput(await routeOnsFor(ctx as never, { closed: outcome.closed })) };
       }
       ctx.emit.message(body, { agentName: post.delegate.worker });

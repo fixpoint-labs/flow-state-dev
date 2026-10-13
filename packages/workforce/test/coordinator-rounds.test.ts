@@ -36,7 +36,6 @@ import {
   closeRound,
   endRound,
   landAnswer,
-  markRowEnded,
   roundDeadline,
   routeOnAfterAnswer,
   routeOnAfterClose
@@ -210,9 +209,11 @@ describe("a round, on its own (V5)", () => {
   });
 
   const delegate = { worker: "eng.em" };
-  /** The round's rows as the board reads them: one post row, `t1`. */
-  const rows: RoundRows = () => ({ ids: ["t1"] });
   const posted: RoundPost = { postId: "p1", round: 0, delegate };
+  /** The round's one post row, `t1`, as the board reads it, with the round's routing counts read just before. */
+  const rowsOf =
+    (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundRows =>
+    () => ({ ids: ["t1"], running: row.running ?? false, replied: row.replied === true ? [delegate] : [], ...at });
 
   it("waits while a routing still adds to it, and shares one deadline across its deliveries (BR-24b)", () => {
     let rounds = beginRound([], "p1", 0).rounds;
@@ -223,24 +224,50 @@ describe("a round, on its own (V5)", () => {
     // A round nobody opened carries no deadline: nothing waits for it.
     expect(roundDeadline(rounds, "p1", 1, 1_200, 500).deadlineAt).toBeUndefined();
 
-    // Every row's ending acted on, but the routing hasn't finished adding: still open.
-    const acted = markRowEnded(rounds, "p1", 0, "t1");
-    expect(closeRound(acted, rows, "p1", 0, 1_200).closed).toBeUndefined();
-    expect(closeRound(endRound(acted, "p1", 0), rows, "p1", 0, 1_200).closed).toMatchObject({ deliveries: 1 });
-    // A row whose ending hasn't been acted on here holds it open until the deadline, then not,
-    // even when the row itself has ended.
-    const ended = endRound(rounds, "p1", 0);
-    expect(closeRound(ended, rows, "p1", 0, 1_499).closed).toBeUndefined();
-    expect(closeRound(ended, rows, "p1", 0, 1_500).closed).toMatchObject({ round: 0, answers: [] });
+    // Every row ended, but the routing hasn't finished adding: still open.
+    const ended = rowsOf({});
+    expect(closeRound(rounds, ended, "p1", 0, 1_200).closed).toBeUndefined();
+    // The routing's own end closes it: it was still filing when it read its rows.
+    expect(closeRound(endRound(rounds, "p1", 0), rowsOf({}, { begun: 1, opening: 1 }), "p1", 0, 1_200, true).closed).toMatchObject({
+      deliveries: 1
+    });
+    // A row still running holds it open until the deadline, then not.
+    const done = endRound(rounds, "p1", 0);
+    expect(closeRound(done, rowsOf({ running: true }), "p1", 0, 1_499).closed).toBeUndefined();
+    expect(closeRound(done, rowsOf({ running: true }), "p1", 0, 1_500).closed).toMatchObject({ round: 0, answers: [] });
+  });
+
+  it("holds a round open on a reply whose row ended before the reply landed here", () => {
+    // The row's reply is on the board, and the round hasn't kept it yet: closing now
+    // would send the round on without it.
+    const rounds = endRound(roundDeadline(beginRound([], "p1", 0).rounds, "p1", 0, 1_000, 500).rounds, "p1", 0);
+    const replied = rowsOf({ replied: true });
+    expect(closeRound(rounds, replied, "p1", 0, 1_200).closed).toBeUndefined();
+    // Once it lands, the round closes with it.
+    expect(landAnswer(rounds, replied, posted, "on time", 1_200)).toMatchObject({
+      kept: true,
+      closed: { answers: [{ worker: "eng.em", body: "on time" }] }
+    });
+  });
+
+  it("doesn't close on a read of its rows that a routing has gone stale since", () => {
+    const rounds = endRound(beginRound([], "p1", 0).rounds, "p1", 0);
+    // A routing was still filing when the rows were read: it may have filed one the read missed.
+    expect(closeRound(rounds, rowsOf({}, { begun: 1, opening: 1 }), "p1", 0, 1_200).closed).toBeUndefined();
+    // A routing began after the read, and has finished since: the same.
+    const again = endRound(beginRound(rounds, "p1", 0).rounds, "p1", 0);
+    expect(closeRound(again, rowsOf({}, { begun: 1, opening: 0 }), "p1", 0, 1_200).closed).toBeUndefined();
+    expect(closeRound(again, rowsOf({}, { begun: 2, opening: 0 }), "p1", 0, 1_200).closed).toMatchObject({ round: 0 });
   });
 
   it("closes without an answer that comes after the deadline, which then goes nowhere (BR-24b)", () => {
     const rounds = endRound(roundDeadline(beginRound([], "p1", 0).rounds, "p1", 0, 1_000, 500).rounds, "p1", 0);
-    const late = landAnswer(markRowEnded(rounds, "p1", 0, "t1"), rows, posted, "late", 1_600);
+    const rows = rowsOf({ replied: true });
+    const late = landAnswer(rounds, rows, posted, "late", 1_600);
     expect(late).toMatchObject({ kept: false, rounds: [], closed: { answers: [] } });
     expect(routeOnAfterAnswer(posted, "late", late.kept, "best-fit", 1)).toBeUndefined();
 
-    const onTime = landAnswer(markRowEnded(rounds, "p1", 0, "t1"), rows, posted, "on time", 1_200);
+    const onTime = landAnswer(rounds, rows, posted, "on time", 1_200);
     expect(onTime).toMatchObject({ kept: true, closed: { answers: [{ worker: "eng.em", body: "on time" }] } });
     expect(routeOnAfterAnswer(posted, "on time", onTime.kept, "best-fit", 1)).toEqual({
       postId: "p1",
@@ -252,6 +279,18 @@ describe("a round, on its own (V5)", () => {
     expect(routeOnAfterAnswer(posted, "on time", true, "best-fit", 0)).toBeUndefined();
     expect(routeOnAfterClose(onTime.closed!, "everyone", 0)).toBeUndefined();
     expect(routeOnAfterClose(onTime.closed!, "everyone", 1)).toMatchObject({ round: 1 });
+  });
+
+  it("keeps an answer heard again once, and sends it on once", () => {
+    // Two rows out, so the first answer doesn't close the round.
+    const open = endRound(beginRound([], "p1", 0).rounds, "p1", 0);
+    const two: RoundRows = () => ({ ids: ["t1", "t2"], running: true, replied: [delegate], begun: 1, opening: 0 });
+    const first = landAnswer(open, two, posted, "on time", 1_200);
+    expect(first).toMatchObject({ kept: true });
+    const again = landAnswer(first.rounds, two, posted, "on time", 1_300);
+    expect(again).toMatchObject({ kept: false, again: true });
+    expect(again.rounds[0]!.answers).toEqual([{ worker: "eng.em", body: "on time" }]);
+    expect(routeOnAfterAnswer(posted, "on time", again.kept, "best-fit", 1)).toBeUndefined();
   });
 });
 
@@ -537,6 +576,35 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect((await host.sessionState(id)).openRounds).toEqual([]);
   });
 
+  it("closes a round at once when the user cancels a post's row from the board, while its delegate still works", async () => {
+    // A deadline far off: only the cancel can close the round in time. eng.lead takes
+    // tasks, so this conversation's board answers the task tools.
+    const host = bootHost({
+      standard: standardWorkers({ desk: { rounds: 1, delegates: ["eng.em", "eng.coder", "support.general", "eng.lead"] } }),
+      roundDeadlineMs: 60_000
+    });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    // The coder is working on it.
+    for (let i = 0; i < 200 && !host.heard.some((h) => h.worker === "eng.coder"); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const row = (await host.postRows("alice")).find((r) => r.sealed.round === 0 && r.assignee === "eng.coder")!;
+    const cancelled = await host.act("alice", id, "cancelTask_tasks", { taskId: row.id });
+    expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
+    // Closed before the coder's turn ends.
+    const openNow = async () => (await host.sessionState(id)).openRounds.filter((open: OpenRound) => open.round === 0);
+    let open = await openNow();
+    for (let i = 0; i < 50 && open.length > 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      open = await openNow();
+    }
+    expect(open).toEqual([]);
+    await quiet(host);
+    expect((await host.postRows("alice")).find((r) => r.id === row.id)).toMatchObject({ status: "cancelled" });
+    expect(await answers(host, id)).toEqual([]);
+  });
+
   for (const wake of ["roundDeadline"] as const) {
     it("closes an overdue round when the deadline wake wakes the conversation", async () => {
       const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
@@ -647,7 +715,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
         opening: 0,
         deadlineAt: Date.now() + 60_000,
         answers: [],
-        ended: []
+        begun: 1
       }));
       const state = { ...session.state, openRounds: [...open, ...others] };
       written = (await runtime.stores.session.set(id, { ...session, state } as never, session.version as never)).ok;

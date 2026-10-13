@@ -19,8 +19,9 @@
  * went out in a round is not kept here: each delegate's post is a row on the
  * conversation's board carrying its round, and the caller reads those rows
  * ({@link RoundRows}). A round closes once no routing is still adding rows to
- * it and each of its rows has ended (completed, failed or cancelled), or once
- * its deadline has passed, whatever is still out. Closing removes the record,
+ * it, each of its rows has ended (completed, failed or cancelled) and each
+ * reply among them has landed here, or once its deadline has passed, whatever
+ * is still out. Closing removes the record,
  * so an answer that lands after its round closed lands once and routes
  * nowhere. The deadline is set by the round's first row, and every row in the
  * round carries it, so a delegate still working at the deadline wakes the
@@ -73,13 +74,31 @@ export type RouteOn = z.infer<typeof routeOnSchema>;
 export type ClosedRound = { postId: string; round: number; deliveries: number; answers: RoundAnswer[] };
 
 /**
- * A round's rows, as the caller read them off the board: the id of each post
- * row that went out in it. Read before the write that closes the round, once
- * per write. A round closes on its rows' endings as this conversation acted
- * on them ({@link markRowEnded}), never on a row's status: a row can end
- * before its ending lands here, and its answer must still count.
+ * A round's rows, as the caller read them off the board, read before the
+ * write that may close the round, once per write.
+ *
+ * A row can end before its ending lands here, so a reply's row holds its
+ * round open until the reply is among the round's answers: a delegate has
+ * one row per post per round, so the reply is matched by its author.
  */
-export type RoundRows = (postId: string, round: number) => { readonly ids: readonly string[] };
+export type RoundRows = (postId: string, round: number) => RoundRead;
+
+/** One round's rows as read, with the round as it stood just before the read. */
+export interface RoundRead {
+  /** Every post row that went out in it. */
+  readonly ids: readonly string[];
+  /** Whether any of them hasn't ended yet. */
+  readonly running: boolean;
+  /** The authors of the ones that ended with a reply. */
+  readonly replied: readonly DelegateRef[];
+  /**
+   * The round's {@link OpenRound.begun} and {@link OpenRound.opening} when
+   * read. A routing that was filing then, or began since, may have filed a
+   * row the read missed, so the round doesn't close on it.
+   */
+  readonly begun: number;
+  readonly opening: number;
+}
 
 /** A post that went out in a round: which post, which round, and to whom. */
 export type RoundPost = { postId: string; round: number; delegate: DelegateRef };
@@ -101,11 +120,11 @@ export function beginRound(
 ): { rounds: OpenRound[]; opened: boolean } {
   const at = indexOf(rounds, postId, round);
   if (at >= 0) {
-    const held = rounds.map((open, i) => (i === at ? { ...open, opening: open.opening + 1 } : open));
+    const held = rounds.map((open, i) => (i === at ? { ...open, opening: open.opening + 1, begun: open.begun + 1 } : open));
     return { rounds: held, opened: true };
   }
   if (rounds.length >= MAX_OPEN_ROUNDS) return { rounds: [...rounds], opened: false };
-  return { rounds: [...rounds, { postId, round, opening: 1, answers: [], ended: [] }], opened: true };
+  return { rounds: [...rounds, { postId, round, opening: 1, begun: 1, answers: [] }], opened: true };
 }
 
 /**
@@ -153,34 +172,34 @@ function closeAt(
   };
 }
 
-/**
- * This conversation acted on a post row's ending: count it toward its round's
- * close. A round that isn't open, or already counts it, is unchanged.
- */
-export function markRowEnded(rounds: readonly OpenRound[], postId: string, round: number, taskId: string): OpenRound[] {
-  return rounds.map((open) =>
-    open.postId === postId && open.round === round && !open.ended.includes(taskId) ? { ...open, ended: [...open.ended, taskId] } : open
-  );
-}
-
 const pastDeadline = (open: OpenRound, now: number) => open.deadlineAt !== undefined && now >= open.deadlineAt;
 
 /**
- * Close a round that is done: no routing is still adding to it and each of
- * its rows' endings has been acted on here; or its deadline has passed. Nothing happens to a round
- * that isn't open.
+ * Close a round that is done: no routing is still adding to it, each of its
+ * rows has ended, and each reply among them has landed here; or its deadline
+ * has passed. Nothing happens to a round that isn't open.
+ *
+ * @param routing Set by the routing whose end this write records: it was
+ *   still filing when its rows were read, and filed nothing after.
  */
 export function closeRound(
   rounds: readonly OpenRound[],
   rows: RoundRows,
   postId: string,
   round: number,
-  now: number
+  now: number,
+  routing = false
 ): { rounds: OpenRound[]; closed?: ClosedRound } {
   const at = indexOf(rounds, postId, round);
   if (at < 0) return { rounds: [...rounds] };
   const open = rounds[at]!;
-  const done = open.opening === 0 && rows(postId, round).ids.every((id) => open.ended.includes(id));
+  const read = rows(postId, round);
+  const current = read.begun === open.begun && read.opening === (routing ? 1 : 0);
+  const done =
+    open.opening === 0 &&
+    current &&
+    !read.running &&
+    read.replied.every((author) => open.answers.some((answer) => sameDelegate(answer, author)));
   return done || pastDeadline(open, now) ? closeAt(rounds, at, rows) : { rounds: [...rounds] };
 }
 
@@ -217,9 +236,13 @@ export function anyOverdue(rounds: readonly OpenRound[], now: number): boolean {
  * without it. Otherwise the answer is kept on its open round, and the round
  * closes if that was the last one out.
  *
+ * An answer its round already keeps (the same ending, heard again after a
+ * failure past this write) is not kept twice: a delegate has one row per post
+ * per round.
+ *
  * @param rows The round's rows, with this answer's row already ended.
  * @returns `kept` when the answer landed in an open round, so it may go back
- *   out; and the round, when it closed.
+ *   out; `again` when its round already kept it; and the round, when it closed.
  */
 export function landAnswer(
   rounds: readonly OpenRound[],
@@ -227,10 +250,13 @@ export function landAnswer(
   posted: RoundPost,
   body: string,
   now: number
-): { rounds: OpenRound[]; kept: boolean; closed?: ClosedRound } {
+): { rounds: OpenRound[]; kept: boolean; again?: true; closed?: ClosedRound } {
   const at = indexOf(rounds, posted.postId, posted.round);
   if (at < 0) return { rounds: [...rounds], kept: false };
   if (pastDeadline(rounds[at]!, now)) return { ...closeAt(rounds, at, rows), kept: false };
+  if (rounds[at]!.answers.some((kept) => sameDelegate(kept, posted.delegate))) {
+    return { ...closeRound(rounds, rows, posted.postId, posted.round, now), kept: false, again: true };
+  }
   const answer: RoundAnswer = {
     worker: posted.delegate.worker,
     ...(posted.delegate.target === undefined ? {} : { target: posted.delegate.target }),

@@ -37,6 +37,7 @@ const CONTROLS: Record<string, { does: string; assertion: string; patches: Modul
     patches: [
       { module: SETTLED, from: "if \\(row === undefined \\|\\| !isNoticeOwed\\(row, notice\\)\\) \\{", to: "if (row === undefined) {" },
       { module: SETTLED, from: "if \\(seen\\.includes\\(key\\)\\) return", to: "if (false) return" },
+      { module: SETTLED, from: "acknowledged\\.includes\\(key\\) \\|\\|", to: "false ||" },
     ],
   },
 };

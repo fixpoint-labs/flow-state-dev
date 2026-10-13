@@ -60,8 +60,11 @@ export const openRoundSchema = z.object({
   deadlineAt: z.number().optional(),
   /** The answers that landed in it, in the order they landed. */
   answers: z.array(roundAnswerSchema),
-  /** The post rows whose endings this conversation has acted on. A round saved before it reads as none. */
-  ended: z.array(z.string()).default([])
+  /**
+   * How many routings have started filing rows in it, so a close can tell a
+   * read of its rows went stale. A round saved before it reads as none.
+   */
+  begun: z.number().int().min(0).default(0)
 });
 
 export type OpenRound = z.infer<typeof openRoundSchema>;
