@@ -428,6 +428,18 @@ export const taskSchema = z.object({
    */
   dispatchCall: z.string().optional(),
 
+  /**
+   * A payload the code that filed the row wrote with it, for whatever runs the
+   * row: which entry and session it goes to, and what that entry reads. Written
+   * once, in the write that files the row, by a caller filing through the ref.
+   * No task tool and no update reaches it, so a model can neither set nor
+   * change it, the reason `metadata` (model-writable through `updateTask`)
+   * can't carry it (BP-031). Packed to the worker as `TaskWorkerInput.sealed`;
+   * `TaskFilter.sealed` matches on its plain values. **Absent** on every row
+   * filed without one (BP-030).
+   */
+  sealed: z.record(z.unknown()).optional(),
+
   createdAt: z.number(),
   updatedAt: z.number(),
   startedAt: z.number().optional(),

@@ -1594,7 +1594,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
 A coordinator is a worker that hands each post to other workers on the same user's roster, its
 **delegates**, by `judgment`, `best-fit`, `round-robin` or `everyone`. It runs on the
 `coordinator` flow, registered on the installation like any worker flow. A delegate's flow
-declares the internal entry that takes a delegated post; the built-in `agent` flow declares it,
+declares the task entry that takes a delegated post; the built-in `agent` flow declares it,
 and your own flow does with `delegatedPostEntry`. The site's
 [Coordinators](https://flow-state.dev/docs/workforce/coordinators) page walks through setting one up.
 
@@ -1615,7 +1615,7 @@ const researchFlow = defineFlow({
   resources: { ...installation.resources },
   request: { onFinished: delegatedPostOnFinished }, // reports a cancelled delegated post
   actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // takes delegated posts
+  task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // takes delegated posts
 });
 
 const coordinatorFlow = defineCoordinatorFlow({
@@ -1627,10 +1627,14 @@ const coordinatorFlow = defineCoordinatorFlow({
 });
 ```
 
+Earlier versions declared the entry under `internal.actions` and named the hand-off tool `handOff`.
+A delegate flow that still declares it there makes `defineCoordinatorFlow` throw, and a worker
+whose `tools:` names `handOff` is refused at load; each message names the replacement.
+
 The judgment turn is the built-in agent's own turn. A coordinator worker's `model`, `tools`,
 `skills` and `capabilities` read the way an `agent` worker's do, against the catalog and
-capabilities you pass as `agent`. The four delegate tools and `handOff` are on every coordinator,
-whatever its `tools:` line grants.
+capabilities you pass as `agent`. The four delegate tools and `dispatchTask` are on every
+coordinator, whatever its `tools:` line grants.
 
 A coordinator's file names its defaults:
 
@@ -1645,8 +1649,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 ---
 ```
 
-- **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
-  `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
+- **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with
+  `dispatchTask` (`post: true`, the delegate as `assignee`) or answers itself. `best-fit` sends a
+  follow-up to the delegate still working the
   user's last post, else makes one evaluator call over each delegate's note or description and
   the coordinator's own description, reading the post with the conversation's recent lines. When
   that call fails and `routeModel` is a model string, best fit asks once more as a language model
@@ -1726,12 +1731,15 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   A worker whose flow takes tasks but no posts can be added. A post handed to it is skipped, and
   the routing record gives the reason
   `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the
-  coordinator's own turn hands it a post with `handOff`, the refusal adds the delegates that take
+  coordinator's own turn hands it a post with `dispatchTask`, the refusal adds the delegates that take
   posts, `Delegates here that take posts: <ids>.`, or `No delegate here takes posts.` when none does.
-- **Delivery.** Each delegate gets its own session per conversation, created naming the delegate
-  as its worker, and reused for that conversation's later posts. Its answer lands in the
-  conversation under the delegate's name, once, however many times it is sent. The session
-  carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
+- **Delivery.** Each post is one task per delegate per round on the conversation's board, so its
+  answer lands under the delegate's name once. Each
+  delegate's task runs in its own session per conversation, created naming the delegate as its
+  worker, and reused for that conversation's later posts. A post's task can be cancelled from the
+  board, but not reassigned, completed, failed or blocked. The board answers task actions only
+  while one of the conversation's delegates takes tasks, and `no_delegation_board` otherwise. The
+  session carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
   naming only `{ worker }` never returns a delegate's session. Only the delivery opens one:
@@ -1827,8 +1835,8 @@ the root exports, and reaches no Node built-in.
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's nine task tools, present only while the session has a delegate that takes tasks), `actions` (the nine as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `entries(turn)` for `internal: { actions }`, and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
-| `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
-| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
+| `delegatedPostEntry(turn)` | The `onDelegatedPost` task entry that makes a flow's workers delegates that take posts: `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } }`. It takes a post's task from the conversation's board, runs `turn` on it, and ends the task with the reply. At the round's deadline, while the turn is still running, it tells the coordinator so the round can close. The turn isn't stopped; a later answer lands once. |
+| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated run is cancelled, it tells the coordinator, which fails the post's task, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |

@@ -163,15 +163,15 @@ describe("a conversation's delegates (V2)", () => {
   it("says what each delegate does and takes, and a hand-off reaches exactly the ones it says take posts", async () => {
     // The coordinator's turn picks whom to hand a post to from this read: what
     // each delegate does (its worker's description) and what it takes. So a
-    // delegate it says takes posts must be one `handOff` delivers to, and a
+    // delegate it says takes posts must be one `dispatchTask` hands it to, and a
     // delegate it says takes only tasks, or nothing, must be one it refuses.
     const judgment = mockGenerator({
       script: [
         {
           toolCalls: ["eng.em", "eng.builder", "eng.lead", "temp"].map((worker, n) => ({
             toolCallId: `h${n}`,
-            toolName: "handOff",
-            args: { worker }
+            toolName: "dispatchTask",
+            args: { post: true, assignee: worker }
           }))
         },
         { text: "Handed on." }

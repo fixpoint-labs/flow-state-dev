@@ -54,6 +54,11 @@ export type TaskInit<TInput = unknown> = {
    * call replayed finds its own row. Set only by the dispatch path.
    */
   dispatchCall?: string;
+  /**
+   * The row's server-written payload (see `Task.sealed`). Never from model
+   * input: the task tools build a row's init field by field and leave it out.
+   */
+  sealed?: Record<string, unknown>;
 };
 
 /**
@@ -70,6 +75,11 @@ export type TaskFilter = {
   resumeOwed?: true;
   /** Match only tasks whose ask is over and still owes its cancel (`Task.cancelOwed`). */
   cancelOwed?: true;
+  /**
+   * Match only tasks whose `sealed` payload holds each of these keys at this
+   * plain value (compared with `===`).
+   */
+  sealed?: Record<string, string | number | boolean>;
 };
 
 /** Returns true when `task` matches every set field on `filter`. */
@@ -100,6 +110,12 @@ export function matchesFilter(task: Task, filter?: TaskFilter): boolean {
   if (filter.resumeOwed === true && task.resumeOwed !== true) return false;
 
   if (filter.cancelOwed === true && task.cancelOwed !== true) return false;
+
+  if (filter.sealed !== undefined) {
+    for (const [key, value] of Object.entries(filter.sealed)) {
+      if (task.sealed?.[key] !== value) return false;
+    }
+  }
 
   return true;
 }
