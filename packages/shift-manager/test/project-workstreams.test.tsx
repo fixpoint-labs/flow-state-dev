@@ -415,7 +415,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
 
   it("lists a workstream opened while its Workstreams tab is open, with no reload or navigation", async () => {
     // A workstream is opened elsewhere, by the chief of staff or a project coordinator in another
-    // window, while the person sits on the list. It must show there as it opens, or they read
+    // window, while the user sits on the list. It must show there as it opens, or they read
     // "No workstreams" for work they just asked for.
     const { screen } = dom!;
     const { baseUrl, setup, as } = await open();

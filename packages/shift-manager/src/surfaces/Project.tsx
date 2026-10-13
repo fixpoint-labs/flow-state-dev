@@ -147,7 +147,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
 }
 
 /** How often a tab that draws entries reads the project again while it is on screen. */
-export const PROJECT_POLL_MS = 5_000;
+const PROJECT_POLL_MS = 5_000;
 
 /**
  * The project's own read, row and entries (BR-18), when the view opens, each
@@ -170,6 +170,7 @@ function useProjectRead(address: ProjectAddress, readerSessionId: string | null,
     readProject(clients, readerSessionId, address)
       .then((value) => !closed && setRead({ value }))
       .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error) }))
+      // After a failed read too: a dropped request recovers without Retry.
       .finally(() => {
         if (!closed) next = setTimeout(() => setReads((n) => n + 1), PROJECT_POLL_MS);
       });
