@@ -35,6 +35,15 @@
  * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
  * project is refused another before anything is written (BR-21b).
  *
+ * **A worker's open is checked for fit.** With `leadFit` set, the
+ * `openWorkstreamTool` a worker calls first asks one small model call whether
+ * the lead's description says it does the work, and refuses `lead-doesnt-fit`
+ * when it doesn't: a lead that can lead is not therefore the right one, and a
+ * model told so in its prompt still picks the only lead it has. A user's
+ * `openWorkstream` action is their own pick and is not checked. A check that
+ * can't answer (the call failed, or the lead has no description) lets the open
+ * through, so a model outage never stops a workstream opening.
+ *
  * **Updating one.** Only its owner writes an entry, and the engine enforces
  * that at the store whichever flow writes. The app's action writes the entry
  * its input names, the caller's own unless it names another owner, which the
@@ -46,7 +55,7 @@
  * status.
  */
 
-import { dispatcher, dispatchHandleSchema, handler, router, sequencer } from "@flow-state-dev/core";
+import { dispatcher, dispatchHandleSchema, generator, handler, router, sequencer } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { DispatchRefusedError, type ActionConfig, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -105,6 +114,12 @@ export interface WorkstreamBlocksOptions {
    * `agent` flow does. A worker on any other flow is refused as a lead.
    */
   leadFlows: readonly { readonly kind: string }[];
+  /**
+   * Check a worker's pick of lead against the work before its
+   * `openWorkstreamTool` opens it, with one call to this model. Left out, the
+   * tool opens with any lead that can lead.
+   */
+  leadFit?: { model: string };
 }
 
 /** What opening a workstream takes. Closed: nothing in it names the owner. */
@@ -209,6 +224,17 @@ export type WorkstreamBlocks = {
    * a lead flow and listing delegates. Give it to whoever picks a lead.
    */
   listLeadsTool: BlockDefinition<z.ZodObject<{}, "strict">, typeof listLeadsOutputSchema, Record<string, never>, ListLeadsOutput>;
+  /**
+   * `openWorkstream` for a worker to call: with `leadFit` set, it first checks
+   * the lead's description says it does the work, and refuses `lead-doesnt-fit`
+   * when it doesn't. Without `leadFit`, it is `openWorkstream`.
+   */
+  openWorkstreamTool: BlockDefinition<
+    typeof openWorkstreamInputSchema,
+    z.ZodTypeAny,
+    OpenWorkstreamInput,
+    OpenWorkstreamOutput
+  >;
   /** The lead's tool: updates the workstream its session leads. Give it to a lead's flow. */
   updateWorkstreamTool: BlockDefinition<
     typeof updateOwnWorkstreamInputSchema,
@@ -551,6 +577,88 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
           .tapIf((out: { record?: RecordChange }) => out.record !== undefined, (out: { record?: RecordChange }) => out.record!, changeRecord)
           .map(({ workstream, opened }: OpenWorkstreamOutput) => ({ workstream, opened }));
 
+  // --- a worker's open, checked for fit ------------------------------------
+
+  /** What the fit check reads: the open, and the lead's description when it can lead and has one. */
+  const fitCaseSchema = z.object({ open: openWorkstreamInputSchema, description: z.string().nullable() });
+  type FitCase = z.infer<typeof fitCaseSchema>;
+
+  const fitCase = handler({
+    name: "workstream-lead-fit-case",
+    inputSchema: openWorkstreamInputSchema,
+    outputSchema: fitCaseSchema,
+    resources: installation.resources,
+    execute: async (open: OpenWorkstreamInput, ctx): Promise<FitCase> => {
+      const lead = await installation.rosterWorker(ctx, open.lead);
+      // A lead that can't lead is refused by the open itself, by name.
+      const description = lead !== undefined && leadProblem(lead) === undefined ? lead.description : null;
+      return { open, description };
+    }
+  });
+
+  const fitVerdictSchema = z.object({ fits: z.boolean().nullable() });
+
+  /** A failed check answers nothing, so the open goes through. A cancelled request is not a failed check. */
+  const fitUnanswered = handler({
+    name: "workstream-lead-fit-unanswered",
+    inputSchema: z.unknown(),
+    outputSchema: fitVerdictSchema,
+    execute: (error: unknown, ctx) => {
+      if (ctx.signal.aborted) throw error;
+      return { fits: null };
+    }
+  });
+
+  const judgeFit = (model: string) =>
+    generator({
+      name: "workstream-lead-fit",
+      model,
+      inputSchema: fitCaseSchema,
+      outputSchema: z.object({ fits: z.boolean() }),
+      itemVisibility: { client: false, history: false },
+      repair: { coerce: false },
+      prompt: () =>
+        [
+          "You check whether a worker is the right one to lead a piece of work.",
+          "Answer `fits: true` only when the worker's description says it does this kind of work.",
+          "A worker whose description says it does a different kind of work does not fit, even if it could be told to try."
+        ].join("\n"),
+      user: ({ open, description }: FitCase) =>
+        [
+          `The worker, ${open.lead}: ${description}`,
+          "",
+          `The work: ${open.title}`,
+          ...(open.objectives ?? []).map((objective) => `- ${objective}`)
+        ].join("\n")
+    }).rescue([{ block: fitUnanswered }]);
+
+  const fitVerdict = handler({
+    name: "workstream-lead-fit-verdict",
+    inputSchema: z.unknown(),
+    outputSchema: openWorkstreamInputSchema,
+    execute: (judged: unknown, ctx): OpenWorkstreamInput => {
+      const { open, description } = fitCaseSchema.parse(ctx.getBlockOutput(fitCase));
+      if (fitVerdictSchema.safeParse(judged).data?.fits === false) {
+        throw new ProjectRefusedError(
+          "lead-doesnt-fit",
+          `Worker "${open.lead}" doesn't do this work: its description says "${description}". ` +
+            "Pick a lead from listLeads whose description says it does this work. If none does, nobody on " +
+            "the roster does it yet: open nothing, and say a worker for it has to be hired first."
+        );
+      }
+      return open;
+    }
+  });
+
+  const openWorkstreamTool =
+    options.leadFit === undefined
+      ? openWorkstream
+      : sequencer({ name: "workstream-open-checked", inputSchema: openWorkstreamInputSchema })
+          .step(fitCase)
+          .stepIf((checked: FitCase) => checked.description !== null, judgeFit(options.leadFit.model))
+          .step(fitVerdict)
+          .step(openWorkstream);
+
   const updateFromApp = handler({
     name: "workstream-update-write",
     inputSchema: updateWorkstreamInputSchema,
@@ -604,6 +712,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
 
   return {
     openWorkstream,
+    openWorkstreamTool: openWorkstreamTool as WorkstreamBlocks["openWorkstreamTool"],
     updateWorkstream,
     listLeadsTool,
     updateWorkstreamTool,

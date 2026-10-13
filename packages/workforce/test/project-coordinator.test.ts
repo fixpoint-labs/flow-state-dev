@@ -58,22 +58,23 @@ const standardWorkers: WorkerManifest[] = [
  * The project coordinator's catalog: its project read, and the workstream
  * open and lead list an app gives whoever opens workstreams.
  */
-function openingTools(installation: Parameters<typeof defineWorkstreamBlocks>[0]["installation"]) {
+function openingTools(installation: Parameters<typeof defineWorkstreamBlocks>[0]["installation"], checksFit = false) {
   const workstreams = defineWorkstreamBlocks({
     installation,
-    leadFlows: [{ kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }]
+    leadFlows: [{ kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }],
+    ...(checksFit ? { leadFit: { model: "test/fit" } } : {})
   });
   return {
     ...projectCoordinatorTools,
     listLeads: workstreams.listLeadsTool,
-    openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream", description: "Open a workstream." })
+    openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream", description: "Open a workstream." })
   };
 }
 
 /** One delegated post a lead heard: who, what, and in which session. */
 type Heard = { worker: string; message: string; sessionId: string };
 
-async function boot(options: { judgment?: MockGeneratorInstance; counted?: boolean } = {}) {
+async function boot(options: { judgment?: MockGeneratorInstance; counted?: boolean; leadFit?: MockGeneratorInstance } = {}) {
   const heard: Heard[] = [];
   const counting = options.counted === true ? countingStores() : undefined;
   const projects = defineProjectBlocks();
@@ -122,10 +123,15 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
           installation,
           delegateFlows: [leadFlowRef],
           routeModel: "typesafe-ai/jev",
-          agent: { catalog: openingTools(installation) }
+          agent: { catalog: openingTools(installation, options.leadFit !== undefined) }
         })
       }),
-      models: { generators: { "coordinator-judgment": options.judgment ?? mockGenerator({ script: [] }) } }
+      models: {
+        generators: {
+          "coordinator-judgment": options.judgment ?? mockGenerator({ script: [] }),
+          ...(options.leadFit === undefined ? {} : { "workstream-lead-fit": options.leadFit })
+        }
+      }
     },
     counting === undefined ? {} : { stores: counting.stores }
   );
@@ -569,5 +575,66 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     expect(refusal(quiet)).toContain("cannot-lead");
     const listed = (await h.ok("alice", "lab", lab, "readProject", { project: apollo })) as { workstreams: unknown[] };
     expect(listed.workstreams).toEqual([]);
+  });
+
+  describe("checking its pick of lead against the work", () => {
+    /** The fit check's one call, answering `fits`. */
+    const fit = (fits: boolean) => mockGenerator({ script: [{ structuredOutput: { fits } }] });
+    const research = { id: "research", title: "Research: what to build next", lead: "alice-lead", objectives: ["Rank three ideas"] };
+    /** What the open tool answered in a conversation's turns. */
+    const opens = async (h: Awaited<ReturnType<typeof boot>>, sessionId: string) =>
+      JSON.stringify(
+        (await h.runtime.stores.request.list({ sessionId, withItems: true }))
+          .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+          .filter((item) => item.type === "tool_output" && item.blockName === "openWorkstream")
+      );
+    const workstreams = async (h: Awaited<ReturnType<typeof boot>>) =>
+      ((await h.ok("alice", "lab", await h.lab("alice"), "readProject", { project: apollo })) as { workstreams: Array<{ id: string }> })
+        .workstreams.map((workstream) => workstream.id);
+
+    it("refuses a lead whose own description says it does other work, and writes nothing", async () => {
+      // The one lead she has can lead, so only its description says it is the wrong one for research.
+      const leadFit = fit(false);
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+
+      expect(await opens(h, id)).toContain("lead-doesnt-fit");
+      expect(await workstreams(h)).toEqual([]);
+      expect(await h.delegates("alice", id)).toEqual([]);
+      expect(h.heard).toEqual([]);
+      // The check read the lead's own description and the work, not the model's word for either.
+      const [call] = leadFit.calls;
+      expect(JSON.stringify(call)).toContain("alice's alice-lead");
+      expect(JSON.stringify(call)).toContain("Research: what to build next");
+      expect(JSON.stringify(call)).toContain("Rank three ideas");
+    });
+
+    it("opens it when the lead's description fits the work", async () => {
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: fit(true) });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+      expect(await workstreams(h)).toEqual(["research"]);
+    });
+
+    it("opens it when the check can't answer, so a failed model call never stops an open", async () => {
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: mockGenerator({ script: [] }) });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+      expect(await workstreams(h)).toEqual(["research"]);
+    });
+
+    it("doesn't check a user's own open from the app: their pick is theirs", async () => {
+      const leadFit = fit(false);
+      const h = await boot({ leadFit });
+      expect(await h.open("alice", "research", "alice-lead")).toMatchObject({ opened: true });
+      expect(leadFit.calls).toEqual([]);
+    });
   });
 });

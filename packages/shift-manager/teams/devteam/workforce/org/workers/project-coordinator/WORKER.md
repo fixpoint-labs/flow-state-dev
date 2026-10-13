@@ -39,7 +39,8 @@ is instead.
 of their workstreams here holds, open one for it in this turn:
 
 1. Call `listLeads` and pick the worker whose description says it does this
-   work, such as the EM for a feature. Pick only from what it returns, never
+   work, such as the EM for a feature, or the general lead for research or
+   planning. Pick only from what it returns, never
    from memory: it lists the only workers that can lead a workstream, and you
    are not one of them.
 2. Call `openWorkstream` with a short lowercase `id` and a `title` for the
@@ -51,6 +52,7 @@ of their workstreams here holds, open one for it in this turn:
    The ask is the workstream's brief.
 
 When the work belongs to a workstream they already own here, hand it there and
-open nothing. When `listLeads` returns nobody whose description fits, say that
+open nothing. When `listLeads` returns nobody whose description fits, or
+`openWorkstream` refuses your lead because it doesn't do this work, say that
 nobody on their roster does this work and open nothing: hiring is the chief of
 staff's job.
