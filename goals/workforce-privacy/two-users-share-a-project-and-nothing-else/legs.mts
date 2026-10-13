@@ -611,7 +611,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         if (shown === undefined || entry === undefined || !shown.text.toLowerCase().includes(entry.status.toLowerCase())) r.fail("b5", `Alice's Storefront screen doesn't show the entry's status \`${entry?.status}\` (${shown?.text ?? drawn.errors.join(" | ")})`);
         else r.saw("b5", `Alice's Storefront screen shows \`${ws.id}\` with status \`${entry.status}\``);
         r.saw("b5", `${filed.length} task(s) on the workstream session's board: ${filed.map((t) => `\`${t.id}\` ${t.assignee} ${show(t.input)} → ${t.status}${t.error === undefined ? "" : ` (${String(t.error).slice(0, 120)})`}`).join("; ")}`);
-        const boards = new Set(taskRows(o.store).filter((t) => !before.has(t.partition.split("~")[0]!) && t.partition.split("~")[0] !== ws!.sessionId && newSessions(o.store, before).some((s) => t.partition.startsWith(s.id))).map((t) => t.partition));
+        // A coordinator's hand-off of the ask is a post row on its own conversation's board; only filed tasks make a third board.
+        const boards = new Set(taskRows(o.store).filter((t) => t.sealed?.kind !== "post" && !before.has(t.partition.split("~")[0]!) && t.partition.split("~")[0] !== ws!.sessionId && newSessions(o.store, before).some((s) => t.partition.startsWith(s.id))).map((t) => t.partition));
         if (boards.size > 0) r.fail("b5", `a third board holds rows: ${show([...boards])}`);
         const created = newSessions(o.store, before);
         gradeOwned(r, "b5", created, A.userId, (await alice.workforce.roster()).map((x) => x.id), "every session b5 created");
