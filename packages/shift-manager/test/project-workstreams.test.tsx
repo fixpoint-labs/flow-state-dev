@@ -337,7 +337,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     // The check read each lead's own description, from its file.
     expect(asked).toHaveLength(2);
     expect(asked[0]).toContain("Files each feature as a task for the coder");
-    expect(asked[1]).toContain("Leads research, planning");
+    expect(asked[1]).toContain("Leads research and planning");
 
     const entries = (await readProject(alice.clients, alice.reader, APOLLO))!.entries;
     expect(entries.map((e) => ({ id: e.id, lead: e.lead }))).toEqual([{ id: "research", lead: GENERAL_LEAD }]);
