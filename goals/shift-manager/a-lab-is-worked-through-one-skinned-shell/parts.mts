@@ -28,7 +28,7 @@ const UI = join(REPO_ROOT, "packages", "ui");
 
 // ---- J3: someone reusing FSD UI in their own app -------------------------------
 
-/** The two status-bearing items the fresh app installs: both paint `--success`. */
+/** The two status-bearing items the fresh app installs: both paint `--destructive`. */
 const J3_ITEMS = ["tool", "approval"];
 
 function serve(root: string): Promise<{ server: Server; origin: string }> {
@@ -79,18 +79,21 @@ function docsTokenBlock(): string {
 
 const J3_PAGE = `import { createRoot } from "react-dom/client";
 import { FlowProvider } from "@flow-state-dev/react";
-import { ToolShell, ToolHeader } from "@/components/flow-state/tool";
+import { Tool } from "@/components/flow-state/tool";
 import { Approval } from "@/components/flow-state/approval";
 import "./app/globals.css";
 
 const ask = { id: "s1", type: "suspension", status: "completed", requestId: "r1", itemIndex: 0, ts: 0,
   provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" },
   suspensionId: "s1", suspensionStatus: "pending", reason: "human_approval", message: "Ship it?" } as never;
+const failed = { id: "t1", type: "tool_output", status: "failed", requestId: "r1", itemIndex: 1, ts: 0, blockName: "deploy",
+  provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" }, output: "exit 1",
+  toolCall: { callId: "c1", name: "deploy", arguments: "{}", generatorBlock: "gen" } } as never;
 
 createRoot(document.getElementById("root")!).render(
   <FlowProvider flowKind="demo" userId="demo" baseUrl="">
     <main className="app-shell bg-background text-foreground">
-      <section data-part="tool"><ToolShell defaultOpen={false}><ToolHeader name="deploy" state="completed" /></ToolShell></section>
+      <section data-part="tool"><Tool item={failed} /></section>
       <section data-part="approval"><Approval item={ask} /></section>
     </main>
   </FlowProvider>,
@@ -101,7 +104,8 @@ createRoot(document.getElementById("root")!).render(
  * J3. A fresh app outside Shift Manager and kitchen-sink installs two
  * status-bearing components from this commit's registry with `fsdev ui add`,
  * follows the token section of `apps/docs/docs/workforce/ui.md` as written,
- * then changes one status token: both components follow, and the copies are
+ * then changes one status token (`--destructive`, the one a failed tool line
+ * and the approval's Reject button both read): both components follow, and the copies are
  * byte-identical to the registry.
  */
 export async function j3(scratch: string, browser: Browser, report: Report): Promise<void> {
@@ -152,8 +156,8 @@ export async function j3(scratch: string, browser: Browser, report: Report): Pro
     // Follow the docs: the navigator's and panels' properties pointed at the same tokens.
     const block = docsTokenBlock();
     writeFileSync(join(host, "app/globals.css"), `${readFileSync(join(host, "app/globals.css"), "utf8")}\n${block}`);
-    const success = /:root\s*\{[^}]*?--success:\s*([^;]+);/.exec(readFileSync(join(host, "app/globals.css"), "utf8"))?.[1]?.trim();
-    if (success === undefined) return fail("the installed tokens define no --success on :root to change");
+    const destructive = /:root\s*\{[^}]*?--destructive:\s*([^;]+);/.exec(readFileSync(join(host, "app/globals.css"), "utf8"))?.[1]?.trim();
+    if (destructive === undefined) return fail("the installed tokens define no --destructive on :root to change");
 
     // node_modules: the registry workspace's, linked after the CLI ran.
     const from = join(UI, "node_modules");
@@ -189,8 +193,8 @@ export async function j3(scratch: string, browser: Browser, report: Report): Pro
         await page.goto(`${origin}/host/dist/index.html`);
         await page.locator("[data-part=approval] button").first().waitFor({ timeout: 20_000 });
         return (await page.evaluate(() => ({
-          tool: getComputedStyle(document.querySelector("[data-part=tool] svg.lucide-circle-check-big")!).stroke,
-          approval: getComputedStyle(Array.from(document.querySelectorAll("[data-part=approval] button")).find((b) => b.textContent?.includes("Approve"))!).backgroundColor,
+          tool: getComputedStyle(document.querySelector("[data-part=tool] [data-state-kind=error] button > span")!).color,
+          approval: getComputedStyle(Array.from(document.querySelectorAll("[data-part=approval] button")).find((b) => b.textContent?.includes("Reject"))!).backgroundColor,
         }))) as { tool: string; approval: string };
       } finally {
         await page.close();
@@ -201,18 +205,18 @@ export async function j3(scratch: string, browser: Browser, report: Report): Pro
     // Change one status token, in the stylesheet the docs had the app define them in.
     const changed = "#1f6feb";
     const css = readFileSync(join(host, "app/globals.css"), "utf8");
-    writeFileSync(join(host, "app/globals.css"), css.replace(/(:root\s*\{[^}]*?--success:\s*)([^;]+);/, `$1${changed};`));
+    writeFileSync(join(host, "app/globals.css"), css.replace(/(:root\s*\{[^}]*?--destructive:\s*)([^;]+);/, `$1${changed};`));
     await build();
     const after = await read();
     const want = [1, 3, 5].map((i) => parseInt(changed.slice(i, i + 2), 16)) as [number, number, number];
     for (const part of ["tool", "approval"] as const) {
       const was = parseColour(before[part]);
       const now = parseColour(after[part]);
-      if (now === null || !near(now.rgb, want)) fail(`${part} paints ${now === null ? "nothing" : hex(now.rgb)} after --success became ${changed}`);
+      if (now === null || !near(now.rgb, want)) fail(`${part} paints ${now === null ? "nothing" : hex(now.rgb)} after --destructive became ${changed}`);
       if (was !== null && near(was.rgb, want)) fail(`${part} already painted ${changed} before the change, so following it proves nothing`);
     }
     report.note(
-      `J3: fresh host, \`fsdev ui add ${J3_ITEMS.join(" ")}\` from this commit's registry, ${shipped.size} copies byte-identical; docs' token block applied as written; --success ${success} → ${changed}: tool ${before.tool} → ${after.tool}, approval ${before.approval} → ${after.approval}`,
+      `J3: fresh host, \`fsdev ui add ${J3_ITEMS.join(" ")}\` from this commit's registry, ${shipped.size} copies byte-identical; docs' token block applied as written; --destructive ${destructive} → ${changed}: tool ${before.tool} → ${after.tool}, approval ${before.approval} → ${after.approval}`,
     );
   } catch (error) {
     fail(`setup: ${String((error as Error).message ?? error).split("\n").slice(0, 6).join(" ")}`);

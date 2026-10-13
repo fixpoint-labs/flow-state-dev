@@ -89,10 +89,10 @@ As the agent runs, the block translates the SDK stream into items:
 | SDK output | flow-state-dev item |
 |------------|---------------------|
 | Assistant text | `message` (streamed token by token when partial messages are on) |
-| Extended thinking | `reasoning` |
-| Tool call and its result | `tool_output`, with the tool call's id, name, and arguments |
+| Extended thinking | `reasoning`, when the SDK returns any text. Thinking with the text withheld emits nothing. |
+| Tool call and its result | `tool_output`, with the tool call's id, name, and arguments. While it runs, a transient `status` carries the call's `description` for Bash, or `Using <tool>…` for any other tool, and it clears when the last open tool finishes. |
 | Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items |
-| System init, history compaction | transient `status` |
+| History compaction | transient `status` |
 | Errors | `error` |
 
 Every item carries provenance, so the devtool shows the full trace of what the
@@ -747,7 +747,7 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 
 | `status` | When | Also carries |
 |----------|------|--------------|
-| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them |
+| `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them; a subscription sign-in names neither and comes back as `email` and `subscriptionType` |
 | `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
 | `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
 

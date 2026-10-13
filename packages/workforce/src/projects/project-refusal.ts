@@ -16,6 +16,8 @@
  * - `no-such-worker`: the lead is not a worker on the caller's roster. Another
  *   user's worker gets this too.
  * - `cannot-lead`: the lead's flow can't lead a workstream.
+ * - `lead-doesnt-fit`: a worker's pick of lead doesn't do the work, by the
+ *   lead's own description.
  * - `lead-differs`: the workstream is open already, with another lead.
  * - `no-such-workstream`: the caller has no such workstream in the project.
  * - `not-a-workstream-session`: the lead's tool ran on a session that leads no workstream.
@@ -38,6 +40,7 @@ export type ProjectRefusalReason =
   | "invalid-workstream-id"
   | "no-such-worker"
   | "cannot-lead"
+  | "lead-doesnt-fit"
   | "lead-differs"
   | "no-such-workstream"
   | "not-a-workstream-session"

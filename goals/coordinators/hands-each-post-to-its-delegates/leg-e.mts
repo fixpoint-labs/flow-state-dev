@@ -32,10 +32,11 @@
  *   answer for {@link SLOW_MS} on a `[slow:<worker>]` mark.
  *
  * Every grade is read back as Alice: the conversation's items (records and
- * lines) through the router, and its session record (its delegates, its
- * fallback and its delivery ledger) from the engine's session store, from the
- * row Alice owns. The session route sends a client only the state a flow
- * exposes, and the coordinator exposes none of those fields. The engine's
+ * lines) through the router, its session record (its delegates and its
+ * fallback) from the engine's session store and its board's post rows from the
+ * engine's resource store, from the rows Alice owns. The session route sends a
+ * client only the state a flow exposes, and the coordinator exposes none of
+ * those fields; no route sends a board's rows with their server-written payload. The engine's
  * request store is read only to wait until nothing is running.
  */
 import { randomBytes } from "node:crypto";
@@ -49,6 +50,7 @@ import * as workforce from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
+import { postRowPrefix, toPostDeliveries } from "../../lib/post-rows.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const ORG = "goal-org";
@@ -101,7 +103,7 @@ const helper = core.defineFlow({
   session: installation.session(),
   resources: { ...installation.resources },
   actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-  internal: { actions: { onDelegatedPost: wf.delegatedPostEntry(door) } },
+  task: { actions: { onDelegatedPost: wf.delegatedPostEntry(door) } },
 } as never);
 
 /**
@@ -136,7 +138,7 @@ const judgment = {
     if (handed === 0) judgmentTurns += 1;
     if (asked.includes("[judge-fail]")) throw new Error("the scripted judgment turn failed");
     if (asked.includes("[judge]") && handed < 2) {
-      return { toolCalls: [{ toolCallId: `hand-${handed}`, toolName: "handOff", args: { worker: "desk.alpha" } }], finishReason: "tool-calls" };
+      return { toolCalls: [{ toolCallId: `hand-${handed}`, toolName: "dispatchTask", args: { post: true, assignee: "desk.alpha" } }], finishReason: "tool-calls" };
     }
     return { text: handed > 0 ? "Handed on." : "I'll take this one myself.", finishReason: "stop" };
   },
@@ -222,7 +224,8 @@ async function conversation(worker: string) {
       if (page.pagination?.hasMore !== true) break;
     }
     // The stored record, not the session route's projection of it.
-    const stored = await (await state.getRuntime()).stores.session.get(session.id);
+    const runtime = await state.getRuntime();
+    const stored = await runtime.stores.session.get(session.id);
     const record = stored?.userId === ALICE ? stored : undefined;
     const text = (i: Item) => (typeof i.text === "string" ? i.text : Array.isArray(i.content) ? i.content.map((p: any) => p?.text ?? "").join("") : String(i.content ?? ""));
     return {
@@ -230,7 +233,7 @@ async function conversation(worker: string) {
       lines: items.filter((i) => i.type === "message").map((i) => ({ role: i.role, agentName: i.agentName ?? null, text: text(i) })),
       delegates: record?.state?.delegates ?? null,
       fallback: record?.state?.fallback ?? null,
-      ledger: (record?.state?.deliveries ?? []) as Array<{ postId: string; round: number; delegate: { worker: string }; status: string; answered: boolean }>,
+      ledger: record === undefined ? [] : toPostDeliveries(Object.values(await runtime.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG}`, postRowPrefix(session.id))).map((row) => row.state as Record<string, any>)),
     };
   };
   return { session, act, read };

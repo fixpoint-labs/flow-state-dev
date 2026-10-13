@@ -307,7 +307,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     // Call 2 is the round's reply: it files the task, and is held open until the notice arrives.
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] },
+        { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.helper" } }] },
         { text: "Handed." },
         { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
@@ -378,7 +378,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
 describe("a delegate's answer that arrives mid-reply", () => {
   it("lands as it always has, without waiting for the reply: only a task's notice waits", async () => {
     const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] }, { text: "Handed." }]
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.helper" } }] }, { text: "Handed." }]
     });
     let calls = 0;
     let conv = "";

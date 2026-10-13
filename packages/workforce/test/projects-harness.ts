@@ -51,6 +51,8 @@ export type HostExtras = {
   lead?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** Extra internal actions on the `lead` flow. */
   leadInternal?: (installation: WorkerInstallation) => Record<string, unknown>;
+  /** Task entries on the `lead` flow: the delegated-post entry. */
+  leadTask?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** Extra internal actions on the `lead2` flow. */
   lead2Internal?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The installation's standard workers. Default none. */
@@ -70,7 +72,8 @@ function workerFlow(
   flow: string,
   installation: WorkerInstallation,
   extra: Record<string, unknown> = {},
-  internal: Record<string, unknown> = {}
+  internal: Record<string, unknown> = {},
+  task: Record<string, unknown> = {}
 ) {
   const door = handler({
     name: `${flow}-run`,
@@ -90,7 +93,8 @@ function workerFlow(
       run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
       ...extra
     },
-    ...(Object.keys(internal).length === 0 ? {} : { internal: { actions: internal } })
+    ...(Object.keys(internal).length === 0 ? {} : { internal: { actions: internal } }),
+    ...(Object.keys(task).length === 0 ? {} : { task: { actions: task } })
   } as never);
 }
 
@@ -103,7 +107,13 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     workerFlows: () => flows as never,
     ...(extras.projectCoordinator === undefined ? {} : { projectCoordinator: extras.projectCoordinator })
   });
-  const lead = workerFlow("lead", installation, extras.lead?.(installation), extras.leadInternal?.(installation));
+  const lead = workerFlow(
+    "lead",
+    installation,
+    extras.lead?.(installation),
+    extras.leadInternal?.(installation),
+    extras.leadTask?.(installation)
+  );
   const lead2 = workerFlow("lead2", installation, {}, extras.lead2Internal?.(installation));
   const quiet = workerFlow("quiet", installation);
   const more = extras.flows?.(installation) ?? {};

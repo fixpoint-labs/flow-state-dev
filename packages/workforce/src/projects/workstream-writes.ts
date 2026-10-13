@@ -35,6 +35,15 @@
  * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
  * project is refused another before anything is written (BR-21b).
  *
+ * **A worker's open is checked for fit.** With `leadFit` set, the
+ * `openWorkstreamTool` a worker calls asks one small model call, after every
+ * other refusal and before anything is written, whether the lead's description
+ * says it does the work, and refuses `lead-doesnt-fit` when it doesn't
+ * (`lead-fit.ts`). Opening a workstream again is not checked: it was accepted
+ * once. A user's `openWorkstream` action is their own pick and is not checked.
+ * A check that can't answer lets the open through, and the tool's answer says
+ * why in `leadFit`.
+ *
  * **Updating one.** Only its owner writes an entry, and the engine enforces
  * that at the store whichever flow writes. The app's action writes the entry
  * its input names, the caller's own unless it names another owner, which the
@@ -60,6 +69,7 @@ import { DONE_STATUS } from "./project-progress";
 import { projectEntries } from "./project-read";
 import { retryOnConflict } from "./cas-retry";
 import { projectAddressSchema, type ProjectAddress } from "./collections";
+import { defineLeadFitCheck, LEAD_FIT_STATE, leadFitCaseSchema, leadFitRecordSchema, leadFitStateSchema, type LeadFitCase } from "./lead-fit";
 import { isMember } from "./membership-gate";
 import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
@@ -105,6 +115,12 @@ export interface WorkstreamBlocksOptions {
    * `agent` flow does. A worker on any other flow is refused as a lead.
    */
   leadFlows: readonly { readonly kind: string }[];
+  /**
+   * Check a worker's pick of lead against the work before its
+   * `openWorkstreamTool` opens it, with one call to this model. Left out, the
+   * tool opens with any lead that can lead.
+   */
+  leadFit?: { model: string };
 }
 
 /** What opening a workstream takes. Closed: nothing in it names the owner. */
@@ -209,6 +225,17 @@ export type WorkstreamBlocks = {
    * a lead flow and listing delegates. Give it to whoever picks a lead.
    */
   listLeadsTool: BlockDefinition<z.ZodObject<{}, "strict">, typeof listLeadsOutputSchema, Record<string, never>, ListLeadsOutput>;
+  /**
+   * `openWorkstream` for a worker to call: with `leadFit` set, it first checks
+   * the lead's description says it does the work, and refuses `lead-doesnt-fit`
+   * when it doesn't. Without `leadFit`, it is `openWorkstream`.
+   */
+  openWorkstreamTool: BlockDefinition<
+    typeof openWorkstreamInputSchema,
+    z.ZodTypeAny,
+    OpenWorkstreamInput,
+    OpenWorkstreamOutput
+  >;
   /** The lead's tool: updates the workstream its session leads. Give it to a lead's flow. */
   updateWorkstreamTool: BlockDefinition<
     typeof updateOwnWorkstreamInputSchema,
@@ -280,6 +307,20 @@ const openStepSchema = z.object({
 
 type OpenStep = z.infer<typeof openStepSchema>;
 
+/** What the check hands on: the open, its lead's flow, and the lead fit check's case, or none to judge. */
+const checkedOpenSchema = z.object({
+  open: openWorkstreamInputSchema,
+  flow: z.string(),
+  fitCase: leadFitCaseSchema.nullable()
+});
+
+type CheckedOpen = z.infer<typeof checkedOpenSchema>;
+
+/** The refusal for an open naming another lead than the open workstream's. */
+function leadDiffers(id: string, lead: string): ProjectRefusedError {
+  return new ProjectRefusedError("lead-differs", `workstream "${id}" is already open, led by "${lead}". A workstream's lead doesn't change.`);
+}
+
 /**
  * Build the workstream writes.
  *
@@ -315,16 +356,19 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES };
 
   /**
-   * Check the open, and make the entry or find it: everything that can refuse
-   * runs before anything is written.
+   * Check the open: everything that can refuse, short of the lead's fit, runs
+   * here, before anything is written. Answers the open, its lead's flow, and
+   * the fit check's case, or none when there is nothing to check: the
+   * workstream is open already, or its lead has no description. Why there is
+   * none is noted for the open's record.
    */
   const checkOpen = handler({
     name: "workstream-open-check",
     inputSchema: openWorkstreamInputSchema,
-    outputSchema: openStepSchema,
+    outputSchema: checkedOpenSchema,
     resources,
-    requestStateSchema: openingStateSchema,
-    execute: async (input: OpenWorkstreamInput, ctx): Promise<OpenStep> => {
+    requestStateSchema: leadFitStateSchema,
+    execute: async (input: OpenWorkstreamInput, ctx): Promise<CheckedOpen> => {
       const owner = ownerOf(ctx, "openWorkstream");
       assertWorkstreamId(input.id);
       const at = projectOfWrite(ctx.session.state, input.project, "open workstreams");
@@ -343,12 +387,13 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       const cannotLead = leadProblem(lead);
       if (cannotLead !== undefined) throw new ProjectRefusedError("cannot-lead", `Worker "${input.lead}" ${cannotLead}.`);
 
-      const address: WorkstreamAddress = { project: at, id: input.id };
       const entries = workstreamsAt(ctx, at.visibility);
       const key = workstreamEntryKey(at.id, owner, input.id);
+      const held = await entries.getOptional(key);
+      if (held !== undefined && held.state.lead !== input.lead) throw leadDiffers(input.id, held.state.lead);
       // Each open workstream is a record on the owner's coordinator, which
       // holds so many: refused before anything is written (BR-21b).
-      if (installation.projectCoordinator() !== undefined && (await entries.getOptional(key)) === undefined) {
+      if (installation.projectCoordinator() !== undefined && held === undefined) {
         const open = (await projectEntries(ctx, at)).filter(
           (held) => held.owner === owner && held.status !== DONE_STATUS
         );
@@ -360,6 +405,29 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
           );
         }
       }
+      const unchecked = held !== undefined ? "already-open" : lead.description === null ? "no-description" : undefined;
+      if (unchecked !== undefined) await ctx.request.patchState({ [LEAD_FIT_STATE]: { checked: false, why: unchecked } });
+      const fitCase: LeadFitCase | null =
+        unchecked === undefined
+          ? { lead: input.lead, description: lead.description!, title: input.title, objectives: input.objectives ?? [] }
+          : null;
+      return { open: input, flow: lead.flow, fitCase };
+    }
+  });
+
+  /** Make the entry or find it, and say whether the lead's session is still to be created. */
+  const makeOpen = handler({
+    name: "workstream-open-make",
+    inputSchema: checkedOpenSchema,
+    outputSchema: openStepSchema,
+    resources,
+    requestStateSchema: openingStateSchema,
+    execute: async ({ open: input, flow }: CheckedOpen, ctx): Promise<OpenStep> => {
+      const owner = ownerOf(ctx, "openWorkstream");
+      const at = projectOfWrite(ctx.session.state, input.project, "open workstreams");
+      const address: WorkstreamAddress = { project: at, id: input.id };
+      const entries = workstreamsAt(ctx, at.visibility);
+      const key = workstreamEntryKey(at.id, owner, input.id);
       const now = nowIso();
       const fresh: Omit<WorkstreamEntry, "writtenBy"> = {
         title: input.title,
@@ -383,16 +451,12 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
           if (entry === undefined) throw error;
         }
       }
-      if (!opened && entry.state.lead !== input.lead) {
-        throw new ProjectRefusedError(
-          "lead-differs",
-          `workstream "${input.id}" is already open, led by "${entry.state.lead}". A workstream's lead doesn't change.`
-        );
-      }
+      // Another open may have made it since the check.
+      if (!opened && entry.state.lead !== input.lead) throw leadDiffers(input.id, entry.state.lead);
       const needsSession = entry.state.sessionId == null && !(await sessionNamedSoon(entry, opened));
-      const opening: Opening = { address, owner, lead: input.lead, flow: lead.flow, opened, needsSession };
+      const opening: Opening = { address, owner, lead: input.lead, flow, opened, needsSession };
       await ctx.request.patchState({ [OPENING_STATE]: opening });
-      return { needsSession, flow: lead.flow, lead: input.lead, ref: workstreamRef(address) };
+      return { needsSession, flow, lead: input.lead, ref: workstreamRef(address) };
     }
   });
 
@@ -535,21 +599,51 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
   });
 
-  const openSteps = sequencer({
-    name: "open-workstream",
-    inputSchema: openWorkstreamInputSchema,
-    outputSchema: openWorkstreamOutputSchema
-  })
-    .step(checkOpen)
-    .stepIf((step: OpenStep) => step.needsSession, createSession)
-    .step(finishOpen);
-  const openWorkstream =
-    changeRecord === undefined
-      ? openSteps
-      : openSteps
-          .step(recordOpen)
-          .tapIf((out: { record?: RecordChange }) => out.record !== undefined, (out: { record?: RecordChange }) => out.record!, changeRecord)
-          .map(({ workstream, opened }: OpenWorkstreamOutput) => ({ workstream, opened }));
+  /**
+   * The open's steps. A worker's open (`checksFit`) runs the lead fit check
+   * between the check and the write, unless the check found nothing to judge,
+   * and answers what became of it as `leadFit`.
+   */
+  const openWith = (name: string, fitCheck?: ReturnType<typeof defineLeadFitCheck>) => {
+    const checked = sequencer({
+      name,
+      inputSchema: openWorkstreamInputSchema,
+      outputSchema: fitCheck === undefined ? openWorkstreamOutputSchema : openWorkstreamOutputSchema.extend({ leadFit: leadFitRecordSchema })
+    }).step(checkOpen);
+    const steps = (
+      fitCheck === undefined
+        ? checked
+        : checked.tapIf((step: CheckedOpen) => step.fitCase !== null, (step: CheckedOpen) => step.fitCase!, fitCheck)
+    )
+      .step(makeOpen)
+      .stepIf((step: OpenStep) => step.needsSession, createSession)
+      .step(finishOpen);
+    const recorded =
+      changeRecord === undefined
+        ? steps
+        : steps
+            .step(recordOpen)
+            .tapIf((out: { record?: RecordChange }) => out.record !== undefined, (out: { record?: RecordChange }) => out.record!, changeRecord)
+            .map(({ workstream, opened }: OpenWorkstreamOutput) => ({ workstream, opened }));
+    return fitCheck === undefined ? recorded : recorded.step(withFitRecord);
+  };
+
+  /** A worker's open answers what became of its lead fit check. */
+  const withFitRecord = handler({
+    name: "workstream-open-fit-record",
+    inputSchema: openWorkstreamOutputSchema,
+    outputSchema: openWorkstreamOutputSchema.extend({ leadFit: leadFitRecordSchema }),
+    requestStateSchema: leadFitStateSchema,
+    execute: (out: OpenWorkstreamOutput, ctx) => ({
+      ...out,
+      leadFit: ctx.request.state[LEAD_FIT_STATE] ?? { checked: false, why: "not-asked" }
+    })
+  });
+
+  const openWorkstream = openWith("open-workstream");
+  const openWorkstreamTool =
+    options.leadFit === undefined ? openWorkstream : openWith("open-workstream-checked", defineLeadFitCheck(options.leadFit.model));
+
 
   const updateFromApp = handler({
     name: "workstream-update-write",
@@ -604,6 +698,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
 
   return {
     openWorkstream,
+    openWorkstreamTool: openWorkstreamTool as WorkstreamBlocks["openWorkstreamTool"],
     updateWorkstream,
     listLeadsTool,
     updateWorkstreamTool,

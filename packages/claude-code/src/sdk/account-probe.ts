@@ -18,8 +18,12 @@ import { defaultSdkImporter, type SdkImporter } from "./sdk-client";
 
 /** What {@link probeClaudeAccount} found. */
 export type ClaudeAccountProbe =
-  /** A credential source came back: the SDK's `apiKeySource`, its `tokenSource`, or both. */
-  | { status: "account"; apiKeySource?: string; tokenSource?: string }
+  /**
+   * A credential source came back: the SDK's `apiKeySource`, its `tokenSource`,
+   * or a sign-in (`email`, `subscriptionType`). A subscription login (the
+   * keychain or `~/.claude`) is reported by the last pair alone.
+   */
+  | { status: "account"; apiKeySource?: string; tokenSource?: string; email?: string; subscriptionType?: string }
   /** No credential source, or no answer in time. `reason` says which, for a message to a person. */
   | { status: "none"; reason: string }
   /** `@anthropic-ai/claude-agent-sdk` could not be loaded. `reason` carries the load error. */
@@ -41,7 +45,7 @@ export interface ProbeClaudeAccountOptions {
 
 /** The part of the SDK's query handle the probe uses. */
 interface AccountQuery {
-  accountInfo(): Promise<{ apiKeySource?: unknown; tokenSource?: unknown }>;
+  accountInfo(): Promise<{ apiKeySource?: unknown; tokenSource?: unknown; email?: unknown; subscriptionType?: unknown }>;
   close?: () => void;
 }
 
@@ -82,13 +86,20 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
     if (info === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms` };
     const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
     const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
-    if (apiKeySource === undefined && tokenSource === undefined) {
+    // A subscription sign-in names no key or token source: it comes back as who
+    // is signed in and on what plan.
+    const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
+    const subscriptionType =
+      typeof info.subscriptionType === "string" && info.subscriptionType !== "" ? info.subscriptionType : undefined;
+    if (apiKeySource === undefined && tokenSource === undefined && email === undefined && subscriptionType === undefined) {
       return { status: "none", reason: "Claude Code found no API key and no sign-in" };
     }
     return {
       status: "account",
       ...(apiKeySource === undefined ? {} : { apiKeySource }),
       ...(tokenSource === undefined ? {} : { tokenSource }),
+      ...(email === undefined ? {} : { email }),
+      ...(subscriptionType === undefined ? {} : { subscriptionType }),
     };
   } catch (error) {
     return { status: "none", reason: `Claude Code could not be asked for its account: ${messageOf(error)}` };

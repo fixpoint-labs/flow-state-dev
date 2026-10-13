@@ -17,7 +17,6 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
-import { deliveryDelegateSchema } from "../delivery-ledger";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -29,6 +28,7 @@ import {
   currentDelegates,
   delegateRecordSchema,
   delegateSessionStateSchema,
+  delegateRefSchema,
   readDelegates,
   type DelegateChange,
   type DelegateDefaults,
@@ -67,7 +67,7 @@ export interface WorkerDelegatesOptions {
 
 const delegateListOutputSchema = z.object({
   delegates: z.array(delegateRecordSchema),
-  fallback: deliveryDelegateSchema.nullable(),
+  fallback: delegateRefSchema.nullable(),
   max: z.number(),
   /**
    * This session's `filingSessionId`: what each of its delegates' sessions
@@ -260,7 +260,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const listDelegatesTool = handler({
     name: LIST_DELEGATES,
     description:
-      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `handOff` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
+      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `dispatchTask` with `post: true` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,

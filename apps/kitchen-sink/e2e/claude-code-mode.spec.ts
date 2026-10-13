@@ -76,7 +76,9 @@ test.describe("Claude Code mode (V7)", () => {
     await expect(page.getByTestId("conversation")).not.toContainText("turn 2 of conversation");
     // The reply names the conversation; the page shows the binding once the turn ends.
     const text = (await page.getByTestId("conversation").textContent()) ?? "";
-    const conversation = /turn 1 of conversation (\S+)\./.exec(text)?.[1];
+    // The page text has no space between the reply and what follows it, so the id
+    // is matched by its own shape (`scripted-<time>-<n>`), not by "up to a space".
+    const conversation = /turn 1 of conversation (scripted-[\w-]+)\./.exec(text)?.[1];
     expect(conversation).toMatch(/^scripted-/);
 
     await expect(page.getByTestId("conversation")).toContainText(`turn 2 of conversation ${conversation}`, { timeout: 40_000 });
@@ -138,5 +140,27 @@ test.describe("the plan panel (V8)", () => {
 
     // Read-only: nothing in the panel can change the plan (BR-18).
     await expect(panel.locator("button, input, textarea, select, [contenteditable=true]")).toHaveCount(0);
+  });
+});
+
+test.describe("tool calls", () => {
+  test("a run of shell commands is one quiet line, labelled by what each command was for", async ({ page, consoleErrors: _consoleErrors }) => {
+    await newSession(page);
+    await send(page, "[bash] look around");
+    await expect(page.getByTestId("conversation")).toContainText("Scripted Claude Code, turn 1");
+
+    const group = page.getByTestId("tool-group");
+    await expect(group).toHaveCount(1);
+    await expect(group).toContainText("Check git status · List files · Read the package manifest · +2 more");
+    await expect(page.getByTestId("tool-row")).toHaveCount(0);
+
+    await group.getByRole("button").first().click();
+    await expect(page.getByTestId("tool-row")).toHaveText([
+      "Check git status",
+      "List files",
+      "Read the package manifest",
+      "Run the tests",
+      "Typecheck",
+    ]);
   });
 });

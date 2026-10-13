@@ -817,10 +817,16 @@ interface BuildTaskToolsOptions {
    * `addTask` records: it files the row not dispatched.
    */
   readonly dispatches?: boolean;
+  /**
+   * Offer `dispatchTask`'s post form: `post: true`, with `assignee` and
+   * `target`, handed to this form to file ({@link TaskToolsOptions.posts}).
+   * Only the per-turn list sets it, on a turn the form says is routing one.
+   */
+  readonly posting?: DispatchPostForm;
 }
 
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
-  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false } = options;
+  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
    * The nine names, optionally board-qualified.
@@ -1172,6 +1178,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .optional()
       .describe("A task recorded earlier on this board that hasn't started, to start instead of a new one."),
   };
+  const dispatchPostFields = {
+    post: z
+      .literal(true)
+      .optional()
+      .describe("Hand on the post being routed on this turn, instead of a new task. Send only assignee and target with it."),
+    target: z
+      .string()
+      .optional()
+      .describe("With post: where the post is worked, for an assignee that names one. Only with post."),
+  };
   const dispatchWaitFields = {
     wait: z.boolean().optional().describe("Wait for the task to end and return its output as answer."),
     timeoutMs: z
@@ -1187,7 +1203,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     wait?: unknown;
     timeoutMs?: unknown;
     post?: unknown;
+    target?: unknown;
   };
+  /** The fields a post takes: everything else describes a task, which a post isn't. */
+  const POST_FIELDS = new Set(["post", "assignee", "target"]);
   /** The fields only a new task takes, refused beside `taskId` (BR-13): change a recorded task with updateTask first. */
   const NEW_TASK_ONLY = ["deps", "priority", "input", "metadata", "followUpOf"] as const;
 
@@ -1231,13 +1250,26 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   const dispatchTask = defineTool({
     name: named("dispatchTask"),
-    description: wait ? dispatchDescription + dispatchWaitDescription : dispatchDescription,
+    description:
+      (wait ? dispatchDescription + dispatchWaitDescription : dispatchDescription) +
+      (posting !== undefined ? ` ${posting.description}` : ""),
     // Not `.strict()`: FIX-1872 adds its post form to this schema. Passthrough,
     // so a field this board doesn't offer reaches `execute` to be refused by
     // name rather than stripped by the parse (BR-18).
-    inputSchema: (wait ? z.object({ ...dispatchFields, ...dispatchWaitFields }) : z.object(dispatchFields)).passthrough(),
+    inputSchema: z
+      .object({
+        ...dispatchFields,
+        ...(wait ? dispatchWaitFields : {}),
+        ...(posting !== undefined ? dispatchPostFields : {}),
+      })
+      .passthrough(),
     outputSchema: z.union([
-      z.object({ ok: z.literal(true), taskId: z.string(), answer: z.unknown().optional() }),
+      z.object({
+        ok: z.literal(true),
+        taskId: z.string().optional(),
+        answer: z.unknown().optional(),
+        note: z.string().optional(),
+      }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
     parentStateSchema,
@@ -1253,10 +1285,43 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             "Dispatch without them, and you hear when the task ends. Nothing was filed.",
         };
       }
-      if (input.post !== undefined) {
+      if (posting === undefined && (input.post !== undefined || input.target !== undefined)) {
         return {
           ok: false as const,
           error: "post_unavailable: there is no post being routed on this turn to hand on. Nothing was filed.",
+        };
+      }
+      if (posting !== undefined && input.post !== undefined) {
+        const extra = Object.keys(input).filter(
+          (field) => !POST_FIELDS.has(field) && (input as Record<string, unknown>)[field] !== undefined,
+        );
+        if (input.post !== true || extra.length > 0) {
+          return {
+            ok: false as const,
+            error:
+              `post_takes_assignee_and_target: a post is handed on as it was written, so send ` +
+              `post: true with assignee and, where it names one, target, and nothing else` +
+              (extra.length > 0 ? ` (not ${extra.join(", ")})` : "") +
+              ". Nothing was filed.",
+          };
+        }
+        if (input.assignee !== undefined && typeof input.assignee !== "string") {
+          return { ok: false as const, error: "post_takes_assignee_and_target: assignee is a name. Nothing was filed." };
+        }
+        if (input.target !== undefined && typeof input.target !== "string") {
+          return { ok: false as const, error: "post_takes_assignee_and_target: target is a name. Nothing was filed." };
+        }
+        return posting.file(ctx, {
+          ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+          ...(input.target !== undefined ? { target: input.target as string } : {}),
+        });
+      }
+      if (input.target !== undefined) {
+        return {
+          ok: false as const,
+          error:
+            "target_without_post: target says where a post is worked, and this call files a task. " +
+            "Send post: true to hand the post on, or drop target. Nothing was filed.",
         };
       }
       const hasGoal = input.goal !== undefined;
@@ -1678,11 +1743,41 @@ export interface TaskToolsOptions {
    * each row runs, so a dispatch there would promise a start nothing makes.
    */
   readonly dispatches?: boolean;
+  /**
+   * `dispatchTask`'s post form (`post: true`), for a layer that routes posts
+   * through this board. On a turn {@link DispatchPostForm.routing} answers
+   * true, `dispatchTask` takes `post` and `target`, and a call with
+   * `post: true` is handed to {@link DispatchPostForm.file}; on any other turn
+   * neither field is in the schema, and either is refused `post_unavailable`.
+   * Has no effect without `dispatches`.
+   */
+  readonly posts?: DispatchPostForm;
 }
 
 /**
- * The task tools as a turn gets them: two lists of the same names, built
- * once, and the one the turn can use. The nine, and `dispatchTask` on a board
+ * The post form of `dispatchTask`, supplied by the layer that knows what a post
+ * is. The board files nothing for it: `file` files the row itself, through
+ * the board's ref, with whatever server-written fields it needs.
+ */
+export interface DispatchPostForm {
+  /** Whether the running turn is routing a post it can hand on. */
+  routing(ctx: BlockContext): boolean;
+  /** Appended to `dispatchTask`'s description on a routing turn. */
+  readonly description: string;
+  /**
+   * Hand the post on to `assignee` (and `target`). Its answer is the tool's:
+   * `ok` with the filed row's id, or a `note` saying why none was filed.
+   */
+  file(
+    ctx: BlockContext,
+    call: { assignee?: string; target?: string },
+  ): Promise<{ ok: true; taskId?: string; note?: string } | { ok: false; error: string }>;
+}
+
+/**
+ * The task tools as a turn gets them: a list of the same names per kind of
+ * turn (waiting or not, routing a post or not), each built once, and the one
+ * the turn can use. The nine, and `dispatchTask` on a board
  * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
  * `timeoutMs` only on a board that also resumes asks (`options.resumesAsks`)
  * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
@@ -1700,11 +1795,31 @@ export function taskToolsForTurn(
     ...(roster !== undefined ? { roster } : {}),
     dispatches: options.dispatches === true,
   };
-  const plain = buildTaskTools(resolveCollection, base);
-  // Only `dispatchTask` waits, so a board without it has one list.
-  if (options.resumesAsks !== true || options.dispatches !== true) return () => plain;
-  const waiting = buildTaskTools(resolveCollection, { ...base, wait: true });
-  return (ctx) => (canHoldWait(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
+  const posts = options.dispatches === true ? options.posts : undefined;
+  // Only `dispatchTask` waits, so a board without it has no waiting list.
+  const waits = options.resumesAsks === true && options.dispatches === true;
+  // One list per kind of turn, built once, the first time a turn needs it.
+  const lists = new Map<string, GeneratorTool[]>();
+  const listFor = (wait: boolean, posting: DispatchPostForm | undefined): GeneratorTool[] => {
+    const key = `${wait}:${posting !== undefined}`;
+    let list = lists.get(key);
+    if (list === undefined) {
+      list = buildTaskTools(resolveCollection, {
+        ...base,
+        ...(wait ? { wait: true } : {}),
+        ...(posting !== undefined ? { posting } : {}),
+      });
+      lists.set(key, list);
+    }
+    return list;
+  };
+  // The plain list now, so a board that can't build its tools fails at wiring.
+  listFor(false, undefined);
+  return (ctx) =>
+    listFor(
+      waits && canHoldWait(ctx as Pick<BlockContext, "requestHost">),
+      posts !== undefined && posts.routing(ctx as BlockContext) ? posts : undefined,
+    );
 }
 
 /**

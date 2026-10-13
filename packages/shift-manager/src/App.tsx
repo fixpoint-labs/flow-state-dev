@@ -133,7 +133,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     </>
   );
   return (
-    <div className="flex h-screen min-h-0 min-w-[900px]" data-testid="shell">
+    <div className="flex h-dvh min-h-0 min-w-[900px]" data-testid="shell">
       <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.

@@ -323,7 +323,8 @@ const forCoding = handler({
  * guessed.
  *
  * `openWorkstream` names its lead: a worker on the user's roster that can
- * lead. The project coordinator opens workstreams through the same block.
+ * lead, and whose description says it does the work. The project coordinator
+ * opens workstreams through the same block.
  *
  * The owner is the session's user, so a project the chief of staff creates
  * belongs to the user talking to it, who is always a project member; `members` adds
@@ -350,7 +351,7 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
     })
       .step(blocks.listProjects)
       .step(forCoding),
-    openWorkstream: workstreams.openWorkstream.as({
+    openWorkstream: workstreams.openWorkstreamTool.as({
       name: "openWorkstream",
       description:
         "Open a workstream for the user you are talking to, in a project, by the project's address " +
@@ -878,8 +879,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   });
   // The workstream writes. A workstream's lead runs on the built-in `agent`
   // flow or the EM's `em` flow, each of which declares the entry that starts
-  // its workstream session.
-  const workstreamBlocks = defineWorkstreamBlocks({ installation, leadFlows: LEAD_FLOWS });
+  // its workstream session. A worker's open is checked against the lead's
+  // description first: told in prose, the small model still opened research
+  // under the EM, the one lead it had.
+  const workstreamBlocks = defineWorkstreamBlocks({
+    installation,
+    leadFlows: LEAD_FLOWS,
+    leadFit: { model: "openai/gpt-5.4-mini" },
+  });
   const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
   const flowOf = (workerId: string): string =>
