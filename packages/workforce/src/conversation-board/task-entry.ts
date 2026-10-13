@@ -97,7 +97,7 @@ function hasInput(input: unknown): boolean {
  * for, as its board's hand-over named it at birth (a readonly field). The
  * conversation ledger's partition is that same value.
  */
-function filingPartitionOf(ctx: BlockContext): string | undefined {
+export function filingPartitionOf(ctx: BlockContext): string | undefined {
   const filing = (ctx.session.state as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
   return typeof filing === "string" ? filing : undefined;
 }
@@ -108,7 +108,7 @@ function filingPartitionOf(ctx: BlockContext): string | undefined {
  * sets it. The session is keyed by this task and its worker, and the gate
  * admits only the row whose run link names this session, so it is one task.
  */
-function sessionTaskOf(ctx: BlockContext): string | undefined {
+export function sessionTaskOf(ctx: BlockContext): string | undefined {
   const taskId = (ctx.session.state as Record<string, unknown>)[TASK_ID_STATE_KEY];
   return typeof taskId === "string" ? taskId : undefined;
 }
@@ -118,7 +118,7 @@ function sessionTaskOf(ctx: BlockContext): string | undefined {
  * board's hand-over named it at birth (a readonly field): where the task's
  * notice goes.
  */
-function filingFlowOf(ctx: BlockContext): string | undefined {
+export function filingFlowOf(ctx: BlockContext): string | undefined {
   const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
   return typeof flow === "string" ? flow : undefined;
 }

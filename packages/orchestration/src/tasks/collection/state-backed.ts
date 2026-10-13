@@ -20,6 +20,7 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
+  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -59,7 +60,6 @@ import {
   parkPatch,
   unparkPatch,
   reopenPatch,
-  assertEdgeAllowed,
   type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
@@ -349,7 +349,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           };
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertEdgeAllowed(task.status, targetStatus, id, requireFrom);
+        if (requireFrom !== "finished") assertTransitionAllowed(task.status, targetStatus, id);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that
         // map and there is nothing to reset (FIX-989).
@@ -746,10 +746,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async reopen(id, options) {
-      // Fenced to the one edge it owns (FIX-1764): a finished row (`completed`,
-      // `errored` or `cancelled`) back to `pending`. Checked inside the atomic
-      // write, so a row that is not finished comes back `declined` naming the
-      // status it found. `ifAllowed` is forced, the way `unpark` forces it.
+      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
       return transitionTo(
         id,
         "pending",

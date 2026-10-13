@@ -264,8 +264,6 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
             : door === null
               ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
               : null;
-  // A message on a finished task picks it up again (FIX-1764): the worker's
-  // door reopens it, so the box says so before the line is sent.
   const reopens = row !== undefined && isDone(row.status);
   return (
     <TurnComposer

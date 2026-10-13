@@ -14,7 +14,6 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
-  assertTransitionAllowed,
   IllegalTaskTransitionError,
   isTerminalStatus,
   isTransitionAllowed,
@@ -175,15 +174,7 @@ export function unparkPatch(task: Task, feedback: string | undefined, answer = f
   };
 }
 
-/**
- * The fields `reopen` writes besides the status (FIX-1764): a finished row goes
- * back to the queue as a task a person picked up again. Clears what its ending
- * wrote (`error`, `completedAt`) and every per-attempt field, keeps its result
- * until the next attempt writes one, and leaves every debt its ending owes
- * (a notice, a resume) for whoever pays it. Counts one more turn re-entry, so
- * the claim that follows is not charged against `maxAttempts`, and marks the
- * row `reopened` for that attempt.
- */
+/** Clears the ending and the per-attempt fields. The result, and any notice or resume the ending owes, stay. */
 export function reopenPatch(task: Task): Partial<Task> {
   return {
     error: undefined,
@@ -208,26 +199,8 @@ export function reopenPatch(task: Task): Partial<Task> {
  */
 export type EdgeSource = TaskStatus | "finished";
 
-/** Whether `status` is a source of the edge `source` names. */
 export function onEdgeSource(status: TaskStatus, source: EdgeSource): boolean {
   return source === "finished" ? isTerminalStatus(status) : status === source;
-}
-
-/**
- * The status table's check, for a write that is not `reopen`'s. A verb that
- * owns the edge out of a finished row is legal on that edge alone, which
- * {@link assertTransitionFrom} has already checked.
- *
- * @throws {IllegalTaskTransitionError} when the table forbids the edge.
- */
-export function assertEdgeAllowed(
-  from: TaskStatus,
-  to: TaskStatus,
-  taskId: string,
-  requireFrom: EdgeSource | undefined
-): void {
-  if (requireFrom === "finished") return;
-  assertTransitionAllowed(from, to, taskId);
 }
 
 /**

@@ -1,13 +1,4 @@
 /**
- * A person's message on a finished task reopens it (FIX-1764).
- *
- * The task's own session still holds its context, so a person who writes
- * there after the task finished is picking it up again: the line stays in the
- * session, the task goes back on the conversation's board and reads in
- * progress, and its next attempt runs in the same session, where the worker
- * answers from everything the session holds. The conversation that filed it
- * hears the new ending, as it heard the first.
- *
  * The host is the conversation board's (`./conversation-board-harness`): a
  * coordinator conversation filing for `otto`, an `agent` worker, whose model
  * is scripted. What each model call was SENT is read off the mock's calls.
