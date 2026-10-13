@@ -37,7 +37,7 @@ import {
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
-import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
+import { cloneValue, resolveClientData } from "@flow-state-dev/core/helpers";
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type {
@@ -1038,7 +1038,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
   /**
    * Compute the live projection payload for a mutation, or `undefined` when the
-   * resource hasn't opted into `client.live`. Reuses `resolveClientProjection`
+   * resource hasn't opted into `client.live`. Reuses `resolveClientData`
    * so the streamed delta is byte-identical to the slice the snapshot builder
    * would later send. A throwing `client.data` projection degrades to no delta
    * (the mutation already committed; the client falls back to a batched
@@ -1053,13 +1053,13 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
    * sequential mutations (the norm) are always ordered.
    */
   const liveProjection = async (
-    cfg: { client?: { live?: boolean } } | undefined,
+    cfg: { client?: { live?: boolean }; secret?: ReadonlyArray<string> } | undefined,
     nextState: JsonObject
   ): Promise<{ delta: JsonValue } | undefined> => {
     if (cfg?.client?.live !== true) return undefined;
     try {
-      const delta = await resolveClientProjection(
-        cfg.client as Parameters<typeof resolveClientProjection>[0],
+      const delta = await resolveClientData(
+        cfg as Parameters<typeof resolveClientData>[0],
         nextState
       );
       return { delta };

@@ -6,6 +6,12 @@
  *   1. Mutual exclusion across `expose`, `exclude`, and `data`.
  *   2. Field names listed in `expose` / `exclude` exist on the state schema
  *      (best-effort — silently skipped when the schema isn't a `ZodObject`).
+ *   3. `secret` fields exist on the state schema and are not in `expose`.
+ *
+ * `omitSecretFields` strips a config's `secret` fields from raw state, for the
+ * debug reads that return it. `resolveClientData` is the client view every
+ * other engine read sends: the projection run on the full state, with any
+ * `secret` field dropped from what it returns.
  *
  * `resolveClientProjection` runs at request time (server routes) and produces
  * the `clientData` payload from a resource/collection-item state. The four
@@ -65,8 +71,10 @@ export function validateClientProjection(args: {
   kind: "single" | "collection";
   stateSchema: unknown;
   client: ProjectionClient;
+  secret?: ReadonlyArray<string>;
 }): void {
-  const { definer, ref, kind, stateSchema, client } = args;
+  const { definer, ref, kind, stateSchema, client, secret } = args;
+  if (secret !== undefined) validateSecretFields(definer, ref, stateSchema, client, secret);
   if (client === undefined) return;
 
   const set: string[] = [];
@@ -113,6 +121,76 @@ export function validateClientProjection(args: {
     `${definer} for "${ref}": client.${which} names key(s) not on stateSchema: ` +
     `${unknown.join(", ")}. Valid keys: ${valid}.`
   );
+}
+
+/**
+ * A `secret` field must be on the state schema (best-effort, as for `expose`)
+ * and must not be one `client.expose` asks to send: the two contradict, and
+ * which wins would be a guess.
+ */
+function validateSecretFields(
+  definer: string,
+  ref: string,
+  stateSchema: unknown,
+  client: ProjectionClient,
+  secret: ReadonlyArray<string>
+): void {
+  const knownKeys = introspectStateKeys(stateSchema);
+  const unknown = knownKeys === undefined ? [] : secret.filter((n) => !knownKeys.has(n));
+  if (unknown.length > 0) {
+    const valid = [...knownKeys!].sort().join(", ") || "(none)";
+    throw new Error(
+      `${definer} for "${ref}": secret names key(s) not on stateSchema: ` +
+      `${unknown.join(", ")}. Valid keys: ${valid}.`
+    );
+  }
+  const exposed = (client?.expose as ReadonlyArray<string> | undefined)?.filter((n) => secret.includes(n)) ?? [];
+  if (exposed.length > 0) {
+    throw new Error(
+      `${definer} for "${ref}": client.expose names secret key(s): ${exposed.join(", ")}. ` +
+      `A secret field never leaves the server; remove it from one list.`
+    );
+  }
+}
+
+/**
+ * `state` without the fields `config.secret` names — what every read that
+ * leaves the server starts from. Returns `state` itself when nothing is
+ * secret, so the common path allocates nothing.
+ */
+export function omitSecretFields<T extends JsonObject>(
+  config: { secret?: ReadonlyArray<string> },
+  state: T
+): JsonObject {
+  const secret = config.secret;
+  if (secret === undefined || secret.length === 0) return state;
+  return omit(state, secret);
+}
+
+/**
+ * The client view of `state`: `config.client`'s projection run on the full
+ * state, then any `secret` field dropped from the result's top level. A
+ * `client.data` function sees the whole state (its parameter type says so) and
+ * can derive from a secret, as in `hasKey: s.value !== ""`; it cannot pass one
+ * through under its own name. Every engine read that sends a projection to a
+ * client goes through here.
+ */
+export function resolveClientData<TState extends JsonObject>(
+  config: {
+    client?: ResourceClientConfig<TState> | CollectionClientConfig<TState>;
+    secret?: ReadonlyArray<string>;
+  },
+  state: TState
+): JsonValue | Promise<JsonValue> {
+  const projected = resolveClientProjection(config.client, state);
+  return projected instanceof Promise
+    ? projected.then((value) => withoutSecrets(config, value))
+    : withoutSecrets(config, projected);
+}
+
+function withoutSecrets(config: { secret?: ReadonlyArray<string> }, value: JsonValue): JsonValue {
+  const isObject = typeof value === "object" && value !== null && !Array.isArray(value);
+  return isObject ? omitSecretFields(config, value as JsonObject) : value;
 }
 
 function pick<T extends JsonObject>(state: T, keys: ReadonlyArray<string>): JsonObject {

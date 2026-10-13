@@ -323,7 +323,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
       { toolName: "listLeads", args: {} },
       { toolName: "openWorkstream", args: { ...research, lead: EM } },
       { toolName: "openWorkstream", args: { ...research, lead: GENERAL_LEAD } },
-      { toolName: "handOff", args: { worker: GENERAL_LEAD, target: "shared/apollo/research" } },
+      { toolName: "dispatchTask", args: { post: true, assignee: GENERAL_LEAD, target: "shared/apollo/research" } },
     ];
     const pc = await projectCoordinator(alice, setup);
     await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next, SAFFRON-2207." });
@@ -532,6 +532,29 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
     await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 });
     expect(entryReads().length).toBeGreaterThan(0);
+  });
+
+  it("its Stream draws an open the coordinator retried as an attempt, not a failure", async () => {
+    const { screen, act, fireEvent, within } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    leadFits = (prompt) => !prompt.includes(EM);
+    const research = { project: APOLLO, id: "research", title: "Research what to build next", objectives: ["Rank three ideas."] };
+    judgmentCalls = [
+      { toolName: "listLeads", args: {} },
+      { toolName: "openWorkstream", args: { ...research, lead: EM } },
+      { toolName: "openWorkstream", args: { ...research, lead: GENERAL_LEAD } },
+    ];
+    const pc = await projectCoordinator(alice, setup);
+    await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next." });
+
+    openApp(alice.clients, baseUrl, "/p/apollo/stream");
+    const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
+    // The run of calls is one line, and the open that went through on its retry doesn't turn it red.
+    const line = await within(conversation).findByRole("button", { name: /^Used 3 tools$/ }, { timeout: 10_000 });
+    act(() => fireEvent.click(line));
+    expect(within(conversation).getByText("Tried openWorkstream")).toBeTruthy();
+    expect(within(conversation).queryByText("openWorkstream failed")).toBeNull();
   });
 
   it("lists a workstream opened while its Workstreams tab is open, with no reload or navigation", async () => {

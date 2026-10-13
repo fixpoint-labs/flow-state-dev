@@ -1,6 +1,6 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
- * Inbox, Tasks and Roster with their counts, PROJECTS, TEAMS, and a footer
+ * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
  * (BR-6) with the on-shift and on-call counts. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
@@ -23,7 +23,7 @@
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
  * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
- * Roster and Jump to. Each icon names itself on hover and navigates as its
+ * Roster, Settings and Jump to. Each icon names itself on hover and navigates as its
  * entry does.
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
@@ -91,6 +91,8 @@ const ICON_PATHS = {
   inbox: "M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2",
   tasks: "M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
+  /** Settings: a key. */
+  settings: "M4.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M7.5 7.5h5 M10.5 7.5v2 M12.5 7.5v1.5",
 } as const;
 
 function NavIcon({ name }: { name: keyof typeof ICON_PATHS }) {
@@ -282,6 +284,9 @@ function SidebarRail({
         </RailItem>
         <RailItem label="Roster" active={route.level === "roster"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
           <NavIcon name="roster" />
+        </RailItem>
+        <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
+          <NavIcon name="settings" />
         </RailItem>
         <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
           <NavIcon name="jump" />
@@ -521,6 +526,13 @@ export function Sidebar({
                 active={route.level === "roster" && route.team === null}
                 onClick={() => navigate({ level: "roster", team: null })}
                 testId="nav-roster"
+              />
+              <NavItem
+                label="Settings"
+                icon={<NavIcon name="settings" />}
+                active={route.level === "settings"}
+                onClick={() => navigate({ level: "settings" })}
+                testId="nav-settings"
               />
             </div>
 
