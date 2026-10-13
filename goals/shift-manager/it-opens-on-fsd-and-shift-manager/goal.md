@@ -1,20 +1,19 @@
 # shift-manager › it opens on FSD and Shift Manager
 
 **Issue:** FIX-1904 (epic FIX-1903)
-**Note:** Slice 2 makes the `fsd` profile the no-flag default of `pnpm shift-manager:dev`; until then the legs pass `--config`.
-**Outcome:** On a fresh open of `pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`, a person sees exactly FSD and Shift Manager, and an item they ask for on either one is worked by Claude Code in a worktree of their checkout. With no Claude credential the Lab refuses to start and says what to set.
-**Input:** A fresh store (a temp file) per leg, and the checkout's own script with `--config` naming the `fsd` profile. Leg b (not built yet) takes a stamp picked at run time in each item's text, with the checkout on a branch other than `main`.
+**Outcome:** On a fresh open of `pnpm shift-manager:dev` with no flags, a person sees exactly FSD and Shift Manager, and an item they ask for on either one is worked by Claude Code in a worktree of their checkout. With no Claude credential the Lab refuses to start and says what to set.
+**Input:** A fresh store (a temp file) per leg, and the checkout's own script with no `--config`. Leg b takes a stamp picked at run time in each item's text, and needs the checkout on a named branch other than `main` (and at another commit), so a run cut from `main` is told apart from one cut from the checked-out branch.
 **Signal:**
 - **a** — through the Lab's routes, as the page's user: the organization's projects are exactly `fsd` and `shift-manager`, each naming `https://github.com/fixpoint-labs/flow-state-dev.git`; the user holds no private project; FSD's brief names `packages/` and not Shift Manager's folder, Shift Manager's names `packages/shift-manager`; the start line names Claude Code.
-- **b** — both rows settle `completed`; `git worktree list` in the checkout names both places; each branch descends from `main` and commits the file the item asked for, and no `SCRIPTED-RUN.md`. **Not built in this build:** it needs the checkout mapping, so the leg reports `b:not-built` and the goal cannot pass whole until it lands.
+- **b** — one item on each project, asked of the chief of staff over the Lab's routes as the page's user, one after the other: each task settles `completed`; `git worktree list` in the checkout names one new place per item under the profile's runs folder; each place's branch descends from `main` and not from the checked-out branch, changes the file the item named with the item's stamp in it, and adds no `SCRIPTED-RUN.md`. The leg removes the worktrees and branches it made, pass or fail.
 - **c** — with no `ANTHROPIC_API_KEY`, no `CLAUDE_CODE_OAUTH_TOKEN` and an empty home, as `start` runs it and as `dev` (`--dev`) runs it, the process exits non-zero before it listens, and its output names `ANTHROPIC_API_KEY` and `DEVFORCE_LAB_HARNESS=stub`.
 **Anti-game:** No assertion on the profile file or a mocked harness or probe: the projects are read through the routes a page reads, and leg c's refusal is Claude Code's own answer through the installed Agent SDK. The check sets only the store location, and in c takes credentials away. "Exits before listening" is graded on the process (no banner, a non-zero exit), not on a message alone.
-**Model:** n/a for legs a and c (no model turn; a needs a Claude credential to start, since the default coder checks for one). Leg b: real, the chief of staff's model and Claude Code.
-**Run:** `pnpm tsx goals/shift-manager/it-opens-on-fsd-and-shift-manager/run.mts` (`GOAL_LEG=a,c` for the legs this build has)
+**Model:** n/a for legs a and c (no model turn; a needs a Claude credential to start, since the default coder checks for one). Leg b: real, the chief of staff's model (its key) and Claude Code (a sign-in or `ANTHROPIC_API_KEY`).
+**Run:** `pnpm tsx goals/shift-manager/it-opens-on-fsd-and-shift-manager/run.mts` (`GOAL_LEG=a,c` for the model-free legs). Without a model, `packages/shift-manager/test/fsd-checkout.test.ts` covers leg b's mapping on a temp checkout; it is not leg b.
 **Controls:**
 - `GOAL_CONTROL=silent-stub` — `harness.mts` is patched in the process under test (never in the checkout) to fall back to the scripted coder when there is no account, saying nothing. Leg c must FAIL on `c:exit-before-listening`, in both forms.
-- `GOAL_CONTROL=no-checkout` — with the checkout mapping. Leg b must FAIL on `git worktree list` naming both places, with the run refused by name and nothing cloned. Comes with leg b.
-- DevTeam's profile in place of `fsd`'s: leg a must FAIL on `a:exactly-fsd-and-shift-manager`. Run by hand, with `run.mts`'s `--config` pointed at `teams/devteam/fsdev.config.mts`.
+- `GOAL_CONTROL=no-checkout` — `fsd.fsdev.config.mts` is patched in the process under test (never in the checkout) to open its Lab with no checkout mapping, its remotes unchanged. Leg b must FAIL on `b:worktrees-in-checkout`; the leg also grades that each run was refused by name (`remote-not-allowed`) and that nothing was cloned.
+- DevTeam's profile in place of `fsd`'s, as the default was before this issue: leg a must FAIL on `a:exactly-fsd-and-shift-manager`. Run by hand, with `checkout.mts`'s default pointed at `teams/devteam/fsdev.config.mts`.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -25,3 +24,6 @@
 | 2026-10-12 | working tree on 588b2c8e9 | n/a | PASS | `GOAL_LEG=a` with an `ANTHROPIC_API_KEY`: shared `fsd`, `shift-manager` on this repository, none private; "Coder: Claude Code, on the credential from ANTHROPIC_API_KEY." |
 | 2026-10-12 | working tree on 9f9b0bba8 | n/a | FAIL (control) | `GOAL_LEG=c GOAL_CONTROL=silent-stub` with `--config` naming `fsd`: `c:exit-before-listening` and `c:names-the-variable`, as `start` and as `dev` (each listened) |
 | 2026-10-12 | working tree on 9f9b0bba8 | n/a | PASS | `GOAL_LEG=c` with `--config` naming `fsd`: `start` and `dev` each exited 3 before listening, naming `ANTHROPIC_API_KEY` and `DEVFORCE_LAB_HARNESS=stub`. Leg a not re-run: no Claude credential here |
+| 2026-10-12 | working tree on f15779daa | n/a | PASS | `GOAL_LEG=c`, no `--config`: `start` and `dev` each exited 3 before listening, naming `ANTHROPIC_API_KEY` and `DEVFORCE_LAB_HARNESS=stub` |
+| 2026-10-12 | working tree on f15779daa | n/a | FAIL (control) | `GOAL_LEG=c GOAL_CONTROL=silent-stub`, no `--config`: `c:exit-before-listening` and `c:names-the-variable`, as `start` and as `dev` (each listened) |
+| 2026-10-12 | working tree on f15779daa | — | not run | Legs a and b: no Claude credential on this machine (leg b's setup stops at the start refusal). The `no-checkout` patch was shown to reach the profile in the script's process (mark written, Lab listening on the scripted coder). The mapping is covered model-free by `fsd-checkout.test.ts`, red under no-checkout |

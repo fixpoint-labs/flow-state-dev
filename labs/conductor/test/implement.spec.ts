@@ -63,7 +63,7 @@ function runContext(checkout: string): Record<string, unknown> {
   };
 }
 
-const ALICE: RunPrincipal = { userId: "alice" };
+const ALICE: RunPrincipal = { orgId: "org_a", userId: "alice" };
 const EPIC = "conductor-tasks-test-epic";
 const at = (issue: string, phase: string): RunLocation => ({
   principal: ALICE,
@@ -632,9 +632,9 @@ describe("the board task's identity", () => {
     expect(branchFor(at("FIX-1219", "implement"))).toBe(
       // The principal segment is DERIVED, not spelled: it is a digest, and a
       // literal here would only pin how the digest happens to be computed
-      // today. What this asserts is the SHAPE — untenanted tag, principal,
+      // today. What this asserts is the SHAPE — untenanted tag, organization, user,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
+      `conductor/t0/${encodeSegment("org_a")}/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
     );
   });
 });

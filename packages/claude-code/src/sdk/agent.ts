@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler, harnessRunInputSchema, planKeySegment } from "@flow-state-dev/core";
+import { handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
@@ -522,6 +522,14 @@ export function forwardSignalToController(
 }
 
 /**
+ * The key namespace for ONE run: `<requestId>/<invocation>`. Core's
+ * `harnessRunNamespace`, under the name this package has always exported, so
+ * every harness that records into the shared plan record keys its runs the
+ * same way.
+ */
+export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
+
+/**
  * Open a {@link WorkRecorder} against the three collections the block declared,
  * or return `null` with a status note when the two records are not on the
  * context.
@@ -540,60 +548,6 @@ export function forwardSignalToController(
  * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
  * child session's runs apart.
  */
-/**
- * The key namespace for ONE run: `<requestId>/<invocation>`.
- *
- * **The request id alone is not the run's identity, and using it as one is a
- * silent data-merging bug.** A generator holding this agent as a tool can call
- * it several times inside a single request — the framework's own tool executor
- * disambiguates each call by `stepNumber:toolCallId` precisely because that
- * happens. Every such call is a separate coding run: its own files, its own
- * to-do ids (the harness numbers those per agent session, so two runs both
- * having a task `5` is ordinary), and its own gap ordinals, which restart at 1
- * per recorder and would therefore overwrite each other outright.
- *
- * `blockPath` is the framework's per-invocation identity — derived from the
- * block tree and the model step, so it is unique per call AND stable across a
- * replay, which a minted id would not be. Slashes are flattened so one
- * invocation stays one key segment.
- *
- * Two segments rather than one, deliberately: the request id stays the leading
- * segment, so `topicPrefix=<collection>/<requestId>/` still selects everything
- * one request did, while `<collection>/<requestId>/<invocation>/` narrows to a
- * single run. Replacing the request id outright would have made a row
- * impossible to correlate back to the request that caused it.
- *
- * Both parts are escaped into a single segment each — see
- * `planKeySegment` in `@flow-state-dev/core` for why that escaping must not be lossy.
- */
-export function runNamespace(ctx: BlockContext): string {
-  const identity = (
-    ctx as { _blockIdentity?: { blockPath?: string; attempt?: number } }
-  )._blockIdentity;
-  const path = identity?.blockPath;
-  // A context without a block identity (a direct `execute`, a mock) has exactly
-  // one invocation by construction, so a constant is the honest discriminator.
-  //
-  // The path is escaped too, and for the same reason the request id is: its
-  // user-controlled parts (a router branch name, a model-supplied tool name or
-  // call id) are escaped on the way in by the blockInstanceId grammar's own
-  // rules, which cover `%/[]:` — but not a backslash and not a control
-  // character, both of which this grammar cares about.
-  const step =
-    typeof path === "string" && path.length > 0
-      ? planKeySegment(path.replace(/\//g, "."))
-      : "0";
-  // …and the ATTEMPT, because a retried block re-enters at the SAME path.
-  // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
-  // instance id from `(request, path, attempt)` while leaving the path
-  // untouched — so the framework's own invocation identity has three parts and
-  // this had two. Two attempts of one retried run would otherwise share a
-  // namespace: paths overwritten, and gap ordinals (which restart at 1 per
-  // recorder) clobbering the earlier attempt's outright.
-  const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
-  return `${planKeySegment(ctx.request.identity.id)}/${step}#${attempt}`;
-}
-
 function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {

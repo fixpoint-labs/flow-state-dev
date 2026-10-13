@@ -114,7 +114,9 @@ person sees. If wrong: two fences survive under new names, or a person's lines q
 **Gate on a sibling:** this builds only once FIX-1875 merges with `dispatchTask`'s shape reserving
 the post form (`post: true` on a routing turn, FIX-1875 D2 and BR-26), not just `target`.
 
-**Open: none.** D1 is the one to weigh. Reasoning: [DECISIONS.md](DECISIONS.md). Cases:
+**Built in two PRs** ([D3](DECISIONS.md#d3), the product owner's call on 2026-10-12): board seams
+first, then the fence change. **Open: none.** D1 is the one to weigh. Reasoning: [DECISIONS.md](DECISIONS.md). Cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `workforce` + DevTeam's workers + docs · large · 1 PR (epic ER-10) · epic FIX-1870
+Feature · large · 2 PRs ([D3](DECISIONS.md#d3)): P1 board seams in `core` + `orchestration`, then P2
+`workforce` + DevTeam's workers + docs, the one fence change (epic ER-10) · epic FIX-1870

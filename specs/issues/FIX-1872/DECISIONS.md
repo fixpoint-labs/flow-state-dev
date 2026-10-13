@@ -2,7 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was chosen, what lost, and what each choice locks in. Two decisions are the sign-off surface.
+What was chosen, what lost, and what each choice locks in. D1 and D2 are the sign-off surface; D3,
+added after merge, is the product owner's call on how the build reaches them (2026-10-12).
 The direction itself, a post that needs an answer is a task and the claim ticket is the only fence,
 is the epic's [D2](../../epics/FIX-1870/DECISIONS.md#d2), decided by the product owner and not
 reopened here.
@@ -16,6 +17,9 @@ flowchart TD
   D1 -.->|"rejected · the delegate loses the post's message and its own session"| X1["fold posts into ordinary tasks"]
   I --> D2["D2 · the model names who · the post goes as written"]
   D2 -.->|"rejected · the delegate reads a paraphrase"| X2["the model writes the task like any other"]
+  I --> D3["D3 · board seams land first, in their own PR"]
+  D3 -.->|"rejected · breaks ER-5"| X3["workstream posts in a fresh session"]
+  D3 -.->|"rejected · breaks ER-10"| X4["workstream posts off the board"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -54,6 +58,22 @@ It comes down to what the delegate answers: a paraphrase can drop the detail the
 **What would change my mind:** the product wanting a coordinator to brief its delegates in its
 own words. Then a post becomes an ordinary task the model writes, and the person's message is
 only context.
+
+<a name="d3"></a>
+## D3 · Board seams land as a prerequisite PR
+
+| | |
+|---|---|
+| **Instead of** | Change the design to fit today's board. Either a workstream post runs in a fresh session keyed by the task, so the lead answers without its conversation (breaks epic ER-5), or workstream posts stay off the board on today's dispatcher, keeping a second fence beside the claim ticket (breaks epic ER-10) |
+| **Because** | The build found the board can't do what D1 and ER-5 need. A task board's dispatcher names one fixed entry and offers only keyed sessions (`per-task`, `per-worker`, a key function), and its hand-over always sends a key. So it can't send a post row to the post entry while other rows go to `work`, and it can't reach a workstream lead's existing session by id. The dispatch layer below already delivers into an existing session by id; only the board doesn't pass one through. Two small seams close the gap, and the signed design stays exactly as signed |
+| **Locks in** | Two PRs ([PLAN](PLAN.md#surfaces)). P1, in `core` and `orchestration`: a board dispatcher's entry may be chosen per row, among the target flow's declared entries, and its session may name an existing session by id. Both are public options with tests, docs and a changeset; no Workforce behaviour changes, no fence is added, nothing is removed. P2 is S1 to S14 on those seams. ER-10 holds: the fence change is still one PR. The per-row entry is a choice among entries the board declares, so the board still lists where each row can land (PLAN S15) |
+
+![D3, how the build reaches the signed design. Chosen: two board seams in a prerequisite PR. Instead of: workstream posts in a fresh session, or workstream posts off the board. It comes down to the first row, the signed design: chosen holds D1, ER-5 and ER-10; a fresh session breaks ER-5, the lead answers cold; off the board breaks ER-10, a second fence ships. Second row, the price: chosen needs a framework PR first, with two public options and a changeset; the others stay in Workforce, one PR. Locks in a board that picks each row's entry and session. Flips if a workstream post may start fresh](figures/d3-board-seams.svg)
+
+It comes down to the signed design: each alternative gives up one epic rule to skip a framework PR.
+
+**What would change my mind:** the product accepting that a workstream post starts fresh, without
+the lead's conversation. Then the fresh session is the smaller build, Workforce only.
 
 ## Decided, not asked
 
@@ -115,6 +135,7 @@ Two entries did the job the same way; this issue folds the first into the second
 | A distinct tool for the post form, or routing turns that can only post | A second tool name is the two-shapes problem epic D2 removed. Post-only routing turns would take away the ordinary task a coordinator files today. `post: true` on the one tool marks the post form (FIX-1875 D2) |
 | A tell path for some posts | No post is a tell (the sort) |
 | Hide post rows from the board | A task shown differently, which epic ER-9 defers |
+| (D3) Keep `action` fixed and give post rows their own assignee, a post lane per delegate | A post row's assignee is the delegate (D2's pinned `assignee`, BR-7's check at hand-over, the session key and the notices all read it). A lane name there would change who the row names. It also still needs the session by id for a workstream |
 
 ## Settled
 
@@ -137,5 +158,8 @@ Two entries did the job the same way; this issue folds the first into the second
   limit bounds it). The goal check keeps only the fence and deadline legs; the reruns prove lines,
   rounds, routing and workstreams. A workstream's session is resolved at filing and written on the
   row. The post form is marked by FIX-1875's explicit `post: true`, not by a missing `goal`.
+- **Amendment, 2026-10-12 (after #3142 merged)** — the build found the board can't route a row to
+  a chosen entry or into an existing session by id. The product owner chose the prerequisite seams
+  over changing the design (D3). D1, D2 and every rule stand as signed.
 
 **Open: none.**

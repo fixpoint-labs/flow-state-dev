@@ -41,25 +41,25 @@ If the Lab fails to start after a save, the error prints and Shift Manager waits
 
 ### Working on Shift Manager itself
 
-In this repository, `pnpm shift-manager:dev` opens DevTeam's demo, the `devteam` profile below. The `fsd` profile opens with its config, a path from the repository root:
-`pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`.
+In this repository, `pnpm shift-manager:dev` opens the `fsd` profile, at `teams/devteam/fsd.fsdev.config.mts`: a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. It raises no ask and opens no workstream, so Inbox is empty until a worker asks you something.
 
-The `fsd` profile, at `teams/devteam/fsd.fsdev.config.mts`, is a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. It raises no ask and opens no workstream, so Inbox is empty until a worker asks you something.
+Ask the chief of staff for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own cut from your local `main`. It doesn't fetch first, so pull `main` when you want the run to start from the latest. Review the work in that worktree, or from your checkout with `git diff main...<branch>`. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
 
-The profile reaches no git remote. A coding run that would have to clone a project's repository is refused, naming the repository, and nothing is fetched.
+Only those two projects get a worktree of your checkout. The Lab reaches no git remote, so a coding run on a project you add yourself, even one on this repository, is refused, naming the repository, and nothing is fetched.
 
 The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The chief of staff answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
 
 The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/fsd.sqlite`, or wherever `FSD_STORE` points. Delete the file to start fresh.
 
-`pnpm shift-manager:dev` runs with `--dev`, which serves Shift Manager's pages from source, so a change to a screen shows as you save it. `pnpm --filter @flow-state-dev/shift-manager start` runs the same profile on the built pages, and builds them first when they're older than their source.
+`pnpm shift-manager:dev` runs with `--dev`, which serves Shift Manager's pages from source, so a change to a screen shows as you save it. `pnpm --filter @flow-state-dev/shift-manager start` runs the same profile on the built pages, and builds them first when they're older than their source. To open the `devteam` profile instead, pass its config, a path from the repository root:
+`pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts`.
 
 To open another Lab from a checkout, pass its config:
 `pnpm --filter @flow-state-dev/shift-manager dev --config ../my-lab/fsdev.config.mts`.
 
 ### The `devteam` profile
 
-`devteam` is the profile `pnpm shift-manager:dev` opens, and the one this repository's checks run against.
+`devteam` is the profile this repository's checks run against. Open it with `--config`, as above.
 
 It's at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs.
 

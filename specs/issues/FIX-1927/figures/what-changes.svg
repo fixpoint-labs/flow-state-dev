@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Where a new run's branch starts. Upstream main has commits A, B and C; your local main is still at A because you haven't pulled. Today the run's branch starts at A, two commits behind. After, the host fetches first and the run's branch starts at C, while your local main stays at A. On the right, when your main has a commit X that upstream lacks and upstream has C that yours lacks, the two have split: the run is refused and nothing is made."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .line  { stroke:var(--ink-3); stroke-width:2; fill:none; }
+    .run   { stroke:var(--code); stroke-width:2.4; fill:none; }
+    .stale { stroke:var(--gone); stroke-width:2.4; fill:none; stroke-dasharray:6 4; }
+    .c     { fill:var(--surface); stroke:var(--ink-2); stroke-width:1.6; }
+    .c-up  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.6; }
+    .c-run { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .c-bad { fill:var(--surface); stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; text-anchor:middle; }
+    .t-up  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="290" height="298" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · NO FETCH</text>
+    <path class="line" d="M60 110 H220"/>
+    <circle class="c" cx="60" cy="110" r="11"/><text class="t-c" x="60" y="114">A</text>
+    <circle class="c-up" cx="140" cy="110" r="11"/><text class="t-c" x="140" y="114">B</text>
+    <circle class="c-up" cx="220" cy="110" r="11"/><text class="t-c" x="220" y="114">C</text>
+    <text class="t-up" x="200" y="88">upstream</text>
+    <text class="t-s" x="36" y="140">your main</text>
+    <path class="stale" d="M60 121 V200 H140"/>
+    <circle class="c-bad" cx="140" cy="200" r="11"/><text class="t-c" x="140" y="204">r</text>
+    <text class="t-bad" x="32" y="246">The run starts at A</text>
+    <text class="t-s" x="32" y="264">two commits behind, and nothing says so</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="322" y="16" width="290" height="298" rx="6"/>
+    <text class="t-lbl" x="338" y="38">AFTER · FETCH, THEN THE NEWER</text>
+    <path class="line" d="M366 110 H526"/>
+    <circle class="c" cx="366" cy="110" r="11"/><text class="t-c" x="366" y="114">A</text>
+    <circle class="c-up" cx="446" cy="110" r="11"/><text class="t-c" x="446" y="114">B</text>
+    <circle class="c-up" cx="526" cy="110" r="11"/><text class="t-c" x="526" y="114">C</text>
+    <text class="t-up" x="506" y="88">upstream</text>
+    <text class="t-s" x="342" y="140">your main, unmoved</text>
+    <path class="run" d="M526 121 V200 H576"/>
+    <circle class="c-run" cx="576" cy="200" r="11"/><text class="t-c" x="576" y="204">r</text>
+    <text class="t-ok" x="338" y="246">The run starts at C</text>
+    <text class="t-s" x="338" y="264">your branch, index and files untouched</text>
+    <text class="t-s" x="338" y="282">ahead of upstream? it starts from yours</text>
+  </g>
+
+  <g id="split">
+    <rect class="panel" x="628" y="16" width="296" height="298" rx="6"/>
+    <text class="t-lbl" x="644" y="38">AFTER · THE TWO HAVE SPLIT</text>
+    <path class="line" d="M672 110 H752"/>
+    <circle class="c" cx="672" cy="110" r="11"/><text class="t-c" x="672" y="114">A</text>
+    <circle class="c-up" cx="752" cy="110" r="11"/><text class="t-c" x="752" y="114">C</text>
+    <text class="t-up" x="732" y="88">upstream</text>
+    <path class="line" d="M672 121 V170 H752"/>
+    <circle class="c" cx="752" cy="170" r="11"/><text class="t-c" x="752" y="174">X</text>
+    <text class="t-s" x="772" y="174">your main</text>
+    <text class="t-bad" x="644" y="246">Refused, nothing made</text>
+    <text class="t-s" x="644" y="264">names both commits: pull or rebase,</text>
+    <text class="t-s" x="644" y="282">or push, then run it again</text>
+  </g>
+</svg>
