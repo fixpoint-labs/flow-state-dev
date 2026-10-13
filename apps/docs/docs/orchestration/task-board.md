@@ -618,7 +618,7 @@ tool calls it makes.
 
 Only wait when the result changes what you do next. Otherwise let the task run and carry on.
 
-Waiting needs more: a board that
+Waiting also needs a board that
 wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
@@ -639,6 +639,9 @@ when its task ends and sits out its whole `timeoutMs`.
 |---|---|
 | `assignee_required` | No `assignee` named or already on the task, and the board has no single worker to give it to. Nothing is filed |
 | `task_not_dispatchable` | The task named by `taskId` has already started, ended, or been dispatched. Nothing changes |
+| `dispatch_target_required` | Neither `goal` nor `taskId`. Give `goal` for a new task or `taskId` for a recorded one. Nothing is filed |
+| `dispatch_target_ambiguous` | Both `goal` and `taskId`. Give one. Nothing is filed |
+| `dispatch_ref_takes_no_task_fields` | `taskId` with `deps`, `priority`, `input`, `metadata` or `followUpOf`. Change the recorded task with `updateTask` first. Nothing is written |
 | `wait_timed_out` | The task didn't end in time. It is cancelled |
 | `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |
 | `wait_timeout_without_wait` | `timeoutMs` without `wait`. Nothing is filed |
