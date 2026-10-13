@@ -1352,7 +1352,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   one of `leadFlows`, that lists delegates (`delegates:`), since a lead runs its workstream through
   them. Returns `{ workstream, opened }`; opening it again hands the entry back
   (`opened: false`). Refused: `not-a-member` on a shared project, `no-such-worker`, `cannot-lead`
-  (a lead off `leadFlows`, or one that lists no delegates), `lead-differs`, `invalid-workstream-id`, and `too-many-workstreams` past 25 open workstreams per
+  (a lead off `leadFlows`, or one that lists no delegates), `lead-differs`, `invalid-workstream-id`, `lead-doesnt-fit` (from `openWorkstreamTool` with `leadFit` set only, see below), and `too-many-workstreams` past 25 open workstreams per
   owner per project when the installation names a project coordinator.
 - **`updateWorkstream { project, owner?, id, title?, status?, due?, objectives?, report? }`** changes
   an entry and returns `{ workstream }`. `status` is a label of up to 80 characters; `"done"` marks
@@ -1448,12 +1448,25 @@ session the user's entry names, looked up at delivery, so the post lands in that
 session.
 
 To let the coordinator open workstreams, add `listLeads: workstreams.listLeadsTool` and
-`openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" })` to its catalog and name
+`openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream" })` to its catalog and name
 both in its `tools:`. Asked for work none of the user's workstreams covers, it lists the leads,
 opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
 coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
 built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
 take the hand-off as soon as `openWorkstream` returns.
+
+`listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
+with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
+leadFlows, leadFit: { model: "openai/gpt-5.4-mini" } })`: `openWorkstreamTool` then makes one call
+to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
+the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
+is written; the message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open
+nothing and say a worker for it has to be hired first. A failed call, or a lead with no description,
+lets the open through. The check runs after every other refusal, and an open of a workstream that is
+already open with the same lead isn't checked again. The tool's answer carries `leadFit`: `{ checked: true }`,
+or `{ checked: false, why }` with `why` one of `already-open`, `no-description` or `unanswered: <error>`.
+Without `leadFit`, `openWorkstreamTool` is `openWorkstream`. Opens
+through the `openWorkstream` action, such as a user's own open from the app, are never checked.
 
 ## Workers as data
 
@@ -1887,7 +1900,7 @@ the root exports, and reaches no Node built-in.
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
 | `defineProjectBlocks()` | Returns `{ createProject, setRepository, setBrief, readProject, listProjects, readProjectFiles, actions }`. See [Projects](#projects). |
-| `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
