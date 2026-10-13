@@ -223,13 +223,19 @@ function timed(model: GeneratorModel): GeneratorModel {
       modelSpans.push([start, Date.now()]);
     }
   };
+  // Only the waits on the model's next chunk: between pulls the framework handles each chunk, and that time is its own.
   const streamed = <C,>(run: () => AsyncIterable<C>) =>
     async function* (): AsyncIterable<C> {
-      const start = Date.now();
+      const chunks = run()[Symbol.asyncIterator]();
       try {
-        yield* run();
+        while (true) {
+          const start = Date.now();
+          const next = await chunks.next().finally(() => modelSpans.push([start, Date.now()]));
+          if (next.done) return;
+          yield next.value;
+        }
       } finally {
-        modelSpans.push([start, Date.now()]);
+        await chunks.return?.();
       }
     };
   return {
