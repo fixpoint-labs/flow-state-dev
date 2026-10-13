@@ -41,9 +41,8 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   `specs/issues/<ISSUE-ID>/poc/<experiment>/`, excluded from default production discovery
   ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
   you already have the branch and the context, and you're the one who knows which premise is
-  load-bearing. Costs **zero** review rounds. Record it on the plan's POC line (and in
-  `DECISIONS.md → Settled` for a premise it settled)
-  and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
+  load-bearing. Costs **zero** review rounds. Record it in `DECISIONS.md → Settled`, including
+  when the premise held, and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
   waste. Report it on the `spec_poc:` line of your status (below); if a load-bearing one is
   unfinished, say so there so the coordinator can disclose it when it surfaces the gate.
   **Unlike a settlement, this disclosure is advisory** — there is no schema field and nothing in
@@ -51,7 +50,7 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   judgment, not mechanism, and it isn't worth a workflow field until the practice has run.
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
-  changes the approach, record the rest verbatim in `PLAN.md → Notes from review`, escalate genuine
+  changes the approach, record the rest verbatim in `DECISIONS.md → Notes from review`, escalate genuine
   direction forks. **Report the rounds you spent and whether anything was spec-level** — the
   coordinator budgets rounds off that (two by default; see `issue-lifecycle` → "The
   spec-review round budget"), so report it accurately: a batch that was **only** factual

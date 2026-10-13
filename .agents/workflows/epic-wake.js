@@ -562,7 +562,7 @@ function carriedFlag(row, camel, snake) {
 /**
  * A sub-PR row's dependency edges, under either documented spelling.
  *
- * `issue-spec`'s PR-plan table and `issue-lifecycle`'s cache row both say `depends_on`; `classify()`
+ * A PR-plan table and `issue-lifecycle`'s cache row both say `depends_on`; `classify()`
  * and `readySet()` read `dependsOn` and nothing converted between them. A coordinator following its
  * own documented cache format hands over rows whose dependencies read as EMPTY — which
  * `readySet` treats as "everything merged", so a dependent is built straight onto `origin/main`
@@ -2297,7 +2297,7 @@ const EPIC_REFRESH_SCHEMA = {
   properties: {
     refreshed: {
       type: 'string',
-      description: 'What moved — the set table, the dependency graph, the path figure, the PR-body pins — or "nothing" when the set already read that way',
+      description: 'What moved — the set table, the dependency graph, the PR-body pins — or "nothing" when the set already read that way',
     },
     head: { type: ['string', 'null'], description: 'The commit the set now sits on; the PR body\'s images are pinned to it' },
     pins: { type: ['string', 'null'], description: 'The <img> lines a person has to paste, when the tool could not write them into the body' },
@@ -3607,7 +3607,7 @@ const issues = refreshed.map((row) =>
 )
 
 // ---------------------------------------------------------------------------
-// The epic-spec's status refresh. The set table, the dependency graph, the path figure and the
+// The epic-spec's status refresh. The set table, the dependency graph and the
 // PR body's pins move when a row's phase changes, only BEFORE spec merge
 // (`epic-spec-template.md` → "What refreshes, and when"). After merge, live status comes from
 // Linear and implementation PRs; the original spec is historical. A FOLD already refreshes
