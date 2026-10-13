@@ -189,6 +189,16 @@ is rarely what you want.
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
 
+Cursor fails a run whose sandbox can't start rather than running without it. To
+find out before a run, `probeCursorSandbox({ cwd, env })` asks the SDK the same
+question a run asks, without starting one, and returns `{ supported: false,
+reason }` with Cursor's own message when the answer is no. It takes about a
+second, so call it once, from a startup or health check. The sandbox depends on
+a helper binary from Cursor's platform package, which this package installs. A
+run with `env` set (next section) always finds it. A run in your own process
+finds it under pnpm only if your app depends on `@cursor/sdk-<platform>-<arch>`
+too.
+
 ## Choosing the environment the run starts with
 
 Cursor's SDK runs in your server's process, and every shell command Cursor runs

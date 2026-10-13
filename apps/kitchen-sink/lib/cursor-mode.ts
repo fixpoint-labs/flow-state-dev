@@ -25,7 +25,9 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   TESTED_SDK_VERSION,
   cursorAgent,
+  probeCursorSandbox,
   readInstalledCursorSdkVersion,
+  type CursorSandboxSupport,
   type CursorAgentOptions,
   type InstalledSdkVersion,
   type ResolveCursorClient,
@@ -144,6 +146,8 @@ export interface CursorHostChecks {
   readonly childStarts: (env: Record<string, string>) => string | null;
   /** Cursor's sign-in over the run's own environment: its key, or the SDK's stored login. No run. */
   readonly signIn: (env: Record<string, string>) => Promise<CursorSignIn>;
+  /** Whether Cursor's sandbox can start for a run in `cwd` with exactly `env`, in Cursor's words. No run. */
+  readonly sandbox: (cwd: string, env: Record<string, string>) => CursorSandboxSupport;
 }
 
 /**
@@ -180,17 +184,20 @@ export const HOST_CHECKS: CursorHostChecks = {
   },
   childStarts,
   signIn,
+  sandbox: (cwd, env) => probeCursorSandbox({ cwd, env }),
 };
 
 /**
  * Cursor mode's own check, for the gate's mode-check slot: the pinned Cursor
  * SDK is installed, the worktree root can be made, a process with only the
  * run's environment can start (the Cursor package runs the runtime in one),
- * and Cursor is signed in over that environment. The first that fails is the
- * reason.
+ * Cursor is signed in over that environment, and Cursor's sandbox can start
+ * here. The first that fails is the reason.
  *
- * Cursor's sandbox is not probed here: the SDK starts it only for a run, and a
- * run fails with Cursor's own error when it can't, rather than running unsandboxed.
+ * Every run asks for the sandbox, and Cursor fails a run whose sandbox can't
+ * start rather than running without it, so a host without one could run no
+ * turn at all. The sandbox answer is the SDK's own, asked the way a run asks
+ * it, with no run started (`probeCursorSandbox`).
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
@@ -223,6 +230,13 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
       return {
         available: false,
         reason: `Cursor is not signed in on this host (${signedIn.reason}). Set CURSOR_API_KEY, or log in with the Cursor SDK, then restart.`,
+      };
+    }
+    const sandbox = checks.sandbox(repository, env);
+    if (!sandbox.supported) {
+      return {
+        available: false,
+        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason}`,
       };
     }
     return { available: true };

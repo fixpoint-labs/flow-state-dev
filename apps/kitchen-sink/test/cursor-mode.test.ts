@@ -7,6 +7,11 @@
  *
  * Red state produced before this was trusted: report a host with no key and no
  * stored login as available, and the sign-in case fails.
+ *
+ * Every run asks for Cursor's sandbox, and Cursor fails a run whose sandbox
+ * can't start, so a host without one must not be offered the mode: its card
+ * would say Available and every turn would fail. Red state: on a check that
+ * didn't ask about the sandbox, the sandbox case reported such a host available.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +27,7 @@ const able: CursorHostChecks = {
   makeRoot: () => undefined,
   childStarts: () => null,
   signIn: async () => ({ status: "key" }),
+  sandbox: () => ({ supported: true }),
 };
 
 afterEach(() => {
@@ -78,15 +84,28 @@ describe("Cursor mode's check (V7)", () => {
     expect(await check({ signIn: async () => ({ status: "login" }) })).toEqual({ available: true });
   });
 
-  it("checks the sign-in and starts the process over the run's environment, not the server's", async () => {
+  it("is unavailable when Cursor's sandbox can't start here, in Cursor's words", async () => {
+    const said = "Local SDK sandboxing was requested, but sandboxing is not supported in this environment.";
+    const result = await check({ sandbox: () => ({ supported: false, reason: said }) });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining(said) });
+  });
+
+  it("asks about the sandbox for the repository the sessions work on", async () => {
+    const asked: string[] = [];
+    await check({ sandbox: (cwd) => (asked.push(cwd), { supported: true }) });
+    expect(asked).toEqual(["/repo"]);
+  });
+
+  it("checks the sign-in, the sandbox, and starts the process over the run's environment, not the server's", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("CURSOR_API_KEY", "key");
     const seen: Record<string, string>[] = [];
     await check({
       childStarts: (env) => (seen.push(env), null),
       signIn: async (env) => (seen.push(env), { status: "key" }),
+      sandbox: (_cwd, env) => (seen.push(env), { supported: true }),
     });
-    expect(seen).toHaveLength(2);
+    expect(seen).toHaveLength(3);
     for (const env of seen) {
       expect(env.CURSOR_API_KEY).toBe("key");
       expect(env.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
