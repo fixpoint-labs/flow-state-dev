@@ -127,7 +127,12 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
             <option value="">Add from your roster…</option>
             {candidates.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {entry.name ?? entry.id}
+                {/* Two workers may share a display name; the id tells them apart. */}
+                {entry.name == null
+                  ? entry.id
+                  : candidates.some((other) => other.id !== entry.id && other.name === entry.name)
+                    ? `${entry.name} (${entry.id})`
+                    : entry.name}
               </option>
             ))}
           </select>

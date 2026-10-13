@@ -177,7 +177,11 @@ export function doorOf(workers: readonly Worker[], flowId: string): string | nul
  */
 export function teamsOf(workers: readonly Worker[]): Array<{ team: string; name: string; workers: Worker[] }> {
   const teams = new Map<string, Worker[]>();
-  for (const worker of workers) teams.set(worker.team, [...(teams.get(worker.team) ?? []), worker]);
+  for (const worker of workers) {
+    const team = teams.get(worker.team);
+    if (team === undefined) teams.set(worker.team, [worker]);
+    else team.push(worker);
+  }
   const all = [...teams].map(([team, workers]) => ({ team, name: workers[0]!.teamName, workers }));
   return [...all.filter((t) => t.team === GENERAL_TEAM), ...all.filter((t) => t.team !== GENERAL_TEAM)];
 }
