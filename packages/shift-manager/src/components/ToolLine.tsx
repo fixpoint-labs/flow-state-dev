@@ -7,16 +7,16 @@
  * result and metadata; a run of consecutive calls is one line ("Used 3 tools
  * ›") that opens to one row per call. A call that is running or failed says
  * so in words ("Using discover…", "discover failed"), since there is no badge.
- * A call stopped on an approval or a question is waiting, not failed: the
- * engine records the wait as a failed call coded `SUSPENSION`, and its real
- * result replaces it once the answer resumes the run.
+ * A call stopped on an approval or a question is waiting, not failed
+ * (`isSuspensionWait`): its real result replaces the wait once the answer
+ * resumes the run.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
  * swaps this in for its `tool_output` renderer.
  */
 import { Fragment, type ReactNode } from "react";
-import type { ToolOutputItem } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type ToolOutputItem } from "@flow-state-dev/core/items";
 import { ChevronRightIcon } from "lucide-react";
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -30,7 +30,7 @@ import { ToolInput, ToolOutput } from "./flow-state/tool";
 type CallState = "pending" | "running" | "waiting" | "completed" | "error";
 
 function stateOf(item: ToolOutputItem): CallState {
-  if (item.status === "failed" && item.error?.code === "SUSPENSION") return "waiting";
+  if (isSuspensionWait(item)) return "waiting";
   switch (item.status) {
     case "in_progress":
       return "running";

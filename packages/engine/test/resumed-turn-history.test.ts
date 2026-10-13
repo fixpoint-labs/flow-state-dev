@@ -14,6 +14,8 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { expandRequestToMessages } from "../src/context/history";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 type StepFn = (options: GeneratorModelCallOptions) => GeneratorModelResult;
@@ -97,5 +99,27 @@ describe("history after an approved turn", () => {
     expect(next.results).toHaveLength(1);
     expect(next.results[0]).toContain("acme/web");
     expect(next.results[0]).not.toContain("failed");
+  });
+
+  it("leaves a request that never waited as it was", () => {
+    const base = { requestId: "r1", provenance: { blockInstanceId: "agent#0" } };
+    const items = [
+      { ...base, id: "m1", type: "message", role: "user", status: "completed", ts: 1, itemIndex: 0, content: [{ type: "output_text", text: "hi" }] },
+      {
+        ...base,
+        id: "t1",
+        type: "tool_output",
+        status: "completed",
+        ts: 2,
+        itemIndex: 1,
+        toolCall: { callId: "c1", name: "lookup", arguments: "{}" },
+        output: "found",
+      },
+      { ...base, id: "m2", type: "message", role: "assistant", status: "completed", ts: 3, itemIndex: 2, content: [{ type: "output_text", text: "done" }] },
+    ] as unknown as OutputItem[];
+    const messages = expandRequestToMessages(items, new Set(["message", "tool_output"]), undefined);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(toolParts(messages).calls).toEqual(["c1"]);
+    expect(toolParts(messages).results).toEqual([JSON.stringify({ type: "text", value: "found" })]);
   });
 });

@@ -45,11 +45,14 @@ const SETTLE_POLLS = 130;
 const RESUME_GRACE_POLLS = 3;
 
 /**
- * Wait until the request an answer resumed stops running. A read that fails
- * ends the wait: the snapshot read after it says what it can.
+ * Wait until the request an answer resumed stops running, or `live()` turns
+ * false (the provider is gone, or reads another Lab), whichever is first. A
+ * read that fails ends the wait: the snapshot read after it says what it can.
+ * A run still going after {@link SETTLE_POLLS} reads ends the wait too, and
+ * its result is drawn on the conversation's next read.
  */
-async function settled(clients: LabClients, flowId: string, requestId: string): Promise<void> {
-  for (let poll = 0; poll < SETTLE_POLLS; poll += 1) {
+async function settled(clients: LabClients, flowId: string, requestId: string, live: () => boolean): Promise<void> {
+  for (let poll = 0; poll < SETTLE_POLLS && live(); poll += 1) {
     let status: string;
     try {
       status = (await clients.actions(flowId).getRequestStatus(requestId)).status;
@@ -69,6 +72,14 @@ export function LabProvider({ clients, children }: { clients: LabClients; childr
   const [snapshot, setSnapshot] = useState<LabSnapshot | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
   const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
+  // The clients a following answer was given: once they change or the provider unmounts, it stops.
+  const current = useRef<LabClients | null>(clients);
+  useEffect(() => {
+    current.current = clients;
+    return () => {
+      current.current = null;
+    };
+  }, [clients]);
   const bump = useCallback((sessionId: string) => setAnswered((last) => ({ sessionId, count: (last?.count ?? 0) + 1 })), []);
   // Only the latest refresh may land: an older one finishing late would draw
   // a Lab that has moved on.
@@ -96,7 +107,9 @@ export function LabProvider({ clients, children }: { clients: LabClients; childr
       await refresh();
       // The run goes on without this page: follow it, so what it did with the answer is drawn too.
       if (ask.flowId !== null) {
-        void settled(clients, ask.flowId, ask.item.requestId).then(() => {
+        const live = () => current.current === clients;
+        void settled(clients, ask.flowId, ask.item.requestId, live).then(() => {
+          if (!live()) return;
           bump(ask.sessionId);
           void refresh();
         });
