@@ -218,10 +218,6 @@ describe("the chief of staff's repository writes wait for a user", () => {
 });
 
 describe("a project's coordinator manages its own project", () => {
-  // Jake asked his Storefront coordinator to rewrite the brief and move the
-  // repository, and it had no tool for either: he had to go to the chief of
-  // staff. Each call below leaves `project` out, as the coordinator's file
-  // tells it to, so the write lands on the project the conversation is about.
   const BRIEF = "Ship guest checkout before the holidays.";
 
   it("sets the brief at once, without naming the project", async () => {
