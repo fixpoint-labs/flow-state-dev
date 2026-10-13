@@ -3,17 +3,6 @@
  * Behavioral tests for `useSession.abortRequest`: a stop pressed at any point
  * in a turn stops that turn, and the view keeps saying so.
  *
- * Three moments a stop can land, each of which used to lose it:
- *
- * - while the turn's POST is still out, before the server has the request: the
- *   abort reached nothing, and the POST's stream was attached when it answered,
- *   so the turn ran on;
- * - on a turn the hook picked up on mount (a reload mid-turn): the hook had no
- *   request to stop, and returned without stopping anything;
- * - mid-stream, followed by a snapshot read taken before the server wrote its
- *   own stop record: the read erased the hook's stop record, so the turn read
- *   as still running.
- *
  * `@flow-state-dev/client` is mocked the way `useSession-continueRequest.test.ts`
  * does: the SSE transport hands its callbacks to the test, and the session and
  * action clients are plain mocks.
@@ -82,7 +71,6 @@ function userMessage(requestId: string) {
   };
 }
 
-/** The stop record the engine writes when a request is stopped. */
 function serverStopItem(requestId: string) {
   return {
     id: `item_status_server_${requestId}`,
@@ -111,7 +99,6 @@ function sseResponse(): Response {
   } as unknown as Response;
 }
 
-/** A promise the test settles by hand, to hold the turn's POST open. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -149,7 +136,6 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
   it("a stop pressed while the turn's POST is still out stops the turn once the server has it", async () => {
     const post = deferred<Response>();
     clientMock.sendActionStream.mockReturnValue(post.promise);
-    // The server doesn't have the request yet, so the first abort reaches nothing.
     clientMock.abortRequest.mockRejectedValueOnce(new Error("Abort request failed (404)"));
 
     const { result } = await mountIdle();
@@ -165,15 +151,12 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     });
     expect(clientMock.abortRequest).toHaveBeenCalledWith(requestId);
 
-    // The server answers the POST: the request exists now and is running.
     const response = sseResponse();
     await act(async () => {
       post.resolve(response);
       await send;
     });
 
-    // The stop reaches the request now that it exists, and the turn is not
-    // picked back up: no stream is attached, and the hook is not streaming.
     expect(clientMock.abortRequest).toHaveBeenCalledTimes(2);
     expect(clientMock.abortRequest).toHaveBeenLastCalledWith(requestId);
     expect(connections).toHaveLength(0);
@@ -183,7 +166,6 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
   });
 
   it("a stop pressed on a turn picked up on mount stops it", async () => {
-    // A reload mid-turn: the hook finds the running request and attaches to it.
     sessionClientMock.getSession.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
@@ -226,15 +208,12 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     });
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
 
-    // A consumer re-reads the session as the turn stops streaming. The read
-    // lands before the engine has written its own stop record.
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
     await act(async () => {
       await result.current.refresh();
     });
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
 
-    // A later read holds the engine's stop record: that one stands alone.
     sessionClientMock.getSessionState.mockResolvedValue(
       snapshot([userMessage(requestId), serverStopItem(requestId)])
     );
@@ -255,7 +234,6 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     });
     const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
 
-    // The turn finished first: the server refuses the stop.
     const { ClientHttpError } = await import("@flow-state-dev/client");
     clientMock.abortRequest.mockRejectedValueOnce(
       new ClientHttpError("Abort request failed (409)", { status: 409, body: "" })
@@ -264,7 +242,6 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
       await result.current.abortRequest();
     });
 
-    // The server's account of the finished turn wins at the next read.
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
     await act(async () => {
       await result.current.refresh();
