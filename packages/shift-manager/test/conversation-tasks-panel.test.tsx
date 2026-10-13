@@ -122,6 +122,48 @@ describe("the tasks panel (S11)", () => {
     expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
   });
 
+  describe("at the Shift Coordinator, whose conversation never ends (activeOnly)", () => {
+    const mixed: Row[] = [
+      { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "notes", attempts: 1 },
+      { id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 },
+      { id: "t4", goal: "Drop the old flag", status: "cancelled", attempts: 0 },
+      { id: "t5", goal: "Draft the launch post", status: "pending", attempts: 0 },
+      { id: "t6", goal: "Check the docs links", status: "completed", assignee: "docs", attempts: 1 },
+    ];
+    const group = (name: string) => screen.getAllByTestId("cos-task-group").find((el) => el.getAttribute("data-group") === name);
+
+    it("lists only the active tasks, and folds done and errored into counts that open", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5"]);
+      expect(group("done")!.textContent).toContain("3 done");
+      expect(group("errored")!.textContent).toContain("1 errored");
+      act(() => group("errored")!.querySelector("button")!.click());
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5", "t3"]);
+      act(() => group("done")!.querySelector("button")!.click());
+      expect(shown().map((task) => task.id)).toEqual(["t2", "t5", "t1", "t4", "t6", "t3"]);
+    });
+
+    it("says no task is active when every task has ended, and draws no empty group", async () => {
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
+      await settle();
+      expect(screen.getByTestId("cos-tasks-none-active")).toBeTruthy();
+      expect(shown()).toEqual([]);
+      expect(screen.getAllByTestId("cos-task-group").map((el) => el.getAttribute("data-group"))).toEqual(["done"]);
+    });
+
+    it("leaves a workstream's board whole: there every task is a subtask of the one piece of work", async () => {
+      rows = mixed;
+      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+      await settle();
+      expect(shown().map((task) => task.id)).toEqual(["t1", "t2", "t3", "t4", "t5", "t6"]);
+      expect(screen.queryAllByTestId("cos-task-group")).toEqual([]);
+    });
+  });
+
   describe("a task that ends between the user's lines", () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
     afterEach(() => vi.useRealTimers());
@@ -162,24 +204,14 @@ describe("opening a task from the panel", () => {
     // The route is the same one the Tasks list and Jump to go to.
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
   });
-});
 
-describe("a failed task in the panel", () => {
-  it("is left out of the rail, while the tasks that can still move stay", async () => {
-    rows = [
-      { id: "t1", goal: "Audit the licenses", status: "errored", assignee: "licenses", attempts: 1 },
-      { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "docs", attempts: 1 },
-    ];
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+  it("opens a failed task from its errored group, so a failure is one click from its session", async () => {
+    rows = [{ id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 }];
+    window.history.pushState(null, "", "/");
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
     await settle();
-    expect(shown().map((t) => t.id)).toEqual(["t2"]);
-  });
-
-  it("says nothing is open, not that no task was filed, when every task has failed", async () => {
-    rows = [{ id: "t1", goal: "Audit the licenses", status: "errored", attempts: 1 }];
-    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
-    await settle();
-    expect(screen.queryByTestId("cos-tasks-empty")).toBeNull();
-    expect(screen.getByTestId("cos-tasks-none-open").textContent).toBe("Nothing open.");
+    act(() => screen.getByTestId("cos-task-group").querySelector("button")!.click());
+    await act(async () => screen.getByTestId("cos-task-open").click());
+    expect(window.location.pathname).toBe("/tasks/s1.tasks/t3/session");
   });
 });

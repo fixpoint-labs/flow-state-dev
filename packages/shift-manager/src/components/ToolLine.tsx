@@ -8,7 +8,9 @@
  * ›") that opens to one row per call. A call that is running or failed says
  * so in words ("Using discover…", "discover failed"), since there is no badge.
  * A call that stopped to wait (`isSuspensionWait`) says so ("discover is
- * waiting"), not that it failed.
+ * waiting"), not that it failed. A failed call that a later call of the same
+ * tool in the run completed was an attempt, not an error: it reads "Tried
+ * openWorkstream", and the run doesn't read as failed for it.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
@@ -27,7 +29,7 @@ import { CoordinatorRoute } from "./CoordinatorRoute";
 import { TaskBoardMeta } from "./TaskBoardMeta";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
-type CallState = "pending" | "running" | "waiting" | "completed" | "error";
+type CallState = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
 
 function stateOf(item: ToolOutputItem): CallState {
   if (isSuspensionWait(item)) return "waiting";
@@ -43,9 +45,22 @@ function stateOf(item: ToolOutputItem): CallState {
   }
 }
 
-/** The worst state in a run: any failure, else any call waiting, else any call still going, else done. */
-function runState(items: readonly ToolOutputItem[]): CallState {
-  const states = items.map(stateOf);
+/**
+ * Each call's state in its run: a failure that a later call of the same tool
+ * completed is `retried`. Only the tool name is compared, not the arguments,
+ * and a retry in another run doesn't count.
+ */
+function statesInRun(items: readonly ToolOutputItem[]): CallState[] {
+  return items.map((item, i) => {
+    const state = stateOf(item);
+    if (state !== "error") return state;
+    const retried = items.slice(i + 1).some((later) => later.toolCall?.name === item.toolCall?.name && stateOf(later) === "completed");
+    return retried ? "retried" : state;
+  });
+}
+
+/** The worst state in a run: any failure not retried, else any call waiting, else any call still going, else done. */
+function runState(states: readonly CallState[]): CallState {
   if (states.includes("error")) return "error";
   if (states.includes("waiting")) return "waiting";
   if (states.some((s) => s === "running" || s === "pending")) return "running";
@@ -62,9 +77,10 @@ function argsOf(item: ToolOutputItem): unknown {
   }
 }
 
-/** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting" while it waits. */
+/** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting" while it waits, "Tried discover" when a retry did it. */
 function callLabel(name: string, state: CallState): string {
   if (state === "error") return `${name} failed`;
+  if (state === "retried") return `Tried ${name}`;
   if (state === "waiting") return `${name} is waiting`;
   if (state === "running" || state === "pending") return `Using ${name}…`;
   return `Used ${name}`;
@@ -116,7 +132,8 @@ function QuietLine({ label, state, nested = false, children }: { label: string; 
  */
 export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
   if (items.length === 0) return null;
-  const state = runState(items);
+  const states = statesInRun(items);
+  const state = runState(states);
   if (items.length === 1) {
     const item = items[0]!;
     return (
@@ -136,9 +153,9 @@ export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
   return (
     <QuietLine label={label} state={state}>
       <ul className="space-y-1.5">
-        {items.map((item) => (
+        {items.map((item, i) => (
           <li key={item.id}>
-            <QuietLine label={callLabel(item.toolCall.name, stateOf(item))} state={stateOf(item)} nested>
+            <QuietLine label={callLabel(item.toolCall.name, states[i]!)} state={states[i]!} nested>
               <CallDetails item={item} />
             </QuietLine>
           </li>

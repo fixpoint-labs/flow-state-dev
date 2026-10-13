@@ -13,6 +13,7 @@
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
+ *     /settings                      the user's own keys for the Lab's MCP servers (pinned, FIX-1905)
  */
 import { useSyncExternalStore } from "react";
 
@@ -41,7 +42,8 @@ export type Route =
     }
   | { level: "resource"; sessionId: string; ref: string }
   /** `team: null` is All. */
-  | { level: "roster"; team: string | null };
+  | { level: "roster"; team: string | null }
+  | { level: "settings" };
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined, fallback: T): T {
   return values.includes(value as T) ? (value as T) : fallback;
@@ -64,6 +66,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
+  if (head === "settings") return { level: "settings" };
   return { level: "cos" };
 }
 
@@ -96,6 +99,8 @@ export function pathFor(route: Route): string {
       return `/r/${e(route.sessionId)}/${e(route.ref)}`;
     case "roster":
       return route.team === null ? "/roster" : `/roster?team=${e(route.team)}`;
+    case "settings":
+      return "/settings";
   }
 }
 

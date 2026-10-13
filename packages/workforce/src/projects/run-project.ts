@@ -1,0 +1,202 @@
+/**
+ * The project a coding run works on, and the user it works for: the one
+ * reader both of a run's project answers come from, `projectWorkspace()`
+ * (where its files are) and `projectMcpTools()` (which MCP servers it gets).
+ *
+ * It finds the project in this order, first match wins (the steps are
+ * documented in full on `project-workspace.ts`):
+ *
+ * 1. the workstream the run's session leads, or the one its task was filed
+ *    from (`workstreamId` / `filingWorkstreamId`);
+ * 2. the project the task was filed from (`filingProjectId`);
+ * 3. the project the held task names in `input.project`, by visibility and id.
+ *
+ * Every step reads stored, server-written data (BP-031): the session's
+ * readonly fields, the workstream entry, the project row and the row the
+ * claim gate verified for this run. The owner is the request's resolved user,
+ * checked against the workstream's owner or the project's members, never a
+ * field of the task or a hand-over's payload.
+ */
+
+import type { LooseBlockContext } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { RunSourceRefusal } from "@flow-state-dev/workspace";
+import { filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
+import { heldTask } from "../conversation-board/held-task";
+import { projectAddressSchema, projectRowSchema, type ProjectAddress, type ProjectRow, type ProjectVisibility } from "./collections";
+import { isMember } from "./membership-gate";
+import { projectRowsAt, workstreamsAt, type MissingCollection } from "./project-address";
+import { workstreamEntryKey } from "./workstream-collections";
+import { parseProjectRef, parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
+
+/**
+ * Why a run's project lookup refused. The refusal's `message` names the
+ * workstream, the project or the users.
+ */
+export type ProjectWorkspaceRefusalReason =
+  | "no-project"
+  | "no-such-workstream"
+  | "no-such-project"
+  | "not-the-owner"
+  | "not-a-member"
+  | "other-project";
+
+/** The project a run works on, where it lives, and the user the run works for. */
+export interface RunProject {
+  readonly kind: "found";
+  readonly visibility: ProjectVisibility;
+  readonly project: ProjectRow;
+  /** The run's owner: the request's resolved user, allowed on the project. */
+  readonly owner: string;
+}
+
+/**
+ * Find the project a run works on, or refuse.
+ *
+ * @param ctx The context of the block asking. It must hold the collections
+ *   `projectWorkspaceCapability` installs.
+ * @returns The project, its visibility and the run's owner, or a refusal.
+ */
+export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject | RunSourceRefusal> {
+  const named = await namedProjectOf(ctx);
+  if (named.kind === "malformed") return named.refusal;
+  const link = filingWorkstreamOf(ctx.session?.state);
+  if (link !== undefined) {
+    const conflict = otherProject(named, parseWorkstreamRef(link)?.project);
+    return conflict ?? fromWorkstream(ctx, link);
+  }
+  const filedIn = filingProjectOf(ctx.session?.state);
+  if (filedIn !== undefined) {
+    const address = parseProjectRef(filedIn);
+    if (address === undefined) return refused("no-project", `this run's session names project "${filedIn}", which names no project.`);
+    return otherProject(named, address) ?? fromProject(ctx, address);
+  }
+  if (named.kind === "named") return fromProject(ctx, named.address);
+  if (named.kind === "none" && named.inputIsNot !== undefined) {
+    return refused(
+      "no-project",
+      `this run's session works for no workstream or project, and its task's input is ${named.inputIsNot}, ` +
+        'not an object, so it names none. A task names a project as `input.project`, inside an input that is an object: ' +
+        '`{ "project": { "visibility": "shared", "id": "<project>" } }`.'
+    );
+  }
+  return refused(
+    "no-project",
+    "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
+      'nowhere to keep their files. A task can name one as `input.project`: `{ "visibility": "shared", "id": "<project>" }`.'
+  );
+}
+
+/** What the task this run holds says about its project. */
+type NamedProject =
+  | { readonly kind: "none"; readonly inputIsNot?: string }
+  | { readonly kind: "named"; readonly address: ProjectAddress }
+  | { readonly kind: "malformed"; readonly refusal: RunSourceRefusal };
+
+/**
+ * The project the task this run holds names in `input.project`, by visibility
+ * and id. The row is the one the gate verified for this run, on the
+ * conversation's board the task session was opened for: the row whose run
+ * link names this request (`heldTask`). Never the dispatch's payload. A run
+ * outside a conversation's task session names none.
+ */
+async function namedProjectOf(ctx: LooseBlockContext): Promise<NamedProject> {
+  const held = await heldTask(ctx as unknown as BlockContext);
+  const input = held?.row.input as { project?: unknown } | null | undefined;
+  if (input == null) return { kind: "none" };
+  // An input that isn't an object (a string of JSON, say) can't hold a project;
+  // say so, where the refusal would otherwise read as "the task named none".
+  if (typeof input !== "object") return { kind: "none", inputIsNot: `a ${typeof input}` };
+  if (Array.isArray(input)) return { kind: "none", inputIsNot: "an array" };
+  if (input.project == null) return { kind: "none" };
+  const parsed = projectAddressSchema.safeParse(input.project);
+  if (parsed.success) return { kind: "named", address: parsed.data };
+  return {
+    kind: "malformed",
+    refusal: refused(
+      "no-project",
+      `the task names project ${JSON.stringify(input.project)}, and a project is named by its visibility and id: ` +
+        '`{ "visibility": "shared" | "private", "id": "<project>" }`.'
+    )
+  };
+}
+
+/**
+ * The refusal for a task naming a project other than its conversation's, or
+ * `undefined` when it names none, or the same one. A conversation's project
+ * is never overridden.
+ */
+function otherProject(named: NamedProject, own: ProjectAddress | undefined): RunSourceRefusal | undefined {
+  if (named.kind !== "named" || own === undefined) return undefined;
+  const { address } = named;
+  if (address.visibility === own.visibility && address.id === own.id) return undefined;
+  return refused(
+    "other-project",
+    `the task names ${address.visibility} project "${address.id}", but the conversation that filed it belongs to ` +
+      `${own.visibility} project "${own.id}". A task works in its conversation's project.`
+  );
+}
+
+/** The bare user a run belongs to, not `identity.id`: that is the user record's storage key, which carries the org. */
+function runOwnerOf(ctx: LooseBlockContext): string | undefined {
+  return ctx.user?.identity?.userId;
+}
+
+/** A run for the workstream its session leads. */
+async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<RunProject | RunSourceRefusal> {
+  const address: WorkstreamAddress | undefined = parseWorkstreamRef(link);
+  const owner = ctx.session.identity.userId;
+  if (address === undefined || owner === undefined || owner.length === 0) {
+    return refused("no-such-workstream", `this run's session names workstream "${link}", which names no workstream.`);
+  }
+  const { project, id } = address;
+  const runOwner = runOwnerOf(ctx);
+  if (runOwner !== owner) {
+    return refused(
+      "not-the-owner",
+      `the run's owner${runOwner ? ` "${runOwner}"` : ""} is not workstream "${id}"'s owner "${owner}", so it may not work on its project's files.`
+    );
+  }
+  const entries = workstreamsAt(ctx, project.visibility, notHeld);
+  if ((await entries.getOptional(workstreamEntryKey(project.id, owner, id))) === undefined) {
+    return refused("no-such-workstream", `"${owner}" has no workstream "${id}" in project "${project.id}".`);
+  }
+  const stored = await projectRowsAt(ctx, project.visibility, notHeld).getOptional(project.id);
+  if (stored === undefined) {
+    return refused("no-such-project", `workstream "${id}" is in project "${project.id}", which doesn't exist.`);
+  }
+  return { kind: "found", visibility: project.visibility, project: projectRowSchema.parse(stored.state), owner };
+}
+
+/**
+ * A run on the project at `address`: the one its conversation belongs to, or
+ * the one its task names. The row is read at the address's visibility (a
+ * private project in the run owner's own scope), and the run's owner must be
+ * one of a shared project's members, or a private project's owner.
+ */
+async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Promise<RunProject | RunSourceRefusal> {
+  const stored = await projectRowsAt(ctx, address.visibility, notHeld).getOptional(address.id);
+  if (stored === undefined) {
+    return refused("no-project", `there is no ${address.visibility} project "${address.id}" this run can work in.`);
+  }
+  const project = projectRowSchema.parse(stored.state);
+  const owner = runOwnerOf(ctx);
+  const allowed = address.visibility === "private" ? owner !== undefined && project.ownerUserId === owner : isMember(project, owner);
+  if (!allowed || owner === undefined) {
+    return refused(
+      "not-a-member",
+      `the run's owner${owner ? ` "${owner}"` : ""} is not a member of project "${address.id}", so it may not work on its files.`
+    );
+  }
+  return { kind: "found", visibility: address.visibility, project, owner };
+}
+
+/** A refusal answer. */
+export function refused(reason: ProjectWorkspaceRefusalReason, message: string): RunSourceRefusal {
+  return { kind: "refused", reason, message };
+}
+
+/** A block asking for a run's project that lacks a collection: name the capability that installs it. */
+export const notHeld: MissingCollection = (accessor) =>
+  `projectWorkspace: the block asking for a run's source does not hold "${accessor}". ` +
+  `Pass projectWorkspaceCapability on its \`uses\` (for harness-manager, \`harnessManager({ uses })\`).`;

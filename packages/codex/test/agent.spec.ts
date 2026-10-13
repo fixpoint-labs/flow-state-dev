@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
 import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "../src/errors";
 import {
@@ -594,5 +594,48 @@ describe("codexAgent — cancellation", () => {
       block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
     ).rejects.toBeInstanceOf(CodexAgentAbortedError);
     expect(rec.started).toHaveLength(0);
+  });
+});
+
+describe("codexAgent — a thread Codex no longer has", () => {
+  // Codex's own words when it has no record of the thread a resume asked for,
+  // as the SDK throws them once the CLI exits (real CLI, 0.152.1).
+  const refusal = (id: string) =>
+    new Error(
+      `Codex Exec exited with code 1: Reading prompt from stdin...\nError: thread/resume: thread/resume failed: no rollout found for thread id ${id} (code -32600)\n`,
+    );
+
+  async function failureOf(throwOnRun: Error, resume: string | null, events: CodexThreadEvent[] = []) {
+    const { resolve } = scripted(events, { throwOnRun });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve, resume: () => resume });
+    const { error } = await testBlock(block, { input: { prompt: "continue" } });
+    expect(error).toBeDefined();
+    return error;
+  }
+
+  it("is classified as an unknown conversation, naming the thread, so a host can show it refused", async () => {
+    const error = await failureOf(refusal("thr_gone"), "thr_gone");
+    expect(harnessFailureKind(error)).toBe("unknown-conversation");
+    expect((error?.cause as Error).message).toContain("thr_gone");
+  });
+
+  it("is not a refusal when the run asked for no thread", async () => {
+    expect(harnessFailureKind(await failureOf(refusal("thr_gone"), null))).toBeNull();
+  });
+
+  it("is not a refusal when Codex names a thread other than the one asked for", async () => {
+    expect(harnessFailureKind(await failureOf(refusal("thr_other"), "thr_gone"))).toBeNull();
+  });
+
+  it("a sign-in failure before any thread is named is an ordinary error, not a refusal", async () => {
+    const signIn = new Error(
+      "Codex Exec exited with code 1: Error: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header",
+    );
+    expect(harnessFailureKind(await failureOf(signIn, "thr_gone"))).toBeNull();
+  });
+
+  it("a process that never started is an ordinary error, not a refusal", async () => {
+    const spawnFailed = Object.assign(new Error("spawn /nope/codex ENOENT"), { code: "ENOENT" });
+    expect(harnessFailureKind(await failureOf(spawnFailed, "thr_gone"))).toBeNull();
   });
 });

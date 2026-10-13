@@ -14,7 +14,9 @@
  * knows a tool's name.
  */
 import { useEffect, useRef, useState } from "react";
-import { columnFor } from "../lib/columns";
+import { ChevronRightIcon } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { columnFor, isDone, readStatus } from "../lib/columns";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
 import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
@@ -33,7 +35,20 @@ const isOpen = (task: ConversationTask) => task.status === "pending" || task.sta
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
-export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sessionId: string | null; readAt: number }) {
+const isErrored = (task: ConversationTask) => readStatus(task.status) === "errored";
+
+export function TasksPanel({
+  worker,
+  sessionId,
+  readAt,
+  activeOnly = false,
+}: {
+  worker: Worker;
+  sessionId: string | null;
+  readAt: number;
+  /** List only the active tasks, with the done and the errored each folded into a closed group. */
+  activeOnly?: boolean;
+}) {
   const { clients, refresh } = useLab();
   const [read, setRead] = useState<Read>(undefined);
   const [polls, setPolls] = useState(0);
@@ -100,18 +115,48 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
       </p>
     );
   }
-  // Failed tasks are left out of the rail for now; the Tasks list still shows them with their error.
-  const listed = read.tasks.filter((task) => task.status !== "errored");
-  if (listed.length === 0) {
-    return (
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none-open">
-        Nothing open.
-      </p>
-    );
-  }
+  const boardRef = conversationBoardRef(sessionId);
+  if (!activeOnly) return <TaskList tasks={read.tasks} boardRef={boardRef} />;
+  const done = read.tasks.filter((task) => isDone(task.status));
+  const errored = read.tasks.filter(isErrored);
+  const active = read.tasks.filter((task) => !isDone(task.status) && !isErrored(task));
+  return (
+    <div className="space-y-1">
+      {active.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none-active">
+          No task is active.
+        </p>
+      ) : (
+        <TaskList tasks={active} boardRef={boardRef} />
+      )}
+      <TaskGroup tasks={done} name="done" boardRef={boardRef} />
+      <TaskGroup tasks={errored} name="errored" boardRef={boardRef} />
+    </div>
+  );
+}
+
+function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask[]; name: string; boardRef: string }) {
+  if (tasks.length === 0) return null;
+  return (
+    <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={name}>
+      <CollapsibleTrigger className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground">
+        <span className={name === "errored" ? "text-destructive" : undefined}>
+          {tasks.length} {name}
+        </span>
+        <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tasks:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="outline-none">
+        <TaskList tasks={tasks} boardRef={boardRef} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** Each task opens its session on the conversation's board. */
+function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boardRef: string }) {
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">
-      {listed.map((task) => (
+      {tasks.map((task) => (
         <li
           key={task.id}
           className="flex items-start gap-2 px-1 py-1 text-sm"
@@ -124,7 +169,7 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
             type="button"
             className="min-w-0 text-left hover:underline"
             data-testid="cos-task-open"
-            onClick={() => navigate({ level: "task", boardRef: conversationBoardRef(sessionId), taskId: task.id, tab: "session" })}
+            onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
           >
             <span className="line-clamp-2">{task.goal}</span>
             <span className="block text-xs text-muted-foreground">
