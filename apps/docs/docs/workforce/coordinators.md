@@ -110,7 +110,37 @@ await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
-A delegate's answer arrives in a request of its own once the delegate's turn ends. To see it, follow the session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), not the `run` request's stream.
+A delegate's answer arrives in a request of its own once the delegate's turn ends, so the `run` request's stream never carries it. To wait for it, follow the whole session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), which delivers each finished item from any request in the session. Read the session's state for a start time, open the stream from it, then send the post, so nothing is missed. In place of the `sendAction` call above:
+
+```ts
+import { createSessionClient, createSessionSSEClient } from "@flow-state-dev/client";
+import { COORDINATOR_JUDGMENT } from "@flow-state-dev/workforce/browser";
+
+const sessions = createSessionClient({ baseUrl });
+const { at, sessionCreatedAt } = await sessions.getSessionState(session.id);
+
+const answer = new Promise<{ from: string; text: string }>((resolve) => {
+  const stream = createSessionSSEClient({
+    sessionId: session.id,
+    baseUrl,
+    since: at,
+    sessionCreatedAt,
+    onItem: ({ item }) => {
+      if (item.type !== "message" || item.ts < (at ?? 0)) return; // the stream starts a few seconds back
+      const from = item.agentName;
+      if (from === undefined || from.startsWith(COORDINATOR_JUDGMENT)) return;
+      stream.close();
+      const text = item.content.map((part) => (part.type === "output_text" ? part.text : "")).join("");
+      resolve({ from, text });
+    },
+  });
+});
+
+await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
+const { from, text } = await answer; // from: "support.devices"
+```
+
+`at` is the server time the state read began. The stream starts a few seconds before `since`, so it can deliver messages saved just before `at`, including an answer to an earlier post. Dropping anything older than `at` keeps that answer from passing as this one's. Under `everyone`, several delegates answer, and this example resolves on the first. It waits only for a delegate: if the coordinator's own turn answers the post, or nobody takes it, the promise never settles, so add a timeout or also resolve on those messages. [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions) lists the stream's other options, such as `itemTypes` and `retry`. In a React view, `useSession` with `live: true` follows the session for you.
 
 ## Choosing how it routes
 
