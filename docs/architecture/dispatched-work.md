@@ -295,7 +295,7 @@ the one row this request was dispatched for, `settleParentTask()` settles it,
 running, and `resumeWait?()` resumes a turn in this session parked on a wait
 gate (present only with durable execution). Beside them, one fact:
 `hasWaitSweeper`, true when this process runs a durability sweeper that times
-asks out. `dispatchTask` offers `wait` only when both hold: the board
+waits out. `dispatchTask` offers `wait` only when both hold: the board
 opts in with `resumesWaits: true` (whatever runs it calls `resumeOwedWaits`), and
 the host reports `hasWaitSweeper`. `addTask` never waits. Identity is
 never a parameter to any of them.

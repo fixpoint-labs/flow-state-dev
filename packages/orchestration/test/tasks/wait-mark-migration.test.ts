@@ -2,7 +2,7 @@
  * A row stored before the wait rename still reads as waited on (WR-8).
  *
  * A row the build before the rename filed for a waiting turn carries its mark
- * as `ask: { gateId, deadline }`. Stored rows reach board logic two ways, and
+ * as `ask: { gateId, deadline }` (retired-name-refusal: WR-8). Stored rows reach board logic two ways, and
  * both have to read the old mark as `wait`:
  *
  * - **Cast**, on a task collection instance (the durable board): no schema
