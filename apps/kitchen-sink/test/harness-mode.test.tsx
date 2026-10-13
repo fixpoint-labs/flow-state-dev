@@ -55,15 +55,19 @@ describe("V5 · the picker at /", () => {
     }
   });
 
-  it("BR-9: with a repository, the harness modes say not built yet", async () => {
+  it("BR-9: with a repository, the modes not built yet say so, and Claude Code mode is built", async () => {
     vi.stubEnv("VERCEL", "");
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("KITCHEN_SINK_HARNESS_WORKSPACE", "");
+    // Test mode runs the scripted Claude Code, so its own check passes on any host.
+    vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
+    vi.stubEnv("KITCHEN_SINK_REAL_HARNESS", "");
     render(await PickerPage());
     const reasons = [...document.querySelectorAll('[data-available="false"] [data-testid="mode-reason"]')].map(
       (reason) => reason.textContent,
     );
-    expect(reasons).toEqual(["Not built yet.", "Not built yet.", "Not built yet."]);
+    expect(reasons).toEqual(["Not built yet.", "Not built yet."]);
+    expect(document.querySelectorAll('[data-available="true"]')).toHaveLength(2);
   });
 });
 

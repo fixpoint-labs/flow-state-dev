@@ -14,7 +14,7 @@
  * Nothing in here is harness-specific beyond the flow kind: a harness that
  * needs more than this has found a gap in its own package.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import {
   FlowNavigator,
   type FlowNavigatorLeaf,
@@ -24,19 +24,10 @@ import {
 import { createClient, createSessionClient, type Client, type SessionClient } from "@flow-state-dev/client";
 import { Plus } from "lucide-react";
 
-import { ModeRailHeader } from "@/components/mode-rail-header";
+import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
-
-/** The rail's theme: the navigator's custom properties, set to this app's tokens. */
-const RAIL_THEME = {
-  "--fsd-nav-fg": "var(--color-foreground)",
-  "--fsd-nav-muted-fg": "var(--color-muted-foreground)",
-  "--fsd-nav-selected-bg": "var(--color-accent)",
-  "--fsd-nav-selected-fg": "var(--color-accent-foreground)",
-  "--fsd-nav-guide": "var(--color-border)",
-} as CSSProperties;
 
 /** The flow list the navigator reads. */
 export type HarnessFlowSource = Pick<Client, "listFlows">;

@@ -9,7 +9,7 @@
   "starts": [
     { "name": "unset", "setting": "unset", "vercel": false, "reason": "production server.*KITCHEN_SINK_HARNESS_WORKSPACE|KITCHEN_SINK_HARNESS_WORKSPACE.*production server" },
     { "name": "not-a-checkout", "setting": "plain-directory", "vercel": false, "reason": "not a git repository" },
-    { "name": "checkout", "setting": "checkout", "vercel": false, "reason": "^Not built yet\\.$" },
+    { "name": "checkout", "setting": "checkout", "vercel": false, "reason": "^Not built yet\\.$", "modesOn": true },
     { "name": "vercel", "setting": "checkout", "vercel": true, "reason": "local machine" }
   ],
   "phone": { "width": 390, "height": 844 }

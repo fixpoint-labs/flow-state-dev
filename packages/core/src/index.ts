@@ -583,6 +583,8 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  planKeySegment,
+  planRowsPrefix,
   replacePlanList,
 } from "./types/harness-plan";
 export type {

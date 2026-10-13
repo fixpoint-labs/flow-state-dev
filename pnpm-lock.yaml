@@ -133,6 +133,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^4.0.7
         version: 4.0.7(zod@3.25.76)
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.234
+        version: 0.3.234(@anthropic-ai/sdk@0.117.1(zod@3.25.76))(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))(zod@3.25.76)
       '@bull-board/api':
         specifier: ^7.1.5
         version: 7.1.5(@bull-board/ui@7.1.5)
@@ -142,6 +145,9 @@ importers:
       '@flow-state-dev/bullmq':
         specifier: workspace:*
         version: link:../../packages/bullmq
+      '@flow-state-dev/claude-code':
+        specifier: workspace:*
+        version: link:../../packages/claude-code
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../../packages/client
@@ -187,6 +193,9 @@ importers:
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../../packages/workforce
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../../packages/workspace
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4

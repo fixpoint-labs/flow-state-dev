@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it and say "not built yet" until each one lands.
+Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), and Codex and Cursor, which say "not built yet" until each one lands.
 
 Kitchen Sink sets up a session and keeps it in step with the harness. It doesn't plan work for a harness or move work between harnesses; that is [Shift Manager](../../packages/shift-manager/README.md).
 
@@ -196,6 +196,26 @@ Restart the app and ask the worker something. The reload runs at startup, before
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
 - **Streaming indicators**: PromptInputSubmit status, Shimmer for status items, skeleton cards for in-progress blocks
 
+## Claude Code mode
+
+Pick **Claude Code** to work a Claude Code session the way you would on its own. Each turn continues the same Claude Code conversation, its steps show while it works, and its to-do list sits beside it.
+
+It runs on your machine, through the Claude Code Agent SDK, signed in the way Claude Code is on its own. Sign in with the `claude` command first. A host that isn't signed in, a host without the SDK, a server running as root, or a machine where Claude Code's sandbox isn't available shows the mode as unavailable, with the reason. On Linux the sandbox needs `bwrap` (bubblewrap) and `socat` installed.
+
+**Where it works.** Claude Code works on this repository. Each session gets its own git worktree, cut from your checkout's `HEAD` on a branch named `kitchen-sink/claude-code-session/<session>`, and every turn of that session works there. Worktrees live outside the repository, under `~/.local/state/flow-state-dev/kitchen-sink-harness/` (or `$XDG_STATE_HOME` if you set it), in a folder named for the repository. Your own checkout is never touched, and two sessions never share a worktree.
+
+Claude Code runs without asking for approval, inside its sandbox: it can write only in the session's worktree, and not to the worktree's `.git`, so it can't commit. Its changes wait, uncommitted, in the worktree for you to review and commit. Nothing is merged or pushed. Worktrees and branches stay until you remove them (`git worktree remove`, then delete the branch).
+
+The run starts with a short list of the server's environment variables: what Claude Code needs to find its tools, sign in and reach the network. That filters what it's handed, and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
+
+In local development the mode uses the checkout the server runs from. To point it at another checkout, or to turn it on for a production server, set `KITCHEN_SINK_HARNESS_WORKSPACE` to that checkout's top level.
+
+**Continuing.** A session is one Claude Code conversation. Stop a turn and the next one picks up the same conversation. If Claude Code can't continue it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. It never quietly starts a new conversation; start a new session for that. If Claude Code answers in a different conversation of its own accord, the session says it started a new one and follows it.
+
+**The plan panel** shows what Claude Code recorded of its to-do list for the session's latest turn, read-only. If part of it couldn't be recorded, the panel says the plan may be incomplete, and why. Claude Code doesn't report its plan through the SDK yet, so the panel says "No plan recorded for this turn." Nothing in the panel starts work.
+
+Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across a restart.
+
 ## Flows
 
 ### `chat-agent` (`flows/chat-agent/`)
@@ -245,7 +265,7 @@ Most are optional. These are the ones you're likely to set:
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway key. Required for real answers: every model the app uses goes through the gateway. |
 | `OPENAI_API_KEY` | Optional. Enables voice. |
 | `KITCHEN_SINK_TEST_MODE` | `1` runs every model as a script and needs no key. See [Without a model key](#without-a-model-key). |
-| `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, outside the checkout. Unset: the server's own checkout in local development, off otherwise. Ignored on Vercel, where they're always off. |
+| `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
 | `STORE_TYPE` | `filesystem` keeps sessions and hired workers in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |

@@ -32,6 +32,7 @@ import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
 import { availableHarnessFlows } from "@/lib/harness-gate";
+import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
@@ -89,8 +90,10 @@ for (const failedPath of workforce.errors) {
 // available on this host (`lib/harness-gate.ts`): on a host that can't run a
 // mode, `/api/flows/<its flow>/…` is not found, so the picker is not the only
 // fence. Decided once per server start, the same answer the picker reads.
-// A mode's issue adds its flow here, by mode id; none is built yet.
-const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({});
+// A mode's issue adds its flow here, by mode id.
+const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({
+  "claude-code": claudeCodeSessionFlow,
+});
 
 // The workforce's copies are addressed by their flow's name (`agent`,
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a

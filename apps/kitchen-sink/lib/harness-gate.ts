@@ -23,6 +23,7 @@
  * refuses can be seen to fail. A mode with no flow kind stays "not built
  * yet" under it: there is nothing to open.
  */
+import { claudeCodeModeCheck } from "./claude-code-mode";
 import { goalControl } from "./goal-control";
 import { readHarnessWorkspace, type HarnessWorkspace } from "./harness-workspace";
 import { MODES, isHarnessMode, type HarnessModeId, type KitchenSinkMode, type ModeId } from "./modes";
@@ -53,7 +54,9 @@ export type ModeCheck = (host: ModeCheckHost) => ModeAvailability | Promise<Mode
  * the mode's flow kind in `lib/modes.ts`. A built mode with no entry here has
  * nothing more to check.
  */
-export const MODE_CHECKS: Partial<Record<HarnessModeId, ModeCheck>> = {};
+export const MODE_CHECKS: Partial<Record<HarnessModeId, ModeCheck>> = {
+  "claude-code": claudeCodeModeCheck(),
+};
 
 /** The reason a harness mode with no flow kind shows. */
 export const NOT_BUILT_YET = "Not built yet.";
@@ -88,13 +91,15 @@ export async function decideAvailability(options: DecideOptions = {}): Promise<M
   const entries = await Promise.all(
     modes.map(async (mode): Promise<[ModeId, ModeAvailability]> => {
       if (!isHarnessMode(mode.id)) return [mode.id, { available: true }];
-      if (!gateOpen && !workspace.ok) return [mode.id, { available: false, reason: workspace.reason }];
-      if (mode.flowKind === undefined) return [mode.id, { available: false, reason: NOT_BUILT_YET }];
+      const built = mode.flowKind !== undefined;
+      // An open gate skips the host and the mode's own check, never "not built yet".
+      if (gateOpen) return [mode.id, built ? { available: true } : { available: false, reason: NOT_BUILT_YET }];
+      if (!workspace.ok) return [mode.id, { available: false, reason: workspace.reason }];
+      if (!built) return [mode.id, { available: false, reason: NOT_BUILT_YET }];
       const check = checks[mode.id];
-      if (gateOpen || check === undefined) return [mode.id, { available: true }];
+      if (check === undefined) return [mode.id, { available: true }];
       try {
-        // `workspace.ok` holds here: an open gate returned above.
-        return [mode.id, await check({ repository: (workspace as { repository: string }).repository })];
+        return [mode.id, await check({ repository: workspace.repository })];
       } catch (error) {
         return [mode.id, { available: false, reason: messageOf(error) }];
       }
@@ -106,7 +111,9 @@ export async function decideAvailability(options: DecideOptions = {}): Promise<M
 /**
  * Held on `globalThis` so the page, the harness addresses and the flow list
  * share one answer however the server bundles them, and so a dev server's
- * hot reload does not decide again: a change shows at the next restart.
+ * hot reload does not decide again: a change shows at the next restart. The
+ * flows themselves are rebuilt on every hot reload, deliberately
+ * (`fsdev.config.ts`, beside its HMR dispose), from this same kept answer.
  */
 const MEMO = Symbol.for("kitchen-sink.harness-gate");
 type Memo = typeof globalThis & { [MEMO]?: Promise<ModesAvailability> };

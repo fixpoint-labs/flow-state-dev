@@ -17,6 +17,8 @@ import {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  planKeySegment,
+  planRowsPrefix,
   replacePlanList,
   type PlanListItem,
 } from "@flow-state-dev/core";
@@ -240,5 +242,32 @@ describe("replacePlanList", () => {
       status: "incomplete",
       reason: expect.stringContaining("store unavailable"),
     });
+  });
+});
+
+describe("finding one request's rows", () => {
+  // A reader selects a request's rows by prefix. If its prefix is not the
+  // writer's escaping of the request id, a request id holding a `/` reads as
+  // no plan at all, or as another request's plan.
+  it("escapes the request id the way a writer keys it, one segment, injectively", () => {
+    const ids = ["req_1", "a/b", "a%2Fb", "a\\b", "..", ".", "...", "line\nbreak"];
+    const segments = ids.map(planKeySegment);
+    for (const segment of segments) {
+      expect(segment).not.toContain("/");
+      expect(segment).not.toContain("\\");
+      expect(segment).not.toBe("..");
+      expect(segment).not.toMatch(/[\x00-\x1f]/);
+    }
+    expect(new Set(segments).size).toBe(ids.length);
+    // A plain id is its own segment, so rows written before escaping still match.
+    expect(planKeySegment("req_1")).toBe("req_1");
+    expect(planKeySegment(".")).toBe(".");
+  });
+
+  it("prefixes the plan rows by default, and the list markers when asked", () => {
+    expect(planRowsPrefix("a/b")).toBe(`${OBSERVED_PLAN}/a%2Fb/`);
+    expect(planRowsPrefix("a/b", OBSERVED_PLAN_LIST)).toBe(`${OBSERVED_PLAN_LIST}/a%2Fb/`);
+    // A request id that is a prefix of another selects only its own rows.
+    expect(`${OBSERVED_PLAN}/req_10/0#0/1`.startsWith(planRowsPrefix("req_1"))).toBe(false);
   });
 });
