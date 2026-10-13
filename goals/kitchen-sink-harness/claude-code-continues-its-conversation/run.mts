@@ -87,6 +87,21 @@ async function boundId(page: Page): Promise<string> {
   return ((await bound(page).textContent()) ?? "").trim();
 }
 
+/** The bound id once a freshly loaded page has read it: it draws "none yet" until the session's state arrives. */
+async function loadedBoundId(page: Page): Promise<string> {
+  await page
+    .waitForFunction(
+      () => {
+        const text = document.querySelector('[data-testid="bound-conversation"]')?.textContent?.trim();
+        return text !== undefined && text !== "none yet";
+      },
+      undefined,
+      { timeout: 30_000 },
+    )
+    .catch(() => undefined);
+  return boundId(page);
+}
+
 /** How many times `token` shows in the conversation, as drawn. */
 async function tokenCount(page: Page, token: string): Promise<number> {
   const text = (await page.getByTestId("conversation").textContent()) ?? "";
@@ -204,8 +219,8 @@ await runGoal(async (failures) => {
     if (!back) {
       fail("r", `after a reload the page is not back in session ${sessionId}: ${JSON.stringify(await page.getByTestId("stream").textContent())}`);
     } else {
-      await bound(page).waitFor({ timeout: 30_000 });
-      if ((await boundId(page)) !== id1) fail("r", `after a reload the session shows ${await boundId(page)} (want ${id1})`);
+      const reloaded = await loadedBoundId(page);
+      if (reloaded !== id1) fail("r", `after a reload the session shows ${reloaded} (want ${id1})`);
       const seenR = await tokenCount(page, token);
       await turn(page, "One more time: the token, only.");
       if ((await tokenCount(page, token)) <= seenR) fail("r", "after a reload, the next turn did not name the token");

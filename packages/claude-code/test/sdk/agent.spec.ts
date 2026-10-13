@@ -408,6 +408,19 @@ describe("claudeCodeAgent", () => {
       expect(options.allowedTools).toEqual(["Bash(git status)", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList"]);
     });
 
+    it("adds Grep and Glob too, but only under bypassPermissions, where naming them allows nothing new", async () => {
+      // Claude Code offers its search tools outside its terminal only when they are named here.
+      // They check paths for permission, so naming them for a host that prompts would approve
+      // searches outside the working directory that it would otherwise be asked about.
+      expect((await handedToSdk({ permissionMode: "bypassPermissions" })).allowedTools).toEqual([...TODO_TOOLS, "Grep", "Glob"]);
+      expect(
+        (await handedToSdk({ permissionMode: "bypassPermissions", allowedTools: ["Grep", "Bash"] })).allowedTools,
+      ).toEqual(["Grep", "Bash", ...TODO_TOOLS, "Glob"]);
+      expect((await handedToSdk({})).allowedTools).toEqual(TODO_TOOLS);
+      expect((await handedToSdk({ permissionMode: "default" })).allowedTools).toEqual(TODO_TOOLS);
+      expect((await handedToSdk({ permissionMode: "acceptEdits" })).allowedTools).toEqual(TODO_TOOLS);
+    });
+
     it("leaves the host's disallowedTools as the way to turn them off", async () => {
       const options = await handedToSdk({ disallowedTools: ["TaskCreate"] });
       expect(options.disallowedTools).toEqual(["TaskCreate"]);

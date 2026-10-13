@@ -372,8 +372,12 @@ The plan half fills only when the agent uses Claude Code's to-do tools
 (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`). Every run is offered them:
 on newer models Claude Code switches them off unless they are named in
 `allowedTools`, so the block adds them to whatever list you pass. They ask no
-permission, so naming them allows nothing else. To keep a run from them, list
-them in `disallowedTools`. Neither the default prompt nor `recordWork` makes
+permission, so naming them allows nothing else. A run with
+`permissionMode: "bypassPermissions"` also gets Claude Code's search tools,
+`Grep` and `Glob`, which it likewise offers only when named. In other modes
+they're left out, because naming them would approve searches outside the
+working directory without asking; name them yourself if you want that. To keep
+a run from any of these, list them in `disallowedTools`. Neither the default prompt nor `recordWork` makes
 the agent use them, and it often works without a list. An empty `observed-plan` means the
 run kept no list; it is not a recording failure.
 

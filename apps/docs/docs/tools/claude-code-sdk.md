@@ -593,7 +593,9 @@ The plan record fills only when the agent keeps a to-do list with Claude Code's 
 `TaskCreate` and `TaskUpdate`. Every run is offered them: on newer models Claude Code switches
 them off unless they're named in `allowedTools`, so the block adds them to whatever list you
 pass. They ask no permission, so this allows nothing else. To keep a run from them, list them in
-`disallowedTools`. The agent still has to choose to use them, which it often doesn't on a short
+`disallowedTools`. A run with `permissionMode: "bypassPermissions"` also gets the search tools
+`Grep` and `Glob`. In other modes you name those yourself, because naming them approves searches
+outside the working directory without asking. The agent still has to choose to use them, which it often doesn't on a short
 job, whatever prompt the run started from. When it doesn't, the record stays empty. That is the honest answer, not a
 recording failure, and nothing appears in `observed-gaps` for it.
 
