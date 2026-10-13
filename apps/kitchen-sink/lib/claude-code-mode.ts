@@ -96,8 +96,7 @@ const CLAUDE_CODE_PLAN_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList
  *
  * `systemPrompt` is left unset on purpose, which starts the run from Claude
  * Code's own preset. A plain string there would turn off its planning tool,
- * and the plan panel would never fill. So would leaving the to-do tools
- * unnamed (`CLAUDE_CODE_PLAN_TOOLS`).
+ * and the plan panel would never fill.
  */
 export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);

@@ -19,7 +19,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import {
   FlowNavigator,
-  type FlowNavigatorLeaf,
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
@@ -31,7 +30,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
-/** The address's query parameter naming the open session (`?session=<id>`). */
 const SESSION_PARAM = "session";
 
 /** The flow list the navigator reads. */
@@ -68,7 +66,6 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
   // The open leaf's re-read, so a session just created shows in the list.
   const refreshLeaf = useRef<(() => void) | null>(null);
 
-  /** Open a session, and name it in the address so a reload comes back to it. */
   const open = useCallback((sessionId: string) => {
     setSelected(sessionId);
     const url = new URL(window.location.href);
@@ -107,8 +104,6 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
       setCreating(false);
     }
   }, [sessions, flowKind, open]);
-
-  const handleSelect = useCallback((sessionId: string, _leaf: FlowNavigatorLeaf) => open(sessionId), [open]);
 
   const slots = useMemo(
     () => ({
@@ -150,7 +145,7 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
             sessionClient={sessions}
             userId={KITCHEN_SINK_USER_ID}
             selectedSessionId={selected}
-            onSelectSession={handleSelect}
+            onSelectSession={open}
             slots={slots}
           />
         </div>
