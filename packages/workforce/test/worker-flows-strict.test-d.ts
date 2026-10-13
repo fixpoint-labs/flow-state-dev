@@ -37,7 +37,7 @@ const researchFlow = defineFlow({
   resources: { ...installation.resources },
   request: { onFinished: delegatedPostOnFinished },
   actions: { run: { inputSchema, block: door, userMessage: (input) => input.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } },
+  task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } },
 });
 
 /** A worker flow that declares no settings of its own. */

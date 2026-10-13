@@ -121,7 +121,7 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[], reportCanc
     resources: { ...installation.resources },
     ...(reportCancel ? { request: { onFinished: delegatedPostOnFinished } } : {}),
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
+    task: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
   });
 }
 
@@ -145,9 +145,13 @@ function taskingFlow(installation: WorkerInstallation, flow: "tasker" | "allroun
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    ...(flow === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
     // Takes a conversation's tasks, as the delegate check requires (FIX-1842).
-    task: { actions: { work: workerTaskEntry({ name: `${flow}-task`, turn: door }) } }
+    task: {
+      actions: {
+        work: workerTaskEntry({ name: `${flow}-task`, turn: door }),
+        ...(flow === "allround" ? { onDelegatedPost: delegatedPostEntry(door) } : {})
+      }
+    }
   });
 }
 
@@ -349,6 +353,19 @@ export function bootHost(options: HostOptions = {}) {
     }
   };
 
+  /**
+   * Every post row on `userId`'s conversation boards (FIX-1872), oldest first:
+   * read from the store, not through a board.
+   */
+  const postRows = async (userId: string): Promise<any[]> => {
+    const runtime = await state.getRuntime();
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/");
+    return Object.values(entries)
+      .map((value) => value.state as any)
+      .filter((row) => row?.sealed?.kind === "post")
+      .sort((a, b) => a.createdAt - b.createdAt);
+  };
+
   /** A conversation's session state, as stored. */
   const sessionState = async (sessionId: string) =>
     ((await (await state.getRuntime()).stores.session.get(sessionId))?.state ?? {}) as Record<string, any>;
@@ -398,6 +415,7 @@ export function bootHost(options: HostOptions = {}) {
     cancelDelegate,
     settled,
     sessionState,
+    postRows,
     items,
     client
   };

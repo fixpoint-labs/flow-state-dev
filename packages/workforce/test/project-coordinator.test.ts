@@ -77,7 +77,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
   const heard: Heard[] = [];
   const counting = options.counted === true ? countingStores() : undefined;
   const projects = defineProjectBlocks();
-  const leadFlowRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {}, onDelegatedPost: {} } } };
+  const leadFlowRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } }, task: { actions: { onDelegatedPost: {} } } };
   const h = await bootProjectsHost(
     {
       standardWorkers,
@@ -104,7 +104,8 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
           }
         };
       },
-      leadInternal: (installation) => {
+      leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+      leadTask: (installation) => {
         const turn = handler({
           name: "lead-delegated-turn",
           inputSchema: z.object({ message: z.string() }),
@@ -115,7 +116,7 @@ async function boot(options: { judgment?: MockGeneratorInstance; counted?: boole
             return `${worker.id} on it: ${input.message}`;
           }
         });
-        return { [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(), onDelegatedPost: delegatedPostEntry(turn) };
+        return { onDelegatedPost: delegatedPostEntry(turn) };
       },
       flows: (installation) => ({
         [COORDINATOR_FLOW]: defineCoordinatorFlow({
@@ -359,7 +360,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     });
 
   it("hands work to her own workstream's lead, delivered once into that workstream's session, and its answer comes back (BR-25)", async () => {
-    const judgment = scripted([{ toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/checkout" } }]);
+    const judgment = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }]);
     const h = await boot({ judgment });
     const opened = await h.open("alice", "checkout", "alice-lead");
     await h.open("alice", "search", "alice-lead");
@@ -381,7 +382,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
   });
 
   it("refuses Bob's workstream like a missing delegate, and records it (BR-26)", async () => {
-    const judgment = scripted([{ toolName: "handOff", args: { worker: "bob-lead", target: "shared/apollo/billing" } }]);
+    const judgment = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "bob-lead", target: "shared/apollo/billing" } }]);
     const h = await boot({ judgment });
     await h.open("bob", "billing", "bob-lead");
     await h.open("alice", "checkout", "alice-lead");
@@ -419,7 +420,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
   it("lists the project's entries at most once in a turn, for its delegates and its read tool together (V5)", async () => {
     const judgment = scripted([
       { toolName: "readProject", args: {} },
-      { toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/checkout" } }
+      { toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }
     ]);
     const h = await boot({ judgment, counted: true });
     await h.open("alice", "checkout", "alice-lead");
@@ -465,7 +466,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       { toolName: "listLeads", args: {} },
       // No project: the open lands in the project this conversation is linked to.
       { toolName: "openWorkstream", args: { id: "checkout", title: "Guest checkout", lead: "alice-lead", objectives: ["Ship it"] } },
-      { toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/checkout" } }
+      { toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }
     ]);
     const h = await boot({ judgment, counted: true });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
@@ -508,7 +509,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     const judgment = scripted([
       { toolName: "openWorkstream", args: { project: apollo, id: "checkout", title: "Checkout", lead: "alice-lead" } },
       { toolName: "openWorkstream", args: { project: apollo, id: "search", title: "Search", lead: "alice-lead" } },
-      { toolName: "handOff", args: { worker: "alice-lead", target: "shared/apollo/search" } }
+      { toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/search" } }
     ]);
     const h = await boot({ judgment });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);

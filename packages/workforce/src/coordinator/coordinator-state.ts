@@ -1,16 +1,24 @@
 /**
  * What a coordinator conversation keeps beside its delegate list
  * (`../delegates/delegate-list`): best fit's hold, round robin's turn, the
- * delivery ledger, the rounds still open and the answers that landed last.
- * Server-written: only the delivery code, the rounds and the answer's claim
- * write these fields, and the flow declares them `serverOwned`, so a session
- * create can't seed them.
+ * rounds still open and the answers that landed last. Server-written: only
+ * the routing, the rounds and a post's ending write these fields, and the
+ * flow declares them `serverOwned`, so a session create can't seed them.
+ *
+ * Nothing here records a delivery: each one is a row on the conversation's
+ * board, and the row's claim is what lets its answer land once. A session
+ * saved with the old delivery ledger (`deliveries`) reads as if it had none,
+ * and the key is dropped at its next write (BP-030).
  */
 import { z } from "zod";
-import { deliveryDelegateSchema, deliveryLedgerSchema } from "../delivery-ledger";
-import { DELEGATE_SERVER_OWNED, delegateStateShape, sameDelegate } from "../delegates/delegate-list";
-import type { DeliveryDelegate } from "../delivery-ledger";
-import { DELIVERIES_STATE, HOLD_STATE, LANDED_STATE, ROUND_ROBIN_STATE, ROUNDS_STATE } from "./coordinator-keys";
+import {
+  DELEGATE_SERVER_OWNED,
+  delegateStateShape,
+  deliveryDelegateSchema,
+  sameDelegate,
+  type DeliveryDelegate
+} from "../delegates/delegate-list";
+import { HOLD_STATE, LANDED_STATE, ROUND_ROBIN_STATE, ROUNDS_STATE } from "./coordinator-keys";
 import { landedAnswersSchema } from "./coordinator-lines";
 
 /** Who best fit holds the user's next post for: the delegate the last one went to. */
@@ -34,12 +42,14 @@ export type RoundAnswer = z.infer<typeof roundAnswerSchema>;
 export const openRoundSchema = z.object({
   postId: z.string(),
   round: z.number().int().min(0),
-  /** Routings still adding deliveries to it. It doesn't close on its answers while one runs. */
+  /** Routings still filing rows in it. It doesn't close on its answers while one runs. */
   opening: z.number().int().min(0),
-  /** When it closes without what is still out. Set by its first delivery. */
+  /** When it closes without what is still out. Set by its first post row. */
   deadlineAt: z.number().optional(),
   /** The answers that landed in it, in the order they landed. */
-  answers: z.array(roundAnswerSchema)
+  answers: z.array(roundAnswerSchema),
+  /** The post rows whose endings this conversation has acted on. A round saved before it reads as none. */
+  ended: z.array(z.string()).default([])
 });
 
 export type OpenRound = z.infer<typeof openRoundSchema>;
@@ -51,7 +61,6 @@ export type OpenRound = z.infer<typeof openRoundSchema>;
 export const coordinatorStateShape = {
   ...delegateStateShape,
   [HOLD_STATE]: bestFitHoldSchema.nullable().default(null),
-  [DELIVERIES_STATE]: deliveryLedgerSchema.default([]),
   [ROUND_ROBIN_STATE]: roundRobinCursorSchema.nullable().default(null),
   [ROUNDS_STATE]: z.array(openRoundSchema).default([]),
   [LANDED_STATE]: landedAnswersSchema.default([])
@@ -61,7 +70,6 @@ export const coordinatorStateShape = {
 export const COORDINATOR_SERVER_OWNED: readonly string[] = [
   ...DELEGATE_SERVER_OWNED,
   HOLD_STATE,
-  DELIVERIES_STATE,
   ROUND_ROBIN_STATE,
   ROUNDS_STATE,
   LANDED_STATE

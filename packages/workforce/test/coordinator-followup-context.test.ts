@@ -118,7 +118,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
-    internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }
+    task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }
   });
 }
 
@@ -162,7 +162,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
     const requests = (await stores.resolve()).request;
     const set = requests.set.bind(requests);
     requests.set = async (id, value, expected) => {
-      if (value.actionName === "delegateAnswer" && value.status === "completed") await released;
+      if (value.actionName === "onPostSettled" && value.status === "completed") await released;
       return set(id, value, expected);
     };
   }
@@ -234,11 +234,15 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   const records = async () =>
     (await itemsOf(sessionId)).filter((item) => item.type === "component" && item.component === "coordinator-route").map((item) => item.data);
 
-  /** The session each delegate was delivered into, from the conversation's ledger. */
+  /** The conversation's post rows, read from the store. */
+  const postRows = async (): Promise<any[]> =>
+    Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", "tasks/"))
+      .map((value) => value.state as any)
+      .filter((row) => row?.sealed?.kind === "post");
+
+  /** The session each delegate worked its post in, from the conversation's post rows. */
   const delegateSession = async (worker: string) =>
-    ((((await runtime.stores.session.get(sessionId))?.state ?? {}) as { deliveries?: any[] }).deliveries ?? []).find(
-      (delivery) => delivery.delegate.worker === worker
-    )?.sessionId as string | undefined;
+    (await postRows()).find((row) => row.assignee === worker)?.run?.sessionId as string | undefined;
 
   /** The conversation's session state, as stored. */
   const sessionState = async () => ((await runtime.stores.session.get(sessionId))?.state ?? {}) as Record<string, any>;
@@ -254,7 +258,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   /** Each request in the host: its action, its status, and whether it is in Alice's conversation. */
   const requests = async () =>
     (await runtime.stores.request.list({})).map((r) => [r.actionName, r.status, r.sessionId === sessionId]);
-  return { route, answer, post, records, itemsOf, delegateSession, sessionState, release, settled, requests };
+  return { route, answer, post, records, itemsOf, delegateSession, postRows, sessionState, release, settled, requests };
 }
 
 /** Everything a delegate turn was shown besides the post: its system text and its other messages. */
@@ -314,8 +318,8 @@ describe("a follow-up keeps its conversation's context", () => {
     const first = "My laptop won't join the office wifi. [route:devices]";
     const answered = await desk.post(first, 1);
     expect(answered.agentName).toBe("devices");
-    expect((await desk.sessionState()).deliveries).toEqual([expect.objectContaining({ answered: true })]);
-    expect(await desk.requests()).toContainEqual(["delegateAnswer", "in_progress", true]);
+    expect((await desk.postRows()).map((row) => [row.assignee, row.status])).toEqual([["devices", "completed"]]);
+    expect(await desk.requests()).toContainEqual(["onPostSettled", "in_progress", true]);
 
     // Routed while that request is still open. Its answer is released once the follow-up has been routed.
     const second = await desk.post("[follow-up] It sees it. It fails right after the password. [route:accounts]", 2, desk.release);

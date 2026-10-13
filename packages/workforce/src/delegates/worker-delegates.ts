@@ -17,7 +17,6 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
-import { deliveryDelegateSchema } from "../delivery-ledger";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -29,6 +28,7 @@ import {
   currentDelegates,
   delegateRecordSchema,
   delegateSessionStateSchema,
+  deliveryDelegateSchema,
   readDelegates,
   type DelegateChange,
   type DelegateDefaults,

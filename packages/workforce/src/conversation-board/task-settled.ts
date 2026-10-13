@@ -7,9 +7,13 @@
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
  * attempt runs the board again with no turn; an asked row's ending resumes
  * the turn parked on it (`dispatchTask` with `wait`), with no line and no turn woken;
- * any other ending lands as a line under the delegate's name and, when its
- * coordinator has a turn of its own (judgment or best-fit routing), wakes
- * that turn to read it and decide what to do.
+ * a post row's ending (a delegate's answer to a post its coordinator handed
+ * on, `../coordinator/delegated-post`) goes to the coordinator's own
+ * handling, which lands it as the delegate's line or ends its part of the
+ * round, with no generic line and no turn woken; any other ending lands as a
+ * line under the delegate's name and, when its coordinator has a turn of its
+ * own (judgment or best-fit routing), wakes that turn to read it and decide
+ * what to do.
  *
  * A notice that arrives while the conversation is replying waits for the
  * reply to end, then runs (BR-27). It waits for the replies running when it
@@ -78,9 +82,11 @@ export const conversationBoardStateShape = {
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE, PARENT_BINDING_STATE];
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask", "post"]),
   text: z.string().optional(),
-  worker: z.string().optional()
+  worker: z.string().optional(),
+  /** On a post row's ending: what the coordinator's handling is handed. */
+  post: z.unknown().optional()
 });
 
 type Settled = z.infer<typeof settledSchema>;
@@ -93,7 +99,25 @@ export interface TaskSettledOptions {
   readonly turn: BlockDefinition<any, any>;
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
+  /**
+   * A post row's ending, acted on once like any notice, and handed here
+   * instead of a line or a turn ({@link PostEnding}). Only a coordinator's
+   * conversation files post rows.
+   */
+  readonly onPost?: BlockDefinition<any, any>;
 }
+
+/** What a post row's ending hands {@link TaskSettledOptions.onPost}. */
+export const postEndingSchema = z.object({
+  taskId: z.string(),
+  ending: z.enum(["completed", "errored", "cancelled"]),
+  /** The row's output: the delegate's reply, on a completed row. */
+  output: z.unknown().optional(),
+  /** The row's server-written post (`postRowSchema`). */
+  post: z.record(z.unknown())
+});
+
+export type PostEnding = z.infer<typeof postEndingSchema>;
 
 /**
  * Not `"session"`. Delegate answers are `queue` on that key, and a queued
@@ -189,6 +213,20 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       await replayRest();
       if (first !== true) return { act: "none" };
+      // A post row's ending is the coordinator's, never the generic line. A
+      // post has one attempt and nobody to ask, so it ends only one way of three.
+      if (options.onPost !== undefined && row.sealed?.kind === "post") {
+        if (notice.ending !== "completed" && notice.ending !== "errored" && notice.ending !== "cancelled") {
+          return { act: "none" };
+        }
+        const ending: PostEnding = {
+          taskId: row.id,
+          ending: notice.ending,
+          ...(notice.output !== undefined ? { output: notice.output } : {}),
+          post: row.sealed
+        };
+        return { act: "post", post: ending };
+      }
       // A piece's failure for good wakes the turn that may file it again.
       if (decision.act === "wake-turn") await noteFailedPiece(ctx as never, row);
       return {
@@ -218,11 +256,29 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       (settled: Settled) => ({ message: settled.text ?? "" }),
       options.turn
     )
-    .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard)
+    .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard);
+  const withPosts = (
+    options.onPost === undefined
+      ? block
+      : block.tapIf(
+          (settled: Settled) => settled.act === "post",
+          (settled: Settled) => settled.post as PostEnding,
+          options.onPost
+        )
+  )
     // In a task session whose task waits on its pieces: settle it once none
     // is open, after any turn this notice woke, never inside it (FIX-1802
     // S4). A turn that failed leaves it for the next touch.
     .tap(settleSplitBlock);
 
-  return { inputSchema: taskNoticeSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
+  return { inputSchema: taskNoticeSchema, block: withPosts, concurrency: AFTER_REPLY_CONCURRENCY };
+}
+
+/**
+ * Build the `onPostSettled` internal entry: {@link taskSettledEntry}'s
+ * dedupe and hand-off, queued on the session rather than deferred on the
+ * reply line, so a delegate's answer lands while a reply runs.
+ */
+export function postSettledEntry(options: TaskSettledOptions & { readonly onPost: BlockDefinition<any, any> }) {
+  return { ...taskSettledEntry(options), concurrency: "queue" as const };
 }

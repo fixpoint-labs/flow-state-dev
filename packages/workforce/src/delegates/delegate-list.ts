@@ -23,8 +23,20 @@
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { delegateKey, deliveryDelegateSchema, type DeliveryDelegate } from "../delivery-ledger";
 import { DELEGATES_STATE, FALLBACK_STATE, MAX_DELEGATES } from "./delegate-keys";
+
+/** The delegate a post goes to: a worker, and the target a caller resolved for it, if any. */
+export const deliveryDelegateSchema = z.object({
+  worker: z.string().min(1),
+  target: z.string().min(1).optional()
+});
+
+export type DeliveryDelegate = z.infer<typeof deliveryDelegateSchema>;
+
+/** One key per delegate record: a worker with two targets is two delegates. */
+export function delegateKey(delegate: DeliveryDelegate): string {
+  return JSON.stringify([delegate.worker, delegate.target ?? null]);
+}
 
 /** One delegate record. */
 export const delegateRecordSchema = deliveryDelegateSchema.extend({

@@ -1,47 +1,66 @@
 /**
- * How a worker flow takes a delegated post: the internal entry a coordinator
- * dispatches to, and the answer it hands back.
+ * How a worker flow takes a delegated post: the task entry a coordinator's
+ * board hands a post row to, and what its ending tells the coordinator.
  *
- * A coordinator delivers a post into the delegate's own session (one per
- * coordinator conversation per delegate, created naming the delegate), on the
- * entry {@link DELEGATED_POST_ENTRY}. The delegate runs one turn on it and
- * hands the reply back to the delivering conversation with the delivery's
- * token, and nothing else: who answered, which post and which round all come
- * from the delivery the token names.
+ * A coordinator files one row on its conversation's board per delegate it
+ * picks for a post, under every policy and in every round (`coordinator-flow.ts`).
+ * The row carries the post in its server-written payload ({@link postRowSchema}):
+ * who wrote it, the coordinator, the conversation's recent lines, its round,
+ * the round's deadline when its answer can go back out, and the session it is
+ * worked in, resolved when it was filed: the delegate's own session for that
+ * conversation, or the session a workstream's record names. The board hands it
+ * to {@link DELEGATED_POST_ENTRY} on the delegate's flow, in that session.
+ *
+ * **One fence.** The entry is a task entry, so the board's claim gate runs in
+ * front of it: the row, its attempt and its assignee are verified, the run
+ * names itself on the row, the lease is renewed while the turn runs, and the
+ * row is settled with the turn's reply, or failed with its error. A second
+ * settle (a stale attempt, a turn still running after a cancel) is refused by
+ * the claim ticket. The conversation hears the ending once, through its
+ * `onTaskSettled` entry, deduped like any task's notice. Nothing else decides
+ * that an answer counts.
+ *
+ * **Which session takes it.** Only the session written on the row. A session
+ * keyed for a delegate must be the one born naming the row's assignee for the
+ * row's conversation; a session named by id must be that session. Any other
+ * fails the row.
  *
  * **A post with a deadline.** When the answer can go back out to other
- * delegates (the coordinator's `rounds:`), the post carries its round's
- * deadline. Then the entry also tells the coordinator when it has no answer:
- * at once when its turn fails, and at the deadline while its turn is still
- * running. The turn is not stopped: its answer, if it comes, still lands, and
- * goes no further. A run cancelled before its answer went back reports that
- * too, from the flow's request `onFinished` ({@link delegatedPostOnFinished}).
- * A post with no deadline reports nothing but its answer.
+ * delegates (the coordinator's `rounds:`), the row carries its round's
+ * deadline. At the deadline, while the turn is still running, the entry wakes
+ * the conversation ({@link ROUND_DEADLINE_ACTION}) so it closes its overdue
+ * rounds. The turn is not stopped: its answer, if it comes, still lands once,
+ * and goes no further.
  *
- * **A post with the conversation's lines.** A post carries the coordinator
- * conversation's recent lines before it (`coordinator-lines.ts`). The entry
- * notes them for the request, and {@link delegatedPostHistory} hands them to
- * the turn's model as one user-role message just before the post, on that
- * turn only. They are data from the conversation, never system text, so a
- * line written like an instruction carries no more authority than the post
+ * **A post with the conversation's lines.** The row carries the coordinator
+ * conversation's recent lines before the post (`coordinator-lines.ts`). The
+ * entry notes them for the request, and {@link delegatedPostHistory} hands
+ * them to the turn's model as one user-role message just before the post, on
+ * that turn only. They are data from the conversation, never system text, so
+ * a line written like an instruction carries no more authority than the post
  * itself. They are never the turn's stored message either, so the delegate's
  * own conversation never keeps them.
  *
- * A flow declares the entry with {@link delegatedPostEntry}, around the turn
- * it runs for any message. That is what makes its workers delegates that take
- * posts.
+ * A flow declares the entry with {@link delegatedPostEntry}, under
+ * `task.actions`, around the turn it runs for any message. That is what makes
+ * its workers delegates that take posts.
  */
-import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, LLMMessage, RequestScopeHandle } from "@flow-state-dev/core/types";
+import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
+import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, LLMMessage, RequestScopeHandle, TaskDispatchInput } from "@flow-state-dev/core/types";
+import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { taskClaimTicketSchema, type TaskClaimTicket, type TaskCollectionRef, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
+import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
+import { sendOwedNotices } from "../conversation-board/notice-delivery";
+import { deliveryDelegateSchema } from "../delegates/delegate-list";
 import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
-import { COORDINATOR_FLOW, DELEGATE_ANSWER_ACTION, DELEGATE_MISSED_ACTION } from "./coordinator-keys";
-import { conversationLineSchema, linesField, type ConversationLine } from "./coordinator-lines";
+import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { COORDINATOR_FLOW, POST_CANCELLED_ACTION, ROUND_DEADLINE_ACTION } from "./coordinator-keys";
+import { conversationLineSchema, type ConversationLine } from "./coordinator-lines";
 
 /** What a delegate is handed. */
 export const delegatedPostSchema = z.object({
-  /** The delivery's token. The answer hands it back. */
-  token: z.string().min(1),
   /** The post. */
   body: z.string(),
   /** Who wrote it: the conversation's user, or the delegates whose answers it passes on. */
@@ -62,73 +81,77 @@ export const delegatedPostSchema = z.object({
 
 export type DelegatedPost = z.infer<typeof delegatedPostSchema>;
 
-/** What a delegate hands back. Closed: there is nowhere to put a round, an author or a post. */
-export const delegatedAnswerSchema = z.object({ token: z.string().min(1), body: z.string().min(1) }).strict();
-
-export type DelegatedAnswer = z.infer<typeof delegatedAnswerSchema>;
+/** What a post row's `kind` says: the row is a post, not a task. */
+export const POST_ROW_KIND = "post";
 
 /**
- * What a delegate hands back when it has no answer for a post with a
- * deadline: why its turn failed, or, with no `failed`, that the deadline came
- * while its turn was still running. Closed, like the answer.
+ * A post row's server-written payload (`Task.sealed`): the post, and where and
+ * for whom it is worked. Written only by the coordinator when it files the row.
  */
-export const delegatedMissSchema = z
-  .object({ token: z.string().min(1), failed: z.string().min(1).optional() })
-  .strict();
+export const postRowSchema = delegatedPostSchema.extend({
+  kind: z.literal(POST_ROW_KIND),
+  /** The user's post this row hands on. Answers going back out keep its id, in a later round. */
+  postId: z.string().min(1),
+  /** The round it was handed on in: 0 for a user's post. */
+  round: z.number().int().min(0),
+  /** The delegate record it went to. */
+  delegate: deliveryDelegateSchema,
+  /**
+   * The session it is worked in: the delegate's own session for this
+   * conversation, by key, or the session a workstream record's target
+   * resolved to, by id.
+   */
+  session: z.union([z.object({ key: z.string().min(1) }).strict(), z.object({ id: z.string().min(1) }).strict()])
+});
 
-export type DelegatedMiss = z.infer<typeof delegatedMissSchema>;
+export type PostRow = z.infer<typeof postRowSchema>;
+
+/** A row's post, when the row is a post row; `undefined` for any other row. */
+export function postRowOf(row: { readonly sealed?: Readonly<Record<string, unknown>> } | undefined): PostRow | undefined {
+  const sealed = row?.sealed;
+  if (sealed === undefined || sealed.kind !== POST_ROW_KIND) return undefined;
+  const parsed = postRowSchema.safeParse(sealed);
+  return parsed.success ? parsed.data : undefined;
+}
 
 /** A delegated post as the delegate's turn reads it. */
 export function delegatedPostMessage(post: DelegatedPost): string {
   return `${post.from}, through ${post.coordinator}: ${post.body}`;
 }
 
-/**
- * Hand an answer back to the conversation that delivered the post: the
- * stamped sender of this request, never an id the turn names.
- */
-export const answerDelegatedPost = dispatcher({
-  name: "answer-delegated-post",
-  flowKind: COORDINATOR_FLOW,
-  action: DELEGATE_ANSWER_ACTION,
-  inputSchema: delegatedAnswerSchema,
-  session: { from: true },
-  payload: (answer: DelegatedAnswer) => answer
-});
-
-/** Tell the conversation that delivered the post there is no answer for it, the same way. */
-const missDelegatedPost = dispatcher({
-  name: "miss-delegated-post",
-  flowKind: COORDINATOR_FLOW,
-  action: DELEGATE_MISSED_ACTION,
-  inputSchema: delegatedMissSchema,
-  session: { from: true },
-  payload: (miss: DelegatedMiss) => miss
-});
-
-/** Request state: the delivery this request answers. Set from the entry's input, before the turn. */
+/** Request state: the post this request works, and its row. Set before the turn. */
 const DELIVERY_STATE = "delegatedPost";
 /** Request state: whether the turn has ended, answered or failed, so the deadline watch can stop. */
 const ENDED_STATE = "delegatedPostEnded";
-/** Request state: whether the answer went back, so a cancel after it reports nothing. */
-const ANSWERED_STATE = "delegatedPostAnswered";
 
 const deliveryStateSchema = z.object({
   [DELIVERY_STATE]: z
     .object({
-      token: z.string(),
+      taskId: z.string(),
+      partition: z.string(),
+      /** The gate's claim, so a cancelled run's row can be ended under it (`delegatedPostOnFinished`). */
+      claim: taskClaimTicketSchema,
       coordinator: z.string(),
       deadlineAt: z.number().optional(),
       recent: z.array(conversationLineSchema).optional()
     })
     .optional(),
-  [ENDED_STATE]: z.boolean().optional(),
-  [ANSWERED_STATE]: z.boolean().optional()
+  [ENDED_STATE]: z.boolean().optional()
 });
 
-/** The delivery this request answers, as `markDelivery` noted it. */
-const notedDelivery = (ctx: { readonly request: { readonly state: unknown } }) =>
-  (ctx.request.state as z.infer<typeof deliveryStateSchema>)[DELIVERY_STATE];
+type NotedDelivery = NonNullable<z.infer<typeof deliveryStateSchema>[typeof DELIVERY_STATE]>;
+
+/** The post this request works, as `markDelivery` noted it. */
+const notedDelivery = (ctx: { readonly request: { readonly state: unknown } }): NotedDelivery | undefined =>
+  (ctx.request.state as z.infer<typeof deliveryStateSchema> | undefined)?.[DELIVERY_STATE];
+
+/**
+ * Whether the running request works a delegated post. A turn on one is not a
+ * task turn: it isn't offered the question park.
+ */
+export function onDelegatedPost(ctx: { readonly request?: { readonly state: unknown } }): boolean {
+  return ctx.request !== undefined && notedDelivery(ctx as { readonly request: { readonly state: unknown } }) !== undefined;
+}
 
 /**
  * The deadline watch waiting in each request, by request: `markEnded` wakes
@@ -142,26 +165,60 @@ const watches = new Map<string, () => void>();
 const watchKey = (ctx: { readonly request: Pick<RequestScopeHandle, "identity" | "incarnation"> }) =>
   `${ctx.request.identity.id} ${ctx.request.incarnation}`;
 
+/** The claim the gate put on its state, with the ledger partition the row was read in. */
+function claimOf(ctx: BlockContext): (TaskClaimTicket & { partition: string }) | undefined {
+  const ticket = taskClaimTicketSchema.safeParse(ctx.sequencer?.state?.currentClaim);
+  return ticket.success && typeof ticket.data.partition === "string"
+    ? (ticket.data as TaskClaimTicket & { partition: string })
+    : undefined;
+}
+
 /**
- * Note which delivery this request answers, so the answer after the turn
- * hands back its token, and the lines the post came with, so the turn's model
- * is shown them.
+ * Why the running session isn't the one written on the row, or `undefined`
+ * when it is. A keyed session is the one born naming the row's assignee for
+ * the row's conversation, and no task; a session by id is that session.
+ */
+function wrongSession(ctx: BlockContext, post: PostRow, assignee: string, partition: string): string | undefined {
+  if ("id" in post.session) {
+    return post.session.id === ctx.session.identity.id ? undefined : "it is worked in another of your sessions";
+  }
+  const state = ctx.session.state as Record<string, unknown>;
+  if (state[TASK_ID_STATE_KEY] !== undefined) return "this session works a task, not posts";
+  if (state[WORKER_ID_STATE_KEY] !== assignee) return `this session runs another worker, not "${assignee}"`;
+  if (state[FILING_SESSION_STATE_KEY] !== partition) return "this session takes posts from another conversation";
+  return undefined;
+}
+
+/**
+ * Read the post off the row the gate verified, check that this session is the
+ * one written on it, and note it for the request: the row, so its ending can
+ * be told, and the lines it came with, so the turn's model is shown them.
  */
 const markDelivery = handler({
   name: "delegated-post-mark",
-  inputSchema: delegatedPostSchema,
-  outputSchema: z.object({}),
+  inputSchema: taskWorkerInputSchema,
+  outputSchema: postRowSchema,
   requestStateSchema: deliveryStateSchema,
-  execute: async (post: DelegatedPost, ctx) => {
+  execute: async (task: TaskWorkerInput, ctx): Promise<PostRow> => {
+    const post = postRowOf(task);
+    if (post === undefined) throw new Error(`Task "${task.taskId}" isn't a delegated post, so this entry doesn't take it.`);
+    const claim = claimOf(ctx as never);
+    if (claim === undefined) {
+      throw new Error(`"${DELEGATED_POST_ENTRY}" runs only behind its claim gate, and found no claim the gate verified.`);
+    }
     await ctx.request.patchState({
       [DELIVERY_STATE]: {
-        token: post.token,
+        taskId: task.taskId,
+        partition: claim.partition,
+        claim,
         coordinator: post.coordinator,
         ...(post.deadlineAt === undefined ? {} : { deadlineAt: post.deadlineAt }),
-        ...linesField(post.recent)
+        ...(post.recent === undefined || post.recent.length === 0 ? {} : { recent: post.recent })
       }
     });
-    return {};
+    const wrong = wrongSession(ctx as never, post, post.delegate.worker, claim.partition);
+    if (wrong !== undefined) throw new Error(`This session doesn't take the post from ${post.coordinator}: ${wrong}.`);
+    return post;
   }
 });
 
@@ -217,34 +274,20 @@ const markEnded = handler({
   }
 });
 
-/** Note that the answer went back to the coordinator. */
-const markAnswered = handler({
-  name: "delegated-post-answered",
-  inputSchema: z.unknown(),
-  outputSchema: z.object({}),
-  requestStateSchema: deliveryStateSchema,
-  execute: async (_value: unknown, ctx) => {
-    await ctx.request.patchState({ [ANSWERED_STATE]: true });
-    return {};
-  }
-});
-
-/** The turn's reply as the answer: this delivery's token, and the reply. An empty reply is a failed turn. */
+/** The turn's reply, the row's output. An empty reply is a failed turn. */
 const toAnswer = handler({
   name: "delegated-post-answer",
   inputSchema: z.unknown(),
-  outputSchema: delegatedAnswerSchema,
+  outputSchema: z.string().min(1),
   requestStateSchema: deliveryStateSchema,
-  execute: (reply: unknown, ctx): DelegatedAnswer => {
-    // Set by `markDelivery`, the entry's first step.
-    const delivery = ctx.request.state[DELIVERY_STATE]!;
+  execute: (reply: unknown, ctx): string => {
     const body = typeof reply === "string" ? reply : (reply as { text?: unknown } | null)?.text;
     if (typeof body !== "string" || body.trim().length === 0) {
       throw new Error(
-        `This worker's turn on a post from ${delivery.coordinator} ended with an empty reply, so nothing was answered.`
+        `This worker's turn on a post from ${notedDelivery(ctx)?.coordinator ?? "its coordinator"} ended with an empty reply, so nothing was answered.`
       );
     }
-    return { token: delivery.token, body };
+    return body;
   }
 });
 
@@ -257,10 +300,10 @@ const toAnswer = handler({
  */
 const waitForDeadline = handler({
   name: "delegated-post-deadline-wait",
-  inputSchema: delegatedPostSchema,
+  inputSchema: postRowSchema,
   outputSchema: z.object({ late: z.boolean() }),
   requestStateSchema: deliveryStateSchema,
-  execute: async (post: DelegatedPost, ctx) => {
+  execute: async (post: PostRow, ctx) => {
     const key = watchKey(ctx);
     const late = await new Promise<boolean>((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -283,16 +326,39 @@ const waitForDeadline = handler({
   }
 });
 
-/** Beside the turn: at the deadline, if the turn hasn't ended, say so. The turn goes on. */
-const watchDeadline = sequencer({ name: "delegated-post-deadline", inputSchema: delegatedPostSchema })
-  .step(waitForDeadline)
-  .stepIf(
-    (watched: { late: boolean }) => watched.late,
-    (_watched: { late: boolean }, ctx) => ({ token: notedDelivery(ctx)!.token }),
-    missDelegatedPost
-  );
+/**
+ * Wake the conversation that filed the post: its stamped sender, never an id
+ * from the row. A plain wake, with nothing in it: the conversation closes
+ * every round past its deadline. A refused or thrown wake is left: the
+ * conversation's next wake closes the round all the same.
+ */
+const wakeAtDeadline = handler({
+  name: "delegated-post-deadline-wake",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  execute: async (_value: unknown, ctx) => {
+    try {
+      await dispatchThroughSeam(ctx as never, {
+        type: "internal",
+        action: ROUND_DEADLINE_ACTION,
+        flowKind: COORDINATOR_FLOW,
+        session: { from: true },
+        payload: {},
+        from: "delegated-post-deadline-wake"
+      });
+    } catch {
+      // The round closes at the conversation's next wake.
+    }
+    return {};
+  }
+});
 
-/** Hand the turn's failure back as itself, after it was reported. */
+/** Beside the turn: at the deadline, if the turn hasn't ended, wake the conversation. The turn goes on. */
+const watchDeadline = sequencer({ name: "delegated-post-deadline", inputSchema: postRowSchema })
+  .step(waitForDeadline)
+  .tapIf((watched: { late: boolean }) => watched.late, wakeAtDeadline);
+
+/** Hand the turn's failure back as itself, after the watch was stopped. */
 const failAgain = handler({
   name: "delegated-post-failed",
   inputSchema: z.unknown(),
@@ -302,26 +368,52 @@ const failAgain = handler({
   }
 });
 
-/**
- * When the turn fails on a post with a deadline, say so at once, so its round
- * doesn't wait for the deadline. A cancelled request says nothing. Either way
- * the request still fails, with the turn's error.
- */
-const reportFailure = sequencer({ name: "delegated-post-report-failure", inputSchema: z.unknown() })
+/** When the turn fails, stop the deadline watch. The row fails with the turn's error. */
+const endOnFailure = sequencer({ name: "delegated-post-end-on-failure", inputSchema: z.unknown() })
   .tap(markEnded)
-  .tapIf(
-    (_error: unknown, ctx) => !ctx.signal.aborted && notedDelivery(ctx)?.deadlineAt !== undefined,
-    (error: unknown, ctx) => ({
-      token: notedDelivery(ctx)!.token,
-      failed: error instanceof Error ? error.message : String(error)
-    }),
-    missDelegatedPost
-  )
   .step(failAgain);
 
 /**
- * The internal entry that makes a flow's workers delegates that take posts:
- * spread it as `internal.actions[DELEGATED_POST_ENTRY]`.
+ * The ledger a post entry's gate reads a post row from: the conversation
+ * ledger at the partition the claim names, at the running user's scope. Which
+ * session may work the row is checked against the row itself, after the gate.
+ */
+async function postLedgers(
+  ledgerId: string,
+  ctx: BlockContext,
+  partition: string | undefined
+): Promise<TaskCollectionRef | undefined> {
+  if (ledgerId !== CONVERSATION_LEDGER_ID || partition === undefined) return undefined;
+  return conversationLedgerAt(ctx, partition);
+}
+
+/**
+ * Tell the conversation the ending its post row owes: the stamped sender of
+ * this request, on the coordinator's flow, never an address from the row. A
+ * send that is refused or lost leaves the notice owed on the row, and the
+ * conversation's next touch of its board sends it.
+ */
+async function tellCoordinator(ctx: BlockContext): Promise<number> {
+  const delivery = notedDelivery(ctx);
+  if (delivery === undefined) return 0;
+  const ref = await conversationLedgerAt(ctx, delivery.partition);
+  const row = ref?.get(delivery.taskId);
+  if (row === undefined) return 0;
+  return sendOwedNotices(ctx, row, { session: { from: true }, flowKind: COORDINATOR_FLOW, from: "delegated-post-tell" });
+}
+
+const tell = handler({
+  name: "delegated-post-tell",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({ sent: z.number() }),
+  resources: { ...conversationLedgerResources },
+  requestStateSchema: deliveryStateSchema,
+  execute: async (_input, ctx) => ({ sent: await tellCoordinator(ctx as never) })
+});
+
+/**
+ * The task entry that makes a flow's workers delegates that take posts:
+ * spread it as `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } }`.
  *
  * @param turn The flow's turn for one message, `{ message }` in and the reply
  *   out (a string, or `{ text }`). The worker's own door is usually it. Its
@@ -329,19 +421,30 @@ const reportFailure = sequencer({ name: "delegated-post-report-failure", inputSc
  *   {@link delegatedPostHistory}.
  */
 export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
-  const block = sequencer({ name: "delegated-post", inputSchema: delegatedPostSchema })
-    .tap(markDelivery)
-    .sideChainIf((post: DelegatedPost) => post.deadlineAt !== undefined, watchDeadline)
-    .step((post: DelegatedPost) => ({ message: delegatedPostMessage(post) }), turn)
+  const from = taskLedgers({
+    name: "delegated-post-tasks",
+    resolve: postLedgers,
+    uses: [defineCapability({ name: "delegated-post-ledgers", resources: { ...conversationLedgerResources } })],
+    // The turn keeps the worker's own session state, the same shape for every post.
+    allowSessionState: true
+  });
+  const block = sequencer({ name: "delegated-post", inputSchema: taskWorkerInputSchema })
+    .step(markDelivery)
+    .sideChainIf((post: PostRow) => post.deadlineAt !== undefined, watchDeadline)
+    .step((post: PostRow) => ({ message: delegatedPostMessage(post) }), turn)
     .step(toAnswer)
     .tap(markEnded)
-    .step(answerDelegatedPost)
-    .tap(markAnswered)
-    .rescue([{ block: reportFailure }]);
+    .rescue([{ block: endOnFailure }]);
   return {
-    inputSchema: delegatedPostSchema,
     block,
-    userMessage: (post: DelegatedPost) => delegatedPostMessage(post)
+    from,
+    /** The post as the delegate's user item: the gate's input is the dispatch, and the row its payload. */
+    userMessage: (dispatch: TaskDispatchInput) => {
+      const post = postRowOf(dispatch.payload as TaskWorkerInput);
+      return post === undefined ? "" : delegatedPostMessage(post);
+    },
+    onCompleted: tell,
+    onErrored: tell
   };
 }
 
@@ -350,22 +453,54 @@ const requestFinishedSchema = z.object({ actionName: z.string(), status: z.strin
 
 type RequestFinished = z.infer<typeof requestFinishedSchema>;
 
+/** What a delegate tells its conversation when its run on a post was cancelled. */
+export const postCancelledSchema = z.object({ taskId: z.string(), claim: taskClaimTicketSchema });
+
+export type PostCancelled = z.infer<typeof postCancelledSchema>;
+
+/**
+ * Tell the conversation that filed the post that this run was cancelled,
+ * with the claim it held: a cancelled request can't write, and a post has no
+ * second attempt to wait a lease out for. Its stamped sender, never an id
+ * from the row. A refused or thrown send leaves the row to its lease.
+ */
+const reportCancelled = handler({
+  name: "delegated-post-cancelled",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  requestStateSchema: deliveryStateSchema,
+  execute: async (_input, ctx) => {
+    const delivery = notedDelivery(ctx);
+    if (delivery === undefined) return {};
+    const payload: PostCancelled = { taskId: delivery.taskId, claim: delivery.claim };
+    try {
+      await dispatchThroughSeam(ctx as never, {
+        type: "internal",
+        action: POST_CANCELLED_ACTION,
+        flowKind: COORDINATOR_FLOW,
+        session: { from: true },
+        payload,
+        from: "delegated-post-cancelled"
+      });
+    } catch {
+      // The row's lease lapses, and its recovery ends it.
+    }
+    return {};
+  }
+});
+
 /**
  * A delegate flow's request `onFinished`: when a delegated post's run was
- * cancelled before its answer went back, tell the coordinator, so the round
- * doesn't wait for its deadline. It acts only on the {@link DELEGATED_POST_ENTRY}
- * entry, on a post with a deadline, and on an `aborted` request. Set it as the
- * flow's `request.onFinished`; the built-in `agent` flow does.
+ * cancelled, tell the coordinator, which ends its row, so the round doesn't
+ * wait for its deadline. It acts only on the {@link DELEGATED_POST_ENTRY} entry
+ * and an `aborted` request. Set it as the flow's `request.onFinished`; the
+ * built-in `agent` flow does.
  */
 export const delegatedPostOnFinished = sequencer({
   name: "delegated-post-finished",
   inputSchema: requestFinishedSchema
-}).stepIf(
+}).tapIf(
   (finished: RequestFinished, ctx) =>
-    finished.status === "aborted" &&
-    finished.actionName === DELEGATED_POST_ENTRY &&
-    notedDelivery(ctx)?.deadlineAt !== undefined &&
-    (ctx.request.state as z.infer<typeof deliveryStateSchema>)[ANSWERED_STATE] !== true,
-  (_finished: RequestFinished, ctx) => ({ token: notedDelivery(ctx)!.token, failed: "its run was cancelled" }),
-  missDelegatedPost
+    finished.status === "aborted" && finished.actionName === DELEGATED_POST_ENTRY && notedDelivery(ctx) !== undefined,
+  reportCancelled
 );

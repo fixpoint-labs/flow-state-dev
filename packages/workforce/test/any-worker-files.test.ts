@@ -475,7 +475,7 @@ describe("who it files for, and which board (V2)", () => {
   it("files from a delegate's session onto that session's own board; the post is answered and the work reports there (BR-12)", async () => {
     const h = host({
       judgmentScript: [
-        ...callOnce("plan the launch", { toolName: "handOff", args: { worker: "ana" } }, "Handed on."),
+        ...callOnce("plan the launch", { toolName: "dispatchTask", args: { post: true, assignee: "ana" } }, "Handed on."),
         { when: () => true, then: { text: "OK." } }
       ],
       agentScript: fileScript("plan the launch", "Book the venue", "eng.tasker")
@@ -484,7 +484,10 @@ describe("who it files for, and which board (V2)", () => {
       const conv = await h.conversation("alice", "chief");
       expect((await h.act("alice", conv, "run", { message: "plan the launch" })).error).toBeUndefined();
       await h.settled();
-      const rows = await h.rows("alice");
+      // The post to ana is a row on the conversation's board; her filing is the other.
+      const all = await h.rows("alice");
+      expect(all.filter((row) => row.sealed?.kind === "post").map((row) => [row.assignee, row.status])).toEqual([["ana", "completed"]]);
+      const rows = all.filter((row) => row.sealed?.kind !== "post");
       expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Book the venue", "eng.tasker", "completed"]]);
       // On ana's delegate session's board, not the conversation's.
       const chiefFiling = await h.filingOf("alice", conv);

@@ -24,22 +24,19 @@ export const COORDINATOR_JUDGMENT = "coordinator-judgment";
 /** Best fit's generator when the evaluator call on a model id fails. A scripted model resolves it by name. */
 export const COORDINATOR_ROUTE_ASK = "coordinator-route-ask";
 
-/** The coordinator's tool that hands the post it is reading to one delegate. */
-export const HAND_OFF = "handOff";
+/**
+ * The internal entry a delegate still working on a post wakes its
+ * conversation on when the post's round reaches its deadline. It carries
+ * nothing: the conversation closes every round past its deadline.
+ */
+export const ROUND_DEADLINE_ACTION = "roundDeadline";
 
 /**
- * The internal entry a delegate's answer arrives on. Internal only: an answer
- * names the delivery it answers, so a caller who could reach it could take
- * that delivery's one answer.
+ * The internal entry a delegate whose run on a post was cancelled tells its
+ * conversation on, with the claim it worked the row under: a cancelled run
+ * can't write, so the conversation ends the row for it, fenced by that claim.
  */
-export const DELEGATE_ANSWER_ACTION = "delegateAnswer";
-
-/**
- * The internal entry a delegate reports a delivery it has no answer for on:
- * its turn failed, or the round's deadline came first. Internal only, like
- * {@link DELEGATE_ANSWER_ACTION}.
- */
-export const DELEGATE_MISSED_ACTION = "delegateMissed";
+export const POST_CANCELLED_ACTION = "postCancelled";
 
 /**
  * The internal entry a conversation sends answers back out on, in the round
@@ -56,8 +53,6 @@ export const ROUND_DEADLINE_MS = 5 * 60_000;
 
 /** Server-written session state: who best fit holds the user's next post for. */
 export const HOLD_STATE = "bestFitHold";
-/** Server-written session state: the delivery ledger. */
-export const DELIVERIES_STATE = "deliveries";
 /** Server-written session state: the delegate round robin gave the user's last post to. */
 export const ROUND_ROBIN_STATE = "roundRobin";
 /** Server-written session state: the rounds still open, each waiting for its answers. */

@@ -34,11 +34,9 @@ export {
   type RoutedDelegate
 } from "./coordinator-route";
 export {
-  delegatedAnswerSchema,
   delegatedPostEntry,
   delegatedPostHistory,
   delegatedPostOnFinished,
   delegatedPostSchema,
-  type DelegatedAnswer,
   type DelegatedPost
 } from "./delegated-post";

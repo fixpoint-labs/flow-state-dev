@@ -30,7 +30,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { deliveryDelegateSchema } from "../delivery-ledger";
+import { deliveryDelegateSchema } from "../delegates/delegate-list";
 import { COORDINATOR_ROUTE } from "./coordinator-keys";
 
 /** How a decision found its delegates. */
