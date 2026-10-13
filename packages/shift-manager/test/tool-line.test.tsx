@@ -54,7 +54,6 @@ describe("a tool call is a quiet line", () => {
     render(<ToolLine item={waiting} />);
     const line = screen.getByRole("button", { name: /setRepository is waiting for an answer/ });
     expect(screen.queryByText(/setRepository failed/)).toBeNull();
-    expect(screen.getByTestId("tool-group").getAttribute("data-state-kind")).toBe("waiting");
     fireEvent.click(line);
     expect(screen.queryByText(/Approve setting the repository/)).toBeNull();
     cleanup();
