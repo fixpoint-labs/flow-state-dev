@@ -161,7 +161,7 @@ The resolver returns `{ userId, orgId }` from the verified credential, or `null`
 
 `serve()` runs a long-lived Node server. Next.js and Vercel have their own adapters; [Host adapters](../server/host-adapters.md) lists them.
 
-In the browser or in Node, give the client a `fetcher` that adds the credential. Pass the same one to every client your app opens: `createWorkforceClient`, `createClient`, `createSessionClient` and `createSessionSSEClient`. A client without it is refused with 401.
+In the browser or in Node, give the client a `fetcher` that adds the credential. Pass the same one to every client your app opens. The Workforce pages use `createWorkforceClient`, `createClient`, `createSessionClient` and `createSessionSSEClient`, and every other client in `@flow-state-dev/client` takes it too (see [Client options](../configuration/client.md#fields)). A client without it is refused with 401.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
