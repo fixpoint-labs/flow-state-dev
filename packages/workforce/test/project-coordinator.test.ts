@@ -366,15 +366,6 @@ describe("its delegates (BR-21a, BR-21b)", () => {
 });
 
 describe("a post (BR-24 to BR-27, V5)", () => {
-  /** A judgment turn that runs `calls`, one tool call each step, then answers `last`. */
-  const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown> }>, last = "Done.") =>
-    mockGenerator({
-      script: [
-        ...calls.map((call, index) => ({ toolCalls: [{ toolCallId: `c${index}`, toolName: call.toolName, args: call.args }] })),
-        { text: last }
-      ]
-    });
-
   it("hands work to her own workstream's lead, delivered once into that workstream's session, and its answer comes back (BR-25)", async () => {
     const judgment = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }]);
     const h = await boot({ judgment });
