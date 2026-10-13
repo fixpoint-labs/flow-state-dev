@@ -12,4 +12,6 @@
 
 Amended by the cross-spec check (2026-10-12); see [the epic's Evolution](../../epics/FIX-1907/EVOLUTION.md).
 
+Amended after merge (2026-10-13, owner decision): the allowlist is environment filtering, not a security boundary; see [How it got here](DECISIONS.md#how-it-got-here).
+
 Re-check FIX-1915's rows against its merged spec before implementing.
