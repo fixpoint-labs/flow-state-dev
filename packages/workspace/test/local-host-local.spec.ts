@@ -23,7 +23,9 @@ vi.mock("../src/exec", async (importOriginal) => {
 });
 
 const spawned = vi.mocked(run);
-const gitCommands = () => spawned.mock.calls.map(([, args]) => args[0]);
+/** The git subcommand, past any leading `-c <key>=<value>` pairs. */
+const gitCommands = () =>
+  spawned.mock.calls.map(([, args]) => args.find((arg, i) => arg !== "-c" && args[i - 1] !== "-c"));
 const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "unused" });
 
 let root: string;

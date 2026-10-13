@@ -75,7 +75,10 @@ type ShapedRemote =
   | { remote: AllowedRemote; host: string | null }
   | { unspoken: string };
 
-/** Judge `remote` against `allow`. Pure: starts nothing, reads nothing. */
+/**
+ * Judge `remote` against `allow`. Pure: starts nothing, reads nothing.
+ * An unspoken scheme is `remote-not-allowed` here; `checkRemoteShape` calls it `invalid-remote`.
+ */
 export function checkRemote(remote: string, allow: readonly string[]): AllowedRemote | RefusedRemote {
   const shaped = shapeOf(remote);
   if ("reason" in shaped) return shaped;
@@ -96,6 +99,7 @@ export function checkRemote(remote: string, allow: readonly string[]): AllowedRe
  * configuration names rather than one a run asked for: the same rules as
  * `checkRemote`, with no allowlist asked. An absolute path is read as the
  * `file://` URL it means, and that URL is what the result hands git.
+ * An unspoken scheme is `invalid-remote` here; `checkRemote` calls it `remote-not-allowed`.
  */
 export function checkRemoteShape(remote: string): AllowedRemote | RefusedRemote {
   const spelled = isAbsolute(remote) ? pathToFileURL(remote).href : remote;

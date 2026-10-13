@@ -260,8 +260,11 @@ The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository.
 
 Before cutting a new branch whose base tracks an upstream, the host fetches that one upstream branch, which updates only its remote-tracking ref. It then cuts from whichever of the two is newer, and records that commit as `place.repo.baseCommit`. Listing the repository allows the fetch without an entry in `remotes.allow`. Its URL goes through the same checks as any remote, with an absolute path read as `file://`.
 
+Every run shares the repository's `.git/config`, so the host reads each remote's URL once, when it starts, and fetches that URL rather than the remote's name. Settings in the repository's own config that run a program, such as `core.sshCommand`, an upload-pack, a credential helper or hooks, are ignored during the fetch. Credential helpers from your global and system config, read at start, still run.
+
 - **Local and upstream have each moved:** the provision is refused as `base-diverged` before anything is made.
 - **The fetch fails:** the host compares with the copy last fetched and logs a warning.
+- **The remote's URL changed since the host started, or the remote is new:** nothing is fetched. The host compares with the copy last fetched and logs a warning naming both URLs. Restart the host to pick up the new URL.
 - **The base has no upstream, or the branch already exists:** nothing is fetched.
 
 Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.

@@ -10,7 +10,10 @@
  * it from the host. Every assertion reads the person's repository with git,
  * not what the host reports.
  */
-import { existsSync, renameSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:https";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
@@ -23,8 +26,10 @@ vi.mock("../src/exec", async (importOriginal) => {
 });
 
 const spawned = vi.mocked(run);
-const gitCommands = () => spawned.mock.calls.map(([, args]) => args[0]);
-const fetches = () => spawned.mock.calls.filter(([, args]) => args[0] === "fetch");
+/** The git subcommand, past any leading `-c <key>=<value>` pairs. */
+const subcommand = (args: readonly string[]) => args.find((arg, i) => arg !== "-c" && args[i - 1] !== "-c");
+const gitCommands = () => spawned.mock.calls.map(([, args]) => subcommand(args));
+const fetches = () => spawned.mock.calls.filter(([, args]) => subcommand(args) === "fetch");
 const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "unused" });
 
 let root: string;
@@ -275,7 +280,7 @@ describe("a fetch that can't happen falls back to the last-fetched copy", () => 
   it("gives up on a fetch that hangs inside a slice of the budget, and still finishes the provision", async () => {
     const actual = await vi.importActual<typeof import("../src/exec")>("../src/exec");
     spawned.mockImplementation((file, args, options) =>
-      args[0] === "fetch" ? actual.run("sleep", ["30"], options) : actual.run(file, args, options),
+      subcommand(args) === "fetch" ? actual.run("sleep", ["30"], options) : actual.run(file, args, options),
     );
     const budget = 4_000;
     const started = Date.now();
@@ -322,5 +327,131 @@ describe("two runs on one checkout at once", () => {
     expect(b.repo?.created).toBe(true);
     expect(contains("refs/heads/fsd/run-a", pushed)).toBe(true);
     expect(contains("refs/heads/fsd/run-b", pushed)).toBe(true);
+  });
+});
+
+/** A script that leaves `marker` behind when it runs, then does `then`. */
+function markerScript(marker: string, then = "exit 1"): string {
+  const script = join(tempDir("script"), "run.sh");
+  writeFileSync(script, `#!/bin/sh\necho ran >> '${marker}'\n${then}\n`);
+  chmodSync(script, 0o755);
+  return script;
+}
+
+describe("a run that rewrites the checkout's shared config can't aim the next run's fetch", () => {
+  it("does not fetch from a remote a run repointed after the host started, and warns naming both URLs", async () => {
+    const h = host();
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+    // The run, in its worktree, repoints origin at a repository of its choosing.
+    const other = createRemote("someone else's");
+    const planted = other.commit("main", "planted.txt", "not the person's upstream");
+    git(repo, "config", "remote.origin.url", other.url);
+    spawned.mockClear();
+    warn.mockClear();
+
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-2"], branch: "fsd/run-2" });
+
+    expect(fetches()).toHaveLength(0);
+    expect(contains("refs/remotes/origin/main", planted)).toBe(false);
+    expect(contains("refs/heads/fsd/run-2", planted)).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]![0]);
+    expect(message).toContain(repo);
+    expect(message).toContain(`remote "origin"`);
+    expect(message).toContain(other.url);
+    expect(message).toContain(upstream.url);
+  });
+
+  it("does not follow a url.insteadOf a run added that rewrites the pinned URL", async () => {
+    // The person's own rewrite: origin is spelled as an alias the host pins expanded.
+    git(repo, "config", `url.${upstream.url}.insteadOf`, "person-alias:");
+    git(repo, "config", "remote.origin.url", "person-alias:");
+    const h = host();
+    const other = createRemote("someone else's");
+    const planted = other.commit("main", "planted.txt", "not the person's upstream");
+    // Leaves origin's own URL as it was, but rewrites the pinned URL itself.
+    git(repo, "config", `url.${other.url}.insteadOf`, upstream.url);
+
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(fetches()).toHaveLength(0);
+    expect(contains("refs/remotes/origin/main", planted)).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toMatch(/insteadOf/);
+  });
+
+  it("never runs an upload-pack a run planted for the remote, by name or by URL", async () => {
+    const h = host();
+    const marker = join(tempDir("marker"), "ran");
+    const script = markerScript(marker, 'exec git-upload-pack "$@"');
+    git(repo, "config", "remote.origin.uploadpack", script);
+    git(repo, "config", `remote.${upstream.url}.uploadpack`, script);
+    const pushed = upstream.commit("main", "merged.txt", "a teammate's merge");
+
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(existsSync(marker)).toBe(false);
+    // The fetch itself still happened, through the real upload-pack.
+    expect(contains("refs/heads/fsd/run-1", pushed)).toBe(true);
+  });
+
+  it("never runs a core.sshCommand a run planted, for an ssh upstream", async () => {
+    git(repo, "config", "remote.origin.url", "ssh://127.0.0.1:1/person/repo.git");
+    const h = host();
+    const marker = join(tempDir("marker"), "ran");
+    git(repo, "config", "core.sshCommand", markerScript(marker));
+
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(fetches()).toHaveLength(1);
+    expect(existsSync(marker)).toBe(false);
+    // ssh itself failed to connect: a warning, and the run still starts.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(git(repo, "branch", "--list", "fsd/run-1")).not.toBe("");
+  });
+
+  describe("an https upstream that asks for credentials", () => {
+    let server: ReturnType<typeof createServer> | undefined;
+    let savedGlobal: string | undefined;
+
+    afterEach(async () => {
+      if (savedGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = savedGlobal;
+      await new Promise((done) => (server ? server.close(done) : done(undefined)));
+      server = undefined;
+    });
+
+    it("never runs a credential.helper a run planted, and still runs the person's own", async () => {
+      const certs = tempDir("tls");
+      execFileSync("openssl", [
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1",
+        "-keyout", join(certs, "key.pem"), "-out", join(certs, "cert.pem"),
+      ], { stdio: "ignore" });
+      server = createServer({ key: readFileSync(join(certs, "key.pem")), cert: readFileSync(join(certs, "cert.pem")) }, (_, res) => {
+        res.writeHead(401, { "WWW-Authenticate": 'Basic realm="upstream"' }).end();
+      });
+      await new Promise<void>((done) => server!.listen(0, "127.0.0.1", done));
+      const port = (server.address() as AddressInfo).port;
+      git(repo, "config", "remote.origin.url", `https://127.0.0.1:${port}/person/repo.git`);
+
+      // The person's own helper, in their global config.
+      const theirs = join(tempDir("marker"), "theirs");
+      const globalConfig = join(tempDir("global"), "gitconfig");
+      writeFileSync(globalConfig, `[credential]\n\thelper = ${markerScript(theirs)}\n[http]\n\tsslVerify = false\n`);
+      savedGlobal = process.env.GIT_CONFIG_GLOBAL;
+      process.env.GIT_CONFIG_GLOBAL = globalConfig;
+      const h = host();
+      // What a run plants in the shared config.
+      const planted = join(tempDir("marker"), "planted");
+      git(repo, "config", "credential.helper", markerScript(planted));
+      git(repo, "config", "credential.https://127.0.0.1.helper", markerScript(planted));
+
+      await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+
+      expect(fetches()).toHaveLength(1);
+      expect(existsSync(planted)).toBe(false);
+      expect(existsSync(theirs)).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
   });
 });

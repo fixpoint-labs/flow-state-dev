@@ -86,6 +86,7 @@ import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
+import { readFetchPins } from "./repository";
 import { firstLine, gitAnsweredNo, ignoredProblem, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
@@ -167,6 +168,10 @@ export interface LocalWorkspaceHostOptions {
    * and a failed fetch falls back to the copy last fetched, with a warning.
    * Listing a path admits fetching its own upstream: `remotes.allow` isn't
    * asked, though the URL is still judged for shape before git sees it.
+   * Each listed path's remote URLs are pinned when the host is built; a
+   * remote whose URL has changed since (a run shares the repository's
+   * config) is not fetched, with a warning, and the fetch obeys no
+   * program-running setting in the repository's own config.
    *
    * Any other bare path is still refused. Listing a path is the operator's
    * allowance, judged before any git process, the same as `remotes.allow`.
@@ -376,6 +381,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const root = resolve(options.root);
   const allow = options.remotes.allow;
   const localRepositories = new Set((options.localRepositories ?? []).map((path) => resolve(path)));
+  // Read now, before any run of this process could rewrite a listed
+  // repository's config: its worktrees share that config, so a run could
+  // otherwise aim the next run's fetch.
+  const fetchPins = new Map([...localRepositories].map((path) => [path, readFetchPins(path)] as const));
   const provisionTimeoutMs = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
   const now = options.now ?? Date.now;
   const env = {
@@ -732,6 +741,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           if (!gitAnsweredNo(error)) throw error;
           throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
         }
+        // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
         const upstream = await fetchUpstream(repo, base, left);
         // Equal, or local ahead: the person's branch, as it always was.
         if (upstream === undefined || (await isAncestor(repo, upstream.commit, local, left))) {
@@ -770,7 +780,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * tags, no `FETCH_HEAD`, no maintenance, no other ref. Listing the
    * repository admits its upstream, so `remotes.allow` isn't asked, but the
    * URL is judged for shape before git sees it and git may speak only its
-   * scheme. **A fetch that fails, or a URL that fails the judge, is a warning,
+   * scheme. The URL fetched is the one pinned when the host was built: a remote
+   * repointed since, or not there then, or a pinned URL a newer
+   * `url.insteadOf` rewrites, is skipped. Nothing in the repository's config
+   * that runs a program (ssh command, upload-pack, credential helper, hooks,
+   * askpass, fsmonitor) is obeyed; credential helpers from outside the
+   * repository, read when the host was built, are. **A fetch that fails, a URL
+   * that fails the judge, or one skipped, is a warning,
    * never a refusal**: the comparison uses the copy last fetched. A probe
    * that fails is raised: read as "no upstream", it would cut from a stale
    * base without a word.
@@ -791,22 +807,48 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       console.warn(
         `[workspace] ${repo}: ${why}, so "${base}" is compared with the copy of ${ref} last fetched.`,
       );
+    const pins = fetchPins.get(repo);
+    const pinned = pins?.remotes.get(remoteName);
     let url: string | undefined;
     try {
       url = await git(repo, ["remote", "get-url", remoteName], left());
     } catch (error) {
       skip(`could not read the URL of remote "${remoteName}" (${firstLine(error)})`);
     }
-    if (url !== undefined) {
-      const judged = checkRemoteShape(url);
+    if (url !== undefined && pinned === undefined) {
+      skip(`its upstream was not fetched: remote "${remoteName}" (${redactRemote(url)}) was not there when the host started`);
+    } else if (url !== undefined && url !== pinned) {
+      skip(
+        `its upstream was not fetched: remote "${remoteName}" now points at "${redactRemote(url)}", ` +
+          `not "${redactRemote(pinned!)}" as when the host started`,
+      );
+    } else if (pinned !== undefined && url !== undefined) {
+      // The pinned URL, never the remote's name, is what git is handed.
+      const judged = checkRemoteShape(pinned);
       if ("reason" in judged) skip(`its upstream was not fetched: ${judged.message}`);
       else if (!/^refs\/heads\/[^\s:]+$/.test(remoteRef)) skip(`its upstream was not fetched: "${remoteRef}" is not a branch`);
-      else {
+      // A `url.<base>.insteadOf` added since would still rewrite the URL git is handed.
+      else if ((await git(repo, ["ls-remote", "--get-url", "--", judged.url], left()).catch(() => "")) !== judged.url) {
+        skip(`its upstream was not fetched: a url.insteadOf rule in its config rewrites "${redactRemote(judged.url)}"`);
+      } else {
         try {
           await run(
             "git",
             [
+              // The repository's config is shared with every run's worktree,
+              // so nothing in it that runs a program is obeyed here.
+              "-c", "core.sshCommand=ssh",
+              "-c", "core.askPass=",
+              "-c", "core.hooksPath=/dev/null",
+              "-c", "core.fsmonitor=false",
+              "-c", "protocol.allow=never",
+              "-c", `protocol.${judged.scheme}.allow=always`,
+              // An empty helper clears every one before it, the repository's
+              // included; the person's own, read at start, are put back.
+              "-c", "credential.helper=",
+              ...(pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
               "fetch",
+              "--upload-pack=git-upload-pack",
               "--quiet",
               "--no-tags",
               "--no-prune",
@@ -818,7 +860,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
               `+${remoteRef}:${ref}`,
             ],
             // A slice of what is left, so a fetch that hangs leaves time to cut.
-            { cwd: repo, timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)), env: { ...env, GIT_ALLOW_PROTOCOL: judged.scheme } },
+            { cwd: repo, timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)), env: { ...env, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
           );
         } catch (error) {
           skip(`could not fetch "${redactRemote(judged.url)}" (${firstLine(error)})`);
