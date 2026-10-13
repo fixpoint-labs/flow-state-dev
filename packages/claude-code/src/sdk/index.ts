@@ -2,7 +2,7 @@
  * Public surface of `@flow-state-dev/claude-code/sdk`: the in-process Agent SDK
  * handler block, its opt-in capability, the resolver seam, the start-time account
  * probe, the session-continuity provider, the pure translation layer, the work recorder and the two
- * collections it writes, handle/event types, and typed errors.
+ * collections it writes, the types of the tools `mcpTools` relays, handle/event types, and typed errors.
  */
 export {
   claudeCodeAgent,
@@ -13,6 +13,11 @@ export {
   type ClaudeCodeAgentOptions,
   type SandboxSettings,
 } from "./agent";
+export {
+  type ClaudeCodeMcpTool,
+  type ClaudeCodeMcpToolServer,
+  type ClaudeCodeMcpTools,
+} from "./mcp-tools";
 export { createClaudeCodeAgentCapability } from "./capability";
 export {
   defaultResolveClaudeAgent,

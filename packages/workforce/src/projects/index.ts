@@ -8,8 +8,10 @@
  * `workstream-writes.ts` for opening and updating a workstream;
  * `project-read.ts` and `project-progress.ts` for a project's read and the
  * progress worked out from its entries; `project-files.ts` for a member's read
- * of a project's files; `project-workspace.ts` for the run source a coding run
- * gets its files from.
+ * of a project's files; `run-project.ts` for the one read of a coding run's
+ * project and owner; `project-workspace.ts` for the run source a coding run
+ * gets its files from; `project-mcp-tools.ts` and `mcp-credentials.ts` for the
+ * MCP servers a run gets and each person's keys for them.
  */
 
 export {
@@ -39,14 +41,40 @@ export {
   defineProjectBlocks,
   setBriefInputSchema,
   setBriefOutputSchema,
+  setMcpServersInputSchema,
+  setMcpServersOutputSchema,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
   type CreateProjectInput,
   type CreateProjectOutput,
   type ProjectBlocks,
+  type ProjectBlocksOptions,
   type SetBriefInput,
+  type SetMcpServersInput,
   type SetRepositoryInput
 } from "./project-writes";
+
+export { checkedMcpServers, isMcpServerName } from "./mcp-server-name";
+
+export {
+  defineMcpCredentialsCollection,
+  MCP_CREDENTIALS_PREFIX,
+  MCP_CREDENTIALS_RESOURCE,
+  mcpCredentialProblem,
+  mcpCredentialSchema,
+  mcpCredentialsCapability,
+  type McpCredential
+} from "./mcp-credentials";
+
+export {
+  projectMcpTools,
+  type ProjectMcpServerConfig,
+  type ProjectMcpServers,
+  type ProjectMcpToolsOptions,
+  type ProjectMcpToolsResolver,
+  type RelayedMcpServer,
+  type RelayedMcpTool
+} from "./project-mcp-tools";
 
 export {
   readProjectFilesInputSchema,

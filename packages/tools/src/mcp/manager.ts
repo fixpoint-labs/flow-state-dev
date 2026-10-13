@@ -1,7 +1,12 @@
 /**
  * MCP manager — lazy connection to configured servers, tool caching, catalog,
- * and idempotent close. Per-server connection errors are isolated so one
- * failed server does not prevent others from loading.
+ * a call path for one tool by its namespaced name, and idempotent close.
+ * Per-server connection errors are isolated so one failed server does not
+ * prevent others from loading.
+ *
+ * FSD's one MCP client: a generator's tools (`createMcpCapability`) and the
+ * tools relayed to a coding run (`callTool` + the catalog's `jsonSchema`)
+ * both go through it.
  */
 import { handler } from "@flow-state-dev/core";
 import type { GeneratorTool } from "@flow-state-dev/core";
@@ -9,6 +14,7 @@ import { z } from "zod";
 import { MCP_TOOL_META, type MCPToolMeta, type AiSdkMcpTool } from "./types";
 import type {
   CreateMcpManagerOptions,
+  MCPCallToolOptions,
   MCPCatalog,
   MCPCatalogServer,
   MCPCatalogTool,
@@ -23,6 +29,8 @@ type ServerEntry = {
   error?: string;
   tools: GeneratorTool[];
   catalogTools: MCPCatalogTool[];
+  /** Each tool as its server's client returned it, by original name: what `callTool` executes. */
+  clientTools: Record<string, AiSdkMcpTool>;
   close?: () => Promise<void>;
 };
 
@@ -80,6 +88,32 @@ function mcpToolToHandler(
   return block;
 }
 
+/** The plain JSON Schema behind an AI SDK `jsonSchema()` wrapper, or the value itself when it is one. */
+function plainJsonSchema(inputSchema: unknown): Record<string, unknown> {
+  const inner =
+    typeof inputSchema === "object" && inputSchema !== null && "jsonSchema" in inputSchema
+      ? (inputSchema as { jsonSchema: unknown }).jsonSchema
+      : inputSchema;
+  return typeof inner === "object" && inner !== null && !Array.isArray(inner)
+    ? (inner as Record<string, unknown>)
+    : { type: "object" };
+}
+
+/**
+ * A connection failure's message with the server's header values taken out,
+ * so a credential a client echoed in its error never reaches the catalog or a
+ * log line. Each value is removed whole, and so is each word of it long
+ * enough to be a token (the key in `Bearer <key>`).
+ */
+function withoutHeaderValues(message: string, config: MCPServerConfig): string {
+  const headers = (config.transport as { headers?: Record<string, string> }).headers ?? {};
+  const secrets = Object.values(headers).flatMap((value) => [value, ...value.split(/\s+/).filter((word) => word.length >= 8)]);
+  return secrets
+    .filter((secret) => secret.length > 0)
+    .sort((a, b) => b.length - a.length)
+    .reduce((text, secret) => text.split(secret).join("…"), message);
+}
+
 async function defaultCreateClient(config: MCPServerConfig): Promise<MCPClient> {
   const { createMCPClient } = await import("@ai-sdk/mcp");
   return createMCPClient({
@@ -98,6 +132,7 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
     status: "pending",
     tools: [],
     catalogTools: [],
+    clientTools: {},
   }));
   let loadPromise: Promise<GeneratorTool[]> | null = null;
 
@@ -113,10 +148,12 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
         originalName,
         description: mcpTool.description ?? `Tool from MCP server: ${entry.config.name}`,
         inputSchema: mcpTool.inputSchema,
+        jsonSchema: plainJsonSchema(mcpTool.inputSchema),
       });
     }
     entry.tools = handlers;
     entry.catalogTools = catalog;
+    entry.clientTools = mcpTools;
     entry.close = () => client.close();
     entry.status = "connected";
   }
@@ -127,7 +164,7 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
         try {
           await connect(entry);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = withoutHeaderValues(err instanceof Error ? err.message : String(err), entry.config);
           entry.status = "errored";
           entry.error = message;
           console.warn(`[mcp] Failed to connect to "${entry.config.name}": ${message}`);
@@ -168,6 +205,24 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
       return entries.map((e) => e.config);
     },
 
+    async callTool(name: string, args: Record<string, unknown>, options: MCPCallToolOptions = {}): Promise<unknown> {
+      if (entries.length > 0) {
+        if (!loadPromise) loadPromise = loadAll();
+        await loadPromise;
+      }
+      for (const entry of entries) {
+        if (entry.status !== "connected") continue;
+        const prefix = `mcp__${entry.config.name}__`;
+        if (!name.startsWith(prefix)) continue;
+        const tool = entry.clientTools[name.slice(prefix.length)];
+        if (tool === undefined) continue;
+        if (!tool.execute) throw new Error(`Tool ${name} on server ${entry.config.name} does not support execution.`);
+        options.signal?.throwIfAborted();
+        return tool.execute(args, options.signal === undefined ? {} : { abortSignal: options.signal });
+      }
+      throw new Error(`No connected MCP server has a tool named ${name}.`);
+    },
+
     async close(): Promise<void> {
       await Promise.allSettled(entries.map((e) => e.close?.()));
       for (const entry of entries) {
@@ -175,6 +230,7 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
         entry.error = undefined;
         entry.tools = [];
         entry.catalogTools = [];
+        entry.clientTools = {};
         entry.close = undefined;
       }
       loadPromise = null;

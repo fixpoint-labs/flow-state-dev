@@ -86,6 +86,8 @@ import {
   type WorkerInstallation,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
+  projectMcpTools,
+  type ProjectMcpServers,
   type InventoryActionRequest,
   type ProjectBlocks,
   type WorkstreamBlocks,
@@ -111,6 +113,7 @@ import {
   featureIssueOf,
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
+import { mcpCredentialsAdapter, statusOf } from "./mcp-credentials.mts";
 import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
 import {
@@ -360,7 +363,8 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
         "Create a project for the user you are talking to. They own it and are always a project member. " +
         "`id` is a short lowercase slug; `members` adds the user ids they name; `repository` is the git " +
         "remote its code lives in, if they named one. With a repository, the user approves it first.",
-      inputSchema: createProjectInputSchema,
+      // A project's MCP servers are set on its page, not by the chief of staff.
+      inputSchema: createProjectInputSchema.omit({ mcpServers: true }),
       outputSchema: createProjectOutputSchema,
     })
       .tapIf((input) => input.repository != null, askRepository((input) => input.id))
@@ -585,6 +589,19 @@ export interface OpenLabOptions {
    * **Absent means absent**: nothing is opened.
    */
   workstreams?: readonly { as: keyof typeof LAB_USERS; input: OpenWorkstreamInput }[];
+  /**
+   * The MCP servers this Lab offers its projects, by name: each one's HTTP
+   * address, and optionally the variable that seeds the Lab user's key. A
+   * project names some of them; a coding run on it gets them relayed with its
+   * owner's key, set on Settings (`projectMcpTools`). Checked at open, which
+   * refuses a malformed entry before anything is served.
+   *
+   * **Absent means absent**: no project can name a server, no key route is
+   * served, and the harness is handed exactly what it was before.
+   */
+  mcpServers?: ProjectMcpServers;
+  /** Where the start line naming the MCP servers goes; stderr by default. */
+  log?: (line: string) => void;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -780,7 +797,7 @@ export interface Lab {
    * the other {@link LAB_USERS}' bearers instead.
    */
   door(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     path: string,
     options?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }>;
@@ -820,7 +837,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the chief of staff calls the same ones as tools. The
   // workstream writes are built with the installation, below.
-  const projectBlocks = defineProjectBlocks();
+  const projectBlocks = defineProjectBlocks({ mcpServers: Object.keys(options.mcpServers ?? {}) });
+
+  // A coding run's MCP servers, relayed with its owner's key. Built here so a
+  // malformed entry refuses the open; the Lab user is the one `seedEnv` seeds.
+  const mcpTools = options.mcpServers === undefined ? undefined : projectMcpTools(options.mcpServers, { operator: LAB_USER_ID });
 
   // The controls mutate the RECORD, before the mint, so a perturbed worker
   // genuinely runs on what the control gave it rather than being graded as if
@@ -904,6 +925,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     harness: (feeds) =>
       options.harness({
         ...feeds,
+        ...(mcpTools === undefined ? {} : { mcpTools }),
         cwd: async (ctx) => {
           const cwd = await feeds.cwd(ctx);
           noteStartingFiles(cwd);
@@ -1053,6 +1075,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // a tool that asks first. Trees with neither run without it.
     ...(options.ask === undefined && !asksBeforeChanging ? {} : { durable: true }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
+    // Each user's MCP keys are written through the Lab's own route, never an
+    // action, whose input its request record keeps.
+    ...(options.mcpServers === undefined ? {} : { adapters: [mcpCredentialsAdapter(Object.keys(options.mcpServers))] }),
   } as never);
 
   const runtime = await state.getRuntime();
@@ -1067,6 +1092,27 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // After the logger is set, so the router the door probes run through is
   // built with it too.
   const router = await state.getRouter();
+
+  // One line naming the MCP servers on offer, and whether the Lab user has a
+  // key for each: stored on Settings, seeded from the environment, or not set.
+  // Never the key, never the address.
+  if (options.mcpServers !== undefined) {
+    const offered = options.mcpServers;
+    const stored = await statusOf(runtime as never, LAB_USER_CELL, Object.keys(offered));
+    const each = stored.map(({ name, setAt }) => {
+      const seed = offered[name]?.seedEnv;
+      const key =
+        setAt !== null
+          ? "stored"
+          : seed !== undefined && (process.env[seed] ?? "") !== ""
+            ? `seeded from ${seed}`
+            : "not set";
+      return `${name} (${LAB_USER_ID}'s key: ${key})`;
+    });
+    (options.log ?? ((line: string) => process.stderr.write(`${line}\n`)))(
+      `MCP servers: ${each.length === 0 ? "none" : each.join(", ")}.`,
+    );
+  }
 
   /** The session a worker's actions run in — one per worker, stable across a run. */
   const sessionFor = workerSessionId;
@@ -1233,7 +1279,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
 
   const door = async (
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     path: string,
     doorOptions?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }> => {

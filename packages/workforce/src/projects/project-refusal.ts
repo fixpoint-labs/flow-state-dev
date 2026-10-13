@@ -27,6 +27,9 @@
  *   as their project coordinator holds delegates.
  * - `other-project`: an open from a conversation linked to one project
  *   named another.
+ * - `invalid-mcp-server`: an MCP server is not a bare name (lowercase
+ *   letters, digits and hyphens). The refusal never repeats the value.
+ * - `unknown-mcp-server`: the server doesn't offer an MCP server of that name.
  */
 export type ProjectRefusalReason =
   | "not-a-member"
@@ -42,7 +45,9 @@ export type ProjectRefusalReason =
   | "invalid-project-id"
   | "invalid-repository"
   | "too-many-workstreams"
-  | "other-project";
+  | "other-project"
+  | "invalid-mcp-server"
+  | "unknown-mcp-server";
 
 /** A project or workstream write refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

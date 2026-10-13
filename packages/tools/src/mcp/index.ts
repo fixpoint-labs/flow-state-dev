@@ -15,6 +15,7 @@ export type {
   CreateMcpManagerOptions,
   EnrichDescriptionsMode,
   FilterTools,
+  MCPCallToolOptions,
   MCPCatalog,
   MCPCatalogServer,
   MCPCatalogTool,
