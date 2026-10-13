@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 360" role="img" aria-label="How a note becomes a standing rule. On the left, Alice's three sessions with the Shift Coordinator. In session 1 she gives a note and a visible line says Rule added, 3 of 20. The rule is written to the middle box, the coordinator's own drawer for Alice, which holds a numbered list of her rules. Sessions 2 and 3 are new sessions; each turn reads the list after the worker's own instructions. On the right, the Shift Manager Rules view reads and edits the same list, and the next turn reads any edit. At the bottom, Bob's drawer on the same coordinator is separate and empty: Alice's rules never reach his sessions."
+<svg viewBox="0 0 940 360" role="img" aria-label="How a note becomes a standing rule. On the left, Alice's three sessions with the Shift Coordinator. In session 1 she gives a note and a visible line says Rule added, 3 of 20. The rule is written to the middle box, the coordinator's own rules record for Alice, which holds a numbered list of her rules. Sessions 2 and 3 are new sessions; each turn reads the list after the worker's own instructions. On the right, the Shift Manager Rules view reads and edits the same list, and the next turn reads any edit. At the bottom, Bob's rules on the same coordinator is separate and empty: Alice's rules never reach his sessions."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -69,7 +69,7 @@
     <rect class="panel" x="16" y="276" width="908" height="66" rx="6"/>
     <text class="t-lbl" x="32" y="298">BOB · SAME COORDINATOR</text>
     <rect class="empty" x="336" y="288" width="276" height="42" rx="5"/>
-    <text class="t-s" x="352" y="314">his own drawer · empty</text>
+    <text class="t-s" x="352" y="314">his own rules · empty</text>
     <text class="t-s" x="664" y="314">Alice's rules never reach his sessions</text>
   </g>
 </svg>

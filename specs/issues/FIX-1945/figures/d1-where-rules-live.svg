@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a note a person gives a worker lives. Chosen: the worker&#x27;s own skills drawer, one list per person. Instead of: the worker file or worker row. It comes down to the first row, the Shift Coordinator: the drawer keeps the note with no fork, while the file is read-only and shared because the coordinator is a standard worker. Second row: two people on one worker get separate lists, where a shared prompt lets one person&#x27;s note change it for all. Third row, a tie: a rule for all workers must be told to each worker either way. Locks in: rules are per worker and per person. Flips if: most notes are meant for all of a person&#x27;s workers."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a note a person gives a worker lives. Chosen: the worker&#x27;s own rules record, keyed like its skills, one list per person. Instead of: the worker file or worker row. It comes down to the first row, the Shift Coordinator: its own rules keep the note with no fork, while the file is read-only and shared because the coordinator is a standard worker. Second row: two people on one worker get separate lists, where a shared prompt lets one person&#x27;s note change it for all. Third row, a tie: a rule for all workers must be told to each worker either way. Locks in: rules are per worker and per person. Flips if: most notes are meant for all of a person&#x27;s workers."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Its own drawer, per person</text>
+    <text class="t-h c-code" x="228" y="112">Its own rules, per person</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Its worker file or row</text>
@@ -57,7 +57,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Kept with no fork</text>
-    <text class="t-s" x="248" y="179">the drawer is its own, even on a standard worker</text>
+    <text class="t-s" x="248" y="179">its rules are its own, even on a standard worker</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Read-only and shared</text>
     <text class="t-s" x="612" y="179">standard; a note would need a fork, for everyone</text>

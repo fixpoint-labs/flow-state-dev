@@ -30,8 +30,8 @@ The cases, written as rules. Each says what a person or the system does and what
 | BR-9 | Two people use the same worker, standard or forked | Each has a separate list. Neither sees, applies or edits the other's | CI · goal check (`person-scoped`) |
 | BR-10 | One person gives a note to the coordinator | Only the coordinator follows it; that person's other workers do not | CI |
 | BR-11 | A person forks a worker | The fork starts with no rules | CI |
-| BR-12 | Seeded skills are refreshed for a worker | The rules entry is untouched | CI |
-| BR-13 | A worker's file declares a skill named `standing-rules` | Refused at read, naming the reserved name. The rules entry itself is never offered as a skill | CI |
+| BR-12 | A client writes to the rules record directly through the generic resource API | Refused: the record allows client reads only. Rules change only through the rule tools and the rules action, both behind one validator | CI |
+| BR-13 | Seeded skills are refreshed for a worker, or its file declares any skill | The rules are untouched and never offered as a skill: they are not in the skills collection | CI |
 | BR-13a | A person's own worker is fired, then hired again under the same id | It finds that person's old rules. The page shows them | CI |
 | BR-13b | A person's own worker is moved to a different worker flow | Its rules stay with the old flow and the page says the list is empty. Known limit, documented | CI |
 | BR-14 | A page request names another person or a worker not on the caller's roster | Refused. The person is the signed-in identity, never a field in the request (BP-031) | CI |

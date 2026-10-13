@@ -54,9 +54,9 @@ control it must fail, or it proves nothing.
 
 ## What changes
 
-![Three sessions with one person and the coordinator. Session 1: the person gives a note; the coordinator adds a rule and a visible line says so. The rule sits in that worker's own drawer for that person. Session 2 and 3 read it on every turn. Beside the drawer, the Shift Manager Rules view reads and edits the same list. A second person's drawer is separate and empty](figures/what-changes.svg)
+![Three sessions with one person and the coordinator. Session 1: the person gives a note; the coordinator adds a rule and a visible line says so. The rule sits in that worker's own rules record for that person. Session 2 and 3 read it on every turn. Beside it, the Shift Manager Rules view reads and edits the same list. A second person's rules are separate and empty](figures/what-changes.svg)
 
-Read the drawer in the middle: one list per worker per person. The conversation writes to it,
+Read the box in the middle: one list per worker per person. The conversation writes to it,
 Shift Manager reads and edits it, and every later turn reads it.
 
 **What a person sees, in the conversation:**
@@ -83,13 +83,14 @@ the rules are added after them, never in place of them.
 
 ```mermaid
 flowchart LR
-  P["a turn a person started"] -->|"rules tools"| D["the worker's own drawer · this person"]
+  P["a turn a person started"] -->|"rules tools"| D["the worker's own rules · this person"]
   UI["Shift Manager · Rules view"] -->|"the worker's own flow · signed-in person"| D
   D -->|"every turn · after the worker's instructions"| T["the worker's turn · person or task"]
 ```
 
-The drawer already exists and is already per worker and per person. This adds one entry kept
-in it, the tools that edit it, and the page that shows it.
+The worker's skills drawer is already kept per worker and per person. This adds a rules record
+keyed the same way, which only the rule tools and the page's action can write, plus the tools
+and the page.
 
 ## What stays as it is
 
@@ -105,9 +106,9 @@ in it, the tools that edit it, and the page that shows it.
 per worker and per person, visible and editable in Shift Manager. If wrong: the coordinator
 still forgets coaching, or one person's notes steer someone else's sessions.
 
-1. **[D1](DECISIONS.md#d1) · Rules live in the worker's own drawer, per person, not in its
-   worker file or in memory.** If wrong: a rule a whole team should share has to be told to
-   each worker by each person.
+1. **[D1](DECISIONS.md#d1) · Rules live in the worker's own rules record, per person, keyed
+   like its skills, not in its worker file, in memory or in the skills drawer.** If wrong: a
+   rule a whole team should share has to be told to each worker by each person.
 2. **[D2](DECISIONS.md#d2) · The worker edits its rules without asking; every edit shows as a
    line in the conversation and in Shift Manager, and only a person's turn can edit.** If
    wrong: a misread note becomes a rule until the person notices and deletes it.
@@ -119,4 +120,4 @@ still forgets coaching, or one person's notes steer someone else's sessions.
 on the mailbox with these recommendations. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `workforce` + `shift-manager` (+ a write helper in `orchestration`) · medium (9 surfaces, 8 checks, 6 doc surfaces) · 2 stacked PRs · epic FIX-1775
+Feature · `workforce` + `shift-manager` · medium (8 surfaces, 8 checks, 6 doc surfaces) · 2 stacked PRs · epic FIX-1775

@@ -76,9 +76,6 @@ Sidebar: `sidebars.ts`, Workforce category, after `workforce/built-in-worker`, b
 > - Summarize or rewrite your rules on its own.
 > - Let a task turn, or text a delegate sent back, edit a rule.
 > - Keep rules when you move your worker to a different worker flow.
->
-> The name `standing-rules` is reserved: a worker file that declares a skill with that name is
-> refused when the workforce is read.
 
 ## UPDATE · `apps/docs/docs/workforce/built-in-worker.md` · "What a worker keeps"
 
