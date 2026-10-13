@@ -143,8 +143,6 @@ plan?" to D1, and from "key by item id" to D2.
   Sink into the Cursor package, as the block's `env` option (PLAN S9, in PR-A); the changeset
   becomes a minor.
 - **Amended after merge (Oct 13, owner decision)**: `env` filters what commands start with; it is
-  not a security boundary (FIX-1915 BR-13b). The child process runs as the server's user, and on
-  Linux a command can read the server's environment through `/proc/<pid>/environ`. A separate user
-  or container is a follow-up issue. BR-23, V8 and the docs text now claim only that.
+  not a security boundary (FIX-1915 BR-13b). BR-23, V8 and the docs text now claim only that.
 
 **Open: none.**

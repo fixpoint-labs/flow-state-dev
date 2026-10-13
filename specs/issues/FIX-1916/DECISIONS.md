@@ -115,8 +115,6 @@ new run.
   Codex refusing a known thread is a refusal; a lapsed sign-in is an error, not a refusal.
   The Codex package maps that one error to FIX-1915's unknown-conversation classification.
 - **Amended after merge (Oct 13, owner decision)**: the allowlist is environment filtering, not a
-  security boundary (FIX-1915 BR-13b). A command running as the server's user can still read the
-  server's environment through `/proc` on Linux; a separate user or container is a follow-up issue.
-  BR-12, V5 and the README text now claim only what commands start with.
+  security boundary (FIX-1915 BR-13b). BR-12, V5 and the README text now claim only what commands start with.
 
 **Open: 1.**
