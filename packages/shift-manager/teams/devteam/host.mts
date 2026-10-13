@@ -378,7 +378,15 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
       inputSchema: setRepositoryInputSchema,
       outputSchema: setRepositoryOutputSchema,
     })
-      .tap(askRepository((input, ctx) => input.project?.id ?? linkedProjectOf(ctx.session.state)?.id))
+      .tap(
+        askRepository((input, ctx) => {
+          // Only a project the write can change is asked about: a linked conversation naming another is refused below.
+          const linked = linkedProjectOf(ctx.session.state);
+          if (linked === undefined) return input.project?.id;
+          const named = input.project as { id: string; visibility?: unknown } | undefined;
+          return named === undefined || (named.id === linked.id && named.visibility === linked.visibility) ? linked.id : undefined;
+        }),
+      )
       .step(blocks.setRepository),
     setBrief: blocks.setBrief.as({
       name: "setBrief",

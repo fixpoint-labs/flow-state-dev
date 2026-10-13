@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/workforce": minor
+"@flow-state-dev/workforce": patch
 ---
 
-`defineProjectBlocks()` adds `setBrief`, which sets, changes or clears a project's brief, members only. `setBrief` and `setRepository` take an optional `project`: left out, they change the project the calling conversation belongs to, and a conversation that belongs to a project is refused (`other-project`) when it names another. A project coordinator can now hold both and manage its own project. `linkedProjectOf` is exported (FIX-1900).
+A project's coordinator can now manage its own project: `defineProjectBlocks()` adds `setBrief`, and `setBrief` and `setRepository` take an optional `project` that defaults to the conversation's linked project (FIX-1900).
