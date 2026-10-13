@@ -394,31 +394,35 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const { screen, act, fireEvent, within } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);
-    await runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "openWorkstream", {
-      project: APOLLO,
-      id: "survey",
-      title: "The survey",
-      lead: EM,
-      objectives: ["Survey the repo", "Write up findings"],
-    });
-    await runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "updateWorkstream", {
-      project: APOLLO,
-      id: "survey",
-      objectives: [
-        { text: "Survey the repo", met: true },
-        { text: "Write up findings", met: false },
-      ],
-    });
+    const bob = await as(BOB);
+    const objectives = [
+      { text: "Survey the repo", met: true },
+      { text: "Write up findings", met: false },
+    ];
+    for (const user of [alice, bob]) {
+      await openAs(user, setup, "survey");
+      await runAction(user.clients, setup.flow, readerSessionId(user.clients.userId, setup.flow), "updateWorkstream", { project: APOLLO, id: "survey", objectives });
+    }
+    const marks = (root: HTMLElement) =>
+      within(root).getAllByTestId("project-entry-objective").map((li) => [li.textContent?.includes("Survey the repo") ? "survey" : "write-up", li.getAttribute("data-met")]);
+    const rowOf = async (owner: string) => (await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 })).find((li) => li.getAttribute("data-owner") === owner)!;
 
     openApp(alice.clients, baseUrl, "/p/apollo/workstreams");
-    const row = (await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 })).find((li) => li.getAttribute("data-workstream-id") === "survey")!;
-    expect(row.textContent).toContain("1 of 2 objectives met");
+    const hers = await rowOf(ALICE.userId);
+    expect(hers.textContent).toContain("1 of 2 objectives met");
 
-    // Her own entry: the objectives above the conversation with its lead, each marked met or not.
-    act(() => fireEvent.click(row.querySelector("button")!));
+    act(() => fireEvent.click(hers.querySelector("button")!));
     await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
-    const items = within(screen.getByTestId("project-entry-own")).getAllByTestId("project-entry-objective");
-    expect(items.map((li) => [li.textContent?.includes("Survey the repo") ? "survey" : "write-up", li.getAttribute("data-met")])).toEqual([
+    expect(marks(screen.getByTestId("project-entry-own"))).toEqual([
+      ["survey", "true"],
+      ["write-up", "false"],
+    ]);
+
+    // Bob's entry draws the same list on its details.
+    act(() => fireEvent.click(screen.getByTestId("project-entry-back")));
+    const his = await rowOf(BOB.userId);
+    act(() => fireEvent.click(his.querySelector("button")!));
+    expect(marks(await screen.findByTestId("project-entry-details"))).toEqual([
       ["survey", "true"],
       ["write-up", "false"],
     ]);
