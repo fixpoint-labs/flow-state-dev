@@ -3,9 +3,11 @@
  * names.
  *
  * Such a repository is used as it stands: the run's branch is cut in it and
- * stays there, with no clone and no fetch. That is what lets a host that has
- * always pointed runs at one working repository keep its branches where they
- * were. Every git process is counted, as in the remote suite.
+ * stays there, with no clone. That is what lets a host that has always
+ * pointed runs at one working repository keep its branches where they were.
+ * These repositories are clones of a bare path, so a new branch's base has an
+ * upstream, and one fetch of it (`local-host-upstream.spec.ts`); a retry
+ * fetches nothing. Every git process is counted, as in the remote suite.
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -66,7 +68,8 @@ describe("a repository the operator names on this machine", () => {
     expect(git(place.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
     expect(existsSync(join(root, ".clones"))).toBe(false);
     expect(gitCommands()).not.toContain("clone");
-    expect(gitCommands()).not.toContain("fetch");
+    // One fetch: the base's own upstream, before the new branch is cut.
+    expect(gitCommands().filter((command) => command === "fetch")).toHaveLength(1);
     expect(place.repo).toMatchObject({ remote: repo, clone: repo, created: true, baseRef: "main" });
   });
 

@@ -464,7 +464,8 @@ async function looksHalfBuilt(
   }
 }
 
-function firstLine(error: unknown): string | undefined {
+/** The first line git (or node) said about a failure. */
+export function firstLine(error: unknown): string | undefined {
   return String((error as { stderr?: unknown })?.stderr || (error as Error)?.message || error)
     .split("\n")
     .find((line) => line.trim() !== "")
