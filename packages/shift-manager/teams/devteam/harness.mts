@@ -252,8 +252,19 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
   }
   const account = await (options.probe ?? (() => probeClaudeAccount({ env: claudeCodeEnv() })))();
   if (account.status !== "account") throw new Error(refusalOf(account));
-  log(`Coder: Claude Code, on the credential from ${account.apiKeySource ?? account.tokenSource}.`);
+  log(`Coder: Claude Code, on the credential from ${credentialOf(account)}.`);
   return harness;
+}
+
+/**
+ * Where an account's credential comes from, for the start line: the key or
+ * token source the SDK names, else the plan of a subscription sign-in, which
+ * names neither.
+ */
+function credentialOf(account: Extract<ClaudeAccountProbe, { status: "account" }>): string {
+  if (account.apiKeySource !== undefined) return account.apiKeySource;
+  if (account.tokenSource !== undefined) return account.tokenSource;
+  return account.subscriptionType === undefined ? "a Claude sign-in" : `a ${account.subscriptionType} sign-in`;
 }
 
 /** Why a Lab on Claude Code won't start, and what to set to start it. */
