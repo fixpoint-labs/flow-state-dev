@@ -59,6 +59,7 @@ export {
 export {
   isSuspensionItem,
   isSuspensionResumeItem,
+  isSuspensionWait,
   whenAnyItem,
   whenResourceChanged,
   whenResourceMatching
