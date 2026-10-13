@@ -204,7 +204,7 @@ function CollectionCard({
         {counts && <CountsRibbon counts={counts} />}
       </div>
 
-      <div className="min-w-0 border border-fs-ink/30 bg-fs-card">
+      <div className="@container/board min-w-0 border border-fs-ink/30 bg-fs-card">
         {collection.tasks.length === 0 ? (
           <p className="px-3 py-3 font-fs-mono text-[11.5px] text-fs-ink4">
             Board meta only — no task-change items yet.
@@ -251,19 +251,27 @@ function CollectionCard({
 }
 
 /**
- * The collapsed row's grid. Status leads; goal and reason share what is left,
- * each allowed to shrink to nothing (`minmax(0, 1fr)`) so neither pushes the
- * row past the pane. The fixed tracks are what let the column headers line up
- * with every row on the board.
+ * The collapsed row's grid classes. Status leads; goal and reason share what is
+ * left, each allowed to shrink to nothing (`minmax(0, 1fr)`) so neither pushes
+ * the row past the pane. The fixed tracks are what let the column headers line
+ * up with every row on the board.
+ *
+ * Under 40rem of board (the center pane of a 1280px window) the fixed tracks
+ * alone would take the whole row, so the Change column is dropped there (the
+ * open row still shows it) and the run slot narrows, leaving the space to goal
+ * and reason. Literal strings so Tailwind can see them.
  */
 function rowColumns(showReason: boolean): string {
   return showReason
-    ? "7.5rem minmax(0, 1fr) minmax(0, 1fr) 6rem 7rem"
-    : "7.5rem minmax(0, 1fr) 6rem 7rem";
+    ? "grid-cols-[7.5rem_minmax(0,1fr)_minmax(0,1fr)_6rem] @[40rem]/board:grid-cols-[7.5rem_minmax(0,1fr)_minmax(0,1fr)_6rem_7rem]"
+    : "grid-cols-[7.5rem_minmax(0,1fr)_6rem] @[40rem]/board:grid-cols-[7.5rem_minmax(0,1fr)_6rem_7rem]";
 }
 
+/** The Change slot, shown only on a board wide enough for it. */
+const CHANGE_SLOT = "hidden @[40rem]/board:block";
+
 /** The run slot's width, shared by the header and every row. */
-const RUN_SLOT = "w-24 shrink-0 text-right";
+const RUN_SLOT = "w-12 shrink-0 text-right @[40rem]/board:w-24";
 
 /** Mono uppercase headers over the rows, on the rows' own grid. */
 function ColumnHeaders({ columns, showReason }: { columns: string; showReason: boolean }) {
@@ -272,12 +280,12 @@ function ColumnHeaders({ columns, showReason }: { columns: string; showReason: b
       aria-hidden
       className="flex min-w-0 items-center gap-2 border-b border-fs-ink/20 pr-3 font-fs-mono text-[10px] font-medium uppercase tracking-[.12em] text-fs-ink4"
     >
-      <div className="grid min-w-0 flex-1 items-center gap-2 py-[7px] pl-3" style={{ gridTemplateColumns: columns }}>
-        <span>Status</span>
-        <span>Goal</span>
-        {showReason && <span>Reason</span>}
-        <span>Assignee</span>
-        <span>Change</span>
+      <div className={`grid min-w-0 flex-1 items-center gap-2 py-[7px] pl-3 ${columns}`}>
+        <span className="min-w-0 truncate">Status</span>
+        <span className="min-w-0 truncate">Goal</span>
+        {showReason && <span className="min-w-0 truncate">Reason</span>}
+        <span className="min-w-0 truncate">Assignee</span>
+        <span className={`min-w-0 truncate ${CHANGE_SLOT}`}>Change</span>
       </div>
       <span className={RUN_SLOT}>Run</span>
     </div>
@@ -329,8 +337,7 @@ function TaskRow({
           aria-controls={bodyId}
           onClick={onToggle}
           data-row-grid
-          className="grid min-w-0 flex-1 items-center gap-2 py-[9px] pl-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fs-blue/40"
-          style={{ gridTemplateColumns: columns }}
+          className={`grid min-w-0 flex-1 items-center gap-2 py-[9px] pl-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fs-blue/40 ${columns}`}
         >
           <span data-slot="status" className="inline-flex min-w-0 items-center gap-1">
             <ChevronRight
@@ -357,7 +364,7 @@ function TaskRow({
           <span data-slot="assignee" className="min-w-0 truncate font-fs-mono text-[11.5px] text-fs-ink2" title={task.assignee}>
             {task.assignee ?? "—"}
           </span>
-          <span data-slot="kind" className="min-w-0 truncate whitespace-nowrap font-fs-mono text-[11px] text-fs-ink3">
+          <span data-slot="kind" className={`min-w-0 truncate whitespace-nowrap font-fs-mono text-[11px] text-fs-ink3 ${CHANGE_SLOT}`}>
             <span>{entry.kind ?? "—"}</span>
             {entry.changeCount > 1 && (
               <span className="ml-1 border border-fs-ink/30 px-1 text-[10px] text-fs-ink4">
