@@ -88,6 +88,21 @@ describe("the picker, for a mode that runs without its sandbox", () => {
     const claudeCode = document.querySelector<HTMLElement>('[data-mode-id="claude-code"]')!;
     expect(within(claudeCode).queryByTestId("mode-note")).toBeNull();
   });
+
+  it("says so on the mode's own page too, so a bookmark or direct link never skips the warning", async () => {
+    const note = "Runs without Cursor's sandbox (KITCHEN_SINK_HARNESS_UNSANDBOXED=1): its writes are not confined to the session's worktree.";
+    (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-gate")] = Promise.resolve({
+      "flow-state": { available: true },
+      "claude-code": { available: true },
+      codex: { available: false, reason: "Not built yet." },
+      cursor: { available: true, note },
+    });
+    render(await HarnessModePage({ id: "cursor" }));
+    expect(within(screen.getByTestId("rail")).getByTestId("mode-note").textContent).toBe(note);
+    cleanup();
+    render(await HarnessModePage({ id: "claude-code" }));
+    expect(screen.queryByTestId("mode-note")).toBeNull();
+  });
 });
 
 describe("V5 · BR-14 · an unavailable mode by its address", () => {
