@@ -552,8 +552,9 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
 /**
  * The workspace host a fixed repository runs through: `sourceRepo` is a
  * repository on this machine the operator named, so the host cuts worktrees
- * from it directly, keeps every run's branch in it, and reaches no remote.
- * The run source is constant.
+ * from it directly and keeps every run's branch in it. It reaches only the
+ * base's upstream, to cut a new branch from the newer of the two. The run
+ * source is constant.
  */
 export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
   // Absolute, because the host takes only an absolute path as a repository on

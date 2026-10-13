@@ -64,6 +64,30 @@ describe("readRunCommits", () => {
     expect(await readRunCommits(dir, "main")).toEqual({ count: 1, subjects: ["the run's change"] });
   });
 
+  it("counts none of the upstream's commits when the branch was cut from it, whatever its remote is called", async () => {
+    // A local checkout cuts from the base's upstream when the person hasn't
+    // pulled. Named anything but `origin`, only `<base>@{upstream}` finds it.
+    const dir = repo("local");
+    git(dir, "update-ref", "-d", "refs/remotes/origin/main");
+    git(dir, "config", "remote.upstream.url", dir);
+    git(dir, "config", "remote.upstream.fetch", "+refs/heads/*:refs/remotes/upstream/*");
+    git(dir, "config", "branch.main.remote", "upstream");
+    git(dir, "config", "branch.main.merge", "refs/heads/main");
+    git(dir, "checkout", "-q", "-b", "tmp", "main~1");
+    commit(dir, "upstream only");
+    git(dir, "update-ref", "refs/remotes/upstream/main", "HEAD");
+    git(dir, "checkout", "-q", "main");
+    git(dir, "reset", "-q", "--hard", "main~1");
+    git(dir, "branch", "-q", "-D", "tmp");
+    git(dir, "checkout", "-q", "-b", "run", "upstream/main");
+    commit(dir, "the run's first change");
+    commit(dir, "the run's second change");
+    expect(await readRunCommits(dir, "main")).toEqual({
+      count: 2,
+      subjects: ["the run's second change", "the run's first change"],
+    });
+  });
+
   it("answers none for a base the checkout doesn't have", async () => {
     const dir = repo("local");
     expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [] });
