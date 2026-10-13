@@ -66,7 +66,7 @@ export const DISPATCH_TYPES: readonly DispatchType[] = [
 export type BlockDispatchType = "internal" | "task";
 
 /**
- * Which child session a `task` dispatch runs in, decided per row.
+ * Which session a `task` dispatch runs in, decided per row.
  *
  * - `"per-task"` — one child per row, keyed on the task id (a follow-up row,
  *   whose payload names `followUpOf`, on the task it follows). Rows are
@@ -76,6 +76,12 @@ export type BlockDispatchType = "internal" | "task";
  * - `{ key }` — keyed on what the function returns, read from the worker
  *   input the row was packed into. One issue across several phases, or a key
  *   shared across assignees.
+ * - `{ by }` — chosen per row (see {@link TaskSessionChoice}): a keyed child,
+ *   as `{ key }` makes, or an **existing** session by id. One board can then
+ *   send some rows to a child of their own and others into a session that is
+ *   already running. An id is delivered into, never created, and refused by
+ *   name when it is missing or not this principal's on this flow, so an id
+ *   read off a row cannot reach a session the claimer could not.
  *
  * The presets frame the board id into the key, so two boards' children stay
  * apart even when their task ids coincide; a custom key is used as returned.
@@ -83,7 +89,38 @@ export type BlockDispatchType = "internal" | "task";
 export type TaskSessionPolicy<TPayload = unknown> =
   | "per-task"
   | "per-worker"
-  | { readonly key: (task: TPayload, ctx: BlockContext) => string };
+  | { readonly key: (task: TPayload, ctx: BlockContext) => string }
+  | {
+      readonly by: (
+        task: TaskTargetQuery,
+        ctx: BlockContext
+      ) => TaskSessionChoice | Promise<TaskSessionChoice>;
+    };
+
+/** The session policies that always derive a keyed child: every policy but `{ by }`. */
+export type KeyedTaskSessionPolicy<TPayload = unknown> = Exclude<
+  TaskSessionPolicy<TPayload>,
+  { readonly by: unknown }
+>;
+
+/**
+ * What a `{ by }` session policy answers for one row: a child `key`, minted on
+ * first use and adopted after exactly as a `{ key }` policy's is, or the `id`
+ * of an existing session to deliver into (the {@link SessionTarget} `{ id }`).
+ */
+export type TaskSessionChoice = { readonly key: string } | { readonly id: string };
+
+/**
+ * A `task` address's entry, chosen per row: `by` answers, for each row, one of
+ * the entry names listed in `among`. Every listed name is declared and
+ * verified like a string `action` (`defineFlow` for this flow, the seam for
+ * another), so the entries a board's rows can land on are still declared, not
+ * computed. An answer outside `among` is refused before anything is dispatched.
+ */
+export type TaskEntryChoice = {
+  readonly among: readonly string[];
+  readonly by: (task: TaskTargetQuery, ctx: BlockContext) => string | Promise<string>;
+};
 
 /**
  * The task a `task` dispatcher's per-task target is asked about: who the row
@@ -132,12 +169,14 @@ export type TaskStateTarget = (
 /**
  * Where a dispatcher sends. `(type, action)` is static by construction: it is
  * what the block declares, so its reachable entries are declared rather than
- * computed at run time. An action chosen from data is a router over declared
- * dispatchers, not a dynamic address. The one per-task part is a `task`
- * dispatcher's `flowKind`, which may be a {@link TaskFlowTarget}: the entry is
- * still declared, and only which flow serves it is looked up when a task is
- * handed over. Such a target is cross-flow, so nothing at definition time can
- * list the flows it reaches.
+ * computed at run time. An `internal` action chosen from data is a router over
+ * declared dispatchers, not a dynamic address. A `task` address may choose its
+ * entry per row ({@link TaskEntryChoice}), but only among declared ones: every
+ * name it can answer is listed on the address and verified like a string
+ * `action`. Its `flowKind` may be a {@link TaskFlowTarget}: the entry is still
+ * declared, and only which flow serves it is looked up when a task is handed
+ * over. Such a target is cross-flow, so nothing at definition time can list
+ * the flows it reaches.
  *
  * `defineFlow` verifies the same-flow pair. A cross-flow address is equally
  * static and equally declared — it is simply verified one layer later, by the
@@ -168,8 +207,11 @@ export type DispatchAddress =
     }
   | {
       readonly type: "task";
-      /** The entry name — `flow.task.actions[action]`. */
-      readonly action: string;
+      /**
+       * The entry name — `flow.task.actions[action]` — or a choice among
+       * declared entry names, made per row (see {@link TaskEntryChoice}).
+       */
+      readonly action: string | TaskEntryChoice;
       readonly session: TaskSessionPolicy<any>;
       /**
        * The flow the entry lives on, when it is **not this one**. Same skip
@@ -268,7 +310,7 @@ export function readFramed(
  */
 export function taskSessionKeyFor(
   blockName: string,
-  policy: TaskSessionPolicy<any>,
+  policy: KeyedTaskSessionPolicy<any>,
   envelope: TaskDispatchInput,
   ctx: BlockContext
 ): string {
@@ -291,6 +333,59 @@ export function taskSessionKeyFor(
     );
   }
   return key;
+}
+
+/**
+ * The session a `task` dispatch runs in, for one row, as the seam takes it:
+ * the address's keyed child (see {@link taskSessionKeyFor}) with its initial
+ * state, or what a `{ by }` policy answers for this row. A `{ key }` answer is
+ * a child like any other and gets the address's state; an `{ id }` answer is an
+ * existing session, which keeps its own, so the state is not looked up.
+ * Shared by `dispatcher()` and the board's hand-off, so both send the same row
+ * to the same session.
+ *
+ * @throws when a `{ by }` policy answers anything but exactly one non-empty
+ *   `key` or `id`, or the state target answers a non-object. Decided before
+ *   anything is dispatched.
+ */
+export async function resolveTaskSessionTarget(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  envelope: TaskDispatchInput,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<SessionTarget> {
+  const choice = await chooseTaskSession(blockName, address.session, envelope, task, ctx);
+  if ("id" in choice) return { id: choice.id };
+  const state = await resolveTaskState(blockName, address, task, ctx);
+  return state === undefined ? { key: choice.key } : { key: choice.key, state };
+}
+
+async function chooseTaskSession(
+  blockName: string,
+  policy: TaskSessionPolicy<any>,
+  envelope: TaskDispatchInput,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<TaskSessionChoice> {
+  if (typeof policy !== "object" || !("by" in policy)) {
+    return { key: taskSessionKeyFor(blockName, policy, envelope, ctx) };
+  }
+  const choice: unknown = await policy.by(task, ctx);
+  if (typeof choice === "object" && choice !== null) {
+    const { key, id } = choice as { key?: unknown; id?: unknown };
+    if (key !== undefined && id === undefined && typeof key === "string" && key.length > 0) {
+      return { key };
+    }
+    if (id !== undefined && key === undefined && typeof id === "string" && id.length > 0) {
+      return { id };
+    }
+  }
+  throw new Error(
+    `[dispatcher] "${blockName}" chose a session for task "${task.taskId}" that is not one ` +
+      `non-empty \`key\` or \`id\` (${JSON.stringify(choice)}). Answer \`{ key }\` for a child ` +
+      `session or \`{ id }\` for an existing one.`
+  );
 }
 
 /**
@@ -447,11 +542,54 @@ export class DispatchRefusedError extends Error {
     readonly detail: string
   ) {
     super(
-      `Block "${blockName}" could not dispatch to ${address.type}:"${address.action}": ` +
+      `Block "${blockName}" could not dispatch to ${address.type}:${describeAction(address)}: ` +
         `${refused} — ${detail}`
     );
     this.name = "DispatchRefusedError";
   }
+}
+
+/**
+ * Every entry name an address can reach: its `action`, or each name a per-row
+ * choice lists. What `defineFlow` and the run-time routability check verify,
+ * and what a board lists as where an assignee's rows can land.
+ */
+export function addressEntries(address: DispatchAddress): readonly string[] {
+  return typeof address.action === "string" ? [address.action] : address.action.among;
+}
+
+/** An address's action for messages: `"name"`, or `one of "a", "b"` for a per-row choice. */
+export function describeAction(address: DispatchAddress): string {
+  return typeof address.action === "string"
+    ? `"${address.action}"`
+    : `one of ${address.action.among.map((name) => `"${name}"`).join(", ")}`;
+}
+
+/**
+ * The entry a `task` dispatch goes to: the address's string as declared, or
+ * its per-row choice's answer for this task.
+ *
+ * @throws {DispatchRefusedError} `no-entry` when the choice answers a name its
+ *   `among` does not list. Decided before anything is dispatched, like every
+ *   refusal, so a board's hand-off still holds the claim.
+ */
+export async function resolveTaskAction(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<string> {
+  const action = address.action;
+  if (typeof action === "string") return action;
+  const chosen: unknown = await action.by(task, ctx);
+  if (typeof chosen === "string" && action.among.includes(chosen)) return chosen;
+  throw new DispatchRefusedError(
+    blockName,
+    address,
+    "no-entry",
+    `the entry chosen for task "${task.taskId}" (assignee "${task.assignee}") was ` +
+      `${JSON.stringify(chosen)}, which is not among the entries this dispatcher declares.`
+  );
 }
 
 /**

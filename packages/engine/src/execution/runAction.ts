@@ -16,7 +16,7 @@ import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
 import type { TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -277,31 +277,35 @@ function assertDispatchersRoutable(
     if (address !== undefined) {
       const crossFlow = address.flowKind !== undefined && address.flowKind !== flow.id;
       if (!crossFlow) {
-        const entry = resolveTypedEntry(flow, address.type, address.action);
-        if (entry === undefined) {
-          throw new ValidationError(
-            `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-              `dispatches to ${address.type}:"${address.action}", which the flow does not declare. ` +
-              `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
-              `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
-              `drop the dispatch from the resolver's block.`,
-            { scope: "request" }
-          );
-        }
-        if (address.type === "task") {
-          const binding = taskBindingOf(block);
-          const gatedBy = (entry as TaskEntry).gatedBy;
-          if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
+        // A task address that chooses its entry per row reaches every name it
+        // lists, so each one must resolve and be gated for this board.
+        for (const action of addressEntries(address)) {
+          const entry = resolveTypedEntry(flow, address.type, action);
+          if (entry === undefined) {
             throw new ValidationError(
               `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-                `hands off to task:"${address.action}", which is gated for board ` +
-                `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
-                (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
-                `. One entry settles against one ledger; a row claimed on another board's ledger ` +
-                `would be refused at this gate after the dispatch was accepted. Hand off from the ` +
-                `board that declares this entry, or declare an entry for the other board.`,
+                `dispatches to ${address.type}:"${action}", which the flow does not declare. ` +
+                `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
+                `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
+                `drop the dispatch from the resolver's block.`,
               { scope: "request" }
             );
+          }
+          if (address.type === "task") {
+            const binding = taskBindingOf(block);
+            const gatedBy = (entry as TaskEntry).gatedBy;
+            if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
+              throw new ValidationError(
+                `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+                  `hands off to task:"${action}", which is gated for board ` +
+                  `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
+                  (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
+                  `. One entry settles against one ledger; a row claimed on another board's ledger ` +
+                  `would be refused at this gate after the dispatch was accepted. Hand off from the ` +
+                  `board that declares this entry, or declare an entry for the other board.`,
+                { scope: "request" }
+              );
+            }
           }
         }
       }

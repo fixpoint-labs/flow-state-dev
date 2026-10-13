@@ -12,7 +12,14 @@ import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
-import { taskBindingOf, type TaskBinding, type InternalEntry, type TaskEntry } from "../types/dispatch";
+import {
+  addressEntries,
+  describeAction,
+  taskBindingOf,
+  type TaskBinding,
+  type InternalEntry,
+  type TaskEntry
+} from "../types/dispatch";
 import type {
   FlowCardinality,
   ActionConfig,
@@ -814,7 +821,7 @@ function resolveDispatchTargets(
   // ledgers, and only one of their gates can front the entry.
   const gatedBy = new Map<string, TaskBinding>();
   // Entries some dispatcher hands off to under a policy that shares one child across
-  // rows (`per-worker`, or a `key`). Two rows dispatched into one session
+  // rows (`per-worker`, a `key`, or a per-row `by`). Two rows dispatched into one session
   // interleave their writes under the `allow` default, so these default to
   // `queue` unless the author chose a policy. A `per-task` dispatcher lands every row
   // in a session of its own and keeps the flow default.
@@ -823,7 +830,7 @@ function resolveDispatchTargets(
   for (const block of reachable) {
     const address = block.dispatch;
     if (address === undefined) continue;
-    const label = `${address.type}:"${address.action}"`;
+    const label = `${address.type}:${describeAction(address)}`;
 
     // A cross-flow address names an entry on a flow this `defineFlow` does
     // not hold — `internal` or `task`. Skipped rather than guessed: the seam
@@ -842,48 +849,50 @@ function resolveDispatchTargets(
     }
 
     if (address.type === "task") {
-      const entry = tasks !== undefined && Object.hasOwn(tasks, address.action)
-        ? tasks[address.action]
-        : undefined;
-      if (entry === undefined) {
-        throw new Error(
-          `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but the ` +
-            `flow declares no such task entry. Add \`task: { actions: { ${address.action}: { block } } }\` ` +
-            `to the flow — the block that runs each row this dispatcher hands off.`
-        );
+      // An entry chosen per row reaches every name it lists, so each one is
+      // checked and gated exactly as a string `action` is.
+      for (const action of addressEntries(address)) {
+        const entry = tasks !== undefined && Object.hasOwn(tasks, action) ? tasks[action] : undefined;
+        if (entry === undefined) {
+          throw new Error(
+            `Flow "${kind}" reaches block "${block.name}", which hands off to task:"${action}", but the ` +
+              `flow declares no such task entry. Add \`task: { actions: { ${action}: { block } } }\` ` +
+              `to the flow — the block that runs each row this dispatcher hands off.`
+          );
+        }
+        const binding = taskBindingOf(block);
+        if (binding === undefined) {
+          throw new Error(
+            `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but no ` +
+              `task board holds it. A task dispatcher belongs to a board: put it under a board's ` +
+              `\`workers\`, which is the only place a claim on a durable row is minted.`
+          );
+        }
+        const holder = gatedBy.get(action);
+        if (holder !== undefined && holder.gate !== binding.gate) {
+          throw new Error(
+            holder.boardId === binding.boardId
+              ? `Flow "${kind}" task entry "${action}" is handed off to by two boards ` +
+                  `that both declare boardId "${binding.boardId}". A boardId names one board and ` +
+                  `one ledger; give the second board its own boardId and its own entry.`
+              : `Flow "${kind}" task entry "${action}" is handed off to by two boards, ` +
+                  `"${holder.boardId}" and "${binding.boardId}". One entry settles against one ` +
+                  `ledger; declare a second entry for the second board.`
+          );
+        }
+        if (entry.from !== undefined) {
+          throw new Error(
+            `Flow "${kind}" task entry "${action}" declares where it takes tasks from ` +
+              `(\`from\`), and board "${binding.boardId}" in the same flow also hands off to it. ` +
+              `One entry runs behind one gate; drop \`from\`, or declare a second entry for the board.`
+          );
+        }
+        if (holder === undefined) {
+          gatedBy.set(action, binding);
+          gated[action] = { ...binding.gate(entry, action), gatedBy: binding };
+        }
+        if (address.session !== "per-task") sharedChild.add(action);
       }
-      const binding = taskBindingOf(block);
-      if (binding === undefined) {
-        throw new Error(
-          `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but no ` +
-            `task board holds it. A task dispatcher belongs to a board: put it under a board's ` +
-            `\`workers\`, which is the only place a claim on a durable row is minted.`
-        );
-      }
-      const holder = gatedBy.get(address.action);
-      if (holder !== undefined && holder.gate !== binding.gate) {
-        throw new Error(
-          holder.boardId === binding.boardId
-            ? `Flow "${kind}" task entry "${address.action}" is handed off to by two boards ` +
-                `that both declare boardId "${binding.boardId}". A boardId names one board and ` +
-                `one ledger; give the second board its own boardId and its own entry.`
-            : `Flow "${kind}" task entry "${address.action}" is handed off to by two boards, ` +
-                `"${holder.boardId}" and "${binding.boardId}". One entry settles against one ` +
-                `ledger; declare a second entry for the second board.`
-        );
-      }
-      if (entry.from !== undefined) {
-        throw new Error(
-          `Flow "${kind}" task entry "${address.action}" declares where it takes tasks from ` +
-            `(\`from\`), and board "${binding.boardId}" in the same flow also hands off to it. ` +
-            `One entry runs behind one gate; drop \`from\`, or declare a second entry for the board.`
-        );
-      }
-      if (holder === undefined) {
-        gatedBy.set(address.action, binding);
-        gated[address.action] = { ...binding.gate(entry, address.action), gatedBy: binding };
-      }
-      if (address.session !== "per-task") sharedChild.add(address.action);
       continue;
     }
 

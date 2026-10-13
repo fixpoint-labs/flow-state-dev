@@ -31,9 +31,13 @@
  * | `"per-task"`      | the task id                                | work is independent — a checkout per issue |
  * | `"per-worker"`    | this assignee, one child per claiming session  | the worker should remember what it already did |
  * | `{ key: fn }`     | a value the function reads off the task    | one issue across spec, implement and review |
+ * | `{ by: fn }`      | per row: a key, or an existing session's id | some rows run apart, others join a running session |
+ *
+ * The entry is declared the same way: a string `action`, or `{ among, by }`,
+ * which picks one of the declared names per row.
  *
  * A shared session serialises its rows: `defineFlow` defaults the entry a
- * `per-worker` or `key` assignee hands off to `queue` concurrency (an explicit
+ * `per-worker`, `key` or `by` assignee hands off to `queue` concurrency (an explicit
  * policy on the entry wins), so two rows dispatched into one child do not
  * interleave their writes.
  */

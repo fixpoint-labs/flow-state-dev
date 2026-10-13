@@ -472,12 +472,13 @@ export default defineFlow({
 | `"per-task"` | one per row, keyed on the task id; a task filed with `followUpOf` runs in its root task's child | rows are independent |
 | `"per-worker"` | one per assignee, shared by every row the assignee runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across assignees |
+| `{ by: (task: TaskTargetQuery) => { key } \| { id } }` | chosen per row: a child keyed as `{ key }` would, or an existing session by id | some rows need a child of their own and others belong in a session that is already running |
 
 The presets include the board id in the key, so two boards' `per-task` children stay
 apart even when their task ids coincide. A custom `key` is used as returned, so two
 assignees (or two boards) that return the same key share one child. A child that runs
-several rows runs them under its entry's concurrency policy. An entry a `per-worker`
-or `key` assignee hands off to defaults to `queue`, so the rows run one at a time; a
+several rows runs them under its entry's concurrency policy. An entry a `per-worker`,
+`key` or `by` assignee hands off to defaults to `queue`, so the rows run one at a time; a
 `per-task` assignee's entry keeps the ordinary default (the flow's `request.concurrency`,
 else `allow`). An explicit `concurrency` on the entry wins:
 
@@ -507,6 +508,28 @@ defaultWorker: dispatcher({
   action: "work",
   session: "per-task",
   flowKind: (task, ctx) => findFlowFor(task.assignee, ctx),
+}),
+```
+
+**Entry and session per row.** A task dispatcher's `action` may be `{ among, by }`:
+`by(task, ctx)` (sync or async; `task` is `{ assignee, taskId, input, filedBy? }`) returns
+one of the entry names in `among`. Every name in `among` is checked by `defineFlow` like a
+string `action`; an answer outside it refuses `no-entry` before anything is dispatched,
+and the row fails through the board's error path. Its `session` may be `{ by }`, which
+answers `{ key }` (a child, created with the dispatcher's `state` if it declares one) or
+`{ id }` (an existing session, delivered into and never created; a missing one refuses
+`session-not-found`, one this principal can't reach on this flow `session-not-found` or
+`session-not-addressable`). Read both answers off fields your code wrote on the row. One
+assignee can then send replies into a running session and other work to children:
+
+```ts
+// filed(task): the fields your code wrote on the row when it filed it.
+assistant: dispatcher({
+  name: "hand-off-assistant",
+  action: { among: ["work", "reply"], by: (task) => (filed(task).reply ? "reply" : "work") },
+  session: {
+    by: (task) => (filed(task).sessionId ? { id: filed(task).sessionId! } : { key: `work|${task.taskId}` }),
+  },
 }),
 ```
 
