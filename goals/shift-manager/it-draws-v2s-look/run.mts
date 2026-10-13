@@ -467,7 +467,6 @@ function sweep(args: {
       })),
       sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
       watching: document.querySelector("[data-testid=cos-watching]")?.textContent ?? null,
-      suggestions: document.querySelector("[data-testid=cos]") === null ? null : Array.from(document.querySelectorAll("[data-look=suggestion]")).map((el) => el.textContent ?? ""),
     },
     texts,
     now: Date.now(),

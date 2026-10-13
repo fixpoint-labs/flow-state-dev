@@ -1,7 +1,7 @@
 /**
- * Roster: every worker the user has, grouped on shift and off shift, for all teams or one (`/roster[?team=]`). The workers are the
- * user's roster, read through Workforce's client: their own workers and the
- * standard ones, each on the flow it names. A standard worker's row is the
+ * Roster: every worker the user has, grouped on shift and off shift, for
+ * all teams or one (`/roster[?team=]`). The workers are the user's roster,
+ * read through Workforce's client: their own workers and the standard ones, each on the flow it names. A standard worker's row is the
  * worker inventory's. The roster is read again with every snapshot, so a worker
  * hired or fired on a turn shows on the next read.
  *
