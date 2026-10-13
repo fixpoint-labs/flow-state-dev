@@ -34,6 +34,7 @@ import {
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
+import { harnessUnsandboxed, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -107,7 +108,9 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
       mode: "agent",
       // Writes confined to the run's `cwd`, the session's worktree. Cursor fails
       // the run when its sandbox can't start, rather than running without it.
-      local: { sandboxOptions: { enabled: true } },
+      // `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` turns it off (`lib/harness-sandbox.ts`):
+      // the run then writes wherever the server's OS user can.
+      local: { sandboxOptions: { enabled: !harnessUnsandboxed() } },
     },
     // A stand-in client runs in this process, so it takes no `env`; the real
     // runtime always gets the allowlist, in its own process.
@@ -197,7 +200,9 @@ export const HOST_CHECKS: CursorHostChecks = {
  * Every run asks for the sandbox, and Cursor fails a run whose sandbox can't
  * start rather than running without it, so a host without one could run no
  * turn at all. The sandbox answer is the SDK's own, asked the way a run asks
- * it, with no run started (`probeCursorSandbox`).
+ * it, with no run started (`probeCursorSandbox`). Under
+ * `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` runs don't ask for it, so it isn't
+ * checked, and the available mode's note says the run is unsandboxed.
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
@@ -232,11 +237,12 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
         reason: `Cursor is not signed in on this host (${signedIn.reason}). Set CURSOR_API_KEY, or log in with the Cursor SDK, then restart.`,
       };
     }
+    if (harnessUnsandboxed()) return { available: true, note: unsandboxedNote("Cursor") };
     const sandbox = checks.sandbox(repository, env);
     if (!sandbox.supported) {
       return {
         available: false,
-        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason}`,
+        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason} To run Cursor without its sandbox, set KITCHEN_SINK_HARNESS_UNSANDBOXED=1 and restart.`,
       };
     }
     return { available: true };

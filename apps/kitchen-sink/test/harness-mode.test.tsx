@@ -71,6 +71,25 @@ describe("V5 · the picker at /", () => {
   });
 });
 
+describe("the picker, for a mode that runs without its sandbox", () => {
+  it("says so on the mode's card, so an unconfined run is never a surprise", async () => {
+    const note = "Runs without Cursor's sandbox (KITCHEN_SINK_HARNESS_UNSANDBOXED=1): its writes are not confined to the session's worktree.";
+    // The answer the gate memoizes for this server start, as the Cursor check gives it under the opt-out.
+    (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-gate")] = Promise.resolve({
+      "flow-state": { available: true },
+      "claude-code": { available: true },
+      codex: { available: false, reason: "Not built yet." },
+      cursor: { available: true, note },
+    });
+    render(await PickerPage());
+    const cursor = document.querySelector<HTMLElement>('[data-mode-id="cursor"]')!;
+    expect(cursor.dataset.available).toBe("true");
+    expect(within(cursor).getByTestId("mode-note").textContent).toBe(note);
+    const claudeCode = document.querySelector<HTMLElement>('[data-mode-id="claude-code"]')!;
+    expect(within(claudeCode).queryByTestId("mode-note")).toBeNull();
+  });
+});
+
 describe("V5 · BR-14 · an unavailable mode by its address", () => {
   it("shows the picker's reason and the way back, and draws no rail, no navigator, no composer", async () => {
     vi.stubEnv("VERCEL", "1");

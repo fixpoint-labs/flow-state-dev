@@ -96,6 +96,19 @@ describe("Cursor mode's check (V7)", () => {
     expect(asked).toEqual(["/repo"]);
   });
 
+  it("with KITCHEN_SINK_HARNESS_UNSANDBOXED=1, doesn't ask about the sandbox and says the run is unsandboxed", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+    const sandbox = vi.fn(() => ({ supported: false as const, reason: "no sandbox here" }));
+    const result = await check({ sandbox });
+    expect(sandbox).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ available: true, note: expect.stringContaining("not confined") });
+  });
+
+  it("names the opt-out in the reason when the sandbox can't start", async () => {
+    const result = await check({ sandbox: () => ({ supported: false, reason: "no sandbox here" }) });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
+  });
+
   it("checks the sign-in, the sandbox, and starts the process over the run's environment, not the server's", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("CURSOR_API_KEY", "key");
