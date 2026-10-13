@@ -1809,21 +1809,23 @@ export function useSession(
           metadata: actionOptions?.metadata
         });
 
+        const accepted: ExecuteActionResponse = {
+          status: "in_progress",
+          request: {
+            id: requestId,
+            flowKind: resolvedFlowKind,
+            actionName: action,
+            status: "in_progress"
+          }
+        };
+
         // Stopped while the POST was out. That stop may have reached nothing,
         // since the server had no request yet; now it does. Stop it, and
         // don't pick the turn back up.
         if (stoppedRequestsRef.current.has(requestId)) {
           postResponse.body?.cancel().catch(() => {});
           await client.abortRequest(requestId).catch(() => {});
-          return {
-            status: "in_progress" as const,
-            request: {
-              id: requestId,
-              flowKind: resolvedFlowKind,
-              actionName: action,
-              status: "in_progress" as const
-            }
-          };
+          return accepted;
         }
 
         const contentType = postResponse.headers.get("content-type") ?? "";
@@ -1836,15 +1838,7 @@ export function useSession(
             // Items disabled — release the unconsumed SSE body.
             postResponse.body?.cancel().catch(() => {});
           }
-          return {
-            status: "in_progress" as const,
-            request: {
-              id: requestId,
-              flowKind: resolvedFlowKind,
-              actionName: action,
-              status: "in_progress" as const
-            }
-          };
+          return accepted;
         }
 
         // Fallback: server returned 202 JSON (no inline streaming support).
