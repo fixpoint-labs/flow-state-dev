@@ -10,7 +10,7 @@
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
+import { FADE_MS, FAILED_STAYS_MS, TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
 import { toWorker } from "../src/lib/reads";
 
 type Row = { id: string; goal: string; status: string; assignee?: string; attempts: number };
@@ -161,5 +161,44 @@ describe("opening a task from the panel", () => {
     await act(async () => screen.getByTestId("cos-task-open").click());
     // The route is the same one the Tasks list and JumpTo go to, so a failed task is reachable here too.
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
+  });
+});
+
+describe("a failed task in the panel", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const flush = async (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
+  it("shows red as failed, fades after a few seconds, then leaves the list while a running task stays", async () => {
+    rows = [
+      { id: "t1", goal: "Audit the licenses", status: "errored", assignee: "licenses", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "docs", attempts: 1 },
+    ];
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await flush(0);
+    const failed = () => screen.queryAllByTestId("cos-task").find((li) => li.getAttribute("data-task-id") === "t1");
+    expect(failed()!.className).toContain("text-destructive");
+    expect(failed()!.textContent).toContain("failed");
+    expect(failed()!.className).toContain("opacity-100");
+
+    await flush(FAILED_STAYS_MS);
+    expect(failed()!.className).toContain("opacity-0");
+
+    await flush(FADE_MS);
+    expect(failed()).toBeUndefined();
+    expect(shown().map((t) => t.id)).toEqual(["t2"]);
+  });
+
+  it("keeps a failed task listed until its few seconds are up, and clears it only from the list, never the board", async () => {
+    rows = [{ id: "t1", goal: "Audit the licenses", status: "errored", attempts: 1 }];
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    // The few seconds count from the read that shows it failed.
+    await flush(0);
+    await flush(FAILED_STAYS_MS - 1);
+    expect(shown().map((t) => t.id)).toEqual(["t1"]);
+    await flush(FADE_MS + 1);
+    expect(screen.getByTestId("cos-tasks-cleared").textContent).toContain("Failed tasks are on the Tasks list");
+    // Nothing was written to the board: the panel only ever reads.
+    expect(calls.every((c) => c.startsWith("list "))).toBe(true);
   });
 });

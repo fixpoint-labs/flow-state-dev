@@ -28,6 +28,11 @@ export const TASKS_POLL_MS = 3_000;
 /** How long the panel keeps reading after a task moved: the turn its ending woke runs in that time. */
 const AFTER_A_MOVE_MS = 30_000;
 
+/** How long a failed task stays in the list, red, before it fades out of it. */
+export const FAILED_STAYS_MS = 5_000;
+/** How long the fade itself takes. The row leaves the list when it ends. */
+export const FADE_MS = 600;
+
 /** Whether a task can still move by itself. */
 const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";
 /** What the panel compares between reads: each task and where it stands. */
@@ -39,13 +44,39 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
   const [polls, setPolls] = useState(0);
   // The last read's standing, and when a task last moved.
   const last = useRef<{ standing?: string; movedAt: number }>({ movedAt: 0 });
+  // A failed task is cleared from the list, never from its board: it shows red,
+  // fades, then leaves. The ids already on that path, and where each one is.
+  const [fading, setFading] = useState<ReadonlySet<string>>(new Set());
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  const clearing = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(new Map());
+  const stopClearing = () => {
+    for (const timers of clearing.current.values()) timers.forEach(clearTimeout);
+    clearing.current.clear();
+  };
 
   // Another conversation's tasks never show under this one. A read again of the
   // same conversation keeps its list up until the new answer lands.
   useEffect(() => {
     setRead(undefined);
     last.current = { movedAt: 0 };
+    stopClearing();
+    setFading(new Set());
+    setGone(new Set());
+    return stopClearing;
   }, [worker.kind, sessionId]);
+
+  // Each task that has failed starts its own clock once, however often it is read again.
+  const failedIds = read !== undefined && "tasks" in read ? read.tasks.filter((t) => t.status === "errored").map((t) => t.id) : [];
+  const failedKey = failedIds.join(",");
+  useEffect(() => {
+    for (const id of failedIds) {
+      if (clearing.current.has(id)) continue;
+      clearing.current.set(id, [
+        setTimeout(() => setFading((held) => new Set(held).add(id)), FAILED_STAYS_MS),
+        setTimeout(() => setGone((held) => new Set(held).add(id)), FAILED_STAYS_MS + FADE_MS),
+      ]);
+    }
+  }, [failedKey]);
 
   useEffect(() => {
     if (sessionId === null || worker.kind === null) return;
@@ -100,12 +131,23 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
       </p>
     );
   }
+  const shown = read.tasks.filter((task) => !gone.has(task.id));
+  if (shown.length === 0) {
+    return (
+      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-cleared">
+        Nothing open. Failed tasks are on the Tasks list.
+      </p>
+    );
+  }
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">
-      {read.tasks.map((task) => (
+      {shown.map((task) => (
         <li
           key={task.id}
-          className="flex items-start gap-2 px-1 py-1 text-sm"
+          className={`flex items-start gap-2 px-1 py-1 text-sm transition-opacity motion-reduce:transition-none ${
+            task.status === "errored" ? "text-destructive" : ""
+          } ${fading.has(task.id) ? "opacity-0" : "opacity-100"}`}
+          style={{ transitionDuration: `${FADE_MS}ms` }}
           data-testid="cos-task"
           data-task-id={task.id}
           data-status={task.status}
@@ -118,8 +160,8 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
             onClick={() => navigate({ level: "task", boardRef: conversationBoardRef(sessionId), taskId: task.id, tab: "session" })}
           >
             <span className="line-clamp-2">{task.goal}</span>
-            <span className="block text-xs text-muted-foreground">
-              {task.status} · {task.assignee ?? "unassigned"}
+            <span className={`block text-xs ${task.status === "errored" ? "text-destructive" : "text-muted-foreground"}`}>
+              {task.status === "errored" ? "failed" : task.status} · {task.assignee ?? "unassigned"}
             </span>
           </button>
         </li>
