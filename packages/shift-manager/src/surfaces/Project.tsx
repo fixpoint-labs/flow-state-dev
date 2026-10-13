@@ -471,10 +471,12 @@ function EntryView({
     const worker = leadWorker(entry, roster, workers);
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="project-entry-own" data-workstream-id={entry.id}>
-        <div className="mx-auto w-full max-w-3xl px-4 pt-3 text-sm">
-          {back}
-          <Objectives objectives={entry.objectives} />
-        </div>
+        <div className="mx-auto w-full max-w-3xl px-4 pt-3">{back}</div>
+        {entry.sessionId === null || worker === undefined ? (
+          <div className="mx-auto w-full max-w-3xl px-4 text-sm">
+            <Objectives objectives={entry.objectives} />
+          </div>
+        ) : null}
         {entry.sessionId === null ? (
           <EmptyState title="This workstream's session isn't open yet" testId="project-entry-no-session">
             Its open hasn't finished. Open it again from the project to finish it.
@@ -492,6 +494,7 @@ function EntryView({
             sessions={snapshot.sessions}
             gaps={gaps}
             name={entry.title}
+            lead={<Objectives objectives={entry.objectives} />}
             emptyText="Nothing has been said in this workstream yet."
           />
         )}
