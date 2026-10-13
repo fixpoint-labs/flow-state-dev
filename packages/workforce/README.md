@@ -1431,7 +1431,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   });
   ```
 
-  Each person's key is `mcp-credentials/<server>` at user scope, `{ value, setAt }`
+  Each user's key is `mcp-credentials/<server>` at user scope, `{ value, setAt }`
   (`defineMcpCredentialsCollection()`); a browser read exposes `setAt` only. Write it from a route
   of your own, not an action, since an action's input is kept on its request record;
   `mcpCredentialProblem(value)` says why a value can't be stored, without repeating it.
@@ -1908,7 +1908,7 @@ the root exports, and reaches no Node built-in.
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
 | `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
-| `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each person's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
+| `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
 | `defineWorkstreamBlocks({ installation, leadFlows })` | Returns `{ openWorkstream, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |

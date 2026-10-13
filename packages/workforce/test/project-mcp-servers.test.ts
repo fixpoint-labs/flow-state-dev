@@ -133,7 +133,7 @@ describe("a project row read by a client", () => {
   });
 });
 
-describe("a person's keys read by a client", () => {
+describe("a user's keys read by a client", () => {
   it("show when each was set, never the value (BR-9)", async () => {
     const holder = handler({
       name: "holds-keys",

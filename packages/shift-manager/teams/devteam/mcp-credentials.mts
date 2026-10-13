@@ -1,5 +1,5 @@
 /**
- * The Lab's route for a person's own MCP server keys: read which are set, set
+ * The Lab's route for a user's own MCP server keys: read which are set, set
  * one, clear one. What Shift Manager's Settings page writes through.
  *
  *     GET    /api/flows/mcp-credentials            → { servers: [{ name, setAt }] }

@@ -1,5 +1,5 @@
 /**
- * A Lab's MCP servers (`openLab({ mcpServers })`): each person's key, set
+ * A Lab's MCP servers (`openLab({ mcpServers })`): each user's key, set
  * through the Lab's own route, and a coding run on a project relayed the
  * servers its project names with its owner's key.
  *
@@ -175,7 +175,7 @@ async function allItems(lab: Lab) {
 
 const statusTexts = (items: any[]) => items.filter((item) => item.type === "status").map((item) => JSON.stringify(item));
 
-describe("a person's MCP server keys, through the Lab's route", () => {
+describe("a user's MCP server keys, through the Lab's route", () => {
   it("sets, replaces and clears the caller's own key, and answers only whether it is set and when (BR-8, BR-9, BR-10)", async () => {
     const { lab } = await open();
     expect(await lab.door("GET", "mcp-credentials")).toEqual({ status: 200, body: { servers: [{ name: "linear", setAt: null }] } });
@@ -187,9 +187,9 @@ describe("a person's MCP server keys, through the Lab's route", () => {
     expect(read.body.servers).toEqual([{ name: "linear", setAt: set.body.setAt }]);
     expect(JSON.stringify([set, read])).not.toContain("SENTINEL");
 
-    // Each user's own: the member's read says nothing of the owner's key.
+    // Each user's own: the other user's read says nothing of the owner's key.
     expect((await lab.door("GET", "mcp-credentials", { as: "member" })).body.servers).toEqual([{ name: "linear", setAt: null }]);
-    expect((await lab.door("POST", "mcp-credentials/linear", { as: "member", body: { value: "member-key" } })).status).toBe(200);
+    expect((await lab.door("POST", "mcp-credentials/linear", { as: "member", body: { value: "other-key" } })).status).toBe(200);
     expect((await lab.door("GET", "mcp-credentials")).body.servers[0].setAt).toBe(set.body.setAt);
 
     expect(await lab.door("DELETE", "mcp-credentials/linear")).toEqual({ status: 200, body: { name: "linear", setAt: null } });

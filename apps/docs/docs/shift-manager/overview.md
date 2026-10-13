@@ -55,7 +55,7 @@ Review the work in that worktree, or from your checkout with `git log -p <branch
 
 Only those two projects get a worktree of your checkout. Apart from that fetch, the Lab reaches no git remote, so a coding run on a project you add yourself, even one on this repository, is refused, naming the repository, and nothing is cloned.
 
-Open **Settings** and paste a Linear API key, and every coding run you ask for on either project can read and update Linear, as you. Each person sets their own. A run for someone who hasn't set one works without Linear and says so. For runs with nobody at the keyboard, such as a goal check or CI, `LINEAR_MCP_API_KEY` stands in for the Lab's own user until that user sets a key. An `MCP servers:` line at start says whether the Lab's own user has a key.
+Open **Settings** and paste a Linear API key, and every coding run you ask for on either project can read and update Linear, as you. Each user sets their own. A run for someone who hasn't set one works without Linear and says so. For runs with nobody at the keyboard, such as a goal check or CI, `LINEAR_MCP_API_KEY` stands in for the Lab's own user until that user sets a key. An `MCP servers:` line at start says whether the Lab's own user has a key.
 
 The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The chief of staff answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
 

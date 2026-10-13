@@ -1,5 +1,5 @@
 /**
- * Each person's own keys for the MCP servers a host offers.
+ * Each user's own keys for the MCP servers a host offers.
  *
  *   mcp-credentials/<server>    at user scope: one record per server the user set a key for
  *

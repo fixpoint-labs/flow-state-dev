@@ -5,7 +5,7 @@
  * Three parties each decide one thing. The host decides which servers exist
  * and where they live (`servers`: a name, an HTTP address, and optionally the
  * environment variable that seeds the operator's key). A project names some
- * of them (`mcpServers` on its row). Each person sets their own key
+ * of them (`mcpServers` on its row). Each user sets their own key
  * (`mcp-credentials/*`, at user scope), and a run uses its owner's.
  *
  * Per run, the resolver finds the run's project and owner with the same

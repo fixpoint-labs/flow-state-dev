@@ -27,7 +27,7 @@ export function SettingsView() {
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SETTINGS</p>
         <h1 className="text-base font-semibold">MCP server keys</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          A coding run on a project that names one of these servers reaches it with the key of the person the run works
+          A coding run on a project that names one of these servers reaches it with the key of the user the run works
           for. Your keys are yours: nobody else's runs use them. Once a key is set, this page never shows it again.
         </p>
       </header>

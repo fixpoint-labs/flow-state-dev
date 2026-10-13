@@ -584,7 +584,7 @@ Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the exam
 
 A project can name MCP servers, and every coding run on the project can use their tools. MCP, the Model Context Protocol, is how an agent reaches a tool outside its checkout: an issue tracker, a docs search, a database. A run gets the project's servers however the work reached it: from a workstream, from the project's conversation, or from a task that names the project.
 
-Three parties each decide one thing. The server running your workers decides which MCP servers exist, and their addresses. A project picks from those names. Each person sets their own key for a server, and a run uses the key of the person it works for, so it acts in that tool as them.
+Three parties each decide one thing. The server running your workers decides which MCP servers exist, and their addresses. A project picks from those names. Each user sets their own key for a server, and a run uses the key of the user it works for, so it acts in that tool as them.
 
 ```ts
 // the server's config, for example in a Shift Manager Lab
@@ -622,7 +622,7 @@ claudeCodeAgent({
 });
 ```
 
-Pass the same names to `defineProjectBlocks({ mcpServers: ["linear"] })`, so a project can name them. Each person's key is a record at `mcp-credentials/<server>` in their own user scope, `{ value, setAt }`. Write it from a route of your own rather than an action: an action's input is kept on its request record. A browser read of the collection shows `setAt` only. Shift Manager's [Settings](../shift-manager/settings.md) page is one such route.
+Pass the same names to `defineProjectBlocks({ mcpServers: ["linear"] })`, so a project can name them. Each user's key is a record at `mcp-credentials/<server>` in their own user scope, `{ value, setAt }`. Write it from a route of your own rather than an action: an action's input is kept on its request record. A browser read of the collection shows `setAt` only. Shift Manager's [Settings](../shift-manager/settings.md) page is one such route.
 
 ### Working in a checkout you already have
 

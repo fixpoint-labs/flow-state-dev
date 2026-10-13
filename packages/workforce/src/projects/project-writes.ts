@@ -24,7 +24,7 @@
  * **MCP servers.** A project names the MCP servers its coding runs get, by the
  * bare names the host offers: `defineProjectBlocks({ mcpServers })` is that
  * list, and with none every name is refused (`mcp-server-name.ts`). The row
- * holds names only; the address is the host's and the key each person's own.
+ * holds names only; the address is the host's and the key each user's own.
  */
 
 import { handler } from "@flow-state-dev/core";
