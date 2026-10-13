@@ -25,7 +25,7 @@ A **private** project lives with you. Nobody else can list, open or read it, its
 
 Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
 
-A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exceptions are the writes a project coordinator makes in its own project: `openWorkstream`, covered in [Opening one](#opening-one), `editWorkstream`, covered in [Changing workstreams from the coordinator](#changing-workstreams-from-the-coordinator), and `setBrief` and `setRepository`, covered in [Managing the project from the coordinator](#managing-the-project-from-the-coordinator). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exceptions are the writes a project coordinator makes in its own project: `openWorkstream` is covered in [Opening one](#opening-one); `editWorkstream` in [Changing workstreams from the coordinator](#changing-workstreams-from-the-coordinator); `setBrief` and `setRepository` in [Managing the project from the coordinator](#managing-the-project-from-the-coordinator). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
@@ -499,7 +499,7 @@ objectives changed or closed, call `editWorkstream` with its `id` and no
 `project`.
 ```
 
-The tool takes the workstream's `id` and any of `title`, `status`, `due` and `objectives`, which mean what they do for `updateWorkstream`. `due` is `YYYY-MM-DD`, or `null` to clear it. What you leave out stays. It returns `{ workstream }`, the entry as written.
+The tool takes the workstream's `id`, an optional `project`, and any of `title`, `status`, `due` and `objectives`, which mean what they do for `updateWorkstream`. `due` is `YYYY-MM-DD`, or `null` to clear it. What you leave out stays. It returns `{ workstream }`, the entry as written.
 
 ```ts
 { id: "checkout", title: "Guest checkout", due: "2026-11-30" }
@@ -508,7 +508,7 @@ The tool takes the workstream's `id` and any of `title`, `status`, `due` and `ob
 
 It always writes the caller's own entry, so it has no `owner` field. It has no `report` either: the report is the lead's, written with `updateWorkstreamTool`. A call that passes either fails validation.
 
-Left out, `project` is the coordinator's own project. A refused change writes nothing:
+Left out, `project` is the coordinator's own project. A refused change writes nothing and returns one of these reasons:
 
 | `reason` | When |
 |----------|------|
@@ -516,7 +516,7 @@ Left out, `project` is the coordinator's own project. A refused change writes no
 | `other-project` | The conversation belongs to one project and you named another |
 | `no-such-project` | You left `project` out in a conversation that belongs to no project |
 
-Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate goes in that same turn, so a hand-off later in the turn never reaches a workstream it just closed.
+Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate is removed in that same turn, so a hand-off later in the turn never reaches a workstream it just closed.
 
 ### Managing the project from the coordinator
 

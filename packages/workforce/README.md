@@ -1366,8 +1366,8 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   It takes `{ project?, id, title?, status?, due?, objectives? }` (`editWorkstreamInputSchema`,
   strict) and returns `{ workstream }`. It always writes the caller's own entry, with no `owner`
   and no `report` (the report stays the lead's). `project` resolves as for `setBrief`
-  (`no-such-project`, `other-project`), and an id the caller has no workstream under, another
-  member's included, is refused `no-such-workstream`.
+  (`no-such-project`, `other-project`), and an id the caller has no workstream under is refused
+  `no-such-workstream`, including another member's.
 - **`listLeadsTool`** is a tool named `listLeads` for whoever picks a lead. It takes no input and
   returns `{ leads: [{ id, description }] }` (`listLeadsOutputSchema`; `description` is a string or
   `null`): every worker on the caller's roster, their own and the standard ones, that can lead a
@@ -1463,7 +1463,7 @@ take the hand-off as soon as `openWorkstream` returns.
 
 To let it change the user's workstreams (title, status, due date, objectives), add
 `editWorkstream: workstreams.editWorkstreamTool` to its catalog (the block is already named, so no
-`.as()`) and name `editWorkstream` in its `tools:`. Run in the owner's own coordinator turn, closing
+`.as()`) and name `editWorkstream` in its `tools:`. When it runs in the owner's own coordinator turn, closing
 a workstream drops its delegate in that turn, so a later hand-off in the turn never targets it.
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
