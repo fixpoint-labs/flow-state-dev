@@ -212,7 +212,7 @@ restart while the turn waits loses nothing: the turn resumes after the restart, 
 filed only once.
 
 Every wait has a time limit: five minutes unless the worker sets its own, anywhere from 30
-seconds to an hour. Asks are timed out by the durability sweeper, a background job the server
+seconds to an hour. Waits are timed out by the durability sweeper, a background job the server
 runs whenever durable execution is on (see
 [Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). If the task
 hasn't ended by the limit, the turn gets a timeout error and the task is cancelled. On a

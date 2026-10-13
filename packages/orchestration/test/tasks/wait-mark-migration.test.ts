@@ -1,7 +1,8 @@
 /**
- * A row stored as `ask` still reads as waited on (WR-8). A collection casts
- * the row; the delegation board field parses it, and `taskSchema` would strip
- * the unknown key. Either miss and the ending never resumes the turn.
+ * A row stored as `ask` still reads as waited on (retired-name-refusal: WR-8).
+ * A collection casts the row; the delegation board field parses it, and
+ * `taskSchema` would strip the unknown key. Either miss and the ending never
+ * resumes the turn.
  */
 import { describe, expect, it } from "vitest";
 import { delegationBoardSchema } from "../../src/skills/task-tools-capability";
