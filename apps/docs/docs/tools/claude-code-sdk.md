@@ -436,6 +436,10 @@ claudeCodeAgent({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
+  // Tools this process serves to the run, grouped by server: a value, or a resolver per run.
+  mcpTools: async (ctx) => ({
+    tracker: { tools: await trackerToolsFor(ctx), close: async () => {} },
+  }),
   uses: [myCapability],
   onErrored: async (error, ctx) => {
     await releaseWhateverThisRunHeld(ctx);
@@ -478,6 +482,18 @@ cannot say "sandboxed to this run's workspace."
 replace the default set, and it is not a fence on its own — `enabled` is what
 turns sandboxing on, and `denyWrite` and the permission rules are what narrow
 it.
+
+**`mcpTools`** hands the run tools that run in your own process, presented to it
+as MCP servers. Each entry is a server, named by its key, and each tool is a
+name, a description, a JSON Schema for its input and a `call` function; the run
+calls it as `mcp__<server>__<tool>`. There is no field for an address or
+headers, so the run never learns where a tool's work happens or what credential
+it uses. Set, even to `{}`, it is the run's complete MCP set: no servers from
+settings files, plugins or the account's claude.ai connectors. The tools are
+allowed without asking, and `disallowedTools` still keeps one out. Each
+server's `close` is called when the run ends, however it ends. A coding run on
+a Workforce project gets its project's servers this way; see
+[Tools a project's coding work gets](../workforce/projects.md#tools-a-projects-coding-work-gets).
 
 **`uses`** installs capabilities on the agent block, the same slot every other
 block takes. A capability handed here that declares resources has them

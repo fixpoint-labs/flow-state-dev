@@ -126,6 +126,8 @@ export type SdkMessageLike =
       type: "system";
       subtype?: "init" | "compact_boundary" | string;
       session_id?: string;
+      /** On `init`: every MCP server the run connected to, or tried to. */
+      mcp_servers?: Array<{ name: string; status?: string }>;
     }
   | {
       type: "assistant";
@@ -388,6 +390,16 @@ export interface ClaudeAgentQueryOptions {
    * fake need the real dependency.
    */
   sandbox?: unknown;
+  /**
+   * MCP servers for the run. Set only from `mcpTools`, so every entry is an
+   * in-process server (`{ type: "sdk", name, instance }`); loosely typed
+   * because the SDK's own type is not imported.
+   */
+  mcpServers?: Record<string, unknown>;
+  /** Use only `mcpServers`: no `.mcp.json`, settings-file or plugin servers. */
+  strictMcpConfig?: boolean;
+  /** Extra settings for the run, forwarded verbatim; set only to keep claude.ai connectors out. */
+  settings?: Record<string, unknown>;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
   /**
