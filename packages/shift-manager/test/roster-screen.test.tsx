@@ -108,6 +108,16 @@ describe("Roster (V3)", () => {
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call · 2 off shift · 3 waiting on you/);
   });
 
+  it("names the chief-of-staff worker Shift Coordinator, keeping its id, and every other worker by its own name", async () => {
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    const row = (id: string) => within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!;
+    expect(row("chief-of-staff").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
+    expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("coder");
+    // The id is wire data; nothing a person reads on the screen says chief of staff.
+    expect(document.body.textContent).not.toMatch(/chief[ -]of[ -]staff/i);
+  });
+
   it("draws the user's own workers from their roster, marked as theirs, beside the inventory's (S12)", async () => {
     rosterRead = async () => [
       { id: "amber-1f2e", flow: "coder", standard: false, description: "Alice's own" },

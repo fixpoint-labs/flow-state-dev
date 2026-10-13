@@ -21,7 +21,7 @@ import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
-import { doorOf, rosterOf, waited, type LoadedSnapshot } from "../lib/derive";
+import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -118,7 +118,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                         {ask.item.message ?? "(no message)"}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {ask.workerId ?? "unknown worker"} · task —
+                        {ask.workerId === null ? "unknown worker" : workerLabel(ask.workerId)} · task —
                       </Meta>
                     </span>
                     <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
@@ -139,7 +139,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
             <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6">
               <div className="flex max-w-[660px] flex-col gap-[18px]">
                 <Meta className="text-muted-foreground" testId="inbox-detail-head">
-                  {selected.workerId ?? "unknown worker"} asked, in session {selected.sessionId}
+                  {selected.workerId === null ? "unknown worker" : workerLabel(selected.workerId)} asked, in session {selected.sessionId}
                 </Meta>
                 <ScreenTitle scale="detail" testId="inbox-detail-title">
                   {selected.item.message ?? "(no message)"}
@@ -269,7 +269,7 @@ function replyRoute(ask: Ask, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: 
   if (ask.flowId === null) return { blocked: ask.unanswerable ?? "This session names no flow to send through." };
   if (!snapshot.inventory.ok) return { blocked: snapshot.inventory.failure.message };
   const door = doorOf(rosterOf(snapshot).workers, ask.flowId);
-  if (door === null) return { blocked: `${ask.workerId ?? ask.flowId} ${gaps.turn.replyNoDoor}` };
+  if (door === null) return { blocked: `${workerLabel(ask.workerId ?? ask.flowId)} ${gaps.turn.replyNoDoor}` };
   return { blocked: null, flowId: ask.flowId, door };
 }
 
@@ -292,8 +292,8 @@ function Reply({
     <div>
       <TurnComposer
         testId="inbox-reply"
-        label={`Reply to ${ask.workerId ?? "this worker"}`}
-        placeholder={`Reply to ${ask.workerId ?? "this worker"}…`}
+        label={`Reply to ${ask.workerId === null ? "this worker" : workerLabel(ask.workerId)}`}
+        placeholder={`Reply to ${ask.workerId === null ? "this worker" : workerLabel(ask.workerId)}…`}
         blocked={route.blocked}
         send={async (message, held) => {
           // The box is disabled while blocked; a send that got here anyway

@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { addDelegate, readDelegates, removeDelegate, type DelegateList } from "../lib/delegates";
+import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
 import { useWorkforce } from "../lib/workforce";
@@ -125,7 +126,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
             <option value="">Add from your roster…</option>
             {candidates.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {entry.id}
+                {workerLabel(entry.id)}
               </option>
             ))}
           </select>

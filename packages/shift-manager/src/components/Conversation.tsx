@@ -28,6 +28,7 @@ import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
+import { workerLabel } from "../lib/derive";
 import { useFollowLatest } from "../lib/follow";
 import { useLab } from "../lib/lab-data";
 import type { Worker } from "../lib/reads";
@@ -126,7 +127,7 @@ export function Conversation({
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
     worker.door === null || worker.kind === null
-      ? `${worker.id} ${gaps.turn.noDoor}`
+      ? `${workerLabel(worker.id)} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
         : sessionId !== null && sessionId !== opened && read === undefined

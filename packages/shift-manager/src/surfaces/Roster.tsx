@@ -17,7 +17,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { chiefOfStaffOf, pickedTeam, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
+import { chiefOfStaffOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
 import { readStatus } from "../lib/columns";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
@@ -79,7 +79,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
     >
       <div className="min-w-0">
         <p className="flex items-baseline gap-2">
-          <span className="font-medium">{worker.name}</span>
+          <span className="font-medium">{workerLabel(worker.name)}</span>
           <span className="text-xs text-muted-foreground">{worker.team}</span>
           {own ? (
             <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
