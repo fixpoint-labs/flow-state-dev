@@ -76,7 +76,9 @@ test.describe("Claude Code mode (V7)", () => {
     await expect(page.getByTestId("conversation")).not.toContainText("turn 2 of conversation");
     // The reply names the conversation; the page shows the binding once the turn ends.
     const text = (await page.getByTestId("conversation").textContent()) ?? "";
-    const conversation = /turn 1 of conversation (\S+)\./.exec(text)?.[1];
+    // The page text has no space between the reply and what follows it, so the id
+    // is matched by its own shape (`scripted-<time>-<n>`), not by "up to a space".
+    const conversation = /turn 1 of conversation (scripted-[\w-]+)\./.exec(text)?.[1];
     expect(conversation).toMatch(/^scripted-/);
 
     await expect(page.getByTestId("conversation")).toContainText(`turn 2 of conversation ${conversation}`, { timeout: 40_000 });
