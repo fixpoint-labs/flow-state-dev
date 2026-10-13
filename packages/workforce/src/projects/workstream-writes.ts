@@ -619,9 +619,10 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       repair: { coerce: false },
       prompt: () =>
         [
-          "You check whether a worker is the right one to lead a piece of work.",
-          "Answer `fits: true` only when the worker's description says it does this kind of work.",
-          "A worker whose description says it does a different kind of work does not fit, even if it could be told to try."
+          "You check whether a worker is the right one to lead a workstream.",
+          "A lead never does the work itself: it hands the work to the workers under it. So judge only the kind of work.",
+          "Answer `fits: true` when the kind of work, such as a feature, research or planning, is what the worker's description says it leads or handles.",
+          "Answer `fits: false` only when its description says it handles a different kind of work."
         ].join("\n"),
       user: ({ open, description }: FitCase) =>
         [
