@@ -362,6 +362,22 @@ describe("a run that rewrites the checkout's shared config can't aim the next ru
     expect(message).toContain(upstream.url);
   });
 
+  it("fetches the upstream branch pinned at start, not one a run repointed main at", async () => {
+    const h = host();
+    // On the person's own remote, a branch that descends from main with code the person never chose.
+    const planted = upstream.commit("attacker", "planted.txt", "not main");
+    // The run, in its worktree, points main's upstream at that branch.
+    git(repo, "config", "branch.main.merge", "refs/heads/attacker");
+    spawned.mockClear();
+
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(contains("refs/heads/fsd/run-1", planted)).toBe(false);
+    expect(fetches()).toHaveLength(1);
+    expect(fetches()[0]![1]).toContain("+refs/heads/main:refs/remotes/origin/main");
+    expect(warn.mock.calls.map(([m]) => String(m)).join("\n")).toContain("refs/remotes/origin/attacker");
+  });
+
   it("does not follow a url.insteadOf a run added that rewrites the pinned URL", async () => {
     // The person's own rewrite: origin is spelled as an alias the host pins expanded.
     git(repo, "config", `url.${upstream.url}.insteadOf`, "person-alias:");

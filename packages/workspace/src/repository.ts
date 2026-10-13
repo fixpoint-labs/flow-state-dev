@@ -82,6 +82,22 @@ export interface FetchPins {
    * repository's own config never runs and the person's own still do.
    */
   credentialHelpers: ReadonlyArray<readonly [string, string]>;
+  /**
+   * Each local branch's upstream, by its full ref name (`refs/heads/main`):
+   * its tracking ref, remote and the branch on that remote. A run can rewrite
+   * `branch.<name>.remote` and `.merge`, so a fetch follows these instead.
+   */
+  upstreams: ReadonlyMap<string, PinnedUpstream>;
+}
+
+/** One local branch's upstream, as {@link FetchPins} pins it. */
+export interface PinnedUpstream {
+  /** The tracking ref, e.g. `refs/remotes/origin/main`. */
+  ref: string;
+  /** The remote's name. */
+  remoteName: string;
+  /** The branch on the remote, e.g. `refs/heads/main`. */
+  remoteRef: string;
 }
 
 /** Read {@link FetchPins} for `repo`. Anything unreadable pins nothing. */
@@ -113,5 +129,12 @@ export function readFetchPins(repo: string): FetchPins {
     if (scope === "local" || scope === "worktree" || newline < 0) continue;
     credentialHelpers.push([entry.slice(0, newline), entry.slice(newline + 1)]);
   }
-  return { remotes, credentialHelpers };
+  const upstreams = new Map<string, PinnedUpstream>();
+  for (const line of read(["for-each-ref", "--format=%(refname)%09%(upstream)%09%(upstream:remotename)%09%(upstream:remoteref)", "refs/heads"]).split("\n")) {
+    const [refname = "", ref = "", remoteName = "", remoteRef = ""] = line.split("\t");
+    if (ref.startsWith("refs/remotes/") && remoteName !== "" && remoteName !== ".") {
+      upstreams.set(refname, { ref, remoteName, remoteRef });
+    }
+  }
+  return { remotes, credentialHelpers, upstreams };
 }

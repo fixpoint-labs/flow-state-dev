@@ -760,7 +760,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         const upstream = await fetchUpstream(repo, base, left);
         // Equal, or local ahead: the person's branch, as it always was.
         if (upstream === undefined || (await isAncestor(repo, upstream.commit, local, left))) {
-          return { ref, commitish: base, commit: local };
+          // The commit compared, not the name: the name can move while the fetch runs.
+          return { ref, commitish: local, commit: local };
         }
         // Behind: cut at the commit, never the ref's name, so the run's branch
         // doesn't come out tracking the person's upstream.
@@ -813,16 +814,34 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   ): Promise<{ ref: string; commit: string } | undefined> {
     const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
     if (!full.startsWith("refs/heads/")) return undefined;
-    const [ref = "", remoteName = "", remoteRef = ""] = (
+    const [liveRef = "", liveRemote = "", liveRemoteRef = ""] = (
       await git(repo, ["for-each-ref", "--format=%(upstream)%0a%(upstream:remotename)%0a%(upstream:remoteref)", full], left())
     ).split("\n");
-    if (!ref.startsWith("refs/remotes/") || remoteName === "" || remoteName === ".") return undefined;
+    const pins = fetchPins.get(repo);
+    // The upstream pinned when the host started, never the live config a run
+    // could have repointed. A branch with none pinned has no upstream here.
+    const pinnedUpstream = pins?.upstreams.get(full);
+    if (pinnedUpstream === undefined) {
+      if (liveRef.startsWith("refs/remotes/") && liveRemote !== "" && liveRemote !== ".") {
+        console.warn(
+          `[workspace] ${repo}: "${base}" now tracks ${liveRef}, which it didn't when the host started, ` +
+            `so its upstream is neither fetched nor compared.`,
+        );
+      }
+      return undefined;
+    }
+    const { ref, remoteName, remoteRef } = pinnedUpstream;
+    if (liveRef !== ref || liveRemote !== remoteName || liveRemoteRef !== remoteRef) {
+      console.warn(
+        `[workspace] ${repo}: "${base}" now tracks ${liveRef || "nothing"}, not ${ref} as when the host ` +
+          `started; ${ref} is used.`,
+      );
+    }
 
     const skip = (why: string) =>
       console.warn(
         `[workspace] ${repo}: ${why}, so "${base}" is compared with the copy of ${ref} last fetched.`,
       );
-    const pins = fetchPins.get(repo);
     const pinned = pins?.remotes.get(remoteName);
     let url: string | undefined;
     try {
