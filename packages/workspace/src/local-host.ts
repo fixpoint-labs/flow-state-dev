@@ -908,7 +908,11 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
             },
           );
           const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated })).stdout.trim();
-          await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", ref, fetched], left());
+          // Only over the copy this fetch started from: a provision running
+          // beside this one may have fetched something newer since.
+          await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", ref, fetched, previous], left()).catch(() => undefined);
+          // What was fetched, not what the shared ref says now.
+          return { ref, commit: fetched };
         } catch (error) {
           skip(`could not fetch "${redactRemote(judged.url)}" (${firstLine(error)})`);
         } finally {

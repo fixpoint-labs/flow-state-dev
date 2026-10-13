@@ -107,6 +107,17 @@ describe("readRunCommits", () => {
     expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"] });
   });
 
+  it("still counts a run's commits after the run points the base's own refs at its work", async () => {
+    // Refs are shared with the run's worktree too; only the recorded cut commit is not.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's change");
+    git(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
+    git(dir, "update-ref", "refs/heads/main", "HEAD");
+    expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"] });
+  });
+
   it("answers none for a base the checkout doesn't have", async () => {
     const dir = repo("local");
     expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [] });
