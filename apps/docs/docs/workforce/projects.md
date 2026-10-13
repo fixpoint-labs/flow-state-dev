@@ -550,7 +550,7 @@ Before the server cuts a new branch, it fetches that base's upstream, the remote
 A few cases go differently:
 
 - **Your branch and its upstream have each moved.** The run is refused with `base-diverged`, naming both commits, and nothing is made. Pull or rebase, or push, and the next run starts.
-- **The fetch fails**, because you're offline, a credential is refused, or it times out. The run starts from the copy you last fetched, and the server logs a warning naming the checkout and git's error.
+- **The fetch fails**, because you're offline, a credential is refused, or it times out. The comparison uses the copy you last fetched, and the server logs a warning naming the checkout and git's error.
 - **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
 - **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
 
@@ -558,7 +558,7 @@ Listing the checkout is what allows the fetch, so the upstream doesn't need to b
 
 Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
 
-To review a run, open its worktree, or run `git log -p <branch> --not main origin/main` from your checkout. That shows only the run's commits, whether it started from your `main` or from `origin/main`. `git diff main...<branch>` would also show upstream commits your `main` doesn't have yet. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
+To review a run, open its worktree, or run `git log -p <branch> --not main origin/main` from your checkout. That shows only the run's commits, whether it started from your `main` or from `origin/main`. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
 
 A fresh worktree has no `node_modules`. The coding agent installs them the way your repository tells it to. With pnpm that comes from the machine's shared store and takes seconds once the checkout has been installed.
 

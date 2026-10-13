@@ -256,7 +256,13 @@ const host = localWorkspaceHost({
 });
 ```
 
-The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. For a new branch whose base tracks an upstream, the host first fetches that one upstream branch, which updates only its remote-tracking ref, then cuts from whichever of the two is newer. Listing the repository allows the fetch; `remotes.allow` isn't asked. The URL is still checked as any remote is, with an absolute path read as `file://`. When local and upstream have each moved, the provision is refused as `base-diverged` before anything is made. A failed fetch isn't a refusal: the host compares with the last-fetched copy and logs a warning. A base with no upstream fetches nothing, and neither does a branch that already exists. `place.repo.baseCommit` is the commit the branch was cut at. The repository's own branches, index and working tree are never touched. When the source names no kept files, the place directory is the checkout itself, with no `checkout/` level. When it names kept files, the place is laid out like a remote run's: the worktree in `checkout/` and the kept files in `project/` beside it. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. The repository's own branches, index and working tree are never touched. When the source names no kept files, the place directory is the checkout itself, with no `checkout/` level. When it names kept files, the place is laid out like a remote run's: the worktree in `checkout/` and the kept files in `project/` beside it. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+
+Before cutting a new branch whose base tracks an upstream, the host fetches that one upstream branch, which updates only its remote-tracking ref. It then cuts from whichever of the two is newer, and records that commit as `place.repo.baseCommit`. Listing the repository allows the fetch without an entry in `remotes.allow`. Its URL goes through the same checks as any remote, with an absolute path read as `file://`.
+
+- **Local and upstream have each moved:** the provision is refused as `base-diverged` before anything is made.
+- **The fetch fails:** the host compares with the copy last fetched and logs a warning.
+- **The base has no upstream, or the branch already exists:** nothing is fetched.
 
 Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.
 
