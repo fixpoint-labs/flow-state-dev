@@ -13,16 +13,16 @@ There are two ways to look at a session.
 
 Production clients (your React app, your CLI, anything calling the public API) read the session through the normal endpoints. What they get back is filtered: each resource's `client` config decides which fields ship, and collections obey `prefetchWindow` so a client only sees the items it asked for.
 
-The DevTool talks to a different surface. It calls a privileged debug endpoint that returns the raw server-side state, ignoring `client.data` projections and `prefetchWindow`, with one roster exception [covered below](#what-the-debug-endpoint-returns). It's the same session, but the DevTool sees it the way the runtime sees it.
+The DevTool talks to a different surface. It calls a privileged debug endpoint that returns the raw server-side state, ignoring `client.data` projections and `prefetchWindow`, except for one roster case and any secret fields, both [covered below](#what-the-debug-endpoint-returns). It's the same session, but the DevTool sees it the way the runtime sees it.
 
 ## What the debug endpoint returns
 
 For each storage key the session touches, the debug response includes:
 
-- The full state body (every field on the state schema)
+- The full state body (every field on the state schema except those named in [`secret`](../resources/client-access.md#secret-fields))
 - Content metadata
 - The underlying resource definition, with its alias list
-- A second copy showing the projection your `client.data` would produce
+- A second copy showing the projection your `client.data` would produce, also without secret fields
 - Whether the resource may be written, and whether a model is offered a write tool for its content. Either can be absent; [Read-only resources](#read-only-resources) covers what that means
 
 It does not apply `prefetchWindow`: a collection lists all of its items, not a window of them. It does not apply `client.data` to the storage view either; that projection is shown alongside the raw state, not in place of it.
@@ -135,7 +135,7 @@ A request with no `Origin` header, such as curl, a script, or a same-origin GET 
 
 ## Don't ship it enabled to production
 
-The endpoint is read-only, but it exposes the full server-side state of every session, including fields your `client.data` deliberately hides. That's the point of it as a debugging tool, and it's also the reason you don't want it reachable from the public internet.
+The endpoint is read-only, but it exposes the full server-side state of every session, including fields your `client.data` hides. That's the point of it as a debugging tool, and it's also the reason you don't want it reachable from the public internet. It never returns fields named in [`secret`](../resources/client-access.md#secret-fields).
 
 If you have a legitimate reason to enable it in a non-local environment (a staging tier where the DevTool runs on a known internal origin), audit `debugAllowedOrigins` carefully and put the route behind whatever authentication your platform already enforces.
 

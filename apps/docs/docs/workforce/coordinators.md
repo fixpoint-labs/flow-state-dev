@@ -93,16 +93,16 @@ flowRegistry.registerMany(hireWorkforce(installation));
 
 ## Talking to it
 
-Open a session with the coordinator and send it a message, as you would [any worker](./workers-on-disk.md#talking-to-a-worker):
+Open a session with the coordinator and send it a message, as you would [any worker](./workers-on-disk.md#talking-to-a-worker). If your server checks a credential, pass every client on this page the `fetcher` from [Serving it to your users](./overview.md#serving-it-to-your-users). Leave it out if it doesn't.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl });
+const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 const session = await workforce.ensureWorkerSession({ worker: "support.help" });
 
-const help = createClient({ flowKind: session.flowKind, userId, baseUrl });
+const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
@@ -116,13 +116,14 @@ A delegate's answer arrives in a request of its own once the delegate's turn end
 import { createSessionClient, createSessionSSEClient } from "@flow-state-dev/client";
 import { COORDINATOR_JUDGMENT } from "@flow-state-dev/workforce/browser";
 
-const sessions = createSessionClient({ baseUrl });
+const sessions = createSessionClient({ baseUrl, fetcher });
 const { at, sessionCreatedAt } = await sessions.getSessionState(session.id);
 
 const answer = new Promise<{ from: string; text: string }>((resolve, reject) => {
   const stream = createSessionSSEClient({
     sessionId: session.id,
     baseUrl,
+    fetcher,
     since: at,
     sessionCreatedAt,
     onItem: ({ item }) => {
@@ -399,7 +400,7 @@ import { createSessionClient } from "@flow-state-dev/client";
 import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
 import type { CoordinatorRouteRecord } from "@flow-state-dev/workforce";
 
-const sessions = createSessionClient({ baseUrl });
+const sessions = createSessionClient({ baseUrl, fetcher });
 const requests = await sessions.listSessionRequests(session.id, { includeItems: true });
 
 const records = requests
@@ -492,11 +493,11 @@ await help.sendAction(
 )
 ```
 
-You can also just answer in chat: the coordinator passes your answer on with its `answerTask` tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
+You can also just answer in chat: the coordinator passes your answer on with its [`answerTask`](../orchestration/task-board.md#when-a-task-stops-on-a-question) tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
 
 An answer doesn't use up the task's retries, and the task can ask again. Until it picks up again, it can't be reassigned: `assignTask_tasks` answers `task_awaiting_answer`. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
 
-A task a coordinator dispatched and is waiting for (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
+A task a coordinator dispatched and is [waiting for](../orchestration/task-board.md#giving-another-worker-work) (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
 
 ### After a task finishes
 
@@ -504,7 +505,7 @@ A finished task's session stays open. For a worker on the built-in `agent` flow,
 
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
-const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl })
+const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl, fetcher })
 await licenses.sendAction("run", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
 // output: { reopened: <id of the task it reopened> }
 ```

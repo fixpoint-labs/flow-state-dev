@@ -4,18 +4,15 @@
  *
  * ## Why a file at all
  *
- * **The harness offers no seam for a question, and that was checked rather
- * than assumed.** `claudeCodeAgent`'s options are `model`, `systemPrompt`,
- * `allowedTools`, `disallowedTools`, `permissionMode`, `agents`, `maxTurns`,
- * `includePartialMessages`, `onToolApproval`, `detached`, `recordWork`, plus
- * LAB-138's per-run working directory. There is no MCP-server option and no
- * way to hand the run an FSD tool, so a conductor-owned "ask" tool the model
- * calls cannot be built without widening the framework — which LAB-138's
- * decision 3 rules out.
- *
- * So the question travels as a file the implement prompt names, written before
- * the run opens the PR. That is why the ask is **forced** rather than
- * spontaneous: a property of the harness surface, not a shortcut.
+ * **The question travels as a file the implement prompt names**, written
+ * before the run opens the PR, so the ask is **forced** rather than
+ * spontaneous. When this was built the harness offered no seam for a question:
+ * `claudeCodeAgent` took no tools from the host, so a conductor-owned "ask"
+ * tool the model calls could not be built. That has since changed:
+ * `claudeCodeAgent({ mcpTools })` hands a run tools this process serves, so an
+ * ask tool is now possible. It is not built. The file stays for the reasons
+ * below (the path carries the attempt, and the marker is never committed), and
+ * a harness that takes no relayed tools still needs it.
  *
  * *The alternative channel is the run's final message*, parsed for a marker.
  * Not chosen: it is absent on a thrown exit and is the one field a summarising

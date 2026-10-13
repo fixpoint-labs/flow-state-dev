@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="How a note becomes a standing rule. On the left, Alice's three sessions with the Shift Coordinator. In session 1 she gives a note and a visible line says Rule added, 3 of 20. The rule is written to the middle box, the coordinator's own rules record for Alice, which holds a numbered list of her rules. Sessions 2 and 3 are new sessions; each turn reads the list after the worker's own instructions. On the right, the Shift Manager Rules view reads and edits the same list, and the next turn reads any edit. At the bottom, Bob's rules on the same coordinator is separate and empty: Alice's rules never reach his sessions."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .sess  { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .drawer{ fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .ui    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .empty { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .w     { stroke:var(--code); stroke-width:2; fill:none; }
+    .r     { stroke:var(--ink-3); stroke-width:1.6; fill:none; stroke-dasharray:4 3; }
+    .e     { stroke:var(--accent); stroke-width:2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-acc { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="sessions">
+    <text class="t-lbl" x="24" y="30">ALICE · SHIFT COORDINATOR</text>
+    <rect class="sess" x="16" y="42" width="270" height="72" rx="5"/>
+    <text class="t-lbl" x="30" y="60">SESSION 1</text>
+    <text class="t-s" x="30" y="78">"Always name the project first."</text>
+    <text class="t-ok" x="30" y="100">✎ Rule added (3 of 20)</text>
+    <rect class="sess" x="16" y="128" width="270" height="56" rx="5"/>
+    <text class="t-lbl" x="30" y="146">SESSION 2 · NEW</text>
+    <text class="t-s" x="30" y="166">every turn follows the rules</text>
+    <rect class="sess" x="16" y="198" width="270" height="56" rx="5"/>
+    <text class="t-lbl" x="30" y="216">SESSION 3 · NEW</text>
+    <text class="t-s" x="30" y="236">follows the edited list</text>
+  </g>
+
+  <g id="drawer">
+    <text class="t-lbl" x="344" y="30">ITS OWN DRAWER · ALICE</text>
+    <rect class="drawer" x="336" y="42" width="276" height="150" rx="6"/>
+    <text class="t-b" x="352" y="66">standing-rules</text>
+    <text class="t-m" x="352" y="92">1. Name the project first.</text>
+    <text class="t-m" x="352" y="112">2. Ask before 3+ tasks.</text>
+    <text class="t-m" x="352" y="132">3. Status under 5 lines.</text>
+    <text class="t-s" x="352" y="160">read on every turn, after</text>
+    <text class="t-s" x="352" y="176">the worker's own instructions</text>
+    <path class="w" d="M286 92 H336"/>
+    <path class="r" d="M336 150 C310 150 310 156 286 156"/>
+    <path class="r" d="M336 170 C310 170 310 226 286 226"/>
+  </g>
+
+  <g id="page">
+    <text class="t-lbl" x="672" y="30">SHIFT MANAGER · RULES</text>
+    <rect class="ui" x="664" y="42" width="260" height="150" rx="6"/>
+    <text class="t-b" x="680" y="66">Rules · Shift Coordinator</text>
+    <text class="t-s" x="680" y="90">each rule, when added,</text>
+    <text class="t-s" x="680" y="106">and the conversation it came from</text>
+    <text class="t-acc" x="680" y="136">Add · Edit · Delete</text>
+    <text class="t-s" x="680" y="166">same limits as the tools</text>
+    <path class="e" d="M664 120 H612"/>
+  </g>
+
+  <g id="bob">
+    <rect class="panel" x="16" y="276" width="908" height="66" rx="6"/>
+    <text class="t-lbl" x="32" y="298">BOB · SAME COORDINATOR</text>
+    <rect class="empty" x="336" y="288" width="276" height="42" rx="5"/>
+    <text class="t-s" x="352" y="314">his own rules · empty</text>
+    <text class="t-s" x="664" y="314">Alice's rules never reach his sessions</text>
+  </g>
+</svg>

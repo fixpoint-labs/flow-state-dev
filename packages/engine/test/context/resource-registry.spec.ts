@@ -819,6 +819,27 @@ describe("delta-verb change notification (FIX-1269)", () => {
 });
 
 /**
+ * A `secret` field stays out of the live delta a mutation streams to clients.
+ * The config has no projection, so without `secret` the delta is the whole
+ * state, key included.
+ */
+describe("live delta omits secret fields", () => {
+  it("streams a live resource's state without the field its config marks secret", async () => {
+    const onChange = vi.fn();
+    const config = makeResourceConfig({ default: {}, secret: ["value"], client: { live: true } });
+    const registry = makeRegistry({ configs: { token: config }, onResourceChanged: onChange });
+    const ref = registry.get("token");
+
+    await ref.patchState({ value: "sk-secret-sentinel", setAt: "2026-10-13" });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]![2]).toEqual({ delta: { setAt: "2026-10-13" } });
+    // The server-side handle still reads it.
+    expect(ref.state).toEqual({ value: "sk-secret-sentinel", setAt: "2026-10-13" });
+  });
+});
+
+/**
  * FIX-1269: a refusal must not be laundered through the write-path schema parse.
  *
  * The suite above uses `passthrough()` schemas, which parse the cached row to
