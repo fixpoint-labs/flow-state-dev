@@ -157,7 +157,8 @@ const SETTLED = new Set(["completed", "errored", "failed", "cancelled"]);
 await runGoal(async (failures) => {
   const evidence: string[] = [];
   const note = (assertion: string, why: string) => failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);
-  if (LEGS.has("a") || LEGS.has("c")) pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
+  // Every leg starts the script on the built pages, so build them whichever legs run.
+  pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
 
   // ---- (a) the projects a person sees ------------------------------------
   if (LEGS.has("a")) {
