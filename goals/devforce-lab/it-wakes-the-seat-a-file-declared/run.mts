@@ -437,11 +437,10 @@ await runGoal(async (failures) => {
       const entriesOf = (seatId: string): string[] =>
         Object.keys((lab.workers[seatId] as { task?: { actions?: object } } | undefined)?.task?.actions ?? {});
       const emEntries = entriesOf(fixture.coordinatorSeat);
-      const otherEntries = emEntries.filter((entry) => entry !== DELEGATED_POST_ENTRY);
-      if (otherEntries.length > 0) {
+      if (!sameSet(emEntries, [DELEGATED_POST_ENTRY])) {
         note(
-          `${fixture.coordinatorSeat} declares task entries ${JSON.stringify(otherEntries)} beside ` +
-            `its delegated post — the coordinator seat must have no route to a harness at all`,
+          `${fixture.coordinatorSeat} declares task entries ${JSON.stringify(emEntries)}, wanted only ` +
+            `${DELEGATED_POST_ENTRY} — the coordinator seat must have no route to a harness at all`,
         );
       }
       if (entriesOf(fixture.assignedSeat).length === 0) {
@@ -462,7 +461,7 @@ await runGoal(async (failures) => {
       evidence.push(
         `each of the ${Object.keys(fixture.seats).length} seats reported its own instructions, ` +
           `document ref and exact skill union from inside a running block; the coordinator kind ` +
-          `declares no task entry but its delegated post, and its file never names the manager ` +
+          `declares only its delegated-post task entry, and its file never names the manager ` +
           `or imports a harness`,
       );
     }
