@@ -394,13 +394,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const { screen, act, fireEvent, within } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);
-    await runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "openWorkstream", {
-      project: APOLLO,
-      id: "survey",
-      title: "The survey",
-      lead: EM,
-      objectives: ["Survey the repo", "Write up findings"],
-    });
+    await openAs(alice, setup, "survey");
     await runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "updateWorkstream", {
       project: APOLLO,
       id: "survey",
@@ -414,7 +408,6 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const row = (await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 })).find((li) => li.getAttribute("data-workstream-id") === "survey")!;
     expect(row.textContent).toContain("1 of 2 objectives met");
 
-    // Her own entry: the objectives above the conversation with its lead, each marked met or not.
     act(() => fireEvent.click(row.querySelector("button")!));
     await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
     const items = within(screen.getByTestId("project-entry-own")).getAllByTestId("project-entry-objective");
