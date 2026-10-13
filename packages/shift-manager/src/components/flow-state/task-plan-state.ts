@@ -249,7 +249,7 @@ export function scopeItemsToLatestCollectionRequest(
  * each tool call / message / reasoning event exactly once. A task worked in
  * this list for a board shown somewhere else, such as a post a coordinator
  * handed to a delegate's session, has no `<TaskPlan />` here, so its items
- * stay in the thread.
+ * stay in the chat thread.
  *
  * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
  * (FIX-658), which keys off the emit-time `taskId` stamped on each item, so
