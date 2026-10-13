@@ -368,11 +368,17 @@ the same one the `claude` CLI uses. To add instructions to it, use
 `systemPrompt: { type: "preset", preset: "claude_code", append: "…" }`. A plain
 string replaces it, and `""` starts the run with no system prompt.
 
-The plan half fills only when the run is offered Claude Code's to-do tools
-(`TaskCreate`, `TaskUpdate`) and the agent chooses to use them. Neither the
-default prompt nor `recordWork` makes it. On newer models Claude Code switches
-those tools off unless they are named in `allowedTools`, and even when they are
-offered the agent often works without a list. An empty `observed-plan` means the
+The plan half fills only when the agent uses Claude Code's to-do tools
+(`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`). Every run is offered them:
+on newer models Claude Code switches them off unless they are named in
+`allowedTools`, so the block adds them to whatever list you pass. They ask no
+permission, so naming them allows nothing else. A run with
+`permissionMode: "bypassPermissions"` also gets Claude Code's search tools,
+`Grep` and `Glob`, which it likewise offers only when named. In other modes
+they're left out, because naming them would approve searches outside the
+working directory without asking; name them yourself if you want that. To keep
+a run from any of these, list them in `disallowedTools`. Neither the default prompt nor `recordWork` makes
+the agent use them, and it often works without a list. An empty `observed-plan` means the
 run kept no list; it is not a recording failure.
 
 Entries are keyed as `<requestId>/<invocation>`, so a session reused across runs —

@@ -7,7 +7,9 @@
  * The rail is the mode's name with the way back to the picker, a **New
  * session** button, and one `FlowNavigator` section over the mode's one flow
  * kind, so it lists that kind's sessions and no other's. **New session**
- * creates a session on that flow and opens it in the stream slot. Each mode's
+ * creates a session on that flow and opens it in the stream slot. The open
+ * session is named in the address (`?session=<id>`), so a reload comes back to
+ * it, as long as it is one of this mode's sessions. Each mode's
  * own issue fills the slot (`stream`); until then a picked session shows a
  * placeholder.
  *
@@ -17,7 +19,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import {
   FlowNavigator,
-  type FlowNavigatorLeaf,
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
@@ -28,6 +29,8 @@ import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
+
+const SESSION_PARAM = "session";
 
 /** The flow list the navigator reads. */
 export type HarnessFlowSource = Pick<Client, "listFlows">;
@@ -63,21 +66,46 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
   // The open leaf's re-read, so a session just created shows in the list.
   const refreshLeaf = useRef<(() => void) | null>(null);
 
+  const open = useCallback((sessionId: string) => {
+    setSelected(sessionId);
+    const url = new URL(window.location.href);
+    url.searchParams.set(SESSION_PARAM, sessionId);
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
+
+  // After mount, since the server draws no session: the one the address names,
+  // when it is one of this mode's. Anything else leaves the picker. A failed
+  // listing says so, so it doesn't read as a session that isn't there.
+  useEffect(() => {
+    const named = new URLSearchParams(window.location.search).get(SESSION_PARAM);
+    if (named === null) return;
+    let current = true;
+    sessions.listSessions({ flowKind, userId: KITCHEN_SINK_USER_ID }).then(
+      (rows) => {
+        if (current && rows.some((row) => row.id === named)) setSelected((picked) => picked ?? named);
+      },
+      (cause: unknown) => {
+        if (current) setError(`Session ${named} can't be reopened: ${cause instanceof Error ? cause.message : String(cause)}`);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [sessions, flowKind]);
+
   const handleNewSession = useCallback(async () => {
     setCreating(true);
     setError(null);
     try {
       const created = await sessions.createSession({ flowKind, userId: KITCHEN_SINK_USER_ID });
-      setSelected(created.id);
+      open(created.id);
       refreshLeaf.current?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setCreating(false);
     }
-  }, [sessions, flowKind]);
-
-  const handleSelect = useCallback((sessionId: string, _leaf: FlowNavigatorLeaf) => setSelected(sessionId), []);
+  }, [sessions, flowKind, open]);
 
   const slots = useMemo(
     () => ({
@@ -119,7 +147,7 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
             sessionClient={sessions}
             userId={KITCHEN_SINK_USER_ID}
             selectedSessionId={selected}
-            onSelectSession={handleSelect}
+            onSelectSession={open}
             slots={slots}
           />
         </div>
