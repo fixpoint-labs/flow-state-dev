@@ -2,4 +2,4 @@
 "@flow-state-dev/claude-code": patch
 ---
 
-The Claude Code block's stream is quieter and says more about what the run is doing. Thinking with no text no longer produces an empty `reasoning` item, which also lets consecutive tool calls group. Each tool call updates the live `status`: Bash with its own `description`, any other tool with `Using <tool>…`. The "session started" status on system init is gone (FIX-1946).
+The Claude Code block now recognises a subscription sign-in, no longer emits empty thinking or a "session started" line, and shows each tool call as a live status that clears when the tool ends (FIX-1946).
