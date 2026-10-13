@@ -14,10 +14,11 @@ import { RotateCcw } from "lucide-react";
 export function ContinuationItemView({ item }: { item: ContinuationItem }) {
   const count = item.priorItemCount;
   return (
-    <div className="flex items-center gap-1.5 text-xs text-amber-300/90 py-0.5">
-      <RotateCcw className="h-3 w-3 shrink-0 text-amber-400" aria-hidden />
-      <span className="text-amber-400/80">continued here</span>
-      <span className="text-[10px] text-slate-600">
+    <div className="flex items-center gap-2 py-1 font-fs-mono text-[10.5px] font-medium text-fs-ink3">
+      <span className="h-px w-4 shrink-0 bg-fs-ink/20" aria-hidden />
+      <RotateCcw className="h-3 w-3 shrink-0 text-fs-ink3" aria-hidden />
+      <span className="uppercase tracking-[.12em]">continued here</span>
+      <span className="text-fs-ink4">
         {count} prior item{count === 1 ? "" : "s"}
       </span>
     </div>

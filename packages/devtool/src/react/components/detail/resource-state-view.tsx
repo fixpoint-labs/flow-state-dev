@@ -48,16 +48,16 @@ function ModeTabs({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void })
     { id: "client", label: "Client" }
   ];
   return (
-    <div className="inline-flex gap-1 rounded-md bg-slate-900/40 p-0.5 text-[10px]">
+    <div className="inline-flex border border-fs-ink/30 text-[10px]">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => setMode(tab.id)}
-          className={`rounded px-2 py-0.5 font-mono uppercase transition-colors ${
+          className={`px-2 py-0.5 font-fs-mono uppercase tracking-[.08em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40 ${
             mode === tab.id
-              ? "bg-slate-700 text-slate-100"
-              : "text-slate-500 hover:text-slate-300"
+              ? "bg-fs-ink text-fs-paper"
+              : "text-fs-ink3 hover:bg-fs-ink/5 hover:text-fs-ink"
           }`}
         >
           {tab.label}
@@ -69,7 +69,7 @@ function ModeTabs({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void })
 
 function ClientNotice({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-300">
+    <div className="border border-dashed border-fs-ink3 px-2 py-1 font-fs-mono text-[11px] text-fs-ink2">
       {message}
     </div>
   );
@@ -77,14 +77,14 @@ function ClientNotice({ message }: { message: string }) {
 
 function ServerPane({ state }: { state: Record<string, unknown> | null | undefined }) {
   if (state === null || state === undefined) {
-    return <span className="text-[11px] italic text-slate-500">No state persisted.</span>;
+    return <span className="text-[11px] italic text-fs-ink4">No state persisted.</span>;
   }
   return <JsonViewer data={state} />;
 }
 
 function ClientPane({ value, hasValue }: { value: unknown; hasValue: boolean }) {
   if (!hasValue) {
-    return <span className="text-[11px] italic text-slate-500">— no client value —</span>;
+    return <span className="text-[11px] italic text-fs-ink4">— no client value —</span>;
   }
   return <JsonViewer data={value} />;
 }

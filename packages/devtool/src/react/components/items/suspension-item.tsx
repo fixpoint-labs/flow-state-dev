@@ -11,14 +11,21 @@ import { PauseCircle } from "lucide-react";
 
 export function SuspensionItemView({ item }: { item: SuspensionItem }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-purple-300/90 py-0.5">
-      <PauseCircle className="h-3 w-3 shrink-0 text-purple-400" aria-hidden />
-      <span className="text-purple-400/80">suspended</span>
-      <span className="text-slate-400">{item.reason}</span>
+    <div className="flex items-center gap-2 text-xs text-fs-ink2 py-0.5">
+      <PauseCircle className="h-3 w-3 shrink-0 text-fs-ink3" aria-hidden />
+      <span className="font-fs-mono text-[10.5px] font-medium uppercase tracking-[.12em] text-fs-ink3">suspended</span>
+      <span className="font-fs-mono text-[11px] text-fs-ink3">{item.reason}</span>
       {item.message.length > 0 && (
-        <span className="truncate text-slate-300">{item.message}</span>
+        <span className="truncate text-fs-ink">{item.message}</span>
       )}
-      <span className="text-[10px] text-slate-600">{item.suspensionStatus}</span>
+      <span
+        className={`shrink-0 px-1 font-fs-mono text-[9.5px] font-medium uppercase tracking-[.08em] ${
+          // Highlighter only while a person still has to act on the gate.
+          item.suspensionStatus === "pending" ? "bg-fs-hl text-fs-on-hl" : "border border-fs-ink/45 text-fs-ink3"
+        }`}
+      >
+        {item.suspensionStatus}
+      </span>
     </div>
   );
 }

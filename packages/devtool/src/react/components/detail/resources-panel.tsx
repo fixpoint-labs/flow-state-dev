@@ -43,9 +43,11 @@ export function ResourcesPanel({ sessionId, refreshKey }: ResourcesPanelProps) {
   }, [refreshKey, reload]);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase text-slate-500">Resources</span>
+        <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">
+          Resources
+        </span>
         <Button
           variant="ghost"
           size="icon-xs"
@@ -53,7 +55,7 @@ export function ResourcesPanel({ sessionId, refreshKey }: ResourcesPanelProps) {
           title="Refresh debug resources"
           disabled={disabled}
         >
-          <RefreshCw className={`h-3 w-3 text-slate-500 ${isLoading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-3 w-3 text-fs-ink3 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
       {disabled ? (
@@ -62,8 +64,8 @@ export function ResourcesPanel({ sessionId, refreshKey }: ResourcesPanelProps) {
         <ErrorAlert message={error} onRetry={reload} />
       ) : isLoading && !data ? (
         <div className="space-y-2 p-2">
-          <div className="h-6 animate-pulse rounded bg-slate-800/50" />
-          <div className="h-20 animate-pulse rounded bg-slate-800/50" />
+          <div className="h-6 animate-pulse bg-fs-ink/8" />
+          <div className="h-20 animate-pulse bg-fs-ink/8" />
         </div>
       ) : data ? (
         <ResourcesTree sessionId={sessionId} resources={data.resources} reloadTick={reloadTick} />
@@ -79,15 +81,15 @@ export function ResourcesPanel({ sessionId, refreshKey }: ResourcesPanelProps) {
  */
 function DebugDisabledNotice() {
   return (
-    <div className="rounded-md border border-slate-700/60 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-400">
-      <div className="mb-1 font-medium text-slate-300">Debug endpoints disabled</div>
-      <p className="text-[11px] leading-relaxed text-slate-500">
+    <div className="border border-dashed border-fs-ink/45 bg-fs-card px-3 py-2 text-[11px] text-fs-ink3">
+      <div className="mb-1 font-medium text-fs-ink">Debug endpoints disabled</div>
+      <p className="text-[11px] leading-relaxed text-fs-ink3">
         The privileged debug surface is off. To enable it for local development, set{" "}
-        <code className="rounded bg-slate-800 px-1 font-mono text-[10px] text-slate-300">
+        <code className="border border-fs-ink/20 bg-fs-paper px-1 font-fs-mono text-[10px] text-fs-ink2">
           FSDEV_DEBUG_ENDPOINTS=1
         </code>{" "}
         on the server (or pass{" "}
-        <code className="rounded bg-slate-800 px-1 font-mono text-[10px] text-slate-300">
+        <code className="border border-fs-ink/20 bg-fs-paper px-1 font-fs-mono text-[10px] text-fs-ink2">
           debugEndpointsEnabled: true
         </code>
         ) and ensure your DevTool origin is allowed. The non-debug Client Data

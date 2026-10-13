@@ -17,11 +17,11 @@ export function ComponentItemView({ item }: { item: ComponentItem }) {
         onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
       >
         {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
-          : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+          ? <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" />
+          : <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" />
         }
-        <Puzzle className="h-3 w-3 shrink-0 text-cyan-400" />
-        <span className="font-mono text-cyan-300">{item.component}</span>
+        <Puzzle className="h-3 w-3 shrink-0 text-fs-ink3" />
+        <span className="font-fs-mono font-medium text-fs-ink">{item.component}</span>
       </button>
       {expanded && hasData && (
         <div className="ml-7 mt-1.5">

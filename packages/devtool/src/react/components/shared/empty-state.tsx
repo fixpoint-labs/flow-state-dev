@@ -9,8 +9,8 @@ type EmptyStateProps = {
 export function EmptyState({ icon, message, className }: EmptyStateProps) {
   return (
     <div className={cn("flex flex-col items-center justify-center gap-2 p-8 text-center", className)}>
-      {icon && <div className="text-slate-600">{icon}</div>}
-      <p className="text-sm text-slate-500">{message}</p>
+      {icon && <div className="text-fs-ink4">{icon}</div>}
+      <p className="text-[13px] text-fs-ink3">{message}</p>
     </div>
   );
 }

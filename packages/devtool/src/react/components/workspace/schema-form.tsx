@@ -28,7 +28,7 @@ export function SchemaForm({ schema, values, onChange, disabled, onSubmit, locke
   };
 
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2 pt-2" onKeyDown={handleKeyDown}>
+    <div className="flex flex-wrap gap-2.5" onKeyDown={handleKeyDown}>
       {fields.map(([name, field]) =>
         locked !== undefined && Object.hasOwn(locked, name) ? (
           <LockedField key={name} name={name} value={locked[name]} />
@@ -54,13 +54,13 @@ export function SchemaForm({ schema, values, onChange, disabled, onSubmit, locke
 /** A field the caller fixed: shown, never edited. */
 function LockedField({ name, value }: { name: string; value: unknown }) {
   return (
-    <div className="min-w-[180px] flex-1 space-y-1" data-field={name}>
-      <Label className="text-[10px] uppercase text-slate-500">
+    <div className="flex min-w-[180px] flex-1 flex-col gap-1" data-field={name}>
+      <Label className="gap-1.5 truncate">
         {name}
-        <span className="ml-1 normal-case text-slate-600">(this task)</span>
+        <span className="normal-case tracking-normal text-fs-ink4">(this task)</span>
       </Label>
       <Input
-        className="h-8 font-mono text-xs"
+        className="h-8 bg-fs-paper text-fs-ink2"
         type="text"
         value={typeof value === "string" ? value : JSON.stringify(value)}
         readOnly
@@ -83,10 +83,10 @@ function FieldInput({ name, field, value, onChange, disabled }: FieldInputProps)
   const placeholder = field.description ?? formatPlaceholder(name, field);
 
   return (
-    <div className="min-w-[180px] flex-1 space-y-1" data-field={name}>
-      <Label className="text-[10px] uppercase text-slate-500">
+    <div className="flex min-w-[180px] flex-1 flex-col gap-1" data-field={name}>
+      <Label className="gap-1.5 truncate">
         {label}
-        {!field.required && <span className="ml-1 normal-case text-slate-600">(optional)</span>}
+        {!field.required && <span className="normal-case tracking-normal text-fs-ink4">(optional)</span>}
       </Label>
       {renderInput(field, value, onChange, disabled, placeholder)}
     </div>
@@ -104,7 +104,7 @@ function renderInput(
     case "string":
       return (
         <Input
-          className="h-8 text-xs"
+          className="h-8"
           type="text"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
@@ -116,7 +116,7 @@ function renderInput(
     case "number":
       return (
         <Input
-          className="h-8 text-xs"
+          className="h-8"
           type="number"
           value={value !== undefined && value !== null ? String(value) : ""}
           onChange={(e) => {
@@ -135,19 +135,19 @@ function renderInput(
         <label className="flex h-8 items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-slate-700 bg-slate-900 accent-sky-500"
+            className="size-3.5 rounded-none accent-[var(--fs-blue)] outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40"
             checked={!!value}
             onChange={(e) => onChange(e.target.checked)}
             disabled={disabled}
           />
-          <span className="text-xs text-slate-400">{value ? "true" : "false"}</span>
+          <span className="font-fs-mono text-xs text-fs-ink3">{value ? "true" : "false"}</span>
         </label>
       );
 
     case "enum":
       return (
         <select
-          className="h-8 w-full rounded border border-slate-800 bg-slate-950 px-2 text-xs text-slate-300 outline-none"
+          className="h-8 w-full px-2 rounded-none border border-fs-ink/35 bg-fs-card text-fs-ink font-fs-mono text-xs focus:border-fs-blue focus:ring-2 focus:ring-fs-blue/20 outline-none"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
@@ -164,7 +164,7 @@ function renderInput(
     default:
       return (
         <textarea
-          className="h-16 w-full resize-y rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono text-xs text-slate-300 outline-none placeholder:text-slate-600"
+          className="h-16 w-full resize-y px-2.5 py-1.5 leading-[1.55] placeholder:text-fs-ink4 rounded-none border border-fs-ink/35 bg-fs-card text-fs-ink font-fs-mono text-xs focus:border-fs-blue focus:ring-2 focus:ring-fs-blue/20 outline-none"
           value={typeof value === "string" ? value : (value !== undefined ? JSON.stringify(value, null, 2) : "")}
           onChange={(e) => {
             try {

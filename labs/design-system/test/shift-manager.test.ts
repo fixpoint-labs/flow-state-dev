@@ -170,10 +170,16 @@ describe("the fence", () => {
     expect(values).not.toContain("ui-monospace");
   });
 
-  it("finds no theme value anywhere under packages/", () => {
+  // The DevTool is FSD's own app, not a component a host skins: it ships the brand
+  // look itself (FIX-1928). Only its package is exempt; the registry, react and
+  // every other package keep neutral defaults. FIX-1929 moves the DevTool onto
+  // the shared token names so this exemption can go.
+  const EXEMPT = ["devtool/"];
+
+  it("finds no theme value anywhere under packages/, the DevTool aside", () => {
     const { walked, hits } = findThemeValues(join(REPO_ROOT, "packages"), values);
     expect(walked).toBeGreaterThan(500);
-    expect(hits).toEqual([]);
+    expect(hits.filter((hit) => !EXEMPT.some((prefix) => hit.startsWith(prefix)))).toEqual([]);
   });
 
   it("names the file and value when one is planted in a package file", () => {

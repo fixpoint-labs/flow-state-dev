@@ -61,8 +61,8 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
   if (isLoading && !snapshot) {
     return (
       <div className="space-y-2 p-2">
-        <div className="h-6 animate-pulse rounded bg-slate-800/50" />
-        <div className="h-20 animate-pulse rounded bg-slate-800/50" />
+        <div className="h-6 animate-pulse bg-fs-ink/8" />
+        <div className="h-20 animate-pulse bg-fs-ink/8" />
       </div>
     );
   }
@@ -74,13 +74,15 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
   const hasClientData = snapshot.clientData && Object.values(snapshot.clientData).some((v) => v && Object.keys(v).length > 0);
 
   return (
-    <div className="space-y-2 text-xs">
+    <div className="space-y-1.5 text-xs">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase text-slate-500">Session Context</span>
+        <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">
+          Session Context
+        </span>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-slate-600">{relativeTime}</span>
+          <span className="font-fs-mono text-[10px] text-fs-ink4">{relativeTime}</span>
           <Button variant="ghost" size="icon-xs" onClick={refresh} title="Refresh state">
-            <RefreshCw className={`h-3 w-3 text-slate-500 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3 w-3 text-fs-ink3 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
@@ -107,7 +109,11 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         </CollapsibleSection>
       )}
 
-      <ResourcesPanel sessionId={sessionId} refreshKey={refreshKey} />
+      {/* Resources reads as its own inspector section: a full-bleed hairline
+          matching the rail's section dividers (the rail pads children px-4). */}
+      <div className="-mx-4 mt-3.5 border-t border-fs-ink/20 px-4 pt-3.5">
+        <ResourcesPanel sessionId={sessionId} refreshKey={refreshKey} />
+      </div>
     </div>
   );
 }
@@ -123,17 +129,17 @@ function ScopeBlock({ label, data }: { label: string; data: Record<string, unkno
   return (
     <div className="mb-2">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] text-slate-600 uppercase">{label}</span>
+        <span className="font-fs-mono text-[10px] uppercase tracking-[.12em] text-fs-ink4">{label}</span>
         <Button variant="ghost" size="icon-xs" onClick={handleCopy} title="Copy scope data">
-          <Copy className="h-2.5 w-2.5 text-slate-600" />
+          <Copy className="h-2.5 w-2.5 text-fs-ink3" />
         </Button>
       </div>
       {allPrimitive ? (
-        <div className="space-y-0.5">
+        <div className="space-y-0.5 border border-fs-ink/20 bg-fs-card px-2.5 py-1.5">
           {entries.map(([key, value]) => (
-            <div key={key} className="flex items-start justify-between gap-2">
-              <span className="text-slate-500 shrink-0 font-mono text-[11px]">{key}</span>
-              <span className="text-slate-300 text-right break-all text-[11px]">
+            <div key={key} className="flex items-start justify-between gap-2.5 font-fs-mono text-[11px] font-medium">
+              <span className="shrink-0 text-fs-ink3">{key}</span>
+              <span className="break-all text-right text-fs-ink2">
                 {value === null ? "null" : String(value)}
               </span>
             </div>
@@ -161,23 +167,23 @@ function CollapsibleSection({
   return (
     <div>
       <button
-        className="flex items-center gap-1.5 w-full text-left py-1"
+        className="flex w-full items-center gap-1.5 py-1.5 text-left text-[13px] text-fs-ink hover:text-fs-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40"
         onClick={() => setOpen(!open)}
       >
-        {open ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />}
-        <span className="text-xs font-medium text-slate-400">{title}</span>
-        {count !== undefined && count > 0 && (
-          <span className="text-[10px] font-mono text-slate-600 bg-slate-800/60 px-1.5 rounded-full">
-            {count}
-          </span>
-        )}
+        {open ? <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" /> : <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" />}
+        <span className="flex-1 truncate">{title}</span>
         {changed !== undefined && changed > 0 && (
-          <span className="text-[10px] font-mono text-amber-500 bg-amber-900/20 px-1.5 rounded-full">
+          <span className="font-fs-mono text-[10.5px] text-fs-blue">
             {changed} changed
           </span>
         )}
+        {count !== undefined && count > 0 && (
+          <span className="font-fs-mono text-[10.5px] text-fs-ink4">
+            {count}
+          </span>
+        )}
       </button>
-      {open && <div className="pl-4">{children}</div>}
+      {open && <div className="mb-1.5 pl-4">{children}</div>}
     </div>
   );
 }
@@ -203,21 +209,21 @@ function SessionMetadataSection({ detail }: { detail: SessionDetail }) {
 
   return (
     <CollapsibleSection title="Session Metadata" count={entries.length + (hasTags ? 1 : 0) + (hasMetadata ? 1 : 0)}>
-      <div className="space-y-1">
+      <div className="space-y-1 border border-fs-ink/20 bg-fs-card px-2.5 py-1.5 font-fs-mono text-[11px] font-medium">
         {entries.map(({ label, value }) => (
-          <div key={label} className="flex items-start justify-between gap-2">
-            <span className="text-slate-500 shrink-0 font-mono text-[11px]">{label}</span>
-            <span className="text-slate-300 text-right break-all text-[11px]">{String(value)}</span>
+          <div key={label} className="flex items-start justify-between gap-2.5">
+            <span className="shrink-0 text-fs-ink3">{label}</span>
+            <span className="break-all text-right text-fs-ink2">{String(value)}</span>
           </div>
         ))}
         {hasTags && (
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-slate-500 shrink-0 font-mono text-[11px]">tags</span>
+          <div className="flex items-start justify-between gap-2.5">
+            <span className="shrink-0 text-fs-ink3">tags</span>
             <div className="flex flex-wrap gap-1 justify-end">
               {detail.tags!.map((tag) => (
                 <span
                   key={tag}
-                  className="text-[10px] font-mono text-sky-400 bg-sky-900/20 px-1.5 rounded-full"
+                  className="border border-fs-ink/45 px-1 text-[9.5px] uppercase tracking-[.08em] text-fs-ink3"
                 >
                   {tag}
                 </span>
@@ -227,7 +233,7 @@ function SessionMetadataSection({ detail }: { detail: SessionDetail }) {
         )}
         {hasMetadata && (
           <div>
-            <span className="text-slate-500 font-mono text-[11px]">metadata</span>
+            <span className="text-fs-ink3">metadata</span>
             <JsonViewer data={detail.metadata!} className="mt-0.5" />
           </div>
         )}
