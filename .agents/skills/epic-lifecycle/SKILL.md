@@ -478,9 +478,8 @@ The epic-specific delta:
    If the epic awaits objective approval, link its review PR and explain what direction
    the human signs off, and say that merging the PR is the sign-off. Approval binds to that reviewed head; after required checks and
    repository thread policy, the epic spec merges before children start.
-   For each issue awaiting approval, link its full required set, documentation draft,
-   and applicable evolution. Approval authorizes its spec merge, not implementation
-   before that merge, and not the later implementation PR merge.
+   For each issue awaiting approval, link its full retained set. Approval authorizes its
+   spec merge, not implementation before that merge, and not the later implementation PR merge.
    Attribute label signals to the owner and reviewed revision; never treat a standing
    label as approval for a changed head. Preserve the convergence budget without
    presenting required unresolved threads or failed checks as waived.
@@ -655,8 +654,7 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
     `epic-agent` only for meaningful updates.
   - **Create:** dispatch `epic-agent` to author `specs/epics/<EPIC-ISSUE-ID>/` on
     `epic/<name>`, open its review PR, and link it from Linear. Required documents are
-    `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, plus conditional
-    `EVOLUTION.md` and owned authored artifacts. The set always includes the **closure
+    `SPEC.md` and `DECISIONS.md`, plus owned authored artifacts. The set always includes the **closure
     issue**, filed by `epic-agent` and blocked by every other child
     ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
     Refuse the objective gate on a set without one. On resume, an epic that has none gets
@@ -898,8 +896,7 @@ never asks for the pass at all, which is correct.
 is already sound; aligning a good spec to a still-wrong one spreads the flaw. So this pass
 runs only when **both** hold:
 
-1. Every planned spec has a human-approved revision (open or merged), with its required
-   documentation draft and applicable evolution, and
+1. Every planned spec has a human-approved revision (open or merged), and
 2. **You have approved running the cross-spec pass.** Surface "all N specs are
    approved — run the cross-spec coherence pass?" and wait. It does not run
    automatically.

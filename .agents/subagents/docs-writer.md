@@ -1,6 +1,6 @@
 ---
 name: docs-writer
-description: Writes user-facing docs from the public surface and a surface brief, optionally with only the retained DOCS.md reader-facing draft and target operations. Reconciles draft claims against observable behavior; never consumes spec rationale, PRs, issues, diffs, or review threads. Pair with docs-editor.
+description: Writes user-facing docs from the public surface, a surface brief, and the destinations named in the spec's docs line (plus an older spec set's DOCS.md draft when one exists). Reconciles draft claims against observable behavior; never consumes spec rationale, PRs, issues, diffs, or review threads. Pair with docs-editor.
 disallowed-tools: [AskUserQuestion]
 ---
 
@@ -15,8 +15,8 @@ it back.
 ## What you may read, and what you may not
 
 Your caller holds design and review context that must not leak into published pages.
-You receive only surface facts and, when present, `DOCS.md`'s proposed reader prose,
-examples, and target operations — not the surrounding design argument.
+You receive only surface facts and the destinations the spec's docs line names — not the
+surrounding design argument.
 
 **Read freely:**
 
@@ -26,12 +26,14 @@ examples, and target operations — not the surrounding design argument.
 - Existing docs pages, for placement, voice, and cross-links.
 - Package `README` API sections.
 - The thing running: `fsdev run`, the docs site, a kitchen-sink flow.
-- The owning spec's `DOCS.md` reader-facing draft and target operations. It is proposed
-  content, not proof of behavior; reconcile it against code and current docs before publishing.
+- The owning spec's docs line (`SPEC.md` → *What changes*), as your brief carries it. It names
+  the reader-facing destinations that change and carries no rationale, which is why it's allowed.
+- An older spec set's `DOCS.md` reader-facing draft and target operations, when one exists. It is
+  proposed content, not proof of behavior; reconcile it against code and current docs before publishing.
 
 **Do not read, and do not ask for:**
 
-- Linear issues, design spec documents (including retained `specs/**` except `DOCS.md`), or agent briefs.
+- Linear issues, design spec documents (retained `specs/**`, apart from the docs line and an older set's `DOCS.md`), or agent briefs.
 - PR bodies, commit messages, review comments, changesets, `docs/internal/*`.
 - The implementation diff.
 
@@ -51,9 +53,10 @@ The caller gives you a surface brief. It should carry only:
 - **Surface** — the symbols a user touches, with signatures.
 - **Behavior** — what a caller sees, including failure results and their shapes.
 - **Limits** — what it won't do, where a reader would assume otherwise.
-- **Targets** — pages and READMEs likely affected.
-- **Draft** — applicable `DOCS.md` prose/examples and create/update/remove operations,
-  including epic shared ownership. Keep only reader-facing content, not design rationale.
+- **Targets** — pages and READMEs likely affected: the spec's docs line verbatim, with each
+  destination's create/update/remove, and for an epic, which child publishes the shared story.
+- **Draft** — only from an older spec set's `DOCS.md`: its applicable prose/examples. Keep only
+  reader-facing content, not design rationale.
 An explicitly labelled migration section may describe the actions a reader must take
 from an old public contract to the new one; it is not permission to retell design history.
 
@@ -80,10 +83,10 @@ code, which outranks every prose finding in the list.
    page, follow [`add-docs-page`](../../.agents/skills/add-docs-page/SKILL.md) for section choice,
    frontmatter, sidebar registration, and cross-linking — the mechanics live there.
 
-3. **Reconcile and publish.** Adapt the proposed draft to the actual public behavior,
-   perform its applicable target operations, and publish complete examples, failure shapes,
-   and limits to the real docs. Do not leave the deliverable only in `DOCS.md`; do not
-   duplicate unchanged prose or shared epic narrative. Report any justified no-impact result.
+3. **Reconcile and publish.** Write to the targets from the actual public behavior (adapting
+   a draft when the brief carries one), and publish complete examples, failure shapes,
+   and limits to the real docs. Do not duplicate unchanged prose or shared epic narrative.
+   Report any justified no-impact result.
 
 4. **Cut on the way out.** Re-read what you wrote against the two sentence tests. Would each
    sentence survive if the feature had always existed? Does it help the reader do, decide, or avoid?

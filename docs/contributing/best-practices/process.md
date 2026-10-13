@@ -71,17 +71,17 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 ### BP-037: Retain issue and epic specs as reviewed design history
 
 - Status: Active
-- Date: 2026-06-29 (updated 2026-09-19: repository retention and approval-time merge)
+- Date: 2026-06-29 (updated 2026-09-19: repository retention and approval-time merge; 2026-10-13: two documents)
 - Scope: Process — issue and epic spec authoring, review and implementation.
 - Rule:
   - Follow the canonical [retention and authority policy](../orchestration.md#spec-retention-and-authority)
     and [merge/amendment lifecycle](../orchestration.md#merging-and-amending-a-spec).
     Repository content is canonical; Linear carries links and status.
-  - Use the [issue](../spec-template.md) or [epic](../epic-spec-template.md) template,
-    including concrete `DOCS.md` drafts and conditional `EVOLUTION.md`.
+  - Use the [issue](../spec-template.md) or [epic](../epic-spec-template.md) template:
+    `SPEC.md` and `DECISIONS.md`, including the section on what's already here and the debt.
   - Specs preserve approved intent, not current behavior. Architecture docs remain
-    authoritative for the current system; implementation reconciles and publishes the
-    documentation draft against what ships.
+    authoritative for the current system; implementation writes the documentation the
+    spec's docs line names, against what ships.
   - Valid retained-spec citations may provide provenance. A code comment still states
     its reason rather than making a reader follow a link to understand it.
   - Project specs keep their separate never-merged lifecycle. No historical backfill.
@@ -96,7 +96,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Scope: Process — spec-PR review (`issue-spec` Step 6.5, `issue-lifecycle`, `epic-lifecycle`).
 - Rule:
   - **Sign-off certifies directional correctness only** — the problem is real, the approach works, the decisions in `DECISIONS.md` are the ones we want. Not a finished design, and not "nothing left to nitpick" (an unreachable target).
-  - **One test per comment: does acting on it change the approach?** Yes → **fold in** (re-draft, anti-addenda rule). No → **note for the implementer** (record verbatim in `PLAN.md → Notes from review`; reply once; do *not* rewrite the design prose around it). Already answered / out of scope / preference → **drop** with one reply. **Default is note; the burden of proof is on folding.**
+  - **One test per comment: does acting on it change the approach?** Yes → **fold in** (re-draft, anti-addenda rule). No → **note for the implementer** (record verbatim in `DECISIONS.md → Notes from review`; reply once; do *not* rewrite the design prose around it). Already answered / out of scope / preference → **drop** with one reply. **Default is note; the burden of proof is on folding.**
   - **Budget two review rounds**, then declare convergence and go to the approval gate, carrying remaining threads as implementer notes. A third round requires a genuine spec-level finding from round two, stated in one line. Count rounds **actually spent** — a factual-correction-only batch costs zero — and keep the conditional third round reachable rather than stopping on the count alone. The same budget applies to an **epic** PR.
   - **Do not grind optional comments to zero.** Required repository checks, approvals and
     review-thread policy still govern merge; direction approval waives none of them.

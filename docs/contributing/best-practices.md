@@ -24,7 +24,8 @@ is marked `Superseded` and links its replacement; it is never deleted.
 the lasting layer. A BP that merely restates a tenet is **folded** into that tenet
 (marked Superseded, pointing to it) rather than kept as always-loaded duplication.
 Best practices are the *situational, specific* layer — kept few, and mostly worked
-out per spec (the plan's guardrails, each with a *because*). Sharpen or prune before you
+out per spec (its *decided, not asked* lines and the implementer's own calls, each with a
+*because*). Sharpen or prune before you
 add; a BP that traces to no tenet is a smell.
 
 Update policy:
