@@ -3,24 +3,12 @@
 /**
  * Tool call rendering for block_trace and tool_output items.
  *
- * Tool calls are background, not content. Each presentation is a single
- * muted line with a chevron that opens to the details:
+ * A call is a muted line with a chevron. A run is one line, labelled from
+ * each call's stated intent, or the name-based phrase when none stated one.
+ * Running ends in "…", waiting says "(waiting)", failure says so and turns
+ * destructive. No status badge on the line.
  *
- *  - <Tool> — one call, as the renderer registry hands it to a
- *    `tool_output` renderer.
- *
- *  - <ToolGroup> — a run of consecutive calls as one line, labelled from
- *    what each call said it was doing ("List files · Run tests"), opening
- *    to one line per call that opens to its input, result and metadata.
- *
- * A call's label is its stated intent when its tool carries one (Bash's
- * `description`), otherwise the name-based phrase ("Ran a search"). There
- * is no status badge: a running call ends in "…", a call waiting on an
- * approval or a question says "(waiting)", and a failed one says so and
- * turns destructive.
- *
- * Consecutive `tool_output` items in the chat stream are wrapped in a
- * <ToolGroup> via ItemsRenderer's `toolGroupRenderer`.
+ * Consecutive `tool_output` items are wrapped via ItemsRenderer's `toolGroupRenderer`.
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
@@ -207,7 +195,6 @@ function getToolErrorText(item: ToolItem): string | undefined {
   return raw === undefined ? undefined : String(raw);
 }
 
-/** A call's (or a run's) state, reduced to what a quiet line says in words. */
 type LineState = "running" | "waiting" | "completed" | "error";
 
 function lineState(item: ToolItem): LineState {
@@ -218,7 +205,6 @@ function lineState(item: ToolItem): LineState {
   return "running";
 }
 
-/** The worst state in a run: any failure, else any call waiting, else any call still going, else done. */
 function runState(items: readonly ToolItem[]): LineState {
   const states = items.map(lineState);
   if (states.includes("error")) return "error";
@@ -232,7 +218,6 @@ function labelInput(item: ToolItem) {
   return { name, intent: toolIntent(name, getToolArgs(item)) };
 }
 
-/** The input, result and metadata of one call: what its line opens to. */
 function ToolCallDetails({ item }: { item: ToolItem }) {
   const args = getToolArgs(item);
   const output = getToolOutput(item);
@@ -262,7 +247,6 @@ function ToolCallDetails({ item }: { item: ToolItem }) {
 type ToolLineProps = {
   label: string;
   state: LineState;
-  /** Set on a per-call line inside a group; a name-only label renders mono. */
   nested?: boolean;
   mono?: boolean;
   defaultOpen?: boolean;
@@ -270,7 +254,6 @@ type ToolLineProps = {
   children: ReactNode;
 };
 
-/** The muted line and its chevron, opening to `children`. */
 function ToolLine({ label, state, nested = false, mono = false, defaultOpen = false, className, children }: ToolLineProps) {
   return (
     <Collapsible
@@ -296,107 +279,87 @@ function ToolLine({ label, state, nested = false, mono = false, defaultOpen = fa
   );
 }
 
-/**
- * "List files", "List files…" while it runs, "List files (failed)" when it
- * did, "List files (waiting)" while it waits on an approval or a question.
- * `count` is how many calls in a run are in `state`.
- */
 function withState(label: string, state: LineState, count = 1, total = 1): string {
   if (state === "running") return `${label}…`;
-  if (state === "error") return total > 1 ? `${label} (${count} failed)` : `${label} (failed)`;
-  if (state === "waiting") return total > 1 ? `${label} (${count} waiting)` : `${label} (waiting)`;
+  if (state === "error" || state === "waiting") {
+    const word = state === "error" ? "failed" : "waiting";
+    return total > 1 ? `${label} (${count} ${word})` : `${label} (${word})`;
+  }
   return label;
 }
 
-/** One tool call as a quiet line that opens to its details. */
+/** One call. A missing tool call renders nothing. */
 export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
   if (!item.toolCall) return null;
-  const state = lineState(item);
-  return (
-    <ToolLine label={withState(composeToolCallsLabel([labelInput(item)]), state)} state={state}>
-      <ToolCallDetails item={item} />
-    </ToolLine>
-  );
+  return <ToolGroup items={[item]} />;
 }
 
 export type ToolGroupProps = {
-  items: ToolOutputItem[];
+  items: readonly ToolItem[];
   /** Default-open state. Defaults to false (collapsed). */
   defaultOpen?: boolean;
   className?: string;
 };
 
-/**
- * A run of tool calls as one quiet line. One call opens straight to its
- * details; several open to one line per call. While the run is going the
- * line names the call in flight, so it reads as the agent's current step.
- */
+/** One call opens to its details. While a run is going, the line names the call in flight. */
 export function ToolGroup({ items, defaultOpen = false, className }: ToolGroupProps) {
   if (items.length === 0) return null;
 
   const state = runState(items);
   const inputs = items.map(labelInput);
+  const one = items.length === 1;
 
-  if (items.length === 1) {
-    const item = items[0]!;
-    return (
-      <ToolLine
-        label={withState(composeToolCallsLabel(inputs), state)}
-        state={state}
-        defaultOpen={defaultOpen}
-        className={className}
-      >
-        <ToolCallDetails item={item} />
-      </ToolLine>
-    );
-  }
-
-  const inState = items.filter((item) => lineState(item) === state).length;
-  let current = -1;
-  if (state === "running") {
+  let label: string;
+  if (!one && state === "running") {
+    let current = -1;
     for (let i = items.length - 1; i >= 0; i--) {
-      if (lineState(items[i]!) === "running") { current = i; break; }
+      if (lineState(items[i]!) === "running") {
+        current = i;
+        break;
+      }
     }
+    label =
+      current >= 0
+        ? withState(composeToolCallsLabel([inputs[current]!]), "running")
+        : withState(composeToolCallsLabel(inputs), state);
+  } else {
+    const count = one ? 1 : items.filter((item) => lineState(item) === state).length;
+    label = withState(composeToolCallsLabel(inputs), state, count, items.length);
   }
-  const label =
-    current >= 0
-      ? withState(composeToolCallsLabel([inputs[current]!]), "running")
-      : withState(composeToolCallsLabel(inputs), state, inState, items.length);
 
   return (
     <ToolLine label={label} state={state} defaultOpen={defaultOpen} className={className}>
-      <ul className="space-y-1.5">
-        {items.map((item, i) => (
-          <li key={item.id}>
-            <ToolRow item={item} intent={inputs[i]!.intent} />
-          </li>
-        ))}
-      </ul>
+      {one ? (
+        <ToolCallDetails item={items[0]!} />
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((item) => (
+            <li key={item.id}>
+              <ToolRow item={item} />
+            </li>
+          ))}
+        </ul>
+      )}
     </ToolLine>
   );
 }
 
 export type ToolRowProps = {
-  item: ToolOutputItem;
-  /** The call's stated intent, when the caller already parsed it. */
-  intent?: string;
+  item: ToolItem;
   defaultOpen?: boolean;
   className?: string;
 };
 
-/**
- * One call inside an open group: its intent, or its tool name in mono when
- * it stated none, opening to the call's input, result and metadata.
- */
-export function ToolRow({ item, intent, defaultOpen = false, className }: ToolRowProps) {
+/** Intent, or the tool name in mono when the call stated none. */
+export function ToolRow({ item, defaultOpen = false, className }: ToolRowProps) {
   const state = lineState(item);
-  const stated = intent ?? labelInput(item).intent;
+  const { name, intent } = labelInput(item);
   return (
     <ToolLine
-      label={withState(stated ?? item.toolCall.name, state)}
+      label={withState(intent ?? name, state)}
       state={state}
       nested
-      mono={stated === undefined}
+      mono={intent === undefined}
       defaultOpen={defaultOpen}
       className={className}
     >
