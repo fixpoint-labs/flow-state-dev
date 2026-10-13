@@ -256,7 +256,10 @@ await runGoal(async (failures) => {
         found.push({ task, places: ours().filter((w) => !before.has(w.path)) });
         if (CONTROL === "no-checkout") {
           // The control's own evidence: refused by name, and nothing fetched.
-          if (!said.includes("remote-not-allowed")) note(`b:${item.id}:refused-by-name`, `under the control the task is ${said.slice(0, 400)}`);
+          // A board's row says it errored, not why: the why is its run's recorded answer.
+          const run = task?.run?.sessionId === undefined ? [] : await http.requests(String(task.run.sessionId));
+          const why = `${said} ${JSON.stringify(run)}`;
+          if (!why.includes("remote-not-allowed")) note(`b:${item.id}:refused-by-name`, `under the control the task is ${why.slice(0, 600)}`);
           const clones = join(runs, ".clones");
           if (existsSync(clones) && readdirSync(clones).length > 0) note(`b:${item.id}:nothing-cloned`, `${clones} holds ${readdirSync(clones).join(", ")}`);
         }
