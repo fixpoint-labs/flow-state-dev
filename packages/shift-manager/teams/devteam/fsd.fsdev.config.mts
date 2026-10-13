@@ -19,11 +19,13 @@
  *   what to set. `DEVFORCE_LAB_HARNESS=stub` runs the scripted coder instead.
  * - **Runs work in this checkout.** A coding run on FSD or Shift Manager gets
  *   a fresh worktree of the checkout this file sits in, on a branch of its
- *   own cut from local `main` ({@link CHECKOUTS}, in `fsd-checkouts.mts`). The
- *   checkout's location is worked out from that file's, never written down.
- * - **No remote is reached.** The workspace hosts allow none, so a run the
+ *   own cut from the newer of local `main` and its upstream ({@link CHECKOUTS},
+ *   in `fsd-checkouts.mts`). The checkout's location is worked out from that
+ *   file's, never written down.
+ * - **No remote is cloned.** The workspace hosts allow none, so a run the
  *   mapping misses (a project a user made, or one in another organization) is
- *   refused, naming the remote, and nothing is fetched.
+ *   refused, naming the remote, and nothing is cloned. The one remote reached
+ *   is the checkout's own upstream, fetched before a new run's branch is cut.
  * - **Its own store**: SQLite at `FSD_STORE` or
  *   `packages/shift-manager/.fsdev/fsd.sqlite`. DevTeam's rows never show
  *   here. Delete the file for a fresh start.

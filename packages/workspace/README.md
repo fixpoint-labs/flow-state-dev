@@ -256,7 +256,7 @@ const host = localWorkspaceHost({
 });
 ```
 
-The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. Nothing is fetched, on the first run or a retry, and the repository's own working tree is never touched. When the source names no kept files, the place directory is the checkout itself, with no `checkout/` level. When it names kept files, the place is laid out like a remote run's: the worktree in `checkout/` and the kept files in `project/` beside it. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. For a new branch whose base tracks an upstream, the host first fetches that one upstream branch, which updates only its remote-tracking ref, then cuts from whichever of the two is newer. Listing the repository allows the fetch; `remotes.allow` isn't asked. The URL is still checked as any remote is, with an absolute path read as `file://`. When local and upstream have each moved, the provision is refused as `base-diverged` before anything is made. A failed fetch isn't a refusal: the host compares with the last-fetched copy and logs a warning. A base with no upstream fetches nothing, and neither does a branch that already exists. `place.repo.baseCommit` is the commit the branch was cut at. The repository's own branches, index and working tree are never touched. When the source names no kept files, the place directory is the checkout itself, with no `checkout/` level. When it names kept files, the place is laid out like a remote run's: the worktree in `checkout/` and the kept files in `project/` beside it. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
 
 Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.
 
@@ -440,9 +440,10 @@ interface HeldWorkStore {
 | `invalid-remote` | The value starts with `-`, uses a transport helper like `ext::`, has a host starting with `-`, carries a password or an `https` login, or is a bare path rather than a URL |
 | `remote-not-allowed` | Its host isn't listed, it's `file://` and `"file"` isn't listed, or its scheme isn't `https`, `ssh` or `file` |
 | `remote-unreadable` | The host is allowed but git couldn't read it, or it has no branch to cut from |
+| `base-diverged` | A repository on this machine: the base and its upstream each have commits the other lacks. Nothing is made |
 | anything else | The source answered `refused`, with that reason |
 
-Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry, so fail the run with the reason.
+Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry by itself, so fail the run with the reason. `base-diverged` clears once someone pulls or rebases, or pushes, in that repository.
 
 ## API
 
