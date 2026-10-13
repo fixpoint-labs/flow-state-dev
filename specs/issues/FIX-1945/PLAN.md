@@ -9,7 +9,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 
 | ID | Package · area | Change | Rules |
 |---|---|---|---|
-| S1 | `orchestration` · skills library | **New export:** `writeSkillFolder` (`packages/orchestration/src/skills/internal/write-skill-folder.ts`, internal today) becomes public, used to write one holder-owned entry. The entry is never offered as a skill (catalog, activation, `loadSkill`): a folder with no `SKILL.md`, or one with model invocation off, whichever the collection allows. It holds per-rule date and source conversation. BR-12 relies on `refreshSeededSkills` (`refresh.ts`) iterating only the names in its `sources` argument, plus its rule-1 skip of a name with no manifest; S5 keeps `standing-rules` out of every `sources` | BR-12 |
+| S1 | `orchestration` · skills library | **New export:** `writeSkillFolder` (`packages/orchestration/src/skills/internal/write-skill-folder.ts`, internal today) becomes public, used to write one holder-owned entry. The entry is never offered as a skill (catalog, activation, `loadSkill`): a holder folder with no `SKILL.md`, so no skill reader lists it (if the collection refuses a folder without a manifest, stop and surface it; don't add a second layout). It holds per-rule date and source conversation. BR-12 relies on `refreshSeededSkills` (`refresh.ts`) iterating only the names in its `sources` argument, plus its rule-1 skip of a name with no manifest; S5 keeps `standing-rules` out of every `sources` | BR-12 |
 | S2 | `workforce` · the rules list | Read, parse, render and write the `standing-rules` entry in the drawer `createSkillsLibrary` already keys per person and per worker (`scope: "user"`, `collectionConfig: { flowIsolation: true }`, `partitionBy: verifiedWorkerOf`; `agent-worker-flow.ts`, the `skills` constant). One validator for every writer: 20 rules, 300 characters, one line, not empty; change and remove carry the quoted current text (D3) | BR-15 BR-16 BR-17 BR-18 |
 | S3 | `workforce` · the rule tools | `rules/read`, `rules/add`, `rules/change`, `rules/remove`. Each write emits a client-visible line naming the rule and the count. Offered by allowlist. **New in S3:** a person-turn marker in workforce request state, set by a new `markPersonTurn` step on each door: the agent flow's public `run` action (in `defineAgentFlowAround`, before `run`), and the coordinator's `postStateOf` when it opens a round-0 post. Only a marked turn gets the tools. Delivered through the turn's `extraTools` share (`coordinator-flow.ts`, the `agentWorkerTurn` call), not `uses`, since the tools fence drops catalog tools from `uses` (D2) | BR-1 BR-2 BR-3 BR-4 BR-5 |
 | S4 | `workforce` · the agent turn | Put the rules in context after the instructions, team instructions and packages, as one more dynamic entry in `usesEntries` (`agent-worker-flow.ts`, beside `workerCapabilities`), not a fourth `prompt` entry. Its user is the request's identity: a task turn runs in a task session at the filing person's user scope (`conversation-board/task-entry.ts`, header), so the drawer resolves to that person with no new lookup; V4 proves it on a task turn. Reaches the coordinator through the shared turn. Nothing when the list is empty (D1) | BR-6 BR-7 BR-8 |
@@ -105,6 +105,17 @@ premise is unproven.
   and the coordinator's door; BR-4's allowlist must cover any added since.
 - Re-check FIX-1793 D3's "coordinator-written skill" follow-up has not started elsewhere.
 - Re-check the per-turn context budget against the memory digest on the coordinator.
+
+## Notes from review
+
+- "Pick one exclusion mechanism … instead of 'whichever the collection allows'." Folded into S1. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3289#discussion_r4265210052))
+- "Index-only (or list version / etag) with 'list changed, re-read' on conflict" instead of quoting current text on change and remove. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3289#discussion_r4265210072))
+- "v1 text-only numbered lines; … conversation links … follow-up." BR-20 keeps the date and source as a person-facing promise; how they are stored is yours. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3289#discussion_r4265210099))
+- "Drop `rules/read`" and "compare conditional `controlTools` vs static merge … if V3 proves zero rules schemas on task/delegate turns." The issue asks for a read tool, so it stays pinned; the delivery route is yours if V3 holds. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3289#discussion_r4265210082))
+- "Add a non-goal CI check: max formatted rules context size at cap." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3289#discussion_r4265210107))
+- "A matrix helper + one representative negative instead of N separate tests" for BR-4. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3289#discussion_r4265210094))
+
+These are inputs, not instructions. Adopt, adapt, or discard.
 
 ## Follow-ups
 
