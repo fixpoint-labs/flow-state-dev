@@ -86,7 +86,7 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
@@ -233,8 +233,9 @@ export interface ResourceBackedOptions {
 /**
  * The read boundary for this backing. Collection instances are stored, not
  * parsed, so a row written before the `parked` rename arrives carrying the
- * legacy status; it is mapped forward here (see `withMigratedStatus`), before
- * any filter or the transition guard sees it.
+ * legacy status, and one written before the wait rename its legacy wait mark;
+ * both are mapped forward here (see `withMigratedStatus` and
+ * `withMigratedWait`), before any filter or the transition guard sees it.
  *
  * Every read of committed task state goes through this — `readTaskState` for
  * a ref, and directly for the `current` a CAS updater is handed, since that
@@ -243,7 +244,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withMigratedStatus(state) as unknown as Task<TInput, TOutput>;
+  return withMigratedWait(withMigratedStatus(state)) as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -1048,7 +1049,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async markCancelOwed(id) {
       return patchRef(id, "cancel_owed", (task) =>
-        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+        task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
       );

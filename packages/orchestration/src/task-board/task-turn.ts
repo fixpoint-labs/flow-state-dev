@@ -2,8 +2,8 @@
  * The one test of whether a turn is a task turn: a turn the receiving gate
  * serves, working the row a hand-off claimed (FIX-1816 BR-5a, FIX-1817 S1).
  *
- * Defined here once, and imported wherever a rule depends on it: an ask
- * (`dispatchTask({ wait })`) is refused on a task turn, so asks never
+ * Defined here once, and imported wherever a rule depends on it: a wait
+ * (`dispatchTask({ wait })`) is refused on a task turn, so waits never
  * nest, and FIX-1817's question park is offered only on one.
  *
  * Read from server-set state only, never from input (BP-031):

@@ -939,8 +939,8 @@ export async function createExecutionContext<
           dispatchOperation: options.requestHost.dispatchOperation,
           resolveFlow: options.requestHost.resolveFlow,
           parentTask: options.requestHost.parentTask,
-          askResume: options.requestHost.askResume,
-          askSweeper: options.requestHost.askSweeper,
+          waitResume: options.requestHost.waitResume,
+          waitSweeper: options.requestHost.waitSweeper,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {

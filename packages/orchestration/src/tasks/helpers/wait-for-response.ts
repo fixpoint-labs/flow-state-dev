@@ -3,9 +3,9 @@
  * same turn (FIX-1816; `dispatchTask({ wait: true })` since FIX-1875).
  *
  * The turn files one row on its conversation's board, or readies one it
- * recorded earlier, marked as waited-on, and parks on an ask gate. When the
+ * recorded earlier, marked as waited-on, and parks on a wait gate. When the
  * row ends, whoever ends it, the same write leaves a resume-owed marker on it
- * ({@link resumeOwedAsks} replays it), and the turn resumes with the row's
+ * ({@link resumeOwedWaits} replays it), and the turn resumes with the row's
  * output as the call's answer, or with an error naming how it ended. Nothing
  * holds a request open while it waits.
  *
@@ -22,24 +22,24 @@
  *   timeout, it cancels its row. It clears the marker itself once it has the
  *   outcome, so a resume whose marker clear was lost to a crash is still
  *   settled.
- * - {@link resumeOwedAsks}, the waker: a touch of the board resumes every
- *   turn its rows are owed, through `ctx.requestHost.resumeAsk`. It stops at
+ * - {@link resumeOwedWaits}, the waker: a touch of the board resumes every
+ *   turn its rows are owed, through `ctx.requestHost.resumeWait`. It stops at
  *   once when no row owes one. Never called inside the waiting turn.
  *
  * The `wait` field is the task tools' (`../../skills/task-tools-capability.ts`):
  * the schema it appears in and the check on who may be assigned are theirs.
  * This module is the mechanism under them, and the notice entry that hears a
- * waited-on row end calls {@link resumeOwedAsks}.
+ * waited-on row end calls {@link resumeOwedWaits}.
  */
 import {
   WaitEndedError,
   WaitStoppedError,
-  parkOnAsk,
+  parkOnWait,
   parseBlockInstanceId,
-  recordedAskOutcome,
+  recordedWaitOutcome,
   requireRequestHost
 } from "@flow-state-dev/core";
-import type { AskOutcome, BlockContext } from "@flow-state-dev/core/types";
+import type { WaitOutcome, BlockContext } from "@flow-state-dev/core/types";
 import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskInit } from "../schema/task-init";
@@ -58,23 +58,23 @@ export const MIN_WAIT_TIMEOUT_MS = 30_000;
 export const MAX_WAIT_TIMEOUT_MS = 60 * 60_000;
 
 /**
- * The stem of the gate an asked row's turn parks on: the board and the row.
+ * The stem of the gate a waited-on row's turn parks on: the board and the row.
  * A filing adds its own nonce after `#`, so the gate names one filing; read
- * a row's gate from `row.ask.gateId`, never by rebuilding it.
+ * a row's gate from `row.wait.gateId`, never by rebuilding it.
  */
-export function askGateId(collectionId: string, taskId: string): string {
+export function waitGateId(collectionId: string, taskId: string): string {
   return `ask:${collectionId}:${taskId}`;
 }
 
 /**
  * Whether the running turn's host can hold a wait (FIX-1816 BR-5): durable
- * execution (the ask resume is wired) and a durability sweeper that bounds
- * every wait (`RequestHost.hasAskSweeper`). Read off the server's request
+ * execution (the wait resume is wired) and a durability sweeper that bounds
+ * every wait (`RequestHost.hasWaitSweeper`). Read off the server's request
  * host, never from input.
  */
 export function canHoldWait(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
   const host = ctx.requestHost;
-  return host?.resumeAsk !== undefined && host.hasAskSweeper === true;
+  return host?.resumeWait !== undefined && host.hasWaitSweeper === true;
 }
 
 /** What {@link dispatchAndWait} returns. */
@@ -83,9 +83,9 @@ export type DispatchAndWaitResult =
   | {
       readonly ok: false;
       /**
-       * - `wait_already_pending`: this step already waits on another ask. Nothing
+       * - `wait_already_pending`: this step already waits on another wait. Nothing
        *   was filed.
-       * - `wait_unavailable`: this turn, host or board cannot hold an ask (a
+       * - `wait_unavailable`: this turn, host or board cannot hold a wait (a
        *   task turn, no durable execution, or a board that keeps no resume
        *   marker). Nothing was filed.
        * - `wait_timeout_out_of_range`: `timeoutMs` is outside 30 seconds to an
@@ -93,7 +93,7 @@ export type DispatchAndWaitResult =
        * - `task_not_dispatchable`: the recorded row named can't be dispatched
        *   (claimed, running, ended, already dispatched or already waited on).
        *   Nothing was written.
-       * - `wait_timed_out`, `wait_task_failed`, `wait_task_cancelled`: the ask
+       * - `wait_timed_out`, `wait_task_failed`, `wait_task_cancelled`: the wait
        *   was filed and ended without an answer.
        */
       readonly error:
@@ -104,7 +104,7 @@ export type DispatchAndWaitResult =
         | "wait_timed_out"
         | "wait_task_failed"
         | "wait_task_cancelled"
-        /** The person stopped the asking turn; the turn ends, so no model reads this. */
+        /** The person stopped the waiting turn; the turn ends, so no model reads this. */
         | "wait_stopped";
       readonly taskId?: string;
       readonly message?: string;
@@ -133,24 +133,24 @@ export function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: str
   return { logicalId, stepKey };
 }
 
-/** How an ended row answers the turn that asked. */
+/** How an ended row answers the turn that filed it. */
 function outcomeOf(
   task: Pick<Task, "status" | "output" | "error">
-): Exclude<AskOutcome, { stopped: true }> {
+): Exclude<WaitOutcome, { stopped: true }> {
   switch (task.status) {
     case "completed":
       return { answered: true, answer: task.output };
     case "cancelled":
       return {
         answered: false,
-        error: { code: "wait_task_cancelled", message: "The asked task was cancelled." }
+        error: { code: "wait_task_cancelled", message: "The waited-on task was cancelled." }
       };
     default:
       return {
         answered: false,
         error: {
           code: "wait_task_failed",
-          message: `The asked task failed: ${task.error ?? "no reason given"}`
+          message: `The waited-on task failed: ${task.error ?? "no reason given"}`
         }
       };
   }
@@ -176,7 +176,7 @@ export interface DispatchRef {
 }
 
 /** What a dispatch waits on: a new row's init, or a recorded row by id. */
-export type DispatchTarget = Omit<TaskInit, "ask"> | DispatchRef;
+export type DispatchTarget = Omit<TaskInit, "wait"> | DispatchRef;
 
 /** The row a waiting call filed or readied, and the gate it parks on. */
 export interface FiledWait {
@@ -297,18 +297,18 @@ export async function fileWaitedRow(
       // gate carries a nonce of this plan's, so a row is adopted only when
       // this very call filed or readied it.
       const taskId = "taskId" in target ? target.taskId : (target.id ?? `task_${crypto.randomUUID()}`);
-      return { taskId, gateId: `${askGateId(collection.collectionId, taskId)}#${crypto.randomUUID()}` };
+      return { taskId, gateId: `${waitGateId(collection.collectionId, taskId)}#${crypto.randomUUID()}` };
     });
     const existing = collection.get(planned.taskId);
-    if (existing?.ask != null && existing.ask.gateId === planned.gateId) {
-      return { taskId: planned.taskId, gateId: planned.gateId, deadline: existing.ask.deadline };
+    if (existing?.wait != null && existing.wait.gateId === planned.gateId) {
+      return { taskId: planned.taskId, gateId: planned.gateId, deadline: existing.wait.deadline };
     }
     const deadline = Date.now() + timeoutMs;
     if ("taskId" in target) {
       const outcome = await collection.dispatch!(planned.taskId, {
         call: logicalId,
         ...(target.assignee !== undefined ? { assignee: target.assignee } : {}),
-        ask: { gateId: planned.gateId, deadline }
+        wait: { gateId: planned.gateId, deadline }
       });
       if (outcome.outcome === "declined") {
         return { refused: notDispatchableMessage(planned.taskId, outcome), taskId: planned.taskId };
@@ -320,10 +320,10 @@ export async function fileWaitedRow(
       // for a minted id, a corrupt memo or a programming error: thrown, never
       // adopted, as the one insert under that id would refuse it.
       throw new Error(
-        `Task "${planned.taskId}" already exists and isn't this ask's filing; it was not adopted. Nothing was filed.`
+        `Task "${planned.taskId}" already exists and isn't this wait's filing; it was not adopted. Nothing was filed.`
       );
     }
-    await collection.addTask({ ...target, id: planned.taskId, ask: { gateId: planned.gateId, deadline } });
+    await collection.addTask({ ...target, id: planned.taskId, wait: { gateId: planned.gateId, deadline } });
     return { taskId: planned.taskId, gateId: planned.gateId, deadline };
   });
   return filed;
@@ -367,7 +367,7 @@ export async function parkOnFiledRow(
       await collection.clearResumeOwed!(filed.taskId);
     } catch (error) {
       console.warn(
-        `[orchestration] ask "${filed.taskId}": its resume-owed marker was left for the next touch: ${(error as Error).message}`
+        `[orchestration] wait "${filed.taskId}": its resume-owed marker was left for the next touch: ${(error as Error).message}`
       );
     }
   };
@@ -379,7 +379,7 @@ export async function parkOnFiledRow(
   };
 
   /**
-   * The person stopped the turn while it waited (BR-16): end the asked row,
+   * The person stopped the turn while it waited (BR-16): end the waited-on row,
    * clear what it owes, and end this turn `aborted`, with no further model
    * call. Safe to run again on a re-drive after a crash (BR-16c): a row that
    * already ended is left as it is. The turn ends even when that cleanup
@@ -388,7 +388,7 @@ export async function parkOnFiledRow(
    */
   const endStopped = async (): Promise<DispatchAndWaitResult> => {
     try {
-      await cancelOrOwe(collection, filed.taskId, "The asking turn was stopped.");
+      await cancelOrOwe(collection, filed.taskId, "The waiting turn was stopped.");
       await clearMarker();
     } finally {
       await ctx.session?.stopRequest?.(ctx.request.identity.id);
@@ -397,7 +397,7 @@ export async function parkOnFiledRow(
       ok: false,
       error: "wait_stopped",
       taskId: filed.taskId,
-      message: "The asking turn was stopped."
+      message: "The waiting turn was stopped."
     };
   };
 
@@ -405,11 +405,11 @@ export async function parkOnFiledRow(
   // stop already recorded for this gate wins over that ending, so a re-drive
   // after a stop still ends the turn (BR-16c).
   // On a re-drive after a crash, the gate's recorded outcome is what ended
-  // the ask, and it decides: a timeout stays a timeout unless the row ended on
+  // the wait, and it decides: a timeout stays a timeout unless the row ended on
   // its own (a late answer), and every other outcome is the one recorded.
   const row = collection.get(filed.taskId);
   if (row !== undefined && isTerminalStatus(row.status)) {
-    const recorded = await recordedAskOutcome(ctx, park);
+    const recorded = await recordedWaitOutcome(ctx, park);
     if (recorded !== undefined && "stopped" in recorded) return endStopped();
     await clearMarker();
     if (recorded === undefined) return answerOf(filed.taskId, outcomeOf(row));
@@ -420,7 +420,7 @@ export async function parkOnFiledRow(
   }
 
   try {
-    const answer = await parkOnAsk(ctx, park);
+    const answer = await parkOnWait(ctx, park);
     await clearMarker();
     return { ok: true, taskId: filed.taskId, answer };
   } catch (error) {
@@ -428,13 +428,13 @@ export async function parkOnFiledRow(
     // Anything else, the park itself among it, is not ours to handle.
     if (!(error instanceof WaitEndedError)) throw error;
     if (error.code === "wait_timed_out") {
-      // The ask is over: end the row too, so its later ending is dropped.
-      const cancelled = await cancelOrOwe(collection, filed.taskId, ASK_TIMED_OUT_REASON);
+      // The wait is over: end the row too, so its later ending is dropped.
+      const cancelled = await cancelOrOwe(collection, filed.taskId, WAIT_TIMED_OUT_REASON);
       // Unless it had already ended on its own: one that ended after this call
       // read it open and before the gate was written found no gate to resume,
       // and nothing may have touched the board since. Its answer stands; it is
       // late, never later than the deadline, but not lost.
-      // By its own ending time: one that ended after the deadline (the ask's
+      // By its own ending time: one that ended after the deadline (the wait's
       // own timeout cancel among them) leaves the timeout standing.
       const ended = cancelled ? undefined : collection.get(filed.taskId);
       if (ended !== undefined && endedInTime(ended, filed.deadline)) {
@@ -448,29 +448,29 @@ export async function parkOnFiledRow(
 }
 
 /**
- * Whether a timed-out ask's row ended on its own in time to answer instead,
- * by the row's own ending time: completed or failed at or before the ask's
- * deadline, or cancelled strictly before it (by someone else; the ask's own
+ * Whether a timed-out wait's row ended on its own in time to answer instead,
+ * by the row's own ending time: completed or failed at or before the wait's
+ * deadline, or cancelled strictly before it (by someone else; the wait's own
  * timeout cancel lands at or after the deadline). A row with no ending time
  * leaves the timeout standing.
  */
 function endedInTime(row: Pick<Task, "status" | "completedAt">, deadline: number): boolean {
   if (row.completedAt == null) return false;
   if (row.status === "completed" || row.status === "errored") return row.completedAt <= deadline;
-  // A cancel strictly before the deadline was someone else's: the ask's own
+  // A cancel strictly before the deadline was someone else's: the wait's own
   // timeout cancel lands at or after it.
   if (row.status === "cancelled") return row.completedAt < deadline;
   return false;
 }
 
-/** The reason an ask's own timeout cancels its row with. A record for people, never read back. */
-const ASK_TIMED_OUT_REASON = "The ask timed out before the task finished.";
+/** The reason a wait's own timeout cancels its row with. A record for people, never read back. */
+const WAIT_TIMED_OUT_REASON = "The wait timed out before the task finished.";
 
 /**
- * {@link cancelIfOpen} for an ask that is over, which never fails the turn
+ * {@link cancelIfOpen} for a wait that is over, which never fails the turn
  * (FIX-1844): a cancel that throws is recorded on the row as owed
  * (`Task.cancelOwed`), and the next touch of the board pays it
- * ({@link resumeOwedAsks}). A mark that throws too leaves the row open.
+ * ({@link resumeOwedWaits}). A mark that throws too leaves the row open.
  *
  * @returns Whether this call's cancel ended the row; `false` when it threw.
  */
@@ -482,11 +482,11 @@ async function cancelOrOwe(collection: TaskCollectionRef, taskId: string, reason
       if (collection.markCancelOwed === undefined) throw new Error("this board can't record a cancel as owed");
       await collection.markCancelOwed(taskId);
       console.warn(
-        `[orchestration] ask "${taskId}": its cancel failed and is owed, for the next touch: ${(error as Error).message}`
+        `[orchestration] wait "${taskId}": its cancel failed and is owed, for the next touch: ${(error as Error).message}`
       );
     } catch (markError) {
       console.warn(
-        `[orchestration] ask "${taskId}": its cancel failed, and so did recording it as owed; the row stays open: ` +
+        `[orchestration] wait "${taskId}": its cancel failed, and so did recording it as owed; the row stays open: ` +
           `${(error as Error).message}; ${(markError as Error).message}`
       );
     }
@@ -495,7 +495,7 @@ async function cancelOrOwe(collection: TaskCollectionRef, taskId: string, reason
 }
 
 /**
- * Cancel the asked row unless it already ended. Idempotent: a replay after a
+ * Cancel the waited-on row unless it already ended. Idempotent: a replay after a
  * crash cancels again harmlessly, and an ending that won a race stands.
  *
  * @returns Whether this call's cancel ended the row; `false` when the row had
@@ -519,12 +519,12 @@ async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reaso
   }
 }
 
-function answerOf(taskId: string, outcome: Exclude<AskOutcome, { stopped: true }>): DispatchAndWaitResult {
+function answerOf(taskId: string, outcome: Exclude<WaitOutcome, { stopped: true }>): DispatchAndWaitResult {
   if (outcome.answered) return { ok: true, taskId, answer: outcome.answer };
   return { ok: false, error: outcome.error.code, taskId, message: outcome.error.message };
 }
 
-/** What {@link resumeOwedAsks} did, per row. */
+/** What {@link resumeOwedWaits} did, per row. */
 export type ResumeOwedReport = {
   /** Rows whose turn was resumed by this touch. */
   readonly resumed: readonly string[];
@@ -532,14 +532,14 @@ export type ResumeOwedReport = {
   readonly stillOwed: readonly string[];
 };
 
-/** The reason a touch cancels a row whose ask is over with. A record for people, never read back. */
-const ASK_OVER_REASON = "The ask was over (stopped or timed out) before the task finished.";
+/** The reason a touch cancels a row whose wait is over with. A record for people, never read back. */
+const WAIT_OVER_REASON = "The wait was over (stopped or timed out) before the task finished.";
 
 /**
  * Resume every turn this board's rows are owed (the board touch).
  *
  * First it pays every cancel owed (`Task.cancelOwed`, FIX-1844): a row whose
- * ask is over and whose own cancel failed is cancelled now. That ending owes
+ * wait is over and whose own cancel failed is cancelled now. That ending owes
  * no resume. A cancel that throws again stays owed for the next touch.
  *
  * Reads the owed rows with one filtered `list` over the board's loaded rows,
@@ -551,7 +551,7 @@ const ASK_OVER_REASON = "The ask was over (stopped or timed out) before the task
  * parked yet, and clears it itself on reaching the ended row) or another
  * resume holds the turn (`busy`); the next touch tries again.
  */
-export async function resumeOwedAsks(
+export async function resumeOwedWaits(
   ctx: BlockContext,
   collection: TaskCollectionRef
 ): Promise<ResumeOwedReport> {
@@ -559,9 +559,9 @@ export async function resumeOwedAsks(
     // Re-checked here: this loop cancels, so a board that ignores the filter must not cancel every open row.
     if (row.cancelOwed !== true) continue;
     try {
-      await cancelIfOpen(collection, row.id, ASK_OVER_REASON);
+      await cancelIfOpen(collection, row.id, WAIT_OVER_REASON);
     } catch (error) {
-      console.warn(`[orchestration] ask "${row.id}": its owed cancel failed and stays owed: ${(error as Error).message}`);
+      console.warn(`[orchestration] wait "${row.id}": its owed cancel failed and stays owed: ${(error as Error).message}`);
     }
   }
   const owed = collection.list({ resumeOwed: true });
@@ -570,18 +570,18 @@ export async function resumeOwedAsks(
   const resumed: string[] = [];
   const stillOwed: string[] = [];
   for (const row of owed) {
-    if (row.ask == null || host.resumeAsk === undefined || collection.clearResumeOwed === undefined) {
+    if (row.wait == null || host.resumeWait === undefined || collection.clearResumeOwed === undefined) {
       stillOwed.push(row.id);
       continue;
     }
-    let result: Awaited<ReturnType<NonNullable<typeof host.resumeAsk>>>;
+    let result: Awaited<ReturnType<NonNullable<typeof host.resumeWait>>>;
     try {
-      result = await host.resumeAsk({ gateId: row.ask.gateId, outcome: outcomeOf(row) });
+      result = await host.resumeWait({ gateId: row.wait.gateId, outcome: outcomeOf(row) });
     } catch (error) {
       // One row's failed resume stays owed for the next touch, and never
       // stops the rest of the touch: the other rows, or the notices a board
       // run sends after it.
-      console.warn(`[orchestration] ask "${row.id}": its resume failed and stays owed: ${(error as Error).message}`);
+      console.warn(`[orchestration] wait "${row.id}": its resume failed and stays owed: ${(error as Error).message}`);
       stillOwed.push(row.id);
       continue;
     }
@@ -591,7 +591,7 @@ export async function resumeOwedAsks(
       } catch (error) {
         // The marker stays: the next touch finds the gate resolved and clears it.
         console.warn(
-          `[orchestration] ask "${row.id}": resumed, but its resume-owed marker was left for the next touch: ${(error as Error).message}`
+          `[orchestration] wait "${row.id}": resumed, but its resume-owed marker was left for the next touch: ${(error as Error).message}`
         );
         stillOwed.push(row.id);
         continue;

@@ -292,12 +292,12 @@ longer matches the row refuses `fence-rejected`.
 The request host the child sees is four verbs, closed: `parentTask()` reads
 the one row this request was dispatched for, `settleParentTask()` settles it,
 `livenessOf?()` asks whether requests this session dispatched are still
-running, and `resumeAsk?()` resumes a turn in this session parked on an ask
+running, and `resumeWait?()` resumes a turn in this session parked on a wait
 gate (present only with durable execution). Beside them, one fact:
-`hasAskSweeper`, true when this process runs a durability sweeper that times
+`hasWaitSweeper`, true when this process runs a durability sweeper that times
 asks out. `dispatchTask` offers `wait` only when both hold: the board
-opts in with `resumesAsks: true` (whatever runs it calls `resumeOwedAsks`), and
-the host reports `hasAskSweeper`. `addTask` never waits. Identity is
+opts in with `resumesWaits: true` (whatever runs it calls `resumeOwedWaits`), and
+the host reports `hasWaitSweeper`. `addTask` never waits. Identity is
 never a parameter to any of them.
 
 ## The rule that decides everything

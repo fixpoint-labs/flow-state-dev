@@ -749,17 +749,17 @@ to park the turn until the task ends, returning the task's output as `answer`. `
 bounds the wait (30 s to an hour, five minutes by default). On such a board `addTask` and
 `assignTask` record rows that wait for a dispatch, and `addTask` answers
 `{ ok: true, taskId, status: "recorded", note }`. `wait` and `timeoutMs` are in the schema only
-on a board that also resumes asks and a host that can hold a wait: add `resumesAsks: true` only
-when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn (a
+on a board that also resumes waits and a host that can hold a wait: add `resumesWaits: true` only
+when whatever runs the board calls `resumeOwedWaits` as it touches the board outside a turn (a
 board run, a task's notice), and the host has durable execution and a running durability
 sweeper (`canHoldWait`). Both default to `false`, so the standalone `taskTools` and a custom
 resolver offer no `dispatchTask`, and their `addTask` files a row the drain runs. `addTask`
 never waits: a call that sends it a wait field is refused by name, `add_task_does_not_wait`. A
 composing layer that builds its own capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesAsks })`, and
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`, and
 `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds the
 `dispatchTask_<board>` action, which never waits. `listTasks` marks a waited-on row
-`asked: true`. A wait is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
+`waitedOn: true`. A wait is refused on a turn that is itself working a task; `isTaskTurn(ctx)`
 returns true for those turns. See the task board page for limits and errors.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
@@ -775,10 +775,10 @@ For a layer that builds its own board surface:
   subpath, is false), an out-of-range `timeoutMs`, a task turn and a second wait in one step;
   check the assignee yourself first. Bounds: `MIN_WAIT_TIMEOUT_MS`, `MAX_WAIT_TIMEOUT_MS`,
   `DEFAULT_WAIT_TIMEOUT_MS`, there too.
-- `resumeOwedAsks(ctx, collection)` resumes each waiting turn whose asked task has ended. Call
+- `resumeOwedWaits(ctx, collection)` resumes each waiting turn whose waited-on task has ended. Call
   it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
   answer whose resume was lost to a crash is still delivered. It returns at once when nothing
-  is owed. It also cancels each task whose ask was stopped or timed out while the ask's own
+  is owed. It also cancels each task whose wait was stopped or timed out while the wait's own
   cancel failed (`Task.cancelOwed`). Until something touches the board, that task's worker may
   keep running.
 
@@ -820,7 +820,7 @@ moved past (`not_parked_on_question: …`), and a finished one
 doesn't drain the board: on a Workforce conversation's board the task starts on
 its own; on your own board, drain it afterwards. Until the answered task runs again, `assignTask`
 and `updateTask` refuse to move it to another worker (`task_awaiting_answer`), so
-the answer reaches the session that asked.
+the answer reaches the session that filed it.
 
 `addTask` takes `followUpOf` to file new work on a finished task: the follow-up
 is a new task, with the same worker, that runs in the finished task's session. It
@@ -863,7 +863,7 @@ Catch it by type, not with a blanket `catch`: a CAS conflict, a scope-mutation
 timeout, or a storage failure is not a task-state problem and should keep
 propagating.
 
-The one exception is a call that asked for it. `complete` and `fail` accept the
+The one exception is a call that filed it for it. `complete` and `fail` accept the
 advisory options described under [TaskCollection](#taskcollection) above, and a
 refused transition on such a call is a returned `declined` verdict rather than a
 throw, so it never reaches this `catch`.

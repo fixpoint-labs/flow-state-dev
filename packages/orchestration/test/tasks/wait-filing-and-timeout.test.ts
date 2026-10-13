@@ -1,7 +1,7 @@
 /**
- * `dispatchAndWait` on the real collection backings (FIX-1816): the ask is
+ * `dispatchAndWait` on the real collection backings (FIX-1816): the wait is
  * filed once across a crash between its row's commit and the record of the
- * filing, and an ask whose row completed just before its timeout's cancel
+ * filing, and a wait whose row completed just before its timeout's cancel
  * answers with the row, not with a timeout.
  *
  * The turn's context is hand-built (a durable `runOnce` memo that keeps a
@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { dispatchAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
+import { dispatchAndWait, resumeOwedWaits } from "../../src/tasks/helpers/wait-for-response";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 function boardCtx(): BlockContext {
@@ -30,12 +30,12 @@ const boardClock = () => Date.now() + lateBy;
 
 const BACKINGS: Record<string, () => Promise<TaskCollectionRef>> = {
   resource: async () => {
-    const declared = defineTaskCollection({ id: "asks", scope: "user" });
-    const store = Object.assign(createFakeResourceCollection<JsonObject>("asks/**"), { config: declared });
+    const declared = defineTaskCollection({ id: "waits", scope: "user" });
+    const store = Object.assign(createFakeResourceCollection<JsonObject>("waits/**"), { config: declared });
     return getOrCreateTaskCollection({
       ctx: boardCtx(),
       backing: "resource",
-      collectionId: "asks",
+      collectionId: "waits",
       collection: store as ResourceCollectionRef<JsonObject>,
       now: boardClock
     });
@@ -45,7 +45,7 @@ const BACKINGS: Record<string, () => Promise<TaskCollectionRef>> = {
       ctx: boardCtx(),
       backing: "state",
       state: createFakeSequencerState<Record<string, unknown>>({ tasks: {} }),
-      collectionId: "asks",
+      collectionId: "waits",
       now: boardClock
     })
 };
@@ -63,7 +63,7 @@ function turnCtx(memo: Map<string, unknown>, park: Park, callId = "c1"): BlockCo
     _blockIdentity: { blockName: "addTask", blockInstanceId: `req_1:root/step[0]/tool[addTask][0%3A${callId}]:0` },
     session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {}, stopRequest: async () => undefined },
     request: { identity: { type: "request", id: "req_1" } },
-    requestHost: { resumeAsk: async () => ({ ok: true }), hasAskSweeper: true },
+    requestHost: { resumeWait: async () => ({ ok: true }), hasWaitSweeper: true },
     runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
       if (memo.has(key)) return memo.get(key) as T;
       const value = await fn();
@@ -73,7 +73,7 @@ function turnCtx(memo: Map<string, unknown>, park: Park, callId = "c1"): BlockCo
     suspend: async () => {
       if (park === "park") throw new Error("parked");
       if ("stopped" in park) return { answered: false, stopped: true };
-      return { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } };
+      return { answered: false, error: { code: "wait_timed_out", message: "The wait timed out." } };
     }
   } as unknown as BlockContext;
 }
@@ -108,55 +108,55 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       expect(board.list()).toHaveLength(1);
     });
 
-    it("a row that already holds the planned id but isn't this ask's filing is never adopted", async () => {
+    it("a row that already holds the planned id but isn't this wait's filing is never adopted", async () => {
       const board = await build();
       // Someone else's task under the id this call planned (a collision).
       await board.addTask({ id: "task_taken", goal: "someone else's task" });
       const memo = new Map<string, unknown>([
-        [`fsd.ask.plan:${LOGICAL_ID}`, { taskId: "task_taken", gateId: "ask:asks:task_taken" }]
+        [`fsd.ask.plan:${LOGICAL_ID}`, { taskId: "task_taken", gateId: "ask:waits:task_taken" }]
       ]);
-      await expect(dispatchAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow(/isn't this ask's/);
+      await expect(dispatchAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow(/isn't this wait's/);
       const [row] = board.list();
       expect(row).toMatchObject({ id: "task_taken", goal: "someone else's task" });
-      expect(row!.ask).toBeUndefined();
+      expect(row!.wait).toBeUndefined();
     });
 
-    it("leaves the shipped shape under the old filing key, so a process on the earlier code resolves the same ask", async () => {
+    it("leaves the shipped shape under the old filing key, so a process on the earlier code resolves the same wait", async () => {
       const board = await build();
       const memo = new Map<string, unknown>();
       await expect(dispatchAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
       const [row] = board.list();
       // What the earlier code reads back on its replay: the filing, whole.
       const shipped = memo.get(`fsd.ask.file:${LOGICAL_ID}`) as { taskId: string; gateId: string; deadline: number };
-      expect(shipped).toEqual({ taskId: row!.id, gateId: row!.ask!.gateId, deadline: row!.ask!.deadline });
-      expect(board.get(shipped.taskId)?.ask?.gateId).toBe(shipped.gateId);
+      expect(shipped).toEqual({ taskId: row!.id, gateId: row!.wait!.gateId, deadline: row!.wait!.deadline });
+      expect(board.get(shipped.taskId)?.wait?.gateId).toBe(shipped.gateId);
     });
 
     it("keeps a caller's own id, and a second call asking under that id is refused, not adopted", async () => {
       const board = await build();
       await expect(dispatchAndWait(turnCtx(new Map(), "park", "c1"), board, { ...init, id: "root-f1" })).rejects.toThrow("parked");
       expect(board.list().map((row) => row.id)).toEqual(["root-f1"]);
-      const first = board.get("root-f1")!.ask!.gateId;
+      const first = board.get("root-f1")!.wait!.gateId;
       // Another call, another turn's memo, the same follow-up id.
       await expect(dispatchAndWait(turnCtx(new Map(), "park", "c2"), board, { ...init, id: "root-f1" })).rejects.toThrow(
-        /isn't this ask's/
+        /isn't this wait's/
       );
       expect(board.list()).toHaveLength(1);
-      expect(board.get("root-f1")!.ask!.gateId).toBe(first);
+      expect(board.get("root-f1")!.wait!.gateId).toBe(first);
     });
 
-    it("mints a cross-process-unique id for a new ask", async () => {
+    it("mints a cross-process-unique id for a new wait", async () => {
       const board = await build();
       await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
       expect(board.list()[0]!.id).toMatch(/^task_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
-    it("a replay of an ask filed before the id step existed finds that filing, under its old key", async () => {
+    it("a replay of a wait filed before the id step existed finds that filing, under its old key", async () => {
       const board = await build();
       const taskId = "task_legacy";
-      const gateId = `ask:asks:${taskId}`;
+      const gateId = `ask:waits:${taskId}`;
       // What the earlier code recorded: the filing itself, under fsd.ask.file.
-      await board.addTask({ ...init, id: taskId, ask: { gateId, deadline: Date.now() + 300_000 } });
+      await board.addTask({ ...init, id: taskId, wait: { gateId, deadline: Date.now() + 300_000 } });
       const memo = new Map<string, unknown>([
         [`fsd.ask.file:${LOGICAL_ID}`, { taskId, gateId, deadline: Date.now() + 300_000 }]
       ]);
@@ -179,20 +179,20 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       }) as TaskCollectionRef;
       const memo = new Map<string, unknown>();
       await expect(dispatchAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("the process died");
-      // Down for ten minutes, longer than the ask's bound.
+      // Down for ten minutes, longer than the wait's bound.
       const real = Date.now.bind(Date);
       vi.spyOn(Date, "now").mockImplementation(() => real() + 10 * 60_000);
       try {
         const restartedAt = Date.now();
         await expect(dispatchAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("parked");
         const [row] = board.list();
-        expect(row!.ask!.deadline).toBeGreaterThanOrEqual(restartedAt + 60_000);
+        expect(row!.wait!.deadline).toBeGreaterThanOrEqual(restartedAt + 60_000);
       } finally {
         vi.restoreAllMocks();
       }
     });
 
-    it("an ask whose row completed just before its timeout's cancel answers with the row, not wait_timed_out", async () => {
+    it("a wait whose row completed just before its timeout's cancel answers with the row, not wait_timed_out", async () => {
       const board = await build();
       let reads = 0;
       // The row completes as soon as it is filed; the call's reads before the
@@ -246,7 +246,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       expect(result).toMatchObject({ ok: true, answer: "Yes, renewed 2026-08" });
     });
 
-    it("an ask whose row completed after its deadline, just before the timeout's cancel, stays wait_timed_out", async () => {
+    it("a wait whose row completed after its deadline, just before the timeout's cancel, stays wait_timed_out", async () => {
       const board = await build();
       let reads = 0;
       const racing = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
@@ -274,7 +274,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         lateBy = 0;
       }
     });
-    describe("an ask whose own cancel fails (FIX-1844)", () => {
+    describe("a wait whose own cancel fails (FIX-1844)", () => {
       /** The board, with its first cancel failing as a store blip would. */
       function failingFirstCancel(board: TaskCollectionRef): TaskCollectionRef {
         let failed = false;
@@ -293,7 +293,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         ["timed out", { timedOut: true }, "wait_timed_out"],
         ["stopped", { stopped: true }, "wait_stopped"]
       ] as const) {
-        it(`a ${ending} ask still ends as ${error}, and the next touch cancels the row it left open`, async () => {
+        it(`a ${ending} wait still ends as ${error}, and the next touch cancels the row it left open`, async () => {
           const board = await build();
           const blip = failingFirstCancel(board);
 
@@ -304,10 +304,10 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
           const [left] = board.list();
           expect(left).toMatchObject({ status: "pending", cancelOwed: true });
 
-          const touched = await resumeOwedAsks(turnCtx(new Map(), "park"), blip);
+          const touched = await resumeOwedWaits(turnCtx(new Map(), "park"), blip);
           const [row] = board.list();
           expect(row).toMatchObject({ status: "cancelled" });
-          // The ask is over, so its ending owes the turn nothing, and the debt is paid.
+          // The wait is over, so its ending owes the turn nothing, and the debt is paid.
           expect(row?.resumeOwed).toBeUndefined();
           expect(row?.cancelOwed).toBeUndefined();
           expect(touched).toEqual({ resumed: [], stillOwed: [] });
@@ -326,10 +326,10 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         expect(row?.resumeOwed).toBeUndefined();
       });
 
-      it("a touch with no cancel owed leaves an open ask alone", async () => {
+      it("a touch with no cancel owed leaves an open wait alone", async () => {
         const board = await build();
         await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
-        await resumeOwedAsks(turnCtx(new Map(), "park"), board);
+        await resumeOwedWaits(turnCtx(new Map(), "park"), board);
         expect(board.list()[0]).toMatchObject({ status: "pending" });
         expect(board.list()[0]?.cancelOwed).toBeUndefined();
       });
@@ -340,7 +340,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         const unfiltered = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
           list: () => board.list()
         }) as TaskCollectionRef;
-        await resumeOwedAsks(turnCtx(new Map(), "park"), unfiltered);
+        await resumeOwedWaits(turnCtx(new Map(), "park"), unfiltered);
         expect(board.list()[0]).toMatchObject({ status: "pending" });
       });
     });
@@ -356,7 +356,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       const row = board.get("task_rec")!;
       expect(row.undispatched).toBeUndefined();
       expect(row.dispatchCall).toBe(LOGICAL_ID);
-      expect(row.ask?.gateId.startsWith("ask:asks:task_rec#")).toBe(true);
+      expect(row.wait?.gateId.startsWith("ask:waits:task_rec#")).toBe(true);
       expect(board.list()).toHaveLength(1);
     });
 
@@ -376,10 +376,10 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       }) as TaskCollectionRef;
       const memo = new Map<string, unknown>();
       await expect(dispatchAndWait(turnCtx(memo, "park"), dying, { taskId: "task_rec" })).rejects.toThrow("the process died");
-      const gate = board.get("task_rec")!.ask!.gateId;
+      const gate = board.get("task_rec")!.wait!.gateId;
       // The replay of the same call finds its own write by the gate it planned: no refusal, the same park.
       await expect(dispatchAndWait(turnCtx(memo, "park"), dying, { taskId: "task_rec" })).rejects.toThrow("parked");
-      expect(board.get("task_rec")!.ask!.gateId).toBe(gate);
+      expect(board.get("task_rec")!.wait!.gateId).toBe(gate);
     });
 
     it("refuses a row that was never recorded, naming why, and writes nothing (BR-10)", async () => {
@@ -389,7 +389,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       const result = await dispatchAndWait(turnCtx(new Map(), "park"), board, { taskId: "task_ready" });
       expect(result).toMatchObject({ ok: false, error: "task_not_dispatchable", taskId: "task_ready" });
       expect(board.get("task_ready")!.revision).toBe(before);
-      expect(board.get("task_ready")!.ask).toBeUndefined();
+      expect(board.get("task_ready")!.wait).toBeUndefined();
     });
   });
 }

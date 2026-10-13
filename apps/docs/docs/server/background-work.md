@@ -211,7 +211,7 @@ with the task's output as the tool's result. Nothing holds the request open in b
 restart while the turn waits loses nothing: the turn resumes after the restart, and the task is
 filed only once.
 
-Every ask has a time limit: five minutes unless the worker sets its own, anywhere from 30
+Every wait has a time limit: five minutes unless the worker sets its own, anywhere from 30
 seconds to an hour. Asks are timed out by the durability sweeper, a background job the server
 runs whenever durable execution is on (see
 [Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). If the task

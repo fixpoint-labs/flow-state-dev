@@ -2,9 +2,9 @@
  * Resolve a suspension and continue its request, under the request's lease.
  *
  * The one path every resume takes, whoever asks for it: the public resume route
- * (`routes/resume-routes.ts`), a conversation resuming its own ask
- * (`context/ask-resume-operation.ts`), and the durability sweep resuming an
- * overdue ask (`durability/durability-sweeper.ts`). Each caller decides
+ * (`routes/resume-routes.ts`), a conversation resuming its own wait
+ * (`context/wait-resume-operation.ts`), and the durability sweep resuming an
+ * overdue wait (`durability/durability-sweeper.ts`). Each caller decides
  * whether it may resume; this does the part that must be identical for all of
  * them:
  *
@@ -50,7 +50,7 @@ export const RESUME_LEASE_MS = 60_000;
  * Write a pending gate `expired`, fenced under its request's lease: the one
  * way every expiry writer (the durability sweep, the resume route) records an
  * expiry (FIX-1846). Every other resolution of a gate (a person's resume, an
- * ask's answer, a stop) is written under that lease, so the gate re-read while
+ * wait's answer, a stop) is written under that lease, so the gate re-read while
  * holding it is current: a resolution that landed after the caller's own read
  * is never overwritten. `gate` names the gate; its fields are not written.
  * A lease held elsewhere (a resume, or its run) writes nothing: `busy`.
@@ -162,7 +162,7 @@ export async function resumeUnderLease<TRefusal>(
  * lease is released and the gate keeps its resolution for the next sweep: here
  * the error is rethrown; after the handle is returned, `runAction`'s
  * pre-transition recovery leaves the gates a re-drive continues (an answered
- * ask, a stop) resolved.
+ * wait, a stop) resolved.
  */
 export async function continueUnderLease<TRefusal>(
   deps: ResumeDeps,

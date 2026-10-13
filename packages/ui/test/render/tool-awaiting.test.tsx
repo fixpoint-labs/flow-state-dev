@@ -2,7 +2,7 @@
 /**
  * A tool call waiting on an approval or a question reads as awaiting, not as
  * an error. The engine records the wait as a failed call coded `SUSPENSION`,
- * with the ask's message as its error; drawn as an error, a user who already
+ * with the suspension's message as its error; drawn as an error, a user who already
  * answered sees the call as failed until the run's real result lands.
  *
  * Renders registry source the way `status-tokens.test.tsx` does.

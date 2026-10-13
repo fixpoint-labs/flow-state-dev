@@ -1,13 +1,13 @@
 /**
- * The ask gate and its server-side resume, end to end through `runAction`.
+ * The wait gate and its server-side resume, end to end through `runAction`.
  *
- * A turn's tool parks on an ask gate. A later request in the SAME conversation
- * resumes it through `ctx.requestHost.resumeAsk`, and the parked request
+ * A turn's tool parks on a wait gate. A later request in the SAME conversation
+ * resumes it through `ctx.requestHost.resumeWait`, and the parked request
  * continues under its own id, with the answer as the tool's result. Nothing
  * here files a task: the board and the row arrive with the hand-off itself;
  * this proves the park, the resume and the fence they stand on.
  *
- * The asking turn is a generator inside a plain (non-durable) sequencer — the
+ * The waiting turn is a generator inside a plain (non-durable) sequencer — the
  * shape a Workforce turn has — so this also pins that `ctx.suspend()` needs a
  * durability provider, not a durable sequencer.
  */
@@ -16,18 +16,18 @@ import {
   defineFlow,
   generator,
   handler,
-  parkOnAsk,
+  parkOnWait,
   requireRequestHost,
   sequencer
 } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
-  AskOutcome,
+  WaitOutcome,
   FlowInstance,
   GeneratorModel,
   GeneratorModelCallOptions,
   GeneratorModelResult,
-  ResumeAskResult
+  ResumeWaitResult
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -40,8 +40,8 @@ import {
   runAction
 } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import { createAskResumeOperation } from "../src/context/ask-resume-operation";
-import { resumeAskGate } from "../src/durability/resume-ask-gate";
+import { createWaitResumeOperation } from "../src/context/wait-resume-operation";
+import { resumeWaitGate } from "../src/durability/resume-wait-gate";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import { runTick } from "../src/durability/durability-sweeper";
 import type { ExecutionResult } from "../src/execution/types";
@@ -82,20 +82,20 @@ function toolResults(messages: unknown[]): string[] {
 const GATE_ID = "gate_ask_1";
 
 /**
- * A flow with an asking turn and a `touch` action that resumes an ask gate,
+ * A flow with a waiting turn and a `touch` action that resumes a wait gate,
  * standing in for the board touch that will call the verb.
  */
-function askFlow(
+function waitFlow(
   model: GeneratorModel,
   sideEffects: { count: number },
   options: { deadline?: () => number } = {}
 ) {
-  const ask = handler({
-    name: "ask_colleague",
+  const wait = handler({
+    name: "wait_on_colleague",
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.object({ answer: z.unknown() }),
     execute: async (_input, ctx) => {
-      const answer = await parkOnAsk(ctx, {
+      const answer = await parkOnWait(ctx, {
         gateId: GATE_ID,
         binding: { board: "conversation", taskId: "task_1" },
         ...(options.deadline !== undefined ? { deadline: options.deadline() } : {})
@@ -104,7 +104,7 @@ function askFlow(
       return { answer };
     }
   });
-  const agent = generator({ name: "agent", model, prompt: "p", tools: [ask] });
+  const agent = generator({ name: "agent", model, prompt: "p", tools: [wait] });
   const turn = sequencer({ name: "turn" }).step(agent);
 
   const touch = handler({
@@ -113,19 +113,19 @@ function askFlow(
     outputSchema: z.any(),
     execute: async (input, ctx) => {
       const host = requireRequestHost(ctx);
-      if (host.resumeAsk === undefined) return { absent: true };
-      return host.resumeAsk({ gateId: input.gateId, outcome: input.outcome as AskOutcome });
+      if (host.resumeWait === undefined) return { absent: true };
+      return host.resumeWait({ gateId: input.gateId, outcome: input.outcome as WaitOutcome });
     }
   });
 
   return defineFlow({
-    kind: "ask-resume",
+    kind: "wait-resume",
     actions: {
       run: { block: turn, inputSchema: z.object({}).passthrough() },
       touch: { block: touch }
     },
     internal: { actions: { work: { block: turn } } }
-  })({ id: "ask-resume" });
+  })({ id: "wait-resume" });
 }
 
 function setup(flow: FlowInstance, options: { durable?: boolean } = {}) {
@@ -138,7 +138,7 @@ function setup(flow: FlowInstance, options: { durable?: boolean } = {}) {
   if (options.durable !== false) {
     runtimeConfig.durabilityProvider = provider;
     runtimeConfig.requestHost = {
-      askResume: createAskResumeOperation({
+      waitResume: createWaitResumeOperation({
         provider,
         stores,
         continueRequest: async (opts) => {
@@ -182,9 +182,9 @@ async function startTurn(
 async function touch(
   h: Harness,
   flow: FlowInstance,
-  outcome: AskOutcome,
+  outcome: WaitOutcome,
   options: { sessionId?: string; userId?: string; gateId?: string } = {}
-): Promise<ResumeAskResult & { absent?: true }> {
+): Promise<ResumeWaitResult & { absent?: true }> {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
@@ -196,25 +196,32 @@ async function touch(
     runtimeConfig: h.runtimeConfig
   });
   expect(result.error).toBeUndefined();
-  return result.output as ResumeAskResult & { absent?: true };
+  return result.output as ResumeWaitResult & { absent?: true };
 }
 
-function askingModel() {
+function waitingModel() {
   return stepModel([
     () => ({
-      toolCalls: [{ toolCallId: "c1", toolName: "ask_colleague", args: { question: "SOC 2?" } }],
+      toolCalls: [{ toolCallId: "c1", toolName: "wait_on_colleague", args: { question: "SOC 2?" } }],
       finishReason: "tool-calls"
     }),
     (opts) => ({ text: `done: ${toolResults(opts.messages).join(" | ")}`, finishReason: "stop" })
   ]);
 }
 
-describe("ask gate: park, and resume from the asker's own conversation", () => {
+/** Store the parked gate under the reason the build before the rename wrote (WR-9). */
+async function storeUnderOldReason(h: Harness, requestId: string): Promise<void> {
+  const gate = await h.provider.loadSuspension(requestId, GATE_ID);
+  expect(gate?.reason).toBe("wait");
+  await h.stores.suspensions.set({ ...gate!, reason: "ask" }); // retired-name-refusal: WR-9, a gate parked before the rename
+}
+
+describe("wait gate: park, and resume from the waiting turn's own conversation", () => {
   for (const source of ["http", "internal"] as const) {
     it(`a ${source}-source turn parks on the gate and resumes with the answer as the tool's result`, async () => {
-      const { model, seen } = askingModel();
+      const { model, seen } = waitingModel();
       const sideEffects = { count: 0 };
-      const flow = askFlow(model, sideEffects);
+      const flow = waitFlow(model, sideEffects);
       const h = setup(flow);
 
       const parked = await startTurn(h, flow, {
@@ -227,7 +234,7 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
       // The gate carries the wait binding and the id the caller chose.
       const gate = await h.provider.loadSuspension(requestId, GATE_ID);
       expect(gate).toMatchObject({
-        reason: "ask",
+        reason: "wait",
         status: "pending",
         data: { board: "conversation", taskId: "task_1" }
       });
@@ -251,9 +258,9 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
     });
   }
 
-  it("an ask that ended without an answer reaches the model as the tool's error", async () => {
-    const { model, seen } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+  it("a wait that ended without an answer reaches the model as the tool's error", async () => {
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
 
@@ -273,9 +280,9 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
   });
 
   it("resumes once: a second resume of the same gate is refused and changes nothing", async () => {
-    const { model, seen } = askingModel();
+    const { model, seen } = waitingModel();
     const sideEffects = { count: 0 };
-    const flow = askFlow(model, sideEffects);
+    const flow = waitFlow(model, sideEffects);
     const h = setup(flow);
     const parked = await startTurn(h, flow);
 
@@ -295,8 +302,8 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
   });
 
   it("a gate resolved before the turn finished refuses a second resume as already-resolved", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     const requestId = parked.requestId!;
@@ -314,19 +321,19 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
     };
     const gate = { requestId, suspensionId: GATE_ID };
 
-    expect(await resumeAskGate(deps, gate, { answered: true, answer: "first" }, "test")).toEqual({
+    expect(await resumeWaitGate(deps, gate, { answered: true, answer: "first" }, "test")).toEqual({
       ok: true
     });
     // While the continuation runs it holds the turn's lease, and a second
     // resume is refused `busy`. Once the lease is gone (the turn parked again
     // elsewhere, or the lease ran out) the gate itself refuses.
-    expect(await resumeAskGate(deps, gate, { answered: true, answer: "x" }, "test")).toMatchObject({
+    expect(await resumeWaitGate(deps, gate, { answered: true, answer: "x" }, "test")).toMatchObject({
       ok: false,
       refused: "busy"
     });
     const lease = await h.stores.leases.get(requestId);
     await h.provider.releaseLease(requestId, lease!.leaseId);
-    const second = await resumeAskGate(deps, gate, { answered: true, answer: "second" }, "test");
+    const second = await resumeWaitGate(deps, gate, { answered: true, answer: "second" }, "test");
     expect(second).toMatchObject({ ok: false, refused: "already-resolved" });
     expect(continuations).toBe(1);
     expect((await h.provider.loadSuspension(requestId, GATE_ID))?.resumeData).toEqual({
@@ -336,14 +343,14 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
   });
 
   it("a resume racing another for the same turn is refused busy and leaves the gate pending", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     const requestId = parked.requestId!;
     await h.provider.acquireLease(requestId, { holder: "other-resume", durationMs: 60_000 });
 
-    const result = await resumeAskGate(
+    const result = await resumeWaitGate(
       {
         provider: h.provider,
         stores: h.stores,
@@ -361,13 +368,13 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
 
   it("two turns in one conversation parked on the same gate id: refused as ambiguous, neither resumed", async () => {
     // Gate ids are unique per request, not per session. Guessing which turn
-    // an answer belongs to would hand one ask's answer to the other.
-    const askStep: StepFn = () => ({
-      toolCalls: [{ toolCallId: "c1", toolName: "ask_colleague", args: { question: "SOC 2?" } }],
+    // an answer belongs to would hand one wait's answer to the other.
+    const waitStep: StepFn = () => ({
+      toolCalls: [{ toolCallId: "c1", toolName: "wait_on_colleague", args: { question: "SOC 2?" } }],
       finishReason: "tool-calls"
     });
-    const { model } = stepModel([askStep, askStep]);
-    const flow = askFlow(model, { count: 0 });
+    const { model } = stepModel([waitStep, waitStep]);
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const first = await startTurn(h, flow);
     const second = await startTurn(h, flow);
@@ -386,8 +393,8 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
   });
 
   it("a newer gate with the same id that this conversation does not own does not mask the real one", async () => {
-    const { model, seen } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     const real = await h.provider.loadSuspension(parked.requestId!, GATE_ID);
@@ -415,8 +422,8 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
   });
 
   it("another conversation cannot resume the turn, even holding the gate's id", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
 
@@ -437,7 +444,7 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
   });
 
-  it("does not resume a gate that is not an ask: a person's approval answers not-found", async () => {
+  it("does not resume a gate that is not a wait gate: a person's approval answers not-found", async () => {
     const approve = handler({
       name: "approve",
       inputSchema: z.object({}).passthrough(),
@@ -450,12 +457,12 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
       inputSchema: z.object({ gateId: z.string(), outcome: z.any() }),
       outputSchema: z.any(),
       execute: async (input, ctx) =>
-        requireRequestHost(ctx).resumeAsk!({ gateId: input.gateId, outcome: input.outcome })
+        requireRequestHost(ctx).resumeWait!({ gateId: input.gateId, outcome: input.outcome })
     });
     const flow = defineFlow({
-      kind: "ask-resume",
+      kind: "wait-resume",
       actions: { run: { block: approve }, touch: { block: touchBlock } }
-    })({ id: "ask-resume" });
+    })({ id: "wait-resume" });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
@@ -465,15 +472,15 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
   });
 
-  it("the public resume route answers not-found for an ask gate, whatever the source", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+  it("the public resume route answers not-found for a wait gate, whatever the source", async () => {
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow);
     const parked = await startTurn(h, flow); // an http-source turn
     const requestId = parked.requestId!;
 
     const response = await handleResumeSuspension(
-      new Request(`https://x/api/flows/ask-resume/requests/${requestId}/resume`, {
+      new Request(`https://x/api/flows/wait-resume/requests/${requestId}/resume`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -482,7 +489,49 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
           data: { answered: true, answer: "forged" }
         })
       }),
-      { kind: "resume_suspension", flowKind: "ask-resume", requestId },
+      { kind: "resume_suspension", flowKind: "wait-resume", requestId },
+      {
+        host: {} as never,
+        registry: h.registry,
+        stores: h.stores,
+        durabilityProvider: h.provider,
+        seams: {} as never,
+        requestContext: {} as never
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
+  it("resumes a gate stored under its old reason, parked before the rename, with the answer (WR-9)", async () => {
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+    await storeUnderOldReason(h, parked.requestId!);
+
+    expect(await touch(h, flow, { answered: true, answer: "Yes, renewed 2026-08" })).toEqual({ ok: true });
+    await h.continued[0];
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("completed");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("Yes, renewed 2026-08");
+  });
+
+  it("the public resume route answers not-found for a gate stored under its old reason too (WR-10)", async () => {
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
+    const h = setup(flow);
+    const requestId = (await startTurn(h, flow)).requestId!;
+    await storeUnderOldReason(h, requestId);
+
+    const response = await handleResumeSuspension(
+      new Request(`https://x/api/flows/wait-resume/requests/${requestId}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: GATE_ID, action: "submit", data: { answered: true, answer: "forged" } })
+      }),
+      { kind: "resume_suspension", flowKind: "wait-resume", requestId },
       {
         host: {} as never,
         registry: h.registry,
@@ -499,14 +548,14 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
   });
 
   it("OFF STATE: without durable execution the verb is absent", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const h = setup(flow, { durable: false });
     expect(await touch(h, flow, { answered: true, answer: "x" })).toEqual({ absent: true });
   });
 });
 
-describe("ask gate on the shipped runtime, with no router (the colocated-worker shape)", () => {
+describe("wait gate on the shipped runtime, with no router (the colocated-worker shape)", () => {
   async function runOn(
     state: ReturnType<typeof createFlowState>,
     flow: FlowInstance,
@@ -527,10 +576,10 @@ describe("ask gate on the shipped runtime, with no router (the colocated-worker 
   }
 
   it("createFlowState wires the verb for a durable runtime, and a turn resumes through it", async () => {
-    const { model, seen } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const state = createFlowState({
-      flows: { "ask-resume": flow },
+      flows: { "wait-resume": flow },
       stores: { default: { primary: inMemoryStores() } },
       durable: true
     });
@@ -557,10 +606,10 @@ describe("ask gate on the shipped runtime, with no router (the colocated-worker 
   });
 
   it("OFF STATE: a runtime without durable execution has no verb", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 });
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 });
     const state = createFlowState({
-      flows: { "ask-resume": flow },
+      flows: { "wait-resume": flow },
       stores: { default: { primary: inMemoryStores() } }
     });
     try {
@@ -575,7 +624,7 @@ describe("ask gate on the shipped runtime, with no router (the colocated-worker 
   });
 });
 
-describe("ask gate past its deadline: the durability sweep resumes it with wait_timed_out", () => {
+describe("wait gate past its deadline: the durability sweep resumes it with wait_timed_out", () => {
   function tick(h: Harness, withContinue = true, logs: Array<[string, string, unknown]> = []) {
     const record = (level: string) => (message: string, context: Record<string, unknown>) =>
       logs.push([level, message, context]);
@@ -607,8 +656,8 @@ describe("ask gate past its deadline: the durability sweep resumes it with wait_
   }
 
   it("a real sweep tick resumes the overdue turn with the timeout error, never marking the gate expired", async () => {
-    const { model, seen } = askingModel();
-    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     const requestId = parked.requestId!;
@@ -624,9 +673,26 @@ describe("ask gate past its deadline: the durability sweep resumes it with wait_
     expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
   });
 
-  it("an ask gate not yet past its deadline is left alone", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 600_000 });
+  it("times out a gate stored under its old reason the same way, never marking it expired (WR-9)", async () => {
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const h = setup(flow);
+    const requestId = (await startTurn(h, flow)).requestId!;
+    await storeUnderOldReason(h, requestId);
+    await new Promise((r) => setTimeout(r, 20));
+
+    await tick(h);
+
+    expect(h.continued).toHaveLength(1);
+    await h.continued[0];
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).not.toBe("expired");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
+  });
+
+  it("a wait gate not yet past its deadline is left alone", async () => {
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 600_000 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
 
@@ -636,9 +702,9 @@ describe("ask gate past its deadline: the durability sweep resumes it with wait_
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
   });
 
-  it("a sweep with no way to continue a request leaves an overdue ask pending rather than stranding it", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+  it("a sweep with no way to continue a request leaves an overdue wait pending rather than stranding it", async () => {
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     await new Promise((r) => setTimeout(r, 20));
@@ -649,13 +715,13 @@ describe("ask gate past its deadline: the durability sweep resumes it with wait_
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
     expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
     // Said once per tick, with how many were left.
-    const skipped = logs.filter(([, m]) => m.includes("overdue ask gates left pending"));
+    const skipped = logs.filter(([, m]) => m.includes("overdue wait gates left pending"));
     expect(skipped).toEqual([["warn", expect.any(String), { count: 1 }]]);
   });
 
   it("an overdue gate still listed pending whose turn is past waiting is left alone, with one warning", async () => {
-    const { model } = askingModel();
-    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const { model } = waitingModel();
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
     await new Promise((r) => setTimeout(r, 20));
@@ -668,7 +734,7 @@ describe("ask gate past its deadline: the durability sweep resumes it with wait_
 
     expect(h.continued).toHaveLength(0);
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
-    const warned = logs.filter(([, m]) => m.includes("overdue ask gate already resolved"));
+    const warned = logs.filter(([, m]) => m.includes("overdue wait gate already resolved"));
     expect(warned).toHaveLength(1);
     expect(warned[0]![0]).toBe("warn");
   });
