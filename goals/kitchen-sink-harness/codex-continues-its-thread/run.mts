@@ -118,8 +118,8 @@ async function newSession(page: Page): Promise<string> {
 
 /** Send a turn and wait for it to end. Returns whether a Codex step showed while it ran, and the notice's kind. */
 async function turn(page: Page, prompt: string): Promise<{ sawStepWhileRunning: boolean; kind: string | null }> {
-  const conversationText = async () => (await page.getByTestId("conversation").textContent()) ?? "";
-  const withPrompt = (await conversationText()).length + prompt.length;
+  const commandRows = () => page.getByTestId("conversation").locator('[data-testid="tool-group"], [data-testid="tool-row"]').count();
+  const rowsBefore = await commandRows();
   const input = page.getByTestId("message-input");
   await input.fill(prompt);
   await input.press("Enter");
@@ -128,8 +128,8 @@ async function turn(page: Page, prompt: string): Promise<{ sawStepWhileRunning: 
   const deadline = Date.now() + TURN_MS;
   while (Date.now() < deadline) {
     if (!(await stopButton(page).isVisible())) break;
-    // Text beyond the prompt while the turn still runs: one of Codex's steps.
-    if ((await conversationText()).length > withPrompt) sawStepWhileRunning = true;
+    // A command row while the turn still runs: one of Codex's steps, not the working indicator.
+    if ((await commandRows()) > rowsBefore) sawStepWhileRunning = true;
     await page.waitForTimeout(500);
   }
   await notice(page).waitFor({ state: "visible", timeout: 30_000 });
