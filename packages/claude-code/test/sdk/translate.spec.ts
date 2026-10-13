@@ -35,9 +35,6 @@ describe("translateSdkMessage", () => {
   });
 
   it("emits no reasoning for a thinking block with no text", () => {
-    // The SDK returns thinking blocks with the text withheld. An empty reasoning
-    // item renders as a "Thinking" chevron with nothing inside, and sits between
-    // tool calls so they never group.
     for (const thinking of ["", "  \n"]) {
       const events = translateOne({
         type: "assistant",
@@ -57,47 +54,21 @@ describe("translateSdkMessage", () => {
     expect(events[0]).toEqual({ kind: "tool_call", callId: "toolu_1", name: "Bash", arguments: '{"command":"ls"}' });
   });
 
-  it("announces a tool call with the call's own description as the live status", () => {
-    // `description` is the agent's one-line statement of intent for the command.
-    const events = translateOne({
-      type: "assistant",
-      message: {
-        content: [
-          {
-            type: "tool_use",
-            id: "toolu_d",
-            name: "Bash",
-            input: { command: "ls", description: "  Check devtool layout, theme toggle  " },
-          },
-        ],
-      },
-    });
-    expect(events.map((e) => e.kind)).toEqual(["tool_call", "status"]);
-    expect(events[1]).toEqual({ kind: "status", message: "Check devtool layout, theme toggle" });
-  });
-
-  it("does not read another tool's `description` as intent", () => {
-    // `description` is a domain field on many tools (an issue body, a page, a
-    // calendar event). Only Bash defines it as the call's one-line intent, so
-    // anything else announced by name, never by whatever text it carries.
-    const body = "## Overview\n" + "long markdown body ".repeat(500);
-    const events = translateOne({
-      type: "assistant",
-      message: {
-        content: [
-          { type: "tool_use", id: "toolu_s", name: "mcp__claude_ai_Linear__save_issue", input: { title: "t", description: body } },
-        ],
-      },
-    });
-    expect(events[1]).toEqual({ kind: "status", message: "Using mcp__claude_ai_Linear__save_issue…" });
-  });
-
-  it("announces a tool call that states no intent by tool name, like the framework's own tool loop", () => {
-    const events = translateOne({
-      type: "assistant",
-      message: { content: [{ type: "tool_use", id: "toolu_r", name: "Read", input: { path: "a" } }] },
-    });
-    expect(events[1]).toEqual({ kind: "status", message: "Using Read…" });
+  it("sets live status from Bash's description, and from the tool name otherwise", () => {
+    const longBody = "## Overview\n" + "long markdown body ".repeat(500);
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ["Bash", { command: "ls", description: "  Check devtool layout, theme toggle  " }, "Check devtool layout, theme toggle"],
+      ["mcp__claude_ai_Linear__save_issue", { title: "t", description: longBody }, "Using mcp__claude_ai_Linear__save_issue…"],
+      ["Read", { path: "a" }, "Using Read…"],
+    ];
+    for (const [name, input, message] of cases) {
+      const events = translateOne({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "toolu_s", name, input }] },
+      });
+      expect(events.map((event) => event.kind)).toEqual(["tool_call", "status"]);
+      expect(events[1]).toEqual({ kind: "status", message });
+    }
   });
 
   it("does not stream a thinking_delta with no text", () => {
@@ -365,8 +336,6 @@ describe("translateSdkMessage", () => {
   });
 
   it("emits nothing for a system init message", () => {
-    // The session id reaches the host through `onSession`. A "session started"
-    // line says nothing a person acts on, and read as stale once the run was working.
     const events = translateOne({ type: "system", subtype: "init", session_id: "s" });
     expect(events).toEqual([]);
   });

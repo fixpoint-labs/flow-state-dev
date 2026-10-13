@@ -86,8 +86,6 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
     if (info === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms` };
     const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
     const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
-    // A subscription sign-in names no key or token source: it comes back as who
-    // is signed in and on what plan.
     const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
     const subscriptionType =
       typeof info.subscriptionType === "string" && info.subscriptionType !== "" ? info.subscriptionType : undefined;

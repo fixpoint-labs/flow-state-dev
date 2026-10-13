@@ -323,23 +323,6 @@ export function translateSdkMessage(
 }
 
 /**
- * The tools whose `description` input is the agent's one-line statement of
- * intent for the call. `description` is a domain field on many other tools (an
- * issue body, a page, an event), so it is read by tool name, not by field name.
- */
-const INTENT_DESCRIPTION_TOOLS = new Set(["Bash"]);
-
-/**
- * What a tool call tells the person while it runs: the call's own
- * `description` when the tool defines one as intent, else `Using <tool>…`, the
- * line the framework's own tool loop emits.
- */
-function toolStatus(name: string, input: unknown): string {
-  const description = INTENT_DESCRIPTION_TOOLS.has(name) ? readString(input, "description")?.trim() : undefined;
-  return description !== undefined && description !== "" ? description : `Using ${name}…`;
-}
-
-/**
  * `system` compact_boundary → a transient status notice.
  *
  * `init` says nothing: the session id reaches the host through `onSession`, and
@@ -397,7 +380,9 @@ function translateAssistant(
           arguments: stringifyArgs(block.input),
           ...withParent,
         });
-        events.push({ kind: "status", message: toolStatus(block.name, block.input) });
+        // `description` is the call's intent only on Bash. On other tools it is the payload.
+        const description = block.name === "Bash" ? readString(block.input, "description")?.trim() : null;
+        events.push({ kind: "status", message: description || `Using ${block.name}…` });
         observeToolCall(block, state, events);
       }
     }
