@@ -173,6 +173,7 @@ A user or org collection that several flows share is one stored row per key, so 
 What `secret` doesn't do:
 
 - It covers state fields, not content. A `contentTemplate` that interpolates a secret field renders its value into the content body, and content reads return it.
+- It doesn't filter a scope's `client.derived` values. Those functions read resource state in full, the same as `client.data`, and whatever they return is sent under the names they give it. Derive from a secret field there (`hasKey`), don't return it.
 - It doesn't change the derived client type ([`ClientDataOf`](#typing-clientdata)) under the identity or `exclude` projection, which still lists the secret field. Pair `secret` with `expose`, as above, so the type matches what arrives.
 
 ## Collection example
