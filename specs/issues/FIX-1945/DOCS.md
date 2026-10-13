@@ -67,7 +67,7 @@ Sidebar: `sidebars.ts`, Workforce category, after `workforce/built-in-worker`, b
 > ## Editing them yourself
 >
 > In Shift Manager, open a worker from the Roster, or open the Shift Coordinator, and go to
-> **Rules**. You see each rule, when it was added and the conversation it came from. Add,
+> **Rules**. Workers on a custom flow don't keep rules, and their row says so. You see each rule, when it was added and the conversation it came from. Add,
 > edit and delete there; the next turn reads the change. The same limits apply.
 >
 > ## What it won't do

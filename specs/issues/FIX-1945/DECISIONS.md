@@ -126,4 +126,9 @@ is a record keyed exactly like that drawer, plus write tools, not a new kind of 
   because the skills collection lets the generic resource client write entries, which would
   bypass the validator (Codex). Client writes are off on the new record; no reserved skill name.
 
+- **Review** — every write now carries the list version it read, so two racing adds can't both
+  land; a failed rules read never fails the turn; the Rules view is promised only for workers
+  on the `agent` flow and the coordinator (Codex). The product lead relayed Jake's agreement
+  with D2 and D3 as written.
+
 **Open: none.**
