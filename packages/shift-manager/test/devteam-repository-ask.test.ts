@@ -252,6 +252,17 @@ describe("a project's coordinator manages its own project", () => {
     await run(lab, call, "rewrite billing's brief", session);
     expect((await projects(lab)).billing?.brief).toBe("Take payments.");
   }, 120_000);
+
+  it("never asks to set another project's repository: the write it would approve is refused", async () => {
+    const lab = await open();
+    const session = await projectCoordinator(lab, "storefront");
+    const call = { toolName: "setRepository", args: { project: { visibility: "shared", id: "billing" }, repository: ASKED } };
+    const done = await run(lab, call, "point billing at the new repository", session);
+    const runtime = await lab.state.getRuntime();
+    expect(await runtime.stores.suspensions.list({ status: "pending" })).toHaveLength(0);
+    expect(JSON.stringify(done)).toContain("other-project");
+    expect((await projects(lab)).billing?.repository ?? null).toBeNull();
+  }, 120_000);
 });
 
 describe("the chief of staff's roster writes", () => {
