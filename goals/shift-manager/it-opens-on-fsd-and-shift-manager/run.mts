@@ -224,13 +224,16 @@ await runGoal(async (failures) => {
       if (CONTROL === "no-checkout") assertPatched(NO_CHECKOUT, REPO_ROOT, mark);
       const user = await pageUser(started.origin);
       const http = labRoutes(started.origin, { userId: user.userId, bearer: user.bearerToken ?? "" });
-      // The item's task, on whichever board took it: the conversation's own, when the chief of
-      // staff files it, or the board of the EM its post was handed to, a session under it.
+      // The coder's task for the item, on whichever board took it: the conversation's own, when
+      // the chief of staff dispatches to the coder, or the board of the EM its post was handed to,
+      // a session under it. Never the post row itself: that one completes when the EM says it
+      // handed the work over, before the coder has committed anything.
       const filedFor = async (conversation: string): Promise<Record<string, any> | undefined> => {
-        const own = ((await http.act("coordinator", conversation, "listTasks_tasks", {})).output?.tasks ?? [])[0];
+        const coders = (tasks: Array<Record<string, any>>) => tasks.find((t) => t.assignee === "eng.coder");
+        const own = coders((await http.act("coordinator", conversation, "listTasks_tasks", {})).output?.tasks ?? []);
         if (own !== undefined) return own;
         for (const em of (await http.sessions()).filter((s) => s.flowId === "em" && s.parentSessionId === conversation)) {
-          const row = ((await http.act("em", em.id, "listTasks_tasks", {})).output?.tasks ?? [])[0];
+          const row = coders((await http.act("em", em.id, "listTasks_tasks", {})).output?.tasks ?? []);
           if (row !== undefined) return row;
         }
         return undefined;
