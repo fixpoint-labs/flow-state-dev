@@ -35,7 +35,7 @@
  * Run: PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-fresh-open-works-fsd-and-shift-manager/run.mts
  */
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { goalTmpDir, intentFreeEnv, REPO_ROOT, RUN_STAMP, runGoal } from "../../lib/index.mts";
 import { labRoutes, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
@@ -240,6 +240,11 @@ await runGoal(async (failures) => {
     await page.screenshot({ path: join(SCRATCH, "settled.png") });
 
     // ---- grade --------------------------------------------------------------
+    for (const [leg, row] of Object.entries(rows)) console.log(`${leg}'s task: ${JSON.stringify(row).slice(0, 1500)}`);
+    for (const [leg, row] of Object.entries(rows)) {
+      if (row.status === "completed" || row.run?.sessionId === undefined) continue;
+      console.log(`${leg}'s run ended ${row.status}: ${JSON.stringify(await http.requests(String(row.run.sessionId))).slice(0, 2000)}`);
+    }
     for (const leg of ["a", "b"]) {
       const row = rows[leg];
       if (row?.status !== "completed") note(`${leg}:completed`, row === undefined ? "no task was filed for it" : `the task is ${row.status}: ${JSON.stringify(row).slice(0, 500)}`);
@@ -263,6 +268,7 @@ await runGoal(async (failures) => {
       }
       if (!branches.has(place.branch)) note(`${leg}:branch-in-checkout`, `${place.branch} is not in the checkout's branches`);
       const messages = git("log", "--format=%B", `${mainCommit}..${place.branch}`);
+      console.log(`${leg}'s branch ${place.branch}:\n${git("log", "--format=%h %s", "--stat", "-5", `${place.branch}`, "--not", "main", "main@{upstream}")}`);
       if (messages.includes(DEMO_MARKER) || commits(place.branch).some((f) => f.endsWith("greeting.js"))) {
         note(`${leg}:no-demo-brief`, `${place.branch} carries DevTeam's demo feature brief (greeting.js or ${DEMO_MARKER})`);
       }
@@ -295,6 +301,8 @@ await runGoal(async (failures) => {
   } finally {
     await browser.close();
     await served.stop();
+    writeFileSync(join(SCRATCH, "server.log"), served.log());
+    console.error(`the command's output: ${join(SCRATCH, "server.log")}`);
     // The run writes into the checkout: remove its worktrees and branches, pass or fail; put the store back.
     const made = runWorktrees().filter((w) => !before.has(w.path));
     for (const w of made) execFileSync("git", ["worktree", "remove", "--force", w.path], { cwd: CHECKOUT, stdio: "pipe" });
