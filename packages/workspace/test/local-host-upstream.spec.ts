@@ -261,6 +261,16 @@ describe("a fetch that can't happen falls back to the last-fetched copy", () => 
     expect(String(warn.mock.calls[0]![0])).toContain("could not fetch");
   });
 
+  it("never moves the person's branch through a tracking ref a run made symbolic", async () => {
+    const mine = commitLocally("mine.txt");
+    upstream.commit("main", "merged.txt", "a teammate's merge");
+    git(repo, "symbolic-ref", "refs/remotes/origin/main", "refs/heads/main");
+
+    await provision("main").catch(() => undefined);
+
+    expect(git(repo, "rev-parse", "refs/heads/main")).toBe(mine);
+  });
+
   it("cuts from local when the fetch fails and nothing was ever fetched", async () => {
     const lone = join(tempDir("lone"), "repo");
     git(join(lone, ".."), "init", "-q", "-b", "main", lone);

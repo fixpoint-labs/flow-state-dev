@@ -911,7 +911,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           // that failed to move for any other reason (a lock) is a failed
           // fetch, and falls back like one.
           try {
-            await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", ref, fetched, previous], left());
+            // `--no-deref`: a tracking ref a run replaced with a symbolic ref
+            // moves itself, never the branch it points at.
+            await git(repo, ["-c", "core.hooksPath=/dev/null", "update-ref", "--no-deref", ref, fetched, previous], left());
           } catch (error) {
             const now = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
             if (now === previous) throw error;
