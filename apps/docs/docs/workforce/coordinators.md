@@ -93,16 +93,16 @@ flowRegistry.registerMany(hireWorkforce(installation));
 
 ## Talking to it
 
-Open a session with the coordinator and send it a message, as you would [any worker](./workers-on-disk.md#talking-to-a-worker):
+Open a session with the coordinator and send it a message, as you would [any worker](./workers-on-disk.md#talking-to-a-worker). If your server checks a credential, pass every client on this page the `fetcher` from [Serving it to your users](./overview.md#serving-it-to-your-users). Leave it out if it doesn't.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl });
+const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 const session = await workforce.ensureWorkerSession({ worker: "support.help" });
 
-const help = createClient({ flowKind: session.flowKind, userId, baseUrl });
+const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
@@ -116,13 +116,14 @@ A delegate's answer arrives in a request of its own once the delegate's turn end
 import { createSessionClient, createSessionSSEClient } from "@flow-state-dev/client";
 import { COORDINATOR_JUDGMENT } from "@flow-state-dev/workforce/browser";
 
-const sessions = createSessionClient({ baseUrl });
+const sessions = createSessionClient({ baseUrl, fetcher });
 const { at, sessionCreatedAt } = await sessions.getSessionState(session.id);
 
 const answer = new Promise<{ from: string; text: string }>((resolve, reject) => {
   const stream = createSessionSSEClient({
     sessionId: session.id,
     baseUrl,
+    fetcher,
     since: at,
     sessionCreatedAt,
     onItem: ({ item }) => {
@@ -387,7 +388,7 @@ import { createSessionClient } from "@flow-state-dev/client";
 import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
 import type { CoordinatorRouteRecord } from "@flow-state-dev/workforce";
 
-const sessions = createSessionClient({ baseUrl });
+const sessions = createSessionClient({ baseUrl, fetcher });
 const requests = await sessions.listSessionRequests(session.id, { includeItems: true });
 
 const records = requests
@@ -492,7 +493,7 @@ A finished task's session stays open. To ask it about the work, send a message t
 
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
-const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl })
+const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl, fetcher })
 await licenses.sendAction("run", { message: "Which licenses did you flag?" }, { sessionId: run.id })
 ```
 
