@@ -121,7 +121,7 @@ export function Conversation({
   }, [answeredHere, reread]);
 
   // A run of tool calls stays one segment: the feed draws it as one quiet line.
-  const shown = useMemo(() => (read === undefined ? [] : buildItemRenderStream(read.items, shiftManagerRenderers)), [read]);
+  const shown = useMemo(() => (read === undefined ? [] : buildItemRenderStream(read.items, shiftManagerRenderers, { groupToolCalls: true })), [read]);
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
