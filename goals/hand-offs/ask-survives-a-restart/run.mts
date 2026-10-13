@@ -15,6 +15,7 @@
  *
  * Run:      pnpm tsx goals/hand-offs/ask-survives-a-restart/run.mts
  * Controls: GOAL_CONTROL=no-run-once | no-waker
+ * Wording:  GOAL_ASK=recorded (ask to record the task first, then wait on it by id)
  * Attempts: GOAL_ATTEMPTS=<n> fresh stores, until it first passes (default 3; 1 under a control)
  */
 import { execFileSync } from "node:child_process";
@@ -42,10 +43,19 @@ const word = () => `${["heron", "copper", "lantern", "saffron", "willow", "glaci
  */
 type WaitPath = "new" | "recorded" | "none";
 
+/** One attempt's grade, and the path the asker took. */
+interface Graded {
+  failures: string[];
+  notes: string[];
+  path: WaitPath;
+}
+
 interface Control {
   name: string;
   /** The assertions the control must fail, on the path the asker took. */
   assertions: (path: Exclude<WaitPath, "none">) => string[];
+  /** The assertions that must stay green under the control, on that path. */
+  holds?: (path: Exclude<WaitPath, "none">) => string[];
   patches: ModulePatch[];
   does: string;
 }
@@ -57,8 +67,11 @@ const CONTROLS: Record<string, Control> = {
     name: "no-run-once",
     // On a new task the replay mints a new id and files a second row. On a
     // recorded one it re-dispatches the same row, which the board declines,
-    // so the answer never reaches the turn: one row, and no word.
+    // so the answer never reaches the turn: one row, and no word. `one-row`
+    // must stay green there, so a resume that broke some other way can't
+    // pass for this control.
     assertions: (path) => (path === "new" ? ["one-row"] : ["a:word"]),
+    holds: (path) => (path === "recorded" ? ["one-row"] : []),
     patches: [
       {
         module: WAIT,
@@ -93,6 +106,15 @@ if (controlName !== "" && CONTROLS[controlName] === undefined) {
   process.exit(2);
 }
 const control = controlName === "" ? undefined : CONTROLS[controlName];
+
+// GOAL_ASK=recorded asks in words that name the recorded-task path, so that
+// path, which the model takes only some of the time, can be run on purpose.
+const askName = process.env.GOAL_ASK ?? "";
+if (askName !== "" && askName !== "recorded") {
+  console.error(`unknown GOAL_ASK "${askName}"; known: recorded`);
+  process.exit(2);
+}
+const ASK_RECORDED = askName === "recorded";
 
 // ---- the clients ----------------------------------------------------------------
 
@@ -161,7 +183,7 @@ async function attempt(o: {
   model: string;
   label: string;
 }): Promise<Observed> {
-  const fixture = loadFixture<{ asker: string; colleague: string; ask: string }>(import.meta.url, "ask.json");
+  const fixture = loadFixture<{ asker: string; colleague: string; ask: string; askRecorded: string }>(import.meta.url, "ask.json");
   const asker = `lead-${word()}`;
   const colleague = `keeper-${word()}`;
   const secret = word();
@@ -183,7 +205,7 @@ async function attempt(o: {
   if (added.status !== "completed") throw new Error(`addDelegate ended ${added.status}`);
 
   // The ask. Kill the server the moment the asker's request reads suspended.
-  const ask = fixture.ask.replaceAll("{colleague}", colleague);
+  const ask = (ASK_RECORDED ? fixture.askRecorded : fixture.ask).replaceAll("{colleague}", colleague);
   say(`${o.label}: "${ask}" (the word is ${secret})`);
   const client = alice.flow("agent");
   const asked = (await client.sendAction("run", { message: ask }, { sessionId: conv })).request.id;
@@ -226,17 +248,22 @@ async function attempt(o: {
 
 let LAB_ORG = "";
 
-/** How the asking request waited, read from its own tool calls (see {@link WaitPath}). */
+/**
+ * How the asking request waited, read from its own tool calls (see {@link WaitPath}).
+ * A prefix match: a board's task tools can carry its suffix (`dispatchTask_<board>`).
+ * A turn that waited both ways is `none`: no one path's assertion fits it.
+ */
 function waitPath(store: string, O: Observed): WaitPath {
   const calls = items(store, O.conv, "generator_step")
     .filter((step) => step.requestId === O.asked)
     .flatMap((step) => (step.toolCalls ?? []) as Array<{ toolName?: string; arguments?: Record<string, unknown> }>)
     .filter((call) => call.toolName?.startsWith("dispatchTask") === true && call.arguments?.wait === true);
-  if (calls.length === 0) return "none";
-  return calls.some((call) => call.arguments?.taskId !== undefined) ? "recorded" : "new";
+  const recorded = calls.filter((call) => call.arguments?.taskId !== undefined).length;
+  if (calls.length === 0 || (recorded > 0 && recorded < calls.length)) return "none";
+  return recorded > 0 ? "recorded" : "new";
 }
 
-function grade(O: Observed, store: string, userId: string): { failures: string[]; notes: string[]; path: WaitPath } {
+function grade(O: Observed, store: string, userId: string): Graded {
   const failures: string[] = [];
   const notes: string[] = [];
   const path = waitPath(store, O);
@@ -263,7 +290,7 @@ function grade(O: Observed, store: string, userId: string): { failures: string[]
     failures.push(`b:once — ${O.colleague} completed ${completedRows.length} rows in ${completedRuns.length} runs, not one`);
   }
   notes.push(
-    `waited on a ${path === "none" ? "task it never dispatched with wait" : `${path} task`}; killed ${O.killedAfterMs} ms after the ask; asker ${askedRequest?.status}; ${turns.length} turn(s); rows ${show(rows.map((t) => [t.status, t.attempts]))}; ` +
+    `waited on ${path === "none" ? "no one path (never with wait, or both ways)" : `a ${path} task`}; killed ${O.killedAfterMs} ms after the ask; asker ${askedRequest?.status}; ${turns.length} turn(s); rows ${show(rows.map((t) => [t.status, t.attempts]))}; ` +
       `completed runs ${completedRuns.length}; said: ${said.slice(0, 200).replace(/\n/g, " ")}`,
   );
   return { failures, notes, path };
@@ -294,7 +321,7 @@ await runGoal(async () => {
   const pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
 
   const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
-  let result: { failures: string[]; notes: string[]; path: WaitPath } = { failures: ["no attempt ran"], notes: [], path: "none" };
+  let result: Graded = { failures: ["no attempt ran"], notes: [], path: "none" };
   for (let n = 1; n <= attempts; n += 1) {
     const label = `${control?.name ?? "plain"}-${n}`;
     const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
@@ -318,7 +345,7 @@ await runGoal(async () => {
   const failures = [...result.failures];
   const path = result.path;
   if (control !== undefined && path === "none") {
-    failures.unshift(`control ${control.name}: the asker never dispatched with wait, so the code the control patches never ran`);
+    failures.unshift(`control ${control.name}: the asker didn't wait one way (it never dispatched with wait, or waited both ways), so the control can't be graded`);
   } else if (control !== undefined && path !== "none") {
     for (const assertion of control.assertions(path)) {
       const named = failures.some((f) => f.startsWith(`${assertion} `));
@@ -327,6 +354,11 @@ await runGoal(async () => {
           ? `control ${control.name}: ${assertion} failed, as it must`
           : `control ${control.name}: ${assertion} did NOT fail, so the check can't see what the control removes`,
       );
+    }
+    for (const assertion of control.holds?.(path) ?? []) {
+      if (failures.some((f) => f.startsWith(`${assertion} `))) {
+        failures.unshift(`control ${control.name}: ${assertion} failed, but on a ${path} task it must hold, so something other than the control broke the run`);
+      }
     }
   }
   return { failures, evidence: `DevTeam on ${model}, SQLite, the server killed with SIGKILL while the ask waited; ${result.notes.join("; ")}` };
