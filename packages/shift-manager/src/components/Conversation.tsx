@@ -82,6 +82,7 @@ export function Conversation({
   renderItem,
   scale = "default",
   testId = "conversation",
+  startAtEnd = false,
 }: {
   worker: Worker;
   /** The session this conversation is, when the view found it: every line goes there. Absent, the user's latest with the worker. */
@@ -108,12 +109,21 @@ export function Conversation({
   scale?: "default" | "cos";
   /** Prefix for every test id inside: `cos` gives `cos`, `cos-conversation`, `cos-item`. */
   testId?: string;
+  /**
+   * Open on the latest turn, and follow it, rather than at the top. A view
+   * with a `lead` above the feed leaves this off so it opens on the lead.
+   */
+  startAtEnd?: boolean;
 }) {
   const { clients, refresh, answered } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
-  // The feed opens where it starts, and follows once the user reaches the end or sends a line.
-  const feed = useFollowLatest({ startAtEnd: false });
+  // The feed opens where it starts, and follows once the user reaches the end or sends a line;
+  // with `startAtEnd`, it opens on the latest turn, and again on each conversation it is shown.
+  const feed = useFollowLatest({ startAtEnd });
   const { sessionId, opened, read, failure, reread } = conversation;
+  useEffect(() => {
+    if (startAtEnd) feed.follow();
+  }, [startAtEnd, sessionId, feed.follow]);
 
   // An ask in this conversation answered in Inbox or the summary: read the conversation back.
   const answeredHere = answered !== undefined && answered.sessionId === sessionId ? answered.count : undefined;
