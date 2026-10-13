@@ -12,12 +12,6 @@
  * moved, it reloads the Lab, and it keeps reading for a while after, so the
  * turn that ending woke (a task filed again, say) shows too. Nothing here
  * knows a tool's name.
- *
- * The Shift Coordinator's conversation never ends, so its board only grows:
- * there the panel lists the active tasks and folds the rest into two closed
- * groups, one for the done and one for the errored, each a count that opens
- * to its tasks (`activeOnly`). A workstream's board is the subtasks of the one
- * piece of work it is about, so it lists them all.
  */
 import { useEffect, useRef, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
@@ -40,7 +34,6 @@ const isOpen = (task: ConversationTask) => task.status === "pending" || task.sta
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
-/** Whether a task ended in an error. */
 const isErrored = (task: ConversationTask) => readStatus(task.status) === "errored";
 
 export function TasksPanel({
@@ -134,20 +127,19 @@ export function TasksPanel({
       ) : (
         <TaskList tasks={active} />
       )}
-      <TaskGroup tasks={done} label="done" group="done" />
-      <TaskGroup tasks={errored} label="errored" group="errored" />
+      <TaskGroup tasks={done} name="done" />
+      <TaskGroup tasks={errored} name="errored" />
     </div>
   );
 }
 
-/** A closed group of tasks: its count, opening to the tasks. Nothing when it holds none. */
-function TaskGroup({ tasks, label, group }: { tasks: readonly ConversationTask[]; label: string; group: string }) {
+function TaskGroup({ tasks, name }: { tasks: readonly ConversationTask[]; name: string }) {
   if (tasks.length === 0) return null;
   return (
-    <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={group}>
+    <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={name}>
       <CollapsibleTrigger className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground">
-        <span className={group === "errored" ? "text-destructive" : undefined}>
-          {tasks.length} {label}
+        <span className={name === "errored" ? "text-destructive" : undefined}>
+          {tasks.length} {name}
         </span>
         <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tasks:rotate-90" />
       </CollapsibleTrigger>
@@ -158,7 +150,6 @@ function TaskGroup({ tasks, label, group }: { tasks: readonly ConversationTask[]
   );
 }
 
-/** One line per task: its state, goal, status and delegate. */
 function TaskList({ tasks }: { tasks: readonly ConversationTask[] }) {
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">

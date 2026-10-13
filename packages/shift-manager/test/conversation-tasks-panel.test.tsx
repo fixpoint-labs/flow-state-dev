@@ -133,17 +133,11 @@ describe("the tasks panel (S11)", () => {
     ];
     const group = (name: string) => screen.getAllByTestId("cos-task-group").find((el) => el.getAttribute("data-group") === name);
 
-    it("lists only the active tasks, so the list stops growing with every task it ever handled", async () => {
+    it("lists only the active tasks, and folds done and errored into counts that open", async () => {
       rows = mixed;
       render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
       await settle();
       expect(shown().map((task) => task.id)).toEqual(["t2", "t5"]);
-    });
-
-    it("folds the done into a count and the errored into a group of their own, each opening to its tasks", async () => {
-      rows = mixed;
-      render(<TasksPanel worker={cos} sessionId="s1" readAt={1} activeOnly />);
-      await settle();
       expect(group("done")!.textContent).toContain("3 done");
       expect(group("errored")!.textContent).toContain("1 errored");
       act(() => group("errored")!.querySelector("button")!.click());
