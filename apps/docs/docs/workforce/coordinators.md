@@ -119,28 +119,39 @@ import { COORDINATOR_JUDGMENT } from "@flow-state-dev/workforce/browser";
 const sessions = createSessionClient({ baseUrl });
 const { at, sessionCreatedAt } = await sessions.getSessionState(session.id);
 
-const answer = new Promise<{ from: string; text: string }>((resolve) => {
+const answer = new Promise<{ from: string; text: string }>((resolve, reject) => {
   const stream = createSessionSSEClient({
     sessionId: session.id,
     baseUrl,
     since: at,
     sessionCreatedAt,
     onItem: ({ item }) => {
-      if (item.type !== "message" || item.ts < (at ?? 0)) return; // the stream starts a few seconds back
+      if (item.type !== "message" || item.ts < (at ?? 0)) return;
       const from = item.agentName;
       if (from === undefined || from.startsWith(COORDINATOR_JUDGMENT)) return;
+      clearTimeout(timer);
       stream.close();
       const text = item.content.map((part) => (part.type === "output_text" ? part.text : "")).join("");
       resolve({ from, text });
     },
+    onStop: ({ status }) => {
+      clearTimeout(timer);
+      reject(new Error(`Session stream stopped: ${status}`));
+    },
   });
+  const timer = setTimeout(() => {
+    stream.close();
+    reject(new Error("No delegate answered in time"));
+  }, 5 * 60_000);
 });
 
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 const { from, text } = await answer; // from: "support.devices"
 ```
 
-`at` is the server time the state read began. The stream starts a few seconds before `since`, so it can deliver messages saved just before `at`, including an answer to an earlier post. Dropping anything older than `at` keeps that answer from passing as this one's. Under `everyone`, several delegates answer, and this example resolves on the first. It waits only for a delegate: if the coordinator's own turn answers the post, or nobody takes it, the promise never settles, so add a timeout or also resolve on those messages. [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions) lists the stream's other options, such as `itemTypes` and `retry`. In a React view, `useSession` with `live: true` follows the session for you.
+`at` is the server time the state read began. The stream starts a few seconds before `since`, so it can deliver messages saved just before `at`, including an answer to an earlier post. Dropping anything older than `at` keeps that answer from passing as this one's.
+
+The example waits only for a delegate. Under `everyone`, several delegates answer, and it takes the first. If the coordinator's own turn answers the post, or nobody takes it, no delegate message comes, and the timeout rejects instead. Five minutes matches a round's default deadline. Resolve on those messages too if your app should show them. [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions) lists the stream's other options, such as `itemTypes` and `retry`. This is for scripts and server code. In a React view, use `useSession` with `live: true`, which already follows the session, rather than opening a second stream.
 
 ## Choosing how it routes
 
