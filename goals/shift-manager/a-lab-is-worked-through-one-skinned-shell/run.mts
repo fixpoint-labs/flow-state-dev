@@ -25,11 +25,11 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/run.mts
  * Parts:    GOAL_PART=a,b0,b,c,d,controls,part2,part3,part4 (default: all, in that order; an unknown part, or a run with no verdict, fails)
  * Controls: GOAL_CONTROLS=hardcoded-accent,… (default: all of them; an unknown name fails)
- * Needs:    a model key (leg a, and the real-model child checks), a Claude
- *           Code account (a4's harness: a sign-in, `ANTHROPIC_API_KEY` or
+ * Needs:    a model key (leg a, and the real-model child checks); a Claude
+ *           Code account for a4's harness (a sign-in, `ANTHROPIC_API_KEY` or
  *           `CLAUDE_CODE_OAUTH_TOKEN`, as the Lab's start check reads; without
- *           one leg a reads BLOCKED; and b0's writer through the `claude`
- *           CLI), Chromium, and `pnpm build:assets` for the devtool pages.
+ *           one leg a reads BLOCKED); a signed-in `claude` CLI for b0's writer;
+ *           Chromium; and `pnpm build:assets` for the devtool pages.
  */
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +38,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { readShiftManagerTheme } from "../../lib/colour.mts";
-import { startHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { PENTEST_CONFIG, TREES, legA, legB, legC, staticFence, type LegCtx, type Report } from "./legs.mts";
 import { j3, j4, part4 } from "./parts.mts";
@@ -88,17 +89,17 @@ function legVerdict(id: string, prefix: string[], report: ReturnType<typeof coll
 /**
  * Why leg a can't run here, or null when it can. Leg a serves DevTeam on
  * Claude Code, and the Lab asks Claude Code for an account before it listens
- * (FIX-1904's check), so this asks the same check over the same environment.
- * With no account the Lab refuses to start: that is this environment, not a
- * finding, so leg a and the control signals on it read BLOCKED.
+ * (FIX-1904's check), so this asks the same probe over the same environment.
+ * Leg a's server gets this process's environment plus the harness choice and
+ * scratch paths (`startDevTeam`), none of them a credential, so the two agree.
+ * No account is this environment, not a finding: leg a and the control signals
+ * on it read BLOCKED. A missing Agent SDK is a broken checkout, so it throws.
  */
 async function claudeCodeBlocked(): Promise<string | null> {
-  try {
-    await startHarness("claude-code", { value: "claude-code", log: () => {} });
-    return null;
-  } catch (error) {
-    return String((error as Error).message ?? error).split("\n")[0]!;
-  }
+  const account = await probeClaudeAccount({ env: claudeCodeEnv() });
+  if (account.status === "account") return null;
+  if (account.status === "sdk-missing") throw new Error(`leg a: ${account.reason}`);
+  return `${account.reason}; sign in to Claude Code, or set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN`;
 }
 
 // ---- builds --------------------------------------------------------------------
