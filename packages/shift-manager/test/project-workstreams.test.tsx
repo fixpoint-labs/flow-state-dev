@@ -323,7 +323,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
       { toolName: "listLeads", args: {} },
       { toolName: "openWorkstream", args: { ...research, lead: EM } },
       { toolName: "openWorkstream", args: { ...research, lead: GENERAL_LEAD } },
-      { toolName: "handOff", args: { worker: GENERAL_LEAD, target: "shared/apollo/research" } },
+      { toolName: "dispatchTask", args: { post: true, assignee: GENERAL_LEAD, target: "shared/apollo/research" } },
     ];
     const pc = await projectCoordinator(alice, setup);
     await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next, SAFFRON-2207." });
