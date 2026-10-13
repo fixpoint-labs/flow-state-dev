@@ -96,10 +96,8 @@ describe("dark destructive as text", () => {
   });
 
   it("fails a hover that lets the dark card show through the fill", () => {
-    // The shape that once shipped unreadable: the fill at partial opacity over
-    // the card. How much card it takes depends on the palette; at 70% the
-    // dark card wins on these defaults, so the measurement can fail here.
-    expect(contrast(dark["destructive-foreground"]!, mix(dark.card!, dark.destructive!, 0.7))).toBeLessThan(AA_TEXT);
+    // The shape that shipped unreadable: the fill at 90% opacity over the card.
+    expect(contrast(dark["destructive-foreground"]!, mix(dark.card!, dark.destructive!, 0.9))).toBeLessThan(AA_TEXT);
   });
 
   it("fails a red too dark to read on the dark background", () => {

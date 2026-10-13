@@ -32,7 +32,7 @@ export function LinkCardRenderer({ item }: { item: ComponentItem }) {
       href={data.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block rounded-lg border border-border bg-card text-card-foreground overflow-hidden max-w-md hover:bg-accent transition-colors"
+      className="block rounded-lg border border-border bg-card text-card-foreground shadow-sm overflow-hidden max-w-md hover:bg-accent transition-colors"
     >
       {data.imageUrl ? (
         <div className="aspect-[16/9] bg-muted overflow-hidden">

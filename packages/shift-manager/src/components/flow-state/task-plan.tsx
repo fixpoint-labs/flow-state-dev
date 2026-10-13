@@ -96,7 +96,7 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
   },
   parked: {
     icon: EyeIcon,
-    iconClassName: "text-attention",
+    iconClassName: "bg-attention text-attention-foreground",
     label: "Parked",
   },
   completed: {

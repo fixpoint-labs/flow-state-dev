@@ -408,7 +408,7 @@ function StepItem({ isLast, children }: { isLast?: boolean; children: React.Reac
     <div className="flex gap-2">
       <div className="flex flex-col items-center">
         {/* dot centered on the first line of text (leading-4 = 16px, dot at 6px from top) */}
-        <div className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/40" />
+        <div className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
         {!isLast && <div className="w-px flex-1 bg-muted-foreground/25" />}
       </div>
       <div className="min-w-0 flex-1 pb-1">

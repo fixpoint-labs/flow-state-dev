@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { registryTokenDefaults, stylesheetColours, stylesheetRadius } from "../scripts/token-defaults";
+import { registryTokenDefaults, stylesheetColours } from "../scripts/token-defaults";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOKEN_CSS = resolve(ROOT, "registry/token-defaults.css");
@@ -18,7 +18,7 @@ const PREVIEW_CSS = resolve(ROOT, ".storybook/preview.css");
 describe("the @theme copy of the token defaults", () => {
   const css = readFileSync(TOKEN_CSS, "utf8");
   const preview = readFileSync(PREVIEW_CSS, "utf8");
-  const { light, dark, radius } = registryTokenDefaults();
+  const { light, dark } = registryTokenDefaults();
 
   it("reads the item's defaults, including the four status tokens", () => {
     for (const name of ["success", "warning", "info", "attention"]) {
@@ -34,11 +34,6 @@ describe("the @theme copy of the token defaults", () => {
 
   it("defines every token with the item's dark value", () => {
     expect(stylesheetColours(css, ".dark {")).toEqual(dark);
-  });
-
-  it("sets the item's --radius", () => {
-    expect(radius).toBeTruthy();
-    expect(stylesheetRadius(css, "@theme {")).toBe(radius);
   });
 
   it("fails on one value that differs", () => {

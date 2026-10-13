@@ -38,7 +38,7 @@ export function StreamingIndicator({
           : "flex items-center gap-2 px-1 py-2 text-muted-foreground text-sm"
       }
     >
-      <span className="inline-block size-2 rounded-sm bg-current animate-pulse" />
+      <span className="inline-block size-2 rounded-full bg-current animate-pulse" />
       {isFinishing ? <span>{label}</span> : <Shimmer duration={1}>{label}</Shimmer>}
     </div>
   );
