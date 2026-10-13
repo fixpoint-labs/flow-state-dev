@@ -43,7 +43,6 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to no worker at all.
   const found = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : workerFor(rosterOf(snapshot), row);
-  // The name a person reads: the chief of staff shows as the Shift Coordinator.
   const worker = row?.assignee == null ? null : workerLabel(found?.id ?? row.assignee);
 
   return (

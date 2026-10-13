@@ -114,7 +114,7 @@ describe("Roster (V3)", () => {
     const row = (id: string) => within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!;
     expect(row("chief-of-staff").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
     expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("coder");
-    // The id is wire data; nothing a person reads on the screen says chief of staff.
+    // The id is wire data; nothing a user reads on the screen says chief of staff.
     expect(document.body.textContent).not.toMatch(/chief[ -]of[ -]staff/i);
   });
 

@@ -224,14 +224,9 @@ export function pickedTeam(workers: readonly Worker[], team: string | null): str
  */
 const CHIEF_OF_STAFF = "chief-of-staff";
 
-/** Whether a worker id or name, `chief-of-staff` or `<team>.chief-of-staff`, names the chief of staff. */
 const isChiefOfStaff = (idOrName: string) => idOrName.slice(idOrName.indexOf(".") + 1) === CHIEF_OF_STAFF;
 
-/**
- * How the screens name a worker: the chief of staff is the Shift Coordinator,
- * every other worker its id (or name) as given. `chief-of-staff` stays the
- * worker's id; only what a person reads changes.
- */
+/** How the screens name a worker: the chief of staff is the Shift Coordinator; its id stays `chief-of-staff`. */
 export function workerLabel(idOrName: string): string {
   return isChiefOfStaff(idOrName) ? "Shift Coordinator" : idOrName;
 }
