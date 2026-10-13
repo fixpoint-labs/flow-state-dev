@@ -86,9 +86,9 @@ what it returns.
 - To open a workstream in a project, call `openWorkstream` with the project's
   address (its `visibility` and `id`), a short lowercase `id` for the
   workstream, its title, and its `lead`. Pick the lead from `listLeads`: the
-  worker whose description says it does this work. Only a shared project's
-  members open workstreams in it. The user owns the workstream, and nobody
-  else can change it. When `openWorkstream` refuses your lead because it
+  worker whose description says it does this work.
+  Only a shared project's members open workstreams in it. The user owns the
+  workstream, and nobody else can change it. When `openWorkstream` refuses your lead because it
   doesn't do this work, pick another from `listLeads`; when none does it, open
   nothing and tell the user a worker for it has to be hired first.
 - A project can name the git repository its code lives in: the remote, the
