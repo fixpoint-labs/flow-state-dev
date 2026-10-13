@@ -3,4 +3,4 @@
 "@flow-state-dev/harness-manager": patch
 ---
 
-A repository listed in `localRepositories` now fetches the base's upstream before it cuts a new run's branch, and cuts from whichever of local and upstream is newer. A base whose local and upstream copies have each moved is refused as `base-diverged`; a failed fetch falls back to the last-fetched copy with a warning. `place.repo.baseCommit` is now set for these repositories. The run record keeps it as `baseCommit`, and `readRunCommits` takes it as a third argument and leaves out the commits it has (FIX-1927).
+A repository listed in `localRepositories` now fetches the base's upstream and cuts a new run's branch from whichever of local and upstream is newer, refusing a base whose two copies have each moved as `base-diverged` and recording the commit cut at as `place.repo.baseCommit`, which the run record keeps and `readRunCommits` now counts a run's commits from (FIX-1927).
