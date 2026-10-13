@@ -7,6 +7,9 @@
  * result and metadata; a run of consecutive calls is one line ("Used 3 tools
  * ›") that opens to one row per call. A call that is running or failed says
  * so in words ("Using discover…", "discover failed"), since there is no badge.
+ * A call stopped on an approval or a question is waiting, not failed: the
+ * engine records the wait as a failed call coded `SUSPENSION`, and its real
+ * result replaces it once the answer resumes the run.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
@@ -24,10 +27,11 @@ import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
-type CallState = "pending" | "running" | "completed" | "error";
+type CallState = "pending" | "running" | "waiting" | "completed" | "error";
 
-function stateOf(status: string): CallState {
-  switch (status) {
+function stateOf(item: ToolOutputItem): CallState {
+  if (item.status === "failed" && item.error?.code === "SUSPENSION") return "waiting";
+  switch (item.status) {
     case "in_progress":
       return "running";
     case "completed":
@@ -39,10 +43,11 @@ function stateOf(status: string): CallState {
   }
 }
 
-/** The worst state in a run: any failure, else any call still going, else done. */
+/** The worst state in a run: any failure, else any call waiting on an answer, else any call still going, else done. */
 function runState(items: readonly ToolOutputItem[]): CallState {
-  const states = items.map((item) => stateOf(item.status));
+  const states = items.map(stateOf);
   if (states.includes("error")) return "error";
+  if (states.includes("waiting")) return "waiting";
   if (states.some((s) => s === "running" || s === "pending")) return "running";
   return "completed";
 }
@@ -57,16 +62,18 @@ function argsOf(item: ToolOutputItem): unknown {
   }
 }
 
-/** "Used discover", "Using discover…" while it runs, "discover failed" when it did. */
+/** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting for an answer" while it waits. */
 function callLabel(name: string, state: CallState): string {
   if (state === "error") return `${name} failed`;
+  if (state === "waiting") return `${name} is waiting for an answer`;
   if (state === "running" || state === "pending") return `Using ${name}…`;
   return `Used ${name}`;
 }
 
 /** The input, result and metadata of one call: what a quiet line opens to. */
 function CallDetails({ item }: { item: ToolOutputItem }) {
-  const failed = item.status === "failed";
+  // A wait is not an error: its message is the ask's question, which the ask itself shows.
+  const failed = stateOf(item) === "error";
   const args = argsOf(item);
   const output = failed ? undefined : item.output;
   const errorText = failed ? (item.error?.message ?? (item.output === undefined ? undefined : String(item.output))) : undefined;
@@ -118,13 +125,20 @@ export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
       </QuietLine>
     );
   }
-  const label = state === "running" ? `Using ${items.length} tools…` : state === "error" ? `Used ${items.length} tools, one failed` : `Used ${items.length} tools`;
+  const label =
+    state === "running"
+      ? `Using ${items.length} tools…`
+      : state === "error"
+        ? `Used ${items.length} tools, one failed`
+        : state === "waiting"
+          ? `Used ${items.length} tools, one waiting for an answer`
+          : `Used ${items.length} tools`;
   return (
     <QuietLine label={label} state={state}>
       <ul className="space-y-1.5">
         {items.map((item) => (
           <li key={item.id}>
-            <QuietLine label={callLabel(item.toolCall.name, stateOf(item.status))} state={stateOf(item.status)} nested>
+            <QuietLine label={callLabel(item.toolCall.name, stateOf(item))} state={stateOf(item)} nested>
               <CallDetails item={item} />
             </QuietLine>
           </li>
