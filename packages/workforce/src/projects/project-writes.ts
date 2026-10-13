@@ -260,7 +260,7 @@ const setRepository = handler({
   resources: WRITE_RESOURCES,
   execute: async (input, rawCtx) => {
     const ctx = rawCtx as unknown as BlockContext;
-    const row = await memberRowOf(ctx, input.project, "repository");
+    const row = await projectRowToChange(ctx, input.project, "repository");
     assertRepository(input.repository);
     await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
     return { project: projectRowSchema.parse(row.state) };
@@ -279,7 +279,7 @@ const setBrief = handler({
   resources: WRITE_RESOURCES,
   execute: async (input, rawCtx) => {
     const ctx = rawCtx as unknown as BlockContext;
-    const row = await memberRowOf(ctx, input.project, "brief");
+    const row = await projectRowToChange(ctx, input.project, "brief");
     await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));
     return { project: projectRowSchema.parse(row.state) };
   }
@@ -291,7 +291,7 @@ const setBrief = handler({
  *
  * @param field The field the write changes, for its refusal.
  */
-async function memberRowOf(ctx: BlockContext, named: ProjectAddress | undefined, field: string) {
+async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | undefined, field: string) {
   const address = projectOfWrite(ctx.session.state, named, `change its ${field}`);
   const row = await projectAt(ctx, address);
   if (!isMember(row.state, ctx.session.identity.userId)) {
