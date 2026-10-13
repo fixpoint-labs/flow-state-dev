@@ -5,8 +5,8 @@
  * `client.state.read` and no projection sends each item's whole state. Both
  * would hand back a stored key. Each test seeds a record whose `value` is a
  * sentinel and checks every read the engine serves for it: the debug tree and
- * item listing, the client snapshot, the list-state and get-state routes, and
- * a live delta. Each also checks a non-secret field arrives, so a read that
+ * item listing, the client snapshot, and the list-state and get-state routes.
+ * The live delta is checked in `context/resource-registry.spec.ts`. Each also checks a non-secret field arrives, so a read that
  * returned nothing at all cannot pass.
  */
 import { describe, expect, it } from "vitest";

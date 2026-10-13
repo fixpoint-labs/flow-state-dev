@@ -128,7 +128,9 @@ export interface DebugResourcesResponse {
 }
 
 /**
- * Compute the client-view projection for a single resource state. Wraps the
+ * Compute the client-view projection for a single resource state. `state`
+ * must already have its `secret` fields omitted ({@link omitSecretFields}):
+ * this projects what it is handed. Wraps the
  * author's `client.data` in try/catch since it can throw. Returns `null` when
  * the entry has no state to project.
  */
