@@ -282,7 +282,11 @@ export interface WorkspacePlace {
     branch: string;
     /** Whether this call cut the branch. `false` for a checkout handed back. */
     created: boolean;
-    /** The branch the run's branch was cut from. Only when `created`. */
+    /**
+     * The branch the run's branch was cut from. Only when `created`. A local
+     * checkout with no base named records the branch its HEAD was on, or
+     * `"HEAD"` when detached.
+     */
     baseRef?: string;
     /** The commit it was cut at. Only when `created`. */
     baseCommit?: string;
@@ -741,16 +745,27 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           if (!gitAnsweredNo(error)) throw error;
           throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
         }
+        // No base named: recorded as the branch HEAD is on, so a reader of the
+        // run's commits can leave out that branch and its own upstream. A
+        // detached HEAD is recorded as "HEAD".
+        let ref = base;
+        if (baseRef === undefined) {
+          try {
+            ref = await git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"], left());
+          } catch (error) {
+            if (!gitAnsweredNo(error)) throw error;
+          }
+        }
         // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
         const upstream = await fetchUpstream(repo, base, left);
         // Equal, or local ahead: the person's branch, as it always was.
         if (upstream === undefined || (await isAncestor(repo, upstream.commit, local, left))) {
-          return { ref: base, commitish: base, commit: local };
+          return { ref, commitish: base, commit: local };
         }
         // Behind: cut at the commit, never the ref's name, so the run's branch
         // doesn't come out tracking the person's upstream.
         if (await isAncestor(repo, local, upstream.commit, left)) {
-          return { ref: base, commitish: upstream.commit, commit: upstream.commit };
+          return { ref, commitish: upstream.commit, commit: upstream.commit };
         }
         throw new WorkspaceRefusedError(
           "base-diverged",

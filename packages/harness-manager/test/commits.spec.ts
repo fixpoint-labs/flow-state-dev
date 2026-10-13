@@ -11,7 +11,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { pathToFileURL } from "node:url";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { readRunCommits } from "../src/commits";
 
 const dirs: string[] = [];
@@ -91,5 +93,43 @@ describe("readRunCommits", () => {
   it("answers none for a base the checkout doesn't have", async () => {
     const dir = repo("local");
     expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [] });
+  });
+
+  it("counts none of a non-origin upstream's commits for a local run cut from HEAD, as the host records its base", async () => {
+    // The person cloned their fork (`origin`, whose HEAD is stale) and their
+    // `main` tracks the shared repository, `upstream`, which a teammate moved.
+    const scratch = mkdtempSync(join(tmpdir(), "hm-commits-local-"));
+    dirs.push(scratch);
+    const shared = join(scratch, "shared.git");
+    const work = join(scratch, "work");
+    git(scratch, "init", "-q", "--bare", "-b", "main", shared);
+    git(scratch, "clone", "-q", shared, work);
+    commit(work, "first");
+    git(work, "push", "-q", "origin", "HEAD:main");
+    const fork = join(scratch, "fork.git");
+    git(scratch, "clone", "-q", "--bare", shared, fork);
+    const person = join(scratch, "person");
+    git(scratch, "clone", "-q", pathToFileURL(fork).href, person);
+    git(person, "remote", "add", "upstream", pathToFileURL(shared).href);
+    git(person, "fetch", "-q", "upstream");
+    git(person, "branch", "-q", "--set-upstream-to=upstream/main", "main");
+    commit(work, "a teammate's merge");
+    git(work, "push", "-q", "origin", "HEAD:main");
+
+    const host = localWorkspaceHost({
+      root: join(scratch, "root"),
+      remotes: { allow: [] },
+      localRepositories: [person],
+      source: () => ({ kind: "refused", reason: "unused", message: "unused" }),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const place = await host.provision({ kind: "repo", repo: person }, { place: ["run-1"], branch: "fsd/run-1" });
+    warn.mockRestore();
+    commit(place.cwd, "the run's change");
+
+    expect(await readRunCommits(place.cwd, place.repo!.baseRef ?? null)).toEqual({
+      count: 1,
+      subjects: ["the run's change"],
+    });
   });
 });

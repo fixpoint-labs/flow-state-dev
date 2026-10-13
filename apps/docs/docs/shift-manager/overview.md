@@ -51,7 +51,7 @@ Ask the [chief of staff](../workforce/chief-of-staff.md) for work on either proj
 
 If your `main` and `origin/main` each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run compares your `main` with the `origin/main` you last fetched instead, and a warning prints where you started Shift Manager.
 
-Review the work in that worktree, or from your checkout with `git log -p <branch> --not main origin/main`. That shows only the run's commits, whichever of the two it started from. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
+Review the work in that worktree, or from your checkout with `git log -p <branch> --not main main@{upstream}`. That shows only the run's commits, whichever of the two it started from. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
 
 Only those two projects get a worktree of your checkout. Apart from that fetch, the Lab reaches no git remote, so a coding run on a project you add yourself, even one on this repository, is refused, naming the repository, and nothing is cloned.
 
