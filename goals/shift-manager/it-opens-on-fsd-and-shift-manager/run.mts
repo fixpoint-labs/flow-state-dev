@@ -224,6 +224,17 @@ await runGoal(async (failures) => {
       if (CONTROL === "no-checkout") assertPatched(NO_CHECKOUT, REPO_ROOT, mark);
       const user = await pageUser(started.origin);
       const http = labRoutes(started.origin, { userId: user.userId, bearer: user.bearerToken ?? "" });
+      // The item's task, on whichever board took it: the conversation's own, when the chief of
+      // staff files it, or the board of the EM its post was handed to, a session under it.
+      const filedFor = async (conversation: string): Promise<Record<string, any> | undefined> => {
+        const own = ((await http.act("coordinator", conversation, "listTasks_tasks", {})).output?.tasks ?? [])[0];
+        if (own !== undefined) return own;
+        for (const em of (await http.sessions()).filter((s) => s.flowId === "em" && s.parentSessionId === conversation)) {
+          const row = ((await http.act("em", em.id, "listTasks_tasks", {})).output?.tasks ?? [])[0];
+          if (row !== undefined) return row;
+        }
+        return undefined;
+      };
       for (const item of ITEMS) {
         const before = new Set(ours().map((w) => w.path));
         // A conversation with the chief of staff, as the page opens one, and the person's ask.
@@ -237,7 +248,7 @@ await runGoal(async (failures) => {
         if (turn.error !== undefined) note(`b:${item.id}:asked`, `the chief of staff's turn failed: ${turn.error}`);
         let task: Record<string, any> | undefined;
         for (const until = Date.now() + ITEM_BUDGET_MS; Date.now() < until; await new Promise((r) => setTimeout(r, 2_000))) {
-          task = ((await http.act("coordinator", sessionId, "listTasks_tasks", {})).output?.tasks ?? [])[0];
+          task = await filedFor(sessionId);
           if (task !== undefined && SETTLED.has(task.status)) break;
         }
         const said = JSON.stringify(task ?? null);
