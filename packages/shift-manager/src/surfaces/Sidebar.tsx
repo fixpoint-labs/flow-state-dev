@@ -1,7 +1,7 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
  * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
- * (BR-6) with the on-shift and on-call counts. A header above them all carries
+ * (BR-6) with the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
@@ -421,7 +421,7 @@ export function Sidebar({
               <NavItem
                 label="Roster"
                 icon={<NavIcon name="roster" />}
-                count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
+                count={counts === undefined ? undefined : `${counts["on shift"]}`}
                 mark={partial}
                 active={route.level === "roster" && route.team === null}
                 onClick={() => navigate({ level: "roster", team: null })}
@@ -496,10 +496,6 @@ export function Sidebar({
                   <span className="inline-flex items-center gap-1.5">
                     <ShiftMark status="on shift" />
                     <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <ShiftMark status="on call" />
-                    <span data-testid="footer-on-call">{counts["on call"]} on call</span>
                   </span>
                   {partial}
                 </>

@@ -59,10 +59,10 @@ describe("BR-1 to BR-5: the one status rule", () => {
     expect(state.asks.map((a) => a.item.suspensionId)).toEqual(["q1"]);
   });
 
-  it("BR-2: a parked task alone, or an ask alone, is on call", () => {
+  it("BR-2: a parked task alone, or an ask alone, is on shift: the worker is mid-task, waiting on you", () => {
     const states = workerStates(snapshotOf([coder, reviewer], [row("a", "parked", "coder")], [ask("eng.reviewer", "q1")]));
-    expect(states.workers.get("eng.coder")!.status).toBe("on call");
-    expect(states.workers.get("eng.reviewer")!.status).toBe("on call");
+    expect(states.workers.get("eng.coder")!.status).toBe("on shift");
+    expect(states.workers.get("eng.reviewer")!.status).toBe("on shift");
     expect(states.workers.get("eng.reviewer")!.held).toEqual([]);
   });
 
@@ -73,7 +73,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
   });
 
   it("BR-4: the legacy waiting word reads as waiting on you", () => {
-    expect(workerStates(snapshotOf([coder], [row("a", "awaiting_review", "coder")])).workers.get("eng.coder")!.status).toBe("on call");
+    expect(workerStates(snapshotOf([coder], [row("a", "awaiting_review", "coder")])).workers.get("eng.coder")!.status).toBe("on shift");
   });
 
   it("BR-5: an assignee that resolves to no single worker, or an ask with no worker, counts for nobody", () => {
@@ -91,7 +91,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
   it("BR-20: asks that did not load mark the whole result partial, and leave statuses from the boards alone", () => {
     const states = workerStates(snapshotOf([coder, reviewer], [row("a", "in_progress", "coder"), row("b", "parked", "reviewer")], "failed"));
     expect(states.partial).toBe(true);
-    expect([...states.workers.values()].map((s) => s.status)).toEqual(["on shift", "on call"]);
+    expect([...states.workers.values()].map((s) => s.status)).toEqual(["on shift", "on shift"]);
     expect(workerStates(snapshotOf([coder], [])).partial).toBe(false);
   });
 
@@ -113,12 +113,12 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
   );
 
   it("counts each group, and every waits-on entry, an on-shift worker's included", () => {
-    expect(shiftCounts(workerStates(snapshot))).toEqual({ "on shift": 1, "on call": 2, "off shift": 1, waiting: 4 });
+    expect(shiftCounts(workerStates(snapshot))).toEqual({ "on shift": 3, "off shift": 1, waiting: 4 });
   });
 
   it("counts only the workers shown when a team is picked", () => {
-    expect(shiftCounts(workerStates(snapshot), "ops")).toEqual({ "on shift": 0, "on call": 1, "off shift": 0, waiting: 2 });
-    expect(shiftCounts(workerStates(snapshot), STAFF_TEAM)).toEqual({ "on shift": 0, "on call": 0, "off shift": 1, waiting: 0 });
+    expect(shiftCounts(workerStates(snapshot), "ops")).toEqual({ "on shift": 1, "off shift": 0, waiting: 2 });
+    expect(shiftCounts(workerStates(snapshot), STAFF_TEAM)).toEqual({ "on shift": 0, "off shift": 1, waiting: 0 });
   });
 
   it("lists teams with Staff first, each with exactly its workers", () => {
