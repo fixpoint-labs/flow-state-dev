@@ -413,6 +413,22 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     expect(entryReads().length).toBeGreaterThan(0);
   });
 
+  it("lists a workstream opened while its Workstreams tab is open, with no reload or navigation", async () => {
+    // A workstream is opened elsewhere, by the chief of staff or a project coordinator in another
+    // window, while the person sits on the list. It must show there as it opens, or they read
+    // "No workstreams" for work they just asked for.
+    const { screen } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    openApp(alice.clients, baseUrl, "/p/apollo/workstreams");
+    await screen.findByTestId("project-entries-none", undefined, { timeout: 10_000 });
+
+    await openAs(alice, setup, "research");
+    const listed = await screen.findAllByTestId("project-entry", undefined, { timeout: 15_000 });
+    expect(listed.map((li) => [li.getAttribute("data-owner"), li.getAttribute("data-workstream-id")])).toEqual([[ALICE.userId, "research"]]);
+    expect(screen.getByTestId("project-progress").getAttribute("data-workstreams")).toBe("1");
+  });
+
   it("flags an entry gone quiet by the project's progress, one clock for the row and the count (BR-19)", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
