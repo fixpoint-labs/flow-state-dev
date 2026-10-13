@@ -53,6 +53,16 @@ describe("probeClaudeAccount, scripted", () => {
     expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({ status: "account", tokenSource: "claude.ai" });
   });
 
+  it("says account for a subscription sign-in, which names no key or token source", async () => {
+    // The shape the SDK returns for a `claude` login (keychain / ~/.claude) with no API key set.
+    const sdk = scriptedSdk(async () => ({ email: "a@b.c", organization: "o", subscriptionType: "Claude Max", apiProvider: "firstParty" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
+      status: "account",
+      email: "a@b.c",
+      subscriptionType: "Claude Max",
+    });
+  });
+
   it("says none, with the reason, when neither source comes back", async () => {
     const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: null }));
     const result = await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk });
