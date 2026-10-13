@@ -579,9 +579,15 @@ Nothing a caller or a model sets can write `run`. Naming a session doesn't grant
 
 ### Giving another worker work
 
-On a board that dispatches, `addTask` records a task without starting it, and `assignTask`
-changes who owns a task, leaving a recorded one recorded. When you want another worker to
-start now, dispatch the task:
+`dispatchTask` is on a board that dispatches: one that starts a ready task as soon as it's
+written, such as a conversation's board in Workforce. A board that a drain runs decides for
+itself when each task runs, so it has no `dispatchTask`, and its `addTask` files a task the
+drain runs.
+
+On a board that dispatches, `addTask` records a task without starting it, and answers
+`{ ok: true, taskId, status: "recorded" }` with a one-line `note` saying the task starts on
+`dispatchTask`. `assignTask` changes who owns a task and leaves a recorded one recorded. When
+you want another worker to start now, dispatch the task:
 
 ```ts
 dispatchTask({ goal: "Draft the release note", assignee: "writer" })
@@ -594,10 +600,6 @@ you recorded earlier, name it instead of describing a new one:
 ```ts
 dispatchTask({ taskId: "task_8f2" })
 ```
-
-On a board that dispatches, `addTask` answers `{ ok: true, taskId, status: "recorded" }`, with a
-one-line `note` saying the task starts on `dispatchTask`. `assignTask` changes a recorded task's
-owner and leaves it recorded.
 
 If your next step needs the result, wait for it:
 
@@ -616,9 +618,7 @@ tool calls it makes.
 
 Only wait when the result changes what you do next. Otherwise let the task run and carry on.
 
-`dispatchTask` is on a board that can start work at once, such as a conversation's board in
-Workforce. A board that a drain runs decides for itself when each task runs, so it has no
-`dispatchTask`, and its `addTask` files a task the drain runs. Waiting needs more: a board that
+Waiting needs more: a board that
 wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
@@ -637,7 +637,7 @@ when its task ends and sits out its whole `timeoutMs`.
 
 | Error | When |
 |---|---|
-| `assignee_required` | No `assignee`, and the conversation has more than one delegate to choose from. Nothing is filed |
+| `assignee_required` | No `assignee` named or already on the task, and the board has no single worker to give it to. Nothing is filed |
 | `task_not_dispatchable` | The task named by `taskId` has already started, ended, or been dispatched. Nothing changes |
 | `wait_timed_out` | The task didn't end in time. It is cancelled |
 | `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |

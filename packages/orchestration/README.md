@@ -780,9 +780,10 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
 `session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`. `dispatchTask`
-adds its own (`assignee_required`, `task_not_dispatchable`, its target errors, and the `wait_*`
-codes when it [waits](#asking-a-task-and-waiting-for-the-answer)); the task board page lists
-them. A coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+adds its own (`assignee_required`, `task_not_dispatchable`, `dispatch_target_required`,
+`dispatch_target_ambiguous`, `dispatch_ref_takes_no_task_fields`, and the `wait_*`
+codes when it [waits](#asking-a-task-and-waiting-for-the-answer)). A
+coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 `not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
 and [follow-ups](#following-up-on-a-finished-task), below.
 
