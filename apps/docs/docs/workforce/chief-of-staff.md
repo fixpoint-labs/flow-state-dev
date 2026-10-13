@@ -169,6 +169,8 @@ Putting the tools in the catalog doesn't hand them to every worker on either flo
 
 A hire is a row in the user's own data, so it is there after a restart on any store that keeps data. Every process sees it on the next turn.
 
+Nothing has to open a conversation with the chief of staff when your app boots. One starts the first time someone talks to it, through [`ensureWorkerSession`](./coordinators.md#talking-to-it) or Shift Manager's Shift Coordinator screen. A host that opens conversations with its coordinators itself, to test them for example, opens one with the chief of staff the same way, but the chief of staff doesn't need it.
+
 ## Sending plain requests straight to a delegate
 
 Routed by judgment, the chief of staff runs a full model turn on everything you ask, even "file this feature for the storefront", which obviously belongs to one delegate. That turn reads its delegates, hands the request on, and writes a line before the delegate answers.

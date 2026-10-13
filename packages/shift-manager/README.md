@@ -201,6 +201,8 @@ You are the chief of staff for this Lab. Answer questions about who is working o
 
 A `chief-of-staff` worker declared as a team's worker, at `teams/<team>/workers/chief-of-staff/`, works too: Shift Manager talks to that worker.
 
+Shift Coordinator shows your newest conversation with that worker. If you have none, the first line you send starts one. Your host doesn't need to open one, whichever flow the chief of staff runs on.
+
 What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two workers of that name gets a line naming both, and Shift Manager talks to neither.
 
 To have it hand work to other workers, run it on Workforce's `coordinator` flow instead, with the workers it starts from as `delegates:`. The Lab registers that flow beside `agent` (`defineCoordinatorFlow`, see the Workforce README's Coordinators section). The DevTeam's chief of staff does this:
