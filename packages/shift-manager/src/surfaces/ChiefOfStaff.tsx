@@ -159,7 +159,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {ask.workerId === null ? "unknown worker" : workerLabel(ask.workerId)} asks{" · "}
+                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
                   <button
                     type="button"
                     className="text-info hover:text-foreground"

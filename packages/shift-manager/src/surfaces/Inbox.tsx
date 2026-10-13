@@ -118,7 +118,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                         {ask.item.message ?? "(no message)"}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {ask.workerId === null ? "unknown worker" : workerLabel(ask.workerId)} · task —
+                        {workerLabel(ask.workerId ?? "unknown worker")} · task —
                       </Meta>
                     </span>
                     <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
@@ -139,7 +139,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
             <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6">
               <div className="flex max-w-[660px] flex-col gap-[18px]">
                 <Meta className="text-muted-foreground" testId="inbox-detail-head">
-                  {selected.workerId === null ? "unknown worker" : workerLabel(selected.workerId)} asked, in session {selected.sessionId}
+                  {workerLabel(selected.workerId ?? "unknown worker")} asked, in session {selected.sessionId}
                 </Meta>
                 <ScreenTitle scale="detail" testId="inbox-detail-title">
                   {selected.item.message ?? "(no message)"}
@@ -292,8 +292,8 @@ function Reply({
     <div>
       <TurnComposer
         testId="inbox-reply"
-        label={`Reply to ${ask.workerId === null ? "this worker" : workerLabel(ask.workerId)}`}
-        placeholder={`Reply to ${ask.workerId === null ? "this worker" : workerLabel(ask.workerId)}…`}
+        label={`Reply to ${workerLabel(ask.workerId ?? "this worker")}`}
+        placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
         blocked={route.blocked}
         send={async (message, held) => {
           // The box is disabled while blocked; a send that got here anyway
