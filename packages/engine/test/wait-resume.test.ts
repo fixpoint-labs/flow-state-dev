@@ -472,38 +472,46 @@ describe("wait gate: park, and resume from the waiting turn's own conversation",
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
   });
 
-  it("the public resume route answers not-found for a wait gate, whatever the source", async () => {
-    const { model } = waitingModel();
-    const flow = waitFlow(model, { count: 0 });
-    const h = setup(flow);
-    const parked = await startTurn(h, flow); // an http-source turn
-    const requestId = parked.requestId!;
+  for (const legacy of [false, true]) {
+    it(
+      legacy
+        ? "the public resume route answers not-found for a gate stored under its old reason too (WR-10)"
+        : "the public resume route answers not-found for a wait gate, whatever the source",
+      async () => {
+        const { model } = waitingModel();
+        const flow = waitFlow(model, { count: 0 });
+        const h = setup(flow);
+        const parked = await startTurn(h, flow); // an http-source turn
+        const requestId = parked.requestId!;
+        if (legacy) await storeUnderOldReason(h, requestId);
 
-    const response = await handleResumeSuspension(
-      new Request(`https://x/api/flows/wait-resume/requests/${requestId}/resume`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          suspensionId: GATE_ID,
-          action: "submit",
-          data: { answered: true, answer: "forged" }
-        })
-      }),
-      { kind: "resume_suspension", flowKind: "wait-resume", requestId },
-      {
-        host: {} as never,
-        registry: h.registry,
-        stores: h.stores,
-        durabilityProvider: h.provider,
-        seams: {} as never,
-        requestContext: {} as never
+        const response = await handleResumeSuspension(
+          new Request(`https://x/api/flows/wait-resume/requests/${requestId}/resume`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              suspensionId: GATE_ID,
+              action: "submit",
+              data: { answered: true, answer: "forged" }
+            })
+          }),
+          { kind: "resume_suspension", flowKind: "wait-resume", requestId },
+          {
+            host: {} as never,
+            registry: h.registry,
+            stores: h.stores,
+            durabilityProvider: h.provider,
+            seams: {} as never,
+            requestContext: {} as never
+          }
+        );
+
+        expect(response.status).toBe(404);
+        expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
+        expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
       }
     );
-
-    expect(response.status).toBe(404);
-    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
-    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
-  });
+  }
 
   it("resumes a gate stored under its old reason, parked before the rename, with the answer (WR-9)", async () => {
     const { model, seen } = waitingModel();
@@ -516,35 +524,6 @@ describe("wait gate: park, and resume from the waiting turn's own conversation",
     await h.continued[0];
     expect((await h.stores.request.get(parked.requestId!))?.status).toBe("completed");
     expect(toolResults(seen[1]!.messages).join("")).toContain("Yes, renewed 2026-08");
-  });
-
-  it("the public resume route answers not-found for a gate stored under its old reason too (WR-10)", async () => {
-    const { model } = waitingModel();
-    const flow = waitFlow(model, { count: 0 });
-    const h = setup(flow);
-    const requestId = (await startTurn(h, flow)).requestId!;
-    await storeUnderOldReason(h, requestId);
-
-    const response = await handleResumeSuspension(
-      new Request(`https://x/api/flows/wait-resume/requests/${requestId}/resume`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ suspensionId: GATE_ID, action: "submit", data: { answered: true, answer: "forged" } })
-      }),
-      { kind: "resume_suspension", flowKind: "wait-resume", requestId },
-      {
-        host: {} as never,
-        registry: h.registry,
-        stores: h.stores,
-        durabilityProvider: h.provider,
-        seams: {} as never,
-        requestContext: {} as never
-      }
-    );
-
-    expect(response.status).toBe(404);
-    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
-    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 
   it("OFF STATE: without durable execution the verb is absent", async () => {
@@ -655,40 +634,32 @@ describe("wait gate past its deadline: the durability sweep resumes it with wait
     } as never);
   }
 
-  it("a real sweep tick resumes the overdue turn with the timeout error, never marking the gate expired", async () => {
-    const { model, seen } = waitingModel();
-    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
-    const h = setup(flow);
-    const parked = await startTurn(h, flow);
-    const requestId = parked.requestId!;
-    const gate = await h.provider.loadSuspension(requestId, GATE_ID);
-    expect(gate?.expiresAt).toBeDefined();
-    await new Promise((r) => setTimeout(r, 20));
+  for (const legacy of [false, true]) {
+    it(
+      legacy
+        ? "times out a gate stored under its old reason the same way, never marking it expired (WR-9)"
+        : "a real sweep tick resumes the overdue turn with the timeout error, never marking the gate expired",
+      async () => {
+        const { model, seen } = waitingModel();
+        const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+        const h = setup(flow);
+        const parked = await startTurn(h, flow);
+        const requestId = parked.requestId!;
+        const gate = await h.provider.loadSuspension(requestId, GATE_ID);
+        expect(gate?.expiresAt).toBeDefined();
+        if (legacy) await storeUnderOldReason(h, requestId);
+        await new Promise((r) => setTimeout(r, 20));
 
-    await tick(h);
+        await tick(h);
 
-    expect(h.continued).toHaveLength(1);
-    await h.continued[0];
-    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
-    expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
-  });
-
-  it("times out a gate stored under its old reason the same way, never marking it expired (WR-9)", async () => {
-    const { model, seen } = waitingModel();
-    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
-    const h = setup(flow);
-    const requestId = (await startTurn(h, flow)).requestId!;
-    await storeUnderOldReason(h, requestId);
-    await new Promise((r) => setTimeout(r, 20));
-
-    await tick(h);
-
-    expect(h.continued).toHaveLength(1);
-    await h.continued[0];
-    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
-    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).not.toBe("expired");
-    expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
-  });
+        expect(h.continued).toHaveLength(1);
+        await h.continued[0];
+        expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+        expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).not.toBe("expired");
+        expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
+      }
+    );
+  }
 
   it("a wait gate not yet past its deadline is left alone", async () => {
     const { model } = waitingModel();
